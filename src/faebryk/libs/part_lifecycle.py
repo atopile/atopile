@@ -23,13 +23,9 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats import (
-    C_kicad_footprint_file,
-    C_kicad_fp_lib_table_file,
     C_kicad_model_file,
-    C_pcb,
+    kicad,
 )
-from faebryk.libs.kicad.fileformats_common import C_xyr
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.ipc import opened_in_pcbnew
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
@@ -214,12 +210,14 @@ class PartLifecycle:
 
         def fp_table(
             self, build: BuildTargetConfig
-        ) -> tuple[Path, C_kicad_fp_lib_table_file]:
+        ) -> tuple[Path, kicad.fp_lib_table.FpLibTableFile]:
             fp_table_path = build.paths.fp_lib_table
 
             try:
-                old_fp_table = C_kicad_fp_lib_table_file.loads(fp_table_path)
-                for lib in old_fp_table.fp_lib_table.libs.values():
+                old_fp_table = kicad.loads(
+                    kicad.fp_lib_table.FpLibTableFile, fp_table_path
+                )
+                for lib in old_fp_table.fp_lib_table.libs:
                     if not lib.descr.startswith(MANAGED_LIB_PREFIX):
                         logger.warning(
                             f"Removing unmanaged footprint library `{lib.name}`"
@@ -229,7 +227,9 @@ class PartLifecycle:
                 pass
 
             # recreate table to ensure sync
-            fp_table = C_kicad_fp_lib_table_file.skeleton()
+            fp_table = kicad.fp_lib_table.FpLibTableFile(
+                kicad.fp_lib_table.FpLibTable(version=7, libs=[])
+            )
             # load all existing parts into new table
             for part_dir in sorted(
                 Gcfg.project.paths.parts.iterdir(), key=lambda x: x.name
@@ -247,12 +247,12 @@ class PartLifecycle:
             for build in Gcfg.project.builds.values():
                 fp_table_path, fp_table = self.fp_table(build)
                 self.__insert_fp_lib(lib_name, fp_table, fppath)
-                fp_table.dumps(fp_table_path)
+                kicad.dumps(fp_table, fp_table_path)
 
         def __insert_fp_lib(
             self,
             lib_name: str,
-            fp_table: C_kicad_fp_lib_table_file,
+            fp_table: kicad.fp_lib_table.FpLibTableFile,
             fppath: Path | None = None,
         ):
             fppath = fppath or self._PATH / lib_name
@@ -272,14 +272,17 @@ class PartLifecycle:
                     )
                 return fp_table
 
-            lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+            lib = kicad.fp_lib_table.FpLibEntry(
                 name=lib_name,
                 type="KiCad",
-                uri=fpuri,
+                uri=fpuri.as_posix(),
                 options="",
                 descr=f"{MANAGED_LIB_PREFIX} {lib_name}",
             )
-            fp_table.fp_lib_table.libs[lib_name] = lib
+            fp_table.fp_lib_table.libs = [
+                lib for lib in fp_table.fp_lib_table.libs if lib.name != lib_name
+            ]
+            fp_table.fp_lib_table.libs.append(lib)
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances
@@ -399,17 +402,19 @@ class PartLifecycle:
 
             def _find_footprint(
                 lib_tables: Sequence[os.PathLike], lib_id: str
-            ) -> C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib:
+            ) -> kicad.fp_lib_table.FpLibEntry:
                 lib_tables = [Path(lib_table) for lib_table in lib_tables]
 
                 err_accumulator = accumulate(LibNotInTable, FileNotFoundError)
 
                 for lib_table_path in lib_tables:
                     with err_accumulator.collect():
-                        lib_table = C_kicad_fp_lib_table_file.loads(lib_table_path)
+                        lib_table = kicad.loads(
+                            kicad.fp_lib_table.FpLibTableFile, lib_table_path
+                        )
                         try:
                             return find(
-                                lib_table.fp_lib_table.libs.values(),
+                                lib_table.fp_lib_table.libs,
                                 lambda x: x.name == lib_id,
                             )
                         except KeyErrorNotFound as ex:
@@ -462,7 +467,7 @@ class PartLifecycle:
             return manifest_path.parent
 
         def _fix_package_footprint_model(
-            self, fp: C_kicad_footprint_file, fp_path: Path
+            self, fp: kicad.footprint.FootprintFile, fp_path: Path
         ):
             layout_path = Gcfg.build.paths.layout.parent
             project_path = self._get_project_from_part_path(fp_path)
@@ -482,19 +487,19 @@ class PartLifecycle:
                 # "${KIPRJMOD}/../../.ato/modules/<package>/<layout_dir>/
                 #   ../parts/<part>/<model>"
                 m.path = path_replace(
-                    m.path,
+                    Path(m.path),
                     Path("${KIPRJMOD}") / "..",
                     Path("${KIPRJMOD}") / rel_path,
-                )
+                ).as_posix()
 
         def get_footprint_from_identifier(
             self, identifier: str, component: Module
-        ) -> tuple[Path, C_kicad_footprint_file]:
+        ) -> tuple[Path, kicad.footprint.FootprintFile]:
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
             fp_path = part_path / f"{fp_name}.kicad_mod"
             try:
-                fp = kicad_footprint_file(fp_path)
+                fp = kicad.loads(kicad.footprint.FootprintFile, fp_path)
 
                 # TODO: associate source project with component, so all that's needed
                 # here is to substitute ${KIPRJMOD} + rel_path for ${KIPRJMOD}
@@ -516,8 +521,8 @@ class PartLifecycle:
             transformer: PCB_Transformer,
             component: Module,
             logger: logging.Logger,
-            insert_point: C_xyr | None = None,
-        ) -> tuple[C_pcb.Footprint, bool]:
+            insert_point: kicad.pcb.Xyr | None = None,
+        ) -> tuple[kicad.pcb.Footprint, bool]:
             # TODO this is old code taken from PCB_Transformer
             # need to decouple some actions from here
             # e.g insert point is not really at the right place here

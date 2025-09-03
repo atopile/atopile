@@ -11,7 +11,7 @@ pub const FpLibEntry = struct {
 };
 
 pub const FpLibTable = struct {
-    version: ?[]const u8 = null,
+    version: ?i32 = null,
     libs: []FpLibEntry = &.{},
 
     pub const fields_meta = .{

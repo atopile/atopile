@@ -71,7 +71,7 @@ pub const Effects = struct {
 
 pub const TextLayer = struct {
     layer: str,
-    knockout: ?str = null,
+    knockout: ?E_knockout = null,
 
     pub const fields_meta = .{
         .layer = structure.SexpField{ .positional = true },
@@ -79,13 +79,257 @@ pub const TextLayer = struct {
     };
 };
 
-// Shapes
+// Enums
 pub const E_fill = enum {
     yes,
     no,
     none,
     solid,
 };
+
+// Text layer knockout enum
+pub const E_knockout = enum {
+    knockout,
+};
+
+// Paper type enum
+pub const E_paper_type = enum {
+    A5,
+    A4,
+    A3,
+    A2,
+    A1,
+    A0,
+    A,
+    B,
+    C,
+    D,
+    E,
+    USLetter,
+    USLegal,
+    USLedger,
+    Custom,
+};
+
+// Paper orientation enum
+pub const E_paper_orientation = enum {
+    portrait,
+    landscape,
+};
+
+// Layer type enum
+pub const E_layer_type = enum {
+    signal,
+    user,
+    mixed,
+    jumper,
+    power,
+};
+
+// Footprint text type enum
+pub const E_fp_text_type = enum {
+    user,
+    reference,
+    value,
+};
+
+// Pad type enum
+pub const E_pad_type = enum {
+    thru_hole,
+    smd,
+    np_thru_hole, // non_plated_through_hole
+    connect, // edge_connector
+};
+
+// Pad shape enum
+pub const E_pad_shape = enum {
+    circle,
+    rect,
+    oval, // stadium
+    roundrect,
+    custom,
+    trapezoid,
+    chamfered_rect,
+};
+
+// Pad clearance enum
+pub const E_pad_clearance = enum {
+    outline,
+    convexhull,
+};
+
+// Pad anchor enum
+pub const E_pad_anchor = enum {
+    rect,
+    circle,
+};
+
+// Pad property enum
+pub const E_pad_property = enum {
+    pad_prop_bga,
+    pad_prop_fiducial_glob,
+    pad_prop_fiducial_loc,
+    pad_prop_testpoint,
+    pad_prop_castellated,
+    pad_prop_heatsink,
+    pad_prop_mechanical,
+    none,
+};
+
+// Pad chamfer enum
+pub const E_pad_chamfer = enum {
+    chamfer_top_left,
+    chamfer_top_right,
+    chamfer_bottom_left,
+    chamfer_bottom_right,
+};
+
+// Pad drill shape enum
+pub const E_pad_drill_shape = enum {
+    circle,
+    oval, // stadium
+};
+
+// Pad tenting enum
+pub const E_pad_tenting = enum {
+    front,
+    back,
+    none,
+};
+
+// Zone connection enum
+pub const E_zone_connection = enum(i32) {
+    INHERITED = -1,
+    NONE = 0,
+    THERMAL = 1,
+    FULL = 2,
+    THT_THERMAL = 3,
+};
+
+// Padstack mode enum
+pub const E_padstack_mode = enum {
+    front_inner_back,
+    custom,
+};
+
+// Via tenting enum
+pub const E_via_tenting = enum {
+    front,
+    back,
+};
+
+// Zone hatch mode enum
+pub const E_zone_hatch_mode = enum {
+    edge,
+    full,
+    none,
+};
+
+// Zone connect pads mode enum
+pub const E_zone_connect_pads_mode = enum {
+    no, // none
+    yes, // solid
+    thermal_reliefs, // empty string in KiCad
+    thru_hole_only,
+};
+
+// Zone fill mode enum
+pub const E_zone_fill_mode = enum {
+    hatch,
+    polygon,
+};
+
+// Zone fill enable enum
+pub const E_zone_fill_enable = enum {
+    yes,
+};
+
+// Zone smoothing enum
+pub const E_zone_smoothing = enum {
+    fillet,
+    chamfer,
+    none, // empty string in KiCad
+};
+
+// Zone hatch border algorithm enum
+pub const E_zone_hatch_border_algorithm = enum {
+    hatch_thickness,
+    min_thickness, // empty string in KiCad
+};
+
+// Zone island removal mode enum
+pub const E_zone_island_removal_mode = enum(i32) {
+    always = 0,
+    do_not_remove = 1,
+    below_area_limit = 2,
+};
+
+// Zone keepout enum
+pub const E_zone_keepout = enum {
+    allowed,
+    not_allowed,
+};
+
+// Zone placement source type enum
+pub const E_zone_placement_source_type = enum {
+    sheetname,
+    component_class,
+};
+
+// Zone teardrop type enum
+pub const E_zone_teardrop_type = enum {
+    padvia,
+    track_end,
+};
+
+// Dimension type enum
+pub const E_dimension_type = enum {
+    aligned,
+    orthogonal,
+    leader,
+    center,
+    radial,
+};
+
+// Dimension arrow direction enum
+pub const E_dimension_arrow_direction = enum {
+    inward,
+    outward,
+};
+
+// Stackup copper finish enum
+pub const E_copper_finish = enum {
+    ENIG,
+    ENEPIG,
+    @"HAL SnPb",
+    @"HAL lead-free",
+    @"Hard Gold",
+    @"Immersion tin",
+    @"Immersion silver",
+    @"Immersion nickel",
+    @"Immersion gold",
+    OSP,
+    HT_OSP,
+    None,
+    @"User defined",
+};
+
+// Stackup edge connector enum
+pub const E_edge_connector = enum {
+    bevelled,
+    yes,
+};
+
+// Embedded file type enum
+pub const E_embedded_file_type = enum {
+    other,
+    model,
+    font,
+    datasheet,
+    worksheet,
+};
+
+// Shapes
 
 pub const Line = struct {
     start: Xy,
@@ -227,7 +471,7 @@ pub const Text = struct {
 };
 
 pub const FpText = struct {
-    type: str,
+    type: E_fp_text_type,
     text: str,
     at: Xyr,
     layer: str,
@@ -244,24 +488,54 @@ pub const FpText = struct {
 // Pad structures
 pub const Drill = f64;
 
+pub const PadDrill = struct {
+    shape: E_pad_drill_shape = .circle,
+    size_x: ?f64 = null,
+    size_y: ?f64 = null,
+    offset: ?Xy = null,
+
+    pub const fields_meta = .{
+        .shape = structure.SexpField{ .positional = true },
+        .size_x = structure.SexpField{ .positional = true },
+        .size_y = structure.SexpField{ .positional = true },
+    };
+};
+
+pub const PadOptions = struct {
+    clearance: ?E_pad_clearance = null,
+    anchor: ?E_pad_anchor = null,
+};
+
+pub const PadTenting = struct {
+    type: E_pad_tenting,
+
+    pub const fields_meta = .{
+        .type = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const Pad = struct {
     name: str,
-    type: str,
-    shape: str,
+    type: E_pad_type,
+    shape: E_pad_shape,
     at: Xyr,
     size: Wh,
     layers: []str,
-    drill: ?Drill = null,
+    drill: ?PadDrill = null,
     net: ?Net = null,
     solder_mask_margin: ?f64 = null,
     solder_paste_margin: ?f64 = null,
     solder_paste_margin_ratio: ?f64 = null,
     clearance: ?f64 = null,
-    zone_connect: ?i32 = null,
+    zone_connect: ?E_zone_connection = null,
     thermal_bridge_width: ?f64 = null,
     thermal_gap: ?f64 = null,
     roundrect_rratio: ?f64 = null,
     chamfer_ratio: ?f64 = null,
+    chamfer: ?E_pad_chamfer = null,
+    properties: ?E_pad_property = null,
+    options: ?PadOptions = null,
+    tenting: ?PadTenting = null,
     uuid: str,
 
     pub const fields_meta = .{
@@ -314,6 +588,16 @@ pub const Model = struct {
     };
 };
 
+pub const Attr = enum {
+    smd,
+    dnp,
+    board_only,
+    through_hole,
+    exclude_from_pos_files,
+    exclude_from_bom,
+    allow_missing_courtyard,
+};
+
 // Footprint structure
 pub const Footprint = struct {
     name: str,
@@ -323,7 +607,7 @@ pub const Footprint = struct {
     path: ?str = null,
     propertys: []Property = &.{},
     fp_texts: []FpText = &.{},
-    attr: []str = &.{},
+    attr: []Attr = &.{},
     fp_lines: []Line = &.{},
     fp_arcs: []Arc = &.{},
     fp_circles: []Circle = &.{},
@@ -346,19 +630,52 @@ pub const Footprint = struct {
     };
 };
 
+// Via layer structure
+pub const ViaLayer = struct {
+    name: str,
+    size: ?Xy = null,
+    thermal_gap: ?f64 = null,
+    thermal_bridge_width: ?f64 = null,
+    thermal_bridge_angle: ?f64 = null,
+    zone_connect: ?E_zone_connection = null,
+};
+
 // Via structure
+pub const ViaPadstack = struct {
+    mode: E_padstack_mode,
+    layers: []ViaLayer = &.{},
+
+    pub const fields_meta = .{
+        .mode = structure.SexpField{ .positional = true },
+        .layers = structure.SexpField{ .multidict = true, .sexp_name = "layer" },
+    };
+};
+
+pub const ViaTenting = struct {
+    front: bool = false,
+    back: bool = false,
+};
+
 pub const Via = struct {
     at: Xy,
     size: f64,
     drill: f64,
     layers: []str = &.{},
     net: i32,
+    remove_unused_layers: ?bool = null,
+    keep_end_layers: ?bool = null,
+    zone_layer_connections: ?[]str = null,
+    padstack: ?ViaPadstack = null,
+    teardrops: ?Teardrop = null,
+    tenting: ?ViaTenting = null,
+    free: ?bool = null,
+    locked: ?bool = null,
     uuid: str,
 };
 
 // Zone structures
 pub const Hatch = struct {
-    mode: str,
+    mode: E_zone_hatch_mode,
     pitch: f64,
 
     pub const fields_meta = .{
@@ -368,7 +685,7 @@ pub const Hatch = struct {
 };
 
 pub const ConnectPads = struct {
-    mode: ?str = null,
+    mode: ?E_zone_connect_pads_mode = null,
     clearance: f64,
 
     pub const fields_meta = .{
@@ -377,10 +694,22 @@ pub const ConnectPads = struct {
 };
 
 pub const Fill = struct {
-    enable: ?str = null,
-    mode: ?str = null,
+    enable: ?E_zone_fill_enable = null,
+    mode: ?E_zone_fill_mode = null,
+    hatch_thickness: ?f64 = null,
+    hatch_gap: ?f64 = null,
+    hatch_orientation: ?f64 = null,
+    hatch_smoothing_level: ?f64 = null,
+    hatch_smoothing_value: ?f64 = null,
+    hatch_border_algorithm: ?E_zone_hatch_border_algorithm = null,
+    hatch_min_hole_area: ?f64 = null,
+    arc_segments: ?i32 = null,
     thermal_gap: f64,
     thermal_bridge_width: f64,
+    smoothing: ?E_zone_smoothing = null,
+    radius: ?f64 = null,
+    island_removal_mode: ?E_zone_island_removal_mode = null,
+    island_area_min: ?f64 = null,
 
     pub const fields_meta = .{
         .enable = structure.SexpField{ .positional = true },
@@ -392,6 +721,28 @@ pub const FilledPolygon = struct {
     pts: Pts,
 };
 
+pub const ZoneKeepout = struct {
+    tracks: E_zone_keepout,
+    vias: E_zone_keepout,
+    pads: E_zone_keepout,
+    copperpour: E_zone_keepout,
+    footprints: E_zone_keepout,
+};
+
+pub const ZonePlacement = struct {
+    source_type: ?E_zone_placement_source_type = null,
+    source: ?str = null,
+    enabled: bool = true,
+};
+
+pub const ZoneTeardrop = struct {
+    type: E_zone_teardrop_type,
+};
+
+pub const ZoneAttr = struct {
+    teardrop: ?ZoneTeardrop = null,
+};
+
 pub const Zone = struct {
     net: i32,
     net_name: str,
@@ -400,12 +751,15 @@ pub const Zone = struct {
     name: ?str = null,
     hatch: Hatch,
     priority: ?i32 = null,
+    attr: ?ZoneAttr = null,
     connect_pads: ConnectPads,
     min_thickness: f64,
     filled_areas_thickness: bool,
     fill: Fill,
+    keepout: ?ZoneKeepout = null,
     polygon: Polygon,
     filled_polygon: []FilledPolygon = &.{},
+    placement: ?ZonePlacement = null,
 
     pub const fields_meta = .{
         .filled_polygon = structure.SexpField{ .multidict = true },
@@ -445,9 +799,9 @@ pub const General = struct {
 };
 
 pub const Paper = struct {
-    type: str = "A4",
+    type: E_paper_type = .A4,
     size: ?Xy = null,
-    orientation: ?str = null,
+    orientation: ?E_paper_orientation = null,
 
     pub const fields_meta = .{
         .type = structure.SexpField{ .positional = true },
@@ -481,7 +835,7 @@ pub const Comment = struct {
 pub const Layer = struct {
     number: i32,
     name: str,
-    type: str,
+    type: E_layer_type,
     alias: ?str = null,
 
     pub const fields_meta = .{
@@ -494,9 +848,9 @@ pub const Layer = struct {
 
 pub const Stackup = struct {
     layers: []StackupLayer = &.{},
-    copper_finish: ?str = null,
+    copper_finish: ?E_copper_finish = null,
     dielectric_constraints: ?bool = null,
-    edge_connector: ?str = null,
+    edge_connector: ?E_edge_connector = null,
     castellated_pads: ?bool = null,
     edge_plating: ?bool = null,
 
@@ -623,7 +977,7 @@ pub const KicadPcb = struct {
     generator: str,
     generator_version: str,
     general: General = .{},
-    paper: ?str = null,
+    paper: ?E_paper_type = null,
     title_block: ?TitleBlock = null,
     // TODO default layers? maybe better handle in application logic
     layers: []Layer = &.{},
@@ -674,26 +1028,188 @@ pub const KicadPcb = struct {
 };
 
 // Additional structures referenced but not fully defined above
+pub const Data = struct {
+    data: str, // base64 encoded data
+
+    pub const fields_meta = .{
+        .data = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const Image = struct {
     at: Xy,
     layer: str,
     scale: f64 = 1.0,
-    data: ?str = null,
+    data: ?Data = null,
     uuid: str,
+};
+
+pub const EmbeddedFile = struct {
+    name: str,
+    type: E_embedded_file_type,
+    data: ?Data = null,
+    checksum: ?str = null,
+};
+
+pub const EmbeddedFiles = struct {
+    files: []EmbeddedFile = &.{},
+
+    pub const fields_meta = .{
+        .files = structure.SexpField{ .multidict = true, .sexp_name = "file" },
+    };
+};
+
+pub const Teardrop = struct {
+    enabled: bool = false,
+    allow_two_segments: bool = false,
+    prefer_zone_connections: bool = true,
+    best_length_ratio: f64,
+    max_length: f64,
+    best_width_ratio: f64,
+    max_width: f64,
+    curved_edges: bool,
+    filter_ratio: f64,
+};
+
+pub const RenderCache = struct {
+    text: str = "",
+    rotation: f64 = 0,
+    polygons: []Polygon = &.{},
+
+    pub const fields_meta = .{
+        .text = structure.SexpField{ .positional = true },
+        .rotation = structure.SexpField{ .positional = true },
+        .polygons = structure.SexpField{ .multidict = true },
+    };
+};
+
+pub const Margins = struct {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+
+    pub const fields_meta = .{
+        .left = structure.SexpField{ .positional = true },
+        .top = structure.SexpField{ .positional = true },
+        .right = structure.SexpField{ .positional = true },
+        .bottom = structure.SexpField{ .positional = true },
+    };
+};
+
+pub const Span = struct {
+    cols: i32,
+    rows: i32,
+
+    pub const fields_meta = .{
+        .cols = structure.SexpField{ .positional = true },
+        .rows = structure.SexpField{ .positional = true },
+    };
+};
+
+pub const TextBox = struct {
+    text: str,
+    locked: bool = false,
+    start: ?Xy = null,
+    end: ?Xy = null,
+    pts: ?Pts = null,
+    angle: ?f64 = null,
+    stroke: ?Stroke = null,
+    border: ?bool = null,
+    margins: ?Margins = null,
+    layer: str,
+    span: ?Span = null,
+    effects: Effects,
+    render_cache: ?RenderCache = null,
+    uuid: str,
+
+    pub const fields_meta = .{
+        .text = structure.SexpField{ .positional = true },
+    };
+};
+
+pub const TableCell = struct {
+    // Inherits from TextBox but simplified for now
+    text: str,
+    layer: str,
+    effects: Effects,
+    uuid: str,
+
+    pub const fields_meta = .{
+        .text = structure.SexpField{ .positional = true },
+    };
+};
+
+pub const Cells = struct {
+    table_cells: []TableCell = &.{},
+
+    pub const fields_meta = .{
+        .table_cells = structure.SexpField{ .multidict = true },
+    };
+};
+
+pub const Border = struct {
+    external: bool,
+    header: bool,
+    stroke: Stroke,
+};
+
+pub const Separator = struct {
+    rows: bool,
+    cols: bool,
+    stroke: Stroke,
+};
+
+pub const Table = struct {
+    column_count: i32,
+    locked: ?bool = null,
+    layer: str,
+    column_widths: []f64,
+    row_heights: []f64,
+    cells: Cells,
+    border: Border,
+    separators: Separator,
 };
 
 pub const DimensionPts = struct {
     xys: []Xy = &.{},
+
+    pub const fields_meta = .{
+        .xys = structure.SexpField{ .multidict = true, .sexp_name = "xy" },
+    };
+};
+
+pub const DimensionFormat = struct {
+    prefix: str,
+    suffix: str,
+    units: i32,
+    units_format: i32,
+    precision: i32,
+    override_value: ?str = null,
+    suppress_zeroes: bool = false,
+};
+
+pub const DimensionStyle = struct {
+    thickness: ?f64 = null,
+    arrow_length: ?f64 = null,
+    arrow_direction: E_dimension_arrow_direction = .outward,
+    text_position_mode: ?i32 = null,
+    extension_height: ?f64 = null,
+    extension_offset: ?f64 = null,
+    keep_text_aligned: bool = true,
+    text_frame: ?i32 = null,
 };
 
 pub const Dimension = struct {
-    type: str,
+    type: E_dimension_type,
     layer: str,
     uuid: str,
     pts: DimensionPts,
     height: f64,
     orientation: ?f64 = null,
     leader_length: ?f64 = null,
+    format: ?DimensionFormat = null,
+    style: ?DimensionStyle = null,
     gr_text: Text,
 };
 

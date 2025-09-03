@@ -770,6 +770,28 @@ class kicad:
             path.write_text(raw, encoding="utf-8")
         return raw
 
+    @staticmethod
+    def gen_uuid(mark: str = ""):
+        import uuid
+
+        # format: d864cebe-263c-4d3f-bbd6-bb51c6d2a608
+        value = uuid.uuid4().hex
+
+        suffix = mark.encode().hex()
+        if suffix:
+            value = value[: -len(suffix)] + suffix
+
+        DASH_IDX = [8, 12, 16, 20]
+        formatted = value
+        for i, idx in enumerate(DASH_IDX):
+            formatted = formatted[: idx + i] + "-" + formatted[idx + i :]
+
+        return UUID(formatted)
+
+    @staticmethod
+    def fp_get_base_name(fp: footprint.Footprint | pcb.Footprint) -> str:
+        return fp.name.split(":")[-1]
+
 
 class Property:
     class _Property(Protocol):

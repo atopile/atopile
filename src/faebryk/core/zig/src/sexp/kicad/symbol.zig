@@ -1,0 +1,33 @@
+const std = @import("std");
+const structure = @import("../structure.zig");
+
+const str = []const u8;
+
+const schematic = @import("schematic.zig");
+
+pub const SymbolLib = struct {
+    version: []const u8,
+    generator: []const u8,
+    symbols: []schematic.Symbol = &.{},
+};
+
+pub const SymbolFile = struct {
+    kicad_sym: SymbolLib,
+
+    const root_symbol = "kicad_sym";
+
+    pub fn loads(allocator: std.mem.Allocator, in: structure.input) !SymbolFile {
+        const symbol = try structure.loads(SymbolLib, allocator, in, root_symbol);
+        return SymbolFile{
+            .symbol = symbol,
+        };
+    }
+
+    pub fn dumps(self: SymbolFile, allocator: std.mem.Allocator, out: structure.output) !void {
+        try structure.dumps(self.kicad_sym, allocator, root_symbol, out);
+    }
+
+    pub fn free(self: *SymbolFile, allocator: std.mem.Allocator) void {
+        structure.free(SymbolLib, allocator, self.symbol);
+    }
+};

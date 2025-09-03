@@ -8,18 +8,9 @@ import pytest
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
 from faebryk.libs.kicad.fileformats import (
-    C_effects,
-    C_embedded_files,
-    C_footprint,
-    C_kicad_footprint_file,
-    C_kicad_fp_lib_table_file,
-    C_kicad_netlist_file,
-    C_kicad_pcb_file,
     C_kicad_project_file,
+    kicad,
 )
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file, C_kicad_sym_file
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
-from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File
 from faebryk.libs.test.fileformats import (
     _FP_DIR,
     _FPLIB_DIR,  # noqa: F401
@@ -46,8 +37,8 @@ DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
 
 def test_parser_netlist():
-    netlist = C_kicad_netlist_file.loads(NETFILE)
-    assert [(c.ref, c.value) for c in netlist.export.components.comps][:10] == [
+    netlist = kicad.loads(kicad.netlist.NetlistFile, NETFILE)
+    assert [(c.ref, c.value) for c in netlist.netlist.components.comps][:10] == [
         ("C1", "10uF"),
         ("C2", "10uF"),
         ("C3", "10uF"),

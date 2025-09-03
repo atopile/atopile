@@ -788,18 +788,24 @@ fn decodeBool(sexp: SExp) DecodeError!bool {
 }
 
 fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
-    const sym = ast.getSymbol(sexp) orelse {
-        // Get current context to preserve field name
-        const ctx = getErrorContext();
-        setErrorContext(.{
-            .path = if (ctx) |c| c.path else @typeName(T),
-            .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = "expected symbol for enum",
-        }, sexp);
-        return error.UnexpectedType;
+    // Try to get the enum value as either a symbol or a string
+    const enum_str = switch (sexp.value) {
+        .symbol => |s| s,
+        .string => |s| s,
+        else => {
+            // Get current context to preserve field name
+            const ctx = getErrorContext();
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = "expected symbol or string for enum",
+            }, sexp);
+            return error.UnexpectedType;
+        },
     };
+    
     inline for (std.meta.fields(T)) |field| {
-        if (std.mem.eql(u8, sym, field.name)) {
+        if (std.mem.eql(u8, enum_str, field.name)) {
             return @field(T, field.name);
         }
     }
@@ -809,7 +815,7 @@ fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
     setErrorContext(.{
         .path = if (ctx) |c| c.path else @typeName(T),
         .field_name = if (ctx) |c| c.field_name else null,
-        .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ sym, @typeName(T) }) catch "invalid enum value",
+        .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value",
     }, sexp);
     return error.InvalidValue;
 }

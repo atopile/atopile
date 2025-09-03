@@ -28,10 +28,7 @@ from more_itertools import first
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.core.module import Module
-from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
-from faebryk.libs.kicad.fileformats_common import compare_without_uuid
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
     PickedPart,
@@ -195,18 +192,18 @@ class EasyEDA3DModel:
 class EasyEDAFootprint:
     cache: dict[Path, "EasyEDAFootprint"] = {}
 
-    def __init__(self, footprint: C_kicad_footprint_file):
+    def __init__(self, footprint: kicad.footprint.FootprintFile):
         self.footprint = footprint
 
     def serialize(self) -> bytes:
-        return self.footprint.dumps().encode("utf-8")
+        return kicad.dumps(self.footprint).encode("utf-8")
 
     @classmethod
     def load(cls, path: Path):
         # assume not disk modifications during run
         if path in cls.cache:
             return cls.cache[path]
-        out = cls(kicad_footprint_file(path))
+        out = cls(kicad.loads(kicad.footprint.FootprintFile, path))
         cls.cache[path] = out
         return out
 
@@ -221,11 +218,11 @@ class EasyEDAFootprint:
         fp_raw = call_with_file_capture(
             lambda path: exporter.export(str(path), model_path)  # type: ignore
         )[1]
-        fp = kicad_footprint_file(fp_raw.decode("utf-8"))
+        fp = kicad.loads(kicad.footprint.FootprintFile, fp_raw.decode("utf-8"))
         # workaround: remove wrl ending easyeda likes to add for no reason
         for m in fp.footprint.models:
-            if m.path.suffix == ".wrl":
-                m.path = m.path.parent
+            if Path(m.path).suffix == ".wrl":
+                m.path = Path(m.path).parent.as_posix()
         return cls(fp)
 
     def dump(self, path: Path):

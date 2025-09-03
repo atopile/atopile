@@ -11,12 +11,7 @@ from faebryk.exporters.pcb.kicad.transformer import (
     get_all_geo_containers,
     get_all_geos,
 )
-from faebryk.libs.kicad.fileformats import (
-    C_group,
-    C_kicad_pcb_file,
-    C_net,
-)
-from faebryk.libs.kicad.fileformats_common import C_xy, gen_uuid
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.util import (
     KeyErrorNotFound,
     find,
@@ -29,8 +24,8 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
-PCB = C_kicad_pcb_file.C_kicad_pcb
-type Footprint = PCB.C_pcb_footprint
+PCB = kicad.pcb.KicadPcb
+type Footprint = kicad.pcb.Footprint
 
 
 class LayoutSync:
@@ -39,7 +34,7 @@ class LayoutSync:
     def __init__(self, pcb: PCB):
         self.pcb = pcb
 
-        self._old_groups: dict[str, C_group] = {}
+        self._old_groups: dict[str, kicad.pcb.Group] = {}
 
         fps = self.pcb.footprints
         sub_fps = [
@@ -54,14 +49,12 @@ class LayoutSync:
             )
 
     def _get_all_sub_addresses(self, fp: Footprint) -> list[SubAddress]:
-        sub_addresses = fp.propertys.get("atopile_subaddresses")
+        sub_addresses = Property.get_property(fp.propertys, "atopile_subaddresses")
         if not sub_addresses:
             return []
         return [
             SubAddress.deserialize(addr)
-            for addr in sub_addresses.value.removeprefix("[")
-            .removesuffix("]")
-            .split(", ")
+            for addr in sub_addresses.removeprefix("[").removesuffix("]").split(", ")
         ]
 
     def _get_sub_address(self, fp: Footprint) -> SubAddress | None:
@@ -70,7 +63,7 @@ class LayoutSync:
     @once
     def _get_pcb(self, pcb_address: str) -> PCB:
         path = gcfg.project.paths.root / pcb_address
-        return C_kicad_pcb_file.loads(path).kicad_pcb
+        return kicad.loads(kicad.pcb.PcbFile, path).kicad_pcb
 
     def _get_group_name(self, sub_addr: SubAddress, fp: Footprint) -> str:
         base_addr = self._get_footprint_addr(fp)
@@ -103,10 +96,7 @@ class LayoutSync:
 
     def _get_footprint_addr(self, fp: Footprint) -> str | None:
         """Get the address of a footprint."""
-        prop = fp.propertys.get("atopile_address")
-        if prop:
-            return prop.value
-        return None
+        return Property.try_get_property(fp.propertys, "atopile_address")
 
     def sync_groups(self):
         """Synchronize groups based on the layout map."""
@@ -130,10 +120,11 @@ class LayoutSync:
 
             # Create group if it doesn't exist
             if group_name not in groups:
-                group = C_group(
+                group = kicad.pcb.Group(
                     name=group_name,
-                    uuid=gen_uuid(group_name),
+                    uuid=kicad.gen_uuid(group_name),
                     members=[],
+                    locked=False,
                 )
                 self.pcb.groups.append(group)
                 groups[group_name] = group
@@ -158,13 +149,13 @@ class LayoutSync:
         mapping_counts: dict[str, dict[str, int]] = {}
 
         # Get footprints by address for both boards
-        source_fps: dict[str, PCB.C_pcb_footprint] = {}
+        source_fps: dict[str, kicad.pcb.Footprint] = {}
         for fp in source_pcb.footprints:
             addr = self._get_footprint_addr(fp)
             if addr:
                 source_fps[addr] = fp
 
-        target_fps: dict[str, PCB.C_pcb_footprint] = {}
+        target_fps: dict[str, kicad.pcb.Footprint] = {}
         for fp in target_pcb.footprints:
             addr = self._get_footprint_addr(fp)
             if addr:
@@ -230,17 +221,17 @@ class LayoutSync:
         top_pcb: PCB,
         addr_map: dict[str, str],
         net_map: dict[str, str],
-        offset: C_xy,
+        offset: kicad.pcb.Xyr,
     ):
         """Sync footprint positions from source to target."""
         # Get footprints by address
-        sub_fps: dict[str, PCB.C_pcb_footprint] = {
+        sub_fps: dict[str, kicad.pcb.Footprint] = {
             addr: fp
             for fp in sub_pcb.footprints
             if (addr := self._get_footprint_addr(fp))
         }
 
-        top_fps: dict[str, PCB.C_pcb_footprint] = {
+        top_fps: dict[str, kicad.pcb.Footprint] = {
             addr: fp
             for fp in top_pcb.footprints
             if (addr := self._get_footprint_addr(fp))
@@ -269,7 +260,7 @@ class LayoutSync:
                 pad.uuid = gen_uuid()
                 if pad.net and pad.net.name in net_map:
                     top_net_name = net_map[pad.net.name]
-                    pad.net = C_net(
+                    pad.net = kicad.pcb.Net(
                         self._get_net_number(top_pcb, top_net_name),
                         name=top_net_name,
                     )
@@ -287,25 +278,28 @@ class LayoutSync:
         sub_pcb: PCB,
         top_pcb: PCB,
         net_map: dict[str, str],
-        offset: C_xy,
+        offset: kicad.pcb.Xyr,
     ):
         new_objects = []
         for track in sub_pcb.segments + sub_pcb.arcs + sub_pcb.zones + sub_pcb.vias:
             # Get source net name
-            sub_net: C_net | None = find_or(
+            sub_net: kicad.pcb.Net | None = find_or(
                 sub_pcb.nets,
                 lambda n: n.number == track.net,
                 None,  # type: ignore
             )
 
             # Create new track
-            new_track: PCB.C_segment | PCB.C_arc_segment | PCB.C_zone | PCB.C_via = (
-                copy.deepcopy(track)
-            )
+            new_track: (
+                kicad.pcb.Segment
+                | kicad.pcb.ArcSegment
+                | kicad.pcb.Zone
+                | kicad.pcb.Via
+            ) = copy.deepcopy(track)
             new_track.uuid = gen_uuid()
             if sub_net and sub_net.name in net_map:
                 new_track.net = self._get_net_number(top_pcb, net_map[sub_net.name])
-                if isinstance(new_track, PCB.C_zone):
+                if isinstance(new_track, kicad.pcb.Zone):
                     new_track.net_name = net_map[sub_net.name]
             else:
                 new_track.net = 0
@@ -315,7 +309,7 @@ class LayoutSync:
 
         return new_objects
 
-    def _sync_other(self, sub_pcb: PCB, top_pcb: PCB, offset: C_xy):
+    def _sync_other(self, sub_pcb: PCB, top_pcb: PCB, offset: kicad.pcb.Xyr):
         new_graphics = []
         for gr in (
             get_all_geos(sub_pcb)
@@ -336,11 +330,11 @@ class LayoutSync:
     def _calculate_group_offset(
         self,
         source_pcb: PCB,
-        target_group: C_group,
-    ) -> C_xy:
+        target_group: kicad.pcb.Group,
+    ) -> kicad.pcb.Xy:
         """Calculate offset to apply when pulling a group layout."""
 
-        ZERO = C_xy(0, 0)
+        ZERO = kicad.pcb.Xy(0, 0)
         # Find anchor footprint (largest by pad count)
         group_fps = [
             fp
@@ -373,7 +367,7 @@ class LayoutSync:
 
         sub_pos = sub_fp.at
         # TODO rotation?
-        offset = C_xy(
+        offset = kicad.pcb.Xy(
             top_pos.x - sub_pos.x,
             top_pos.y - sub_pos.y,
         )

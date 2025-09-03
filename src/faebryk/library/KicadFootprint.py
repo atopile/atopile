@@ -10,7 +10,7 @@ from faebryk.libs.library import L
 from faebryk.libs.util import times
 
 if TYPE_CHECKING:
-    from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
+    from faebryk.libs.kicad.fileformats import kicad
 
 
 class KicadFootprint(F.Footprint):
@@ -58,7 +58,7 @@ class KicadFootprint(F.Footprint):
 
     @classmethod
     def from_file(
-        cls, fp_file: "C_kicad_footprint_file", lib_name: str | None = None
+        cls, fp_file: "kicad.footprint.FootprintFile", lib_name: str | None = None
     ) -> "KicadFootprint":
         """
         Create based on a footprint file
@@ -84,7 +84,11 @@ class KicadFootprint(F.Footprint):
 
         pad_names = [pad.name for pad in fp_file.footprint.pads]
         self = cls(pad_names)
-        self.add(cls.has_kicad_identifier(f"{lib_name}:{fp_file.footprint.base_name}"))
+        self.add(
+            cls.has_kicad_identifier(
+                f"{lib_name}:{kicad.fp_get_base_name(fp_file.footprint)}"
+            )
+        )
         return self
 
     @classmethod
@@ -96,8 +100,10 @@ class KicadFootprint(F.Footprint):
 
         Will take the pin names from that file.
         """
-        from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
+        from faebryk.libs.kicad.fileformats import kicad
 
-        self = cls.from_file(kicad_footprint_file(Path(fp_path)), lib_name=lib_name)
+        self = cls.from_file(
+            kicad.loads(kicad.footprint.FootprintFile, Path(fp_path)), lib_name=lib_name
+        )
         self.add(cls.has_file(fp_path))
         return self

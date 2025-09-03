@@ -307,6 +307,57 @@ pub fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
     };
 }
 
+pub fn enum_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime EnumType: type) py.PyGetSetDef {
+    const field_name_str = std.mem.span(field_name);
+    const getter = struct {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            const has_data = @hasField(struct_type, "data");
+            const val: EnumType = if (has_data)
+                @field(obj.data.*, field_name_str)
+            else
+                @field(obj.top.*, field_name_str);
+            // Convert enum to string
+            const enum_str = @tagName(val);
+            return py.PyUnicode_FromString(enum_str.ptr);
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null) {
+                return -1;
+            }
+
+            const str_val = py.PyUnicode_AsUTF8(value);
+            if (str_val == null) {
+                return -1;
+            }
+
+            const enum_str = std.mem.span(str_val.?);
+            const enum_val = std.meta.stringToEnum(EnumType, enum_str) orelse {
+                py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value");
+                return -1;
+            };
+
+            const has_data = @hasField(struct_type, "data");
+            if (has_data) {
+                @field(obj.data.*, field_name_str) = enum_val;
+            } else {
+                @field(obj.top.*, field_name_str) = enum_val;
+            }
+            return 0;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
 pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
     const getter = struct {
@@ -546,6 +597,11 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
                         return pyobj;
                     },
+                    .@"enum" => {
+                        // Convert enum to string
+                        const enum_str = @tagName(v);
+                        return py.PyUnicode_FromString(enum_str.ptr);
+                    },
                     else => {},
                 }
             }
@@ -582,6 +638,16 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                         if (new_val == null) return -1;
                         @field(obj.data.*, field_name_str) = std.mem.span(new_val.?);
                     }
+                },
+                .@"enum" => {
+                    // Convert string to enum
+                    const str_val = py.PyUnicode_AsUTF8(value);
+                    if (str_val == null) return -1;
+                    const enum_str = std.mem.span(str_val.?);
+                    @field(obj.data.*, field_name_str) = std.meta.stringToEnum(ChildType, enum_str) orelse {
+                        py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value");
+                        return -1;
+                    };
                 },
                 else => return -1,
             }
@@ -945,6 +1011,20 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                         const nested_wrapper = @as(*PyObjectWrapper(opt.child), @ptrCast(@alignCast(value)));
                                         @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
                                     },
+                                    .@"enum" => {
+                                        // Handle optional enum as string
+                                        const str_val = py.PyUnicode_AsUTF8(value);
+                                        if (str_val == null) {
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            return -1;
+                                        }
+                                        const enum_str = std.mem.span(str_val.?);
+                                        @field(wrapper_obj.data.*, field.name) = std.meta.stringToEnum(opt.child, enum_str) orelse {
+                                            py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value");
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            return -1;
+                                        };
+                                    },
                                     else => @field(wrapper_obj.data.*, field.name) = null,
                                 }
                             }
@@ -953,6 +1033,20 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                             // Check if it's the correct type
                             const nested_wrapper = @as(*PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
                             @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                        },
+                        .@"enum" => {
+                            // Handle enum as string
+                            const str_val = py.PyUnicode_AsUTF8(value);
+                            if (str_val == null) {
+                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                return -1;
+                            }
+                            const enum_str = std.mem.span(str_val.?);
+                            @field(wrapper_obj.data.*, field.name) = std.meta.stringToEnum(field.type, enum_str) orelse {
+                                py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value");
+                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                return -1;
+                            };
                         },
                         else => {
                             // Unsupported type - use default
@@ -1045,6 +1139,7 @@ fn genProp(comptime WrapperType: type, comptime FieldType: type, comptime field_
         },
         .optional => |opt| return optional_prop(WrapperType, field_name, opt.child),
         .@"struct" => return struct_prop(WrapperType, field_name, FieldType),
+        .@"enum" => return enum_prop(WrapperType, field_name, FieldType), // Enums are strings in Python
         else => @compileError("Unsupported field type: " ++ @typeName(FieldType)),
     }
 }

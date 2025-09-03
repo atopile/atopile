@@ -63,9 +63,9 @@ class Effects:
 
 class TextLayer:
     layer: str
-    knockout: str | None
+    knockout: Any | None
 
-    def __init__(self, layer: str, knockout: str | None) -> None: ...
+    def __init__(self, layer: str, knockout: Any | None) -> None: ...
     def __repr__(self) -> str: ...
 
 class Line:
@@ -235,7 +235,7 @@ class Text:
     def __repr__(self) -> str: ...
 
 class FpText:
-    type: str
+    type: Any
     text: str
     at: Xyr
     layer: str
@@ -245,7 +245,7 @@ class FpText:
 
     def __init__(
         self,
-        type: str,
+        type: Any,
         text: str,
         at: Xyr,
         layer: str,
@@ -255,45 +255,77 @@ class FpText:
     ) -> None: ...
     def __repr__(self) -> str: ...
 
+class PadDrill:
+    shape: Any
+    size_x: float | None
+    size_y: float | None
+    offset: Xy | None
+
+    def __init__(
+        self, shape: Any, size_x: float | None, size_y: float | None, offset: Xy | None
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class PadOptions:
+    clearance: Any | None
+    anchor: Any | None
+
+    def __init__(self, clearance: Any | None, anchor: Any | None) -> None: ...
+    def __repr__(self) -> str: ...
+
+class PadTenting:
+    type: Any
+
+    def __init__(self, type: Any) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Pad:
     name: str
-    type: str
-    shape: str
+    type: Any
+    shape: Any
     at: Xyr
     size: Wh
     layers: list[str]
-    drill: float | None
+    drill: PadDrill | None
     net: Net | None
     solder_mask_margin: float | None
     solder_paste_margin: float | None
     solder_paste_margin_ratio: float | None
     clearance: float | None
-    zone_connect: int | None
+    zone_connect: Any | None
     thermal_bridge_width: float | None
     thermal_gap: float | None
     roundrect_rratio: float | None
     chamfer_ratio: float | None
+    chamfer: Any | None
+    properties: Any | None
+    options: PadOptions | None
+    tenting: PadTenting | None
     uuid: str
 
     def __init__(
         self,
         name: str,
-        type: str,
-        shape: str,
+        type: Any,
+        shape: Any,
         at: Xyr,
         size: Wh,
         layers: list[str],
-        drill: float | None,
+        drill: PadDrill | None,
         net: Net | None,
         solder_mask_margin: float | None,
         solder_paste_margin: float | None,
         solder_paste_margin_ratio: float | None,
         clearance: float | None,
-        zone_connect: int | None,
+        zone_connect: Any | None,
         thermal_bridge_width: float | None,
         thermal_gap: float | None,
         roundrect_rratio: float | None,
         chamfer_ratio: float | None,
+        chamfer: Any | None,
+        properties: Any | None,
+        options: PadOptions | None,
+        tenting: PadTenting | None,
         uuid: str,
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -351,7 +383,7 @@ class Footprint:
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
-    attr: list[str]
+    attr: list[Any]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -369,7 +401,7 @@ class Footprint:
         path: str | None,
         propertys: list[Property],
         fp_texts: list[FpText],
-        attr: list[str],
+        attr: list[Any],
         fp_lines: list[Line],
         fp_arcs: list[Arc],
         fp_circles: list[Circle],
@@ -380,45 +412,124 @@ class Footprint:
     ) -> None: ...
     def __repr__(self) -> str: ...
 
+class ViaLayer:
+    name: str
+    size: Xy | None
+    thermal_gap: float | None
+    thermal_bridge_width: float | None
+    thermal_bridge_angle: float | None
+    zone_connect: Any | None
+
+    def __init__(
+        self,
+        name: str,
+        size: Xy | None,
+        thermal_gap: float | None,
+        thermal_bridge_width: float | None,
+        thermal_bridge_angle: float | None,
+        zone_connect: Any | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class ViaPadstack:
+    mode: Any
+    layers: list[ViaLayer]
+
+    def __init__(self, mode: Any, layers: list[ViaLayer]) -> None: ...
+    def __repr__(self) -> str: ...
+
+class ViaTenting:
+    front: bool
+    back: bool
+
+    def __init__(self, front: bool, back: bool) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Via:
     at: Xy
     size: float
     drill: float
     layers: list[str]
     net: int
+    remove_unused_layers: bool | None
+    keep_end_layers: bool | None
+    zone_layer_connections: list[str] | None
+    padstack: ViaPadstack | None
+    teardrops: Teardrop | None
+    tenting: ViaTenting | None
+    free: bool | None
+    locked: bool | None
     uuid: str
 
     def __init__(
-        self, at: Xy, size: float, drill: float, layers: list[str], net: int, uuid: str
+        self,
+        at: Xy,
+        size: float,
+        drill: float,
+        layers: list[str],
+        net: int,
+        remove_unused_layers: bool | None,
+        keep_end_layers: bool | None,
+        zone_layer_connections: list[str] | None,
+        padstack: ViaPadstack | None,
+        teardrops: Teardrop | None,
+        tenting: ViaTenting | None,
+        free: bool | None,
+        locked: bool | None,
+        uuid: str,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
 class Hatch:
-    mode: str
+    mode: Any
     pitch: float
 
-    def __init__(self, mode: str, pitch: float) -> None: ...
+    def __init__(self, mode: Any, pitch: float) -> None: ...
     def __repr__(self) -> str: ...
 
 class ConnectPads:
-    mode: str | None
+    mode: Any | None
     clearance: float
 
-    def __init__(self, mode: str | None, clearance: float) -> None: ...
+    def __init__(self, mode: Any | None, clearance: float) -> None: ...
     def __repr__(self) -> str: ...
 
 class Fill:
-    enable: str | None
-    mode: str | None
+    enable: Any | None
+    mode: Any | None
+    hatch_thickness: float | None
+    hatch_gap: float | None
+    hatch_orientation: float | None
+    hatch_smoothing_level: float | None
+    hatch_smoothing_value: float | None
+    hatch_border_algorithm: Any | None
+    hatch_min_hole_area: float | None
+    arc_segments: int | None
     thermal_gap: float
     thermal_bridge_width: float
+    smoothing: Any | None
+    radius: float | None
+    island_removal_mode: Any | None
+    island_area_min: float | None
 
     def __init__(
         self,
-        enable: str | None,
-        mode: str | None,
+        enable: Any | None,
+        mode: Any | None,
+        hatch_thickness: float | None,
+        hatch_gap: float | None,
+        hatch_orientation: float | None,
+        hatch_smoothing_level: float | None,
+        hatch_smoothing_value: float | None,
+        hatch_border_algorithm: Any | None,
+        hatch_min_hole_area: float | None,
+        arc_segments: int | None,
         thermal_gap: float,
         thermal_bridge_width: float,
+        smoothing: Any | None,
+        radius: float | None,
+        island_removal_mode: Any | None,
+        island_area_min: float | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -429,6 +540,40 @@ class FilledPolygon:
     def __init__(self, layer: str, pts: Pts) -> None: ...
     def __repr__(self) -> str: ...
 
+class ZoneKeepout:
+    tracks: Any
+    vias: Any
+    pads: Any
+    copperpour: Any
+    footprints: Any
+
+    def __init__(
+        self, tracks: Any, vias: Any, pads: Any, copperpour: Any, footprints: Any
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class ZonePlacement:
+    source_type: Any | None
+    source: str | None
+    enabled: bool
+
+    def __init__(
+        self, source_type: Any | None, source: str | None, enabled: bool
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class ZoneTeardrop:
+    type: Any
+
+    def __init__(self, type: Any) -> None: ...
+    def __repr__(self) -> str: ...
+
+class ZoneAttr:
+    teardrop: ZoneTeardrop | None
+
+    def __init__(self, teardrop: ZoneTeardrop | None) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Zone:
     net: int
     net_name: str
@@ -437,12 +582,15 @@ class Zone:
     name: str | None
     hatch: Hatch
     priority: int | None
+    attr: ZoneAttr | None
     connect_pads: ConnectPads
     min_thickness: float
     filled_areas_thickness: bool
     fill: Fill
+    keepout: ZoneKeepout | None
     polygon: Polygon
     filled_polygon: list[FilledPolygon]
+    placement: ZonePlacement | None
 
     def __init__(
         self,
@@ -453,12 +601,15 @@ class Zone:
         name: str | None,
         hatch: Hatch,
         priority: int | None,
+        attr: ZoneAttr | None,
         connect_pads: ConnectPads,
         min_thickness: float,
         filled_areas_thickness: bool,
         fill: Fill,
+        keepout: ZoneKeepout | None,
         polygon: Polygon,
         filled_polygon: list[FilledPolygon],
+        placement: ZonePlacement | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -504,11 +655,11 @@ class General:
     def __repr__(self) -> str: ...
 
 class Paper:
-    type: str
+    type: Any
     size: Xy | None
-    orientation: str | None
+    orientation: Any | None
 
-    def __init__(self, type: str, size: Xy | None, orientation: str | None) -> None: ...
+    def __init__(self, type: Any, size: Xy | None, orientation: Any | None) -> None: ...
     def __repr__(self) -> str: ...
 
 class TitleBlock:
@@ -538,28 +689,28 @@ class Comment:
 class Layer:
     number: int
     name: str
-    type: str
+    type: Any
     alias: str | None
 
     def __init__(
-        self, number: int, name: str, type: str, alias: str | None
+        self, number: int, name: str, type: Any, alias: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
 
 class Stackup:
     layers: list[StackupLayer]
-    copper_finish: str | None
+    copper_finish: Any | None
     dielectric_constraints: bool | None
-    edge_connector: str | None
+    edge_connector: Any | None
     castellated_pads: bool | None
     edge_plating: bool | None
 
     def __init__(
         self,
         layers: list[StackupLayer],
-        copper_finish: str | None,
+        copper_finish: Any | None,
         dielectric_constraints: bool | None,
-        edge_connector: str | None,
+        edge_connector: Any | None,
         castellated_pads: bool | None,
         edge_plating: bool | None,
     ) -> None: ...
@@ -750,7 +901,7 @@ class KicadPcb:
     generator: str
     generator_version: str
     general: General
-    paper: str | None
+    paper: Any | None
     title_block: TitleBlock | None
     layers: list[Layer]
     setup: Setup
@@ -777,7 +928,7 @@ class KicadPcb:
         generator: str,
         generator_version: str,
         general: General,
-        paper: str | None,
+        paper: Any | None,
         title_block: TitleBlock | None,
         layers: list[Layer],
         setup: Setup,
@@ -800,15 +951,176 @@ class KicadPcb:
     ) -> None: ...
     def __repr__(self) -> str: ...
 
+class Data:
+    data: str
+
+    def __init__(self, data: str) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Image:
     at: Xy
     layer: str
     scale: float
-    data: str | None
+    data: Data | None
     uuid: str
 
     def __init__(
-        self, at: Xy, layer: str, scale: float, data: str | None, uuid: str
+        self, at: Xy, layer: str, scale: float, data: Data | None, uuid: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class EmbeddedFile:
+    name: str
+    type: Any
+    data: Data | None
+    checksum: str | None
+
+    def __init__(
+        self, name: str, type: Any, data: Data | None, checksum: str | None
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class EmbeddedFiles:
+    files: list[EmbeddedFile]
+
+    def __init__(self, files: list[EmbeddedFile]) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Teardrop:
+    enabled: bool
+    allow_two_segments: bool
+    prefer_zone_connections: bool
+    best_length_ratio: float
+    max_length: float
+    best_width_ratio: float
+    max_width: float
+    curved_edges: bool
+    filter_ratio: float
+
+    def __init__(
+        self,
+        enabled: bool,
+        allow_two_segments: bool,
+        prefer_zone_connections: bool,
+        best_length_ratio: float,
+        max_length: float,
+        best_width_ratio: float,
+        max_width: float,
+        curved_edges: bool,
+        filter_ratio: float,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class RenderCache:
+    text: str
+    rotation: float
+    polygons: list[Polygon]
+
+    def __init__(self, text: str, rotation: float, polygons: list[Polygon]) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Margins:
+    left: int
+    top: int
+    right: int
+    bottom: int
+
+    def __init__(self, left: int, top: int, right: int, bottom: int) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Span:
+    cols: int
+    rows: int
+
+    def __init__(self, cols: int, rows: int) -> None: ...
+    def __repr__(self) -> str: ...
+
+class TextBox:
+    text: str
+    locked: bool
+    start: Xy | None
+    end: Xy | None
+    pts: Pts | None
+    angle: float | None
+    stroke: Stroke | None
+    border: bool | None
+    margins: Margins | None
+    layer: str
+    span: Span | None
+    effects: Effects
+    render_cache: RenderCache | None
+    uuid: str
+
+    def __init__(
+        self,
+        text: str,
+        locked: bool,
+        start: Xy | None,
+        end: Xy | None,
+        pts: Pts | None,
+        angle: float | None,
+        stroke: Stroke | None,
+        border: bool | None,
+        margins: Margins | None,
+        layer: str,
+        span: Span | None,
+        effects: Effects,
+        render_cache: RenderCache | None,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class TableCell:
+    text: str
+    layer: str
+    effects: Effects
+    uuid: str
+
+    def __init__(self, text: str, layer: str, effects: Effects, uuid: str) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Cells:
+    table_cells: list[TableCell]
+
+    def __init__(self, table_cells: list[TableCell]) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Border:
+    external: bool
+    header: bool
+    stroke: Stroke
+
+    def __init__(self, external: bool, header: bool, stroke: Stroke) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Separator:
+    rows: bool
+    cols: bool
+    stroke: Stroke
+
+    def __init__(self, rows: bool, cols: bool, stroke: Stroke) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Table:
+    column_count: int
+    locked: bool | None
+    layer: str
+    column_widths: list[float]
+    row_heights: list[float]
+    cells: Cells
+    border: Border
+    separators: Separator
+
+    def __init__(
+        self,
+        column_count: int,
+        locked: bool | None,
+        layer: str,
+        column_widths: list[float],
+        row_heights: list[float],
+        cells: Cells,
+        border: Border,
+        separators: Separator,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -818,25 +1130,73 @@ class DimensionPts:
     def __init__(self, xys: list[Xy]) -> None: ...
     def __repr__(self) -> str: ...
 
+class DimensionFormat:
+    prefix: str
+    suffix: str
+    units: int
+    units_format: int
+    precision: int
+    override_value: str | None
+    suppress_zeroes: bool
+
+    def __init__(
+        self,
+        prefix: str,
+        suffix: str,
+        units: int,
+        units_format: int,
+        precision: int,
+        override_value: str | None,
+        suppress_zeroes: bool,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class DimensionStyle:
+    thickness: float | None
+    arrow_length: float | None
+    arrow_direction: Any
+    text_position_mode: int | None
+    extension_height: float | None
+    extension_offset: float | None
+    keep_text_aligned: bool
+    text_frame: int | None
+
+    def __init__(
+        self,
+        thickness: float | None,
+        arrow_length: float | None,
+        arrow_direction: Any,
+        text_position_mode: int | None,
+        extension_height: float | None,
+        extension_offset: float | None,
+        keep_text_aligned: bool,
+        text_frame: int | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Dimension:
-    type: str
+    type: Any
     layer: str
     uuid: str
     pts: DimensionPts
     height: float
     orientation: float | None
     leader_length: float | None
+    format: DimensionFormat | None
+    style: DimensionStyle | None
     gr_text: Text
 
     def __init__(
         self,
-        type: str,
+        type: Any,
         layer: str,
         uuid: str,
         pts: DimensionPts,
         height: float,
         orientation: float | None,
         leader_length: float | None,
+        format: DimensionFormat | None,
+        style: DimensionStyle | None,
         gr_text: Text,
     ) -> None: ...
     def __repr__(self) -> str: ...

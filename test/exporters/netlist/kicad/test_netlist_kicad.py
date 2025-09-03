@@ -16,10 +16,7 @@ from faebryk.exporters.netlist.netlist import FBRKNetlist, make_fbrk_netlist_fro
 from faebryk.libs.app.designators import (
     attach_random_designators,
 )
-from faebryk.libs.kicad.fileformats import (
-    C_fields,
-    C_kicad_netlist_file,
-)
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
@@ -126,57 +123,74 @@ def netlist_manu():
     # Careful comps need distinct timestamps
     tstamp = itertools.count(1)
 
-    N = C_kicad_netlist_file
-    return C_kicad_netlist_file(
-        N.C_netlist(
+    N = kicad.netlist
+    return N.NetlistFile(
+        N.Netlist(
             version="E",
-            components=N.C_netlist.C_components(
+            design=None,
+            libparts=N.Libparts(libparts=[]),
+            libraries=N.Libraries(),
+            components=N.Components(
                 comps=[
-                    N.C_netlist.C_components.C_component(
+                    N.Component(
                         ref="R1",
                         value="100Ω",
                         footprint="Resistor_SMD:R_0805_2012Metric",
                         tstamps=str(next(tstamp)),
-                        fields=C_fields(fields={}),
-                        propertys={},
+                        fields=N.Fields(fields=[]),
+                        propertys=[],
+                        datasheet=None,
+                        sheetpath=None,
+                        libsource=None,
                     ),
-                    N.C_netlist.C_components.C_component(
+                    N.Component(
                         ref="R2",
                         value="200Ω",
                         footprint="Resistor_SMD:R_0805_2012Metric",
                         tstamps=str(next(tstamp)),
-                        fields=C_fields(fields={}),
-                        propertys={},
+                        fields=N.Fields(fields=[]),
+                        propertys=[],
+                        datasheet=None,
+                        sheetpath=None,
+                        libsource=None,
                     ),
                 ]
             ),
-            nets=N.C_netlist.C_nets(
+            nets=N.Nets(
                 nets=[
-                    N.C_netlist.C_nets.C_net(
+                    N.Net(
                         code=1,
                         name="+3V3",
                         nodes=[
-                            N.C_netlist.C_nets.C_net.C_node(
+                            N.Node(
                                 ref="R1",
                                 pin="1",
+                                pintype=None,
+                                pinfunction=None,
                             ),
-                            N.C_netlist.C_nets.C_net.C_node(
+                            N.Node(
                                 ref="R2",
                                 pin="1",
+                                pintype=None,
+                                pinfunction=None,
                             ),
                         ],
                     ),
-                    N.C_netlist.C_nets.C_net(
+                    N.Net(
                         code=2,
                         name="GND",
                         nodes=[
-                            N.C_netlist.C_nets.C_net.C_node(
+                            N.Node(
                                 ref="R1",
                                 pin="2",
+                                pintype=None,
+                                pinfunction=None,
                             ),
-                            N.C_netlist.C_nets.C_net.C_node(
+                            N.Node(
                                 ref="R2",
                                 pin="2",
+                                pintype=None,
+                                pinfunction=None,
                             ),
                         ],
                     ),
@@ -188,7 +202,7 @@ def netlist_manu():
 
 def test_netlist_t2(netlist_t2, netlist_manu):
     netlist_t2 = faebryk_netlist_to_kicad(netlist_t2)
-    assert netlist_t2.dumps() == netlist_manu.dumps()
+    assert kicad.dumps(netlist_t2) == kicad.dumps(netlist_manu)
 
 
 def test_netlist_graph(netlist_graph, netlist_t2):
@@ -198,4 +212,4 @@ def test_netlist_graph(netlist_graph, netlist_t2):
 
     netlist_graph = faebryk_netlist_to_kicad(netlist_graph)
     netlist_t2 = faebryk_netlist_to_kicad(netlist_t2)
-    assert netlist_graph.dumps() == netlist_t2.dumps()
+    assert kicad.dumps(netlist_graph) == kicad.dumps(netlist_t2)

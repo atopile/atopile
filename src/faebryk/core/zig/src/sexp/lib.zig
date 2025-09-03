@@ -7,6 +7,8 @@ pub const kicad = struct {
     pub const netlist = @import("kicad/netlist.zig");
     pub const fp_lib_table = @import("kicad/fp_lib_table.zig");
     pub const footprint = @import("kicad/footprint.zig");
+    pub const symbol = @import("kicad/symbol.zig");
+    pub const schematic = @import("kicad/schematic.zig");
 };
 
 // Re-export commonly used types for convenience

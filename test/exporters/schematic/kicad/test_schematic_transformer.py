@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.schematic.kicad.transformer import SchTransformer
 from faebryk.libs.exceptions import UserException
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.test.fileformats import FPLIBFILE, SCHFILE
 
 
@@ -17,11 +17,11 @@ def fp_lib_path_path():
 
 @pytest.fixture
 def sch_file():
-    return C_kicad_sch_file.loads(SCHFILE)
+    return kicad.loads(kicad.sch.SchFile, SCHFILE)
 
 
 @pytest.fixture
-def transformer(sch_file: C_kicad_sch_file):
+def transformer(sch_file: kicad.sch.SchFile):
     app = Module()
     return SchTransformer(sch_file.kicad_sch, app.get_graph(), app)
 
