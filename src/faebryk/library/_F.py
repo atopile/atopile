@@ -148,6 +148,7 @@ from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
 from faebryk.library.ElectricSignal import ElectricSignal
+from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
@@ -172,6 +173,7 @@ from faebryk.library.UART_Base import UART_Base
 from faebryk.library.USB2_0_IF import USB2_0_IF
 from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.I2C import I2C
+from faebryk.library.LDO import LDO
 from faebryk.library.UART import UART
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
