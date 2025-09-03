@@ -87,7 +87,10 @@ from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
+<<<<<<< HEAD
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
+=======
+>>>>>>> origin/task/delete_unsupported_std_lib
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_footprint_impl import has_footprint_impl
@@ -139,12 +142,19 @@ from faebryk.library.can_be_decoupled import can_be_decoupled
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Battery import Battery
 from faebryk.library.Comparator import Comparator
+<<<<<<< HEAD
 from faebryk.library.ElectricSignal import ElectricSignal
+=======
+>>>>>>> origin/task/delete_unsupported_std_lib
 from faebryk.library.LED import LED
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
+<<<<<<< HEAD
+=======
+from faebryk.library.ElectricSignal import ElectricSignal
+>>>>>>> origin/task/delete_unsupported_std_lib
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
