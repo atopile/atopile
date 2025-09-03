@@ -238,17 +238,26 @@ pub inline fn Py_DECREF(obj: *PyObject) void {
 
 // Error handling
 pub extern fn PyErr_SetString(exception: *PyObject, message: [*:0]const u8) void;
+pub extern fn PyErr_Clear() void;
 pub extern fn PyErr_Occurred() ?*PyObject;
+
+// System functions
+pub extern fn PySys_WriteStderr(format: [*:0]const u8, ...) c_int;
 
 // Common exception types
 pub extern var PyExc_TypeError: *PyObject;
 pub extern var PyExc_ValueError: *PyObject;
 pub extern var PyExc_NotImplementedError: *PyObject;
+pub extern var PyExc_ImportError: *PyObject;
 
 // Additional Python C API functions for generic init
 pub extern fn PyTuple_Size(tuple: ?*PyObject) isize;
+pub extern fn PyTuple_New(size: isize) ?*PyObject;
+// PyTuple_SET_ITEM is a macro, so we use SetItem instead
+pub extern fn PyTuple_SetItem(tuple: ?*PyObject, pos: isize, item: ?*PyObject) c_int;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
-pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, item: ?*PyObject) c_int;
+pub extern fn PyDict_New() ?*PyObject;
+pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
 pub extern fn PyFloat_AsDouble(obj: ?*PyObject) f64;
 pub extern fn PyObject_IsTrue(obj: ?*PyObject) c_int;

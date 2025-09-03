@@ -24,6 +24,7 @@ from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats import (
     C_kicad_model_file,
+    Property,
     kicad,
 )
 from faebryk.libs.kicad.ipc import opened_in_pcbnew
@@ -557,12 +558,10 @@ class PartLifecycle:
                     _, lib_fp = lifecycle.library.get_footprint_from_identifier(
                         fp_id, component
                     )
-                    if existing_hash_prop := pcb_fp.propertys.get(
-                        PCB_Transformer._FP_LIB_HASH
-                    ):
-                        existing_hash = existing_hash_prop.value
-                    else:
-                        existing_hash = None
+
+                    existing_hash = Property.try_get_property(
+                        pcb_fp.propertys, PCB_Transformer._FP_LIB_HASH
+                    )
 
                     # If the hash never existed, or it's changed then update the
                     # footprint
@@ -646,8 +645,8 @@ class PartLifecycle:
             for prop_name, prop_value in property_values.items():
                 ### Get old property value, representing non-existent properties as None
                 ### If the property value has changed, update it
-                if prop := pcb_fp.propertys.get(prop_name):
-                    if prop_value != prop.value:
+                if prop := Property.try_get_property(pcb_fp.propertys, prop_name):
+                    if prop_value != prop:
                         logger.info(
                             f"Updating `{prop_name}`->`{prop_value}` on"
                             f" `{address}` ({ref})",

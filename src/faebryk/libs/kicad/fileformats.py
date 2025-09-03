@@ -1,5 +1,6 @@
 import logging
 import re
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from os import PathLike
@@ -15,6 +16,7 @@ from dataclasses_json import (
 )
 from more_itertools import first
 
+from faebryk.libs.checksum import Checksum
 from faebryk.libs.util import ConfigFlag, find, lazy_split
 
 logger = logging.getLogger(__name__)
@@ -847,12 +849,44 @@ class Property:
         name: str
         value: str
 
-    # TODO: use instead of list[_Property]
+        # def __init__(self, name: str, value: str): ...
+
     class _PropertyHolder(Protocol):
-        propertys: list["Property._Property"]
+        propertys: list  # [_Property]
 
     class PropertyNotSet(Exception):
         pass
+
+    @staticmethod
+    def _hashable(obj: _PropertyHolder, remove_uuid: bool = True):
+        # TODO does this work?
+        copy = deepcopy(obj)
+
+        Property.delete_property(copy.propertys, "checksum")
+        # TODO: this doesn't work atm
+        out = kicad.dumps(copy)
+
+        if remove_uuid:
+            out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
+
+        return out
+
+    @staticmethod
+    def set_checksum(obj: _PropertyHolder, p_type: type[_Property]):
+        Property.delete_property(obj.propertys, "checksum")
+        Property.set_property(
+            obj.propertys,
+            p_type(name="checksum", value=Checksum.build(Property._hashable(obj))),
+        )
+
+    @staticmethod
+    def verify_checksum(obj: _PropertyHolder):
+        checksum_stated = Property.get_property(obj.propertys, "checksum")
+        try:
+            Checksum.verify(checksum_stated, Property._hashable(obj))
+        except Checksum.Mismatch:
+            # legacy
+            Checksum.verify(checksum_stated, Property._hashable(obj, remove_uuid=False))
 
     @staticmethod
     def get_property_obj[T: _Property](obj: Iterable[T], name: str) -> T:
@@ -869,12 +903,14 @@ class Property:
         return out
 
     @staticmethod
+    def delete_property[T: _Property](obj: Sequence[_Property], name: str):
+        assert isinstance(obj, list), "obj must be a list"
+        obj[:] = [o for o in obj if o.name != name]
+
+    @staticmethod
     def set_property[T: _Property](obj: Sequence[_Property], prop: T):
         assert isinstance(obj, list), "obj must be a list"
-        for o in obj:
-            if o.name == prop.name:
-                obj.remove(o)
-                break
+        Property.delete_property(obj, prop.name)
         obj.append(prop)
 
     @staticmethod

@@ -170,9 +170,9 @@ class AtoPart:
         self.path.mkdir(parents=True, exist_ok=True)
 
         # refresh checksums
-        self.fp.footprint.set_checksum()
+        Property.set_checksum(self.fp.footprint, kicad.pcb.Property)
         symbol = first(self.symbol.kicad_sym.symbols)
-        symbol.set_checksum()
+        Property.set_checksum(symbol, kicad.schematic.Property)
 
         kicad.dumps(self.fp, self.fp_path)
         kicad.dumps(self.symbol, self.sym_path)
@@ -247,7 +247,7 @@ class AtoPart:
         # check fp & symbol
         for obj, t_name in ((fp, "Footprint"), (symbol, "Symbol")):
             try:
-                obj.verify_checksum()
+                Property.verify_checksum(obj)
             except Property.PropertyNotSet:
                 raise _FileManuallyModified(
                     f"{t_name} has no checksum for auto-generated part"
@@ -257,7 +257,12 @@ class AtoPart:
                 if FBRK_OVERRIDE_CHECKSUM_MISMATCH:
                     # must now write the new value to handle updating the checksum
                     # mechanism
-                    obj.set_checksum()
+                    Property.set_checksum(
+                        obj,
+                        kicad.pcb.Property
+                        if isinstance(obj, kicad.pcb.Footprint)
+                        else kicad.schematic.Property,
+                    )
                     return
                 raise _FileManuallyModified(
                     f"{t_name} has a checksum mismatch for auto-generated part"

@@ -488,18 +488,8 @@ pub const FpText = struct {
 // Pad structures
 pub const Drill = f64;
 
-pub const PadDrill = struct {
-    shape: E_pad_drill_shape = .circle,
-    size_x: ?f64 = null,
-    size_y: ?f64 = null,
-    offset: ?Xy = null,
-
-    pub const fields_meta = .{
-        .shape = structure.SexpField{ .positional = true },
-        .size_x = structure.SexpField{ .positional = true },
-        .size_y = structure.SexpField{ .positional = true },
-    };
-};
+// PadDrill can be either a simple number (drill 1.2) or a structured drill with shape/size/offset
+pub const PadDrill = f64;
 
 pub const PadOptions = struct {
     clearance: ?E_pad_clearance = null,
@@ -686,11 +676,7 @@ pub const Hatch = struct {
 
 pub const ConnectPads = struct {
     mode: ?E_zone_connect_pads_mode = null,
-    clearance: f64,
-
-    pub const fields_meta = .{
-        .mode = structure.SexpField{ .positional = true },
-    };
+    clearance: ?f64 = null,
 };
 
 pub const Fill = struct {
@@ -704,8 +690,8 @@ pub const Fill = struct {
     hatch_border_algorithm: ?E_zone_hatch_border_algorithm = null,
     hatch_min_hole_area: ?f64 = null,
     arc_segments: ?i32 = null,
-    thermal_gap: f64,
-    thermal_bridge_width: f64,
+    thermal_gap: ?f64 = null,
+    thermal_bridge_width: ?f64 = null,
     smoothing: ?E_zone_smoothing = null,
     radius: ?f64 = null,
     island_removal_mode: ?E_zone_island_removal_mode = null,
@@ -752,10 +738,10 @@ pub const Zone = struct {
     hatch: Hatch,
     priority: ?i32 = null,
     attr: ?ZoneAttr = null,
-    connect_pads: ConnectPads,
-    min_thickness: f64,
-    filled_areas_thickness: bool,
-    fill: Fill,
+    connect_pads: ?ConnectPads = null,
+    min_thickness: ?f64 = null,
+    filled_areas_thickness: ?bool = null,
+    fill: ?Fill = null,
     keepout: ?ZoneKeepout = null,
     polygon: Polygon,
     filled_polygon: []FilledPolygon = &.{},

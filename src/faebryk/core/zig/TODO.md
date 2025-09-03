@@ -24,3 +24,5 @@
 look for kicad.sch
 
 CAREFUL WITH DEEPCOPY
+
+enums: handle sym vs str enums (maybe sexp field)

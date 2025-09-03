@@ -31,20 +31,14 @@ fn generateModule(
                     const decl_type = @TypeOf(decl_value);
                     const decl_info = @typeInfo(decl_type);
 
-                    // Check if it's a type (struct)
+                    // Check if it's a type (struct or enum)
                     if (decl_info == .type) {
                         const inner_type = decl_value;
                         const inner_info = @typeInfo(inner_type);
                         
                         if (inner_info == .@"enum") {
-                            // Check if it's an enum type (starts with E_ convention)
-                            const is_enum_name = std.mem.startsWith(u8, decl.name, "E_");
-                            
-                            if (is_enum_name) {
-                                // For now, just skip enums in the runtime binding
-                                // They'll be handled as strings when used as field values
-                                // The .pyi file will have the proper enum definitions
-                            }
+                            // Skip enum registration for now - enums are exposed in .pyi files
+                            // TODO: Implement runtime enum registration when all required Python C API functions are available
                         } else if (inner_info == .@"struct") {
                             // Check if it's a data struct (starts with uppercase, convention for types)
                             const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';

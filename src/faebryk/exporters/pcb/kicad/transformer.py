@@ -1023,7 +1023,7 @@ class PCB_Transformer:
                     hatch_orientation=0,
                     hatch_smoothing_level=0,
                     hatch_smoothing_value=0,
-                    hatch_border_algorithm=kicad.pcb.E_hatch_border_algorithm.hatch_thickness,
+                    hatch_border_algorithm=kicad.pcb.E_zone_hatch_border_algorithm.HATCH_THICKNESS,
                     hatch_min_hole_area=0.3,
                     thermal_gap=0.2,
                     thermal_bridge_width=0.2,
@@ -1034,19 +1034,20 @@ class PCB_Transformer:
                     arc_segments=None,
                     island_removal_mode=None,
                 ),
-                hatch=kicad.pcb.Hatch(mode=kicad.pcb.E_mode.edge, pitch=0.5),
+                hatch=kicad.pcb.Hatch(mode=kicad.pcb.E_zone_hatch_mode.EDGE, pitch=0.5),
                 priority=0,
                 keepout=kicad.pcb.ZoneKeepout(
-                    tracks=kicad.pcb.E_keepout_bool.allowed,
-                    vias=kicad.pcb.E_keepout_bool.allowed,
-                    pads=kicad.pcb.E_keepout_bool.allowed,
-                    copperpour=kicad.pcb.E_keepout_bool.not_allowed,
-                    footprints=kicad.pcb.E_keepout_bool.allowed,
+                    tracks=kicad.pcb.E_zone_keepout.ALLOWED,
+                    vias=kicad.pcb.E_zone_keepout.ALLOWED,
+                    pads=kicad.pcb.E_zone_keepout.ALLOWED,
+                    copperpour=kicad.pcb.E_zone_keepout.NOT_ALLOWED,
+                    footprints=kicad.pcb.E_zone_keepout.ALLOWED,
                 )
                 if keepout
                 else None,
                 connect_pads=kicad.pcb.ConnectPads(
-                    mode=kicad.pcb.E_mode.thermal_reliefs, clearance=0.2
+                    mode=kicad.pcb.E_zone_connect_pads_mode.THERMAL_RELIEFS,
+                    clearance=0.2,
                 ),
                 filled_polygon=[],
                 placement=None,
@@ -1160,12 +1161,12 @@ class PCB_Transformer:
                 rot_angle = (to.r - fp.at.r) % 360
                 fp.fp_texts.append(
                     kicad.pcb.FpText(
-                        type=kicad.pcb.E_type.user,
+                        type=kicad.pcb.E_fp_text_type.USER,
                         text="FBRK:autoplaced",
                         at=kicad.pcb.Xyr(0, 0, rot_angle),
                         effects=kicad.pcb.FpTextEffects(font=self.font),
                         uuid=self.gen_uuid(mark=True),
-                        layer=kicad.pcb.TextLayer("User.5"),
+                        layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
                         hide=None,
                     )
                 )
@@ -1623,16 +1624,16 @@ class PCB_Transformer:
 
     # Netlist application --------------------------------------------------------------
     def _fp_common_fields_dict(
-        self, lib_footprint: kicad.pcb.Footprint
+        self, lib_footprint: kicad.footprint.Footprint
     ) -> dict[str, Any]:
         """Generate a dict of the common fields of a lib footprint and pcb footprint"""
         return {
             field.name: getattr(lib_footprint, field.name)
-            for field in fields(kicad.pcb.Footprint)
+            for field in fields(kicad.footprint.Footprint)
         }
 
     @staticmethod
-    def _hash_lib_fp(lib_fp: kicad.pcb.Footprint) -> str:
+    def _hash_lib_fp(lib_fp: kicad.footprint.Footprint) -> str:
         dict_ = asdict(filter_fields(lib_fp, ["uuid"]))
 
         # Ignore the name field. It's not meaningful and we override it
@@ -1643,7 +1644,7 @@ class PCB_Transformer:
     _FP_LIB_HASH = "__atopile_lib_fp_hash__"
 
     def _set_lib_fp_hash(
-        self, footprint: Footprint, lib_footprint: kicad.pcb.Footprint
+        self, footprint: Footprint, lib_footprint: kicad.footprint.Footprint
     ) -> None:
         """Create a hidden property which stores the original lib footprint hash
         so we can detect if the footprint has truly been updated, or if it's
@@ -1659,7 +1660,9 @@ class PCB_Transformer:
         )
 
     def insert_footprint(
-        self, lib_footprint: kicad.pcb.Footprint, at: kicad.pcb.Xyr | None = None
+        self,
+        lib_footprint: kicad.footprint.Footprint,
+        at: kicad.pcb.Xyr | None = None,
     ) -> Footprint:
         """Insert a footprint into the pcb, at optionally a specific position"""
         if at is None:
@@ -1811,7 +1814,7 @@ class PCB_Transformer:
         footprint.layer = _flip(footprint.layer)
 
     def update_footprint_from_lib(
-        self, footprint: Footprint, lib_footprint: kicad.pcb.Footprint
+        self, footprint: Footprint, lib_footprint: kicad.footprint.Footprint
     ) -> Footprint:
         """
         Update a footprint with all the properties specified in the lib footprint.

@@ -103,19 +103,28 @@ pub const PyiGenerator = struct {
         else
             class_name;
 
-        // Generate as Literal type for better type checking
-        try self.output.writer().print("# Enum: {s}\n", .{clean_name});
-        try self.output.writer().print("type {s} = Literal[", .{clean_name});
+        // Generate as proper Enum class
+        try self.output.writer().print("class {s}(str, Enum):\n", .{clean_name});
         
-        var first = true;
         inline for (enum_info.fields) |field| {
-            if (!first) {
-                try self.output.writer().print(", ", .{});
+            // Convert field name to valid Python identifier
+            try self.output.writer().print("    ", .{});
+            
+            // Handle field names - replace spaces/hyphens with underscores
+            // and convert to uppercase
+            for (field.name) |c| {
+                if (c >= 'a' and c <= 'z') {
+                    try self.output.writer().print("{c}", .{c - 32}); // Convert to uppercase
+                } else if (c >= 'A' and c <= 'Z' or c >= '0' and c <= '9' or c == '_') {
+                    try self.output.writer().print("{c}", .{c}); // Keep as is
+                } else {
+                    // Replace any other character (spaces, hyphens, etc) with underscore
+                    try self.output.writer().print("_", .{});
+                }
             }
-            first = false;
-            try self.output.writer().print("\"{s}\"", .{field.name});
+            try self.output.writer().print(" = \"{s}\"\n", .{field.name});
         }
-        try self.output.writer().print("]\n\n", .{});
+        try self.output.writer().print("\n", .{});
     }
 
     fn generateStructDefinition(self: *Self, comptime T: type) !void {
@@ -246,7 +255,8 @@ pub const PyiGenerator = struct {
 
     pub fn generate(self: *Self, comptime T: type) ![]const u8 {
         //header
-        try self.output.writer().print("from typing import Any, Literal  # noqa: F401\n\n", .{});
+        try self.output.writer().print("from typing import Any  # noqa: F401\n", .{});
+        try self.output.writer().print("from enum import Enum  # noqa: F401\n\n", .{});
 
         try self.output.writer().print("# Dirty hack to not error in ruff check\n", .{});
         try self.output.writer().print("type Allocator = Any\n\n", .{});
