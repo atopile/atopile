@@ -58,7 +58,7 @@ class UART(ModuleInterface):
             external_cts ~ uart.rts
 
             # or
-            
+
             uart2 = new UART
             uart2 ~ uart
         """,
