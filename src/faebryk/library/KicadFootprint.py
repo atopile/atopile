@@ -10,7 +10,7 @@ from faebryk.libs.library import L
 from faebryk.libs.util import times
 
 if TYPE_CHECKING:
-    from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
+    from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
 
 
 class KicadFootprint(F.Footprint):

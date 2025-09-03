@@ -6,14 +6,14 @@ from copy import deepcopy
 from pathlib import Path
 
 from faebryk.libs.exceptions import UserResourceException, accumulate
-from faebryk.libs.kicad.fileformats_common import (
-    C_kicad_footprint_file_header,
-    C_kicad_pcb_file_header,
-)
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     KICAD_PCB_VERSION,
     C_kicad_footprint_file,
     C_kicad_pcb_file,
+)
+from faebryk.libs.kicad.fileformats_common import (
+    C_kicad_footprint_file_header,
+    C_kicad_pcb_file_header,
 )
 from faebryk.libs.kicad.fileformats_v5 import C_kicad_footprint_file_v5
 from faebryk.libs.kicad.fileformats_v6 import C_kicad_footprint_file_v6

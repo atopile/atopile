@@ -18,11 +18,11 @@ from faebryk.libs.checksum import Checksum
 from faebryk.libs.codegen.atocodegen import AtoCodeGen
 from faebryk.libs.codegen.atocodeparse import AtoCodeParse
 from faebryk.libs.codegen.pycodegen import sanitize_name
-from faebryk.libs.kicad.fileformats_common import PropertyNotSet
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     C_kicad_footprint_file,
     C_kicad_model_file,
 )
+from faebryk.libs.kicad.fileformats_common import PropertyNotSet
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.picker.picker import PickedPart
 from faebryk.libs.util import ConfigFlag, compare_dataclasses, starts_or_ends_replace

@@ -22,13 +22,13 @@ from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
-from faebryk.libs.kicad.fileformats_common import C_xyr
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     C_kicad_footprint_file,
     C_kicad_fp_lib_table_file,
     C_kicad_model_file,
-    C_kicad_pcb_file,
+    C_pcb,
 )
+from faebryk.libs.kicad.fileformats_common import C_xyr
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.ipc import opened_in_pcbnew
 from faebryk.libs.picker.lcsc import (
@@ -517,7 +517,7 @@ class PartLifecycle:
             component: Module,
             logger: logging.Logger,
             insert_point: C_xyr | None = None,
-        ) -> tuple[C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint, bool]:
+        ) -> tuple[C_pcb.Footprint, bool]:
             # TODO this is old code taken from PCB_Transformer
             # need to decouple some actions from here
             # e.g insert point is not really at the right place here

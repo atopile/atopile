@@ -184,7 +184,7 @@ class Polygon:
     stroke: Stroke | None
     fill: Any | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -195,7 +195,7 @@ class Polygon:
         stroke: Stroke | None,
         fill: Any | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 

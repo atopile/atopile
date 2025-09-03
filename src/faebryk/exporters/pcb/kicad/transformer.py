@@ -34,11 +34,7 @@ from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
 from faebryk.libs.exceptions import DeprecatedException, UserException, downgrade
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats_common import C_pts
-from faebryk.libs.kicad.fileformats_common import (
-    gen_uuid as _gen_uuid,
-)
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     UUID,
     C_arc,
     C_circle,
@@ -51,6 +47,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_pcb_file,
     C_line,
     C_net,
+    C_pcb,
     C_polygon,
     C_rect,
     C_stroke,
@@ -64,6 +61,10 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_xyz,
     E_fill,
     _SingleOrMultiLayer,
+)
+from faebryk.libs.kicad.fileformats_common import C_pts
+from faebryk.libs.kicad.fileformats_common import (
+    gen_uuid as _gen_uuid,
 )
 from faebryk.libs.sexp.dataclass_sexp import filter_fields, visit_dataclass
 from faebryk.libs.util import (
@@ -82,19 +83,19 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-PCB = C_kicad_pcb_file.C_kicad_pcb
-Footprint = PCB.C_pcb_footprint
-Pad = Footprint.C_pad
+PCB = C_pcb.KicadPcb
+Footprint = C_pcb.Footprint
+Pad = C_pcb.Pad
 Net = C_net
 
 # TODO remove
 GR_Line = C_line
 GR_Text = C_text
 Font = C_effects.C_font
-Zone = PCB.C_zone
+Zone = C_pcb.Zone
 Arc = C_arc
 Rect = C_rect
-Via = PCB.C_via
+Via = C_pcb.Via
 Line = C_line
 
 Geom = C_line | C_arc | C_rect | C_circle | C_polygon | C_curve

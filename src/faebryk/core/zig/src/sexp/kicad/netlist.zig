@@ -79,7 +79,7 @@ pub const Node = struct {
 };
 
 pub const Net = struct {
-    code: []const u8,
+    code: i32,
     name: []const u8,
     nodes: []Node = &.{},
 

@@ -187,7 +187,7 @@ pub const Polygon = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .pts = structure.SexpField{ .order = -1 },

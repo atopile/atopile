@@ -14,14 +14,88 @@ fn generateModule(
     comptime has_loads_dumps: bool,
 ) type {
     return struct {
-        // Use wrap_in_python_module to automatically generate bindings for all structs
-        const ModuleBinding = bind.wrap_in_python_module(T);
+        // Store reference to the registered File type  
+        var registered_file_type: ?*py.PyTypeObject = null;
+        
+        // Create a custom module binding that uses the correct module name prefix
+        const ModuleBinding = struct {
+            pub fn register_all(py_module: ?*py.PyObject) c_int {
+                // Process each declaration in the module T
+                const module_info = @typeInfo(T);
+                if (module_info != .@"struct") {
+                    return -1;
+                }
+                
+                inline for (module_info.@"struct".decls) |decl| {
+                    const decl_value = @field(T, decl.name);
+                    const decl_type = @TypeOf(decl_value);
+                    const decl_info = @typeInfo(decl_type);
+
+                    // Check if it's a type (struct)
+                    if (decl_info == .type) {
+                        const inner_type = decl_value;
+                        const inner_info = @typeInfo(inner_type);
+                        if (inner_info == .@"struct") {
+                            // Check if it's a data struct (starts with uppercase, convention for types)
+                            const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
+
+                            if (is_type_name) {
+                                // Generate bindings for this struct with the correct module name
+                                const full_name = module_name ++ "." ++ decl.name;
+                                const name_z = full_name ++ "\x00";
+                                const binding = bind.wrap_in_python(inner_type, name_z);
+
+                                // Register with Python
+                                if (py.PyType_Ready(&binding.type_object) < 0) {
+                                    return -1;
+                                }
+
+                                binding.type_object.ob_base.ob_base.ob_refcnt += 1;
+                                const reg_name = decl.name ++ "\x00";
+                                if (py.PyModule_AddObject(py_module, reg_name, @ptrCast(&binding.type_object)) < 0) {
+                                    binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
+                                    return -1;
+                                }
+                                
+                                // Store reference to the File type if it matches
+                                if (has_loads_dumps and inner_type == FileType) {
+                                    registered_file_type = &binding.type_object;
+                                }
+                            }
+                        }
+                    }
+                }
+                return 0;
+            }
+        };
 
         // Only generate File bindings if loads/dumps are needed
-        const FileBinding = if (has_loads_dumps)
-            bind.wrap_in_python(FileType, module_name)
-        else
-            void;
+        const FileBinding = if (has_loads_dumps) blk: {
+            // Get the type name of FileType (e.g., "PcbFile", "FootprintFile")
+            const type_info = @typeInfo(FileType);
+            const type_simple_name = if (type_info == .@"struct")
+                @typeName(FileType)
+            else
+                "File";
+            
+            // Find the last dot to get just the struct name
+            const last_dot = blk2: {
+                var idx: ?usize = null;
+                for (type_simple_name, 0..) |c, i| {
+                    if (c == '.') idx = i;
+                }
+                break :blk2 idx;
+            };
+            
+            const struct_name = if (last_dot) |idx|
+                type_simple_name[idx + 1 ..]
+            else
+                type_simple_name;
+            
+            // Create full type name like "pyzig.pcb.PcbFile"
+            const full_type_name = module_name ++ "." ++ struct_name;
+            break :blk bind.wrap_in_python(FileType, full_type_name);
+        } else void;
 
         // Module methods - loads/dumps if applicable
         var methods = if (has_loads_dumps) blk: {
@@ -75,26 +149,63 @@ fn generateModule(
 
             // Parse the S-expression string
             const file = FileType.loads(persistent_allocator, .{ .string = input_str }) catch |err| {
-                var error_msg: [256]u8 = undefined;
-                const msg = std.fmt.bufPrintZ(&error_msg, "Failed to parse file: {}", .{err}) catch {
-                    py.PyErr_SetString(py.PyExc_ValueError, "Failed to parse file");
-                    return null;
+                // Get the error context for better diagnostics
+                const error_context = sexp.structure.getErrorContext();
+                
+                var error_msg: [1024]u8 = undefined;
+                const msg = if (error_context) |ctx| blk: {
+                    if (err == error.MissingField) {
+                        if (ctx.line) |line| {
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}' (near line {})", .{ 
+                                ctx.field_name orelse "unknown",
+                                ctx.path,
+                                line,
+                            }) catch {
+                                break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}'", .{
+                                    ctx.field_name orelse "unknown",
+                                    ctx.path,
+                                }) catch "Failed to parse file";
+                            };
+                        } else {
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}'", .{ 
+                                ctx.field_name orelse "unknown",
+                                ctx.path,
+                            }) catch "Failed to parse file";
+                        }
+                    } else if (err == error.UnexpectedValue) {
+                        if (ctx.sexp_preview) |preview| {
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}': got '{s}'", .{ 
+                                ctx.path,
+                                preview,
+                            }) catch {
+                                break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}'", .{ctx.path}) catch "Failed to parse file";
+                            };
+                        } else {
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}'", .{ctx.path}) catch "Failed to parse file";
+                        }
+                    } else {
+                        break :blk std.fmt.bufPrintZ(&error_msg, "Error in '{s}': {}", .{ 
+                            ctx.path,
+                            err,
+                        }) catch {
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Failed to parse: {}", .{err}) catch "Failed to parse file";
+                        };
+                    }
+                } else blk: {
+                    break :blk std.fmt.bufPrintZ(&error_msg, "Failed to parse: {}", .{err}) catch "Failed to parse file";
                 };
+                
                 py.PyErr_SetString(py.PyExc_ValueError, msg);
                 return null;
             };
 
-            // Create a new Python object
-            const type_obj = &FileBinding.type_object;
-
-            // Initialize type if needed
-            const initialized = struct {
-                var done: bool = false;
+            // Use the registered File type that was stored during module registration
+            const type_obj = registered_file_type orelse {
+                py.PyErr_SetString(py.PyExc_ValueError, "File type not registered in module");
+                return null;
             };
-            if (!initialized.done) {
-                _ = py.PyType_Ready(type_obj);
-                initialized.done = true;
-            }
+
+            // Type is already initialized when registered with the module
 
             // Allocate Python object
             const pyobj = py.PyType_GenericAlloc(type_obj, 0);
@@ -137,8 +248,8 @@ fn generateModule(
             var serialized: ?[]const u8 = null;
             wrapper.data.*.dumps(allocator, .{ .string = &serialized }) catch |err| {
                 var error_msg: [256]u8 = undefined;
-                const msg = std.fmt.bufPrintZ(&error_msg, "Failed to serialize {s} file: {}", .{ name, err }) catch {
-                    py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to serialize {s} file", .{name}));
+                const msg = std.fmt.bufPrintZ(&error_msg, "Failed to serialize: {}", .{err}) catch {
+                    py.PyErr_SetString(py.PyExc_ValueError, "Failed to serialize file");
                     return null;
                 };
                 py.PyErr_SetString(py.PyExc_ValueError, msg);

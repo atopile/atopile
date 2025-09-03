@@ -10,7 +10,7 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     C_kicad_drc_report_file,
     C_kicad_pcb_file,
 )

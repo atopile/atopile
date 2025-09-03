@@ -4,7 +4,7 @@
 from pathlib import Path
 
 from faebryk.exporters.netlist.netlist import FBRKNetlist
-from faebryk.libs.kicad.fileformats_latest import C_kicad_netlist_file
+from faebryk.libs.kicad.fileformats import C_kicad_netlist_file
 
 
 def to_faebryk_t2_netlist(kicad_netlist: str | Path | list) -> FBRKNetlist:

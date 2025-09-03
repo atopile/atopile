@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     C_arc,
     C_circle,
     C_footprint,

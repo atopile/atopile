@@ -12,7 +12,7 @@ from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
     C_wh,
 )

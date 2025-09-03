@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-from faebryk.core.zig import pcb as C_pcb
+from faebryk.libs.kicad.fileformats import kicad
 
 path = Path(
     "/home/needspeed/workspace/atopile/test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb"
 )
-pcb = C_pcb.loads(path.read_text())
-print(pcb.kicad_pcb.setup)
+pcb = kicad.loads(kicad.pcb.PcbFile, path)
+print(kicad.dumps(pcb))
 print("\n--- Print complete, exiting ---")

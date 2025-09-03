@@ -354,12 +354,17 @@ class BuildTargetPaths(BaseConfigModel):
             self.layout.parent.mkdir(parents=True, exist_ok=True)
 
             # delayed import to improve startup time
-            from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+            from faebryk.libs.kicad.fileformats import kicad
 
-            C_kicad_pcb_file.skeleton(
-                generator=DISTRIBUTION_NAME,
-                generator_version=str(get_installed_atopile_version()),
-            ).dumps(self.layout)
+            kicad.dumps(
+                kicad.pcb.PcbFile(
+                    kicad_pcb=kicad.pcb.KicadPcb(
+                        generator=DISTRIBUTION_NAME,
+                        generator_version=str(get_installed_atopile_version()),
+                    ),  # type: ignore
+                ),
+                self.layout,
+            )
         elif not self.layout.is_file():
             raise UserResourceException(f"Layout is not a file: {self.layout}")
 

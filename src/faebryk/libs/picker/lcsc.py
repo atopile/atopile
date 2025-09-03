@@ -28,8 +28,8 @@ from more_itertools import first
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.core.module import Module
+from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
 from faebryk.libs.kicad.fileformats_common import compare_without_uuid
-from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.picker.localpick import PickerOption

@@ -9,7 +9,7 @@ import pytest
 from dataclasses_json import CatchAll
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
-from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.sexp.dataclass_sexp import (
     DecodeError,
     SymEnum,

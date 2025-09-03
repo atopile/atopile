@@ -94,11 +94,11 @@ class Node:
     def __repr__(self) -> str: ...
 
 class Net:
-    code: str
+    code: int
     name: str
     nodes: list[Node]
 
-    def __init__(self, code: str, name: str, nodes: list[Node]) -> None: ...
+    def __init__(self, code: int, name: str, nodes: list[Node]) -> None: ...
     def __repr__(self) -> str: ...
 
 class Nets:

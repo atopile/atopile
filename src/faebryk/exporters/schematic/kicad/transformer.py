@@ -18,12 +18,12 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
+from faebryk.libs.kicad.fileformats import (
+    C_kicad_fp_lib_table_file,
+)
 from faebryk.libs.kicad.fileformats_common import C_effects, C_pts, C_wh, C_xy, C_xyr
 from faebryk.libs.kicad.fileformats_common import (
     gen_uuid as _gen_uuid,
-)
-from faebryk.libs.kicad.fileformats_latest import (
-    C_kicad_fp_lib_table_file,
 )
 from faebryk.libs.kicad.fileformats_sch import (
     UUID,

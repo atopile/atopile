@@ -3,7 +3,7 @@ from time import time
 
 import typer
 
-from faebryk.core.zig import dumps, loads
+from faebryk.libs.kicad.fileformats import kicad
 
 
 def build_pcb(mb: int):
@@ -29,12 +29,12 @@ def main(mb: int = 10):
     )
 
     now = time()
-    pcb = loads(pcb_raw)
+    pcb = kicad.loads(kicad.pcb.PcbFile, pcb_raw)
     time_s = time() - now
     print(f"Loaded PCB: {time_s:.2f} seconds ({mb_raw / time_s:.2f} mb/s)")
 
     now = time()
-    pcb_dumped = dumps(pcb)
+    pcb_dumped = kicad.dumps(pcb)
     mb_dumped = len(pcb_dumped) / 1000 / 1000
     time_s = time() - now
     print(

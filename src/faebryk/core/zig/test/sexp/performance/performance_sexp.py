@@ -14,7 +14,7 @@ from pathlib import Path
 
 import sexpdata
 
-from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import kicad
 
 SEXP_ROOT = Path(__file__).parent.parent.parent
 TEST_FILES_DIR = SEXP_ROOT / "test" / "resources" / "v9"
@@ -76,10 +76,10 @@ def test_python(file_path):
         parse_time = int(end_time - start_time)
 
         if file_path.suffix == ".net":
-            _ = C_kicad_pcb_file.loads(data)
+            _ = kicad.loads(kicad.netlist.NetlistFile, data)
             structure_time = int((time.time() * 1000) - end_time)
         elif file_path.suffix == ".kicad_pcb":
-            _ = C_kicad_pcb_file.loads(data)
+            _ = kicad.loads(kicad.pcb.PcbFile, data)
             structure_time = int((time.time() * 1000) - end_time)
         else:
             structure_time = 0

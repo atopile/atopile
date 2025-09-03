@@ -11,12 +11,12 @@ from faebryk.exporters.pcb.kicad.transformer import (
     get_all_geo_containers,
     get_all_geos,
 )
-from faebryk.libs.kicad.fileformats_common import C_xy, gen_uuid
-from faebryk.libs.kicad.fileformats_latest import (
+from faebryk.libs.kicad.fileformats import (
     C_group,
     C_kicad_pcb_file,
     C_net,
 )
+from faebryk.libs.kicad.fileformats_common import C_xy, gen_uuid
 from faebryk.libs.util import (
     KeyErrorNotFound,
     find,

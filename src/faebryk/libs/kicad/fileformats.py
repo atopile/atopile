@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
-from typing import Any, Iterable, Optional, Protocol, Self
+from typing import Any, Iterable, Optional, Protocol, Self, cast
 
 from dataclasses_json import (
     CatchAll,
@@ -713,20 +713,42 @@ if RICH_PRINT:
 # zig shims
 
 
-import faebryk.core.zig.pcb as C_pcb  # noqa: E402
+# namespace
+class kicad:
+    from faebryk.core.zig import (
+        footprint,  # noqa: E402, F401
+        fp_lib_table,  # noqa: E402, F401
+        netlist,  # noqa: E402, F401
+        pcb,  # noqa: E402
+    )
 
+    type types = (
+        pcb.PcbFile
+        | footprint.FootprintFile
+        | fp_lib_table.FpLibTableFile
+        | netlist.NetlistFile
+    )
 
-@dataclass
-class C_kicad_pcb_file:
-    def __init__(self, kicad_pcb: C_pcb.PcbFile):
-        self._kicad_pcb = kicad_pcb
+    @staticmethod
+    def type_to_module(t: type[types] | types):
+        def instance_or_subclass(_t: type | object, target: type):
+            return _t is target or type(_t) is target
 
-    @property
-    def kicad_pcb(self):
-        return self._kicad_pcb.kicad_pcb
+        if instance_or_subclass(t, kicad.pcb.PcbFile):
+            return kicad.pcb
+        elif instance_or_subclass(t, kicad.footprint.FootprintFile):
+            return kicad.footprint
+        elif instance_or_subclass(t, kicad.fp_lib_table.FpLibTableFile):
+            return kicad.fp_lib_table
+        elif instance_or_subclass(t, kicad.netlist.NetlistFile):
+            return kicad.netlist
 
-    @classmethod
-    def loads(cls, path_or_string_or_data: Path | str | list) -> "Self":
+        raise ValueError(f"Unsupported type: {t} ({type(t)})")
+
+    @staticmethod
+    def loads[T: kicad.types](
+        t: type[T], path_or_string_or_data: Path | str | list
+    ) -> T:
         if isinstance(path_or_string_or_data, list):
             import sexpdata
 
@@ -736,54 +758,41 @@ class C_kicad_pcb_file:
         else:
             data = path_or_string_or_data
 
-        pcb = C_pcb.loads(data)
-        return cls(kicad_pcb=pcb)
+        return cast(T, kicad.type_to_module(t).loads(data))
 
-    def dumps(self, path: Path | None = None):
-        raw = C_pcb.dumps(self._kicad_pcb)
+    @staticmethod
+    def dumps(obj: types, path: Path | None = None):
+        raw = kicad.type_to_module(obj).dumps(
+            obj,  # type: ignore
+        )
+
         if path is not None:
             path.write_text(raw, encoding="utf-8")
         return raw
 
-    @staticmethod
-    def skeleton(
-        generator: str,
-        generator_version: str,
-    ) -> "C_kicad_pcb_file":
-        # Create a minimal PCB file structure
-        return C_kicad_pcb_file(
-            C_pcb.PcbFile(
-                C_pcb.KicadPcb(
-                    generator=generator,
-                    generator_version=generator_version,
-                )  # type: ignore
-            )
-        )
 
+class Property:
+    class _Property(Protocol):
+        name: str
+        value: str
 
-class Property(Protocol):
-    name: str
-    value: str
-
-
-class Properties(Iterable["Property"]):
     class PropertyNotSet(Exception):
         pass
 
     @staticmethod
-    def get_property(obj: "Properties", name: str) -> str:
-        out = Properties.try_get_property(obj, name)
+    def get_property(obj: Iterable[_Property], name: str) -> str:
+        out = Property.try_get_property(obj, name)
         if out is None:
-            raise Properties.PropertyNotSet(f"Property `{name}` not set")
+            raise Property.PropertyNotSet(f"Property `{name}` not set")
         return out
 
     @staticmethod
-    def try_get_property(obj: "Properties", name: str) -> str | None:
+    def try_get_property(obj: Iterable[_Property], name: str) -> str | None:
         for prop in obj:
             if prop.name == name:
                 return prop.value
         return None
 
     @staticmethod
-    def property_dict(obj: "Properties") -> dict[str, str]:
+    def property_dict(obj: Iterable[_Property]) -> dict[str, str]:
         return {prop.name: prop.value for prop in obj}

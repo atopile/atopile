@@ -256,6 +256,8 @@ pub extern fn PyList_New(size: isize) ?*PyObject;
 pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c_int;
 pub extern fn PyImport_GetModuleDict() ?*PyObject;
 pub extern fn PyImport_AddModule(name: [*:0]const u8) ?*PyObject;
+pub extern fn PyImport_ImportModule(name: [*:0]const u8) ?*PyObject;
+pub extern fn PyObject_GetAttrString(obj: ?*PyObject, name: [*:0]const u8) ?*PyObject;
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;
