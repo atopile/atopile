@@ -679,7 +679,7 @@ pub const ConnectPads = struct {
     clearance: ?f64 = null,
 };
 
-pub const Fill = struct {
+pub const ZoneFill = struct {
     enable: ?E_zone_fill_enable = null,
     mode: ?E_zone_fill_mode = null,
     hatch_thickness: ?f64 = null,
@@ -697,9 +697,10 @@ pub const Fill = struct {
     island_removal_mode: ?E_zone_island_removal_mode = null,
     island_area_min: ?f64 = null,
 
-    pub const fields_meta = .{
-        .enable = structure.SexpField{ .positional = true },
-    };
+    // enable is not always positional - sometimes fill has no positional value
+    // pub const fields_meta = .{
+    //     .enable = structure.SexpField{ .positional = true },
+    // };
 };
 
 pub const FilledPolygon = struct {
@@ -741,7 +742,8 @@ pub const Zone = struct {
     connect_pads: ?ConnectPads = null,
     min_thickness: ?f64 = null,
     filled_areas_thickness: ?bool = null,
-    fill: ?Fill = null,
+    // TODO: ZoneFill needs custom decode to handle both (fill yes ...) and (fill ...)
+    // fill: ?ZoneFill = null,
     keepout: ?ZoneKeepout = null,
     polygon: Polygon,
     filled_polygon: []FilledPolygon = &.{},

@@ -670,7 +670,7 @@ class ConnectPads:
     def __init__(self, mode: str | None, clearance: float | None) -> None: ...
     def __repr__(self) -> str: ...
 
-class Fill:
+class ZoneFill:
     enable: str | None
     mode: str | None
     hatch_thickness: float | None
@@ -762,7 +762,6 @@ class Zone:
     connect_pads: ConnectPads | None
     min_thickness: float | None
     filled_areas_thickness: bool | None
-    fill: Fill | None
     keepout: ZoneKeepout | None
     polygon: Polygon
     filled_polygon: list[FilledPolygon]
@@ -781,7 +780,6 @@ class Zone:
         connect_pads: ConnectPads | None,
         min_thickness: float | None,
         filled_areas_thickness: bool | None,
-        fill: Fill | None,
         keepout: ZoneKeepout | None,
         polygon: Polygon,
         filled_polygon: list[FilledPolygon],

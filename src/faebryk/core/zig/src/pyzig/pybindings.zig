@@ -255,6 +255,7 @@ pub extern fn PyTuple_Size(tuple: ?*PyObject) isize;
 pub extern fn PyTuple_New(size: isize) ?*PyObject;
 // PyTuple_SET_ITEM is a macro, so we use SetItem instead
 pub extern fn PyTuple_SetItem(tuple: ?*PyObject, pos: isize, item: ?*PyObject) c_int;
+pub extern fn PyTuple_GetItem(tuple: ?*PyObject, pos: isize) ?*PyObject;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
 pub extern fn PyDict_New() ?*PyObject;
 pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
@@ -267,6 +268,7 @@ pub extern fn PyImport_GetModuleDict() ?*PyObject;
 pub extern fn PyImport_AddModule(name: [*:0]const u8) ?*PyObject;
 pub extern fn PyImport_ImportModule(name: [*:0]const u8) ?*PyObject;
 pub extern fn PyObject_GetAttrString(obj: ?*PyObject, name: [*:0]const u8) ?*PyObject;
+pub extern fn PyObject_Call(callable: ?*PyObject, args: ?*PyObject, kwargs: ?*PyObject) ?*PyObject;
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;

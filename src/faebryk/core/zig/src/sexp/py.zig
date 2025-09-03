@@ -37,8 +37,66 @@ fn generateModule(
                         const inner_info = @typeInfo(inner_type);
                         
                         if (inner_info == .@"enum") {
-                            // Skip enum registration for now - enums are exposed in .pyi files
-                            // TODO: Implement runtime enum registration when all required Python C API functions are available
+                            // Create a simple Python enum-like object using SimpleNamespace
+                            // This allows attribute access like E_pad_type.SMD
+                            const enum_name_z = decl.name ++ "\x00";
+                            
+                            // Import types module to get SimpleNamespace
+                            const types_module = py.PyImport_ImportModule("types");
+                            if (types_module == null) return -1;
+                            defer py.Py_DECREF(types_module.?);
+                            
+                            // Get SimpleNamespace class
+                            const simple_namespace = py.PyObject_GetAttrString(types_module, "SimpleNamespace");
+                            if (simple_namespace == null) return -1;
+                            defer py.Py_DECREF(simple_namespace.?);
+                            
+                            // Create kwargs dict for SimpleNamespace
+                            const kwargs = py.PyDict_New();
+                            if (kwargs == null) return -1;
+                            defer py.Py_DECREF(kwargs.?);
+                            
+                            // Add enum values with both original and uppercase names
+                            inline for (inner_info.@"enum".fields) |field| {
+                                const field_value = py.PyUnicode_FromString(field.name.ptr);
+                                if (field_value == null) return -1;
+                                
+                                // Add with original name (e.g., "smd")
+                                const field_name_z = field.name ++ "\x00";
+                                if (py.PyDict_SetItemString(kwargs, field_name_z, field_value) < 0) {
+                                    py.Py_DECREF(field_value.?);
+                                    return -1;
+                                }
+                                
+                                // Also add with uppercase name (e.g., "SMD")
+                                var upper_name: [256]u8 = undefined;
+                                var i: usize = 0;
+                                while (i < field.name.len and i < 255) : (i += 1) {
+                                    const c = field.name[i];
+                                    upper_name[i] = if (c >= 'a' and c <= 'z') c - 32 else c;
+                                }
+                                upper_name[i] = 0;
+                                
+                                if (py.PyDict_SetItemString(kwargs, @ptrCast(&upper_name), field_value) < 0) {
+                                    py.Py_DECREF(field_value.?);
+                                    return -1;
+                                }
+                                py.Py_DECREF(field_value.?);
+                            }
+                            
+                            // Create SimpleNamespace instance
+                            const empty_tuple = py.PyTuple_New(0);
+                            if (empty_tuple == null) return -1;
+                            defer py.Py_DECREF(empty_tuple.?);
+                            
+                            const enum_obj = py.PyObject_Call(simple_namespace, empty_tuple, kwargs);
+                            if (enum_obj == null) return -1;
+                            
+                            // Add to module
+                            if (py.PyModule_AddObject(py_module, enum_name_z, enum_obj) < 0) {
+                                py.Py_DECREF(enum_obj.?);
+                                return -1;
+                            }
                         } else if (inner_info == .@"struct") {
                             // Check if it's a data struct (starts with uppercase, convention for types)
                             const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
