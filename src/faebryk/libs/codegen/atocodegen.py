@@ -236,26 +236,6 @@ class AtoCodeGen:
         imports: set["AtoCodeGen.Import"] = field(default_factory=set)
         blocks: list["AtoCodeGen.Block"] = field(default_factory=list)
 
-        # def add_trait(
-        #     self,
-        #     name: str,
-        #     constructor: str | None = None,
-        #     auto_import: bool = True,
-        #     **args: str | None,
-        # ) -> "AtoCodeGen.Trait":
-        #     self.enable_experiment(AtoCodeGen.Experiment.TRAITS)
-
-        #     if auto_import:
-        #         self.imports.add(AtoCodeGen.Import(name))
-
-        #     trait = AtoCodeGen.Trait(
-        #         name=name,
-        #         args={k: v for k, v in args.items() if v is not None},
-        #         constructor=constructor,
-        #     )
-        #     self.add_stmt(trait)
-        #     return trait
-
         def enable_experiment(self, experiment: "AtoCodeGen.Experiment") -> None:
             self.experiments.add(experiment)
 
@@ -274,12 +254,18 @@ class AtoCodeGen:
     @dataclass
     class ComponentFile(File):
         identifier: str | None = None
+        docstring: str | None = None
 
         def __post_init__(self) -> None:
             if self.identifier is None:
                 raise ValueError("identifier is required")
 
-            self.add_block(AtoCodeGen.Component(name=self.identifier))
+            self.add_block(
+                AtoCodeGen.Component(
+                    name=self.identifier,
+                    docstring=self.docstring,
+                )
+            )
 
         def add_comments(self, *comments: str, use_spacer: bool = False) -> None:
             self.blocks[0].add_comments(*comments, use_spacer=use_spacer)
@@ -287,6 +273,9 @@ class AtoCodeGen:
         def add_trait(
             self, name: str, constructor: str | None = None, **kwargs: str | None
         ) -> None:
+            self.enable_experiment(AtoCodeGen.Experiment.TRAITS)
+            self.add_import(name)
+
             self.blocks[0].add_stmt(
                 AtoCodeGen.Trait(
                     name=name,
@@ -308,7 +297,7 @@ class AtoCodeGen:
                 out.append_line(f'#pragma experiment("{exp.value}")')
 
             for imp in sorted(self.imports, key=lambda x: x.name):
-                out.append(imp.dump())
+                out.append_line(imp.dump())
 
             out.spacer()
 

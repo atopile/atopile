@@ -181,7 +181,9 @@ class AtoPart:
         if self.model:
             self.model.dumps(self.model_path)
 
-        ato_builder = AtoCodeGen.ComponentFile(identifier=self.module_name)
+        ato_builder = AtoCodeGen.ComponentFile(
+            identifier=self.module_name, docstring=self.docstring
+        )
 
         ato_builder.add_comments(
             "This trait marks this file as auto-generated",
