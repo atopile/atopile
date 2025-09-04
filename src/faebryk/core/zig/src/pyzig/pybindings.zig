@@ -264,6 +264,21 @@ pub extern fn PyFloat_AsDouble(obj: ?*PyObject) f64;
 pub extern fn PyObject_IsTrue(obj: ?*PyObject) c_int;
 pub extern fn PyList_New(size: isize) ?*PyObject;
 pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c_int;
+pub extern fn PyList_Size(list: ?*PyObject) isize;
+pub extern fn PyList_GetItem(list: ?*PyObject, index: isize) ?*PyObject;
+
+// PyList_Check is a macro in Python's C API, we need to implement it ourselves
+// We can use PyObject_IsInstance or just check with PyList_Size
+pub fn PyList_Check(obj: ?*PyObject) c_int {
+    if (obj == null) return 0;
+    // A simple way to check if it's a list is to try PyList_Size
+    // If it returns >= 0, it's a list. If it returns -1, it's not.
+    const size = PyList_Size(obj);
+    if (size >= 0) return 1;
+    // Clear the error that PyList_Size set
+    PyErr_Clear();
+    return 0;
+}
 pub extern fn PyImport_GetModuleDict() ?*PyObject;
 pub extern fn PyImport_AddModule(name: [*:0]const u8) ?*PyObject;
 pub extern fn PyImport_ImportModule(name: [*:0]const u8) ?*PyObject;

@@ -209,8 +209,17 @@ fn generateModule(
             // Create persistent allocator for the data
             const persistent_allocator = std.heap.c_allocator;
 
+            // IMPORTANT: Duplicate the input string with the persistent allocator
+            // The Python string can be garbage collected after this function returns,
+            // but our parsed structure contains pointers into the string data.
+            // We need to keep a copy of the string alive.
+            const input_copy = persistent_allocator.dupe(u8, input_str) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to allocate memory for input string");
+                return null;
+            };
+
             // Parse the S-expression string
-            const file = FileType.loads(persistent_allocator, .{ .string = input_str }) catch |err| {
+            const file = FileType.loads(persistent_allocator, .{ .string = input_copy }) catch |err| {
                 // Get the error context for better diagnostics
                 const error_context = sexp.structure.getErrorContext();
 

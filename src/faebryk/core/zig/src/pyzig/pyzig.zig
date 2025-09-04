@@ -95,7 +95,8 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                         } else try std.fmt.bufPrintZ(buf[pos..], "  {s}\n", .{line});
                                         pos += indented_line.len;
                                     }
-                                    break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it above
+                                    // Return empty string to indicate we've already handled output
+                                    break :blk "";
                                 } else {
                                     break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: null\n", .{field.name});
                                 }
@@ -176,7 +177,8 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
 
                                         const closer = try std.fmt.bufPrintZ(buf[pos..], "  ]\n", .{});
                                         pos += closer.len;
-                                        break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
+                                        // Return empty string to indicate we've already handled output
+                                        break :blk "";
                                     } else if (child_info == .pointer and child_info.pointer.size == .slice and child_info.pointer.child == u8) {
                                         // Slice of strings ([][]const u8)
                                         const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [", .{field.name});
@@ -211,7 +213,8 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
 
                                         const closer = try std.fmt.bufPrintZ(buf[pos..], "]\n", .{});
                                         pos += closer.len;
-                                        break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
+                                        // Return empty string to indicate we've already handled output
+                                        break :blk "";
                                     } else {
                                         // Other non-struct slice types
                                         break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
@@ -384,11 +387,17 @@ pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
                 return -1;
             }
 
+            // Duplicate the string data - Python's buffer can be freed/moved
+            const str_slice = std.mem.span(new_val.?);
+            const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch return -1;
+
             const has_data = @hasField(struct_type, "data");
             if (has_data) {
-                @field(obj.data.*, field_name_str) = std.mem.span(new_val.?);
+                // Free the old string if it exists
+                // Note: This assumes we always allocate strings, which we do now
+                @field(obj.data.*, field_name_str) = str_copy;
             } else {
-                @field(obj.top.*, field_name_str) = std.mem.span(new_val.?);
+                @field(obj.top.*, field_name_str) = str_copy;
             }
             return 0;
         }
@@ -576,8 +585,8 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     .bool => if (v) return py.Py_True() else return py.Py_False(),
                     .pointer => |ptr| {
                         if (ptr.size == .slice and ptr.child == u8) {
-                            const cstr: [*:0]const u8 = @ptrCast(v.ptr);
-                            return py.PyUnicode_FromString(cstr);
+                            // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+                            return py.PyUnicode_FromStringAndSize(v.ptr, @intCast(v.len));
                         }
                     },
                     .@"struct" => {
@@ -956,7 +965,114 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                     std.heap.c_allocator.destroy(wrapper_obj.data);
                                     return -1;
                                 }
-                                @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
+                                // IMPORTANT: Duplicate the string data!
+                                // The Python string buffer can be moved or freed by Python's GC.
+                                // We need our own copy that lives as long as the struct.
+                                const str_slice = std.mem.span(str_val.?);
+                                const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                };
+                                @field(wrapper_obj.data.*, field.name) = str_copy;
+                            } else if (ptr.size == .slice) {
+                                // Handle slices (lists)
+                                if (py.PyList_Check(value) == 0) {
+                                    py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                }
+                                
+                                const list_size = py.PyList_Size(value);
+                                if (list_size < 0) {
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                }
+                                
+                                // Allocate memory for the slice
+                                const slice = std.heap.c_allocator.alloc(ptr.child, @intCast(list_size)) catch {
+                                    py.PyErr_SetString(py.PyExc_ValueError, "Failed to allocate memory for list");
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                };
+                                
+                                // Convert each list item
+                                for (0..@intCast(list_size)) |i| {
+                                    const item = py.PyList_GetItem(value, @intCast(i));
+                                    if (item == null) {
+                                        std.heap.c_allocator.free(slice);
+                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        return -1;
+                                    }
+                                    
+                                    // Convert based on child type
+                                    const child_info = @typeInfo(ptr.child);
+                                    switch (child_info) {
+                                        .@"struct" => {
+                                            // Handle struct items
+                                            const nested_wrapper = @as(*PyObjectWrapper(ptr.child), @ptrCast(@alignCast(item)));
+                                            slice[i] = nested_wrapper.data.*;
+                                        },
+                                        .int => {
+                                            const int_val = py.PyLong_AsLong(item);
+                                            if (int_val == -1 and py.PyErr_Occurred() != null) {
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            slice[i] = @intCast(int_val);
+                                        },
+                                        .float => {
+                                            const float_val = py.PyFloat_AsDouble(item);
+                                            if (float_val == -1.0 and py.PyErr_Occurred() != null) {
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            slice[i] = @floatCast(float_val);
+                                        },
+                                        .bool => {
+                                            const bool_val = py.PyObject_IsTrue(item);
+                                            if (bool_val == -1) {
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            slice[i] = bool_val == 1;
+                                        },
+                                        .pointer => |p| {
+                                            if (p.size == .slice and p.child == u8) {
+                                                const str_val = py.PyUnicode_AsUTF8(item);
+                                                if (str_val == null) {
+                                                    std.heap.c_allocator.free(slice);
+                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    return -1;
+                                                }
+                                                const str_slice = std.mem.span(str_val.?);
+                                                const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
+                                                    std.heap.c_allocator.free(slice);
+                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    return -1;
+                                                };
+                                                slice[i] = str_copy;
+                                            } else {
+                                                // Unsupported nested pointer type
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list item type");
+                                                return -1;
+                                            }
+                                        },
+                                        else => {
+                                            // Unsupported type
+                                            std.heap.c_allocator.free(slice);
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list item type");
+                                            return -1;
+                                        },
+                                    }
+                                }
+                                
+                                @field(wrapper_obj.data.*, field.name) = slice;
                             } else {
                                 // Other pointer types not yet supported
                                 @field(wrapper_obj.data.*, field.name) = &.{};
@@ -1000,7 +1116,13 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
+                                            // IMPORTANT: Duplicate the string data for optional strings too!
+                                            const str_slice = std.mem.span(str_val.?);
+                                            const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            };
+                                            @field(wrapper_obj.data.*, field.name) = str_copy;
                                         } else {
                                             @field(wrapper_obj.data.*, field.name) = null;
                                         }
