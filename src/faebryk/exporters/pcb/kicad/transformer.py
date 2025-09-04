@@ -1668,7 +1668,7 @@ class PCB_Transformer:
         if at is None:
             # Copy the data structure so if we later mutate it we don't
             # end up w/ those changes everywhere
-            at = copy.deepcopy(self.default_component_insert_point)
+            at = kicad.copy(self.default_component_insert_point)
 
         lib_attrs = self._fp_common_fields_dict(lib_footprint)
 
@@ -1993,10 +1993,13 @@ class PCB_Transformer:
             horizontal_spacing = DEFAULT_HORIZONTAL_SPACING
             vertical_spacing = DEFAULT_VERTICAL_SPACING
 
-        cluster_point = copy.deepcopy(self.default_component_insert_point)
-        insert_point = copy.deepcopy(self.default_component_insert_point)
+        ref = self.default_component_insert_point
+        cluster_point = kicad.pcb.Xyr(x=ref.x, y=ref.y, r=ref.r)
+        insert_point = kicad.pcb.Xyr(x=ref.x, y=ref.y, r=ref.r)
         for cluster in clusters:
-            insert_point = copy.deepcopy(cluster_point)
+            insert_point = kicad.pcb.Xyr(
+                x=cluster_point.x, y=cluster_point.y, r=cluster_point.r
+            )
             cluster_has_footprints = False
 
             for component in clusters[cluster]:

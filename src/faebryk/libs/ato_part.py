@@ -4,7 +4,6 @@
 import datetime
 import logging
 import re
-from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Self
@@ -83,12 +82,12 @@ class AtoPart:
         return f'from "{import_path}" import {self.module_name}'
 
     def __post_init__(self):
-        self.fp = deepcopy(self.fp)
+        self.fp = kicad.copy(self.fp)
         self.fp.footprint.name = (
             f"{self.identifier}:{kicad.fp_get_base_name(self.fp.footprint)}"
         )
 
-        self.symbol = deepcopy(self.symbol)
+        self.symbol = kicad.copy(self.symbol)
 
         if self.model:
             rel_path = Gcfg.project.get_relative_to_kicad_project(self.model_path)

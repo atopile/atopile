@@ -415,7 +415,11 @@ def update_pcb(
                 if {
                     addr
                     for fp, _ in fps
-                    if (addr := fp.try_get_property("atopile_address"))
+                    if (
+                        addr := Property.try_get_property(
+                            fp.propertys, "atopile_address"
+                        )
+                    )
                 }.issubset(new_fps)
             }
 
@@ -427,7 +431,7 @@ def update_pcb(
     # attach subaddresses for lifecycle manager to use
     layout.attach_subaddresses_to_modules(app)
 
-    original_pcb = deepcopy(pcb.pcb_file)
+    original_pcb = kicad.copy(pcb.pcb_file)
     pcb.transformer.apply_design()
     pcb.transformer.check_unattached_fps()
 
@@ -506,7 +510,7 @@ def generate_netlist(
 
     netlist_path = config.build.paths.netlist
     netlist_path.parent.mkdir(parents=True, exist_ok=True)
-    kicad_netlist.dumps(netlist_path)
+    kicad.dumps(kicad_netlist, netlist_path)
 
 
 @muster.register(

@@ -13,7 +13,8 @@ def test_pcb():
         "/home/needspeed/workspace/atopile/test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb"
     )
     pcb = C_pcb.loads(path.read_text())
-    print(pcb.kicad_pcb.footprints[0])
+    print(pcb.field_names)
+    # print(pcb.kicad_pcb.footprints[0])
     print("\n--- Print complete, exiting ---")
 
 

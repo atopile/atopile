@@ -21,8 +21,6 @@
 - [skip for now] src/faebryk/exporters/schematic/kicad/transformer.py
 - [ ] src/faebryk/libs/picker/lcsc.py (compare_without_uuid & v6 symbol)
 
-CAREFUL WITH DEEPCOPY
-
 enums: handle sym vs str enums (maybe sexp field)
 
 test checksum
@@ -32,5 +30,8 @@ load-dump roundtrip
 
   handle old versions
 
-- easyeda (fp & symbol)
 - old user data (pcb)
+
+visit_dataclass
+
+deepcopy

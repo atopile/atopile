@@ -105,11 +105,11 @@ pub const PyiGenerator = struct {
 
         // Generate as proper Enum class
         try self.output.writer().print("class {s}(str, Enum):\n", .{clean_name});
-        
+
         inline for (enum_info.fields) |field| {
             // Convert field name to valid Python identifier
             try self.output.writer().print("    ", .{});
-            
+
             // Handle field names - replace spaces/hyphens with underscores
             // and convert to uppercase
             for (field.name) |c| {
@@ -161,6 +161,9 @@ pub const PyiGenerator = struct {
 
         // Generate __repr__ method
         try self.output.writer().print("    def __repr__(self) -> str: ...\n", .{});
+
+        try self.output.writer().print("    @property\n", .{});
+        try self.output.writer().print("    def __field_names__(self) -> list[str]: ...\n", .{});
 
         // Generate methods
         inline for (struct_info.decls) |decl| {

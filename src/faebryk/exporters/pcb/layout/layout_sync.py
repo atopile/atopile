@@ -253,11 +253,11 @@ class LayoutSync:
             fp for fp in sub_pcb.footprints if not self._get_footprint_addr(fp)
         ]
         for sub_fp in manual_fps:
-            top_fp = copy.deepcopy(sub_fp)
-            top_fp.uuid = gen_uuid()
+            top_fp = kicad.copy(sub_fp)
+            top_fp.uuid = kicad.gen_uuid()
 
             for pad in top_fp.pads:
-                pad.uuid = gen_uuid()
+                pad.uuid = kicad.gen_uuid()
                 if pad.net and pad.net.name in net_map:
                     top_net_name = net_map[pad.net.name]
                     pad.net = kicad.pcb.Net(
@@ -295,8 +295,8 @@ class LayoutSync:
                 | kicad.pcb.ArcSegment
                 | kicad.pcb.Zone
                 | kicad.pcb.Via
-            ) = copy.deepcopy(track)
-            new_track.uuid = gen_uuid()
+            ) = kicad.copy(track)
+            new_track.uuid = kicad.gen_uuid()
             if sub_net and sub_net.name in net_map:
                 new_track.net = self._get_net_number(top_pcb, net_map[sub_net.name])
                 if isinstance(new_track, kicad.pcb.Zone):
@@ -319,8 +319,8 @@ class LayoutSync:
             # TODO tables are weird about uuids
             # + sub_pcb.tables
         ):
-            new_gr = copy.deepcopy(gr)
-            new_gr.uuid = gen_uuid()
+            new_gr = kicad.copy(gr)
+            new_gr.uuid = kicad.gen_uuid()
 
             PCB_Transformer.move_object(new_gr, offset)
             new_graphics.append(new_gr)

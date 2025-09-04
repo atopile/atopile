@@ -3,7 +3,6 @@
 
 import logging
 import pprint
-from copy import deepcopy
 from functools import singledispatch
 from itertools import chain
 from os import PathLike
@@ -343,8 +342,15 @@ class SchTransformer:
         for section in zip(coords[:-1], coords[1:]):
             self.sch.wires.append(
                 kicad.schematic.Wire(
-                    pts=kicad.schematic.Pts(xys=[C_xy(x=coord[0], y=coord[1]) for coord in section]),
-                    stroke=stroke or kicad.schematic.Stroke(),
+                    pts=kicad.schematic.Pts(
+                        xys=[C_xy(x=coord[0], y=coord[1]) for coord in section]
+                    ),
+                    stroke=stroke
+                    or kicad.schematic.Stroke(
+                        width=0,
+                        type=kicad.schematic.E_stroke_type.SOLID,
+                        color=kicad.schematic.Color(r=0, g=0, b=0, a=0),
+                    ),
                     uuid=self.gen_uuid(mark=True),
                 )
             )
@@ -360,9 +366,10 @@ class SchTransformer:
             kicad.schematic.Text(
                 text=text,
                 at=at,
-                effects=Effects(
+                effects=kicad.pcb.Effects(
                     font=font,
                     justifys=[C_justify(list(alignment))] if alignment else [],
+                    hide=None,
                 ),
                 uuid=self.gen_uuid(mark=True),
             )
@@ -377,7 +384,7 @@ class SchTransformer:
             return self.sch.lib_symbols.symbols[lib_id]
 
         lib_name, symbol_name = lib_id.split(":")
-        lib_sym = deepcopy(
+        lib_sym = kicad.copy(
             kicad.get(self.get_symbol_file(lib_name).kicad_sym.symbols, symbol_name)
         )
         lib_sym.name = lib_id
@@ -420,7 +427,7 @@ class SchTransformer:
             unit_instance = kicad.schematic.SymbolInstance(
                 lib_id=lib_id,
                 unit=unit_key + 1,  # yes, these are indexed from 1...
-                at=C_xyr(x=at[0], y=at[1], angle=rotation),
+                at=C_xyr(x=at[0], y=at[1], r=rotation),
                 in_bom=True,
                 on_board=True,
                 pins=pins,

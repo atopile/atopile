@@ -871,14 +871,49 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
     const WrapperType = PyObjectWrapper(T);
     const struct_info = info.@"struct";
 
+    // Generate the field_names property getter function at comptime
+    const get_field_names = struct {
+        pub fn func(self: ?*py.PyObject, closure: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            _ = self; // We don't need the instance for this
+            _ = closure; // Not used
+
+            // Create a Python list with all field names
+            const list = py.PyList_New(@intCast(struct_info.fields.len));
+            if (list == null) return null;
+
+            inline for (struct_info.fields, 0..) |field, i| {
+                const field_name_str = py.PyUnicode_FromString(field.name.ptr);
+                if (field_name_str == null) {
+                    if (list) |l| py.Py_DECREF(l);
+                    return null;
+                }
+                // PyList_SetItem steals the reference, so we don't need to DECREF field_name_str
+                if (py.PyList_SetItem(list, @intCast(i), field_name_str) != 0) {
+                    if (list) |l| py.Py_DECREF(l);
+                    return null;
+                }
+            }
+
+            return list;
+        }
+    }.func;
+
     // Build the getset array at comptime
     const getset_array = comptime blk: {
-        var getset: [struct_info.fields.len + 1]py.PyGetSetDef = undefined;
+        var getset: [struct_info.fields.len + 2]py.PyGetSetDef = undefined; // +2 for field_names property and sentinel
         for (struct_info.fields, 0..) |field, i| {
             const field_name_z = field.name ++ "\x00";
             getset[i] = genProp(WrapperType, field.type, field_name_z);
         }
-        getset[struct_info.fields.len] = py.GS_SENTINEL;
+        // Add field_names property
+        getset[struct_info.fields.len] = py.PyGetSetDef{
+            .name = "__field_names__",
+            .get = @ptrCast(&get_field_names),
+            .set = null, // Read-only property
+            .doc = "List of field names in this struct",
+            .closure = null,
+        };
+        getset[struct_info.fields.len + 1] = py.GS_SENTINEL;
         break :blk getset;
     };
 
@@ -981,20 +1016,20 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                     std.heap.c_allocator.destroy(wrapper_obj.data);
                                     return -1;
                                 }
-                                
+
                                 const list_size = py.PyList_Size(value);
                                 if (list_size < 0) {
                                     std.heap.c_allocator.destroy(wrapper_obj.data);
                                     return -1;
                                 }
-                                
+
                                 // Allocate memory for the slice
                                 const slice = std.heap.c_allocator.alloc(ptr.child, @intCast(list_size)) catch {
                                     py.PyErr_SetString(py.PyExc_ValueError, "Failed to allocate memory for list");
                                     std.heap.c_allocator.destroy(wrapper_obj.data);
                                     return -1;
                                 };
-                                
+
                                 // Convert each list item
                                 for (0..@intCast(list_size)) |i| {
                                     const item = py.PyList_GetItem(value, @intCast(i));
@@ -1003,7 +1038,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                         std.heap.c_allocator.destroy(wrapper_obj.data);
                                         return -1;
                                     }
-                                    
+
                                     // Convert based on child type
                                     const child_info = @typeInfo(ptr.child);
                                     switch (child_info) {
@@ -1071,7 +1106,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                         },
                                     }
                                 }
-                                
+
                                 @field(wrapper_obj.data.*, field.name) = slice;
                             } else {
                                 // Other pointer types not yet supported

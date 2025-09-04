@@ -1049,6 +1049,25 @@ class kicad:
     def compare_without_uuid(old: Any, new: Any):
         return False
 
+    class KicadStruct(Protocol):
+        @property
+        def __field_names__(self) -> list[str]: ...
+
+    type Primitive = str | list | int | float | bool | tuple | None
+
+    @staticmethod
+    def copy[T: KicadStruct | Primitive](old: T) -> T:
+        if old is None:
+            return old
+        if isinstance(old, (str, int, float, bool, tuple)):
+            return old
+        if isinstance(old, list):
+            return [kicad.copy(item) for item in old]  # type: ignore
+        t = type(old)
+        return t(
+            **{name: kicad.copy(getattr(old, name)) for name in old.__field_names__}
+        )
+
 
 class Property:
     class _Property(Protocol):
@@ -1057,7 +1076,7 @@ class Property:
 
         # def __init__(self, name: str, value: str): ...
 
-    class _PropertyHolder(Protocol):
+    class _PropertyHolder(kicad.KicadStruct):
         propertys: list  # [_Property]
 
     class PropertyNotSet(Exception):
@@ -1065,8 +1084,7 @@ class Property:
 
     @staticmethod
     def _hashable(obj: _PropertyHolder, remove_uuid: bool = True):
-        # TODO does this work?
-        copy = deepcopy(obj)
+        copy = kicad.copy(obj)
 
         Property.delete_property(copy.propertys, "checksum")
         # TODO: this doesn't work atm
