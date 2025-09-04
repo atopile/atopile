@@ -1,9 +1,48 @@
 const std = @import("std");
-const structure = @import("../structure.zig");
+const structure = @import("../../structure.zig");
+const pcb = @import("../pcb.zig");
 
 const str = []const u8;
 
-const pcb = @import("pcb.zig");
+pub const Line = struct {
+    start: pcb.Xy,
+    end: pcb.Xy,
+    layer: str,
+    width: f64,
+};
+
+pub const Circle = struct {
+    center: pcb.Xy,
+    end: pcb.Xy,
+    width: f64,
+    fill: pcb.E_fill = .no,
+    layer: str,
+};
+
+pub const Arc = struct {
+    start: pcb.Xy,
+    end: pcb.Xy,
+    width: f64,
+    layer: str,
+    angle: f64,
+};
+
+pub const Rect = struct {
+    start: pcb.Xy,
+    end: pcb.Xy,
+    width: f64,
+    fill: pcb.E_fill,
+    layer: str,
+};
+
+pub const Model = struct {
+    path: str,
+    scale: pcb.ModelXyz,
+    rotate: pcb.ModelXyz,
+    // some older versioins have at instead of offset
+    offset: ?pcb.ModelXyz = null,
+    at: ?pcb.ModelXyz = null,
+};
 
 pub const Footprint = struct {
     // common with pcb.Footprint
@@ -15,20 +54,17 @@ pub const Footprint = struct {
     propertys: []pcb.Property = &.{},
     fp_texts: []pcb.FpText = &.{},
     attr: []str = &.{},
-    fp_lines: []pcb.Line = &.{},
-    fp_arcs: []pcb.Arc = &.{},
-    fp_circles: []pcb.Circle = &.{},
-    fp_rects: []pcb.Rect = &.{},
+    fp_lines: []Line = &.{},
+    fp_arcs: []Arc = &.{},
+    fp_circles: []Circle = &.{},
+    fp_rects: []Rect = &.{},
     fp_poly: []pcb.Polygon = &.{},
     pads: []pcb.Pad = &.{},
-    models: []pcb.Model = &.{},
+    model: ?Model = null,
 
     // additional fields
     description: ?str = null,
     tags: []str = &.{},
-    version: i32 = pcb.KICAD_FP_VERSION,
-    generator: str = "faebryk",
-    generator_version: str = "latest",
     tedit: ?str = null,
 
     pub const fields_meta = .{
@@ -43,11 +79,8 @@ pub const Footprint = struct {
         .pads = structure.SexpField{ .multidict = true, .sexp_name = "pad" },
         .models = structure.SexpField{ .multidict = true, .sexp_name = "model" },
         //
-        .description = structure.SexpField{ .order = -1 },
+        .description = structure.SexpField{ .order = -1, .sexp_name = "descr" },
         .tags = structure.SexpField{ .order = -1 },
-        .version = structure.SexpField{ .order = -1 },
-        .generator = structure.SexpField{ .order = -1 },
-        .generator_version = structure.SexpField{ .order = -1 },
         .tedit = structure.SexpField{ .order = -1 },
     };
 };

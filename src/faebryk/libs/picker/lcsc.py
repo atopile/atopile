@@ -218,12 +218,14 @@ class EasyEDAFootprint:
         fp_raw = call_with_file_capture(
             lambda path: exporter.export(str(path), model_path)  # type: ignore
         )[1]
-        fp = kicad.loads(kicad.footprint.FootprintFile, fp_raw.decode("utf-8"))
+        fp = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
         # workaround: remove wrl ending easyeda likes to add for no reason
-        for m in fp.footprint.models:
+        if m := fp.footprint.model:
             if Path(m.path).suffix == ".wrl":
                 m.path = Path(m.path).parent.as_posix()
-        return cls(fp)
+
+        new_fp = kicad.convert(fp)
+        return cls(new_fp)
 
     def dump(self, path: Path):
         type(self).cache[path] = self
@@ -239,7 +241,7 @@ class EasyEDAFootprint:
         return self.library_name.split(":")[-1]
 
     def compare(self, other: "EasyEDAFootprint"):
-        return compare_without_uuid(
+        return kicad.compare_without_uuid(
             self.footprint,
             other.footprint,
         )
@@ -253,22 +255,15 @@ class EasyEDASymbol:
 
     @classmethod
     def from_api(cls, symbol: EeSymbol):
-        from faebryk.libs.kicad.fileformats_v6 import C_symbol_in_file_v6
-        from faebryk.libs.sexp.dataclass_sexp import loads as sexp_loads
-
         exporter = ExporterSymbolKicad(symbol, KicadVersion.v6)
         # TODO this is weird
         fp_lib_name = symbol.info.lcsc_id
         raw = exporter.export(footprint_lib_name=fp_lib_name)
-        sym = sexp_loads(raw, C_symbol_in_file_v6).symbol.convert_to_new()
-        sym_file = kicad.symbol.SymbolFile(
-            kicad.symbol.SymbolLib(
-                version=1,
-                generator="faebryk",
-                symbols=[sym],
-            )
-        )
-        return cls(sym_file)
+        in_file = f"(kicad_sym {raw})"
+        sym = kicad.loads(kicad.symbol_v6.SymbolFile, in_file)
+        new_sym = kicad.convert(sym)
+
+        return cls(new_sym)
 
     def serialize(self) -> bytes:
         return kicad.dumps(self.symbol).encode("utf-8")
@@ -288,7 +283,7 @@ class EasyEDASymbol:
         return out
 
     def compare(self, other: "EasyEDASymbol"):
-        return compare_without_uuid(
+        return kicad.compare_without_uuid(
             self.symbol,
             other.symbol,
         )

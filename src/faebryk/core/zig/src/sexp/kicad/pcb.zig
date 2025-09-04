@@ -188,6 +188,11 @@ pub const E_pad_chamfer = enum {
 pub const E_pad_drill_shape = enum {
     circle,
     oval, // stadium
+
+    pub const fields_meta = .{
+        .circle = .{ .sexp_name = "" },
+        .oval = .{ .sexp_name = "oval" },
+    };
 };
 
 // Pad tenting enum
@@ -342,7 +347,7 @@ pub const Line = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -2 },
@@ -363,7 +368,7 @@ pub const Arc = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -3 },
@@ -384,7 +389,7 @@ pub const Circle = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .center = structure.SexpField{ .order = -2 },
@@ -404,7 +409,7 @@ pub const Rect = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -2 },
@@ -449,7 +454,7 @@ pub const Curve = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .pts = structure.SexpField{ .order = -1 },
@@ -462,7 +467,7 @@ pub const Text = struct {
     text: str,
     at: Xyr,
     layer: str,
-    uuid: str,
+    uuid: ?str = null,
     effects: Effects,
 
     pub const fields_meta = .{
@@ -476,7 +481,7 @@ pub const FpText = struct {
     at: Xyr,
     layer: str,
     hide: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
     effects: Effects,
 
     pub const fields_meta = .{
@@ -489,7 +494,19 @@ pub const FpText = struct {
 pub const Drill = f64;
 
 // PadDrill can be either a simple number (drill 1.2) or a structured drill with shape/size/offset
-pub const PadDrill = f64;
+pub const PadDrill = struct {
+    shape: ?E_pad_drill_shape = null,
+    size_x: ?f64 = null,
+    size_y: ?f64 = null,
+    offset: ?Xy = null,
+
+    pub const fields_meta = .{
+        .shape = structure.SexpField{ .positional = true },
+        .size_x = structure.SexpField{ .positional = true },
+        .size_y = structure.SexpField{ .positional = true },
+        .offset = structure.SexpField{},
+    };
+};
 
 pub const PadOptions = struct {
     clearance: ?E_pad_clearance = null,
@@ -526,7 +543,7 @@ pub const Pad = struct {
     properties: ?E_pad_property = null,
     options: ?PadOptions = null,
     tenting: ?PadTenting = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
@@ -553,7 +570,7 @@ pub const Property = struct {
     at: Xyr,
     layer: str,
     hide: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
     effects: Effects,
 
     pub const fields_meta = .{
@@ -592,7 +609,7 @@ pub const Attr = enum {
 pub const Footprint = struct {
     name: str,
     layer: str = "F.Cu",
-    uuid: str,
+    uuid: ?str = null,
     at: Xyr,
     path: ?str = null,
     propertys: []Property = &.{},
@@ -660,7 +677,7 @@ pub const Via = struct {
     tenting: ?ViaTenting = null,
     free: ?bool = null,
     locked: ?bool = null,
-    uuid: str,
+    uuid: ?str = null,
 };
 
 // Zone structures
@@ -734,7 +751,7 @@ pub const Zone = struct {
     net: i32,
     net_name: str,
     layers: ?[]str = null,
-    uuid: str,
+    uuid: ?str = null,
     name: ?str = null,
     hatch: Hatch,
     priority: ?i32 = null,
@@ -761,7 +778,7 @@ pub const Segment = struct {
     width: f64,
     layer: ?str = null,
     net: i32,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -3 },
@@ -777,7 +794,7 @@ pub const ArcSegment = struct {
     width: f64,
     layer: ?str = null,
     net: i32,
-    uuid: str,
+    uuid: ?str = null,
 };
 
 // Board setup structures
@@ -1029,7 +1046,7 @@ pub const Image = struct {
     layer: str,
     scale: f64 = 1.0,
     data: ?Data = null,
-    uuid: str,
+    uuid: ?str = null,
 };
 
 pub const EmbeddedFile = struct {
@@ -1109,7 +1126,7 @@ pub const TextBox = struct {
     span: ?Span = null,
     effects: Effects,
     render_cache: ?RenderCache = null,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .text = structure.SexpField{ .positional = true },
@@ -1121,7 +1138,7 @@ pub const TableCell = struct {
     text: str,
     layer: str,
     effects: Effects,
-    uuid: str,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .text = structure.SexpField{ .positional = true },
@@ -1191,7 +1208,7 @@ pub const DimensionStyle = struct {
 pub const Dimension = struct {
     type: E_dimension_type,
     layer: str,
-    uuid: str,
+    uuid: ?str = null,
     pts: DimensionPts,
     height: f64,
     orientation: ?f64 = null,
@@ -1203,7 +1220,7 @@ pub const Dimension = struct {
 
 pub const Group = struct {
     name: ?str = null,
-    uuid: str,
+    uuid: ?str = null,
     locked: ?bool = null,
     members: []str = &.{},
 
@@ -1217,7 +1234,7 @@ pub const Target = struct {
     size: Xy,
     width: f64,
     layer: str,
-    uuid: str,
+    uuid: ?str = null,
 };
 
 // File structure

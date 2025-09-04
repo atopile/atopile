@@ -343,7 +343,7 @@ class SchTransformer:
         for section in zip(coords[:-1], coords[1:]):
             self.sch.wires.append(
                 kicad.schematic.Wire(
-                    pts=kicad.schematic.Pts(xys=[C_xy(*coord) for coord in section]),
+                    pts=kicad.schematic.Pts(xys=[C_xy(x=coord[0], y=coord[1]) for coord in section]),
                     stroke=stroke or kicad.schematic.Stroke(),
                     uuid=self.gen_uuid(mark=True),
                 )
@@ -420,7 +420,7 @@ class SchTransformer:
             unit_instance = kicad.schematic.SymbolInstance(
                 lib_id=lib_id,
                 unit=unit_key + 1,  # yes, these are indexed from 1...
-                at=C_xyr(at[0], at[1], rotation),
+                at=C_xyr(x=at[0], y=at[1], angle=rotation),
                 in_bom=True,
                 on_board=True,
                 pins=pins,

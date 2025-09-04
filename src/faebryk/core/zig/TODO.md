@@ -11,23 +11,26 @@
 - [ ] test/libs/kicad/test_fileformats.py
 - [x] test/libs/kicad/test_sexp.py (not needed anymore)
 - [x] test/exporters/schematic/kicad/test_schematic_transformer.py (symbol)
+- [x] src/faebryk/library/KicadFootprint.py (need to handle old version still)
+- [x] src/faebryk/library/PCB.py (need to handle old version still)
+- [x] src/faebryk/libs/ato_part.py (checksum)
 
 # Defered
 
 - [skip for now] src/faebryk/exporters/pcb/kicad/transformer.py
 - [skip for now] src/faebryk/exporters/schematic/kicad/transformer.py
-- [ ] src/faebryk/library/KicadFootprint.py (need to handle old version still)
-- [ ] src/faebryk/library/PCB.py (need to handle old version still)
-- [ ] src/faebryk/libs/ato_part.py (checksum)
 - [ ] src/faebryk/libs/picker/lcsc.py (compare_without_uuid & v6 symbol)
 
 CAREFUL WITH DEEPCOPY
 
 enums: handle sym vs str enums (maybe sexp field)
 
-catchall
+test checksum
 load-dump roundtrip
-handle old versions
+
+- catchall
+
+  handle old versions
 
 - easyeda (fp & symbol)
 - old user data (pcb)

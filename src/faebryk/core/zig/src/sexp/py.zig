@@ -35,39 +35,39 @@ fn generateModule(
                     if (decl_info == .type) {
                         const inner_type = decl_value;
                         const inner_info = @typeInfo(inner_type);
-                        
+
                         if (inner_info == .@"enum") {
                             // Create a simple Python enum-like object using SimpleNamespace
                             // This allows attribute access like E_pad_type.SMD
                             const enum_name_z = decl.name ++ "\x00";
-                            
+
                             // Import types module to get SimpleNamespace
                             const types_module = py.PyImport_ImportModule("types");
                             if (types_module == null) return -1;
                             defer py.Py_DECREF(types_module.?);
-                            
+
                             // Get SimpleNamespace class
                             const simple_namespace = py.PyObject_GetAttrString(types_module, "SimpleNamespace");
                             if (simple_namespace == null) return -1;
                             defer py.Py_DECREF(simple_namespace.?);
-                            
+
                             // Create kwargs dict for SimpleNamespace
                             const kwargs = py.PyDict_New();
                             if (kwargs == null) return -1;
                             defer py.Py_DECREF(kwargs.?);
-                            
+
                             // Add enum values with both original and uppercase names
                             inline for (inner_info.@"enum".fields) |field| {
                                 const field_value = py.PyUnicode_FromString(field.name.ptr);
                                 if (field_value == null) return -1;
-                                
+
                                 // Add with original name (e.g., "smd")
                                 const field_name_z = field.name ++ "\x00";
                                 if (py.PyDict_SetItemString(kwargs, field_name_z, field_value) < 0) {
                                     py.Py_DECREF(field_value.?);
                                     return -1;
                                 }
-                                
+
                                 // Also add with uppercase name (e.g., "SMD")
                                 var upper_name: [256]u8 = undefined;
                                 var i: usize = 0;
@@ -76,22 +76,22 @@ fn generateModule(
                                     upper_name[i] = if (c >= 'a' and c <= 'z') c - 32 else c;
                                 }
                                 upper_name[i] = 0;
-                                
+
                                 if (py.PyDict_SetItemString(kwargs, @ptrCast(&upper_name), field_value) < 0) {
                                     py.Py_DECREF(field_value.?);
                                     return -1;
                                 }
                                 py.Py_DECREF(field_value.?);
                             }
-                            
+
                             // Create SimpleNamespace instance
                             const empty_tuple = py.PyTuple_New(0);
                             if (empty_tuple == null) return -1;
                             defer py.Py_DECREF(empty_tuple.?);
-                            
+
                             const enum_obj = py.PyObject_Call(simple_namespace, empty_tuple, kwargs);
                             if (enum_obj == null) return -1;
-                            
+
                             // Add to module
                             if (py.PyModule_AddObject(py_module, enum_name_z, enum_obj) < 0) {
                                 py.Py_DECREF(enum_obj.?);
@@ -245,6 +245,39 @@ fn generateModule(
                         } else {
                             break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}'", .{ctx.path}) catch "Failed to parse file";
                         }
+                    } else if (err == error.UnexpectedType) {
+                        const field_info = if (ctx.field_name) |field|
+                            std.fmt.allocPrint(std.heap.c_allocator, ", field '{s}'", .{field}) catch ""
+                        else
+                            "";
+
+                        if (ctx.sexp_preview) |preview| {
+                            if (ctx.line) |line| {
+                                break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s} at line {}: {s}", .{
+                                    ctx.path,
+                                    field_info,
+                                    line,
+                                    preview,
+                                }) catch {
+                                    break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s}: {s}", .{
+                                        ctx.path,
+                                        field_info,
+                                        preview,
+                                    }) catch "Failed to parse file";
+                                };
+                            } else {
+                                break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s}: {s}", .{
+                                    ctx.path,
+                                    field_info,
+                                    preview,
+                                }) catch "Failed to parse file";
+                            }
+                        } else {
+                            break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s}", .{
+                                ctx.path,
+                                field_info,
+                            }) catch "Failed to parse file";
+                        }
                     } else {
                         break :blk std.fmt.bufPrintZ(&error_msg, "Error in '{s}': {}", .{
                             ctx.path,
@@ -355,6 +388,10 @@ const NetlistModule = generateModule("netlist", "pyzig.netlist", sexp.kicad.netl
 const FpLibTableModule = generateModule("fp_lib_table", "pyzig.fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile, true);
 const SymbolModule = generateModule("symbol", "pyzig.symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile, true);
 const SchematicModule = generateModule("schematic", "pyzig.schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile, true);
+
+const FootprintV5Module = generateModule("footprint_v5", "pyzig.footprint_v5", sexp.kicad.v5.footprint, sexp.kicad.v5.footprint.FootprintFile, true);
+const SymbolV6Module = generateModule("symbol_v6", "pyzig.symbol_v6", sexp.kicad.v6.symbol, sexp.kicad.v6.symbol.SymbolFile, true);
+
 // Add more modules as needed
 
 // Main module methods
@@ -434,6 +471,24 @@ export fn PyInit_pyzig() ?*py.PyObject {
     }
     if (py.PyModule_AddObject(module, "schematic", schematic_module) < 0) {
         py.PyErr_SetString(py.PyExc_ValueError, "Failed to add schematic submodule");
+        return null;
+    }
+
+    const footprint_v5_module = FootprintV5Module.createModule();
+    if (footprint_v5_module == null) {
+        return null;
+    }
+    if (py.PyModule_AddObject(module, "footprint_v5", footprint_v5_module) < 0) {
+        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add footprint_v5 submodule");
+        return null;
+    }
+
+    const symbol_v6_module = SymbolV6Module.createModule();
+    if (symbol_v6_module == null) {
+        return null;
+    }
+    if (py.PyModule_AddObject(module, "symbol_v6", symbol_v6_module) < 0) {
+        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add symbol_v6 submodule");
         return null;
     }
 

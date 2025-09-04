@@ -1,26 +1,28 @@
 const std = @import("std");
 const structure = @import("../structure.zig");
 
+const str = []const u8;
+
 // Component structures
 pub const Property = struct {
-    name: []const u8,
-    value: []const u8,
+    name: str,
+    value: str,
 };
 
 pub const Libsource = struct {
-    lib: []const u8,
-    part: []const u8,
-    description: []const u8,
+    lib: str,
+    part: str,
+    description: str,
 };
 
 pub const Sheetpath = struct {
-    names: []const u8,
-    tstamps: []const u8,
+    names: str,
+    tstamps: str,
 };
 
 pub const Field = struct {
-    name: []const u8,
-    value: ?[]const u8 = null,
+    name: str,
+    value: ?str = null,
 
     pub const fields_meta = .{
         // comes after name
@@ -37,7 +39,7 @@ pub const Fields = struct {
 };
 
 pub const Tstamps = struct {
-    tstamps: [][]const u8 = &.{},
+    tstamps: []str = &.{},
 
     pub const fields_meta = .{
         .tstamps = structure.SexpField{ .positional = true },
@@ -45,17 +47,17 @@ pub const Tstamps = struct {
 };
 
 pub const Component = struct {
-    ref: []const u8,
-    value: []const u8,
-    footprint: []const u8,
+    ref: str,
+    value: str,
+    footprint: str,
     propertys: []Property = &.{},
     // TODO handle multiple tstamp values
     //tstamps: Tstamps,
-    tstamps: []const u8,
+    tstamps: str,
     fields: ?Fields = null,
     sheetpath: ?Sheetpath = null,
     libsource: ?Libsource = null,
-    datasheet: ?[]const u8 = null, // Added based on real file
+    datasheet: ?str = null, // Added based on real file
 
     pub const fields_meta = .{
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
@@ -72,15 +74,15 @@ pub const Components = struct {
 
 // Net structures
 pub const Node = struct {
-    ref: []const u8,
-    pin: []const u8,
-    pintype: ?[]const u8 = null,
-    pinfunction: ?[]const u8 = null,
+    ref: str,
+    pin: str,
+    pintype: ?str = null,
+    pinfunction: ?str = null,
 };
 
 pub const Net = struct {
     code: i32,
-    name: []const u8,
+    name: str,
     nodes: []Node = &.{},
 
     pub const fields_meta = .{
@@ -98,16 +100,16 @@ pub const Nets = struct {
 
 // Design structures
 pub const Comment = struct {
-    number: []const u8,
-    value: []const u8,
+    number: str,
+    value: str,
 };
 
 pub const TitleBlock = struct {
-    title: []const u8 = "",
-    company: []const u8 = "",
-    rev: []const u8 = "",
-    date: []const u8 = "",
-    source: []const u8,
+    title: str = "",
+    company: str = "",
+    rev: str = "",
+    date: str = "",
+    source: str,
     comment: []Comment = &.{},
 
     pub const fields_meta = .{
@@ -116,22 +118,22 @@ pub const TitleBlock = struct {
 };
 
 pub const Sheet = struct {
-    number: []const u8,
-    name: []const u8,
-    tstamps: []const u8,
+    number: str,
+    name: str,
+    tstamps: str,
     title_block: TitleBlock,
 };
 
 pub const Design = struct {
-    source: []const u8,
-    date: []const u8,
-    tool: []const u8,
+    source: str,
+    date: str,
+    tool: str,
     sheet: Sheet,
 };
 
 // Libparts structures
 pub const Fp = struct {
-    fp: []const u8,
+    fp: str,
 
     pub const fields_meta = .{
         .fp = structure.SexpField{ .positional = true },
@@ -147,9 +149,9 @@ pub const Footprints = struct {
 };
 
 pub const Pin = struct {
-    num: []const u8,
-    name: []const u8,
-    type: []const u8,
+    num: str,
+    name: str,
+    type: str,
 };
 
 pub const Pins = struct {
@@ -161,8 +163,8 @@ pub const Pins = struct {
 };
 
 pub const Libpart = struct {
-    lib: []const u8,
-    part: []const u8,
+    lib: str,
+    part: str,
     fields: ?Fields = null,
     pins: ?Pins = null,
     footprints: ?Footprints = null,
@@ -181,7 +183,7 @@ pub const Libraries = struct {
 };
 
 pub const Netlist = struct {
-    version: []const u8,
+    version: str,
     components: Components = .{},
     nets: Nets = .{},
     design: ?Design = null,

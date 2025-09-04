@@ -8,21 +8,72 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.pcb import (
-    Arc,
-    Circle,
-    FpText,
-    Line,
-    Model,
-    Pad,
-    Polygon,
-    Property,
-    Rect,
-    Xyr,
-)
+from faebryk.core.zig.pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr
 
 # Dirty hack to not error in ruff check
 type Allocator = Any
+
+class Line:
+    start: Xy
+    end: Xy
+    layer: str
+    width: float
+
+    def __init__(self, start: Xy, end: Xy, layer: str, width: float) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Circle:
+    center: Xy
+    end: Xy
+    width: float
+    fill: str
+    layer: str
+
+    def __init__(
+        self, center: Xy, end: Xy, width: float, fill: str, layer: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Arc:
+    start: Xy
+    end: Xy
+    width: float
+    layer: str
+    angle: float
+
+    def __init__(
+        self, start: Xy, end: Xy, width: float, layer: str, angle: float
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Rect:
+    start: Xy
+    end: Xy
+    width: float
+    fill: str
+    layer: str
+
+    def __init__(
+        self, start: Xy, end: Xy, width: float, fill: str, layer: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Model:
+    path: str
+    scale: ModelXyz
+    rotate: ModelXyz
+    offset: ModelXyz | None
+    at: ModelXyz | None
+
+    def __init__(
+        self,
+        path: str,
+        scale: ModelXyz,
+        rotate: ModelXyz,
+        offset: ModelXyz | None,
+        at: ModelXyz | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Footprint:
     name: str
@@ -39,12 +90,9 @@ class Footprint:
     fp_rects: list[Rect]
     fp_poly: list[Polygon]
     pads: list[Pad]
-    models: list[Model]
+    model: Model | None
     description: str | None
     tags: list[str]
-    version: int
-    generator: str
-    generator_version: str
     tedit: str | None
 
     def __init__(
@@ -63,12 +111,9 @@ class Footprint:
         fp_rects: list[Rect],
         fp_poly: list[Polygon],
         pads: list[Pad],
-        models: list[Model],
+        model: Model | None,
         description: str | None,
         tags: list[str],
-        version: int,
-        generator: str,
-        generator_version: str,
         tedit: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...

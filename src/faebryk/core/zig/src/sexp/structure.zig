@@ -407,15 +407,119 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             }
 
             if (positional_idx < items.len) {
-                // Set context for positional fields too
-                setErrorContext(.{
-                    .path = @typeName(T),
-                    .field_name = field.name,
-                    .sexp_preview = null,
-                }, items[positional_idx]);
-                @field(result, field.name) = try decode(field.type, allocator, items[positional_idx]);
+                // Check if this field has a default value (either optional or has default_value_ptr)
+                const has_default = comptime isOptional(field.type) or field.default_value_ptr != null;
+                
+                // For positional fields with defaults, check if the current item matches the expected type
+                // This handles cases like PadDrill where shape has a default and might be skipped
+                if (has_default) {
+                    const actual_type = if (comptime isOptional(field.type))
+                        @typeInfo(field.type).optional.child
+                    else
+                        field.type;
+                    const type_info = @typeInfo(actual_type);
+                    
+                    // For enum fields with defaults, check if current item is a matching symbol
+                    if (type_info == .@"enum") {
+                        if (ast.getSymbol(items[positional_idx])) |sym| {
+                            // Check if this symbol is a valid enum value
+                            var is_valid_enum = false;
+                            inline for (std.meta.fields(actual_type)) |enum_field| {
+                                // Check both the field name and any custom sexp_name
+                                if (std.mem.eql(u8, sym, enum_field.name)) {
+                                    is_valid_enum = true;
+                                    break;
+                                }
+                                // Also check if enum has custom sexp_name metadata
+                                if (@hasDecl(actual_type, "fields_meta")) {
+                                    if (@hasField(@TypeOf(actual_type.fields_meta), enum_field.name)) {
+                                        const enum_meta = @field(actual_type.fields_meta, enum_field.name);
+                                        if (@hasField(@TypeOf(enum_meta), "sexp_name")) {
+                                            const sexp_name = enum_meta.sexp_name;
+                                            if (@typeInfo(@TypeOf(sexp_name)) == .optional) {
+                                                if (sexp_name) |name| {
+                                                    if (std.mem.eql(u8, sym, name)) {
+                                                        is_valid_enum = true;
+                                                        break;
+                                                    }
+                                                }
+                                            } else {
+                                                if (std.mem.eql(u8, sym, sexp_name)) {
+                                                    is_valid_enum = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (is_valid_enum) {
+                                // This is a valid enum value, decode it
+                                setErrorContext(.{
+                                    .path = @typeName(T),
+                                    .field_name = field.name,
+                                    .sexp_preview = null,
+                                }, items[positional_idx]);
+                                @field(result, field.name) = try decode(field.type, allocator, items[positional_idx]);
+                                fields_set.set(field_idx);
+                                positional_idx += 1;
+                            } else {
+                                // Not a valid enum value, skip this field (use default/null)
+                                if (comptime isOptional(field.type)) {
+                                    @field(result, field.name) = null;
+                                }
+                                // For non-optional with default, the default was already set by zeroInit
+                                fields_set.set(field_idx);
+                                // Don't advance positional_idx - let next field try this item
+                            }
+                        } else {
+                            // Not a symbol, skip this enum field (use default/null)
+                            if (comptime isOptional(field.type)) {
+                                @field(result, field.name) = null;
+                            }
+                            // For non-optional with default, the default was already set by zeroInit
+                            fields_set.set(field_idx);
+                            // Don't advance positional_idx - let next field try this item
+                        }
+                    } else {
+                        // For other types with defaults, try to decode and handle errors
+                        // Save the current error context in case decode fails
+                        const saved_ctx = getErrorContext();
+                        clearErrorContext();
+                        
+                        // Try to decode this field
+                        if (decode(field.type, allocator, items[positional_idx])) |value| {
+                            @field(result, field.name) = value;
+                            fields_set.set(field_idx);
+                            positional_idx += 1;
+                        } else |_| {
+                            // Decode failed, this item doesn't match this field type
+                            // Restore context and skip this field
+                            current_error_context = saved_ctx;
+                            if (comptime isOptional(field.type)) {
+                                @field(result, field.name) = null;
+                            }
+                            // For non-optional with default, the default was already set by zeroInit
+                            fields_set.set(field_idx);
+                            // Don't advance positional_idx - let next field try this item
+                        }
+                    }
+                } else {
+                    // Required positional field - decode normally
+                    setErrorContext(.{
+                        .path = @typeName(T),
+                        .field_name = field.name,
+                        .sexp_preview = null,
+                    }, items[positional_idx]);
+                    @field(result, field.name) = try decode(field.type, allocator, items[positional_idx]);
+                    fields_set.set(field_idx);
+                    positional_idx += 1;
+                }
+            } else if (comptime isOptional(field.type)) {
+                // No more items, set optional field to null
+                @field(result, field.name) = null;
                 fields_set.set(field_idx);
-                positional_idx += 1;
             }
         }
     }
@@ -479,7 +583,15 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                 .field_name = field.name,
                                 .sexp_preview = null,
                             }, items[i]);
-                            @field(result, field.name) = if (kv_items.len == 2)
+                            
+                            // For struct fields, always pass the rest of the list (after the key)
+                            // This allows structs with positional fields to parse correctly
+                            // e.g., (drill 1.199998) -> PadDrill gets [1.199998]
+                            @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or 
+                                                           (@typeInfo(field.type) == .optional and 
+                                                            @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
+                                try decode(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null })
+                            else if (kv_items.len == 2)
                                 try decode(field.type, allocator, kv_items[1])
                             else
                                 try decode(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null });

@@ -264,7 +264,7 @@ class Line:
     stroke: Stroke | None
     fill: str | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -276,7 +276,7 @@ class Line:
         stroke: Stroke | None,
         fill: str | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -290,7 +290,7 @@ class Arc:
     stroke: Stroke | None
     fill: str | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -303,7 +303,7 @@ class Arc:
         stroke: Stroke | None,
         fill: str | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -316,7 +316,7 @@ class Circle:
     stroke: Stroke | None
     fill: str | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -328,7 +328,7 @@ class Circle:
         stroke: Stroke | None,
         fill: str | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -341,7 +341,7 @@ class Rect:
     stroke: Stroke | None
     fill: str | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -353,7 +353,7 @@ class Rect:
         stroke: Stroke | None,
         fill: str | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -394,7 +394,7 @@ class Curve:
     stroke: Stroke | None
     fill: str | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -405,7 +405,7 @@ class Curve:
         stroke: Stroke | None,
         fill: str | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -413,11 +413,11 @@ class Text:
     text: str
     at: Xyr
     layer: str
-    uuid: str
+    uuid: str | None
     effects: Effects
 
     def __init__(
-        self, text: str, at: Xyr, layer: str, uuid: str, effects: Effects
+        self, text: str, at: Xyr, layer: str, uuid: str | None, effects: Effects
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -427,7 +427,7 @@ class FpText:
     at: Xyr
     layer: str
     hide: bool | None
-    uuid: str
+    uuid: str | None
     effects: Effects
 
     def __init__(
@@ -437,8 +437,23 @@ class FpText:
         at: Xyr,
         layer: str,
         hide: bool | None,
-        uuid: str,
+        uuid: str | None,
         effects: Effects,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class PadDrill:
+    shape: str | None
+    size_x: float | None
+    size_y: float | None
+    offset: Xy | None
+
+    def __init__(
+        self,
+        shape: str | None,
+        size_x: float | None,
+        size_y: float | None,
+        offset: Xy | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -462,7 +477,7 @@ class Pad:
     at: Xyr
     size: Wh
     layers: list[str]
-    drill: float | None
+    drill: PadDrill | None
     net: Net | None
     solder_mask_margin: float | None
     solder_paste_margin: float | None
@@ -477,7 +492,7 @@ class Pad:
     properties: str | None
     options: PadOptions | None
     tenting: PadTenting | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -487,7 +502,7 @@ class Pad:
         at: Xyr,
         size: Wh,
         layers: list[str],
-        drill: float | None,
+        drill: PadDrill | None,
         net: Net | None,
         solder_mask_margin: float | None,
         solder_paste_margin: float | None,
@@ -502,7 +517,7 @@ class Pad:
         properties: str | None,
         options: PadOptions | None,
         tenting: PadTenting | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -519,7 +534,7 @@ class Property:
     at: Xyr
     layer: str
     hide: bool | None
-    uuid: str
+    uuid: str | None
     effects: Effects
 
     def __init__(
@@ -529,7 +544,7 @@ class Property:
         at: Xyr,
         layer: str,
         hide: bool | None,
-        uuid: str,
+        uuid: str | None,
         effects: Effects,
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -554,7 +569,7 @@ class Model:
 class Footprint:
     name: str
     layer: str
-    uuid: str
+    uuid: str | None
     at: Xyr
     path: str | None
     propertys: list[Property]
@@ -572,7 +587,7 @@ class Footprint:
         self,
         name: str,
         layer: str,
-        uuid: str,
+        uuid: str | None,
         at: Xyr,
         path: str | None,
         propertys: list[Property],
@@ -635,7 +650,7 @@ class Via:
     tenting: ViaTenting | None
     free: bool | None
     locked: bool | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -652,7 +667,7 @@ class Via:
         tenting: ViaTenting | None,
         free: bool | None,
         locked: bool | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -754,7 +769,7 @@ class Zone:
     net: int
     net_name: str
     layers: list[str] | None
-    uuid: str
+    uuid: str | None
     name: str | None
     hatch: Hatch
     priority: int | None
@@ -772,7 +787,7 @@ class Zone:
         net: int,
         net_name: str,
         layers: list[str] | None,
-        uuid: str,
+        uuid: str | None,
         name: str | None,
         hatch: Hatch,
         priority: int | None,
@@ -793,10 +808,16 @@ class Segment:
     width: float
     layer: str | None
     net: int
-    uuid: str
+    uuid: str | None
 
     def __init__(
-        self, start: Xy, end: Xy, width: float, layer: str | None, net: int, uuid: str
+        self,
+        start: Xy,
+        end: Xy,
+        width: float,
+        layer: str | None,
+        net: int,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -807,7 +828,7 @@ class ArcSegment:
     width: float
     layer: str | None
     net: int
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -817,7 +838,7 @@ class ArcSegment:
         width: float,
         layer: str | None,
         net: int,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -1136,10 +1157,10 @@ class Image:
     layer: str
     scale: float
     data: Data | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
-        self, at: Xy, layer: str, scale: float, data: Data | None, uuid: str
+        self, at: Xy, layer: str, scale: float, data: Data | None, uuid: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -1223,7 +1244,7 @@ class TextBox:
     span: Span | None
     effects: Effects
     render_cache: RenderCache | None
-    uuid: str
+    uuid: str | None
 
     def __init__(
         self,
@@ -1240,7 +1261,7 @@ class TextBox:
         span: Span | None,
         effects: Effects,
         render_cache: RenderCache | None,
-        uuid: str,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -1248,9 +1269,11 @@ class TableCell:
     text: str
     layer: str
     effects: Effects
-    uuid: str
+    uuid: str | None
 
-    def __init__(self, text: str, layer: str, effects: Effects, uuid: str) -> None: ...
+    def __init__(
+        self, text: str, layer: str, effects: Effects, uuid: str | None
+    ) -> None: ...
     def __repr__(self) -> str: ...
 
 class Cells:
@@ -1351,7 +1374,7 @@ class DimensionStyle:
 class Dimension:
     type: str
     layer: str
-    uuid: str
+    uuid: str | None
     pts: DimensionPts
     height: float
     orientation: float | None
@@ -1364,7 +1387,7 @@ class Dimension:
         self,
         type: str,
         layer: str,
-        uuid: str,
+        uuid: str | None,
         pts: DimensionPts,
         height: float,
         orientation: float | None,
@@ -1377,12 +1400,16 @@ class Dimension:
 
 class Group:
     name: str | None
-    uuid: str
+    uuid: str | None
     locked: bool | None
     members: list[str]
 
     def __init__(
-        self, name: str | None, uuid: str, locked: bool | None, members: list[str]
+        self,
+        name: str | None,
+        uuid: str | None,
+        locked: bool | None,
+        members: list[str],
     ) -> None: ...
     def __repr__(self) -> str: ...
 
@@ -1391,10 +1418,10 @@ class Target:
     size: Xy
     width: float
     layer: str
-    uuid: str
+    uuid: str | None
 
     def __init__(
-        self, at: Xy, size: Xy, width: float, layer: str, uuid: str
+        self, at: Xy, size: Xy, width: float, layer: str, uuid: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
 

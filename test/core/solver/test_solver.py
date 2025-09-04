@@ -1813,3 +1813,7 @@ def test_solve_voltage_divider_complex():
     # check solver knowing result
     assert solver_v_out == res_v_out
     assert solver_total_current == res_total_current
+
+
+if __name__ == "__main__":
+    test_simple_pick()

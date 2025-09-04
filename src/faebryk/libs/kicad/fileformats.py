@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
-from typing import Any, Iterable, Optional, Protocol, Self, Sequence, cast
+from typing import Any, Iterable, Optional, Protocol, Self, Sequence, cast, overload
 
 from dataclasses_json import (
     CatchAll,
@@ -722,11 +722,13 @@ class Named(Protocol):
 class kicad:
     from faebryk.core.zig import (
         footprint,  # noqa: E402, F401
+        footprint_v5,  # noqa: E402, F401
         fp_lib_table,  # noqa: E402, F401
         netlist,  # noqa: E402, F401
         pcb,  # noqa: E402
         schematic,  # noqa: E402, F401
         symbol,  # noqa: E402, F401
+        symbol_v6,  # noqa: E402, F401
     )
 
     class project:
@@ -752,6 +754,8 @@ class kicad:
         | C_kicad_model_file
         | C_kicad_project_file
         | C_kicad_config_common
+        | footprint_v5.FootprintFile
+        | symbol_v6.SymbolFile
     )
 
     @staticmethod
@@ -771,6 +775,10 @@ class kicad:
             return kicad.symbol
         elif instance_or_subclass(t, kicad.schematic.SchematicFile):
             return kicad.schematic
+        elif instance_or_subclass(t, kicad.footprint_v5.FootprintFile):
+            return kicad.footprint_v5
+        elif instance_or_subclass(t, kicad.symbol_v6.SymbolFile):
+            return kicad.symbol_v6
         elif instance_or_subclass(t, kicad.drc.DrcFile):
             return kicad.drc.DrcFile
         # TODO need to switch to bytes instead of str in sexp load
@@ -842,6 +850,155 @@ class kicad:
                 return
 
         obj.append(value)
+
+    class geo:
+        @staticmethod
+        def rotate(obj: "kicad.pcb.Xy", center: "kicad.pcb.Xy", angle: float):
+            import math
+
+            angle = -angle  # rotate kicad style counter-clockwise
+
+            # Translate point to origin
+            translated_x = obj.x - center.x
+            translated_y = obj.y - center.y
+
+            # Convert angle to radians
+            angle = math.radians(angle)
+
+            # Rotate
+            rotated_x = translated_x * math.cos(angle) - translated_y * math.sin(angle)
+            rotated_y = translated_x * math.sin(angle) + translated_y * math.cos(angle)
+
+            # Translate back
+            new_x = rotated_x + center.x
+            new_y = rotated_y + center.y
+
+            return kicad.pcb.Xy(x=new_x, y=new_y)
+
+    @staticmethod
+    @overload
+    def convert(
+        old: "kicad.footprint_v5.FootprintFile",
+    ) -> "kicad.footprint.FootprintFile": ...
+
+    @staticmethod
+    @overload
+    def convert(
+        old: "kicad.symbol_v6.SymbolFile",
+    ) -> "kicad.symbol.SymbolFile": ...
+
+    @staticmethod
+    def convert(old: Any) -> Any:
+        if isinstance(old, kicad.footprint_v5.FootprintFile):
+
+            def _calc_arc_midpoint(arc: kicad.footprint_v5.Arc):
+                start = arc.end
+                center = arc.start
+
+                mid = kicad.geo.rotate(start, center, -arc.angle / 2.0)
+                end = kicad.geo.rotate(start, center, -arc.angle)
+
+                return {"start": start, "mid": mid, "end": end}
+
+            return kicad.footprint.FootprintFile(
+                footprint=kicad.footprint.Footprint(
+                    name=old.footprint.name,
+                    layer=old.footprint.layer,
+                    uuid=old.footprint.uuid,
+                    at=old.footprint.at,
+                    path=old.footprint.path,
+                    propertys=old.footprint.propertys,
+                    fp_texts=old.footprint.fp_texts,
+                    attr=old.footprint.attr,
+                    fp_lines=[
+                        kicad.pcb.Line(
+                            start=line.start,
+                            end=line.end,
+                            layer=line.layer,
+                            layers=None,
+                            solder_mask_margin=None,
+                            stroke=kicad.pcb.Stroke(width=line.width, type="solid"),
+                            fill=None,
+                            locked=False,
+                            uuid=kicad.gen_uuid(),
+                        )
+                        for line in old.footprint.fp_lines
+                    ],
+                    fp_arcs=[
+                        kicad.pcb.Arc(
+                            **_calc_arc_midpoint(arc),
+                            layer=arc.layer,
+                            layers=None,
+                            solder_mask_margin=None,
+                            stroke=kicad.pcb.Stroke(width=arc.width, type="solid"),
+                            fill=None,
+                            locked=False,
+                            uuid=kicad.gen_uuid(),
+                        )
+                        for arc in old.footprint.fp_arcs
+                    ],
+                    fp_circles=[
+                        kicad.pcb.Circle(
+                            center=circle.center,
+                            end=circle.end,
+                            layer=circle.layer,
+                            layers=None,
+                            solder_mask_margin=None,
+                            stroke=kicad.pcb.Stroke(width=circle.width, type="solid"),
+                            fill=None,
+                            locked=False,
+                            uuid=kicad.gen_uuid(),
+                        )
+                        for circle in old.footprint.fp_circles
+                    ],
+                    fp_rects=[
+                        kicad.pcb.Rect(
+                            start=rect.start,
+                            end=rect.end,
+                            layer=rect.layer,
+                            layers=None,
+                            solder_mask_margin=None,
+                            stroke=kicad.pcb.Stroke(width=rect.width, type="solid"),
+                            fill=None,
+                            locked=False,
+                            uuid=kicad.gen_uuid(),
+                        )
+                        for rect in old.footprint.fp_rects
+                    ],
+                    fp_poly=old.footprint.fp_poly,
+                    pads=old.footprint.pads,
+                    models=[
+                        kicad.pcb.Model(
+                            path=old.footprint.model.path,
+                            offset=old.footprint.model.offset
+                            or old.footprint.model.at
+                            or kicad.pcb.ModelXyz(xyz=kicad.pcb.Xyz(x=0, y=0, z=0)),
+                            scale=old.footprint.model.scale,
+                            rotate=old.footprint.model.rotate,
+                        )
+                    ]
+                    if old.footprint.model
+                    else [],
+                    description=old.footprint.description,
+                    tags=old.footprint.tags,
+                    version=20241229,
+                    generator="faebryk_convert",
+                    generator_version="v5",
+                    tedit=old.footprint.tedit,
+                )
+            )
+        elif isinstance(old, kicad.symbol_v6.SymbolFile):
+            return kicad.symbol.SymbolFile(
+                symbol=kicad.symbol.Symbol(
+                    name=old.symbol.name,
+                )
+            )
+        raise ValueError(f"Unsupported type: {type(old)}")
+
+    # TODO
+    @staticmethod
+    def compare_without_uuid(old: Any, new: Any):
+        return False
 
 
 class Property:

@@ -9,6 +9,12 @@ pub const kicad = struct {
     pub const footprint = @import("kicad/footprint.zig");
     pub const symbol = @import("kicad/symbol.zig");
     pub const schematic = @import("kicad/schematic.zig");
+    pub const v5 = struct {
+        pub const footprint = @import("kicad/v5/footprint.zig");
+    };
+    pub const v6 = struct {
+        pub const symbol = @import("kicad/v6/symbol.zig");
+    };
 };
 
 // Re-export commonly used types for convenience
