@@ -1041,7 +1041,6 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     const T = @TypeOf(value);
     var items = std.ArrayList(SExp).init(allocator);
     defer items.deinit();
-    
 
     const fields = std.meta.fields(T);
 
@@ -1136,37 +1135,9 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                     // Check if we're encoding a struct (which would be a list)
                     const encoded_value = try encodeWithMetadata(allocator, field_value, metadata);
 
-                    if (std.mem.eql(u8, field_name, "stroke")) {
-                        std.log.err("DEBUG: Processing stroke field, typeinfo check", .{});
-                    }
-
                     // If the field value is a struct (represented as a list), we need to flatten it
                     if (@typeInfo(@TypeOf(field_value)) == .@"struct") {
-                        // Debug: check what field we're encoding
-                        if (std.mem.eql(u8, field_name, "stroke")) {
-                            std.log.err("DEBUG: Encoding stroke field", .{});
-                            if (ast.getList(encoded_value)) |list| {
-                                std.log.err("DEBUG: encoded_value is a list with {} items", .{list.len});
-                            } else {
-                                std.log.err("DEBUG: encoded_value is NOT a list: {}", .{encoded_value.value});
-                            }
-                        }
-                        
                         if (ast.getList(encoded_value)) |struct_items| {
-                            // Debug for stroke
-                            if (std.mem.eql(u8, field_name, "stroke")) {
-                                std.log.err("DEBUG: stroke has {} items", .{struct_items.len});
-                                for (struct_items, 0..) |item, i| {
-                                    if (ast.getList(item)) |sublist| {
-                                        std.log.err("DEBUG: stroke item[{}] is a list with {} items", .{ i, sublist.len });
-                                    } else if (ast.getSymbol(item)) |sym| {
-                                        std.log.err("DEBUG: stroke item[{}] is symbol: {s}", .{ i, sym });
-                                    } else {
-                                        std.log.err("DEBUG: stroke item[{}] is other type", .{i});
-                                    }
-                                }
-                            }
-                            
                             // Create a new list with the field name prepended to the struct's items
                             var kv_items = try allocator.alloc(SExp, struct_items.len + 1);
                             kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };

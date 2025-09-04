@@ -65,6 +65,7 @@ class KicadFootprint(F.Footprint):
 
         Will take the pin names from that file.
         """
+        from faebryk.libs.kicad.fileformats import kicad
 
         if ":" in fp_file.footprint.name:
             fp_lib_name = fp_file.footprint.name.split(":")[0]
