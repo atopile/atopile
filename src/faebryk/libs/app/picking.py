@@ -151,13 +151,10 @@ def save_part_info_to_pcb(G: Graph):
             )
 
         for p in node.get_children(direct_only=True, types=Parameter):
-            lit = p.try_get_literal()
-            if lit is None:
+            if (lit := p.try_get_literal()) is None:
                 continue
             lit = P_Set.from_value(lit)
-            key = f"{Properties.param_prefix}{p.get_name()}"
-            value = json.dumps(lit.serialize())
-            node.add(F.has_descriptive_properties_defined({key: value}))
+            node.add(F.has_descriptive_properties_defined({p.get_name(): str(lit)}))
 
 
 def load_picks_from_file(app: Module, picks_file_path: Path):
