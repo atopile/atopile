@@ -191,7 +191,7 @@ class Node(CNode):
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
     specialized_: list["Node"]
-    _container_by_node_name: dict[str, ContainerT]
+    _container_by_node: dict["Node", ContainerT]
 
     _init: bool = False
     _mro: list[type] = []
@@ -245,7 +245,7 @@ class Node(CNode):
             container.append(obj)
 
         if isinstance(obj, Node):
-            self._container_by_node_name[obj.get_name()] = container
+            self._container_by_node[obj] = container
 
         return obj
 
@@ -259,7 +259,15 @@ class Node(CNode):
 
         self._handle_add_node(from_node.get_name(), to_node)
 
-        match container := self._container_by_node_name.pop(from_node.get_name()):
+        try:
+            container = self._container_by_node.pop(from_node)
+        except KeyError:
+            if hasattr(self, from_node.get_name()):
+                container = self
+            else:
+                raise ValueError(f"Node {from_node} not found")
+
+        match container:
             case dict():
                 container.pop(from_node.get_name())
                 container[to_node.get_name()] = to_node
@@ -267,10 +275,14 @@ class Node(CNode):
                 idx = container.index(from_node)
                 container.pop(idx)
                 container.insert(idx, to_node)
+            case Node():
+                setattr(container, from_node.get_name(), to_node)
             case _:
                 raise ValueError(f"Unsupported container type: {type(container)}")
 
-        self._container_by_node_name[to_node.get_name()] = container
+        if not isinstance(container, Node):
+            self._container_by_node[to_node] = container
+
         self.runtime_anon.append(from_node)
         return container
 
@@ -535,7 +547,7 @@ class Node(CNode):
         # Preserved for later inspection of signature, which is otherwise clobbered
         # by nanobind, so we only get (self, *args, **kwargs)
         self.__original_init__ = self.__init__
-        self._container_by_node_name = {}
+        self._container_by_node = {}
 
     def __preinit__(self, *args, **kwargs) -> None: ...
 
