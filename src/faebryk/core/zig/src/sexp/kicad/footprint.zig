@@ -10,7 +10,6 @@ pub const Footprint = struct {
     name: str,
     layer: str = "F.Cu",
     uuid: ?str = null,
-    at: pcb.Xyr,
     path: ?str = null,
     propertys: []pcb.Property = &.{},
     fp_texts: []pcb.FpText = &.{},

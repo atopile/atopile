@@ -409,7 +409,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             if (positional_idx < items.len) {
                 // Check if this field has a default value (either optional or has default_value_ptr)
                 const has_default = comptime isOptional(field.type) or field.default_value_ptr != null;
-                
+
                 // For positional fields with defaults, check if the current item matches the expected type
                 // This handles cases like PadDrill where shape has a default and might be skipped
                 if (has_default) {
@@ -418,7 +418,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     else
                         field.type;
                     const type_info = @typeInfo(actual_type);
-                    
+
                     // For enum fields with defaults, check if current item is a matching symbol
                     if (type_info == .@"enum") {
                         if (ast.getSymbol(items[positional_idx])) |sym| {
@@ -453,7 +453,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                     }
                                 }
                             }
-                            
+
                             if (is_valid_enum) {
                                 // This is a valid enum value, decode it
                                 setErrorContext(.{
@@ -487,7 +487,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                         // Save the current error context in case decode fails
                         const saved_ctx = getErrorContext();
                         clearErrorContext();
-                        
+
                         // Try to decode this field
                         if (decode(field.type, allocator, items[positional_idx])) |value| {
                             @field(result, field.name) = value;
@@ -583,13 +583,38 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                 .field_name = field.name,
                                 .sexp_preview = null,
                             }, items[i]);
-                            
+
+                            // Debug logging for font and size fields
+                            //if (std.mem.eql(u8, field.name, "font") or std.mem.eql(u8, field.name, "size")) {
+                            //    std.debug.print("DEBUG: Parsing field '{s}' in type {s}\n", .{field.name, @typeName(T)});
+                            //    std.debug.print("  kv_items.len = {}\n", .{kv_items.len});
+                            //    for (kv_items, 0..) |item, idx| {
+                            //        switch (item.value) {
+                            //            .symbol => |sym| std.debug.print("  kv_items[{}] = symbol: {s}\n", .{idx, sym}),
+                            //            .number => |num| std.debug.print("  kv_items[{}] = number: {s}\n", .{idx, num}),
+                            //            .list => |list| {
+                            //                std.debug.print("  kv_items[{}] = list with {} items\n", .{idx, list.len});
+                            //                if (list.len > 0) {
+                            //                    switch (list[0].value) {
+                            //                        .symbol => |first_sym| std.debug.print("    First item in list: symbol '{s}'\n", .{first_sym}),
+                            //                        else => {},
+                            //                    }
+                            //                }
+                            //            },
+                            //            .string => |str| std.debug.print("  kv_items[{}] = string: \"{s}\"\n", .{idx, str}),
+                            //            else => std.debug.print("  kv_items[{}] = other\n", .{idx}),
+                            //        }
+                            //    }
+                            //    std.debug.print("  Field type: {s}\n", .{@typeName(field.type)});
+                            //    std.debug.print("  Passing to decode: kv_items[1..] which has {} items\n", .{kv_items[1..].len});
+                            //}
+
                             // For struct fields, always pass the rest of the list (after the key)
                             // This allows structs with positional fields to parse correctly
                             // e.g., (drill 1.199998) -> PadDrill gets [1.199998]
-                            @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or 
-                                                           (@typeInfo(field.type) == .optional and 
-                                                            @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
+                            @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or
+                                (@typeInfo(field.type) == .optional and
+                                    @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
                                 try decode(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null })
                             else if (kv_items.len == 2)
                                 try decode(field.type, allocator, kv_items[1])
@@ -915,7 +940,7 @@ fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
             return error.UnexpectedType;
         },
     };
-    
+
     inline for (std.meta.fields(T)) |field| {
         if (std.mem.eql(u8, enum_str, field.name)) {
             return @field(T, field.name);

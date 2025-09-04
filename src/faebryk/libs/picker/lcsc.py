@@ -259,7 +259,11 @@ class EasyEDASymbol:
         # TODO this is weird
         fp_lib_name = symbol.info.lcsc_id
         raw = exporter.export(footprint_lib_name=fp_lib_name)
-        in_file = f"(kicad_sym {raw})"
+        in_file = f"""(kicad_sym
+            (version 20211014)
+            (generator "test")
+            {raw}
+        )""".replace("hide", "")
         sym = kicad.loads(kicad.symbol_v6.SymbolFile, in_file)
         new_sym = kicad.convert(sym)
 

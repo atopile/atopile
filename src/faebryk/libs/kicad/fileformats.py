@@ -905,7 +905,6 @@ class kicad:
                     name=old.footprint.name,
                     layer=old.footprint.layer,
                     uuid=old.footprint.uuid,
-                    at=old.footprint.at,
                     path=old.footprint.path,
                     propertys=old.footprint.propertys,
                     fp_texts=old.footprint.fp_texts,
@@ -989,8 +988,58 @@ class kicad:
             )
         elif isinstance(old, kicad.symbol_v6.SymbolFile):
             return kicad.symbol.SymbolFile(
-                symbol=kicad.symbol.Symbol(
-                    name=old.symbol.name,
+                kicad_sym=kicad.symbol.SymbolLib(
+                    version=20241229,
+                    generator="faebryk_convert",
+                    symbols=[
+                        kicad.schematic.Symbol(
+                            name=symbol.name,
+                            power=symbol.power,
+                            propertys=symbol.propertys,
+                            pin_numbers=symbol.pin_numbers,
+                            pin_names=symbol.pin_names,
+                            in_bom=symbol.in_bom,
+                            on_board=symbol.on_board,
+                            symbols=[
+                                kicad.schematic.SymbolUnit(
+                                    name=sym.name,
+                                    polylines=sym.polylines,
+                                    circles=[
+                                        kicad.schematic.Circle(
+                                            center=circle.center,
+                                            end=circle.end,
+                                            stroke=circle.stroke,
+                                            fill=circle.fill,
+                                        )
+                                        for circle in sym.circles
+                                    ],
+                                    rectangles=sym.rectangles,
+                                    arcs=[
+                                        kicad.schematic.Arc(
+                                            start=arc.start,
+                                            mid=arc.mid,
+                                            end=arc.end,
+                                            stroke=kicad.schematic.Stroke(
+                                                width=arc.width,
+                                                type=kicad.schematic.E_stroke_type.SOLID,
+                                                color=kicad.schematic.Color(
+                                                    r=0, g=0, b=0, a=0
+                                                ),
+                                            ),
+                                            fill=kicad.schematic.Fill(
+                                                type=kicad.schematic.E_fill_type.BACKGROUND,
+                                            ),
+                                        )
+                                        for arc in sym.arcs
+                                    ],
+                                    pins=sym.pins,
+                                )
+                                for sym in symbol.symbols
+                            ],
+                            convert=symbol.convert,
+                        )
+                        for symbol in old.kicad_sym.symbols
+                    ],
                 )
             )
         raise ValueError(f"Unsupported type: {type(old)}")

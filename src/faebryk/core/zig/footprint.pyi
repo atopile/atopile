@@ -18,7 +18,6 @@ from faebryk.core.zig.pcb import (
     Polygon,
     Property,
     Rect,
-    Xyr,
 )
 
 # Dirty hack to not error in ruff check
@@ -28,7 +27,6 @@ class Footprint:
     name: str
     layer: str
     uuid: str | None
-    at: Xyr
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
@@ -52,7 +50,6 @@ class Footprint:
         name: str,
         layer: str,
         uuid: str | None,
-        at: Xyr,
         path: str | None,
         propertys: list[Property],
         fp_texts: list[FpText],

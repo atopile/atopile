@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from faebryk.libs.util import (
+    ConfigFlagString,
     debug_perf,
     get_python_lib,
     global_lock,
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 _thisfile = Path(__file__)
 _thisdir = _thisfile.parent
 _build_dir = _thisdir / "zig-out" / "lib"
+
+RELEASEMODE = ConfigFlagString("ZIG_RELEASEMODE", default="Debug")
 
 
 @debug_perf
@@ -30,7 +33,7 @@ def compile_zig():
         *zig_cmd,
         "build",
         "python-ext",
-        "-Doptimize=ReleaseFast",
+        f"-Doptimize={RELEASEMODE.value}",
         f"-Dpython-include={python_lib.include_path}",
         f"-Dpython-lib={python_lib.name}",
         *([f"-Dpython-lib-dir={python_lib.dir_path}"] if python_lib.dir_path else []),

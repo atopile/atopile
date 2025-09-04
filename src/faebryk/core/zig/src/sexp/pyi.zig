@@ -27,8 +27,8 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
     } else if (std.mem.eql(u8, name, "footprint_v5")) {
         try file.writeAll("from faebryk.core.zig.pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr\n");
     } else if (std.mem.eql(u8, name, "symbol_v6")) {
-        try file.writeAll("from faebryk.core.zig.pcb import Xy, Stroke\n");
-        try file.writeAll("from faebryk.core.zig.schematic import Polyline, Rect, SymbolPin, Fill\n");
+        try file.writeAll("from faebryk.core.zig.pcb import Xy\n");
+        try file.writeAll("from faebryk.core.zig.schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Power, Property, PinNames\n");
     }
     try file.writeAll(content);
 
@@ -37,8 +37,6 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
     try file.writeAll("# Module-level functions\n");
     try file.writeAll(std.fmt.comptimePrint("def loads(data: str) -> {s}: ...\n", .{typename}));
     try file.writeAll(std.fmt.comptimePrint("def dumps(obj: {s}) -> str: ...\n", .{typename}));
-
-    std.debug.print("Generated {s}\n", .{file_path});
 }
 
 pub fn main() !void {

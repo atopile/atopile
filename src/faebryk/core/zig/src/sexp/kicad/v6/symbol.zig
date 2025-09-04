@@ -26,7 +26,7 @@ pub const SymbolUnit = struct {
     polylines: []schematic.Polyline = &.{},
     circles: []Circle = &.{},
     rectangles: []schematic.Rect = &.{},
-    arcs: []schematic.Arc = &.{},
+    arcs: []Arc = &.{},
     pins: []schematic.SymbolPin = &.{},
 
     pub const fields_meta = .{
@@ -39,10 +39,32 @@ pub const SymbolUnit = struct {
     };
 };
 
+pub const Symbol = struct {
+    name: str,
+    power: ?schematic.Power = null,
+    propertys: []schematic.Property = &.{},
+    pin_numbers: ?schematic.E_hide = null,
+    pin_names: ?schematic.PinNames = null,
+    in_bom: ?bool = null,
+    on_board: ?bool = null,
+    symbols: []SymbolUnit = &.{},
+    convert: ?i32 = null,
+
+    pub const fields_meta = .{
+        .name = structure.SexpField{ .positional = true },
+        .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
+        .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
+    };
+};
+
 pub const SymbolLib = struct {
     version: i32,
     generator: []const u8,
-    symbols: []SymbolUnit = &.{},
+    symbols: []Symbol = &.{},
+
+    pub const fields_meta = .{
+        .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
+    };
 };
 
 pub const SymbolFile = struct {

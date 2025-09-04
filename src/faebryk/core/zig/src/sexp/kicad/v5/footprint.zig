@@ -42,6 +42,10 @@ pub const Model = struct {
     // some older versioins have at instead of offset
     offset: ?pcb.ModelXyz = null,
     at: ?pcb.ModelXyz = null,
+
+    pub const fields_meta = .{
+        .path = structure.SexpField{ .positional = true },
+    };
 };
 
 pub const Footprint = struct {
@@ -49,7 +53,6 @@ pub const Footprint = struct {
     name: str,
     layer: str = "F.Cu",
     uuid: ?str = null,
-    at: pcb.Xyr,
     path: ?str = null,
     propertys: []pcb.Property = &.{},
     fp_texts: []pcb.FpText = &.{},

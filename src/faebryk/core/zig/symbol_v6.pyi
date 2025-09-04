@@ -8,8 +8,17 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.pcb import Stroke, Xy
-from faebryk.core.zig.schematic import Fill, Polyline, Rect, SymbolPin
+from faebryk.core.zig.pcb import Xy
+from faebryk.core.zig.schematic import (
+    Fill,
+    PinNames,
+    Polyline,
+    Power,
+    Property,
+    Rect,
+    Stroke,
+    SymbolPin,
+)
 
 # Dirty hack to not error in ruff check
 type Allocator = Any
@@ -57,14 +66,37 @@ class SymbolUnit:
     ) -> None: ...
     def __repr__(self) -> str: ...
 
+class Symbol:
+    name: str
+    power: Power | None
+    propertys: list[Property]
+    pin_numbers: str | None
+    pin_names: PinNames | None
+    in_bom: bool | None
+    on_board: bool | None
+    symbols: list[SymbolUnit]
+    convert: int | None
+
+    def __init__(
+        self,
+        name: str,
+        power: Power | None,
+        propertys: list[Property],
+        pin_numbers: str | None,
+        pin_names: PinNames | None,
+        in_bom: bool | None,
+        on_board: bool | None,
+        symbols: list[SymbolUnit],
+        convert: int | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class SymbolLib:
     version: int
     generator: str
-    symbols: list[SymbolUnit]
+    symbols: list[Symbol]
 
-    def __init__(
-        self, version: int, generator: str, symbols: list[SymbolUnit]
-    ) -> None: ...
+    def __init__(self, version: int, generator: str, symbols: list[Symbol]) -> None: ...
     def __repr__(self) -> str: ...
 
 class SymbolFile:
