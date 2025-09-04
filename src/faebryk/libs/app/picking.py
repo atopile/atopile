@@ -36,6 +36,10 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
+class PicksLoadError(Exception):
+    pass
+
+
 def load_part_info_from_pcb(G: Graph):
     """
     Load descriptive properties from footprints and saved parameters.
@@ -160,13 +164,21 @@ def save_part_info_to_pcb(G: Graph):
 def load_picks_from_file(app: Module, picks_file_path: Path):
     from atopile.front_end import bob
 
-    picks: Node = bob.build_file(
-        picks_file_path, TypeRef.from_one(AtoCodeGen.PicksFile.PICKS_MODULE_NAME)
-    )
+    try:
+        picks: Node = bob.build_file(
+            picks_file_path,
+            TypeRef.from_one(AtoCodeGen.PicksFile.PICKS_MODULE_NAME),
+        )
+    except FileNotFoundError as ex:
+        raise PicksLoadError(f"File not found: {picks_file_path}") from ex
 
     assert isinstance(picks, Module)
 
-    app_with_picks = picks.get_child_by_name("app")
+    try:
+        app_with_picks = picks.get_child_by_name("app")
+    except KeyErrorNotFound:
+        raise PicksLoadError("Field `app` not found")
+
     assert isinstance(app_with_picks, Module)
 
     app.specialize(app_with_picks)

@@ -60,6 +60,7 @@ from faebryk.libs.app.pcb import (
     load_net_names,
 )
 from faebryk.libs.app.picking import (
+    PicksLoadError,
     load_picks_from_file,
     save_part_info_to_pcb,
     save_picks_to_file,
@@ -271,10 +272,14 @@ def pick_parts(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_picks_from_file(app, config.build.paths.picks_file)
+        try:
+            load_picks_from_file(app, config.build.paths.picks_file)
+        except PicksLoadError as ex:
+            logger.warning(f"Failed to load picks: {ex}")
         solver.simplify(app.get_graph())
     try:
         pick_part_recursively(app, solver, progress=log_context)
+
     except* PickError as ex:
         raise ExceptionGroup(
             "Failed to pick parts for some modules",
