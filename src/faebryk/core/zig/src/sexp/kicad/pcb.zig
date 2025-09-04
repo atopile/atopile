@@ -63,10 +63,26 @@ pub const Font = struct {
     thickness: ?f64 = null,
 };
 
+pub const Justify = struct {
+    justify1: ?E_justify = null,
+    justify2: ?E_justify = null,
+    justify3: ?E_justify = null,
+
+    pub const fields_meta = .{
+        .justify1 = structure.SexpField{ .positional = true },
+        .justify2 = structure.SexpField{ .positional = true },
+        .justify3 = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const Effects = struct {
     font: Font,
     hide: ?bool = null,
-    // justifys: []Justify = &.{}, // TODO: implement justify
+    justifys: []Justify = &.{},
+
+    pub const fields_meta = .{
+        .justifys = structure.SexpField{ .multidict = true },
+    };
 };
 
 pub const TextLayer = struct {
@@ -80,6 +96,17 @@ pub const TextLayer = struct {
 };
 
 // Enums
+pub const E_justify = enum {
+    center_horizontal, // TODO: ""
+    left,
+    right,
+    center_vertical, // TODO: ""
+    bottom,
+    top,
+    normal, // TODO: ""
+    mirror,
+};
+
 pub const E_fill = enum {
     yes,
     no,
@@ -995,6 +1022,7 @@ pub const KicadPcb = struct {
     arcs: []ArcSegment = &.{},
     gr_lines: []Line = &.{},
     gr_arcs: []Arc = &.{},
+    gr_curves: []Curve = &.{},
     gr_circles: []Circle = &.{},
     gr_rects: []Rect = &.{},
     gr_polys: []Polygon = &.{},

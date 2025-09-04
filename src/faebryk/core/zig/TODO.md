@@ -21,17 +21,9 @@
 - [skip for now] src/faebryk/exporters/schematic/kicad/transformer.py
 - [ ] src/faebryk/libs/picker/lcsc.py (compare_without_uuid & v6 symbol)
 
+jusitfy
 enums: handle sym vs str enums (maybe sexp field)
-
 test checksum
 load-dump roundtrip
-
-- catchall
-
-  handle old versions
-
-- old user data (pcb)
-
+| catchall
 visit_dataclass
-
-deepcopy

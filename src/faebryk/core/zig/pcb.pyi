@@ -11,6 +11,16 @@ from typing import Any  # noqa: F401
 # Dirty hack to not error in ruff check
 type Allocator = Any
 
+class E_justify(str, Enum):
+    CENTER_HORIZONTAL = "center_horizontal"
+    LEFT = "left"
+    RIGHT = "right"
+    CENTER_VERTICAL = "center_vertical"
+    BOTTOM = "bottom"
+    TOP = "top"
+    NORMAL = "normal"
+    MIRROR = "mirror"
+
 class E_fill(str, Enum):
     YES = "yes"
     NO = "no"
@@ -253,11 +263,26 @@ class Font:
     @property
     def __field_names__(self) -> list[str]: ...
 
+class Justify:
+    justify1: str | None
+    justify2: str | None
+    justify3: str | None
+
+    def __init__(
+        self, *, justify1: str | None, justify2: str | None, justify3: str | None
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+    @property
+    def __field_names__(self) -> list[str]: ...
+
 class Effects:
     font: Font
     hide: bool | None
+    justifys: list[Justify]
 
-    def __init__(self, *, font: Font, hide: bool | None) -> None: ...
+    def __init__(
+        self, *, font: Font, hide: bool | None, justifys: list[Justify]
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1237,6 +1262,7 @@ class KicadPcb:
     arcs: list[ArcSegment]
     gr_lines: list[Line]
     gr_arcs: list[Arc]
+    gr_curves: list[Curve]
     gr_circles: list[Circle]
     gr_rects: list[Rect]
     gr_polys: list[Polygon]
@@ -1265,6 +1291,7 @@ class KicadPcb:
         arcs: list[ArcSegment],
         gr_lines: list[Line],
         gr_arcs: list[Arc],
+        gr_curves: list[Curve],
         gr_circles: list[Circle],
         gr_rects: list[Rect],
         gr_polys: list[Polygon],

@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import copy
 import logging
 import re
 from collections import defaultdict
@@ -78,19 +77,10 @@ Geom = (
 Point = Geometry.Point
 Point2D = Geometry.Point2D
 
-# Justify = kicad.pcb.Justify
-# Alignment = tuple[Justify, Justify, Justify]
-# TODO
-Justify = int
+Justify = kicad.pcb.E_justify
 Alignment = tuple[Justify, Justify, Justify]
-Alignment_Default = (0, 0, 0)
 
-
-# Alignment_Default = (
-#    Justify.center_horizontal,
-#    Justify.center_vertical,
-#    Justify.normal,
-# )
+Alignment_Default = ("", "", "")  # center_horizontal, center_vertical, normal
 
 if TYPE_CHECKING:
     import faebryk.library._F as F
@@ -110,10 +100,8 @@ T2 = TypeVar("T2", kicad.pcb.Xy, kicad.pcb.Xyz, kicad.pcb.Xyr)
 
 
 def round_coord(coord: T, ndigits=2) -> T:
-    fs = fields(coord)
-    return type(coord)(
-        **{f.name: round(getattr(coord, f.name), ndigits=ndigits) for f in fs}
-    )
+    fs = coord.__field_names__
+    return type(coord)(**{f: round(getattr(coord, f), ndigits=ndigits) for f in fs})
 
 
 def round_line(line: tuple[Point2D, Point2D], ndigits=2):
@@ -128,7 +116,7 @@ def round_point(point: P, ndigits=2) -> P:
 
 
 def coord_to_point(coord: T) -> Point:
-    return tuple(getattr(coord, f.name) for f in fields(coord))
+    return tuple(getattr(coord, f) for f in coord.__field_names__)
 
 
 def coord_to_point2d(coord: T) -> Point2D:
@@ -232,7 +220,7 @@ class PCB_Transformer:
 
         FONT_SCALE = 8
         FONT = Font(
-            size=kicad.pcb.Wh(1 / FONT_SCALE, 1 / FONT_SCALE),
+            size=kicad.pcb.Wh(w=1 / FONT_SCALE, h=1 / FONT_SCALE),
             thickness=0.15 / FONT_SCALE,
         )
         self.font = FONT
@@ -535,13 +523,17 @@ class PCB_Transformer:
         elif isinstance(geo, kicad.pcb.Rect):
             vecs = [geo.start, geo.end]
         elif isinstance(geo, kicad.pcb.Circle):
-            radius = geo.end - geo.center
-            normal_radius = geo.end.rotate(geo.center, -90) - geo.center
+            radius = kicad.geo.sub(geo.end, geo.center)
+            normal_radius = kicad.geo.sub(
+                kicad.geo.rotate(geo.end, geo.center, -90), geo.center
+            )
+            n_normal_radius = kicad.geo.neg(normal_radius)
+            n_radius = kicad.geo.neg(radius)
             vecs = [
-                geo.center - normal_radius - radius,
-                geo.center - normal_radius + radius,
-                geo.center + normal_radius - radius,
-                geo.center + normal_radius + radius,
+                kicad.geo.add(geo.center, n_normal_radius, n_radius),
+                kicad.geo.add(geo.center, n_normal_radius, radius),
+                kicad.geo.add(geo.center, normal_radius, n_radius),
+                kicad.geo.add(geo.center, normal_radius, radius),
             ]
         else:
             raise NotImplementedError(f"Unsupported type {type(geo)}: {geo}")
@@ -848,7 +840,7 @@ class PCB_Transformer:
     ):
         self.pcb.vias.append(
             Via(
-                at=kicad.pcb.Xy(*coord),
+                at=kicad.pcb.Xy(x=coord[0], y=coord[1]),
                 size=size_drill[0],
                 drill=size_drill[1],
                 layers=["F.Cu", "B.Cu"],
@@ -1083,20 +1075,22 @@ class PCB_Transformer:
         if number:
             self.insert_text(
                 "######",
-                at=kicad.pcb.Xyr(center_at.x, center_at.y + size.value.y / 2 + 1, 0),
-                font=kicad.pcb.Font(size=kicad.pcb.Wh(0.75, 0.75), thickness=0.15),
+                at=kicad.pcb.Xyr(
+                    x=center_at.x, y=center_at.y + size.value.y / 2 + 1, r=0
+                ),
+                font=kicad.pcb.Font(size=kicad.pcb.Wh(w=0.75, h=0.75), thickness=0.15),
                 layer="F.Fab" if layer.startswith("F.") else "B.Fab",
             )
         self.insert_geo(
             kicad.pcb.Rect(
                 start=kicad.pcb.Xy(
-                    center_at.x - size.value.x / 2, center_at.y - size.value.y / 2
+                    x=center_at.x - size.value.x / 2, y=center_at.y - size.value.y / 2
                 ),
                 end=kicad.pcb.Xy(
-                    center_at.x + size.value.x / 2, center_at.y + size.value.y / 2
+                    x=center_at.x + size.value.x / 2, y=center_at.y + size.value.y / 2
                 ),
-                stroke=kicad.pcb.Stroke(width=0.15, type=kicad.pcb.E_type.solid),
-                fill=kicad.pcb.E_fill.yes,
+                stroke=kicad.pcb.Stroke(width=0.15, type="solid"),
+                fill="yes",
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
                 layers=None,
@@ -1117,7 +1111,7 @@ class PCB_Transformer:
             "JLCJLCJLCJLC",
             at=center_at,
             font=kicad.pcb.Font(
-                size=kicad.pcb.Wh(1, 1),
+                size=kicad.pcb.Wh(w=1, h=1),
                 thickness=0.15,
             ),
             layer=layer,
@@ -1153,7 +1147,7 @@ class PCB_Transformer:
                     layer = layer_names[coord[3]]
 
             logger.debug(f"Placing {fp.name} at {coord} layer {layer}")
-            to = kicad.pcb.Xyr(*coord[:3])
+            to = kicad.pcb.Xyr(x=coord[0], y=coord[1], r=coord[2])
             self.move_fp(fp, to, layer)
 
             # Label
@@ -1163,7 +1157,7 @@ class PCB_Transformer:
                     kicad.pcb.FpText(
                         type=kicad.pcb.E_fp_text_type.USER,
                         text="FBRK:autoplaced",
-                        at=kicad.pcb.Xyr(0, 0, rot_angle),
+                        at=kicad.pcb.Xyr(x=0, y=0, r=rot_angle),
                         effects=kicad.pcb.FpTextEffects(font=self.font),
                         uuid=self.gen_uuid(mark=True),
                         layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
@@ -1251,28 +1245,30 @@ class PCB_Transformer:
     def move_object(obj: Any, vector: kicad.pcb.Xy):
         match obj:
             case kicad.pcb.Segment():
-                obj.start += vector
-                obj.end += vector
+                obj.start = kicad.geo.add(obj.start, vector)
+                obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.ArcSegment():
-                obj.start += vector
-                obj.mid += vector
-                obj.end += vector
+                obj.start = kicad.geo.add(obj.start, vector)
+                obj.mid = kicad.geo.add(obj.mid, vector)
+                obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.Via():
-                obj.at += vector
+                obj.at = kicad.geo.add(obj.at, vector)
             case kicad.pcb.Zone():
-                obj.polygon.pts.xys = [pt + vector for pt in obj.polygon.pts.xys]
+                obj.polygon.pts.xys = [
+                    kicad.geo.add(pt, vector) for pt in obj.polygon.pts.xys
+                ]
                 for p in obj.filled_polygon:
-                    p.pts.xys = [pt + vector for pt in p.pts.xys]
+                    p.pts.xys = [kicad.geo.add(pt, vector) for pt in p.pts.xys]
             case kicad.pcb.Line():
-                obj.start += vector
-                obj.end += vector
+                obj.start = kicad.geo.add(obj.start, vector)
+                obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.Arc():
-                obj.start += vector
-                obj.mid += vector
-                obj.end += vector
+                obj.start = kicad.geo.add(obj.start, vector)
+                obj.mid = kicad.geo.add(obj.mid, vector)
+                obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.Circle():
-                obj.center += vector
-                obj.end += vector
+                obj.center = kicad.geo.add(obj.center, vector)
+                obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.Rect():
                 obj.start += vector
                 obj.end += vector

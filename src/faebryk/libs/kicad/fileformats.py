@@ -813,6 +813,7 @@ class kicad:
         )
 
         if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(raw, encoding="utf-8")
         return raw
 
@@ -878,6 +879,22 @@ class kicad:
             new_y = rotated_y + center.y
 
             return kicad.pcb.Xy(x=new_x, y=new_y)
+
+        @staticmethod
+        def add(obj: "kicad.pcb.Xy", *other: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
+            return kicad.pcb.Xy(
+                x=obj.x + sum(o.x for o in other), y=obj.y + sum(o.y for o in other)
+            )
+
+        @staticmethod
+        def sub(obj: "kicad.pcb.Xy", *other: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
+            return kicad.pcb.Xy(
+                x=obj.x - sum(o.x for o in other), y=obj.y - sum(o.y for o in other)
+            )
+
+        @staticmethod
+        def neg(obj: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
+            return kicad.pcb.Xy(x=-obj.x, y=-obj.y)
 
     @staticmethod
     @overload
