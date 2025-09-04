@@ -275,6 +275,8 @@ def _attach(module: Module, c: Component):
             module,
         )
 
+    module.add(F.has_cacheable_pick())
+
 
 def _get_compatible_parameters(
     module: Module, c: "Component", solver: Solver

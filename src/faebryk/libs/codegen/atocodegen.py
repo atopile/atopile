@@ -327,8 +327,7 @@ class AtoCodeGen:
         def __post_init__(self) -> None:
             self.experiments.add(AtoCodeGen.Experiment.TRAITS)
             self.experiments.add(AtoCodeGen.Experiment.MODULE_TEMPLATING)
-            self.add_import(F.has_part_picked.__name__)
-            self.add_import(F.has_part_picked_by_supplier.__name__)
+            self.add_import(F.has_cached_pick.__name__)
 
         def add_pick(self, pick: "AtoCodeGen.Retype") -> None:
             self.picks.append(pick)
@@ -349,8 +348,8 @@ class AtoCodeGen:
             )
 
             pick_trait = AtoCodeGen.Trait(
-                name=F.has_part_picked.__name__,
-                constructor=F.has_part_picked.by_supplier.__name__,
+                name=F.has_cached_pick.__name__,
+                constructor=F.has_cached_pick.by_supplier.__name__,
                 args=pick_args,
             )
 

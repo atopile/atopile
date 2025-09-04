@@ -14,7 +14,6 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
-from faebryk.core.trait import Trait
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.codegen.atocodegen import AtoCodeGen, sanitize_name
 from faebryk.libs.picker.lcsc import PickedPartLCSC
@@ -183,43 +182,42 @@ def load_picks_from_file(app: Module, picks_file_path: Path):
 
     app.specialize(app_with_picks)
 
+    for node, t in GraphFunctions(app.get_graph()).nodes_with_trait(F.has_cached_pick):
+        lcsc_id = cast_assert(PickedPartLCSC, t.get_part()).lcsc_id
+        lcsc_attach(cast_assert(Module, node), lcsc_id)
+
+    # TODO: does having the app in the graph twice kill performance?
     # TODO: skip if descriptive properties have changed
-    # TODO: lcsc_attach
-
-
-def _find_stdlib_ancestor(node: Module) -> type[Node]:
-    # FIXME: handle non-trivial inheritance hierarchies
-    while type(node).__name__ not in F.__dict__:
-        node = node.get_less_special()
-    return type(node)
 
 
 def save_picks_to_file(G: Graph, picks_file_path: Path):
     # TODO: fix docstrings (has_descriptive_properties?)
     # TODO: save datasheet url (has_datasheet_defined)
     # TODO: include params
-    # FIXME: skip parts that already have a pick (e.g. auto-generated packages) (has_suggested_pick)
 
     from atopile.config import config
 
-    nodes: list[tuple[Node, Trait]] = GraphFunctions(G).nodes_with_trait(
-        F.has_part_picked
-    )
-
-    parts: dict[str, tuple[PickedPartLCSC, type[Node]]] = {}
+    parts: dict[str, tuple[PickedPartLCSC, type[Module]]] = {}
     picks: dict[str, str] = {}
 
-    for node, _ in nodes:
-        if t := node.try_get_trait(F.has_part_picked):
-            part = cast_assert(PickedPartLCSC, t.get_part())
-            part_identifier = (
-                sanitize_name(part.manufacturer) + "_" + sanitize_name(part.partno)
-            )
+    for node, _ in GraphFunctions(G).nodes_with_trait(F.has_cacheable_pick):
+        t = node.try_get_trait(F.has_part_picked)
+        assert t is not None
 
-            node_type = _find_stdlib_ancestor(cast_assert(Module, node))
+        logger.info(f"Extracting pick for `{node.get_full_name()}`")
 
-            parts[part_identifier] = (part, node_type)
-            picks[node.get_full_name()] = part_identifier
+        part = cast_assert(PickedPartLCSC, t.get_part())
+        part_identifier = (
+            sanitize_name(part.manufacturer) + "_" + sanitize_name(part.partno)
+        )
+
+        assert isinstance(node, Module)
+        node_type = type(
+            node.get_less_special() if node.has_trait(F.has_cached_pick) else node
+        )
+
+        parts[part_identifier] = (part, node_type)
+        picks[node.get_full_name()] = part_identifier
 
     picks_file = AtoCodeGen.PicksFile(
         entry=config.build.entry_section,
@@ -227,9 +225,12 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
     )
 
     for identifier, (part, node_type) in natsorted(parts.items()):
+        logger.info(f"Saving definition for part `{identifier}`")
+
+        # TODO: import model from parts/... instead
         picks_file.add_pick_type(
             name=identifier,
-            from_name=node_type.__name__,
+            from_name=node_type.__name__,  #  FIXME: import path if not stdlib?
             description=part.info.description if part.info is not None else "",
             pick_args={
                 "supplier_id": "lcsc",
@@ -241,7 +242,8 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
 
     for name in natsorted(picks):
         address = "app." + name.removeprefix("app.")
+        logger.info(f"Saving pick for `{address}`")
         picks_file.add_pick(AtoCodeGen.Retype(address=address, type=picks[name]))
 
-    with open(picks_file_path, "w") as f:
-        f.write(picks_file.dump())
+    logger.info(f"Writing picks file to `{picks_file_path}`")
+    picks_file_path.write_text(picks_file.dump(), encoding="utf-8")
