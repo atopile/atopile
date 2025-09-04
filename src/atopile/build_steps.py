@@ -285,6 +285,12 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
+
+
+@muster.register("save-picks", description="Saving picks", dependencies=[pick_parts])
+def save_picks(
+    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
     save_part_info_to_pcb(app.get_graph())
     save_picks_to_file(app.get_graph(), config.build.paths.picks_file)
 
@@ -329,7 +335,9 @@ def post_solve_checks(
 
 
 @muster.register(
-    "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
+    "update-pcb",
+    description="Updating PCB",
+    dependencies=[post_solve_checks, save_picks],
 )
 def update_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
