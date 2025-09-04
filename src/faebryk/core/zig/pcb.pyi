@@ -201,7 +201,7 @@ class Xy:
     x: float
     y: float
 
-    def __init__(self, x: float, y: float) -> None: ...
+    def __init__(self, *, x: float, y: float) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -211,7 +211,7 @@ class Xyz:
     y: float
     z: float
 
-    def __init__(self, x: float, y: float, z: float) -> None: ...
+    def __init__(self, *, x: float, y: float, z: float) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -221,7 +221,7 @@ class Xyr:
     y: float
     r: float
 
-    def __init__(self, x: float, y: float, r: float) -> None: ...
+    def __init__(self, *, x: float, y: float, r: float) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -230,7 +230,7 @@ class Wh:
     w: float
     h: float | None
 
-    def __init__(self, w: float, h: float | None) -> None: ...
+    def __init__(self, *, w: float, h: float | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -239,7 +239,7 @@ class Stroke:
     width: float
     type: str
 
-    def __init__(self, width: float, type: str) -> None: ...
+    def __init__(self, *, width: float, type: str) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -248,7 +248,7 @@ class Font:
     size: Wh
     thickness: float | None
 
-    def __init__(self, size: Wh, thickness: float | None) -> None: ...
+    def __init__(self, *, size: Wh, thickness: float | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -257,7 +257,7 @@ class Effects:
     font: Font
     hide: bool | None
 
-    def __init__(self, font: Font, hide: bool | None) -> None: ...
+    def __init__(self, *, font: Font, hide: bool | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -266,7 +266,7 @@ class TextLayer:
     layer: str
     knockout: str | None
 
-    def __init__(self, layer: str, knockout: str | None) -> None: ...
+    def __init__(self, *, layer: str, knockout: str | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -284,6 +284,7 @@ class Line:
 
     def __init__(
         self,
+        *,
         start: Xy,
         end: Xy,
         layer: str | None,
@@ -312,6 +313,7 @@ class Arc:
 
     def __init__(
         self,
+        *,
         start: Xy,
         mid: Xy,
         end: Xy,
@@ -340,6 +342,7 @@ class Circle:
 
     def __init__(
         self,
+        *,
         center: Xy,
         end: Xy,
         layer: str | None,
@@ -367,6 +370,7 @@ class Rect:
 
     def __init__(
         self,
+        *,
         start: Xy,
         end: Xy,
         layer: str | None,
@@ -384,7 +388,7 @@ class Rect:
 class Pts:
     xys: list[Xy]
 
-    def __init__(self, xys: list[Xy]) -> None: ...
+    def __init__(self, *, xys: list[Xy]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -401,6 +405,7 @@ class Polygon:
 
     def __init__(
         self,
+        *,
         pts: Pts,
         layer: str | None,
         layers: list[str] | None,
@@ -426,6 +431,7 @@ class Curve:
 
     def __init__(
         self,
+        *,
         pts: Pts,
         layer: str | None,
         layers: list[str] | None,
@@ -447,7 +453,7 @@ class Text:
     effects: Effects
 
     def __init__(
-        self, text: str, at: Xyr, layer: str, uuid: str | None, effects: Effects
+        self, *, text: str, at: Xyr, layer: str, uuid: str | None, effects: Effects
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -464,6 +470,7 @@ class FpText:
 
     def __init__(
         self,
+        *,
         type: str,
         text: str,
         at: Xyr,
@@ -484,6 +491,7 @@ class PadDrill:
 
     def __init__(
         self,
+        *,
         shape: str | None,
         size_x: float | None,
         size_y: float | None,
@@ -497,7 +505,7 @@ class PadOptions:
     clearance: str | None
     anchor: str | None
 
-    def __init__(self, clearance: str | None, anchor: str | None) -> None: ...
+    def __init__(self, *, clearance: str | None, anchor: str | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -505,7 +513,7 @@ class PadOptions:
 class PadTenting:
     type: str
 
-    def __init__(self, type: str) -> None: ...
+    def __init__(self, *, type: str) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -536,6 +544,7 @@ class Pad:
 
     def __init__(
         self,
+        *,
         name: str,
         type: str,
         shape: str,
@@ -567,7 +576,7 @@ class Net:
     number: int
     name: str | None
 
-    def __init__(self, number: int, name: str | None) -> None: ...
+    def __init__(self, *, number: int, name: str | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -579,17 +588,18 @@ class Property:
     layer: str
     hide: bool | None
     uuid: str | None
-    effects: Effects
+    effects: Effects | None
 
     def __init__(
         self,
+        *,
         name: str,
         value: str,
         at: Xyr,
         layer: str,
         hide: bool | None,
         uuid: str | None,
-        effects: Effects,
+        effects: Effects | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -598,7 +608,7 @@ class Property:
 class ModelXyz:
     xyz: Xyz
 
-    def __init__(self, xyz: Xyz) -> None: ...
+    def __init__(self, *, xyz: Xyz) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -610,7 +620,7 @@ class Model:
     rotate: ModelXyz
 
     def __init__(
-        self, path: str, offset: ModelXyz, scale: ModelXyz, rotate: ModelXyz
+        self, *, path: str, offset: ModelXyz, scale: ModelXyz, rotate: ModelXyz
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -635,6 +645,7 @@ class Footprint:
 
     def __init__(
         self,
+        *,
         name: str,
         layer: str,
         uuid: str | None,
@@ -665,6 +676,7 @@ class ViaLayer:
 
     def __init__(
         self,
+        *,
         name: str,
         size: Xy | None,
         thermal_gap: float | None,
@@ -680,7 +692,7 @@ class ViaPadstack:
     mode: str
     layers: list[ViaLayer]
 
-    def __init__(self, mode: str, layers: list[ViaLayer]) -> None: ...
+    def __init__(self, *, mode: str, layers: list[ViaLayer]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -689,7 +701,7 @@ class ViaTenting:
     front: bool
     back: bool
 
-    def __init__(self, front: bool, back: bool) -> None: ...
+    def __init__(self, *, front: bool, back: bool) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -712,6 +724,7 @@ class Via:
 
     def __init__(
         self,
+        *,
         at: Xy,
         size: float,
         drill: float,
@@ -735,7 +748,7 @@ class Hatch:
     mode: str
     pitch: float
 
-    def __init__(self, mode: str, pitch: float) -> None: ...
+    def __init__(self, *, mode: str, pitch: float) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -744,7 +757,7 @@ class ConnectPads:
     mode: str | None
     clearance: float | None
 
-    def __init__(self, mode: str | None, clearance: float | None) -> None: ...
+    def __init__(self, *, mode: str | None, clearance: float | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -769,6 +782,7 @@ class ZoneFill:
 
     def __init__(
         self,
+        *,
         enable: str | None,
         mode: str | None,
         hatch_thickness: float | None,
@@ -794,7 +808,7 @@ class FilledPolygon:
     layer: str
     pts: Pts
 
-    def __init__(self, layer: str, pts: Pts) -> None: ...
+    def __init__(self, *, layer: str, pts: Pts) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -807,7 +821,7 @@ class ZoneKeepout:
     footprints: str
 
     def __init__(
-        self, tracks: str, vias: str, pads: str, copperpour: str, footprints: str
+        self, *, tracks: str, vias: str, pads: str, copperpour: str, footprints: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -819,7 +833,7 @@ class ZonePlacement:
     enabled: bool
 
     def __init__(
-        self, source_type: str | None, source: str | None, enabled: bool
+        self, *, source_type: str | None, source: str | None, enabled: bool
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -828,7 +842,7 @@ class ZonePlacement:
 class ZoneTeardrop:
     type: str
 
-    def __init__(self, type: str) -> None: ...
+    def __init__(self, *, type: str) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -836,7 +850,7 @@ class ZoneTeardrop:
 class ZoneAttr:
     teardrop: ZoneTeardrop | None
 
-    def __init__(self, teardrop: ZoneTeardrop | None) -> None: ...
+    def __init__(self, *, teardrop: ZoneTeardrop | None) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -860,6 +874,7 @@ class Zone:
 
     def __init__(
         self,
+        *,
         net: int,
         net_name: str,
         layers: list[str] | None,
@@ -890,6 +905,7 @@ class Segment:
 
     def __init__(
         self,
+        *,
         start: Xy,
         end: Xy,
         width: float,
@@ -912,6 +928,7 @@ class ArcSegment:
 
     def __init__(
         self,
+        *,
         start: Xy,
         mid: Xy,
         end: Xy,
@@ -928,7 +945,7 @@ class General:
     thickness: float
     legacy_teardrops: bool
 
-    def __init__(self, thickness: float, legacy_teardrops: bool) -> None: ...
+    def __init__(self, *, thickness: float, legacy_teardrops: bool) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -938,7 +955,9 @@ class Paper:
     size: Xy | None
     orientation: str | None
 
-    def __init__(self, type: str, size: Xy | None, orientation: str | None) -> None: ...
+    def __init__(
+        self, *, type: str, size: Xy | None, orientation: str | None
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -952,6 +971,7 @@ class TitleBlock:
 
     def __init__(
         self,
+        *,
         title: str | None,
         date: str | None,
         revision: str | None,
@@ -966,7 +986,7 @@ class Comment:
     number: int
     text: str
 
-    def __init__(self, number: int, text: str) -> None: ...
+    def __init__(self, *, number: int, text: str) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -978,7 +998,7 @@ class Layer:
     alias: str | None
 
     def __init__(
-        self, number: int, name: str, type: str, alias: str | None
+        self, *, number: int, name: str, type: str, alias: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -994,6 +1014,7 @@ class Stackup:
 
     def __init__(
         self,
+        *,
         layers: list[StackupLayer],
         copper_finish: str | None,
         dielectric_constraints: bool | None,
@@ -1016,6 +1037,7 @@ class StackupLayer:
 
     def __init__(
         self,
+        *,
         name: str,
         type: str,
         color: str | None,
@@ -1050,6 +1072,7 @@ class Rules:
 
     def __init__(
         self,
+        *,
         max_error: float,
         min_clearance: float,
         min_connection: float,
@@ -1119,6 +1142,7 @@ class PcbPlotParams:
 
     def __init__(
         self,
+        *,
         layerselection: str,
         plot_on_all_layers_selection: str,
         disableapertmacros: bool,
@@ -1169,7 +1193,7 @@ class PcbPlotParams:
 class Tenting:
     values: list[str]
 
-    def __init__(self, values: list[str]) -> None: ...
+    def __init__(self, *, values: list[str]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1184,6 +1208,7 @@ class Setup:
 
     def __init__(
         self,
+        *,
         stackup: Stackup | None,
         pad_to_mask_clearance: int,
         allow_soldermask_bridges_in_footprints: bool,
@@ -1223,6 +1248,7 @@ class KicadPcb:
 
     def __init__(
         self,
+        *,
         version: int,
         generator: str,
         generator_version: str,
@@ -1255,7 +1281,7 @@ class KicadPcb:
 class Data:
     data: str
 
-    def __init__(self, data: str) -> None: ...
+    def __init__(self, *, data: str) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1268,7 +1294,7 @@ class Image:
     uuid: str | None
 
     def __init__(
-        self, at: Xy, layer: str, scale: float, data: Data | None, uuid: str | None
+        self, *, at: Xy, layer: str, scale: float, data: Data | None, uuid: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -1281,7 +1307,7 @@ class EmbeddedFile:
     checksum: str | None
 
     def __init__(
-        self, name: str, type: str, data: Data | None, checksum: str | None
+        self, *, name: str, type: str, data: Data | None, checksum: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -1290,7 +1316,7 @@ class EmbeddedFile:
 class EmbeddedFiles:
     files: list[EmbeddedFile]
 
-    def __init__(self, files: list[EmbeddedFile]) -> None: ...
+    def __init__(self, *, files: list[EmbeddedFile]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1308,6 +1334,7 @@ class Teardrop:
 
     def __init__(
         self,
+        *,
         enabled: bool,
         allow_two_segments: bool,
         prefer_zone_connections: bool,
@@ -1327,7 +1354,9 @@ class RenderCache:
     rotation: float
     polygons: list[Polygon]
 
-    def __init__(self, text: str, rotation: float, polygons: list[Polygon]) -> None: ...
+    def __init__(
+        self, *, text: str, rotation: float, polygons: list[Polygon]
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1338,7 +1367,7 @@ class Margins:
     right: int
     bottom: int
 
-    def __init__(self, left: int, top: int, right: int, bottom: int) -> None: ...
+    def __init__(self, *, left: int, top: int, right: int, bottom: int) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1347,7 +1376,7 @@ class Span:
     cols: int
     rows: int
 
-    def __init__(self, cols: int, rows: int) -> None: ...
+    def __init__(self, *, cols: int, rows: int) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1370,6 +1399,7 @@ class TextBox:
 
     def __init__(
         self,
+        *,
         text: str,
         locked: bool,
         start: Xy | None,
@@ -1396,7 +1426,7 @@ class TableCell:
     uuid: str | None
 
     def __init__(
-        self, text: str, layer: str, effects: Effects, uuid: str | None
+        self, *, text: str, layer: str, effects: Effects, uuid: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -1405,7 +1435,7 @@ class TableCell:
 class Cells:
     table_cells: list[TableCell]
 
-    def __init__(self, table_cells: list[TableCell]) -> None: ...
+    def __init__(self, *, table_cells: list[TableCell]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1415,7 +1445,7 @@ class Border:
     header: bool
     stroke: Stroke
 
-    def __init__(self, external: bool, header: bool, stroke: Stroke) -> None: ...
+    def __init__(self, *, external: bool, header: bool, stroke: Stroke) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1425,7 +1455,7 @@ class Separator:
     cols: bool
     stroke: Stroke
 
-    def __init__(self, rows: bool, cols: bool, stroke: Stroke) -> None: ...
+    def __init__(self, *, rows: bool, cols: bool, stroke: Stroke) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1442,6 +1472,7 @@ class Table:
 
     def __init__(
         self,
+        *,
         column_count: int,
         locked: bool | None,
         layer: str,
@@ -1458,7 +1489,7 @@ class Table:
 class DimensionPts:
     xys: list[Xy]
 
-    def __init__(self, xys: list[Xy]) -> None: ...
+    def __init__(self, *, xys: list[Xy]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -1474,6 +1505,7 @@ class DimensionFormat:
 
     def __init__(
         self,
+        *,
         prefix: str,
         suffix: str,
         units: int,
@@ -1498,6 +1530,7 @@ class DimensionStyle:
 
     def __init__(
         self,
+        *,
         thickness: float | None,
         arrow_length: float | None,
         arrow_direction: str,
@@ -1525,6 +1558,7 @@ class Dimension:
 
     def __init__(
         self,
+        *,
         type: str,
         layer: str,
         uuid: str | None,
@@ -1548,6 +1582,7 @@ class Group:
 
     def __init__(
         self,
+        *,
         name: str | None,
         uuid: str | None,
         locked: bool | None,
@@ -1565,7 +1600,7 @@ class Target:
     uuid: str | None
 
     def __init__(
-        self, at: Xy, size: Xy, width: float, layer: str, uuid: str | None
+        self, *, at: Xy, size: Xy, width: float, layer: str, uuid: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -1574,7 +1609,7 @@ class Target:
 class PcbFile:
     kicad_pcb: KicadPcb
 
-    def __init__(self, kicad_pcb: KicadPcb) -> None: ...
+    def __init__(self, *, kicad_pcb: KicadPcb) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...

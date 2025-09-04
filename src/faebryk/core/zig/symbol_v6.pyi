@@ -31,7 +31,7 @@ class Arc:
     layer: str
 
     def __init__(
-        self, start: Xy, mid: Xy, end: Xy, width: float, layer: str
+        self, *, start: Xy, mid: Xy, end: Xy, width: float, layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -45,7 +45,7 @@ class Circle:
     fill: Fill
 
     def __init__(
-        self, center: Xy, radius: float, end: Xy, stroke: Stroke, fill: Fill
+        self, *, center: Xy, radius: float, end: Xy, stroke: Stroke, fill: Fill
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -61,6 +61,7 @@ class SymbolUnit:
 
     def __init__(
         self,
+        *,
         name: str,
         polylines: list[Polyline],
         circles: list[Circle],
@@ -85,6 +86,7 @@ class Symbol:
 
     def __init__(
         self,
+        *,
         name: str,
         power: Power | None,
         propertys: list[Property],
@@ -104,7 +106,9 @@ class SymbolLib:
     generator: str
     symbols: list[Symbol]
 
-    def __init__(self, version: int, generator: str, symbols: list[Symbol]) -> None: ...
+    def __init__(
+        self, *, version: int, generator: str, symbols: list[Symbol]
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -112,7 +116,7 @@ class SymbolLib:
 class SymbolFile:
     kicad_sym: SymbolLib
 
-    def __init__(self, kicad_sym: SymbolLib) -> None: ...
+    def __init__(self, *, kicad_sym: SymbolLib) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...

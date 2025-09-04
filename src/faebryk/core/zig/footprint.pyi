@@ -47,6 +47,7 @@ class Footprint:
 
     def __init__(
         self,
+        *,
         name: str,
         layer: str,
         uuid: str | None,
@@ -75,7 +76,7 @@ class Footprint:
 class FootprintFile:
     footprint: Footprint
 
-    def __init__(self, footprint: Footprint) -> None: ...
+    def __init__(self, *, footprint: Footprint) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...

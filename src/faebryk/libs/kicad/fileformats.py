@@ -843,13 +843,17 @@ class kicad:
         return find(obj, lambda o: o.name == name)
 
     @staticmethod
-    def set[T: Named](obj: list[T], name: str, value: T):
+    def set[T: Named](obj: list[T], value: T):
+        kicad.delete(obj, value.name)
+
+        obj.append(value)
+
+    @staticmethod
+    def delete[T: Named](obj: list[T], name: str):
         for o in obj:
             if o.name == name:
                 obj.remove(o)
                 return
-
-        obj.append(value)
 
     class geo:
         @staticmethod
@@ -1073,6 +1077,7 @@ class Property:
     class _Property(Protocol):
         name: str
         value: str
+        at: kicad.pcb.Xyr
 
         # def __init__(self, name: str, value: str): ...
 
@@ -1088,7 +1093,8 @@ class Property:
 
         Property.delete_property(copy.propertys, "checksum")
         # TODO: this doesn't work atm
-        out = kicad.dumps(copy)
+        # out = kicad.dumps(copy)
+        out = repr(copy)
 
         if remove_uuid:
             out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
@@ -1098,9 +1104,17 @@ class Property:
     @staticmethod
     def set_checksum(obj: _PropertyHolder, p_type: type[_Property]):
         Property.delete_property(obj.propertys, "checksum")
+
+        attrs = {
+            "name": "checksum",
+            "value": Checksum.build(Property._hashable(obj)),
+            "at": kicad.pcb.Xyr(x=0, y=0, r=0),
+        }
+        if p_type is kicad.pcb.Property:
+            attrs["layer"] = "F.Cu"
         Property.set_property(
             obj.propertys,
-            p_type(name="checksum", value=Checksum.build(Property._hashable(obj))),
+            p_type(**attrs),
         )
 
     @staticmethod

@@ -153,6 +153,9 @@ pub const PyiGenerator = struct {
 
         // Generate __init__ method
         try self.output.writer().print("    def __init__(self", .{});
+        if (struct_info.fields.len > 0) {
+            try self.output.writer().print(", *", .{});
+        }
         inline for (struct_info.fields) |field| {
             try self.output.writer().print(", {s}: ", .{field.name});
             try self.writeZigTypeToPython(self.output.writer(), field.type);

@@ -571,7 +571,7 @@ pub const Property = struct {
     layer: str,
     hide: ?bool = null,
     uuid: ?str = null,
-    effects: Effects,
+    effects: ?Effects = null,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },

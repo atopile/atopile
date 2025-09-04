@@ -19,7 +19,7 @@ class Line:
     layer: str
     width: float
 
-    def __init__(self, start: Xy, end: Xy, layer: str, width: float) -> None: ...
+    def __init__(self, *, start: Xy, end: Xy, layer: str, width: float) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -32,7 +32,7 @@ class Circle:
     layer: str
 
     def __init__(
-        self, center: Xy, end: Xy, width: float, fill: str, layer: str
+        self, *, center: Xy, end: Xy, width: float, fill: str, layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -46,7 +46,7 @@ class Arc:
     angle: float
 
     def __init__(
-        self, start: Xy, end: Xy, width: float, layer: str, angle: float
+        self, *, start: Xy, end: Xy, width: float, layer: str, angle: float
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -60,7 +60,7 @@ class Rect:
     layer: str
 
     def __init__(
-        self, start: Xy, end: Xy, width: float, fill: str, layer: str
+        self, *, start: Xy, end: Xy, width: float, fill: str, layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property
@@ -75,6 +75,7 @@ class Model:
 
     def __init__(
         self,
+        *,
         path: str,
         scale: ModelXyz,
         rotate: ModelXyz,
@@ -106,6 +107,7 @@ class Footprint:
 
     def __init__(
         self,
+        *,
         name: str,
         layer: str,
         uuid: str | None,
@@ -131,7 +133,7 @@ class Footprint:
 class FootprintFile:
     footprint: Footprint
 
-    def __init__(self, footprint: Footprint) -> None: ...
+    def __init__(self, *, footprint: Footprint) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...

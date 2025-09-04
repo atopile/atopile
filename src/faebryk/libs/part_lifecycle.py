@@ -229,7 +229,7 @@ class PartLifecycle:
 
             # recreate table to ensure sync
             fp_table = kicad.fp_lib_table.FpLibTableFile(
-                kicad.fp_lib_table.FpLibTable(version=7, libs=[])
+                fp_lib_table=kicad.fp_lib_table.FpLibTable(version=7, libs=[])
             )
             # load all existing parts into new table
             for part_dir in sorted(
@@ -280,10 +280,7 @@ class PartLifecycle:
                 options="",
                 descr=f"{MANAGED_LIB_PREFIX} {lib_name}",
             )
-            fp_table.fp_lib_table.libs = [
-                lib for lib in fp_table.fp_lib_table.libs if lib.name != lib_name
-            ]
-            fp_table.fp_lib_table.libs.append(lib)
+            kicad.set(fp_table.fp_lib_table.libs, lib)
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances
