@@ -274,12 +274,12 @@ def pick_parts(
     if config.build.keep_picked_parts:
         try:
             load_picks_from_file(app, config.build.paths.picks_file)
+            solver.simplify(app.get_graph())
         except PicksLoadError as ex:
             logger.warning(f"Failed to load picks: {ex}")
-        solver.simplify(app.get_graph())
+
     try:
         pick_part_recursively(app, solver, progress=log_context)
-
     except* PickError as ex:
         raise ExceptionGroup(
             "Failed to pick parts for some modules",
