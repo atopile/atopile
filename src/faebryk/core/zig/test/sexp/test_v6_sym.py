@@ -15,11 +15,9 @@ def test_v6_sym():
     )""".replace("hide", "")
     sym = kicad.loads(kicad.symbol_v6.SymbolFile, wrapped)
     print(f"Loaded {len(sym.kicad_sym.symbols)} symbols")
-    if sym.kicad_sym.symbols:
-        print(f"First symbol name: {sym.kicad_sym.symbols[0].name}")
-        print(
-            f"First symbol properties: {len(sym.kicad_sym.symbols[0].propertys)} properties"
-        )
+    symnew = kicad.convert(sym)
+    out = kicad.dumps(symnew)
+    print(out)
 
 
 if __name__ == "__main__":

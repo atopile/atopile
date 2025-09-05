@@ -249,6 +249,8 @@ pub extern var PyExc_TypeError: *PyObject;
 pub extern var PyExc_ValueError: *PyObject;
 pub extern var PyExc_NotImplementedError: *PyObject;
 pub extern var PyExc_ImportError: *PyObject;
+pub extern var PyExc_MemoryError: *PyObject;
+pub extern var PyExc_AttributeError: *PyObject;
 
 // Additional Python C API functions for generic init
 pub extern fn PyTuple_Size(tuple: ?*PyObject) isize;

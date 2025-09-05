@@ -807,13 +807,19 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) De
 
         // For struct types with a single-element list
         if (@typeInfo(T) == .@"struct" and items.len == 1) {
-            // If the single element is itself a list, unwrap it
-            // This handles cases like (pin_names (offset 1.016))
+            // Check if the single element is a list that looks like a complete struct
+            // (has multiple key-value pairs or is empty)
             if (ast.isList(items[0])) {
-                return try decode(T, allocator, items[0]);
+                const inner_list = ast.getList(items[0]).?;
+                // Only unwrap if this looks like a single complete struct representation
+                // not a single key-value pair like (clearance 0.5)
+                if (inner_list.len == 0 or inner_list.len > 2 or 
+                    (inner_list.len > 0 and ast.getSymbol(inner_list[0]) == null)) {
+                    // This looks like a complete struct, unwrap it
+                    return try decode(T, allocator, items[0]);
+                }
             }
-            // Otherwise keep it as a list for positional field parsing
-            // This handles cases like (drill 1.199998) where the struct has positional fields
+            // Otherwise keep it as a list for the struct decoder
         }
     }
     return try decode(T, allocator, sexp);

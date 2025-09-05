@@ -280,7 +280,7 @@ class PartLifecycle:
                 options="",
                 descr=f"{MANAGED_LIB_PREFIX} {lib_name}",
             )
-            kicad.set(fp_table.fp_lib_table.libs, lib)
+            kicad.set(fp_table.fp_lib_table, "libs", lib)
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances

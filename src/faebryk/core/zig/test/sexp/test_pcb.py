@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import difflib
 import logging
 from pathlib import Path
 
@@ -13,8 +14,12 @@ def test_pcb():
         "/home/needspeed/workspace/atopile/test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb"
     )
     pcb = kicad.loads(kicad.pcb.PcbFile, path)
-    print(pcb.__field_names__)
-    # print(pcb.kicad_pcb.footprints[0])
+    out = kicad.dumps(pcb)
+    load = kicad.loads(kicad.pcb.PcbFile, out)
+    out2 = kicad.dumps(load)
+
+    for line in difflib.unified_diff(out, out2, lineterm=""):
+        print(line)
     print("\n--- Print complete, exiting ---")
 
 

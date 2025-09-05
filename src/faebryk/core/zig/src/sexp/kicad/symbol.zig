@@ -9,6 +9,10 @@ pub const SymbolLib = struct {
     version: i32,
     generator: []const u8,
     symbols: []schematic.Symbol = &.{},
+
+    pub const fields_meta = .{
+        .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
+    };
 };
 
 pub const SymbolFile = struct {

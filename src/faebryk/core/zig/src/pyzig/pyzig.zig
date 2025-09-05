@@ -776,10 +776,104 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
 
     const setter = struct {
         fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
-            // For now, just prevent setting - full implementation would convert Python list to slice
-            _ = self;
-            _ = value;
-            return -1;
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null) {
+                py.PyErr_SetString(py.PyExc_TypeError, "Cannot delete slice attribute");
+                return -1;
+            }
+            
+            // Check if value is a list
+            if (py.PyList_Check(value) == 0) {
+                py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
+                return -1;
+            }
+            
+            const list_size = py.PyList_Size(value);
+            if (list_size < 0) {
+                return -1;
+            }
+            
+            // Allocate new slice
+            const new_slice = std.heap.c_allocator.alloc(ChildType, @intCast(list_size)) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate memory for slice");
+                return -1;
+            };
+            
+            // Convert each Python object to the child type
+            for (0..@intCast(list_size)) |i| {
+                const item = py.PyList_GetItem(value, @intCast(i));
+                if (item == null) {
+                    std.heap.c_allocator.free(new_slice);
+                    return -1;
+                }
+                
+                // Convert Python object to child type
+                switch (child_info) {
+                    .@"struct" => {
+                        // Extract struct data from Python wrapper
+                        const NestedWrapper = PyObjectWrapper(ChildType);
+                        const wrapper: *NestedWrapper = @ptrCast(@alignCast(item));
+                        new_slice[i] = wrapper.data.*;
+                    },
+                    .int => {
+                        const int_val = py.PyLong_AsLong(item);
+                        if (int_val == -1 and py.PyErr_Occurred() != null) {
+                            std.heap.c_allocator.free(new_slice);
+                            return -1;
+                        }
+                        new_slice[i] = @intCast(int_val);
+                    },
+                    .float => {
+                        const float_val = py.PyFloat_AsDouble(item);
+                        if (py.PyErr_Occurred() != null) {
+                            std.heap.c_allocator.free(new_slice);
+                            return -1;
+                        }
+                        new_slice[i] = @floatCast(float_val);
+                    },
+                    .bool => {
+                        const is_true = py.PyObject_IsTrue(item);
+                        if (is_true == -1) {
+                            std.heap.c_allocator.free(new_slice);
+                            return -1;
+                        }
+                        new_slice[i] = is_true == 1;
+                    },
+                    .pointer => |ptr| {
+                        if (ptr.size == .slice and ptr.child == u8) {
+                            // String slice
+                            const str_val = py.PyUnicode_AsUTF8(item);
+                            if (str_val == null) {
+                                std.heap.c_allocator.free(new_slice);
+                                return -1;
+                            }
+                            // Duplicate the string
+                            const str_span = std.mem.span(str_val.?);
+                            const str_copy = std.heap.c_allocator.dupe(u8, str_span) catch {
+                                std.heap.c_allocator.free(new_slice);
+                                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to duplicate string");
+                                return -1;
+                            };
+                            new_slice[i] = str_copy;
+                        } else {
+                            std.heap.c_allocator.free(new_slice);
+                            py.PyErr_SetString(py.PyExc_TypeError, "Unsupported pointer type in slice");
+                            return -1;
+                        }
+                    },
+                    else => {
+                        std.heap.c_allocator.free(new_slice);
+                        py.PyErr_SetString(py.PyExc_TypeError, "Unsupported type in slice");
+                        return -1;
+                    },
+                }
+            }
+            
+            // Free old slice if needed (be careful about memory management)
+            // For now, we'll just replace it (potential memory leak of old data)
+            @field(obj.data.*, field_name_str) = new_slice;
+            
+            return 0;
         }
     }.impl;
 
