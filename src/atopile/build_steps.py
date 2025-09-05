@@ -119,6 +119,10 @@ class MusterTarget:
 
         self.success = True
 
+    @property
+    def succeeded(self) -> bool:
+        return self.success is True
+
 
 class Muster:
     """A class to register targets to."""
@@ -199,9 +203,7 @@ class Muster:
         for target in [
             self.targets[name] for name in sorted_names if name in self.targets
         ]:
-            if all(
-                dep.success is True or dep.virtual for dep in target.dependencies or []
-            ):
+            if all(dep.succeeded for dep in target.dependencies or []):
                 yield target
 
 
