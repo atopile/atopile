@@ -105,16 +105,23 @@ class MusterTarget:
     produces_artifact: bool = False  # TODO: as list of file paths
     success: bool | None = None
 
-    def __call__(
-        self, app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
-    ) -> None:
-        try:
-            self.func(app, solver, pcb, log_context)
-        except Exception:
-            self.success = False
-            raise
+    def __call__(self, app: Module, solver: Solver, pcb: F.PCB) -> None:
+        if not self.virtual:
+            try:
+                with LoggingStage(
+                    self.name,
+                    self.description or f"Building [green]'{self.name}'[/green]",
+                ) as log_context:
+                    self.func(app, solver, pcb, log_context)
+            except Exception:
+                self.success = False
+                raise
 
         self.success = True
+
+    @property
+    def succeeded(self) -> bool:
+        return self.success is True
 
 
 class Muster:
@@ -196,7 +203,7 @@ class Muster:
         for target in [
             self.targets[name] for name in sorted_names if name in self.targets
         ]:
-            if all(dep.success is True for dep in target.dependencies or []):
+            if all(dep.succeeded for dep in target.dependencies or []):
                 yield target
 
 
