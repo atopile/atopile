@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import json
 import logging
 from enum import StrEnum
 from pathlib import Path
@@ -14,7 +13,6 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.codegen.atocodegen import AtoCodeGen, sanitize_name
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
@@ -30,96 +28,10 @@ class Properties(StrEnum):
     manufacturer = "Manufacturer"
     partno = "Partnumber"
     lcsc = "LCSC"
-    param_prefix = "PARAM_"
-    # used in transformer
-    param_wildcard = "PARAM_*"
 
 
 class PicksLoadError(Exception):
     pass
-
-
-def load_part_info_from_pcb(G: Graph):
-    """
-    Load descriptive properties from footprints and saved parameters.
-    """
-    nodes = GraphFunctions(G).nodes_with_trait(
-        PCB_Transformer.has_linked_kicad_footprint
-    )
-
-    for node, trait in nodes:
-        assert isinstance(node, Module)
-        if isinstance(node, F.Footprint):
-            continue
-        if node.has_trait(F.has_part_picked):
-            continue
-        assert node.has_trait(F.has_descriptive_properties), "Should load when linking"
-
-        part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
-        fp = trait.get_fp()
-        fp_props = {k.value: v for k in part_props if (v := fp.try_get_property(k))}
-        if fp_props.get(Properties.lcsc) == NO_LCSC_DISPLAY:
-            del fp_props[Properties.lcsc]
-        props = node.get_trait(F.has_descriptive_properties).get_properties()
-
-        # check if node has changed
-        if any(props.get(k.value) != fp_props.get(k.value) for k in part_props):
-            continue
-
-        lcsc_id = props.get(Properties.lcsc)
-        manufacturer = props.get(Properties.manufacturer)
-        partno = props.get(Properties.partno)
-
-        # Load Part from PCB
-        if lcsc_id and manufacturer and partno:
-            node.add(
-                F.has_part_picked(
-                    PickedPartLCSC(
-                        supplier_partno=lcsc_id,
-                        manufacturer=manufacturer,
-                        partno=partno,
-                    )
-                )
-            )
-        elif lcsc_id:
-            node.add(
-                F.has_explicit_part.by_supplier(
-                    supplier_partno=lcsc_id,
-                    supplier_id="lcsc",
-                )
-            )
-        elif manufacturer and partno:
-            node.add(
-                F.has_explicit_part.by_mfr(
-                    mfr=manufacturer,
-                    partno=partno,
-                )
-            )
-
-        if lcsc_id:
-            lcsc_attach(node, lcsc_id)
-
-        if "Datasheet" in fp_props:
-            node.add(F.has_datasheet_defined(fp_props["Datasheet"]))
-
-        # Load saved parameters from descriptive properties
-        for key, value in props.items():
-            if not key.startswith(Properties.param_prefix):
-                continue
-
-            param_name = key.removeprefix(Properties.param_prefix)
-            # Skip if parameter doesn't exist in node
-            try:
-                param = node[param_name]
-            except KeyErrorNotFound:
-                logger.warning(
-                    f"Parameter {param_name} not found in node {node.get_name()}"
-                )
-                continue
-            param_value = json.loads(value)
-            param_value = P_Set.deserialize(param_value)
-            assert isinstance(param, Parameter)
-            param.alias_is(param_value)
 
 
 def save_part_info_to_pcb(G: Graph):
@@ -159,6 +71,7 @@ def save_part_info_to_pcb(G: Graph):
 
 def load_picks_from_file(app: Module, picks_file_path: Path):
     from atopile.front_end import bob
+    # TODO: does having the app in the graph twice kill performance?
 
     try:
         picks: Node = bob.build_file(
@@ -183,13 +96,8 @@ def load_picks_from_file(app: Module, picks_file_path: Path):
         lcsc_id = cast_assert(PickedPartLCSC, t.get_part()).lcsc_id
         lcsc_attach(cast_assert(Module, node), lcsc_id)
 
-    # TODO: does having the app in the graph twice kill performance?
-    # TODO: skip if descriptive properties have changed
-
 
 def save_picks_to_file(G: Graph, picks_file_path: Path):
-    # TODO: fix docstrings (has_descriptive_properties?)
-    # TODO: save datasheet url (has_datasheet_defined)
     # TODO: include params
 
     from atopile.config import config
