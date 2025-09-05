@@ -59,7 +59,12 @@ from faebryk.libs.app.pcb import (
     check_net_names,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
+from faebryk.libs.app.picking import (
+    PicksLoadError,
+    load_picks_from_file,
+    save_part_info_to_pcb,
+    save_picks_to_file,
+)
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
@@ -274,8 +279,12 @@ def pick_parts(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.get_graph())
-        solver.simplify(app.get_graph())
+        try:
+            load_picks_from_file(app, config.build.paths.picks_file)
+            solver.simplify(app.get_graph())
+        except PicksLoadError as ex:
+            logger.warning(f"Failed to load picks: {ex}")
+
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:
@@ -283,7 +292,14 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
+
+
+@muster.register("save-picks", description="Saving picks", dependencies=[pick_parts])
+def save_picks(
+    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
     save_part_info_to_pcb(app.get_graph())
+    save_picks_to_file(app.get_graph(), config.build.paths.picks_file)
 
 
 @muster.register(
@@ -326,7 +342,9 @@ def post_solve_checks(
 
 
 @muster.register(
-    "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
+    "update-pcb",
+    description="Updating PCB",
+    dependencies=[post_solve_checks, save_picks],
 )
 def update_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage

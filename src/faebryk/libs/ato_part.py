@@ -151,9 +151,9 @@ class AtoPart:
         # Process sorted pins
         for pin_name, pin_num in sorted_pins:
             if pin_name is None:
-                build.add_stmt(AtoCodeGen.PinDeclaration(pin_num))
+                build.add_pin(AtoCodeGen.PinDeclaration(name=pin_num))
             else:
-                build.add_stmt(
+                build.add_connect(
                     AtoCodeGen.Connect(
                         left=AtoCodeGen.Connect.Connectable(
                             pin_name,
@@ -182,8 +182,9 @@ class AtoPart:
             self.model.dumps(self.model_path)
 
         ato_builder = AtoCodeGen.ComponentFile(
-            self.module_name, docstring=self.docstring
+            identifier=self.module_name, docstring=self.docstring
         )
+
         ato_builder.add_comments(
             "This trait marks this file as auto-generated",
             "If you want to manually change it, remove the trait",
@@ -195,8 +196,6 @@ class AtoPart:
             date=self.auto_generated.date.isoformat(),
             checksum=F.is_auto_generated.CHECKSUM_PLACEHOLDER,
         )
-
-        ato_builder.add_stmt(AtoCodeGen.Spacer())
 
         ato_builder.add_trait(
             "is_atomic_part",
@@ -210,7 +209,7 @@ class AtoPart:
         if self.pick_part:
             ato_builder.add_trait(
                 "has_part_picked",
-                "by_supplier",
+                constructor="by_supplier",
                 supplier_id=self.pick_part.supplier.supplier_id,
                 supplier_partno=self.pick_part.supplier_partno,
                 manufacturer=self.pick_part.manufacturer,
