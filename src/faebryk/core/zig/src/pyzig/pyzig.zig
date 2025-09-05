@@ -781,24 +781,24 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                 py.PyErr_SetString(py.PyExc_TypeError, "Cannot delete slice attribute");
                 return -1;
             }
-            
+
             // Check if value is a list
             if (py.PyList_Check(value) == 0) {
                 py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
                 return -1;
             }
-            
+
             const list_size = py.PyList_Size(value);
             if (list_size < 0) {
                 return -1;
             }
-            
+
             // Allocate new slice
             const new_slice = std.heap.c_allocator.alloc(ChildType, @intCast(list_size)) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate memory for slice");
                 return -1;
             };
-            
+
             // Convert each Python object to the child type
             for (0..@intCast(list_size)) |i| {
                 const item = py.PyList_GetItem(value, @intCast(i));
@@ -806,7 +806,7 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                     std.heap.c_allocator.free(new_slice);
                     return -1;
                 }
-                
+
                 // Convert Python object to child type
                 switch (child_info) {
                     .@"struct" => {
@@ -868,11 +868,11 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                     },
                 }
             }
-            
+
             // Free old slice if needed (be careful about memory management)
             // For now, we'll just replace it (potential memory leak of old data)
             @field(obj.data.*, field_name_str) = new_slice;
-            
+
             return 0;
         }
     }.impl;
@@ -975,49 +975,14 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
     const WrapperType = PyObjectWrapper(T);
     const struct_info = info.@"struct";
 
-    // Generate the field_names property getter function at comptime
-    const get_field_names = struct {
-        pub fn func(self: ?*py.PyObject, closure: ?*anyopaque) callconv(.C) ?*py.PyObject {
-            _ = self; // We don't need the instance for this
-            _ = closure; // Not used
-
-            // Create a Python list with all field names
-            const list = py.PyList_New(@intCast(struct_info.fields.len));
-            if (list == null) return null;
-
-            inline for (struct_info.fields, 0..) |field, i| {
-                const field_name_str = py.PyUnicode_FromString(field.name.ptr);
-                if (field_name_str == null) {
-                    if (list) |l| py.Py_DECREF(l);
-                    return null;
-                }
-                // PyList_SetItem steals the reference, so we don't need to DECREF field_name_str
-                if (py.PyList_SetItem(list, @intCast(i), field_name_str) != 0) {
-                    if (list) |l| py.Py_DECREF(l);
-                    return null;
-                }
-            }
-
-            return list;
-        }
-    }.func;
-
-    // Build the getset array at comptime
+    // Build the getset array at comptime (without field_names property)
     const getset_array = comptime blk: {
-        var getset: [struct_info.fields.len + 2]py.PyGetSetDef = undefined; // +2 for field_names property and sentinel
+        var getset: [struct_info.fields.len + 1]py.PyGetSetDef = undefined; // +1 for sentinel only
         for (struct_info.fields, 0..) |field, i| {
             const field_name_z = field.name ++ "\x00";
             getset[i] = genProp(WrapperType, field.type, field_name_z);
         }
-        // Add field_names property
-        getset[struct_info.fields.len] = py.PyGetSetDef{
-            .name = "__field_names__",
-            .get = @ptrCast(&get_field_names),
-            .set = null, // Read-only property
-            .doc = "List of field names in this struct",
-            .closure = null,
-        };
-        getset[struct_info.fields.len + 1] = py.GS_SENTINEL;
+        getset[struct_info.fields.len] = py.GS_SENTINEL;
         break :blk getset;
     };
 
@@ -1197,7 +1162,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                 // Unsupported nested pointer type
                                                 std.heap.c_allocator.free(slice);
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
-                                                py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list item type");
+                                                py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list pointer item type");
                                                 return -1;
                                             }
                                         },
@@ -1322,6 +1287,17 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
         // Store the comptime-generated getset array as a var to ensure it persists
         pub var generated_getset = getset_array;
 
+        // Create methods array with __field_names__ static method
+        pub var generated_methods = [_]py.PyMethodDef{
+            py.PyMethodDef{
+                .ml_name = "__field_names__",
+                .ml_meth = @ptrCast(&get_field_names_func),
+                .ml_flags = py.METH_NOARGS | py.METH_STATIC,
+                .ml_doc = "Return list of field names in this struct",
+            },
+            py.ML_SENTINEL,
+        };
+
         // Generate the repr function
         pub fn generated_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
@@ -1345,6 +1321,31 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
             return py.PyUnicode_FromStringAndSize(out.ptr, @intCast(out.len));
         }
 
+        // Static function to get field names
+        pub fn get_field_names_func(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = self; // Static method, don't need instance
+            _ = args; // No arguments needed
+
+            // Create a Python list with all field names
+            const list = py.PyList_New(@intCast(struct_info.fields.len));
+            if (list == null) return null;
+
+            inline for (struct_info.fields, 0..) |field, i| {
+                const field_name_str = py.PyUnicode_FromString(field.name.ptr);
+                if (field_name_str == null) {
+                    if (list) |l| py.Py_DECREF(l);
+                    return null;
+                }
+                // PyList_SetItem steals the reference, so we don't need to DECREF field_name_str
+                if (py.PyList_SetItem(list, @intCast(i), field_name_str) != 0) {
+                    if (list) |l| py.Py_DECREF(l);
+                    return null;
+                }
+            }
+
+            return list;
+        }
+
         // The actual PyTypeObject
         pub var type_object = py.PyTypeObject{
             .ob_base = .{ .ob_base = .{ .ob_refcnt = 1, .ob_type = null }, .ob_size = 0 },
@@ -1353,6 +1354,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
             .tp_repr = generated_repr,
             .tp_flags = py.Py_TPFLAGS_DEFAULT | py.Py_TPFLAGS_BASETYPE,
             .tp_getset = @as([*]py.PyGetSetDef, @ptrCast(@constCast(&generated_getset))),
+            .tp_methods = @as([*]py.PyMethodDef, @ptrCast(@constCast(&generated_methods))),
             .tp_init = generated_init,
         };
     };

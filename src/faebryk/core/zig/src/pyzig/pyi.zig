@@ -165,8 +165,8 @@ pub const PyiGenerator = struct {
         // Generate __repr__ method
         try self.output.writer().print("    def __repr__(self) -> str: ...\n", .{});
 
-        try self.output.writer().print("    @property\n", .{});
-        try self.output.writer().print("    def __field_names__(self) -> list[str]: ...\n", .{});
+        try self.output.writer().print("    @staticmethod\n", .{});
+        try self.output.writer().print("    def __field_names__() -> list[str]: ...\n", .{});
 
         // Generate methods
         inline for (struct_info.decls) |decl| {

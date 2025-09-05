@@ -844,17 +844,18 @@ class kicad:
         return find(obj, lambda o: o.name == name)
 
     @staticmethod
-    def set[T: Named](obj: list[T], value: T):
-        kicad.delete(obj, value.name)
+    def set[T: Named](parent, field: str, value: T):
+        obj = getattr(parent, field)
+        obj = [o for o in obj if o.name != value.name]
 
-        obj.append(value)
+        setattr(parent, field, [*obj, value])
 
     @staticmethod
-    def delete[T: Named](obj: list[T], name: str):
-        for o in obj:
-            if o.name == name:
-                obj.remove(o)
-                return
+    def delete[T: Named](parent, field: str, name: str):
+        obj = getattr(parent, field)
+        obj = [o for o in obj if o.name != name]
+
+        setattr(parent, field, obj)
 
     class geo:
         @staticmethod
@@ -1057,8 +1058,8 @@ class kicad:
         return False
 
     class KicadStruct(Protocol):
-        @property
-        def __field_names__(self) -> list[str]: ...
+        @staticmethod
+        def __field_names__() -> list[str]: ...
 
     type Primitive = str | list | int | float | bool | tuple | None
 
@@ -1072,7 +1073,7 @@ class kicad:
             return [kicad.copy(item) for item in old]  # type: ignore
         t = type(old)
         return t(
-            **{name: kicad.copy(getattr(old, name)) for name in old.__field_names__}
+            **{name: kicad.copy(getattr(old, name)) for name in old.__field_names__()}
         )
 
 

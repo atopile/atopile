@@ -285,6 +285,7 @@ pub extern fn PyImport_GetModuleDict() ?*PyObject;
 pub extern fn PyImport_AddModule(name: [*:0]const u8) ?*PyObject;
 pub extern fn PyImport_ImportModule(name: [*:0]const u8) ?*PyObject;
 pub extern fn PyObject_GetAttrString(obj: ?*PyObject, name: [*:0]const u8) ?*PyObject;
+pub extern fn PyObject_SetAttrString(obj: ?*PyObject, name: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyObject_Call(callable: ?*PyObject, args: ?*PyObject, kwargs: ?*PyObject) ?*PyObject;
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;

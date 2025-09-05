@@ -100,7 +100,7 @@ T2 = TypeVar("T2", kicad.pcb.Xy, kicad.pcb.Xyz, kicad.pcb.Xyr)
 
 
 def round_coord(coord: T, ndigits=2) -> T:
-    fs = coord.__field_names__
+    fs = type(coord).__field_names__()
     return type(coord)(**{f: round(getattr(coord, f), ndigits=ndigits) for f in fs})
 
 
@@ -1624,8 +1624,8 @@ class PCB_Transformer:
     ) -> dict[str, Any]:
         """Generate a dict of the common fields of a lib footprint and pcb footprint"""
         return {
-            field.name: getattr(lib_footprint, field.name)
-            for field in fields(kicad.footprint.Footprint)
+            field: getattr(lib_footprint, field)
+            for field in kicad.footprint.Footprint.__field_names__()
         }
 
     @staticmethod
@@ -1672,7 +1672,7 @@ class PCB_Transformer:
             kicad.pcb.Pad(
                 **{
                     # Cannot use asdict because it converts children dataclasses too
-                    **(dataclass_as_kwargs(p)),
+                    **{f: getattr(p, f) for f in kicad.pcb.Pad.__field_names__()},
                     # We have to handle the rotation separately because
                     # it must consider the rotation of the parent footprint
                     "at": kicad.pcb.Xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
@@ -1681,8 +1681,9 @@ class PCB_Transformer:
             for p in lib_footprint.pads
         ]
 
+        lib_attrs["uuid"] = self.gen_uuid(mark=True)
+
         footprint = Footprint(
-            uuid=self.gen_uuid(mark=True),
             at=at,
             **lib_attrs,
         )
