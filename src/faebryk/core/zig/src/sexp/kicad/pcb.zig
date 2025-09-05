@@ -836,7 +836,7 @@ pub const Paper = struct {
     orientation: ?E_paper_orientation = null,
 
     pub const fields_meta = .{
-        .type = structure.SexpField{ .positional = true },
+        .type = structure.SexpField{ .positional = true, .symbol = false },
         .size = structure.SexpField{ .positional = true },
         .orientation = structure.SexpField{ .positional = true },
     };
@@ -888,6 +888,7 @@ pub const Stackup = struct {
 
     pub const fields_meta = .{
         .layers = structure.SexpField{ .multidict = true, .sexp_name = "layer" },
+        .copper_finish = structure.SexpField{ .symbol = false },
     };
 };
 

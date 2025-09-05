@@ -21,7 +21,7 @@ pub const SexpField = struct {
     multidict: bool = false,
     sexp_name: ?[]const u8 = null,
     order: i32 = 0,
-    symbol: bool = false, // If true, encode strings as symbols (no quotes)
+    symbol: ?bool = null, // If true, encode strings as symbols (no quotes)
 };
 
 fn _print_indent(writer: anytype, indent: usize) !void {
@@ -563,7 +563,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                 }
             }
         }
-        
+
         if (ast.isList(items[i])) {
             const kv_items = ast.getList(items[i]).?;
             if (kv_items.len < 2) continue;
@@ -804,7 +804,7 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) De
     if (ast.isList(sexp)) {
         const items = ast.getList(sexp).?;
         if (items.len == 0) return null;
-        
+
         // For struct types with a single-element list
         if (@typeInfo(T) == .@"struct" and items.len == 1) {
             // If the single element is itself a list, unwrap it
@@ -1018,15 +1018,29 @@ fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata: Se
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
+    // Special handling for enums with symbol flag
+    if (type_info == .@"enum") {
+        inline for (std.meta.fields(T)) |field| {
+            if (@intFromEnum(value) == field.value) {
+                if (metadata.symbol orelse true) {
+                    return SExp{ .value = .{ .symbol = field.name }, .location = null };
+                } else {
+                    return SExp{ .value = .{ .string = field.name }, .location = null };
+                }
+            }
+        }
+        unreachable;
+    }
+
     // Special handling for strings that should be encoded as symbols
     if (type_info == .pointer) {
-        if (type_info.pointer.size == .slice and type_info.pointer.child == u8 and metadata.symbol) {
+        if (type_info.pointer.size == .slice and type_info.pointer.child == u8 and metadata.symbol orelse false) {
             // Encode as symbol instead of string
             return SExp{ .value = .{ .symbol = value }, .location = null };
         }
 
         // Special handling for slices of strings that should be encoded as symbols
-        if (type_info.pointer.size == .slice and metadata.symbol) {
+        if (type_info.pointer.size == .slice and metadata.symbol orelse false) {
             const child_type = type_info.pointer.child;
             if (@typeInfo(child_type) == .pointer and
                 @typeInfo(child_type).pointer.size == .slice and
@@ -1220,7 +1234,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
 
                                 // Special handling for symbol slices
                                 const child_type = @typeInfo(@TypeOf(field_value)).pointer.child;
-                                if (metadata.symbol) {
+                                if (metadata.symbol orelse false) {
                                     // Check if this is a slice of strings ([][]const u8)
                                     if (@typeInfo(child_type) == .pointer and
                                         @typeInfo(child_type).pointer.size == .slice and
