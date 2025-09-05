@@ -1028,31 +1028,17 @@ class kicad:
                                     circles=[
                                         kicad.schematic.Circle(
                                             center=circle.center,
-                                            end=circle.end,
+                                            end=kicad.pcb.Xy(
+                                                x=circle.center.x + circle.radius,
+                                                y=circle.center.y,
+                                            ),
                                             stroke=circle.stroke,
                                             fill=circle.fill,
                                         )
                                         for circle in sym.circles
                                     ],
                                     rectangles=sym.rectangles,
-                                    arcs=[
-                                        kicad.schematic.Arc(
-                                            start=arc.start,
-                                            mid=arc.mid,
-                                            end=arc.end,
-                                            stroke=kicad.schematic.Stroke(
-                                                width=arc.width,
-                                                type=kicad.schematic.E_stroke_type.SOLID,
-                                                color=kicad.schematic.Color(
-                                                    r=0, g=0, b=0, a=0
-                                                ),
-                                            ),
-                                            fill=kicad.schematic.Fill(
-                                                type=kicad.schematic.E_fill_type.BACKGROUND,
-                                            ),
-                                        )
-                                        for arc in sym.arcs
-                                    ],
+                                    arcs=sym.arcs,
                                     pins=sym.pins,
                                 )
                                 for sym in symbol.symbols

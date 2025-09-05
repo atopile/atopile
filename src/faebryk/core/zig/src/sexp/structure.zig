@@ -316,8 +316,13 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                         const metadata = comptime getSexpMetadata(T, field.name);
                         const field_name = metadata.sexp_name orelse field.name;
                         if (std.mem.eql(u8, sym, field_name)) {
-                            // The symbol matches the single field name, decode the entire list as that field
-                            @field(result, field.name) = try decode(field.type, allocator, items[0]);
+                            // The symbol matches the single field name
+                            // Pass the rest of the list (after the field name) to decode
+                            const value_sexp = if (item_list.len > 1)
+                                SExp{ .value = .{ .list = item_list[1..] }, .location = null }
+                            else
+                                SExp{ .value = .{ .list = &.{} }, .location = null };
+                            @field(result, field.name) = try decode(field.type, allocator, value_sexp);
                             return result;
                         }
                     }
@@ -524,9 +529,41 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
         }
     }
 
-    // Process key-value pairs
+    // Process key-value pairs and standalone boolean fields
     var i: usize = 0;
     while (i < items.len) : (i += 1) {
+        // First check if this is a standalone symbol (potential boolean field)
+        if (ast.getSymbol(items[i])) |sym| {
+            // Check if this matches a boolean field
+            inline for (fields, 0..) |field, field_idx| {
+                // Only process boolean fields that haven't been set
+                if (!fields_set.isSet(field_idx) and @typeInfo(field.type) == .bool) {
+                    const metadata = comptime getSexpMetadata(T, field.name);
+                    const field_name = metadata.sexp_name orelse field.name;
+                    if (std.mem.eql(u8, sym, field_name)) {
+                        // Found a matching boolean field - set it to true
+                        @field(result, field.name) = true;
+                        fields_set.set(field_idx);
+                        break;
+                    }
+                }
+                // Also handle optional boolean fields
+                if (!fields_set.isSet(field_idx) and comptime isOptional(field.type)) {
+                    const child = @typeInfo(field.type).optional.child;
+                    if (@typeInfo(child) == .bool) {
+                        const metadata = comptime getSexpMetadata(T, field.name);
+                        const field_name = metadata.sexp_name orelse field.name;
+                        if (std.mem.eql(u8, sym, field_name)) {
+                            // Found a matching optional boolean field - set it to true
+                            @field(result, field.name) = true;
+                            fields_set.set(field_idx);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
         if (ast.isList(items[i])) {
             const kv_items = ast.getList(items[i]).?;
             if (kv_items.len < 2) continue;
