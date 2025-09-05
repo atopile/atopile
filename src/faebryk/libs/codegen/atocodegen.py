@@ -309,6 +309,8 @@ class AtoCodeGen:
     @dataclass
     class PicksFile(File):
         PICKS_MODULE_NAME: ClassVar[str] = "PICKS"
+        APP_ADDRESS: ClassVar[str] = "app"
+
         picks: list["AtoCodeGen.Retype"] = field(default_factory=list)
         entry: str | None = None
         file: Path | None = None

@@ -1044,6 +1044,79 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         context = self.index_text(text, path)
         return self._try_build_all(context)
 
+    def build_supplementary_file(
+        self, path: Path, ref: TypeRef, app: L.Module, injection_address: str = "app"
+    ) -> None:
+        """
+        Build a Module from a file and reference, with app injected at <ref>.app.
+
+        Enables post-build mutation of app via ato code.
+        """
+
+        def _is_assignment_to_injection_address(
+            simple_stmt: ap.Simple_stmtContext,
+        ) -> bool:
+            if (assign_stmt := simple_stmt.assign_stmt()) is None:
+                return False
+
+            field_ref = (
+                assign_stmt.field_reference_or_declaration().field_reference()
+                or assign_stmt.field_reference_or_declaration()
+                .declaration_stmt()
+                .field_reference()
+            )
+
+            return (
+                field_ref
+                and field_ref.field_reference_part(0).name().getText()
+                == injection_address
+            )
+
+        def _filter_context(context: Context) -> Context:
+            """Remove any assignments to the injection address for the given ref"""
+            blockdef_ctx = context.refs[ref]
+            assert isinstance(blockdef_ctx, ap.BlockdefContext)
+
+            block_ctx = blockdef_ctx.block()
+
+            to_remove = [
+                stmt
+                for stmt in block_ctx.stmt()
+                if any(
+                    _is_assignment_to_injection_address(stmt)
+                    for stmt in stmt.simple_stmts().simple_stmt()
+                )
+            ]
+
+            block_ctx.children = [c for c in block_ctx.children if c not in to_remove]
+
+            return context
+
+        context = self.index_file(self._sanitise_path(path))
+        assert self._is_reset()
+
+        context = _filter_context(context)
+
+        if ref not in context.refs:
+            raise errors.UserKeyError.from_ctx(
+                context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
+            )
+
+        try:
+            class_ = self._get_referenced_class(context.scope_ctx, ref)
+            if not isinstance(class_, ap.BlockdefContext):
+                raise errors.UserNotImplementedError(
+                    "Can't initialize a fabll directly like this"
+                )
+            with self._traceback_stack.enter(class_.name()):
+                with self._init_node(class_) as picks_module:
+                    picks_module.add(app, name=injection_address)
+
+        except* SkipPriorFailedException:
+            raise errors.UserException("Build failed")
+        finally:
+            self._finish()
+
     @property
     def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""

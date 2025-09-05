@@ -11,13 +11,12 @@ import faebryk.library._F as F
 from atopile.datatypes import TypeRef
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.libs.codegen.atocodegen import AtoCodeGen, sanitize_name
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import KeyErrorNotFound, cast_assert
+from faebryk.libs.util import cast_assert
 
 NO_LCSC_DISPLAY = "No LCSC number"
 
@@ -71,29 +70,17 @@ def save_part_info_to_pcb(G: Graph):
 
 def load_picks_from_file(app: Module, picks_file_path: Path):
     from atopile.front_end import bob
-    # TODO: does having the app in the graph twice kill performance?
 
-    try:
-        picks: Node = bob.build_file(
-            picks_file_path,
-            TypeRef.from_one(AtoCodeGen.PicksFile.PICKS_MODULE_NAME),
-        )
-    except FileNotFoundError as ex:
-        raise PicksLoadError(f"File not found: {picks_file_path}") from ex
+    bob.build_supplementary_file(
+        picks_file_path,
+        ref=TypeRef.from_one(AtoCodeGen.PicksFile.PICKS_MODULE_NAME),
+        app=app,
+        injection_address=AtoCodeGen.PicksFile.APP_ADDRESS,
+    )
 
-    assert isinstance(picks, Module)
-
-    try:
-        app_with_picks = picks.get_child_by_name("app")
-    except KeyErrorNotFound:
-        raise PicksLoadError("Field `app` not found")
-
-    assert isinstance(app_with_picks, Module)
-
-    app.specialize(app_with_picks)
-
-    for node, t in GraphFunctions(app.get_graph()).nodes_with_trait(F.has_cached_pick):
-        lcsc_id = cast_assert(PickedPartLCSC, t.get_part()).lcsc_id
+    for node, _ in GraphFunctions(app.get_graph()).nodes_with_trait(F.has_cached_pick):
+        has_part_picked = node.get_trait(F.has_part_picked)
+        lcsc_id = cast_assert(PickedPartLCSC, has_part_picked.get_part()).lcsc_id
         lcsc_attach(cast_assert(Module, node), lcsc_id)
 
 
@@ -121,7 +108,12 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
             node.get_less_special() if node.has_trait(F.has_cached_pick) else node
         )
 
-        parts[part_identifier] = (part, node_type)
+        if part_identifier in parts:
+            assert parts[part_identifier] == (part, node_type)
+            # TODO: handle this situation (duplicate and deconflict?)
+        else:
+            parts[part_identifier] = (part, node_type)
+
         picks[node.get_full_name()] = part_identifier
 
     picks_file = AtoCodeGen.PicksFile(
@@ -146,8 +138,9 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
         )
 
     for name in natsorted(picks):
-        address = "app." + name.removeprefix("app.")
-        logger.info(f"Saving pick for `{address}`")
+        prefix = AtoCodeGen.PicksFile.APP_ADDRESS + "."
+        address = f"{prefix}{name.removeprefix(prefix)}"
+        logger.info(f"Saving pick for `{name}`")
         picks_file.add_pick(AtoCodeGen.Retype(address=address, type=picks[name]))
 
     logger.info(f"Writing picks file to `{picks_file_path}`")
