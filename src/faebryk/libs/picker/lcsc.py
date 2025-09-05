@@ -28,10 +28,7 @@ from more_itertools import first
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
 from faebryk.core.module import Module
-from faebryk.libs.kicad.fileformats_common import compare_without_uuid
-from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
+from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
     PickedPart,
@@ -195,18 +192,18 @@ class EasyEDA3DModel:
 class EasyEDAFootprint:
     cache: dict[Path, "EasyEDAFootprint"] = {}
 
-    def __init__(self, footprint: C_kicad_footprint_file):
+    def __init__(self, footprint: kicad.footprint.FootprintFile):
         self.footprint = footprint
 
     def serialize(self) -> bytes:
-        return self.footprint.dumps().encode("utf-8")
+        return kicad.dumps(self.footprint).encode("utf-8")
 
     @classmethod
     def load(cls, path: Path):
         # assume not disk modifications during run
         if path in cls.cache:
             return cls.cache[path]
-        out = cls(kicad_footprint_file(path))
+        out = cls(kicad.loads(kicad.footprint.FootprintFile, path))
         cls.cache[path] = out
         return out
 
@@ -221,12 +218,14 @@ class EasyEDAFootprint:
         fp_raw = call_with_file_capture(
             lambda path: exporter.export(str(path), model_path)  # type: ignore
         )[1]
-        fp = kicad_footprint_file(fp_raw.decode("utf-8"))
+        fp = kicad.loads(kicad.footprint_v5.FootprintFile, fp_raw.decode("utf-8"))
         # workaround: remove wrl ending easyeda likes to add for no reason
-        for m in fp.footprint.models:
-            if m.path.suffix == ".wrl":
-                m.path = m.path.parent
-        return cls(fp)
+        if m := fp.footprint.model:
+            if Path(m.path).suffix == ".wrl":
+                m.path = Path(m.path).parent.as_posix()
+
+        new_fp = kicad.convert(fp)
+        return cls(new_fp)
 
     def dump(self, path: Path):
         type(self).cache[path] = self
@@ -242,7 +241,7 @@ class EasyEDAFootprint:
         return self.library_name.split(":")[-1]
 
     def compare(self, other: "EasyEDAFootprint"):
-        return compare_without_uuid(
+        return kicad.compare_without_uuid(
             self.footprint,
             other.footprint,
         )
@@ -251,30 +250,27 @@ class EasyEDAFootprint:
 class EasyEDASymbol:
     cache: dict[Path, "EasyEDASymbol"] = {}
 
-    def __init__(self, symbol: C_kicad_sym_file):
+    def __init__(self, symbol: kicad.symbol.SymbolFile):
         self.symbol = symbol
 
     @classmethod
     def from_api(cls, symbol: EeSymbol):
-        from faebryk.libs.kicad.fileformats_v6 import C_symbol_in_file_v6
-        from faebryk.libs.sexp.dataclass_sexp import loads as sexp_loads
-
         exporter = ExporterSymbolKicad(symbol, KicadVersion.v6)
         # TODO this is weird
         fp_lib_name = symbol.info.lcsc_id
         raw = exporter.export(footprint_lib_name=fp_lib_name)
-        sym = sexp_loads(raw, C_symbol_in_file_v6).symbol.convert_to_new()
-        sym_file = C_kicad_sym_file(
-            C_kicad_sym_file.C_kicad_symbol_lib(
-                version=1,
-                generator="faebryk",
-                symbols={sym.name: sym},
-            )
-        )
-        return cls(sym_file)
+        in_file = f"""(kicad_sym
+            (version 20211014)
+            (generator "test")
+            {raw}
+        )""".replace("hide", "")
+        sym = kicad.loads(kicad.symbol_v6.SymbolFile, in_file)
+        new_sym = kicad.convert(sym)
+
+        return cls(new_sym)
 
     def serialize(self) -> bytes:
-        return self.symbol.dumps().encode("utf-8")
+        return kicad.dumps(self.symbol).encode("utf-8")
 
     def dump(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -286,19 +282,19 @@ class EasyEDASymbol:
         # assume not disk modifications during run
         if path in cls.cache:
             return cls.cache[path]
-        out = cls(C_kicad_sym_file.loads(path))
+        out = cls(kicad.loads(kicad.symbol.SymbolFile, path))
         cls.cache[path] = out
         return out
 
     def compare(self, other: "EasyEDASymbol"):
-        return compare_without_uuid(
+        return kicad.compare_without_uuid(
             self.symbol,
             other.symbol,
         )
 
     @property
     def kicad_symbol(self):
-        return first(self.symbol.kicad_symbol_lib.symbols.values())
+        return first(self.symbol.kicad_sym.symbols)
 
 
 class EasyEDAPart:
@@ -572,8 +568,8 @@ def attach(
             # TODO make this a trait
             pins = [
                 (pin.number.number, pin.name.name)
-                for sym in apart.symbol.kicad_symbol_lib.symbols.values()
-                for unit in sym.symbols.values()
+                for sym in apart.symbol.kicad_sym.symbols
+                for unit in sym.symbols
                 for pin in unit.pins
             ]
             try:

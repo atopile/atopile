@@ -1,0 +1,95 @@
+(symbol "19-217_GHC-YR1S2_3T"
+  (in_bom yes)
+  (on_board yes)
+  (property
+    "Reference"
+    "LED"
+    (id 0)
+    (at 0 5.08 0)
+    (effects (font (size 1.27 1.27) ) )
+  )
+  (property
+    "Value"
+    "19-217/GHC-YR1S2/3T"
+    (id 1)
+    (at 0 -5.08 0)
+    (effects (font (size 1.27 1.27) ) )
+  )
+  (property
+    "Footprint"
+    "C72043:LED0603-RD"
+    (id 2)
+    (at 0 -7.62 0)
+    (effects (font (size 1.27 1.27) ) hide)
+  )
+  (property
+    "Datasheet"
+    "https://lcsc.com/product-detail/Light-Emitting-Diodes-LED_0603-Green-light_C72043.html"
+    (id 3)
+    (at 0 -10.16 0)
+    (effects (font (size 1.27 1.27) ) hide)
+  )
+  (property
+    "LCSC Part"
+    "C72043"
+    (id 5)
+    (at 0 -12.70 0)
+    (effects (font (size 1.27 1.27) ) hide)
+  )
+  (symbol "19-217_GHC-YR1S2_3T_0_1"
+    (polyline
+      (pts
+        (xy -0.51 2.03) (xy -2.29 3.81)
+      )
+      (stroke (width 0) (type default) (color 0 0 0 0))
+      (fill (type none))
+    )
+    (polyline
+      (pts
+        (xy 0.51 3.05) (xy -1.27 4.83)
+      )
+      (stroke (width 0) (type default) (color 0 0 0 0))
+      (fill (type none))
+    )
+    (polyline
+      (pts
+        (xy -1.27 1.52) (xy -1.27 -1.52)
+      )
+      (stroke (width 0) (type default) (color 0 0 0 0))
+      (fill (type none))
+    )
+    (polyline
+      (pts
+        (xy 1.27 -1.52) (xy -1.27 -0.00) (xy 1.27 1.52) (xy 1.27 -1.52)
+      )
+      (stroke (width 0) (type default) (color 0 0 0 0))
+      (fill (type background))
+    )
+    (polyline
+      (pts
+        (xy -2.29 3.81) (xy -1.27 3.30) (xy -1.78 2.79) (xy -2.29 3.81)
+      )
+      (stroke (width 0) (type default) (color 0 0 0 0))
+      (fill (type background))
+    )
+    (polyline
+      (pts
+        (xy -1.27 4.83) (xy -0.25 4.32) (xy -0.76 3.81) (xy -1.27 4.83)
+      )
+      (stroke (width 0) (type default) (color 0 0 0 0))
+      (fill (type background))
+    )
+    (pin input line
+      (at 5.08 -0.00 180)
+      (length 3.81)
+      (name "A" (effects (font (size 1.27 1.27))))
+      (number "2" (effects (font (size 1.27 1.27))))
+    )
+    (pin input line
+      (at -5.08 -0.00 0)
+      (length 3.81)
+      (name "C" (effects (font (size 1.27 1.27))))
+      (number "1" (effects (font (size 1.27 1.27))))
+    )
+  )
+)

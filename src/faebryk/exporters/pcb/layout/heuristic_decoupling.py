@@ -12,17 +12,14 @@ from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.layout import Layout
-from faebryk.libs.kicad.fileformats_latest import (
-    C_kicad_pcb_file,
-    C_wh,
-)
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.util import KeyErrorNotFound, find, not_none
 
 logger = logging.getLogger(__name__)
 
 
-KFootprint = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint
-KPad = KFootprint.C_pad
+KFootprint = kicad.pcb.Footprint
+KPad = kicad.pcb.Pad
 
 # TODO move all those helpers and make them more general and precise
 
@@ -91,7 +88,7 @@ def _get_pad_side(fp: KFootprint, pad: KPad) -> Side:
 
     logger.warning(
         f"Uncertain about pad position of `{fp.name}"
-        f"|{fp.propertys['Reference'].value}.{pad.name}`: "
+        f"|{Property.get_property(fp.propertys, 'Reference')}.{pad.name}`: "
         f"Heuristic at: `{pos_side}`, "
         f"Heuristic size: `{pos_rot} ||| {rot=} {pad.at=} {pad.size=}`",
         extra={"markdown": True},
@@ -102,7 +99,7 @@ def _get_pad_side(fp: KFootprint, pad: KPad) -> Side:
 type V2D = tuple[float, float]
 
 
-def _vec_pad_center_to_edge(size: C_wh, side: Side):
+def _vec_pad_center_to_edge(size: kicad.pcb.Wh, side: Side):
     assert size.h is not None
     if side == Side.Top:
         return 0, 0 - size.h / 2
@@ -169,8 +166,10 @@ def _next_to_pad(
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
-            f"Next to pad: {fp.name}|{fp.propertys['Reference'].value}.{spad.name}"
-            f" with {dfp.name}|{dfp.propertys['Reference'].value}.{dpad.name}:"
+            f"Next to pad: {fp.name}|{Property.get_property(fp.propertys, 'Reference')}"
+            f".{spad.name}"
+            f" with {dfp.name}|{Property.get_property(dfp.propertys, 'Reference')}"
+            f".{dpad.name}:"
             f"\n     {fp.at=}"
             f"\n     {spad.at=} | {spad.size=}"
             f"\n     {dpad.at=} | {dpad.size=}"
