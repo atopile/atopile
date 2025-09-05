@@ -10,6 +10,7 @@ from typing import ClassVar, Literal
 import faebryk.library._F as F
 from atopile.front_end import _FeatureFlags
 from faebryk.libs.codegen.pycodegen import sanitize_name  # noqa: F401
+from faebryk.libs.util import partition
 
 logger = logging.getLogger(__name__)
 
@@ -371,7 +372,15 @@ class AtoCodeGen:
 
             out.spacer()
 
-            for imp in sorted(self.imports, key=lambda x: x.name):
+            stdlib_imports, path_imports = partition(
+                lambda x: x.path is not None, self.imports
+            )
+            for imp in sorted(stdlib_imports, key=lambda x: x.name):
+                out.append_line(imp.dump())
+
+            out.spacer()
+
+            for imp in sorted(path_imports, key=lambda x: x.name):
                 out.append_line(imp.dump())
 
             out.spacer()
