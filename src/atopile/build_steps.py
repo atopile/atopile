@@ -196,7 +196,9 @@ class Muster:
         for target in [
             self.targets[name] for name in sorted_names if name in self.targets
         ]:
-            if all(dep.success is True for dep in target.dependencies or []):
+            if all(
+                dep.success is True or dep.virtual for dep in target.dependencies or []
+            ):
                 yield target
 
 
