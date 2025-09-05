@@ -767,6 +767,17 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) De
     if (ast.isList(sexp)) {
         const items = ast.getList(sexp).?;
         if (items.len == 0) return null;
+        
+        // For struct types with a single-element list
+        if (@typeInfo(T) == .@"struct" and items.len == 1) {
+            // If the single element is itself a list, unwrap it
+            // This handles cases like (pin_names (offset 1.016))
+            if (ast.isList(items[0])) {
+                return try decode(T, allocator, items[0]);
+            }
+            // Otherwise keep it as a list for positional field parsing
+            // This handles cases like (drill 1.199998) where the struct has positional fields
+        }
     }
     return try decode(T, allocator, sexp);
 }
@@ -876,6 +887,14 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+            }, sexp);
+            return error.UnexpectedType;
+        },
+        .list => |l| {
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got list '{s}' but expected number", .{l}) catch "list instead of number",
             }, sexp);
             return error.UnexpectedType;
         },

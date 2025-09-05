@@ -28,7 +28,7 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
         try file.writeAll("from faebryk.core.zig.pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr\n");
     } else if (std.mem.eql(u8, name, "symbol_v6")) {
         try file.writeAll("from faebryk.core.zig.pcb import Xy\n");
-        try file.writeAll("from faebryk.core.zig.schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Power, Property, PinNames\n");
+        try file.writeAll("from faebryk.core.zig.schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Power, Property, PinNames, Arc\n");
     }
     try file.writeAll(content);
 

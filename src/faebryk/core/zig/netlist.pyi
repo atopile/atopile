@@ -57,9 +57,13 @@ class Fields:
     def __field_names__(self) -> list[str]: ...
 
 class Tstamps:
-    tstamps: list[str]
+    tstamp1: str
+    tstamp2: str | None
+    tstamp3: str | None
 
-    def __init__(self, *, tstamps: list[str]) -> None: ...
+    def __init__(
+        self, *, tstamp1: str, tstamp2: str | None, tstamp3: str | None
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...
@@ -69,7 +73,7 @@ class Component:
     value: str
     footprint: str
     propertys: list[Property]
-    tstamps: str
+    tstamps: Tstamps
     fields: Fields | None
     sheetpath: Sheetpath | None
     libsource: Libsource | None
@@ -82,7 +86,7 @@ class Component:
         value: str,
         footprint: str,
         propertys: list[Property],
-        tstamps: str,
+        tstamps: Tstamps,
         fields: Fields | None,
         sheetpath: Sheetpath | None,
         libsource: Libsource | None,
@@ -114,11 +118,11 @@ class Node:
     def __field_names__(self) -> list[str]: ...
 
 class Net:
-    code: int
+    code: str
     name: str
     nodes: list[Node]
 
-    def __init__(self, *, code: int, name: str, nodes: list[Node]) -> None: ...
+    def __init__(self, *, code: str, name: str, nodes: list[Node]) -> None: ...
     def __repr__(self) -> str: ...
     @property
     def __field_names__(self) -> list[str]: ...

@@ -657,7 +657,17 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                         return -1;
                     };
                 },
-                else => return -1,
+                .@"struct" => {
+                    // Handle struct type - extract data from wrapped Python object
+                    const WrapperType = PyObjectWrapper(ChildType);
+                    const wrapper_obj: *WrapperType = @ptrCast(@alignCast(value));
+                    // Copy the struct data
+                    @field(obj.data.*, field_name_str) = wrapper_obj.data.*;
+                },
+                else => {
+                    py.PyErr_SetString(py.PyExc_TypeError, "Unsupported field type for optional property");
+                    return -1;
+                },
             }
             return 0;
         }

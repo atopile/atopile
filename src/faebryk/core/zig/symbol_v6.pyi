@@ -10,6 +10,7 @@ from typing import Any  # noqa: F401
 
 from faebryk.core.zig.pcb import Xy
 from faebryk.core.zig.schematic import (
+    Arc,
     Fill,
     PinNames,
     Polyline,
@@ -23,29 +24,14 @@ from faebryk.core.zig.schematic import (
 # Dirty hack to not error in ruff check
 type Allocator = Any
 
-class Arc:
-    start: Xy
-    mid: Xy
-    end: Xy
-    width: float
-    layer: str
-
-    def __init__(
-        self, *, start: Xy, mid: Xy, end: Xy, width: float, layer: str
-    ) -> None: ...
-    def __repr__(self) -> str: ...
-    @property
-    def __field_names__(self) -> list[str]: ...
-
 class Circle:
     center: Xy
     radius: float
-    end: Xy
     stroke: Stroke
     fill: Fill
 
     def __init__(
-        self, *, center: Xy, radius: float, end: Xy, stroke: Stroke, fill: Fill
+        self, *, center: Xy, radius: float, stroke: Stroke, fill: Fill
     ) -> None: ...
     def __repr__(self) -> str: ...
     @property

@@ -39,10 +39,16 @@ pub const Fields = struct {
 };
 
 pub const Tstamps = struct {
-    tstamps: []str = &.{},
+    //tstamps: []str = &.{},
+    tstamp1: str,
+    tstamp2: ?str = null,
+    tstamp3: ?str = null,
 
     pub const fields_meta = .{
-        .tstamps = structure.SexpField{ .positional = true },
+        //.tstamps = stru//cture.SexpField{ .positional = true },
+        .tstamp1 = structure.SexpField{ .positional = true },
+        .tstamp2 = structure.SexpField{ .positional = true },
+        .tstamp3 = structure.SexpField{ .positional = true },
     };
 };
 
@@ -52,8 +58,8 @@ pub const Component = struct {
     footprint: str,
     propertys: []Property = &.{},
     // TODO handle multiple tstamp values
-    //tstamps: Tstamps,
-    tstamps: str,
+    tstamps: Tstamps,
+    //tstamps: str,
     fields: ?Fields = null,
     sheetpath: ?Sheetpath = null,
     libsource: ?Libsource = null,
@@ -81,7 +87,7 @@ pub const Node = struct {
 };
 
 pub const Net = struct {
-    code: i32,
+    code: str,
     name: str,
     nodes: []Node = &.{},
 

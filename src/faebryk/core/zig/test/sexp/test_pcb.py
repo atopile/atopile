@@ -7,12 +7,12 @@ logging.basicConfig(level=logging.INFO)
 
 
 def test_pcb():
-    from faebryk.core.zig import pcb as C_pcb
+    from faebryk.libs.kicad.fileformats import kicad
 
     path = Path(
         "/home/needspeed/workspace/atopile/test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb"
     )
-    pcb = C_pcb.loads(path.read_text())
+    pcb = kicad.loads(kicad.pcb.PcbFile, path)
     print(pcb.__field_names__)
     # print(pcb.kicad_pcb.footprints[0])
     print("\n--- Print complete, exiting ---")

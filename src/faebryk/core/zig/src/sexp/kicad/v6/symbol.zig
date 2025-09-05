@@ -5,18 +5,9 @@ const pcb = @import("../pcb.zig");
 
 const str = []const u8;
 
-pub const Arc = struct {
-    start: pcb.Xy,
-    mid: pcb.Xy,
-    end: pcb.Xy,
-    width: f64,
-    layer: str,
-};
-
 pub const Circle = struct {
     center: pcb.Xy,
     radius: f64,
-    end: pcb.Xy = .{ .x = 0, .y = 0 },
     stroke: schematic.Stroke,
     fill: schematic.Fill,
 };
@@ -26,7 +17,7 @@ pub const SymbolUnit = struct {
     polylines: []schematic.Polyline = &.{},
     circles: []Circle = &.{},
     rectangles: []schematic.Rect = &.{},
-    arcs: []Arc = &.{},
+    arcs: []schematic.Arc = &.{},
     pins: []schematic.SymbolPin = &.{},
 
     pub const fields_meta = .{

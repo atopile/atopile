@@ -54,7 +54,7 @@ pub const Footprint = struct {
 pub const FootprintFile = struct {
     footprint: Footprint,
 
-    const root_symbol = "module";
+    const root_symbol = "footprint";
 
     pub fn loads(allocator: std.mem.Allocator, in: structure.input) !FootprintFile {
         const fp = try structure.loads(Footprint, allocator, in, root_symbol);

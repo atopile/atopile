@@ -96,10 +96,10 @@ def test_parser_pcb_and_footprints():
 
     padtype = kicad.pcb.E_pad_type
     assert [(p.name, p.type) for p in fp.footprint.pads] == [
-        ("", padtype.smd),
-        ("", padtype.smd),
-        ("1", padtype.smd),
-        ("2", padtype.smd),
+        ("", padtype.SMD),
+        ("", padtype.SMD),
+        ("1", padtype.SMD),
+        ("2", padtype.SMD),
     ]
 
     logo_fp = kicad.get(pcb.kicad_pcb.footprints, "logos:faebryk_logo")
@@ -136,7 +136,7 @@ def test_empty_enum_positional():
         )
 
     _b1_p1(pcb).drill = kicad.pcb.PadDrill(
-        shape=kicad.pcb.E_pad_drill_shape.stadium,
+        shape=kicad.pcb.E_pad_drill_shape.OVAL,
         size_x=0.5,
         size_y=0.4,
         offset=None,
@@ -157,9 +157,7 @@ def test_empty_enum_positional():
 
     pcb_reload = kicad.loads(kicad.pcb.PcbFile, kicad.dumps(pcb))
 
-    assert (
-        not_none(_b1_p1(pcb_reload).drill).shape == kicad.pcb.E_pad_drill_shape.stadium
-    )
+    assert not_none(_b1_p1(pcb_reload).drill).shape == kicad.pcb.E_pad_drill_shape.OVAL
 
     # empty center string ignored
     assert _effects(pcb).get_justifys() == [
