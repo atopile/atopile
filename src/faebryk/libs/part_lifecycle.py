@@ -20,7 +20,7 @@ from atopile.errors import UserValueError
 from atopile.layout import in_sub_pcb
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.libs.ato_part import AtoPart
+from faebryk.libs.ato_part import AtoPart, load_footprint_with_fallback
 from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats_common import C_xyr
 from faebryk.libs.kicad.fileformats_latest import (
@@ -29,7 +29,6 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_model_file,
     C_kicad_pcb_file,
 )
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.ipc import opened_in_pcbnew
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
@@ -492,9 +491,10 @@ class PartLifecycle:
         ) -> tuple[Path, C_kicad_footprint_file]:
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
-            fp_path = part_path / f"{fp_name}.kicad_mod"
             try:
-                fp = kicad_footprint_file(fp_path)
+                fp_path, fp = load_footprint_with_fallback(
+                    part_path, f"{fp_name}.kicad_mod"
+                )
 
                 # TODO: associate source project with component, so all that's needed
                 # here is to substitute ${KIPRJMOD} + rel_path for ${KIPRJMOD}

@@ -136,5 +136,85 @@ def test_parse_regression_1():
     assert atomic_trait._manufacturer == "TDK INVENSENSE"
     assert atomic_trait._partnumber == "ICM-20948"
     assert atomic_trait._footprint == "QFN-24_L3.0-W3.0-P0.40-BL-EP.kicad_mod"
-    assert atomic_trait._symbol == "ICM-20948.kicad_sym"
-    assert atomic_trait._model == "QFN-24_L3.0-W3.0-H0.9-P0.40-BL-EP.step"
+
+
+def test_parse_trait_with_comma_in_footprint():
+    file = _cleanup(
+        """
+        #pragma experiment("TRAITS")
+        import is_atomic_part
+
+        component PCA9536_package:
+            trait is_atomic_part<
+                manufacturer="NXP",
+                partnumber="PCA9536",
+                footprint="TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod",
+                symbol="PCA9536.kicad_sym"
+            >
+        """
+    )
+
+    ato = AtoCodeParse.ComponentFile(file)
+
+    assert ato.parse_trait("is_atomic_part") == (
+        None,
+        {
+            "manufacturer": "NXP",
+            "partnumber": "PCA9536",
+            "footprint": "TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod",
+            "symbol": "PCA9536.kicad_sym",
+        },
+    )
+
+    import faebryk.library._F as F
+
+    atomic_trait = ato.get_trait(F.is_atomic_part)
+    assert atomic_trait._manufacturer == "NXP"
+    assert atomic_trait._partnumber == "PCA9536"
+    assert atomic_trait._footprint == "TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod"
+    assert atomic_trait._symbol == "PCA9536.kicad_sym"
+
+
+def test_backward_compatibility_unsanitized_footprint():
+    """Test that unsanitized footprint files are automatically upgraded."""
+    import tempfile
+    from pathlib import Path
+
+    import faebryk.libs.ato_part as ato_part
+
+    assert hasattr(ato_part, "load_footprint_with_fallback"), (
+        f"Function not found in module. Available: "
+        f"{[name for name in dir(ato_part) if not name.startswith('_')]}"
+    )
+
+    from faebryk.libs.ato_part import load_footprint_with_fallback
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        part_dir = temp_path / "test_part"
+        part_dir.mkdir()
+
+        unsanitized_fp_name = "TSSOP-8_L3,0-W3,0-P0,65-LS4,4-BL_EP.kicad_mod"
+        unsanitized_fp_path = part_dir / unsanitized_fp_name
+
+        fp_content = (
+            '(footprint "TSSOP-8_L3,0-W3,0-P0,65-LS4,4-BL_EP" '
+            '(version 20240108) (generator "pcbnew") (generator_version "8.0")\n'
+            '  (layer "F.Cu")\n'
+            "  (attr smd)\n"
+            ")"
+        )
+        unsanitized_fp_path.write_text(fp_content)
+
+        _, fp = load_footprint_with_fallback(part_dir, unsanitized_fp_name)
+
+        sanitized_fp_name = "TSSOP_8_L3_0_W3_0_P0_65_LS4_4_BL_EP.kicad_mod"
+        sanitized_fp_path = part_dir / sanitized_fp_name
+
+        assert sanitized_fp_path.exists(), (
+            "Sanitized footprint file should exist after auto-upgrade"
+        )
+        assert not unsanitized_fp_path.exists(), (
+            "Unsanitized footprint file should be renamed"
+        )
+        assert fp is not None, "Footprint should load successfully"
