@@ -46,6 +46,7 @@ class _RP2040_Basic(Module):
     led: F.LED
 
 
+@pytest.mark.requires_internet
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.parametrize(
@@ -76,6 +77,7 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
     logger.info(f"\n{timings}")
 
 
+@pytest.mark.requires_internet
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 def test_performance_pick_rc_formulas():
