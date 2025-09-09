@@ -87,11 +87,7 @@ pub const Justify = struct {
 pub const Effects = struct {
     font: Font,
     hide: ?bool = null,
-    justifys: []Justify = &.{},
-
-    pub const fields_meta = .{
-        .justifys = structure.SexpField{ .multidict = true },
-    };
+    justify: ?Justify = null,
 };
 
 pub const TextLayer = struct {
@@ -278,11 +274,6 @@ pub const E_zone_connect_pads_mode = enum {
 pub const E_zone_fill_mode = enum {
     hatch,
     polygon,
-};
-
-// Zone fill enable enum
-pub const E_zone_fill_enable = enum {
-    yes,
 };
 
 // Zone smoothing enum
@@ -741,6 +732,10 @@ pub const ConnectPads = struct {
     clearance: ?f64 = null,
 };
 
+pub const E_zone_fill_enable = enum {
+    yes,
+};
+
 pub const ZoneFill = struct {
     enable: ?E_zone_fill_enable = null,
     mode: ?E_zone_fill_mode = null,
@@ -756,13 +751,13 @@ pub const ZoneFill = struct {
     thermal_bridge_width: ?f64 = null,
     smoothing: ?E_zone_smoothing = null,
     radius: ?f64 = null,
-    island_removal_mode: ?E_zone_island_removal_mode = null,
+    //island_removal_mode: ?E_zone_island_removal_mode = null,
+    island_removal_mode: ?i32 = null,
     island_area_min: ?f64 = null,
 
-    // enable is not always positional - sometimes fill has no positional value
-    // pub const fields_meta = .{
-    //     .enable = structure.SexpField{ .positional = true },
-    // };
+    pub const fields_meta = .{
+        .enable = structure.SexpField{ .positional = true },
+    };
 };
 
 pub const FilledPolygon = struct {
@@ -804,8 +799,7 @@ pub const Zone = struct {
     connect_pads: ?ConnectPads = null,
     min_thickness: ?f64 = null,
     filled_areas_thickness: ?bool = null,
-    // TODO: ZoneFill needs custom decode to handle both (fill yes ...) and (fill ...)
-    // fill: ?ZoneFill = null,
+    fill: ?ZoneFill = null,
     keepout: ?ZoneKeepout = null,
     polygon: Polygon,
     filled_polygon: []FilledPolygon = &.{},
@@ -1181,10 +1175,19 @@ pub const TextBox = struct {
 };
 
 pub const TableCell = struct {
-    // Inherits from TextBox but simplified for now
     text: str,
+    locked: bool = false,
+    start: ?Xy = null,
+    end: ?Xy = null,
+    pts: ?Pts = null,
+    angle: ?f64 = null,
+    stroke: ?Stroke = null,
+    border: ?bool = null,
+    margins: ?Margins = null,
     layer: str,
+    span: ?Span = null,
     effects: Effects,
+    render_cache: ?RenderCache = null,
     uuid: ?str = null,
 
     pub const fields_meta = .{

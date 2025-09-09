@@ -130,7 +130,7 @@ pub const Property = struct {
     name: str,
     value: str,
     id: ?i32 = null,
-    at: ?Xyr = null,
+    at: Xyr,
     effects: ?Effects = null,
 
     pub const fields_meta = .{

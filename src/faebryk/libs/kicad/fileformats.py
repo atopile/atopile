@@ -858,6 +858,7 @@ class kicad:
 
         return kicad.insert(parent, field, container, value)
 
+    # TODO: consider implementing mutable lists in zig
     @staticmethod
     def insert[T](parent, field: str, container: list[T], *value: T) -> T:
         obj = getattr(parent, field)
@@ -970,6 +971,21 @@ class kicad:
         @staticmethod
         def neg(obj: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
             return kicad.pcb.Xy(x=-obj.x, y=-obj.y)
+
+        @staticmethod
+        def get_layers(obj):
+            if obj.layer is not None:
+                return [obj.layer]
+            if obj.layers is not None:
+                return obj.layers
+            return []
+
+        @staticmethod
+        def apply_to_layers(obj, func: Callable[[str], str]):
+            if hasattr(obj, "layer") and obj.layer is not None:
+                obj.layer = func(obj.layer)
+            if hasattr(obj, "layers") and obj.layers is not None:
+                obj.layers = [func(layer) for layer in obj.layers]
 
     @staticmethod
     @overload
@@ -1202,8 +1218,8 @@ class Property:
 
         # def __init__(self, name: str, value: str): ...
 
-    class _PropertyHolder[T: _Property](kicad.KicadStruct):
-        propertys: list[T]
+    class _PropertyHolder(Protocol):  # [T: _Property](kicad.KicadStruct):
+        propertys: list  # [T]
 
     class PropertyNotSet(Exception):
         pass
@@ -1263,11 +1279,11 @@ class Property:
         return out
 
     @staticmethod
-    def delete_property[T: _Property](parent: _PropertyHolder[T], name: str):
+    def delete_property[T: _Property](parent: _PropertyHolder, name: str):
         kicad.delete(parent, "propertys", parent.propertys, name)
 
     @staticmethod
-    def set_property[T: _Property](parent: _PropertyHolder[T], prop: T) -> T:
+    def set_property[T: _Property](parent: _PropertyHolder, prop: T) -> T:
         return kicad.set(parent, "propertys", parent.propertys, prop)
 
     @staticmethod

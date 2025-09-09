@@ -21,9 +21,14 @@
 - [skip for now] src/faebryk/exporters/schematic/kicad/transformer.py
 - [ ] src/faebryk/libs/picker/lcsc.py (compare_without_uuid & v6 symbol)
 
-jusitfy
-enums: handle sym vs str enums (maybe sexp field)
+justify/alignment
+embedded/textbox
+geo.get_layers()
+TextLayer(knockout)
+layer/layers in geo
+
 test checksum
 load-dump roundtrip
 | catchall
 visit_dataclass
+filter_fields

@@ -151,17 +151,11 @@ class Property:
     name: str
     value: str
     id: int | None
-    at: Xyr | None
+    at: Xyr
     effects: Effects | None
 
     def __init__(
-        self,
-        *,
-        name: str,
-        value: str,
-        id: int | None,
-        at: Xyr | None,
-        effects: Effects | None,
+        self, *, name: str, value: str, id: int | None, at: Xyr, effects: Effects | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

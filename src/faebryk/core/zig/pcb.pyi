@@ -149,9 +149,6 @@ class E_zone_fill_mode(str, Enum):
     HATCH = "hatch"
     POLYGON = "polygon"
 
-class E_zone_fill_enable(str, Enum):
-    YES = "yes"
-
 class E_zone_smoothing(str, Enum):
     FILLET = "fillet"
     CHAMFER = "chamfer"
@@ -223,6 +220,9 @@ class E_Attr(str, Enum):
     EXCLUDE_FROM_POS_FILES = "exclude_from_pos_files"
     EXCLUDE_FROM_BOM = "exclude_from_bom"
     ALLOW_MISSING_COURTYARD = "allow_missing_courtyard"
+
+class E_zone_fill_enable(str, Enum):
+    YES = "yes"
 
 class Xy:
     x: float
@@ -302,10 +302,10 @@ class Justify:
 class Effects:
     font: Font
     hide: bool | None
-    justifys: list[Justify]
+    justify: Justify | None
 
     def __init__(
-        self, *, font: Font, hide: bool | None, justifys: list[Justify]
+        self, *, font: Font, hide: bool | None, justify: Justify | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -861,7 +861,7 @@ class ZoneFill:
     thermal_bridge_width: float | None
     smoothing: str | None
     radius: float | None
-    island_removal_mode: str | None
+    island_removal_mode: int | None
     island_area_min: float | None
 
     def __init__(
@@ -881,7 +881,7 @@ class ZoneFill:
         thermal_bridge_width: float | None,
         smoothing: str | None,
         radius: float | None,
-        island_removal_mode: str | None,
+        island_removal_mode: int | None,
         island_area_min: float | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -957,6 +957,7 @@ class Zone:
     connect_pads: ConnectPads | None
     min_thickness: float | None
     filled_areas_thickness: bool | None
+    fill: ZoneFill | None
     keepout: ZoneKeepout | None
     polygon: Polygon
     filled_polygon: list[FilledPolygon]
@@ -976,6 +977,7 @@ class Zone:
         connect_pads: ConnectPads | None,
         min_thickness: float | None,
         filled_areas_thickness: bool | None,
+        fill: ZoneFill | None,
         keepout: ZoneKeepout | None,
         polygon: Polygon,
         filled_polygon: list[FilledPolygon],
@@ -1537,12 +1539,37 @@ class TextBox:
 
 class TableCell:
     text: str
+    locked: bool
+    start: Xy | None
+    end: Xy | None
+    pts: Pts | None
+    angle: float | None
+    stroke: Stroke | None
+    border: bool | None
+    margins: Margins | None
     layer: str
+    span: Span | None
     effects: Effects
+    render_cache: RenderCache | None
     uuid: str | None
 
     def __init__(
-        self, *, text: str, layer: str, effects: Effects, uuid: str | None
+        self,
+        *,
+        text: str,
+        locked: bool,
+        start: Xy | None,
+        end: Xy | None,
+        pts: Pts | None,
+        angle: float | None,
+        stroke: Stroke | None,
+        border: bool | None,
+        margins: Margins | None,
+        layer: str,
+        span: Span | None,
+        effects: Effects,
+        render_cache: RenderCache | None,
+        uuid: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

@@ -78,7 +78,7 @@ Geom = (
 Point = Geometry.Point
 Point2D = Geometry.Point2D
 
-Justify = kicad.pcb.E_justify
+type Justify = kicad.pcb.E_justify | str
 Alignment = tuple[Justify, Justify, Justify]
 
 Alignment_Default = ("", "", "")  # center_horizontal, center_vertical, normal
@@ -117,7 +117,7 @@ def round_point(point: P, ndigits=2) -> P:
 
 
 def coord_to_point(coord: T) -> Point:
-    return tuple(getattr(coord, f) for f in coord.__field_names__)
+    return tuple(getattr(coord, f) for f in type(coord).__field_names__())
 
 
 def coord_to_point2d(coord: T) -> Point2D:
@@ -489,12 +489,13 @@ class PCB_Transformer:
         content = [
             geo
             for geo in get_all_geos(fp)
-            if any(layer in layers for layer in geo.get_layers())
+            if any(layer in layers for layer in kicad.geo.get_layers(geo))
         ]
 
         if not content:
             logger.warning(
-                f"fp:{fp.name}|{Property.get_property(fp.propertys, 'Reference')} has no silk outline"
+                f"fp:{fp.name}|{Property.get_property(fp.propertys, 'Reference')} "
+                "has no silk outline"
             )
             return None
 
@@ -617,13 +618,13 @@ class PCB_Transformer:
             for sub_lines in [
                 geo_to_lines(pcb_geo)
                 for pcb_geo in get_all_geos(self.pcb)
-                if "Edge.Cuts" in pcb_geo.get_layers()
+                if "Edge.Cuts" in kicad.geo.get_layers(pcb_geo)
             ]
             + [
                 geo_to_lines(fp_geo, fp)
                 for fp in self.pcb.footprints
                 for fp_geo in get_all_geos(fp)
-                if "Edge.Cuts" in fp_geo.get_layers()
+                if "Edge.Cuts" in kicad.geo.get_layers(fp_geo)
             ]
             for line in sub_lines
         ]
@@ -660,7 +661,7 @@ class PCB_Transformer:
 
         poly = get_geometry(polys, 0)
         assert isinstance(poly, Polygon)
-        return list(poly.exterior.coords)
+        return list(poly.exterior.coords)  # type:ignore
 
     @staticmethod
     def _get_pad(ffp: "F.Footprint", intf: "F.Electrical"):
@@ -876,20 +877,26 @@ class PCB_Transformer:
                 alignment = Alignment_Default
             else:
                 alignment = (
-                    Justify.center_horizontal,
-                    Justify.center_vertical,
-                    Justify.mirror,
+                    "",
+                    "",
+                    kicad.pcb.E_justify.MIRROR,
                 )
 
         text_o = GR_Text(
             text=text,
             at=at,
-            layer=kicad.pcb.TextLayer(layer, kicad.pcb.E_knockout.knockout)
-            if knockout
-            else kicad.pcb.TextLayer(layer),
+            # TODO
+            # layer=kicad.pcb.TextLayer(layer, kicad.pcb.E_knockout.knockout)
+            # if knockout
+            # else kicad.pcb.TextLayer(layer),
+            layer=layer,
             effects=kicad.pcb.Effects(
                 font=font,
-                justifys=[Justify(justifys=list(alignment))],
+                justify=kicad.pcb.Justify(
+                    justify1=alignment[0],
+                    justify2=alignment[1],
+                    justify3=alignment[2],
+                ),
                 hide=None,
             ),
             uuid=self.gen_uuid(mark=True),
@@ -937,12 +944,14 @@ class PCB_Transformer:
             Line(
                 start=start,
                 end=end,
-                stroke=kicad.pcb.Stroke(width, kicad.pcb.E_stroke_type.solid),
+                stroke=kicad.pcb.Stroke(
+                    width=width, type=kicad.pcb.E_stroke_type.SOLID
+                ),
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
                 fill=None,
                 locked=None,
-                layers=None,
+                layers=[],
                 solder_mask_margin=None,
             )
         )
@@ -984,6 +993,10 @@ class PCB_Transformer:
     ):
         # check if exists
         zones = self.pcb.zones
+        if not net.name:
+            raise ValueError(
+                f"Net {net.number} has no name which is required for zones"
+            )
         # TODO: zones is always emtpy list?
         # TODO check bbox
 
@@ -1000,16 +1013,23 @@ class PCB_Transformer:
         zone = Zone(
             net=net.number,
             net_name=net.name,
-            layers=layers if len(layers) > 1 else None,
+            layers=layers if len(layers) > 1 else [],
             uuid=self.gen_uuid(mark=True),
             name=f"layer_fill_{net.name}",
             polygon=kicad.pcb.Polygon(
-                pts=kicad.pcb.Pts([point2d_to_coord(p) for p in polygon])
+                pts=kicad.pcb.Pts(xys=[point2d_to_coord(p) for p in polygon]),
+                layers=[],
+                layer=None,
+                solder_mask_margin=None,
+                stroke=None,
+                fill=None,
+                locked=None,
+                uuid=self.gen_uuid(mark=True),
             ),
             min_thickness=0.2,
             filled_areas_thickness=False,
-            fill=kicad.pcb.Fill(
-                enable=kicad.pcb.E_yes.yes,
+            fill=kicad.pcb.ZoneFill(
+                enable=kicad.pcb.E_zone_fill_enable.YES,
                 mode=None,
                 hatch_thickness=0.0,
                 hatch_gap=0.5,
@@ -1057,7 +1077,7 @@ class PCB_Transformer:
         )
         group = kicad.insert(self.pcb, "groups", self.pcb.groups, group)
         logger.debug(f"Added group {name} with members: {len(members)}")
-        return group.uuid
+        return not_none(group.uuid)
 
     # JLCPCB ---------------------------------------------------------------------------
     class JLCPBC_QR_Size(Enum):
@@ -1094,7 +1114,7 @@ class PCB_Transformer:
                 fill="yes",
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
-                layers=None,
+                layers=[],
                 solder_mask_margin=None,
                 locked=None,
             )
@@ -1159,9 +1179,13 @@ class PCB_Transformer:
                         type=kicad.pcb.E_fp_text_type.USER,
                         text="FBRK:autoplaced",
                         at=kicad.pcb.Xyr(x=0, y=0, r=rot_angle),
-                        effects=kicad.pcb.FpTextEffects(font=self.font),
+                        effects=kicad.pcb.Effects(
+                            font=self.font, hide=False, justify=None
+                        ),
                         uuid=self.gen_uuid(mark=True),
-                        layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
+                        layer="User.5",
+                        # TODO
+                        # layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
                         hide=None,
                     )
                 )
@@ -1236,11 +1260,7 @@ class PCB_Transformer:
                 if isinstance(obj, kicad.pcb.FpText):
                     obj = obj.layer
 
-                match obj:
-                    case SingleOrMultiLayer():
-                        obj.apply_to_layers(_flip)
-                    case _:
-                        obj.layer = _flip(obj.layer)
+                kicad.geo.apply_to_layers(obj, _flip)
 
     @staticmethod
     def move_object(obj: Any, vector: kicad.pcb.Xy):
@@ -1271,29 +1291,35 @@ class PCB_Transformer:
                 obj.center = kicad.geo.add(obj.center, vector)
                 obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.Rect():
-                obj.start += vector
-                obj.end += vector
+                obj.start = kicad.geo.add(obj.start, vector)
+                obj.end = kicad.geo.add(obj.end, vector)
             case kicad.pcb.Polygon():
-                obj.pts.xys = [pt + vector for pt in obj.pts.xys]
+                obj.pts.xys = [kicad.geo.add(pt, vector) for pt in obj.pts.xys]
             case kicad.pcb.Curve():
-                obj.pts.xys = [pt + vector for pt in obj.pts.xys]
+                obj.pts.xys = [kicad.geo.add(pt, vector) for pt in obj.pts.xys]
             case kicad.pcb.Text():
-                obj.at += vector
+                obj.at = kicad.geo.add(obj.at, vector)
             case kicad.pcb.TextBox():
-                obj.start += vector
+                if obj.start:
+                    obj.start = kicad.geo.add(obj.start, vector)
                 if obj.end:
-                    obj.end += vector
+                    obj.end = kicad.geo.add(obj.end, vector)
                 if obj.pts:
-                    obj.pts[:] = [pt + vector for pt in obj.pts]
+                    obj.pts = kicad.pcb.Pts(
+                        xys=[kicad.geo.add(pt, vector) for pt in obj.pts.xys]
+                    )
             case kicad.pcb.Image():
-                obj.at += vector
+                obj.at = kicad.geo.add(obj.at, vector)
             case kicad.pcb.Table():
                 for cell in obj.cells.table_cells:
-                    cell.start += vector
+                    if cell.start:
+                        cell.start = kicad.geo.add(cell.start, vector)
                     if cell.end:
-                        cell.end += vector
+                        cell.end = kicad.geo.add(cell.end, vector)
                     if cell.pts:
-                        cell.pts[:] = [pt + vector for pt in cell.pts]
+                        cell.pts = kicad.pcb.Pts(
+                            xys=[kicad.geo.add(pt, vector) for pt in cell.pts.xys]
+                        )
             case _:
                 raise TypeError(f"Unsupported object type: {type(obj)}")
 
@@ -1357,25 +1383,37 @@ class PCB_Transformer:
             start=arc_start,
             mid=arc_center,
             end=arc_end,
-            stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+            stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
             layers=["Edge.Cuts"],
             uuid=self.gen_uuid(mark=True),
+            layer=None,
+            solder_mask_margin=None,
+            fill=None,
+            locked=None,
         )
 
         # Create new lines
         new_line1 = kicad.pcb.Line(
             start=line1.start,
             end=arc_start,
-            stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+            stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
             layer="Edge.Cuts",
             uuid=self.gen_uuid(mark=True),
+            solder_mask_margin=None,
+            fill=None,
+            locked=None,
+            layers=[],
         )
         new_line2 = kicad.pcb.Line(
             start=arc_end,
             end=line2.end,
-            stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+            stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
             layer="Edge.Cuts",
             uuid=self.gen_uuid(mark=True),
+            solder_mask_margin=None,
+            fill=None,
+            locked=None,
+            layers=[],
         )
 
         return new_line1, arc, new_line2
@@ -1418,32 +1456,48 @@ class PCB_Transformer:
         # make 4 line objects where the end of the last line is the begining of the next
         lines = [
             Line(
-                start=kicad.pcb.Xy(origin[0], origin[1]),
-                end=kicad.pcb.Xy(origin[0] + width_mm, origin[1]),
-                stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+                start=kicad.pcb.Xy(x=origin[0], y=origin[1]),
+                end=kicad.pcb.Xy(x=origin[0] + width_mm, y=origin[1]),
+                stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
+                layers=[],
+                solder_mask_margin=None,
+                fill=None,
+                locked=None,
             ),
             Line(
-                start=kicad.pcb.Xy(origin[0] + width_mm, origin[1]),
-                end=kicad.pcb.Xy(origin[0] + width_mm, origin[1] + height_mm),
-                stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+                start=kicad.pcb.Xy(x=origin[0] + width_mm, y=origin[1]),
+                end=kicad.pcb.Xy(x=origin[0] + width_mm, y=origin[1] + height_mm),
+                stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
+                layers=[],
+                solder_mask_margin=None,
+                fill=None,
+                locked=None,
             ),
             Line(
-                start=kicad.pcb.Xy(origin[0] + width_mm, origin[1] + height_mm),
-                end=kicad.pcb.Xy(origin[0], origin[1] + height_mm),
-                stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+                start=kicad.pcb.Xy(x=origin[0] + width_mm, y=origin[1] + height_mm),
+                end=kicad.pcb.Xy(x=origin[0], y=origin[1] + height_mm),
+                stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
+                layers=[],
+                solder_mask_margin=None,
+                fill=None,
+                locked=None,
             ),
             Line(
-                start=kicad.pcb.Xy(origin[0], origin[1] + height_mm),
-                end=kicad.pcb.Xy(origin[0], origin[1]),
-                stroke=kicad.pcb.Stroke(0.05, kicad.pcb.Stroke.E_type.solid),
+                start=kicad.pcb.Xy(x=origin[0], y=origin[1] + height_mm),
+                end=kicad.pcb.Xy(x=origin[0], y=origin[1]),
+                stroke=kicad.pcb.Stroke(width=0.05, type=kicad.pcb.E_stroke_type.SOLID),
                 layer="Edge.Cuts",
                 uuid=self.gen_uuid(mark=True),
+                layers=[],
+                solder_mask_margin=None,
+                fill=None,
+                locked=None,
             ),
         ]
         if rounded_corners:
@@ -1496,7 +1550,7 @@ class PCB_Transformer:
             for geo in get_all_geos(self.pcb):
                 if not isinstance(geo, (kicad.pcb.Line, kicad.pcb.Arc)):
                     continue
-                if "Edge.Cuts" not in geo.get_layers():
+                if "Edge.Cuts" not in kicad.geo.get_layers(geo):
                     continue
                 self.delete_geo(geo)
 
@@ -1506,7 +1560,7 @@ class PCB_Transformer:
 
         # create Edge.Cuts geometries
         for geo in geometry:
-            assert "Edge.Cuts" in geo.get_layers(), (
+            assert "Edge.Cuts" in kicad.geo.get_layers(geo), (
                 f"Geometry {geo} is not on Edge.Cuts layer"
             )
 
@@ -1536,50 +1590,50 @@ class PCB_Transformer:
         displacement: kicad.pcb.Xy = kicad.pcb.Xy(x=0, y=0),
         rotation: Optional[float] = None,
         offset_side: Side = Side.BOTTOM,
-        layer: Optional[kicad.pcb.TextLayer] = None,
+        layer: Optional[str] = None,
         font: Optional[kicad.pcb.Font] = None,
         knockout: "Optional[kicad.pcb.E_knockout]" = None,
         justify: "Alignment | None" = None,
     ):
+        if knockout:
+            raise NotImplementedError("knockout not supported")
+
         for mod, fp in self.get_all_footprints():
             reference = Property.get_property_obj(fp.propertys, "Reference")
             reference.layer = (
-                layer
-                if layer
-                else kicad.pcb.TextLayer(
-                    layer="F.SilkS" if fp.layer.startswith("F") else "B.SilkS"
-                )
+                layer if layer else "F.SilkS" if fp.layer.startswith("F") else "B.SilkS"
             )
-            if knockout:
-                reference.layer.knockout = knockout
-            if font:
-                reference.effects.font = font
-            if justify:
-                reference.effects.justifys = [Justify(justifys=list(justify))]
+            if reference.effects:
+                if font:
+                    reference.effects.font = font
+                if justify:
+                    reference.effects.justify = kicad.pcb.Justify(
+                        justify1=justify[0], justify2=justify[1], justify3=justify[2]
+                    )
 
             rot = rotation if rotation else reference.at.r
 
             footprint_bbox = self.get_bounding_box(fp, {"F.SilkS", "B.SilkS"})
             if not footprint_bbox:
                 continue
-            max_coord = kicad.pcb.Xy(*footprint_bbox[1])
-            min_coord = kicad.pcb.Xy(*footprint_bbox[0])
+            max_coord = kicad.pcb.Xy(x=footprint_bbox[1][0], y=footprint_bbox[1][1])
+            min_coord = kicad.pcb.Xy(x=footprint_bbox[0][0], y=footprint_bbox[0][1])
 
             if offset_side == self.Side.BOTTOM:
                 reference.at = kicad.pcb.Xyr(
-                    displacement.x, max_coord.y + offset - displacement.y, rot
+                    x=displacement.x, y=max_coord.y + offset - displacement.y, r=rot
                 )
             elif offset_side == self.Side.TOP:
                 reference.at = kicad.pcb.Xyr(
-                    displacement.x, min_coord.y - offset - displacement.y, rot
+                    x=displacement.x, y=min_coord.y - offset - displacement.y, r=rot
                 )
             elif offset_side == self.Side.LEFT:
                 reference.at = kicad.pcb.Xyr(
-                    min_coord.x - offset - displacement.x, displacement.y, rot
+                    x=min_coord.x - offset - displacement.x, y=displacement.y, r=rot
                 )
             elif offset_side == self.Side.RIGHT:
                 reference.at = kicad.pcb.Xyr(
-                    max_coord.x + offset + displacement.x, displacement.y, rot
+                    x=max_coord.x + offset + displacement.x, y=displacement.y, r=rot
                 )
 
     def add_git_version(
@@ -1632,12 +1686,7 @@ class PCB_Transformer:
 
     @staticmethod
     def _hash_lib_fp(lib_fp: kicad.footprint.Footprint) -> str:
-        dict_ = asdict(filter_fields(lib_fp, ["uuid"]))
-
-        # Ignore the name field. It's not meaningful and we override it
-        dict_["name"] = None
-
-        return hash_string(repr(dict_))
+        return Property.get_property(lib_fp.propertys, "checksum")
 
     _FP_LIB_HASH = "__atopile_lib_fp_hash__"
 
@@ -1653,7 +1702,7 @@ class PCB_Transformer:
                 property_name=self._FP_LIB_HASH,
                 layer="User.9",
                 # TODO
-                value="HELLO",  # self._hash_lib_fp(lib_footprint),
+                value=self._hash_lib_fp(lib_footprint),
                 uuid=self.gen_uuid(mark=True),
             ),
         )
@@ -1728,85 +1777,32 @@ class PCB_Transformer:
             # User.* layers, for example, aren't flipped and that's fine
             return layer
 
-        def _backup_flip(obj):
-            """Shitty flip function which should only be used as a backup."""
-            if obj is None:
-                return
-
-            for it in visit_dataclass(obj):
-                obj = it.value
-                path = it.path
-                name_path = it.name_path
-
-                # This only works for strings, so skip everything else
-                if not isinstance(obj, str):
-                    continue
-
-                if len(name_path) < 2:
-                    continue
-
-                # path ends with: [..., container, str]
-                container = path[-2]
-
-                # objects that have a "layer" property
-                if name_path[-2] == "layer" and hasattr(container, "layer"):
-                    container.layer = _flip(obj)
-
-                # dicts which have a "layer" key
-                elif name_path[-2] == "[layer]" and isinstance(container, dict):
-                    # This is based on how dataclass_dfs serialises names
-                    assert "layer" in container
-                    container["layer"] = _flip(obj)
-
-                # lists which have a "layer" key
-                # name_path ends with: [..., "layer", list, str]
-                elif (
-                    len(name_path) > 2
-                    and name_path[-3]
-                    in [
-                        "layer",
-                        "layers",
-                        "[layer]",
-                        "[layers]",
-                    ]
-                    and isinstance(container, list)
-                ):
-                    # Replace the layer string with the flipped one
-                    container[container.index(obj)] = _flip(obj)
-
         # Flip the pads
         for pad in footprint.pads:
-            pad.layers = [_flip(lay) for lay in pad.layers]
-
-            # Flip the primitives
-            # FIXME: flip pad primitives
-            _backup_flip(pad.unknown)
+            kicad.geo.apply_to_layers(pad, _flip)
 
         # Flip the properties
         for prop in footprint.propertys:
-            prop.layer.layer = _flip(prop.layer.layer)
+            kicad.geo.apply_to_layers(prop, _flip)
 
         # Flip primitives
         for line in footprint.fp_lines:
-            line.apply_to_layers(_flip)
+            kicad.geo.apply_to_layers(line, _flip)
 
         for arc in footprint.fp_arcs:
-            arc.apply_to_layers(_flip)
+            kicad.geo.apply_to_layers(arc, _flip)
 
         for circle in footprint.fp_circles:
-            circle.apply_to_layers(_flip)
+            kicad.geo.apply_to_layers(circle, _flip)
 
         for rect in footprint.fp_rects:
-            rect.apply_to_layers(_flip)
+            kicad.geo.apply_to_layers(rect, _flip)
 
         for text in footprint.fp_texts:
-            text.layer.layer = _flip(text.layer.layer)
+            kicad.geo.apply_to_layers(text, _flip)
 
         for polygon in footprint.fp_poly:
-            polygon.apply_to_layers(_flip)
-
-        # Flip anything unknown
-        _backup_flip(footprint.unknown)
+            kicad.geo.apply_to_layers(polygon, _flip)
 
         # Mark the footprint as being on the other side
         footprint.layer = _flip(footprint.layer)
@@ -1919,7 +1915,7 @@ class PCB_Transformer:
             # TODO
             layer=layer,  # kicad.pcb.TextLayer(layer=layer),
             uuid=UUID(uuid),
-            effects=kicad.pcb.Effects(font=self.font, hide=hide, justifys=[]),
+            effects=kicad.pcb.Effects(font=self.font, hide=hide, justify=None),
             at=kicad.pcb.Xyr(x=0, y=0, r=0),
             hide=hide,
         )
