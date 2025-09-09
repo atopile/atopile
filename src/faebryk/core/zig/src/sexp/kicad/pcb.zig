@@ -52,10 +52,19 @@ pub const Wh = struct {
     };
 };
 
+pub const E_stroke_type = enum {
+    solid,
+    dash,
+    dash_dot,
+    dash_dot_dot,
+    dot,
+    default,
+};
+
 // Text and effects structures
 pub const Stroke = struct {
     width: f64,
-    type: str,
+    type: E_stroke_type,
 };
 
 pub const Font = struct {
@@ -369,7 +378,7 @@ pub const Line = struct {
 
     // shape common
     layer: ?str = null,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
@@ -390,7 +399,7 @@ pub const Arc = struct {
 
     // shape common
     layer: ?str = null,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
@@ -411,7 +420,7 @@ pub const Circle = struct {
 
     // shape common
     layer: ?str = null,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
@@ -431,7 +440,7 @@ pub const Rect = struct {
 
     // shape common
     layer: ?str = null,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
@@ -458,7 +467,7 @@ pub const Polygon = struct {
 
     // shape common
     layer: ?str = null,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
@@ -476,7 +485,7 @@ pub const Curve = struct {
 
     // shape common
     layer: ?str = null,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
@@ -622,7 +631,7 @@ pub const Model = struct {
     };
 };
 
-pub const Attr = enum {
+pub const E_Attr = enum {
     smd,
     dnp,
     board_only,
@@ -630,6 +639,15 @@ pub const Attr = enum {
     exclude_from_pos_files,
     exclude_from_bom,
     allow_missing_courtyard,
+};
+
+pub const Attr = struct {
+    // TODO could have more than one
+    attr: E_Attr,
+
+    pub const fields_meta = .{
+        .attr = structure.SexpField{ .positional = true },
+    };
 };
 
 // Footprint structure
@@ -641,7 +659,7 @@ pub const Footprint = struct {
     path: ?str = null,
     propertys: []Property = &.{},
     fp_texts: []FpText = &.{},
-    attr: []Attr = &.{},
+    attr: ?Attr = null,
     fp_lines: []Line = &.{},
     fp_arcs: []Arc = &.{},
     fp_circles: []Circle = &.{},
@@ -698,7 +716,7 @@ pub const Via = struct {
     net: i32,
     remove_unused_layers: ?bool = null,
     keep_end_layers: ?bool = null,
-    zone_layer_connections: ?[]str = null,
+    zone_layer_connections: []str = &.{},
     padstack: ?ViaPadstack = null,
     teardrops: ?Teardrop = null,
     tenting: ?ViaTenting = null,
@@ -777,7 +795,7 @@ pub const ZoneAttr = struct {
 pub const Zone = struct {
     net: i32,
     net_name: str,
-    layers: ?[]str = null,
+    layers: []str = &.{},
     uuid: ?str = null,
     name: ?str = null,
     hatch: Hatch,
@@ -995,7 +1013,7 @@ pub const Setup = struct {
     stackup: ?Stackup = null,
     pad_to_mask_clearance: i32 = 0,
     allow_soldermask_bridges_in_footprints: bool = false,
-    tenting: ?[]str = null,
+    tenting: []str = &.{},
     pcbplotparams: PcbPlotParams = .{},
     rules: ?Rules = null,
 
@@ -1012,7 +1030,6 @@ pub const KicadPcb = struct {
     general: General = .{},
     paper: ?E_paper_type = null,
     title_block: ?TitleBlock = null,
-    // TODO default layers? maybe better handle in application logic
     layers: []Layer = &.{},
     setup: Setup = .{},
     nets: []Net = &.{},
@@ -1035,8 +1052,7 @@ pub const KicadPcb = struct {
     // TODO:
     // embedded_fonts: bool,
     // embedded_files: EmbeddedFiles,
-    // gr_curves: []Curve = &.{},
-    // gr_text_boxs: []TextBox = &.{},
+    //gr_text_boxes: []TextBox = &.{},
     // tables: []Table = &.{},
     // generateds: []Generated = &.{},
 
@@ -1050,10 +1066,12 @@ pub const KicadPcb = struct {
         .arcs = structure.SexpField{ .multidict = true, .sexp_name = "arc" },
         .gr_lines = structure.SexpField{ .multidict = true, .sexp_name = "gr_line" },
         .gr_arcs = structure.SexpField{ .multidict = true, .sexp_name = "gr_arc" },
+        .gr_curves = structure.SexpField{ .multidict = true, .sexp_name = "gr_curve" },
         .gr_circles = structure.SexpField{ .multidict = true, .sexp_name = "gr_circle" },
         .gr_rects = structure.SexpField{ .multidict = true, .sexp_name = "gr_rect" },
         .gr_polys = structure.SexpField{ .multidict = true, .sexp_name = "gr_poly" },
         .gr_texts = structure.SexpField{ .multidict = true, .sexp_name = "gr_text" },
+        .gr_text_boxes = structure.SexpField{ .multidict = true, .sexp_name = "gr_text_box" },
         .images = structure.SexpField{ .multidict = true, .sexp_name = "image" },
         .dimensions = structure.SexpField{ .multidict = true, .sexp_name = "dimension" },
         .groups = structure.SexpField{ .multidict = true, .sexp_name = "group" },

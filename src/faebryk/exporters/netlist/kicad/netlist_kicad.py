@@ -41,9 +41,7 @@ def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
                 for k, v in comp.properties.items()
                 if k != "footprint"
             ],
-            tstamps=kicad.netlist.Tstamps(
-                tstamp1=str(next(tstamp)), tstamp2=None, tstamp3=None
-            ),
+            tstamps=[str(next(tstamp))],
             fields=kicad.netlist.Fields(
                 fields=[
                     kicad.netlist.Field(name=k, value=v)

@@ -49,7 +49,7 @@ class LayoutSync:
             )
 
     def _get_all_sub_addresses(self, fp: Footprint) -> list[SubAddress]:
-        sub_addresses = Property.get_property(fp.propertys, "atopile_subaddresses")
+        sub_addresses = Property.try_get_property(fp.propertys, "atopile_subaddresses")
         if not sub_addresses:
             return []
         return [
@@ -111,9 +111,12 @@ class LayoutSync:
 
         # remove all atopile footprints from groups (later re-added)
         for pcb_group in self.pcb.groups:
-            pcb_group.members[:] = [
-                uuid for uuid in pcb_group.members if uuid not in atopile_fps_uuid
-            ]
+            kicad.filter(
+                pcb_group,
+                "members",
+                pcb_group.members,
+                lambda uuid: uuid not in atopile_fps_uuid,
+            )
 
         for group_name, fps in self.groups.items():
             logger.debug(f"Updating group {group_name}")
@@ -138,8 +141,11 @@ class LayoutSync:
             current_members = set(group.members) | expected_members
             # remove old atopile fps
             current_members -= set(atopile_fps_uuid.keys()).difference(expected_members)
+            current_members = [
+                member for member in current_members if member is not None
+            ]
 
-            group.members[:] = list(current_members)
+            kicad.clear_and_set(group, "members", group.members, current_members)
 
     def _generate_net_map(
         self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
@@ -221,7 +227,7 @@ class LayoutSync:
         top_pcb: PCB,
         addr_map: dict[str, str],
         net_map: dict[str, str],
-        offset: kicad.pcb.Xyr,
+        offset: kicad.pcb.Xy,
     ):
         """Sync footprint positions from source to target."""
         # Get footprints by address
@@ -245,7 +251,9 @@ class LayoutSync:
             sub_fp = sub_fps[src_addr]
             top_fp = top_fps[tgt_addr]
 
-            PCB_Transformer.move_fp(top_fp, sub_fp.at + offset, sub_fp.layer)
+            PCB_Transformer.move_fp(
+                top_fp, kicad.geo.add(sub_fp.at, offset), sub_fp.layer
+            )
 
         # Non-atopile footprints
         new_objects = []
@@ -261,7 +269,7 @@ class LayoutSync:
                 if pad.net and pad.net.name in net_map:
                     top_net_name = net_map[pad.net.name]
                     pad.net = kicad.pcb.Net(
-                        self._get_net_number(top_pcb, top_net_name),
+                        number=self._get_net_number(top_pcb, top_net_name),
                         name=top_net_name,
                     )
                 else:
@@ -269,7 +277,9 @@ class LayoutSync:
 
             new_objects.append(top_fp)
 
-            PCB_Transformer.move_fp(top_fp, sub_fp.at + offset, sub_fp.layer)
+            PCB_Transformer.move_fp(
+                top_fp, kicad.geo.add(sub_fp.at, offset), sub_fp.layer
+            )
 
         return new_objects
 
@@ -278,7 +288,7 @@ class LayoutSync:
         sub_pcb: PCB,
         top_pcb: PCB,
         net_map: dict[str, str],
-        offset: kicad.pcb.Xyr,
+        offset: kicad.pcb.Xy,
     ):
         new_objects = []
         for track in sub_pcb.segments + sub_pcb.arcs + sub_pcb.zones + sub_pcb.vias:
@@ -309,11 +319,11 @@ class LayoutSync:
 
         return new_objects
 
-    def _sync_other(self, sub_pcb: PCB, top_pcb: PCB, offset: kicad.pcb.Xyr):
+    def _sync_other(self, sub_pcb: PCB, top_pcb: PCB, offset: kicad.pcb.Xy):
         new_graphics = []
         for gr in (
             get_all_geos(sub_pcb)
-            + sub_pcb.gr_text_boxs
+            + sub_pcb.gr_text_boxes
             + sub_pcb.gr_texts
             + sub_pcb.images
             # TODO tables are weird about uuids
@@ -334,7 +344,7 @@ class LayoutSync:
     ) -> kicad.pcb.Xy:
         """Calculate offset to apply when pulling a group layout."""
 
-        ZERO = kicad.pcb.Xy(0, 0)
+        ZERO = kicad.pcb.Xy(x=0, y=0)
         # Find anchor footprint (largest by pad count)
         group_fps = [
             fp
@@ -366,13 +376,10 @@ class LayoutSync:
             return ZERO
 
         sub_pos = sub_fp.at
-        # TODO rotation?
-        offset = kicad.pcb.Xy(
-            top_pos.x - sub_pos.x,
-            top_pos.y - sub_pos.y,
-        )
+        offset = kicad.geo.sub(top_pos, sub_pos)
 
-        return offset
+        # TODO rotation?
+        return kicad.pcb.Xy(x=offset.x, y=offset.y)
 
     def _clean_group(self, group_name: str):
         """Delete all non-fp elements in group."""
@@ -395,7 +402,7 @@ class LayoutSync:
             *get_all_geo_containers(pcb),
             pcb.images,
             pcb.gr_texts,
-            pcb.gr_text_boxs,
+            pcb.gr_text_boxes,
             # top_pcb.tables,
         ]:
             container[:] = [x for x in container if x.uuid not in to_delete]
@@ -449,8 +456,10 @@ class LayoutSync:
 
         new_elements = new_fps + new_routes + new_other
         for new_element in new_elements:
-            container = PCB_Transformer.get_pcb_container(new_element, top_pcb)
-            container.append(new_element)
+            container, container_name = PCB_Transformer.get_pcb_container(
+                new_element, top_pcb
+            )
+            kicad.insert(top_pcb, container_name, container, new_element)
 
         group.members.extend(e.uuid for e in new_elements)
 

@@ -13,7 +13,7 @@ def test_pcb():
         "/home/needspeed/workspace/atopile/test/common/resources/fileformats/kicad/v9/sch/test.kicad_sch"
     )
     sch = kicad.loads(kicad.schematic.SchematicFile, path)
-    print(sch.__field_names__)
+    print(type(sch).__field_names__())
     # print(pcb.kicad_pcb.footprints[0])
     print("\n--- Print complete, exiting ---")
 

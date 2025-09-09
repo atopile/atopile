@@ -359,6 +359,47 @@ const A = struct {
     };
 };
 
+// Test struct for field ordering
+const OrderedStruct = struct {
+    third: i32,
+    first: []const u8,
+    second: i32,
+
+    pub const fields_meta = .{
+        .third = sexp.structure.SexpField{ .positional = false, .order = 3 },
+        .first = sexp.structure.SexpField{ .positional = false, .order = 1 },
+        .second = sexp.structure.SexpField{ .positional = false, .order = 2 },
+    };
+};
+
+test "field ordering by order attribute" {
+    const allocator = testing.allocator;
+
+    const data = OrderedStruct{
+        .third = 300,
+        .first = "first_value",
+        .second = 200,
+    };
+
+    var _encoded: ?[]const u8 = null;
+    try sexp.structure.dumps(data, allocator, "test", .{ .string = &_encoded });
+    const encoded = _encoded.?;
+    defer allocator.free(encoded);
+
+    // Fields should appear in order: first, second, third (based on order attribute, not declaration order)
+    const first_pos = std.mem.indexOf(u8, encoded, "(first \"first_value\")");
+    const second_pos = std.mem.indexOf(u8, encoded, "(second 200)");
+    const third_pos = std.mem.indexOf(u8, encoded, "(third 300)");
+
+    try testing.expect(first_pos != null);
+    try testing.expect(second_pos != null);
+    try testing.expect(third_pos != null);
+
+    // Verify the order: first should come before second, second before third
+    try testing.expect(first_pos.? < second_pos.?);
+    try testing.expect(second_pos.? < third_pos.?);
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 

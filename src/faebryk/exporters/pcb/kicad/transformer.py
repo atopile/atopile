@@ -43,6 +43,7 @@ from faebryk.libs.util import (
     find,
     groupby,
     hash_string,
+    not_none,
     re_in,
     yield_missing,
 )
@@ -226,7 +227,7 @@ class PCB_Transformer:
         self.font = FONT
 
         self._net_number_generator = iter(
-            yield_missing({net.number for net in self.pcb.nets})
+            yield_missing({net.number for net in self.pcb.nets}, 1)
         )
         """Yield available net numbers"""
 
@@ -725,19 +726,21 @@ class PCB_Transformer:
 
         return fpad, point3d[:3] + (layers,)
 
+    @property
+    def layers(self):
+        return self.pcb.layers
+
     def get_copper_layers(self):
         COPPER = re.compile(r"^.*\.Cu$")
 
         return {
-            layer.name
-            for layer in self.pcb.layers
-            if COPPER.match(layer.name) is not None
+            layer.name for layer in self.layers if COPPER.match(layer.name) is not None
         }
 
     def get_copper_layers_pad(self, pad: Pad):
         COPPER = re.compile(r"^.*\.Cu$")
 
-        all_layers = [layer.name for layer in self.pcb.layers]
+        all_layers = [layer.name for layer in self.layers]
 
         def dewildcard(layer: str):
             if "*" not in layer:
@@ -793,69 +796,72 @@ class PCB_Transformer:
         return target
 
     @staticmethod
-    def get_pcb_container[R](obj: R, pcb: PCB) -> list[R]:
+    def get_pcb_container[R](obj: R, pcb: PCB) -> tuple[list[R], str]:
         match obj:
             case kicad.pcb.Footprint():
-                return pcb.footprints  # type: ignore
+                return pcb.footprints, "footprints"  # type: ignore
             case kicad.pcb.Segment():
-                return pcb.segments  # type: ignore
+                return pcb.segments, "segments"  # type: ignore
             case kicad.pcb.ArcSegment():
-                return pcb.arcs  # type: ignore
+                return pcb.arcs, "arcs"  # type: ignore
             case kicad.pcb.Via():
-                return pcb.vias  # type: ignore
+                return pcb.vias, "vias"  # type: ignore
             case kicad.pcb.Zone():
-                return pcb.zones  # type: ignore
+                return pcb.zones, "zones"  # type: ignore
             case kicad.pcb.Line():
-                return pcb.gr_lines  # type: ignore
+                return pcb.gr_lines, "gr_lines"  # type: ignore
             case kicad.pcb.Arc():
-                return pcb.gr_arcs  # type: ignore
+                return pcb.gr_arcs, "gr_arcs"  # type: ignore
             case kicad.pcb.Rect():
-                return pcb.gr_rects  # type: ignore
+                return pcb.gr_rects, "gr_rects"  # type: ignore
             case kicad.pcb.Circle():
-                return pcb.gr_circles  # type: ignore
+                return pcb.gr_circles, "gr_circles"  # type: ignore
             case kicad.pcb.Polygon():
-                return pcb.gr_polys  # type: ignore
+                return pcb.gr_polys, "gr_polys"  # type: ignore
             case kicad.pcb.Curve():
-                return pcb.gr_curves  # type: ignore
+                return pcb.gr_curves, "gr_curves"  # type: ignore
             case kicad.pcb.Text():
-                return pcb.gr_texts  # type: ignore
+                return pcb.gr_texts, "gr_texts"  # type: ignore
             case kicad.pcb.TextBox():
-                return pcb.gr_text_boxs  # type: ignore
+                return pcb.gr_text_boxes, "gr_text_boxes"  # type: ignore
             case kicad.pcb.Image():
-                return pcb.images  # type: ignore
+                return pcb.images, "images"  # type: ignore
             case kicad.pcb.Table():
-                return pcb.tables  # type: ignore
+                return pcb.tables, "tables"  # type: ignore
             case _:
                 raise TypeError(f"Unsupported object type: {type(obj)}")
 
-    def _insert(self, obj: Any, prefix: str = ""):
+    def _insert(self, obj: Any):
         obj = PCB_Transformer.mark(obj)
-        self._get_pcb_list_field(obj, prefix=prefix).append(obj)
+        container, container_name = PCB_Transformer.get_pcb_container(obj, self.pcb)
+        kicad.insert(self.pcb, container_name, container, obj)
 
-    def _delete(self, obj: Any, prefix: str = ""):
-        self._get_pcb_list_field(obj, prefix=prefix).remove(obj)
+    def _delete(self, obj: Any):
+        container, container_name = PCB_Transformer.get_pcb_container(obj, self.pcb)
+        # TODO uuid eq check might not be right
+        kicad.filter(self.pcb, container_name, container, lambda x: x.uuid != obj.uuid)
 
     def insert_via(
         self, coord: tuple[float, float], net: int, size_drill: tuple[float, float]
     ):
-        self.pcb.vias.append(
-            Via(
-                at=kicad.pcb.Xy(x=coord[0], y=coord[1]),
-                size=size_drill[0],
-                drill=size_drill[1],
-                layers=["F.Cu", "B.Cu"],
-                net=net,
-                uuid=self.gen_uuid(mark=True),
-                remove_unused_layers=False,
-                keep_end_layers=False,
-                zone_layer_connections=[],
-                padstack=None,
-                teardrops=None,
-                tenting=None,
-                free=None,
-                locked=None,
-            )
+        via_o = Via(
+            at=kicad.pcb.Xy(x=coord[0], y=coord[1]),
+            size=size_drill[0],
+            drill=size_drill[1],
+            layers=["F.Cu", "B.Cu"],
+            net=net,
+            uuid=self.gen_uuid(mark=True),
+            remove_unused_layers=False,
+            keep_end_layers=False,
+            zone_layer_connections=[],
+            padstack=None,
+            teardrops=None,
+            tenting=None,
+            free=None,
+            locked=None,
         )
+        kicad.insert(self.pcb, "vias", self.pcb.vias, via_o)
+        return via_o
 
     def insert_text(
         self,
@@ -876,21 +882,21 @@ class PCB_Transformer:
                     Justify.mirror,
                 )
 
-        self.pcb.gr_texts.append(
-            GR_Text(
-                text=text,
-                at=at,
-                layer=kicad.pcb.TextLayer(layer, kicad.pcb.E_knockout.knockout)
-                if knockout
-                else kicad.pcb.TextLayer(layer),
-                effects=kicad.pcb.Effects(
-                    font=font,
-                    justifys=[Justify(justifys=list(alignment))],
-                    hide=None,
-                ),
-                uuid=self.gen_uuid(mark=True),
-            )
+        text_o = GR_Text(
+            text=text,
+            at=at,
+            layer=kicad.pcb.TextLayer(layer, kicad.pcb.E_knockout.knockout)
+            if knockout
+            else kicad.pcb.TextLayer(layer),
+            effects=kicad.pcb.Effects(
+                font=font,
+                justifys=[Justify(justifys=list(alignment))],
+                hide=None,
+            ),
+            uuid=self.gen_uuid(mark=True),
         )
+        kicad.insert(self.pcb, "gr_texts", self.pcb.gr_texts, text_o)
+        return text_o
 
     def insert_track(
         self,
@@ -904,29 +910,27 @@ class PCB_Transformer:
         if arc:
             start_and_ends = points_[::2]
             for s, e, m in zip(start_and_ends[:-1], start_and_ends[1:], points_[1::2]):
-                self.pcb.arcs.append(
-                    kicad.pcb.ArcSegment(
-                        start=s,
-                        mid=m,
-                        end=e,
-                        width=width,
-                        layer=layer,
-                        net=net_id,
-                        uuid=self.gen_uuid(mark=True),
-                    )
+                arc_o = kicad.pcb.ArcSegment(
+                    start=s,
+                    mid=m,
+                    end=e,
+                    width=width,
+                    layer=layer,
+                    net=net_id,
+                    uuid=self.gen_uuid(mark=True),
                 )
+                kicad.insert(self.pcb, "arcs", self.pcb.arcs, arc_o)
         else:
             for s, e in zip(points_[:-1], points_[1:]):
-                self.pcb.segments.append(
-                    kicad.pcb.Segment(
-                        start=s,
-                        end=e,
-                        width=width,
-                        layer=layer,
-                        net=net_id,
-                        uuid=self.gen_uuid(mark=True),
-                    )
+                segment = kicad.pcb.Segment(
+                    start=s,
+                    end=e,
+                    width=width,
+                    layer=layer,
+                    net=net_id,
+                    uuid=self.gen_uuid(mark=True),
                 )
+                kicad.insert(self.pcb, "segments", self.pcb.segments, segment)
 
     def insert_line(
         self, start: kicad.pcb.Xy, end: kicad.pcb.Xy, width: float, layer: str
@@ -946,10 +950,10 @@ class PCB_Transformer:
         )
 
     def insert_geo(self, geo: Geom):
-        self._insert(geo, prefix="gr_")
+        self._insert(geo)
 
     def delete_geo(self, geo: Geom):
-        self._delete(geo, prefix="gr_")
+        self._delete(geo)
 
     def get_net_obj_bbox(self, net: Net, layer: str, tolerance=0.0):
         vias = self.pcb.vias
@@ -995,57 +999,57 @@ class PCB_Transformer:
                 logger.warning(f"Zone already exists in {layer=}")
                 return
 
-        self.pcb.zones.append(
-            Zone(
-                net=net.number,
-                net_name=net.name,
-                layers=layers if len(layers) > 1 else None,
-                uuid=self.gen_uuid(mark=True),
-                name=f"layer_fill_{net.name}",
-                polygon=kicad.pcb.Polygon(
-                    pts=kicad.pcb.Pts([point2d_to_coord(p) for p in polygon])
-                ),
-                min_thickness=0.2,
-                filled_areas_thickness=False,
-                fill=kicad.pcb.Fill(
-                    enable=kicad.pcb.E_yes.yes,
-                    mode=None,
-                    hatch_thickness=0.0,
-                    hatch_gap=0.5,
-                    hatch_orientation=0,
-                    hatch_smoothing_level=0,
-                    hatch_smoothing_value=0,
-                    hatch_border_algorithm=kicad.pcb.E_zone_hatch_border_algorithm.HATCH_THICKNESS,
-                    hatch_min_hole_area=0.3,
-                    thermal_gap=0.2,
-                    thermal_bridge_width=0.2,
-                    smoothing=None,
-                    radius=1,
-                    # island_removal_mode=Zone.C_fill.E_island_removal_mode.do_not_remove, # noqa E501
-                    island_area_min=10.0,
-                    arc_segments=None,
-                    island_removal_mode=None,
-                ),
-                hatch=kicad.pcb.Hatch(mode=kicad.pcb.E_zone_hatch_mode.EDGE, pitch=0.5),
-                priority=0,
-                keepout=kicad.pcb.ZoneKeepout(
-                    tracks=kicad.pcb.E_zone_keepout.ALLOWED,
-                    vias=kicad.pcb.E_zone_keepout.ALLOWED,
-                    pads=kicad.pcb.E_zone_keepout.ALLOWED,
-                    copperpour=kicad.pcb.E_zone_keepout.NOT_ALLOWED,
-                    footprints=kicad.pcb.E_zone_keepout.ALLOWED,
-                )
-                if keepout
-                else None,
-                connect_pads=kicad.pcb.ConnectPads(
-                    mode=kicad.pcb.E_zone_connect_pads_mode.THERMAL_RELIEFS,
-                    clearance=0.2,
-                ),
-                filled_polygon=[],
-                placement=None,
-                attr=None,
+        zone = Zone(
+            net=net.number,
+            net_name=net.name,
+            layers=layers if len(layers) > 1 else None,
+            uuid=self.gen_uuid(mark=True),
+            name=f"layer_fill_{net.name}",
+            polygon=kicad.pcb.Polygon(
+                pts=kicad.pcb.Pts([point2d_to_coord(p) for p in polygon])
+            ),
+            min_thickness=0.2,
+            filled_areas_thickness=False,
+            fill=kicad.pcb.Fill(
+                enable=kicad.pcb.E_yes.yes,
+                mode=None,
+                hatch_thickness=0.0,
+                hatch_gap=0.5,
+                hatch_orientation=0,
+                hatch_smoothing_level=0,
+                hatch_smoothing_value=0,
+                hatch_border_algorithm=kicad.pcb.E_zone_hatch_border_algorithm.HATCH_THICKNESS,
+                hatch_min_hole_area=0.3,
+                thermal_gap=0.2,
+                thermal_bridge_width=0.2,
+                smoothing=None,
+                radius=1,
+                # island_removal_mode=Zone.C_fill.E_island_removal_mode.do_not_remove, # noqa E501
+                island_area_min=10.0,
+                arc_segments=None,
+                island_removal_mode=None,
+            ),
+            hatch=kicad.pcb.Hatch(mode=kicad.pcb.E_zone_hatch_mode.EDGE, pitch=0.5),
+            priority=0,
+            keepout=kicad.pcb.ZoneKeepout(
+                tracks=kicad.pcb.E_zone_keepout.ALLOWED,
+                vias=kicad.pcb.E_zone_keepout.ALLOWED,
+                pads=kicad.pcb.E_zone_keepout.ALLOWED,
+                copperpour=kicad.pcb.E_zone_keepout.NOT_ALLOWED,
+                footprints=kicad.pcb.E_zone_keepout.ALLOWED,
             )
+            if keepout
+            else None,
+            connect_pads=kicad.pcb.ConnectPads(
+                mode=kicad.pcb.E_zone_connect_pads_mode.THERMAL_RELIEFS,
+                clearance=0.2,
+            ),
+            filled_polygon=[],
+            placement=None,
+            attr=None,
         )
+        kicad.insert(self.pcb, "zones", self.pcb.zones, zone)
+        return zone
 
     # Groups ---------------------------------------------------------------------------
     def _add_group(
@@ -1054,7 +1058,7 @@ class PCB_Transformer:
         group = kicad.pcb.Group(
             name=name, members=members, uuid=self.gen_uuid(mark=True), locked=locked
         )
-        self.pcb.groups.append(group)
+        kicad.insert(self.pcb, "groups", self.pcb.groups, group)
         logger.debug(f"Added group {name} with members: {len(members)}")
         return group.uuid
 
@@ -1625,7 +1629,8 @@ class PCB_Transformer:
         """Generate a dict of the common fields of a lib footprint and pcb footprint"""
         return {
             field: getattr(lib_footprint, field)
-            for field in kicad.footprint.Footprint.__field_names__()
+            for field in set(kicad.footprint.Footprint.__field_names__())
+            & set(kicad.pcb.Footprint.__field_names__())
         }
 
     @staticmethod
@@ -1650,7 +1655,8 @@ class PCB_Transformer:
             self._make_fp_property(
                 property_name=self._FP_LIB_HASH,
                 layer="User.9",
-                value=self._hash_lib_fp(lib_footprint),
+                # TODO
+                value="HELLO",  # self._hash_lib_fp(lib_footprint),
                 uuid=self.gen_uuid(mark=True),
             ),
         )
@@ -1690,7 +1696,7 @@ class PCB_Transformer:
 
         self._set_lib_fp_hash(footprint, lib_footprint)
 
-        self.pcb.footprints.append(footprint)
+        kicad.insert(self.pcb, "footprints", self.pcb.footprints, footprint)
 
         return footprint
 
@@ -1835,8 +1841,8 @@ class PCB_Transformer:
             for p in lib_footprint.pads
         ]
         updates["propertys"] = {
-            **footprint.propertys,
-            **updates["propertys"],
+            *footprint.propertys,
+            *updates["propertys"],
         }
         for name, update in updates.items():
             setattr(footprint, name, update)
@@ -1851,17 +1857,23 @@ class PCB_Transformer:
 
     def remove_footprint(self, footprint: Footprint) -> None:
         """Remove a footprint from the pcb"""
-        self.pcb.footprints.remove(footprint)
+        print("REMOVE FOOTPRINT")
+        kicad.filter(
+            self.pcb,
+            "footprints",
+            self.pcb.footprints,
+            lambda f: f.uuid != footprint.uuid,
+        )
 
     def insert_net(self, name: str) -> Net:
         """Insert a net into the pcb and return it"""
         net = Net(name=name, number=next(self._net_number_generator))
-        self.pcb.nets.append(net)
+        kicad.insert(self.pcb, "nets", self.pcb.nets, net)
         return net
 
     def remove_net(self, net: Net):
         """Remove a net from the pcb"""
-        self.pcb.nets.remove(net)
+        kicad.filter(self.pcb, "nets", self.pcb.nets, lambda n: n.number != net.number)
 
         # Disconnect pads on footprints
         for fp in self.pcb.footprints:
@@ -1911,9 +1923,10 @@ class PCB_Transformer:
         return kicad.pcb.Property(
             name=property_name,
             value=value,
-            layer=kicad.pcb.TextLayer(layer=layer),
+            # TODO
+            layer=layer,  # kicad.pcb.TextLayer(layer=layer),
             uuid=UUID(uuid),
-            effects=kicad.pcb.TextEffects(font=self.font),
+            effects=kicad.pcb.Effects(font=self.font, hide=hide, justifys=[]),
             at=kicad.pcb.Xyr(x=0, y=0, r=0),
             hide=hide,
         )
@@ -1946,7 +1959,7 @@ class PCB_Transformer:
         gf = GraphFunctions(self.graph)
 
         # Update footprints
-        processed_fps = FuncSet[Footprint]()
+        processed_fps = dict[str, Footprint]()
 
         # Spacing algorithm to neatly insert new footprints
         # Each component group is clustered around their immediate parent
@@ -2015,7 +2028,7 @@ class PCB_Transformer:
                     )
                     cluster_has_footprints = True
 
-                processed_fps.add(pcb_fp)
+                processed_fps[not_none(pcb_fp.uuid)] = pcb_fp
 
             if cluster_has_footprints:
                 cluster_point = _incremented_point(cluster_point, dx=horizontal_spacing)
@@ -2025,7 +2038,11 @@ class PCB_Transformer:
         # concept of a --tidy flag or the likes
         # Should this remove unmarked footprints?
 
-        for pcb_fp in FuncSet[Footprint](self.pcb.footprints) - processed_fps:
+        for pcb_fp in {
+            not_none(fp.uuid): fp
+            for fp in self.pcb.footprints
+            if not_none(fp.uuid) not in processed_fps
+        }.values():
             removed_fp_ref = (
                 Property.try_get_property(pcb_fp.propertys, "Reference")
                 or "<no reference>"
@@ -2044,7 +2061,7 @@ class PCB_Transformer:
             if n.has_trait(F.has_overriden_name)
         }
 
-        processed_nets = FuncSet[Net]()
+        processed_nets = dict[tuple[int, str | None], Net]()
         for net_name, f_net in f_nets_by_name.items():
             ## Rename existing nets if needed
             # We do this instead of ripping things up to:
@@ -2061,8 +2078,8 @@ class PCB_Transformer:
 
             ## Add missing nets
             else:
-                logger.info(f"Adding net `{net_name}`", extra={"markdown": True})
                 pcb_net = self.insert_net(net_name)
+                logger.info(f"Adding net `{pcb_net}`", extra={"markdown": True})
                 self.bind_net(pcb_net, f_net)
 
             ## Connect pads to nets
@@ -2092,14 +2109,20 @@ class PCB_Transformer:
                         name=pcb_net.name, number=pcb_net.number
                     )
 
-            processed_nets.add(pcb_net)
+            processed_nets[(pcb_net.number, pcb_net.name)] = pcb_net
 
         ## Remove nets that aren't present in the design
-        for pcb_net in FuncSet[Net](self.pcb.nets) - processed_nets:
+        for pcb_net in {
+            (n.number, n.name): n
+            for n in self.pcb.nets
+            if (n.number, n.name) not in processed_nets
+        }.values():
             # Net number == 0 and name == "" are the default values
             # They represent unconnected to nets, so skip them
             if pcb_net.number == 0:
-                assert pcb_net.name == ""
+                assert pcb_net.name == "", (
+                    f"Net 0 name is '{pcb_net.name}', should be ''"
+                )
                 continue
 
             logger.info(

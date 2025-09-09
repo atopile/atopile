@@ -19,13 +19,14 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
 
     // Hack: Footprint imports some types from pcb
     if (std.mem.eql(u8, name, "footprint")) {
-        try file.writeAll("from faebryk.core.zig.pcb import Xyr, Property, FpText, Line, Arc, Circle, Rect, Polygon, Pad, Model\n");
+        try file.writeAll("from faebryk.core.zig.pcb import Xyr, Property, FpText, Line, Arc, Circle, Rect, Polygon, Pad, Model, Attr\n");
     } else if (std.mem.eql(u8, name, "symbol")) {
         try file.writeAll("from faebryk.core.zig.schematic import Symbol\n");
     } else if (std.mem.eql(u8, name, "schematic")) {
         try file.writeAll("from faebryk.core.zig.pcb import Xy, Xyr, Wh, Effects\n");
     } else if (std.mem.eql(u8, name, "footprint_v5")) {
-        try file.writeAll("from faebryk.core.zig.pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr\n");
+        try file.writeAll("from faebryk.core.zig.pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr, Attr\n");
+        try file.writeAll("from faebryk.core.zig.footprint import Tags\n");
     } else if (std.mem.eql(u8, name, "symbol_v6")) {
         try file.writeAll("from faebryk.core.zig.pcb import Xy\n");
         try file.writeAll("from faebryk.core.zig.schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Power, Property, PinNames, Arc\n");

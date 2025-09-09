@@ -56,24 +56,12 @@ class Fields:
     @staticmethod
     def __field_names__() -> list[str]: ...
 
-class Tstamps:
-    tstamp1: str
-    tstamp2: str | None
-    tstamp3: str | None
-
-    def __init__(
-        self, *, tstamp1: str, tstamp2: str | None, tstamp3: str | None
-    ) -> None: ...
-    def __repr__(self) -> str: ...
-    @staticmethod
-    def __field_names__() -> list[str]: ...
-
 class Component:
     ref: str
     value: str
     footprint: str
     propertys: list[Property]
-    tstamps: Tstamps
+    tstamps: list[str]
     fields: Fields | None
     sheetpath: Sheetpath | None
     libsource: Libsource | None
@@ -86,7 +74,7 @@ class Component:
         value: str,
         footprint: str,
         propertys: list[Property],
-        tstamps: Tstamps,
+        tstamps: list[str],
         fields: Fields | None,
         sheetpath: Sheetpath | None,
         libsource: Libsource | None,

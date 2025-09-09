@@ -1116,6 +1116,68 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                             const nested_wrapper = @as(*PyObjectWrapper(ptr.child), @ptrCast(@alignCast(item)));
                                             slice[i] = nested_wrapper.data.*;
                                         },
+                                        .@"enum" => {
+                                            // Handle enum items as strings
+                                            const str_val = py.PyUnicode_AsUTF8(item);
+                                            if (str_val == null) {
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            const enum_str = std.mem.span(str_val.?);
+                                            slice[i] = std.meta.stringToEnum(ptr.child, enum_str) orelse {
+                                                std.heap.c_allocator.free(slice);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in list");
+                                                return -1;
+                                            };
+                                        },
+                                        .optional => |opt| {
+                                            // Handle optional items
+                                            if (item == py.Py_None()) {
+                                                slice[i] = null;
+                                            } else {
+                                                // Convert based on child type of optional
+                                                const opt_child_info = @typeInfo(opt.child);
+                                                switch (opt_child_info) {
+                                                    .@"struct" => {
+                                                        const nested_wrapper = @as(*PyObjectWrapper(opt.child), @ptrCast(@alignCast(item)));
+                                                        slice[i] = nested_wrapper.data.*;
+                                                    },
+                                                    .int => {
+                                                        const int_val = py.PyLong_AsLong(item);
+                                                        if (int_val == -1 and py.PyErr_Occurred() != null) {
+                                                            std.heap.c_allocator.free(slice);
+                                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                            return -1;
+                                                        }
+                                                        slice[i] = @intCast(int_val);
+                                                    },
+                                                    .pointer => |p| {
+                                                        if (p.size == .slice and p.child == u8) {
+                                                            const str_val = py.PyUnicode_AsUTF8(item);
+                                                            if (str_val == null) {
+                                                                std.heap.c_allocator.free(slice);
+                                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                                return -1;
+                                                            }
+                                                            const str_slice = std.mem.span(str_val.?);
+                                                            const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch {
+                                                                std.heap.c_allocator.free(slice);
+                                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                                return -1;
+                                                            };
+                                                            slice[i] = str_copy;
+                                                        } else {
+                                                            slice[i] = null;
+                                                        }
+                                                    },
+                                                    else => {
+                                                        slice[i] = null;
+                                                    },
+                                                }
+                                            }
+                                        },
                                         .int => {
                                             const int_val = py.PyLong_AsLong(item);
                                             if (int_val == -1 and py.PyErr_Occurred() != null) {
@@ -1170,7 +1232,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                             // Unsupported type
                                             std.heap.c_allocator.free(slice);
                                             std.heap.c_allocator.destroy(wrapper_obj.data);
-                                            py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list item type");
+                                            py.PyErr_SetString(py.PyExc_TypeError, "Unsupported list item type (unknown)");
                                             return -1;
                                         },
                                     }

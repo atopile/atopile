@@ -8,13 +8,6 @@ fn isOptional(comptime T: type) bool {
     return @typeInfo(T) == .optional;
 }
 
-fn isSlice(comptime T: type) bool {
-    return switch (@typeInfo(T)) {
-        .pointer => |ptr| ptr.size == .slice,
-        else => false,
-    };
-}
-
 // Simplified field metadata
 pub const SexpField = struct {
     positional: bool = false,
@@ -208,6 +201,11 @@ fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField 
 
 // Main decode function
 pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
+    return decodeWithMetadata(T, allocator, sexp, SexpField{});
+}
+
+// Main decode function with metadata
+pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
     const type_info = @typeInfo(T);
 
     // Check if type has a custom decode method (only for types that support declarations)
@@ -221,11 +219,11 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
     }
 
     switch (type_info) {
-        .@"struct" => return try decodeStruct(T, allocator, sexp),
-        .optional => |opt| return try decodeOptional(opt.child, allocator, sexp),
+        .@"struct" => return try decodeStruct(T, allocator, sexp, metadata),
+        .optional => |opt| return try decodeOptional(opt.child, allocator, sexp, metadata),
         .pointer => |ptr| {
             if (ptr.size == .slice) {
-                return try decodeSlice(T, allocator, sexp);
+                return try decodeSlice(T, allocator, sexp, metadata);
             }
             setErrorContext(.{
                 .path = @typeName(T),
@@ -234,10 +232,10 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
             }, sexp);
             return error.InvalidType;
         },
-        .int => return try decodeInt(T, sexp),
-        .float => return try decodeFloat(T, sexp),
-        .bool => return try decodeBool(sexp),
-        .@"enum" => return try decodeEnum(T, sexp),
+        .int => return try decodeInt(T, sexp, metadata),
+        .float => return try decodeFloat(T, sexp, metadata),
+        .bool => return try decodeBool(sexp, metadata),
+        .@"enum" => return try decodeEnum(T, sexp, metadata),
         .@"union" => {
             // If no custom decode, unions need custom decoders
             setErrorContext(.{
@@ -258,8 +256,9 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
     }
 }
 
-fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
-    @setEvalBranchQuota(10000);
+fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
+    _ = metadata; // metadata not used at struct level, only for individual fields
+    @setEvalBranchQuota(15000);
     const fields = std.meta.fields(T);
     var result: T = std.mem.zeroInit(T, .{});
 
@@ -295,8 +294,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     comptime var has_positional_fields = false;
     comptime {
         for (fields) |field| {
-            const metadata = getSexpMetadata(T, field.name);
-            if (metadata.positional) {
+            const field_metadata = getSexpMetadata(T, field.name);
+            if (field_metadata.positional) {
                 has_positional_fields = true;
                 break;
             }
@@ -313,8 +312,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                 const sym = ast.getSymbol(item_list[0]).?;
                 inline for (fields) |field| {
                     if (comptime std.mem.eql(u8, field.name, single_field_name.?)) {
-                        const metadata = comptime getSexpMetadata(T, field.name);
-                        const field_name = metadata.sexp_name orelse field.name;
+                        const field_metadata = comptime getSexpMetadata(T, field.name);
+                        const field_name = field_metadata.sexp_name orelse field.name;
                         if (std.mem.eql(u8, sym, field_name)) {
                             // The symbol matches the single field name
                             // Pass the rest of the list (after the field name) to decode
@@ -322,7 +321,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                 SExp{ .value = .{ .list = item_list[1..] }, .location = null }
                             else
                                 SExp{ .value = .{ .list = &.{} }, .location = null };
-                            @field(result, field.name) = try decode(field.type, allocator, value_sexp);
+                            @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, SexpField{});
                             return result;
                         }
                     }
@@ -362,9 +361,9 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
         var all_pos = true;
         var has_fields = false;
         for (fields) |field| {
-            const metadata = getSexpMetadata(T, field.name);
+            const field_metadata_inner = getSexpMetadata(T, field.name);
             has_fields = true;
-            if (!metadata.positional) {
+            if (!field_metadata_inner.positional) {
                 all_pos = false;
                 break;
             }
@@ -404,8 +403,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     // Process positional fields based on order
     var positional_idx: usize = positional_start;
     inline for (fields, 0..) |field, field_idx| {
-        const metadata = comptime getSexpMetadata(T, field.name);
-        if (metadata.positional) {
+        const field_metadata = comptime getSexpMetadata(T, field.name);
+        if (field_metadata.positional) {
             // For positional fields, we need to find the next non-list item
             while (positional_idx < items.len and ast.isList(items[positional_idx])) {
                 positional_idx += 1;
@@ -466,7 +465,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                     .field_name = field.name,
                                     .sexp_preview = null,
                                 }, items[positional_idx]);
-                                @field(result, field.name) = try decode(field.type, allocator, items[positional_idx]);
+                                @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], SexpField{});
                                 fields_set.set(field_idx);
                                 positional_idx += 1;
                             } else {
@@ -494,7 +493,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                         clearErrorContext();
 
                         // Try to decode this field
-                        if (decode(field.type, allocator, items[positional_idx])) |value| {
+                        if (decodeWithMetadata(field.type, allocator, items[positional_idx], SexpField{})) |value| {
                             @field(result, field.name) = value;
                             fields_set.set(field_idx);
                             positional_idx += 1;
@@ -517,7 +516,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                         .field_name = field.name,
                         .sexp_preview = null,
                     }, items[positional_idx]);
-                    @field(result, field.name) = try decode(field.type, allocator, items[positional_idx]);
+                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], SexpField{});
                     fields_set.set(field_idx);
                     positional_idx += 1;
                 }
@@ -538,8 +537,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             inline for (fields, 0..) |field, field_idx| {
                 // Only process boolean fields that haven't been set
                 if (!fields_set.isSet(field_idx) and @typeInfo(field.type) == .bool) {
-                    const metadata = comptime getSexpMetadata(T, field.name);
-                    const field_name = metadata.sexp_name orelse field.name;
+                    const field_metadata = comptime getSexpMetadata(T, field.name);
+                    const field_name = field_metadata.sexp_name orelse field.name;
                     if (std.mem.eql(u8, sym, field_name)) {
                         // Found a matching boolean field - set it to true
                         @field(result, field.name) = true;
@@ -551,8 +550,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                 if (!fields_set.isSet(field_idx) and comptime isOptional(field.type)) {
                     const child = @typeInfo(field.type).optional.child;
                     if (@typeInfo(child) == .bool) {
-                        const metadata = comptime getSexpMetadata(T, field.name);
-                        const field_name = metadata.sexp_name orelse field.name;
+                        const field_metadata = comptime getSexpMetadata(T, field.name);
+                        const field_name = field_metadata.sexp_name orelse field.name;
                         if (std.mem.eql(u8, sym, field_name)) {
                             // Found a matching optional boolean field - set it to true
                             @field(result, field.name) = true;
@@ -572,13 +571,13 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
 
             // Find matching field
             inline for (fields, 0..) |field, field_idx| {
-                const metadata = comptime getSexpMetadata(T, field.name);
-                const field_name = metadata.sexp_name orelse field.name;
+                const field_metadata = comptime getSexpMetadata(T, field.name);
+                const field_name = field_metadata.sexp_name orelse field.name;
 
                 if (std.mem.eql(u8, key, field_name)) {
-                    if (metadata.multidict) {
+                    if (field_metadata.multidict) {
                         // Handle multidict fields
-                        if (comptime isSlice(field.type)) {
+                        if (comptime isSlice(field.type, false)) {
                             // Check if we already started collecting values for this field
                             if (!fields_set.isSet(field_idx)) {
                                 const ChildType = std.meta.Child(field.type);
@@ -600,7 +599,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                                 }, items[scan_idx]);
                                                 // For multidict entries, decode the rest as struct fields
                                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
-                                                const scan_val = try decode(ChildType, allocator, scan_struct_sexp);
+                                                const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, SexpField{});
                                                 try values.append(scan_val);
                                             }
                                         }
@@ -621,42 +620,17 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                 .sexp_preview = null,
                             }, items[i]);
 
-                            // Debug logging for font and size fields
-                            //if (std.mem.eql(u8, field.name, "font") or std.mem.eql(u8, field.name, "size")) {
-                            //    std.debug.print("DEBUG: Parsing field '{s}' in type {s}\n", .{field.name, @typeName(T)});
-                            //    std.debug.print("  kv_items.len = {}\n", .{kv_items.len});
-                            //    for (kv_items, 0..) |item, idx| {
-                            //        switch (item.value) {
-                            //            .symbol => |sym| std.debug.print("  kv_items[{}] = symbol: {s}\n", .{idx, sym}),
-                            //            .number => |num| std.debug.print("  kv_items[{}] = number: {s}\n", .{idx, num}),
-                            //            .list => |list| {
-                            //                std.debug.print("  kv_items[{}] = list with {} items\n", .{idx, list.len});
-                            //                if (list.len > 0) {
-                            //                    switch (list[0].value) {
-                            //                        .symbol => |first_sym| std.debug.print("    First item in list: symbol '{s}'\n", .{first_sym}),
-                            //                        else => {},
-                            //                    }
-                            //                }
-                            //            },
-                            //            .string => |str| std.debug.print("  kv_items[{}] = string: \"{s}\"\n", .{idx, str}),
-                            //            else => std.debug.print("  kv_items[{}] = other\n", .{idx}),
-                            //        }
-                            //    }
-                            //    std.debug.print("  Field type: {s}\n", .{@typeName(field.type)});
-                            //    std.debug.print("  Passing to decode: kv_items[1..] which has {} items\n", .{kv_items[1..].len});
-                            //}
-
                             // For struct fields, always pass the rest of the list (after the key)
                             // This allows structs with positional fields to parse correctly
                             // e.g., (drill 1.199998) -> PadDrill gets [1.199998]
                             @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or
                                 (@typeInfo(field.type) == .optional and
                                     @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
-                                try decode(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null })
-                            else if (kv_items.len == 2)
-                                try decode(field.type, allocator, kv_items[1])
+                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, SexpField{})
+                            else if (kv_items.len == 2 and !isSlice(field.type, true))
+                                try decodeWithMetadata(field.type, allocator, kv_items[1], SexpField{})
                             else
-                                try decode(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null });
+                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, SexpField{});
                             fields_set.set(field_idx);
                         }
                     }
@@ -669,8 +643,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     // Check required fields and set defaults
     inline for (fields, 0..) |field, field_idx| {
         if (!fields_set.isSet(field_idx)) {
-            const metadata = comptime getSexpMetadata(T, field.name);
-            const field_name = metadata.sexp_name orelse field.name;
+            const field_metadata = comptime getSexpMetadata(T, field.name);
+            const field_name = field_metadata.sexp_name orelse field.name;
 
             // Before giving up, check if there's a single nested structure that matches this field
             // This handles cases like (effects (font ...)) where font is the only content
@@ -696,7 +670,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                         .sexp_preview = null,
                                     }, item);
                                     // Parse the entire nested structure as the field value
-                                    @field(result, field.name) = try decode(field.type, allocator, item);
+                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, item, SexpField{});
                                     fields_set.set(field_idx);
                                     found_nested = true;
                                     break;
@@ -743,7 +717,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                         .field_name = field.name,
                                         .sexp_preview = null,
                                     }, value_sexp);
-                                    @field(result, field.name) = try decode(field.type, allocator, value_sexp);
+                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, SexpField{});
                                     fields_set.set(field_idx);
                                     found_nested = true;
                                     break;
@@ -768,9 +742,33 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                 // Handle different field types
                 if (comptime isOptional(field.type)) {
                     @field(result, field.name) = null;
-                } else if (comptime isSlice(field.type) and metadata.multidict) {
-                    // Empty slice for multidict
-                    @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
+                } else if (comptime isSlice(field.type, false)) {
+                    const field_metadata_check = comptime getSexpMetadata(T, field.name);
+                    if (field_metadata_check.multidict) {
+                        // Empty slice for multidict
+                        @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
+                    } else {
+                        // Use default if available
+                        const default_instance = std.mem.zeroInit(T, .{});
+                        const zero_value = std.mem.zeroes(field.type);
+                        if (!std.meta.eql(@field(default_instance, field.name), zero_value)) {
+                            @field(result, field.name) = @field(default_instance, field.name);
+                        } else if (field.default_value_ptr) |default_ptr| {
+                            // Use field default value
+                            const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                            @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
+                        } else {
+                            // Set error context before returning error
+                            // Use page allocator for preview since error context is global
+                            const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
+                            setErrorContext(.{
+                                .path = @typeName(T),
+                                .field_name = field.name,
+                                .sexp_preview = preview,
+                            }, sexp);
+                            return error.MissingField;
+                        }
+                    }
                 } else {
                     // Use default if available
                     const default_instance = std.mem.zeroInit(T, .{});
@@ -800,7 +798,15 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     return result;
 }
 
-fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!?T {
+fn isSlice(comptime T: type, optional: bool) bool {
+    return switch (@typeInfo(T)) {
+        .pointer => |ptr| ptr.size == .slice and ptr.child != u8,
+        .optional => |opt| optional and isSlice(opt.child, false),
+        else => false,
+    };
+}
+
+fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!?T {
     if (ast.isList(sexp)) {
         const items = ast.getList(sexp).?;
         if (items.len == 0) return null;
@@ -813,19 +819,20 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) De
                 const inner_list = ast.getList(items[0]).?;
                 // Only unwrap if this looks like a single complete struct representation
                 // not a single key-value pair like (clearance 0.5)
-                if (inner_list.len == 0 or inner_list.len > 2 or 
-                    (inner_list.len > 0 and ast.getSymbol(inner_list[0]) == null)) {
+                if (inner_list.len == 0 or inner_list.len > 2 or
+                    (inner_list.len > 0 and ast.getSymbol(inner_list[0]) == null))
+                {
                     // This looks like a complete struct, unwrap it
-                    return try decode(T, allocator, items[0]);
+                    return try decodeWithMetadata(T, allocator, items[0], metadata);
                 }
             }
             // Otherwise keep it as a list for the struct decoder
         }
     }
-    return try decode(T, allocator, sexp);
+    return try decodeWithMetadata(T, allocator, sexp, metadata);
 }
 
-fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
+fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
     const child_type = std.meta.Child(T);
 
     // Special handling for strings ([]const u8)
@@ -848,28 +855,24 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
                 @memcpy(duped, num);
                 return duped;
             },
+
             else => {},
         }
     }
 
     // For non-u8 slices, check if we have a list
-    const items = ast.getList(sexp) orelse {
-        // If not a list, treat single value as a one-element slice
-        // This handles cases like (attr smd) where attr is [][]const u8
-        var result = try allocator.alloc(child_type, 1);
-        result[0] = try decode(child_type, allocator, sexp);
-        return result;
-    };
+    const items = ast.getList(sexp) orelse return error.UnexpectedType;
 
     var result = try allocator.alloc(child_type, items.len);
     for (items, 0..) |item, idx| {
-        result[idx] = try decode(child_type, allocator, item);
+        result[idx] = try decodeWithMetadata(child_type, allocator, item, metadata);
     }
 
     return result;
 }
 
-fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
+fn decodeInt(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
+    _ = metadata; // metadata not used for basic types
     // Get current context to preserve field name
     const ctx = getErrorContext();
 
@@ -911,7 +914,8 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
     };
 }
 
-fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
+fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
+    _ = metadata; // metadata not used for basic types
     // Get current context to preserve field name
     const ctx = getErrorContext();
 
@@ -960,7 +964,8 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
     };
 }
 
-fn decodeBool(sexp: SExp) DecodeError!bool {
+fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
+    _ = metadata; // metadata not used for basic types
     const sym = ast.getSymbol(sexp) orelse {
         // Get current context to preserve field name
         const ctx = getErrorContext();
@@ -986,7 +991,8 @@ fn decodeBool(sexp: SExp) DecodeError!bool {
     return error.InvalidValue;
 }
 
-fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
+fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
+    _ = metadata; // metadata not used for basic enums (could be used for custom sexp_name in future)
     // Try to get the enum value as either a symbol or a string
     const enum_str = switch (sexp.value) {
         .symbol => |s| s,
@@ -1019,8 +1025,13 @@ fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
     return error.InvalidValue;
 }
 
-// Encode with metadata (for symbol flag support)
-fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
+// Main encode function
+pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
+    return encodeWithMetadata(allocator, value, SexpField{});
+}
+
+// Main encode function with metadata
+pub fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
@@ -1062,19 +1073,10 @@ fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata: Se
         }
     }
 
-    // Otherwise, use normal encoding
-    return try encode(allocator, value);
-}
-
-// Main encode function
-pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
-    const T = @TypeOf(value);
-    const type_info = @typeInfo(T);
-
     switch (type_info) {
-        .@"struct" => return try encodeStruct(allocator, value),
+        .@"struct" => return try encodeStruct(allocator, value, metadata),
         .optional => {
-            if (value) |v| return try encode(allocator, v);
+            if (value) |v| return try encodeWithMetadata(allocator, v, metadata);
             return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
         },
         .pointer => |ptr| {
@@ -1082,7 +1084,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                 // Handle strings
                 return SExp{ .value = .{ .string = value }, .location = null };
             } else if (ptr.size == .slice) {
-                return try encodeSlice(allocator, value);
+                return try encodeSlice(allocator, value, metadata);
             }
             return error.InvalidType;
         },
@@ -1113,46 +1115,85 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     }
 }
 
-fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
+// Helper to sort field indices at compile time
+fn sortFieldIndices(comptime T: type) [std.meta.fields(T).len]usize {
+    @setEvalBranchQuota(15000); // Increase branch quota for compile-time sorting
+
+    const fields = std.meta.fields(T);
+    var indices: [fields.len]usize = undefined;
+
+    // Initialize indices
+    for (&indices, 0..) |*idx, i| {
+        idx.* = i;
+    }
+
+    // Simple bubble sort at compile time
+    var i: usize = 0;
+    while (i < indices.len) : (i += 1) {
+        var j: usize = 0;
+        while (j < indices.len - 1) : (j += 1) {
+            const lhs_metadata = comptime getSexpMetadata(T, fields[indices[j]].name);
+            const rhs_metadata = comptime getSexpMetadata(T, fields[indices[j + 1]].name);
+            if (lhs_metadata.order > rhs_metadata.order) {
+                const temp = indices[j];
+                indices[j] = indices[j + 1];
+                indices[j + 1] = temp;
+            }
+        }
+    }
+
+    return indices;
+}
+
+fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
+    _ = metadata; // metadata not used at struct level, only for individual fields
     const T = @TypeOf(value);
     var items = std.ArrayList(SExp).init(allocator);
     defer items.deinit();
 
     const fields = std.meta.fields(T);
+    const sorted_indices = comptime sortFieldIndices(T);
 
-    // Process positional fields first
-    inline for (fields) |field| {
-        const metadata = getSexpMetadata(T, field.name);
-        if (metadata.positional) {
+    // Process positional fields first (in sorted order)
+    inline for (sorted_indices) |field_idx| {
+        const field = fields[field_idx];
+        const field_metadata = comptime getSexpMetadata(T, field.name);
+        if (field_metadata.positional) {
             const field_value = @field(value, field.name);
 
             // Handle optional positional fields differently
             if (comptime isOptional(field.type)) {
                 if (field_value) |val| {
-                    const encoded = try encodeWithMetadata(allocator, val, metadata);
+                    const encoded = try encodeWithMetadata(allocator, val, field_metadata);
                     try items.append(encoded);
                 }
                 // Skip null optionals entirely
             } else {
-                const encoded = try encodeWithMetadata(allocator, field_value, metadata);
+                if (comptime isSlice(field.type, false)) {
+                    if (field_value.len == 0) {
+                        continue;
+                    }
+                }
+                const encoded = try encodeWithMetadata(allocator, field_value, field_metadata);
                 try items.append(encoded);
             }
         }
     }
 
-    // Then process non-positional fields
-    inline for (fields) |field| {
-        const metadata = getSexpMetadata(T, field.name);
-        if (!metadata.positional) {
+    // Then process non-positional fields (in sorted order)
+    inline for (sorted_indices) |field_idx| {
+        const field = fields[field_idx];
+        const field_metadata_inner = getSexpMetadata(T, field.name);
+        if (!field_metadata_inner.positional) {
             const field_value = @field(value, field.name);
-            const field_name = metadata.sexp_name orelse field.name;
+            const field_name = field_metadata_inner.sexp_name orelse field.name;
 
-            if (metadata.multidict) {
+            if (field_metadata_inner.multidict) {
                 // Handle multidict
-                if (comptime isSlice(@TypeOf(field_value))) {
+                if (comptime isSlice(@TypeOf(field_value), false)) {
                     for (field_value) |item| {
                         // Encode the item
-                        const encoded_item = try encodeWithMetadata(allocator, item, metadata);
+                        const encoded_item = try encodeWithMetadata(allocator, item, field_metadata_inner);
 
                         // For multidict structs, we want to unwrap the struct encoding
                         // and prepend the field name
@@ -1177,7 +1218,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                 // Handle optional values
                 if (comptime isOptional(@TypeOf(field_value))) {
                     if (field_value) |val| {
-                        const encoded_val = try encodeWithMetadata(allocator, val, metadata);
+                        const encoded_val = try encodeWithMetadata(allocator, val, field_metadata_inner);
 
                         // Check if this is a slice or struct that should be unwrapped
                         if ((@typeInfo(@TypeOf(val)) == .pointer and
@@ -1209,7 +1250,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                     }
                 } else {
                     // Check if we're encoding a struct (which would be a list)
-                    const encoded_value = try encodeWithMetadata(allocator, field_value, metadata);
+                    const encoded_value = try encodeWithMetadata(allocator, field_value, field_metadata_inner);
 
                     // If the field value is a struct (represented as a list), we need to flatten it
                     if (@typeInfo(@TypeOf(field_value)) == .@"struct") {
@@ -1240,7 +1281,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
 
                                 // Special handling for symbol slices
                                 const child_type = @typeInfo(@TypeOf(field_value)).pointer.child;
-                                if (metadata.symbol orelse false) {
+                                if (field_metadata_inner.symbol orelse false) {
                                     // Check if this is a slice of strings ([][]const u8)
                                     if (@typeInfo(child_type) == .pointer and
                                         @typeInfo(child_type).pointer.size == .slice and
@@ -1264,7 +1305,9 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                                     }
                                 }
 
-                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                                if (slice_items.len > 0) {
+                                    try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                                }
                             } else {
                                 // Fallback for non-list encoding
                                 var kv_items = try allocator.alloc(SExp, 2);
@@ -1288,10 +1331,10 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = null };
 }
 
-fn encodeSlice(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
+fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
     var items = try allocator.alloc(SExp, value.len);
     for (value, 0..) |item, i| {
-        items[i] = try encode(allocator, item);
+        items[i] = try encodeWithMetadata(allocator, item, metadata);
     }
     return SExp{ .value = .{ .list = items }, .location = null };
 }
@@ -1417,7 +1460,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
     const table_sexp = ast.SExp{ .value = .{ .list = contents }, .location = null };
 
     // Decode
-    return try decode(T, allocator, table_sexp);
+    return try decodeWithMetadata(T, allocator, table_sexp, SexpField{});
 }
 
 // Dump a struct to an S-expression string with a wrapping symbol
@@ -1426,7 +1469,7 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
     defer arena.deinit();
 
     // Encode the data
-    const encoded = try encode(arena.allocator(), data);
+    const encoded = try encodeWithMetadata(arena.allocator(), data, SexpField{});
 
     // The encoded result is a list of key-value pairs
     // We need to prepend the symbol name

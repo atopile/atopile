@@ -1,11 +1,20 @@
 import logging
 import re
-from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
-from typing import Any, Iterable, Optional, Protocol, Self, Sequence, cast, overload
+from typing import (
+    Any,
+    Callable,
+    Iterable,
+    Optional,
+    Protocol,
+    Self,
+    Sequence,
+    cast,
+    overload,
+)
 
 from dataclasses_json import (
     CatchAll,
@@ -844,18 +853,36 @@ class kicad:
         return find(obj, lambda o: o.name == name)
 
     @staticmethod
-    def set[T: Named](parent, field: str, value: T):
+    def set[T: Named](parent, field: str, container: list[T], value: T):
         obj = getattr(parent, field)
         obj = [o for o in obj if o.name != value.name]
 
         setattr(parent, field, [*obj, value])
 
     @staticmethod
-    def delete[T: Named](parent, field: str, name: str):
+    def insert[T](parent, field: str, container: list[T], *value: T):
         obj = getattr(parent, field)
-        obj = [o for o in obj if o.name != name]
+        newobj = [*obj, *value]
 
-        setattr(parent, field, obj)
+        setattr(parent, field, newobj)
+
+    @staticmethod
+    def filter[T](
+        parent, field: str, container: list[T], predicate: Callable[[T], bool]
+    ):
+        obj = getattr(parent, field)
+        newobj = [o for o in obj if predicate(o)]
+
+        setattr(parent, field, newobj)
+
+    @staticmethod
+    def delete[T: Named](parent, field: str, container: list[T], name: str):
+        kicad.filter(parent, field, container, lambda o: o.name != name)
+
+    @staticmethod
+    def clear_and_set[T](parent, field: str, container: list[T], values: list[T]):
+        kicad.filter(parent, field, container, lambda _: False)
+        kicad.insert(parent, field, container, *values)
 
     class geo:
         @staticmethod
@@ -881,17 +908,63 @@ class kicad:
 
             return kicad.pcb.Xy(x=new_x, y=new_y)
 
+        @overload
         @staticmethod
-        def add(obj: "kicad.pcb.Xy", *other: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
-            return kicad.pcb.Xy(
-                x=obj.x + sum(o.x for o in other), y=obj.y + sum(o.y for o in other)
-            )
+        def add(obj: "kicad.pcb.Xy", *other: "kicad.pcb.Xy") -> "kicad.pcb.Xy": ...
+
+        @overload
+        @staticmethod
+        def add(
+            obj: "kicad.pcb.Xyr", *other: "kicad.pcb.Xyr | kicad.pcb.Xy"
+        ) -> "kicad.pcb.Xyr": ...
 
         @staticmethod
-        def sub(obj: "kicad.pcb.Xy", *other: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
-            return kicad.pcb.Xy(
-                x=obj.x - sum(o.x for o in other), y=obj.y - sum(o.y for o in other)
-            )
+        def add(obj, *other):
+            x = obj.x
+            y = obj.y
+            r = obj.r if isinstance(obj, kicad.pcb.Xyr) else None
+            for o in other:
+                x += o.x
+                y += o.y
+                if isinstance(o, kicad.pcb.Xyr):
+                    assert r is not None
+                    r += o.r
+            if isinstance(obj, kicad.pcb.Xy):
+                return kicad.pcb.Xy(x=x, y=y)
+            elif isinstance(obj, kicad.pcb.Xyr):
+                assert r is not None
+                return kicad.pcb.Xyr(x=x, y=y, r=r)
+            else:
+                raise ValueError(f"Unsupported type: {type(obj)}")
+
+        @overload
+        @staticmethod
+        def sub(obj: "kicad.pcb.Xy", *other: "kicad.pcb.Xy") -> "kicad.pcb.Xy": ...
+
+        @overload
+        @staticmethod
+        def sub(
+            obj: "kicad.pcb.Xyr", *other: "kicad.pcb.Xyr | kicad.pcb.Xy"
+        ) -> "kicad.pcb.Xyr": ...
+
+        @staticmethod
+        def sub(obj, *other):
+            x = obj.x
+            y = obj.y
+            r = obj.r if isinstance(obj, kicad.pcb.Xyr) else None
+            for o in other:
+                x -= o.x
+                y -= o.y
+                if isinstance(o, kicad.pcb.Xyr):
+                    assert r is not None
+                    r -= o.r
+            if isinstance(obj, kicad.pcb.Xy):
+                return kicad.pcb.Xy(x=x, y=y)
+            elif isinstance(obj, kicad.pcb.Xyr):
+                assert r is not None
+                return kicad.pcb.Xyr(x=x, y=y, r=r)
+            else:
+                raise ValueError(f"Unsupported type: {type(obj)}")
 
         @staticmethod
         def neg(obj: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
@@ -922,21 +995,59 @@ class kicad:
 
                 return {"start": start, "mid": mid, "end": end}
 
+            propertys = old.footprint.propertys
+            for k in old.footprint.fp_texts:
+                if (name := k.type.capitalize()) in ("Reference", "Value"):
+                    Property.set_property(
+                        propertys,
+                        kicad.pcb.Property(
+                            name=name,
+                            value=k.text,
+                            at=k.at,
+                            layer=k.layer,
+                            uuid=k.uuid,
+                            hide=k.hide,
+                            effects=k.effects,
+                        ),
+                    )
+            texts = [
+                t
+                for t in old.footprint.fp_texts
+                if t.type
+                not in (
+                    kicad.pcb.E_fp_text_type.REFERENCE,
+                    kicad.pcb.E_fp_text_type.VALUE,
+                )
+            ]
+            for t in old.footprint.fp_texts:
+                if t.type == kicad.pcb.E_fp_text_type.REFERENCE:
+                    texts.append(
+                        kicad.pcb.FpText(
+                            type=kicad.pcb.E_fp_text_type.USER,
+                            text=t.text.replace("REF**", "${REFERENCE}"),
+                            at=t.at,
+                            layer=t.layer,
+                            uuid=t.uuid,
+                            effects=t.effects,
+                            hide=t.hide,
+                        )
+                    )
+
             return kicad.footprint.FootprintFile(
                 footprint=kicad.footprint.Footprint(
                     name=old.footprint.name,
                     layer=old.footprint.layer,
                     uuid=old.footprint.uuid,
                     path=old.footprint.path,
-                    propertys=old.footprint.propertys,
-                    fp_texts=old.footprint.fp_texts,
+                    propertys=propertys,
+                    fp_texts=texts,
                     attr=old.footprint.attr,
                     fp_lines=[
                         kicad.pcb.Line(
                             start=line.start,
                             end=line.end,
                             layer=line.layer,
-                            layers=None,
+                            layers=[line.layer],
                             solder_mask_margin=None,
                             stroke=kicad.pcb.Stroke(width=line.width, type="solid"),
                             fill=None,
@@ -949,7 +1060,7 @@ class kicad:
                         kicad.pcb.Arc(
                             **_calc_arc_midpoint(arc),
                             layer=arc.layer,
-                            layers=None,
+                            layers=[],
                             solder_mask_margin=None,
                             stroke=kicad.pcb.Stroke(width=arc.width, type="solid"),
                             fill=None,
@@ -963,7 +1074,7 @@ class kicad:
                             center=circle.center,
                             end=circle.end,
                             layer=circle.layer,
-                            layers=None,
+                            layers=[],
                             solder_mask_margin=None,
                             stroke=kicad.pcb.Stroke(width=circle.width, type="solid"),
                             fill=None,
@@ -977,7 +1088,7 @@ class kicad:
                             start=rect.start,
                             end=rect.end,
                             layer=rect.layer,
-                            layers=None,
+                            layers=[],
                             solder_mask_margin=None,
                             stroke=kicad.pcb.Stroke(width=rect.width, type="solid"),
                             fill=None,
@@ -1072,9 +1183,15 @@ class kicad:
         if isinstance(old, list):
             return [kicad.copy(item) for item in old]  # type: ignore
         t = type(old)
-        return t(
-            **{name: kicad.copy(getattr(old, name)) for name in old.__field_names__()}
-        )
+        copied = {
+            name: kicad.copy(getattr(old, name)) for name in old.__field_names__()
+        }
+        # print("=" * 80)
+        # print(t, old)
+        # print("=" * 80)
+        # for name, value in copied.items():
+        #    print(name, value)
+        return t(**copied)
 
 
 class Property:
@@ -1085,8 +1202,8 @@ class Property:
 
         # def __init__(self, name: str, value: str): ...
 
-    class _PropertyHolder(kicad.KicadStruct):
-        propertys: list  # [_Property]
+    class _PropertyHolder[T: _Property](kicad.KicadStruct):
+        propertys: list[T]
 
     class PropertyNotSet(Exception):
         pass
@@ -1095,7 +1212,7 @@ class Property:
     def _hashable(obj: _PropertyHolder, remove_uuid: bool = True):
         copy = kicad.copy(obj)
 
-        Property.delete_property(copy.propertys, "checksum")
+        Property.delete_property(copy, "checksum")
         # TODO: this doesn't work atm
         # out = kicad.dumps(copy)
         out = repr(copy)
@@ -1107,7 +1224,7 @@ class Property:
 
     @staticmethod
     def set_checksum(obj: _PropertyHolder, p_type: type[_Property]):
-        Property.delete_property(obj.propertys, "checksum")
+        Property.delete_property(obj, "checksum")
 
         attrs = {
             "name": "checksum",
@@ -1117,7 +1234,7 @@ class Property:
         if p_type is kicad.pcb.Property:
             attrs["layer"] = "F.Cu"
         Property.set_property(
-            obj.propertys,
+            obj,
             p_type(**attrs),
         )
 
@@ -1145,15 +1262,12 @@ class Property:
         return out
 
     @staticmethod
-    def delete_property[T: _Property](obj: Sequence[_Property], name: str):
-        assert isinstance(obj, list), "obj must be a list"
-        obj[:] = [o for o in obj if o.name != name]
+    def delete_property[T: _Property](parent: _PropertyHolder[T], name: str):
+        kicad.delete(parent, "propertys", parent.propertys, name)
 
     @staticmethod
-    def set_property[T: _Property](obj: Sequence[_Property], prop: T):
-        assert isinstance(obj, list), "obj must be a list"
-        Property.delete_property(obj, prop.name)
-        obj.append(prop)
+    def set_property[T: _Property](parent: _PropertyHolder[T], prop: T):
+        kicad.set(parent, "propertys", parent.propertys, prop)
 
     @staticmethod
     def try_get_property(obj: Iterable[_Property], name: str) -> str | None:

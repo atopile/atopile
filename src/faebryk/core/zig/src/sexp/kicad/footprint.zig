@@ -13,7 +13,7 @@ pub const Footprint = struct {
     path: ?str = null,
     propertys: []pcb.Property = &.{},
     fp_texts: []pcb.FpText = &.{},
-    attr: []str = &.{},
+    attr: ?pcb.Attr = null,
     fp_lines: []pcb.Line = &.{},
     fp_arcs: []pcb.Arc = &.{},
     fp_circles: []pcb.Circle = &.{},
@@ -44,10 +44,10 @@ pub const Footprint = struct {
         //
         .description = structure.SexpField{ .order = -1 },
         .tags = structure.SexpField{ .order = -1 },
-        .version = structure.SexpField{ .order = -1 },
-        .generator = structure.SexpField{ .order = -1 },
-        .generator_version = structure.SexpField{ .order = -1 },
-        .tedit = structure.SexpField{ .order = -1 },
+        .version = structure.SexpField{ .order = -20 },
+        .generator = structure.SexpField{ .order = -20 },
+        .generator_version = structure.SexpField{ .order = -20 },
+        .tedit = structure.SexpField{ .order = -20 },
     };
 };
 

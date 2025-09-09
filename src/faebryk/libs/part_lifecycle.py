@@ -280,7 +280,7 @@ class PartLifecycle:
                 options="",
                 descr=f"{MANAGED_LIB_PREFIX} {lib_name}",
             )
-            kicad.set(fp_table.fp_lib_table, "libs", lib)
+            kicad.set(fp_table.fp_lib_table, "libs", fp_table.fp_lib_table.libs, lib)
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances
@@ -649,7 +649,10 @@ class PartLifecycle:
                             f" `{address}` ({ref})",
                             extra={"markdown": True},
                         )
-                        pcb_fp.propertys[prop_name].value = prop_value
+
+                        Property.get_property_obj(
+                            pcb_fp.propertys, prop_name
+                        ).value = prop_value
 
                 ### If it's a new property, add it
                 else:
@@ -657,12 +660,15 @@ class PartLifecycle:
                         f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
                         extra={"markdown": True},
                     )
-                    pcb_fp.propertys[prop_name] = transformer._make_fp_property(
-                        property_name=prop_name,
-                        layer="User.9",
-                        value=prop_value,
-                        uuid=_get_prop_uuid(prop_name)
-                        or PCB_Transformer.gen_uuid(mark=True),
+                    Property.set_property(
+                        pcb_fp.propertys,
+                        transformer._make_fp_property(
+                            property_name=prop_name,
+                            layer="User.9",
+                            value=prop_value,
+                            uuid=_get_prop_uuid(prop_name)
+                            or PCB_Transformer.gen_uuid(mark=True),
+                        ),
                     )
 
             return pcb_fp, new_fp

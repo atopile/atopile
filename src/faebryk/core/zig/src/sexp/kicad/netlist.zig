@@ -38,27 +38,13 @@ pub const Fields = struct {
     };
 };
 
-pub const Tstamps = struct {
-    //tstamps: []str = &.{},
-    tstamp1: str,
-    tstamp2: ?str = null,
-    tstamp3: ?str = null,
-
-    pub const fields_meta = .{
-        //.tstamps = stru//cture.SexpField{ .positional = true },
-        .tstamp1 = structure.SexpField{ .positional = true },
-        .tstamp2 = structure.SexpField{ .positional = true },
-        .tstamp3 = structure.SexpField{ .positional = true },
-    };
-};
-
 pub const Component = struct {
     ref: str,
     value: str,
     footprint: str,
     propertys: []Property = &.{},
     // TODO handle multiple tstamp values
-    tstamps: Tstamps,
+    tstamps: []str = &.{},
     //tstamps: str,
     fields: ?Fields = null,
     sheetpath: ?Sheetpath = null,

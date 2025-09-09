@@ -388,7 +388,9 @@ class SchTransformer:
             kicad.get(self.get_symbol_file(lib_name).kicad_sym.symbols, symbol_name)
         )
         lib_sym.name = lib_id
-        kicad.set(self.sch.lib_symbols, "symbols", lib_sym)
+        kicad.set(
+            self.sch.lib_symbols, "symbols", self.sch.lib_symbols.symbols, lib_sym
+        )
         return lib_sym
 
     def insert_symbol(

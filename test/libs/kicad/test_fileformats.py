@@ -3,6 +3,7 @@
 
 import logging
 from pathlib import Path
+import re
 
 import pytest
 
@@ -149,21 +150,19 @@ def test_empty_enum_positional():
         ).effects
 
     _effects(pcb).justifys.append(
-        C_effects.C_justify([C_effects.C_justify.E_justify.center_horizontal])
+        kicad.pcb.Justify(justify1=kicad.pcb.E_justify.center_horizontal)
     )
-    _effects(pcb).justifys.append(
-        C_effects.C_justify([C_effects.C_justify.E_justify.top])
-    )
+    _effects(pcb).justifys.append(kicad.pcb.Justify(justify1=kicad.pcb.E_justify.top))
 
     pcb_reload = kicad.loads(kicad.pcb.PcbFile, kicad.dumps(pcb))
 
     assert not_none(_b1_p1(pcb_reload).drill).shape == kicad.pcb.E_pad_drill_shape.OVAL
 
     # empty center string ignored
-    assert _effects(pcb).get_justifys() == [
-        kicad.pcb.E_justify.center_horizontal,
-        kicad.pcb.E_justify.top,
-    ]
+    # Check that justifys were added correctly
+    assert len(_effects(pcb).justifys) == 2
+    assert _effects(pcb).justifys[0].justify1 == kicad.pcb.E_justify.center_horizontal
+    assert _effects(pcb).justifys[1].justify1 == kicad.pcb.E_justify.top
 
 
 @pytest.mark.parametrize(
@@ -227,3 +226,107 @@ def test_embedded():
         not_none(sexp2.files["TCA9548APWR.kicad_sym"].data).uncompressed.decode("utf-8")
         == text
     )
+
+
+def test_list_single():
+    sexp = """
+    (footprint "test"
+        (version 20241229)
+        (generator "pcbnew")
+        (generator_version "9.0")
+        (layer "F.Cu")
+        (tags "LED")
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    fp = kicad.loads(kicad.footprint.FootprintFile, sexp)
+    assert fp.footprint.tags == ["LED"]
+    dumped = kicad.dumps(fp)
+    assert '(tags "LED")' in dumped
+
+
+def test_list_multi():
+    sexp = """
+    (footprint "test"
+        (version 20241229)
+        (generator "pcbnew")
+        (generator_version "9.0")
+        (layer "F.Cu")
+        (tags "LED" "LED2")
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    fp = kicad.loads(kicad.footprint.FootprintFile, sexp)
+    assert fp.footprint.tags == ["LED", "LED2"]
+    dumped = kicad.dumps(fp)
+    assert '(tags "LED" "LED2")' in dumped
+
+
+def test_list_empty():
+    sexp = """
+    (footprint "test"
+        (version 20241229)
+        (generator "pcbnew")
+        (generator_version "9.0")
+        (layer "F.Cu")
+        (tags)
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    fp = kicad.loads(kicad.footprint.FootprintFile, sexp)
+    assert fp.footprint.tags == []
+    dumped = kicad.dumps(fp)
+    assert "tags" not in dumped
+
+
+def test_list_none():
+    sexp = """
+    (footprint "test"
+        (version 20241229)
+        (generator "pcbnew")
+        (generator_version "9.0")
+        (layer "F.Cu")
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    fp = kicad.loads(kicad.footprint.FootprintFile, sexp)
+    assert fp.footprint.tags == []
+    dumped = kicad.dumps(fp)
+    assert "tags" not in dumped
+
+
+def test_list_struct_positional():
+    sexp = """
+    (kicad_pcb
+        (generator "test_atopile")
+        (generator_version "latest")
+        (layers
+            (0 "F.Cu" signal)
+            (1 "B.Cu" signal)
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    pcb = kicad.loads(kicad.pcb.PcbFile, sexp)
+    assert len(pcb.kicad_pcb.layers) == 2
+    assert pcb.kicad_pcb.layers[0].name == "F.Cu"
+    assert pcb.kicad_pcb.layers[1].name == "B.Cu"
+    assert pcb.kicad_pcb.layers[0].type == kicad.pcb.E_layer_type.SIGNAL
+    assert pcb.kicad_pcb.layers[1].type == kicad.pcb.E_layer_type.SIGNAL
+
+    dumped = kicad.dumps(pcb)
+    dumped = re.sub(
+        r"\(\s\(",
+        "((",
+        re.sub(
+            r"\)\s\)",
+            "))",
+            re.sub(r"\s+", " ", dumped.replace("\n", "")),
+        ),
+    )
+    assert '(layers (0 "F.Cu" signal) (1 "B.Cu" signal))' in dumped

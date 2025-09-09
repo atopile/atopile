@@ -10,6 +10,7 @@ from typing import Any  # noqa: F401
 
 from faebryk.core.zig.pcb import (
     Arc,
+    Attr,
     Circle,
     FpText,
     Line,
@@ -30,7 +31,7 @@ class Footprint:
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
-    attr: list[str]
+    attr: Attr | None
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -54,7 +55,7 @@ class Footprint:
         path: str | None,
         propertys: list[Property],
         fp_texts: list[FpText],
-        attr: list[str],
+        attr: Attr | None,
         fp_lines: list[Line],
         fp_arcs: list[Arc],
         fp_circles: list[Circle],

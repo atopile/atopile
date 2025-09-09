@@ -11,6 +11,14 @@ from typing import Any  # noqa: F401
 # Dirty hack to not error in ruff check
 type Allocator = Any
 
+class E_stroke_type(str, Enum):
+    SOLID = "solid"
+    DASH = "dash"
+    DASH_DOT = "dash_dot"
+    DASH_DOT_DOT = "dash_dot_dot"
+    DOT = "dot"
+    DEFAULT = "default"
+
 class E_justify(str, Enum):
     CENTER_HORIZONTAL = "center_horizontal"
     LEFT = "left"
@@ -207,6 +215,15 @@ class E_embedded_file_type(str, Enum):
     DATASHEET = "datasheet"
     WORKSHEET = "worksheet"
 
+class E_Attr(str, Enum):
+    SMD = "smd"
+    DNP = "dnp"
+    BOARD_ONLY = "board_only"
+    THROUGH_HOLE = "through_hole"
+    EXCLUDE_FROM_POS_FILES = "exclude_from_pos_files"
+    EXCLUDE_FROM_BOM = "exclude_from_bom"
+    ALLOW_MISSING_COURTYARD = "allow_missing_courtyard"
+
 class Xy:
     x: float
     y: float
@@ -300,7 +317,7 @@ class Line:
     start: Xy
     end: Xy
     layer: str | None
-    layers: list[str] | None
+    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
@@ -313,7 +330,7 @@ class Line:
         start: Xy,
         end: Xy,
         layer: str | None,
-        layers: list[str] | None,
+        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
@@ -329,7 +346,7 @@ class Arc:
     mid: Xy
     end: Xy
     layer: str | None
-    layers: list[str] | None
+    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
@@ -343,7 +360,7 @@ class Arc:
         mid: Xy,
         end: Xy,
         layer: str | None,
-        layers: list[str] | None,
+        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
@@ -358,7 +375,7 @@ class Circle:
     center: Xy
     end: Xy
     layer: str | None
-    layers: list[str] | None
+    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
@@ -371,7 +388,7 @@ class Circle:
         center: Xy,
         end: Xy,
         layer: str | None,
-        layers: list[str] | None,
+        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
@@ -386,7 +403,7 @@ class Rect:
     start: Xy
     end: Xy
     layer: str | None
-    layers: list[str] | None
+    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
@@ -399,7 +416,7 @@ class Rect:
         start: Xy,
         end: Xy,
         layer: str | None,
-        layers: list[str] | None,
+        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
@@ -421,7 +438,7 @@ class Pts:
 class Polygon:
     pts: Pts
     layer: str | None
-    layers: list[str] | None
+    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
@@ -433,7 +450,7 @@ class Polygon:
         *,
         pts: Pts,
         layer: str | None,
-        layers: list[str] | None,
+        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
@@ -447,7 +464,7 @@ class Polygon:
 class Curve:
     pts: Pts
     layer: str | None
-    layers: list[str] | None
+    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
@@ -459,7 +476,7 @@ class Curve:
         *,
         pts: Pts,
         layer: str | None,
-        layers: list[str] | None,
+        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
@@ -651,6 +668,14 @@ class Model:
     @staticmethod
     def __field_names__() -> list[str]: ...
 
+class Attr:
+    attr: str
+
+    def __init__(self, *, attr: str) -> None: ...
+    def __repr__(self) -> str: ...
+    @staticmethod
+    def __field_names__() -> list[str]: ...
+
 class Footprint:
     name: str
     layer: str
@@ -659,7 +684,7 @@ class Footprint:
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
-    attr: list[str]
+    attr: Attr | None
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -678,7 +703,7 @@ class Footprint:
         path: str | None,
         propertys: list[Property],
         fp_texts: list[FpText],
-        attr: list[str],
+        attr: Attr | None,
         fp_lines: list[Line],
         fp_arcs: list[Arc],
         fp_circles: list[Circle],
@@ -739,7 +764,7 @@ class Via:
     net: int
     remove_unused_layers: bool | None
     keep_end_layers: bool | None
-    zone_layer_connections: list[str] | None
+    zone_layer_connections: list[str]
     padstack: ViaPadstack | None
     teardrops: Teardrop | None
     tenting: ViaTenting | None
@@ -757,7 +782,7 @@ class Via:
         net: int,
         remove_unused_layers: bool | None,
         keep_end_layers: bool | None,
-        zone_layer_connections: list[str] | None,
+        zone_layer_connections: list[str],
         padstack: ViaPadstack | None,
         teardrops: Teardrop | None,
         tenting: ViaTenting | None,
@@ -883,7 +908,7 @@ class ZoneAttr:
 class Zone:
     net: int
     net_name: str
-    layers: list[str] | None
+    layers: list[str]
     uuid: str | None
     name: str | None
     hatch: Hatch
@@ -902,7 +927,7 @@ class Zone:
         *,
         net: int,
         net_name: str,
-        layers: list[str] | None,
+        layers: list[str],
         uuid: str | None,
         name: str | None,
         hatch: Hatch,
@@ -1227,7 +1252,7 @@ class Setup:
     stackup: Stackup | None
     pad_to_mask_clearance: int
     allow_soldermask_bridges_in_footprints: bool
-    tenting: list[str] | None
+    tenting: list[str]
     pcbplotparams: PcbPlotParams
     rules: Rules | None
 
@@ -1237,7 +1262,7 @@ class Setup:
         stackup: Stackup | None,
         pad_to_mask_clearance: int,
         allow_soldermask_bridges_in_footprints: bool,
-        tenting: list[str] | None,
+        tenting: list[str],
         pcbplotparams: PcbPlotParams,
         rules: Rules | None,
     ) -> None: ...
