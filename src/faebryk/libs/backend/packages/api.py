@@ -426,7 +426,7 @@ class PackagesAPIClient:
 
     @property
     @once
-    def _headers(self) -> dict[str, str]:
+    def _base_headers(self) -> dict[str, str]:
         return {
             "User-Agent": (
                 f"atopile/{get_package_version('atopile')} "
@@ -435,13 +435,26 @@ class PackagesAPIClient:
             ),
         }
 
+    @property
+    @once
+    def _auth_headers(self) -> dict[str, str]:
+        """
+        Currently, the only supported authentication method is Github Actions OIDC.
+        """
+        try:
+            from github_oidc.client import get_actions_header
+
+            return get_actions_header(urlparse(self._cfg.api_url).netloc)
+        except Exception as e:
+            raise Errors.AuthenticationError(e) from e
+
     def _get(
         self,
         url: str,
         timeout: float = 10,
     ) -> Response:
         with http_client(
-            self._headers,
+            self._base_headers,
             verify=not config.project.dangerously_skip_ssl_verification,
         ) as client:
             response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
@@ -460,14 +473,10 @@ class PackagesAPIClient:
         url: str,
         data: Any,
         timeout: float = 10,
-        authenticate: bool = False,
+        skip_auth: bool = False,
     ) -> Response:
-        headers = {}
-        if authenticate:
-            headers |= self._authenticate()
-
         with http_client(
-            self._headers,
+            self._base_headers | ({} if skip_auth else self._auth_headers),
             verify=not config.project.dangerously_skip_ssl_verification,
         ) as client:
             response = client.post(
@@ -493,7 +502,7 @@ class PackagesAPIClient:
         skip_verify: bool = False,
     ) -> Response:
         with http_client(
-            self._headers,
+            self._base_headers,
             verify=(not skip_verify)
             or config.project.dangerously_skip_ssl_verification,
         ) as client:
@@ -515,17 +524,6 @@ class PackagesAPIClient:
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
-
-    def _authenticate(self) -> dict[str, str]:
-        """
-        Currently, the only supported authentication method is Github Actions OIDC.
-        """
-        try:
-            from github_oidc.client import get_actions_header
-
-            return get_actions_header(urlparse(self._cfg.api_url).netloc)
-        except Exception as e:
-            raise Errors.AuthenticationError(e) from e
 
     def publish(
         self,
@@ -553,7 +551,7 @@ class PackagesAPIClient:
                     artifacts_size=artifacts.bytes if artifacts else None,
                     manifest=dist.manifest.model_dump(mode="json"),
                 ).to_dict(),  # type: ignore
-                authenticate=not skip_auth,
+                skip_auth=skip_auth,
             )
         except Errors.PackagesApiHTTPError as e:
             if e.code == 409:
@@ -592,7 +590,7 @@ class PackagesAPIClient:
                 data=_Endpoints.PublishUploadComplete.Request(
                     release_id=response.release_id,
                 ).to_dict(),  # type: ignore
-                authenticate=not skip_auth,
+                skip_auth=skip_auth,
             )
         except Errors.PackagesApiHTTPError:
             raise
@@ -651,7 +649,7 @@ class PackagesAPIClient:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         # download the file to output_path
         with http_client(
-            self._headers,
+            self._base_headers,
             verify=not config.project.dangerously_skip_ssl_verification,
         ) as client:
             response = client.get(url)
