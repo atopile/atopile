@@ -1,5 +1,8 @@
 import logging
 import os
+import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Iterator
 
 import typer
@@ -578,3 +581,54 @@ def verify(
                     validator(config)
 
     logger.info("Package verification successful! 🎉")
+
+    from faebryk.libs.backend.packages.api import PackagesAPIClient
+
+    if config.project.package is None:
+        raise UserException(
+            "Project has no package configuration. "
+            "Please add a `package` section to your `ato.yaml` file."
+        )
+    if config.project.package.version is None:
+        raise UserException(
+            "Project has no package version. "
+            "Please add a `version` section to your `ato.yaml` file."
+        )
+    from atopile.version import get_installed_atopile_version
+
+    try:
+        git_hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(os.path.dirname(__file__)).parent.parent.parent,
+            )
+            .decode("ascii")
+            .strip()
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.warning("Could not get git hash, using 'unknown'")
+        git_hash = "unknown"
+
+    import platform
+
+    builder_metadata = {
+        "System": platform.system(),
+        "Node": platform.node(),
+        "Release": platform.release(),
+        "Version": platform.version(),
+        "Machine": platform.machine(),
+        "Processor": platform.processor(),
+        "Python version": platform.python_version(),
+    }
+
+    api = PackagesAPIClient()
+    api.report_build_status(
+        identifier=config.project.package.identifier,
+        version=config.project.package.version,
+        atopile_release=str(get_installed_atopile_version()),
+        atopile_githash=git_hash,
+        builder_metadata=builder_metadata,
+        is_building=True,
+        skip_auth=True,
+        built_at=datetime.now(),
+    )
