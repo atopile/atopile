@@ -598,10 +598,9 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                         const NestedWrapper = PyObjectWrapper(ChildType);
                         const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
                         wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
-                        // Store a pointer to the value - we need to make a copy
-                        // since v is a local value, we allocate it in the wrapper
-                        wrapper.data = std.heap.c_allocator.create(ChildType) catch return null;
-                        wrapper.data.* = v;
+                        // Store a pointer to the original value instead of making a copy
+                        // This allows mutations to be reflected in the original struct
+                        wrapper.data = &@field(obj.data.*, field_name_str).?;
 
                         return pyobj;
                     },
@@ -661,7 +660,7 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     // Handle struct type - extract data from wrapped Python object
                     const WrapperType = PyObjectWrapper(ChildType);
                     const wrapper_obj: *WrapperType = @ptrCast(@alignCast(value));
-                    // Copy the struct data
+                    // Update the optional field to point to the new struct data
                     @field(obj.data.*, field_name_str) = wrapper_obj.data.*;
                 },
                 else => {
