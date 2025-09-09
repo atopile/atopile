@@ -167,6 +167,7 @@ pub const PyiGenerator = struct {
 
         try self.output.writer().print("    @staticmethod\n", .{});
         try self.output.writer().print("    def __field_names__() -> list[str]: ...\n", .{});
+        try self.output.writer().print("    def __zig_address__(self) -> int: ...\n", .{});
 
         // Generate methods
         inline for (struct_info.decls) |decl| {

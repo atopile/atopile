@@ -853,18 +853,18 @@ class kicad:
         return find(obj, lambda o: o.name == name)
 
     @staticmethod
-    def set[T: Named](parent, field: str, container: list[T], value: T):
-        obj = getattr(parent, field)
-        obj = [o for o in obj if o.name != value.name]
+    def set[T: Named](parent, field: str, container: list[T], value: T) -> T:
+        kicad.filter(parent, field, container, lambda o: o.name != value.name)
 
-        setattr(parent, field, [*obj, value])
+        return kicad.insert(parent, field, container, value)
 
     @staticmethod
-    def insert[T](parent, field: str, container: list[T], *value: T):
+    def insert[T](parent, field: str, container: list[T], *value: T) -> T:
         obj = getattr(parent, field)
         newobj = [*obj, *value]
 
         setattr(parent, field, newobj)
+        return getattr(parent, field)[-1]
 
     @staticmethod
     def filter[T](
@@ -874,6 +874,7 @@ class kicad:
         newobj = [o for o in obj if predicate(o)]
 
         setattr(parent, field, newobj)
+        return getattr(parent, field)
 
     @staticmethod
     def delete[T: Named](parent, field: str, container: list[T], name: str):
@@ -995,17 +996,16 @@ class kicad:
 
                 return {"start": start, "mid": mid, "end": end}
 
-            propertys = old.footprint.propertys
             for k in old.footprint.fp_texts:
                 if (name := k.type.capitalize()) in ("Reference", "Value"):
                     Property.set_property(
-                        propertys,
+                        old.footprint,
                         kicad.pcb.Property(
                             name=name,
                             value=k.text,
                             at=k.at,
                             layer=k.layer,
-                            uuid=k.uuid,
+                            uuid=k.uuid or kicad.gen_uuid(),
                             hide=k.hide,
                             effects=k.effects,
                         ),
@@ -1027,7 +1027,7 @@ class kicad:
                             text=t.text.replace("REF**", "${REFERENCE}"),
                             at=t.at,
                             layer=t.layer,
-                            uuid=t.uuid,
+                            uuid=t.uuid or kicad.gen_uuid(),
                             effects=t.effects,
                             hide=t.hide,
                         )
@@ -1037,9 +1037,9 @@ class kicad:
                 footprint=kicad.footprint.Footprint(
                     name=old.footprint.name,
                     layer=old.footprint.layer,
-                    uuid=old.footprint.uuid,
+                    uuid=old.footprint.uuid or kicad.gen_uuid(),
                     path=old.footprint.path,
-                    propertys=propertys,
+                    propertys=old.footprint.propertys,
                     fp_texts=texts,
                     attr=old.footprint.attr,
                     fp_lines=[
@@ -1230,6 +1230,7 @@ class Property:
             "name": "checksum",
             "value": Checksum.build(Property._hashable(obj)),
             "at": kicad.pcb.Xyr(x=0, y=0, r=0),
+            "hide": True,
         }
         if p_type is kicad.pcb.Property:
             attrs["layer"] = "F.Cu"
@@ -1266,8 +1267,8 @@ class Property:
         kicad.delete(parent, "propertys", parent.propertys, name)
 
     @staticmethod
-    def set_property[T: _Property](parent: _PropertyHolder[T], prop: T):
-        kicad.set(parent, "propertys", parent.propertys, prop)
+    def set_property[T: _Property](parent: _PropertyHolder[T], prop: T) -> T:
+        return kicad.set(parent, "propertys", parent.propertys, prop)
 
     @staticmethod
     def try_get_property(obj: Iterable[_Property], name: str) -> str | None:

@@ -280,7 +280,9 @@ class PartLifecycle:
                 options="",
                 descr=f"{MANAGED_LIB_PREFIX} {lib_name}",
             )
-            kicad.set(fp_table.fp_lib_table, "libs", fp_table.fp_lib_table.libs, lib)
+            lib = kicad.set(
+                fp_table.fp_lib_table, "libs", fp_table.fp_lib_table.libs, lib
+            )
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances
@@ -661,7 +663,7 @@ class PartLifecycle:
                         extra={"markdown": True},
                     )
                     Property.set_property(
-                        pcb_fp.propertys,
+                        pcb_fp,
                         transformer._make_fp_property(
                             property_name=prop_name,
                             layer="User.9",

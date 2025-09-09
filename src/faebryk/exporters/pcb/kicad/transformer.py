@@ -780,7 +780,7 @@ class PCB_Transformer:
 
     @deprecated("Use the proper inserter, or insert into corresponding field")
     def insert(self, obj: Any):
-        self._insert(obj)
+        return self._insert(obj)
 
     def _get_pcb_list_field[R](self, node: R, prefix: str = "") -> list[R]:
         root = self.pcb
@@ -834,7 +834,7 @@ class PCB_Transformer:
     def _insert(self, obj: Any):
         obj = PCB_Transformer.mark(obj)
         container, container_name = PCB_Transformer.get_pcb_container(obj, self.pcb)
-        kicad.insert(self.pcb, container_name, container, obj)
+        return kicad.insert(self.pcb, container_name, container, obj)
 
     def _delete(self, obj: Any):
         container, container_name = PCB_Transformer.get_pcb_container(obj, self.pcb)
@@ -860,8 +860,7 @@ class PCB_Transformer:
             free=None,
             locked=None,
         )
-        kicad.insert(self.pcb, "vias", self.pcb.vias, via_o)
-        return via_o
+        return kicad.insert(self.pcb, "vias", self.pcb.vias, via_o)
 
     def insert_text(
         self,
@@ -895,8 +894,7 @@ class PCB_Transformer:
             ),
             uuid=self.gen_uuid(mark=True),
         )
-        kicad.insert(self.pcb, "gr_texts", self.pcb.gr_texts, text_o)
-        return text_o
+        return kicad.insert(self.pcb, "gr_texts", self.pcb.gr_texts, text_o)
 
     def insert_track(
         self,
@@ -950,7 +948,7 @@ class PCB_Transformer:
         )
 
     def insert_geo(self, geo: Geom):
-        self._insert(geo)
+        return self._insert(geo)
 
     def delete_geo(self, geo: Geom):
         self._delete(geo)
@@ -1048,8 +1046,7 @@ class PCB_Transformer:
             placement=None,
             attr=None,
         )
-        kicad.insert(self.pcb, "zones", self.pcb.zones, zone)
-        return zone
+        return kicad.insert(self.pcb, "zones", self.pcb.zones, zone)
 
     # Groups ---------------------------------------------------------------------------
     def _add_group(
@@ -1058,7 +1055,7 @@ class PCB_Transformer:
         group = kicad.pcb.Group(
             name=name, members=members, uuid=self.gen_uuid(mark=True), locked=locked
         )
-        kicad.insert(self.pcb, "groups", self.pcb.groups, group)
+        group = kicad.insert(self.pcb, "groups", self.pcb.groups, group)
         logger.debug(f"Added group {name} with members: {len(members)}")
         return group.uuid
 
@@ -1651,7 +1648,7 @@ class PCB_Transformer:
         so we can detect if the footprint has truly been updated, or if it's
         merely been renamed"""
         Property.set_property(
-            footprint.propertys,
+            footprint,
             self._make_fp_property(
                 property_name=self._FP_LIB_HASH,
                 layer="User.9",
@@ -1696,9 +1693,7 @@ class PCB_Transformer:
 
         self._set_lib_fp_hash(footprint, lib_footprint)
 
-        kicad.insert(self.pcb, "footprints", self.pcb.footprints, footprint)
-
-        return footprint
+        return kicad.insert(self.pcb, "footprints", self.pcb.footprints, footprint)
 
     class BoardSide(StrEnum):
         FRONT = "F.Cu"
@@ -1857,7 +1852,6 @@ class PCB_Transformer:
 
     def remove_footprint(self, footprint: Footprint) -> None:
         """Remove a footprint from the pcb"""
-        print("REMOVE FOOTPRINT")
         kicad.filter(
             self.pcb,
             "footprints",
@@ -1868,8 +1862,7 @@ class PCB_Transformer:
     def insert_net(self, name: str) -> Net:
         """Insert a net into the pcb and return it"""
         net = Net(name=name, number=next(self._net_number_generator))
-        kicad.insert(self.pcb, "nets", self.pcb.nets, net)
-        return net
+        return kicad.insert(self.pcb, "nets", self.pcb.nets, net)
 
     def remove_net(self, net: Net):
         """Remove a net from the pcb"""

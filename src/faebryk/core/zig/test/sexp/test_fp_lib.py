@@ -26,7 +26,7 @@ def test_fp_lib():
         descr="test",
     )
 
-    kicad.set(
+    new_entry = kicad.set(
         fp_lib_table.fp_lib_table, "libs", fp_lib_table.fp_lib_table.libs, new_entry
     )
 

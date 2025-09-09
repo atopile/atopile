@@ -139,7 +139,7 @@ pub const SExp = struct {
         switch (self.value) {
             .symbol => |s| try writer.print("{s}", .{s}),
             .number => |n| try writer.print("{s}", .{n}),
-            .string => |s| try writer.print("\"{s}\"", .{s}),
+            .string => |s| try _write_escaped_string(s, writer),
             .comment => |c| try writer.print(";{s}", .{c}),
             .list => |items| {
                 try writer.writeAll("(");
@@ -174,6 +174,19 @@ pub const SExp = struct {
         try self.str(writer);
     }
 };
+
+// Helper function to escape quotes in strings
+fn _write_escaped_string(str: []const u8, writer: anytype) !void {
+    // Count the number of quotes to determine the required size
+    try writer.writeByte('"');
+    var last_char: u8 = 0;
+    for (str) |c| {
+        if (c == '"' and last_char != '\\') try writer.writeByte('\\');
+        try writer.writeByte(c);
+        last_char = c;
+    }
+    try writer.writeByte('"');
+}
 
 pub const ParseError = error{
     UnexpectedRightParen,

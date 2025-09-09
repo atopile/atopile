@@ -723,9 +723,9 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
             const list = py.PyList_New(@intCast(slice.len));
             if (list == null) return null;
 
-            for (slice, 0..) |item, i| {
+            for (slice, 0..) |*item, i| {
                 // Create Python object for each item
-                const wrapped = wrap_value(item) orelse {
+                const wrapped = wrap_value_ptr(item) orelse {
                     py.Py_DECREF(list.?);
                     return null;
                 };
@@ -735,7 +735,7 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
             return list;
         }
 
-        fn wrap_value(value: ChildType) ?*py.PyObject {
+        fn wrap_value_ptr(item_ptr: *ChildType) ?*py.PyObject {
             switch (child_info) {
                 .@"struct" => {
                     // Create a new Python object for the struct
@@ -746,18 +746,17 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                     const NestedWrapper = PyObjectWrapper(ChildType);
                     const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
                     wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
-                    wrapper.data = std.heap.c_allocator.create(ChildType) catch return null;
-                    wrapper.data.* = value;
+                    wrapper.data = item_ptr;
 
                     return pyobj;
                 },
-                .int => return py.PyLong_FromLong(@intCast(value)),
-                .float => return py.PyFloat_FromDouble(@floatCast(value)),
-                .bool => if (value) return py.Py_True() else return py.Py_False(),
+                .int => return py.PyLong_FromLong(@intCast(item_ptr.*)),
+                .float => return py.PyFloat_FromDouble(@floatCast(item_ptr.*)),
+                .bool => if (item_ptr.*) return py.Py_True() else return py.Py_False(),
                 .pointer => |ptr| {
                     if (ptr.size == .slice and ptr.child == u8) {
                         // String slice - use PyUnicode_FromStringAndSize to handle non-null-terminated strings
-                        return py.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len));
+                        return py.PyUnicode_FromStringAndSize(item_ptr.*.ptr, @intCast(item_ptr.*.len));
                     }
                     // Other pointer types not yet supported
                     const none = py.Py_None();
@@ -1357,6 +1356,12 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                 .ml_flags = py.METH_NOARGS | py.METH_STATIC,
                 .ml_doc = "Return list of field names in this struct",
             },
+            py.PyMethodDef{
+                .ml_name = "__zig_address__",
+                .ml_meth = @ptrCast(&get_zig_address_func),
+                .ml_flags = py.METH_NOARGS,
+                .ml_doc = "Return the address of the Zig struct",
+            },
             py.ML_SENTINEL,
         };
 
@@ -1406,6 +1411,13 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
             }
 
             return list;
+        }
+
+        // Return the address of the Zig struct
+        pub fn get_zig_address_func(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = args; // No arguments needed
+            const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
+            return py.PyLong_FromUnsignedLongLong(@intFromPtr(wrapper_obj.data));
         }
 
         // The actual PyTypeObject

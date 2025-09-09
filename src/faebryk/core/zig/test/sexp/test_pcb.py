@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import difflib
 import logging
 from pathlib import Path
+
+from faebryk.libs.kicad.fileformats import Property
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -14,24 +15,48 @@ def test_pcb():
         "/home/needspeed/workspace/atopile/test/common/resources/fileformats/kicad/v9/pcb/test.kicad_pcb"
     )
     pcb = kicad.loads(kicad.pcb.PcbFile, path)
-    print(pcb.kicad_pcb.layers)
-    input()
-    out = kicad.dumps(pcb)
-    load = kicad.loads(kicad.pcb.PcbFile, out)
-    out2 = kicad.dumps(load)
+    fp = pcb.kicad_pcb.footprints[0]
+    prop = kicad.pcb.Property(
+        name="Value",
+        value="LED",
+        at=kicad.pcb.Xyr(x=0, y=0, r=0),
+        layer="F.SilkS",
+        hide=False,
+        uuid=kicad.gen_uuid(),
+        effects=kicad.pcb.Effects(
+            font=kicad.pcb.Font(size=kicad.pcb.Wh(w=1.524, h=1.524), thickness=0.3),
+            hide=False,
+            justifys=[],
+        ),
+    )
+    print("prop:", prop.__zig_address__())
+    prop = Property.set_property(fp, prop)
+    print("post prop:", prop.__zig_address__())
+    prop.value = "LED2"
+    print("post prop.value:", prop.value)
 
-    for line in difflib.unified_diff(out, out2, lineterm=""):
-        print(line)
-    print("\n--- Print complete, exiting ---")
+    print(Property.get_property_obj(fp.propertys, "Value").__zig_address__())
+    print(Property.get_property_obj(fp.propertys, "Value").value)
 
-    # Test the __field_names__ method
-    field_names = kicad.footprint.Footprint.__field_names__()
-    print("Field names:", field_names)
+    for prop in fp.propertys:
+        print(prop.__zig_address__(), prop.name, prop.value)
 
-    # Test that we can create and copy a simple footprint
-    test_footprint = kicad.footprint.Footprint(name="test_footprint")
-    copied = kicad.copy(test_footprint)
-    print("Successfully copied footprint:", copied.name)
+    # Property.get_property_obj(fp.propertys, "Value").value = "LED"
+    # print("GET prop from fp")
+    # print({p.name: Property.get_property(fp.propertys, p.name) for p in fp.propertys})
+    # fp = pcb.kicad_pcb.footprints[0]
+    # print(f"GET prop from refreshed fp: {fp.__zig_address__()}")
+    # print({p.name: Property.get_property(fp.propertys, p.name) for p in fp.propertys})
+    # out = kicad.dumps(pcb)
+    # pcb2 = kicad.loads(kicad.pcb.PcbFile, out)
+    # print(
+    #    {
+    #        p.name: Property.get_property(
+    #            pcb2.kicad_pcb.footprints[0].propertys, p.name
+    #        )
+    #        for p in pcb2.kicad_pcb.footprints[0].propertys
+    #    }
+    # )
 
 
 if __name__ == "__main__":

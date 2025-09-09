@@ -388,10 +388,9 @@ class SchTransformer:
             kicad.get(self.get_symbol_file(lib_name).kicad_sym.symbols, symbol_name)
         )
         lib_sym.name = lib_id
-        kicad.set(
+        return kicad.set(
             self.sch.lib_symbols, "symbols", self.sch.lib_symbols.symbols, lib_sym
         )
-        return lib_sym
 
     def insert_symbol(
         self,
@@ -442,7 +441,7 @@ class SchTransformer:
             # Add a C_property for the reference based on the override name
             if reference_name := module.get_trait(F.has_overriden_name).get_name():
                 Property.set_property(
-                    unit_instance.propertys,
+                    unit_instance,
                     kicad.schematic.Property(
                         name="Reference",
                         value=reference_name,
