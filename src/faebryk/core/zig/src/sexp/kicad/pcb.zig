@@ -632,15 +632,6 @@ pub const E_Attr = enum {
     allow_missing_courtyard,
 };
 
-pub const Attr = struct {
-    // TODO could have more than one
-    attr: E_Attr,
-
-    pub const fields_meta = .{
-        .attr = structure.SexpField{ .positional = true },
-    };
-};
-
 // Footprint structure
 pub const Footprint = struct {
     name: str,
@@ -650,7 +641,7 @@ pub const Footprint = struct {
     path: ?str = null,
     propertys: []Property = &.{},
     fp_texts: []FpText = &.{},
-    attr: ?Attr = null,
+    attr: []E_Attr = &.{},
     fp_lines: []Line = &.{},
     fp_arcs: []Arc = &.{},
     fp_circles: []Circle = &.{},

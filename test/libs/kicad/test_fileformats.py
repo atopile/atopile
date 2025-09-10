@@ -104,7 +104,7 @@ def test_parser_pcb_and_footprints():
     ]
 
     logo_fp = kicad.get(pcb.kicad_pcb.footprints, "logos:faebryk_logo")
-    assert kicad.footprint.Attr.exclude_from_bom in logo_fp.attr
+    assert kicad.pcb.E_Attr.EXCLUDE_FROM_BOM in logo_fp.attr
 
 
 def test_write():

@@ -695,9 +695,9 @@ class Model:
     def __zig_address__(self) -> int: ...
 
 class Attr:
-    attr: str
+    attr: list[str]
 
-    def __init__(self, *, attr: str) -> None: ...
+    def __init__(self, *, attr: list[str]) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -711,7 +711,7 @@ class Footprint:
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
-    attr: Attr | None
+    attr: list[str]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -730,7 +730,7 @@ class Footprint:
         path: str | None,
         propertys: list[Property],
         fp_texts: list[FpText],
-        attr: Attr | None,
+        attr: list[str],
         fp_lines: list[Line],
         fp_arcs: list[Arc],
         fp_circles: list[Circle],

@@ -797,6 +797,11 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                     py.Py_INCREF(none);
                     return none;
                 },
+                .@"enum" => {
+                    // Convert enum to string
+                    const enum_str = @tagName(item_ptr.*);
+                    return py.PyUnicode_FromString(enum_str.ptr);
+                },
                 else => {
                     // Unsupported type - return None
                     const none = py.Py_None();
@@ -893,6 +898,20 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                             py.PyErr_SetString(py.PyExc_TypeError, "Unsupported pointer type in slice");
                             return -1;
                         }
+                    },
+                    .@"enum" => {
+                        // Handle enum items as strings
+                        const str_val = py.PyUnicode_AsUTF8(item);
+                        if (str_val == null) {
+                            std.heap.c_allocator.free(new_slice);
+                            return -1;
+                        }
+                        const enum_str = std.mem.span(str_val.?);
+                        new_slice[i] = std.meta.stringToEnum(ChildType, enum_str) orelse {
+                            std.heap.c_allocator.free(new_slice);
+                            py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in slice");
+                            return -1;
+                        };
                     },
                     else => {
                         std.heap.c_allocator.free(new_slice);

@@ -8,7 +8,14 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.pcb import Attr, FpText, ModelXyz, Pad, Polygon, Property, Xy
+from faebryk.core.zig.pcb import (
+    FpText,
+    ModelXyz,
+    Pad,
+    Polygon,
+    Property,
+    Xy,
+)
 
 # Dirty hack to not error in ruff check
 type Allocator = Any
@@ -98,7 +105,7 @@ class Footprint:
     path: str | None
     propertys: list[Property]
     fp_texts: list[FpText]
-    attr: Attr | None
+    attr: list[str]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
@@ -119,7 +126,7 @@ class Footprint:
         path: str | None,
         propertys: list[Property],
         fp_texts: list[FpText],
-        attr: Attr | None,
+        attr: list[str],
         fp_lines: list[Line],
         fp_arcs: list[Arc],
         fp_circles: list[Circle],

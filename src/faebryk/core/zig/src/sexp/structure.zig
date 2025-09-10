@@ -1125,13 +1125,10 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
                 }
                 // Skip null optionals entirely
             } else {
-                if (comptime isSlice(field.type, false)) {
-                    if (field_value.len == 0) {
-                        continue;
-                    }
+                if ((comptime isSlice(field.type, false)) and field_value.len == 0) {} else {
+                    const encoded = try encodeWithMetadata(allocator, field_value, field_metadata);
+                    try items.append(encoded);
                 }
-                const encoded = try encodeWithMetadata(allocator, field_value, field_metadata);
-                try items.append(encoded);
             }
         }
     }
