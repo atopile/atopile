@@ -157,7 +157,7 @@ def get_all_geo_containers(obj: PCB | Footprint) -> list[Sequence[Geom]]:
     elif isinstance(obj, Footprint):
         return [obj.fp_lines, obj.fp_arcs, obj.fp_circles, obj.fp_rects]
 
-    raise TypeError()
+    raise TypeError(f"Unsupported type: {type(obj)}")
 
 
 def get_all_geos(obj: PCB | Footprint) -> list[Geom]:

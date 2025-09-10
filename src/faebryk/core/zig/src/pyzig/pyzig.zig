@@ -1,6 +1,31 @@
 const std = @import("std");
 const py = @import("pybindings.zig");
 
+// Global registry for type objects to avoid creating duplicates
+var type_registry = std.HashMap([]const u8, *py.PyTypeObject, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(std.heap.c_allocator);
+var registry_mutex = std.Thread.Mutex{};
+
+// Helper to register a type object in the global registry
+pub fn registerTypeObject(type_name: [*:0]const u8, type_obj: *py.PyTypeObject) void {
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+    const type_name_slice = std.mem.span(type_name);
+    // Make a copy of the string to ensure it lives as long as the HashMap
+    const owned_key = std.heap.c_allocator.dupe(u8, type_name_slice) catch return;
+    type_registry.put(owned_key, type_obj) catch {
+        // If put fails, free the allocated key
+        std.heap.c_allocator.free(owned_key);
+    };
+}
+
+// Helper to get a registered type object by name
+fn getRegisteredTypeObject(type_name: [*:0]const u8) ?*py.PyTypeObject {
+    registry_mutex.lock();
+    defer registry_mutex.unlock();
+    const type_name_slice = std.mem.span(type_name);
+    return type_registry.get(type_name_slice);
+}
+
 const Method = fn (_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject;
 
 pub fn module_method(comptime method: Method, comptime name: [*:0]const u8) py.PyMethodDef {
@@ -683,13 +708,12 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
 
-    // For struct types, we need to generate the binding at comptime
+    // For struct types, get the registered type name
     const child_info = @typeInfo(ChildType);
-    const type_name = if (child_info == .@"struct")
-        std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str })
+    const type_name_for_registry = if (child_info == .@"struct")
+        @typeName(ChildType) ++ "\x00"
     else
-        field_name;
-    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name) else void;
+        "";
 
     const getter = struct {
         var nested_type_obj: ?*py.PyTypeObject = null;
@@ -704,14 +728,25 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
 
             if (!init_mutex) {
                 init_mutex = true;
-                const result = py.PyType_Ready(&NestedBinding.type_object);
-                if (result < 0) {
-                    @panic("Failed to initialize slice nested type");
+
+                // Try to get the registered type object first
+                if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
+                    nested_type_obj = registered_obj;
+                } else {
+                    // Fallback: create a new binding if not found in registry
+                    // This should rarely happen if modules are properly initialized
+                    const fallback_name = std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str });
+                    const fallback_name_z = fallback_name ++ "\x00";
+                    const NestedBinding = wrap_in_python(ChildType, fallback_name_z);
+                    const result = py.PyType_Ready(&NestedBinding.type_object);
+                    if (result < 0) {
+                        @panic("Failed to initialize slice nested type");
+                    }
+                    nested_type_obj = &NestedBinding.type_object;
                 }
-                nested_type_obj = &NestedBinding.type_object;
             }
 
-            return &NestedBinding.type_object;
+            return nested_type_obj.?;
         }
 
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
@@ -737,7 +772,7 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
         fn wrap_value_ptr(item_ptr: *ChildType) ?*py.PyObject {
             switch (child_info) {
                 .@"struct" => {
-                    // Create a new Python object for the struct
+                    // Create a new Python object for the struct using the registered type
                     const type_obj = getNestedTypeObj();
                     const pyobj = py.PyType_GenericAlloc(type_obj, 0);
                     if (pyobj == null) return null;
@@ -1544,6 +1579,11 @@ pub fn wrap_in_python_module(comptime module: type) type {
                                 binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
                                 return -1;
                             }
+
+                            // Register the type object globally for reuse
+                            const type_name = @typeName(inner_type);
+                            const type_name_z = type_name ++ "\x00";
+                            registerTypeObject(type_name_z, &binding.type_object);
                         }
                     }
                 }

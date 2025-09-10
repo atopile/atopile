@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+# FIXME: get rid of all append/remove stuff on lists, need to use kicad.insert/delete
+
 import logging
 import pprint
 from functools import singledispatch
@@ -338,7 +340,10 @@ class SchTransformer:
     ):
         """Insert a wire with points at all the coords"""
         for section in zip(coords[:-1], coords[1:]):
-            self.sch.wires.append(
+            kicad.insert(
+                self.sch,
+                "wires",
+                self.sch.wires,
                 kicad.schematic.Wire(
                     pts=kicad.schematic.Pts(
                         xys=[C_xy(x=coord[0], y=coord[1]) for coord in section]
@@ -350,7 +355,7 @@ class SchTransformer:
                         color=kicad.schematic.Color(r=0, g=0, b=0, a=0),
                     ),
                     uuid=self.gen_uuid(mark=True),
-                )
+                ),
             )
 
     def insert_text(
@@ -360,7 +365,10 @@ class SchTransformer:
         font: Font,
         alignment: Alignment | None = None,
     ):
-        self.sch.texts.append(
+        kicad.insert(
+            self.sch,
+            "texts",
+            self.sch.texts,
             kicad.schematic.Text(
                 text=text,
                 at=at,
@@ -376,7 +384,7 @@ class SchTransformer:
                     hide=None,
                 ),
                 uuid=self.gen_uuid(mark=True),
-            )
+            ),
         )
 
     def _ensure_lib_symbol(
@@ -460,4 +468,4 @@ class SchTransformer:
 
             self.attach_symbol(module, unit_instance)
 
-            self.sch.symbols.append(unit_instance)
+            kicad.insert(self.sch, "symbols", self.sch.symbols, unit_instance)

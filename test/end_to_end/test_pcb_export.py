@@ -54,7 +54,7 @@ module App:
 
 SIMPLE_APP_PCB_SUMMARY = PcbSummary(
     num_layers=29,
-    nets=["", "a-net-0", "a-net-1"],
+    nets=["a-net-0", "a-net-1"],
     footprints=["R1"],
 )
 
@@ -75,7 +75,7 @@ def test_empty_design(tmpdir: Path):
     assert "Creating new layout" in stderr
 
     assert summarize_pcb_file(pcb_file) == PcbSummary(
-        num_layers=29, nets=[""], footprints=[]
+        num_layers=29, nets=[], footprints=[]
     )
 
 
