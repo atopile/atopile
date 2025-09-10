@@ -650,6 +650,10 @@ class PartLifecycle:
                         )
                         pcb_fp.propertys[prop_name].value = prop_value
 
+                    # Always hide Value properties to prevent fab layer text
+                    if prop_name == "Value":
+                        pcb_fp.propertys[prop_name].hide = True
+
                 ### If it's a new property, add it
                 else:
                     logger.info(
