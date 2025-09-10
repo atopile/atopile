@@ -691,7 +691,7 @@ class PackagesAPIClient:
             r = self._post(
                 _Endpoints.ReportBuildStatus.url(request=request),
                 data=request.to_dict(),  # type: ignore
-                authenticate=not skip_auth,
+                skip_auth=skip_auth,
             )
         except Errors.PackagesApiHTTPError as e:
             if e.code == 409:

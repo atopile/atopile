@@ -569,18 +569,25 @@ def verify(
 
     config.apply_options(entry=package_address)
 
-    with accumulate() as accumulator:
-        for validator in _DEFAULT_VALIDATORS:
-            with accumulator.collect():
-                validator(config)
+    success = True
 
-        if strict:
-            logger.info("Running strict verification")
-            for validator in _STRICT_VALIDATORS:
+    try:
+        with accumulate() as accumulator:
+            for validator in _DEFAULT_VALIDATORS:
                 with accumulator.collect():
                     validator(config)
 
-    logger.info("Package verification successful! 🎉")
+            if strict:
+                logger.info("Running strict verification")
+                for validator in _STRICT_VALIDATORS:
+                    with accumulator.collect():
+                        validator(config)
+
+        logger.info("Package verification successful! 🎉")
+
+    except Exception as e:
+        success = False
+        logger.error("Package verification failed: %s", e)
 
     from faebryk.libs.backend.packages.api import PackagesAPIClient
 
@@ -628,7 +635,8 @@ def verify(
         atopile_release=str(get_installed_atopile_version()),
         atopile_githash=git_hash,
         builder_metadata=builder_metadata,
-        is_building=True,
+        is_building=success,
         skip_auth=True,
         built_at=datetime.now(),
     )
+    print(f"Reported build status as {success}")
