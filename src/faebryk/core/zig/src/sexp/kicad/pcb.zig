@@ -73,6 +73,7 @@ pub const Font = struct {
 };
 
 pub const Justify = struct {
+    // null = center/normal
     justify1: ?E_justify = null,
     justify2: ?E_justify = null,
     justify3: ?E_justify = null,
@@ -102,13 +103,10 @@ pub const TextLayer = struct {
 
 // Enums
 pub const E_justify = enum {
-    center_horizontal, // TODO: ""
     left,
     right,
-    center_vertical, // TODO: ""
     bottom,
     top,
-    normal, // TODO: ""
     mirror,
 };
 

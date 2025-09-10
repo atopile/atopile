@@ -346,7 +346,8 @@ pub fn enum_prop(comptime struct_type: type, comptime field_name: [*:0]const u8,
                 @field(obj.top.*, field_name_str);
             // Convert enum to string
             const enum_str = @tagName(val);
-            return py.PyUnicode_FromString(enum_str.ptr);
+            // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+            return py.PyUnicode_FromStringAndSize(enum_str.ptr, @intCast(enum_str.len));
         }
     }.impl;
 
@@ -632,7 +633,8 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     .@"enum" => {
                         // Convert enum to string
                         const enum_str = @tagName(v);
-                        return py.PyUnicode_FromString(enum_str.ptr);
+                        // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+                        return py.PyUnicode_FromStringAndSize(enum_str.ptr, @intCast(enum_str.len));
                     },
                     else => {},
                 }
@@ -800,7 +802,8 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                 .@"enum" => {
                     // Convert enum to string
                     const enum_str = @tagName(item_ptr.*);
-                    return py.PyUnicode_FromString(enum_str.ptr);
+                    // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+                    return py.PyUnicode_FromStringAndSize(enum_str.ptr, @intCast(enum_str.len));
                 },
                 else => {
                     // Unsupported type - return None

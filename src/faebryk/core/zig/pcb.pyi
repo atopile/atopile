@@ -20,13 +20,10 @@ class E_stroke_type(str, Enum):
     DEFAULT = "default"
 
 class E_justify(str, Enum):
-    CENTER_HORIZONTAL = "center_horizontal"
     LEFT = "left"
     RIGHT = "right"
-    CENTER_VERTICAL = "center_vertical"
     BOTTOM = "bottom"
     TOP = "top"
-    NORMAL = "normal"
     MIRROR = "mirror"
 
 class E_fill(str, Enum):

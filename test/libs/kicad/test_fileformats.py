@@ -157,8 +157,7 @@ def test_empty_enum_positional():
     _effects(pcb).justify = kicad.pcb.Justify(
         justify1=None, justify2=None, justify3=None
     )
-    not_none(_effects(pcb).justify).justify1 = ""
-    not_none(_effects(pcb).justify).justify2 = kicad.pcb.E_justify.TOP
+    not_none(_effects(pcb).justify).justify1 = kicad.pcb.E_justify.TOP
 
     pcb_reload = kicad.loads(kicad.pcb.PcbFile, kicad.dumps(pcb))
 
@@ -166,9 +165,7 @@ def test_empty_enum_positional():
 
     # empty center string ignored
     # Check that justifys were added correctly
-    assert not_none(_effects(pcb).justify).justify1 == ""
-    assert not_none(_effects(pcb).justify).justify2 == kicad.pcb.E_justify.TOP
-    assert not_none(_effects(pcb).justify).justify3 is None
+    assert not_none(_effects(pcb).justify).justify1 == kicad.pcb.E_justify.TOP
 
 
 @pytest.mark.parametrize(

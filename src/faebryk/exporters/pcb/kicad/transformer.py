@@ -4,7 +4,6 @@
 import logging
 import re
 from collections import defaultdict
-from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
 from math import floor
@@ -77,11 +76,6 @@ Geom = (
 
 Point = Geometry.Point
 Point2D = Geometry.Point2D
-
-type Justify = kicad.pcb.E_justify | str
-Alignment = tuple[Justify, Justify, Justify]
-
-Alignment_Default = ("", "", "")  # center_horizontal, center_vertical, normal
 
 if TYPE_CHECKING:
     import faebryk.library._F as F
@@ -869,17 +863,15 @@ class PCB_Transformer:
         at: kicad.pcb.Xyr,
         font: Font,
         layer: str = "F.SilkS",
-        alignment: "Alignment | None" = None,
+        alignment: "kicad.pcb.Justify | None" = None,
         knockout: bool = False,
     ):
         if not alignment:
             if layer.startswith("F."):
-                alignment = Alignment_Default
+                alignment = None
             else:
-                alignment = (
-                    "",
-                    "",
-                    kicad.pcb.E_justify.MIRROR,
+                alignment = kicad.pcb.Justify(
+                    justify1=kicad.pcb.E_justify.MIRROR, justify2=None, justify3=None
                 )
 
         text_o = GR_Text(
@@ -892,11 +884,7 @@ class PCB_Transformer:
             layer=layer,
             effects=kicad.pcb.Effects(
                 font=font,
-                justify=kicad.pcb.Justify(
-                    justify1=alignment[0],
-                    justify2=alignment[1],
-                    justify3=alignment[2],
-                ),
+                justify=alignment,
                 hide=None,
             ),
             uuid=self.gen_uuid(mark=True),
@@ -1593,7 +1581,7 @@ class PCB_Transformer:
         layer: Optional[str] = None,
         font: Optional[kicad.pcb.Font] = None,
         knockout: "Optional[kicad.pcb.E_knockout]" = None,
-        justify: "Alignment | None" = None,
+        justify: "kicad.pcb.Justify | None" = None,
     ):
         if knockout:
             raise NotImplementedError("knockout not supported")
@@ -1607,9 +1595,7 @@ class PCB_Transformer:
                 if font:
                     reference.effects.font = font
                 if justify:
-                    reference.effects.justify = kicad.pcb.Justify(
-                        justify1=justify[0], justify2=justify[1], justify3=justify[2]
-                    )
+                    reference.effects.justify = justify
 
             rot = rotation if rotation else reference.at.r
 
@@ -1644,7 +1630,7 @@ class PCB_Transformer:
             size=kicad.pcb.Wh(w=1, h=1), thickness=0.2
         ),
         knockout: bool = True,
-        alignment: "Alignment" = Alignment_Default,
+        alignment: "kicad.pcb.Justify | None" = None,
     ):
         try:
             import git
