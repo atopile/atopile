@@ -1065,7 +1065,11 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
             var buf: [32]u8 = undefined;
             // round float to 10 decimal places
             const rounded = std.math.round(value * 10e10) / 10e10;
-            const str = std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
+            const fucked = std.mem.eql(u8, name, "dashed_line_dash_ratio") or std.mem.eql(u8, name, "dashed_line_gap_ratio") or std.mem.eql(u8, name, "hpglpendiameter");
+            const str = if (fucked)
+                std.fmt.bufPrint(&buf, "{d:.6}", .{rounded}) catch return error.OutOfMemory
+            else
+                std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
             const duped = try allocator.alloc(u8, str.len);
             @memcpy(duped, str);
             return SExp{ .value = .{ .number = duped }, .location = null };

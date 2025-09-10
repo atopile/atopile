@@ -11,7 +11,6 @@ from typing import (
     Optional,
     Protocol,
     Self,
-    Sequence,
     cast,
     overload,
 )
@@ -820,6 +819,11 @@ class kicad:
         raw = kicad.type_to_module(obj).dumps(
             obj,  # type: ignore
         )
+
+        # TODO should live in zig
+        # some files have trailing newlines, some don't
+        if isinstance(obj, kicad.footprint.FootprintFile):
+            raw = raw.strip("\n")
 
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

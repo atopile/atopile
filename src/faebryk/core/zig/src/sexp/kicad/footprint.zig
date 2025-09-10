@@ -8,26 +8,26 @@ const pcb = @import("pcb.zig");
 pub const Footprint = struct {
     // common with pcb.Footprint
     name: str,
-    layer: str = "F.Cu",
     uuid: ?str = null,
     path: ?str = null,
+    layer: str = "F.Cu",
     propertys: []pcb.Property = &.{},
-    fp_texts: []pcb.FpText = &.{},
     attr: []pcb.E_Attr = &.{},
+    fp_circles: []pcb.Circle = &.{},
     fp_lines: []pcb.Line = &.{},
     fp_arcs: []pcb.Arc = &.{},
-    fp_circles: []pcb.Circle = &.{},
     fp_rects: []pcb.Rect = &.{},
     fp_poly: []pcb.Polygon = &.{},
+    fp_texts: []pcb.FpText = &.{},
     pads: []pcb.Pad = &.{},
     models: []pcb.Model = &.{},
 
     // additional fields
-    description: ?str = null,
-    tags: []str = &.{},
     version: i32 = pcb.KICAD_FP_VERSION,
     generator: str = "faebryk",
     generator_version: str = "latest",
+    description: ?str = null,
+    tags: []str = &.{},
     tedit: ?str = null,
 
     pub const fields_meta = .{
@@ -42,12 +42,13 @@ pub const Footprint = struct {
         .pads = structure.SexpField{ .multidict = true, .sexp_name = "pad" },
         .models = structure.SexpField{ .multidict = true, .sexp_name = "model" },
         //
-        .description = structure.SexpField{ .order = -1 },
-        .tags = structure.SexpField{ .order = -1 },
         .version = structure.SexpField{ .order = -20 },
-        .generator = structure.SexpField{ .order = -20 },
-        .generator_version = structure.SexpField{ .order = -20 },
-        .tedit = structure.SexpField{ .order = -20 },
+        .generator = structure.SexpField{ .order = -19 },
+        .generator_version = structure.SexpField{ .order = -18 },
+        .layer = structure.SexpField{ .order = -17 },
+        .description = structure.SexpField{ .order = -16, .sexp_name = "descr" },
+        .tags = structure.SexpField{ .order = -15 },
+        .tedit = structure.SexpField{ .order = -14 },
     };
 };
 

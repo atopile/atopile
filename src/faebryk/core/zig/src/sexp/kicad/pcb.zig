@@ -33,7 +33,7 @@ pub const Xyz = struct {
 pub const Xyr = struct {
     x: f64,
     y: f64,
-    r: f64 = 0,
+    r: ?f64 = null,
 
     pub const fields_meta = .{
         .x = structure.SexpField{ .positional = true },
@@ -70,6 +70,8 @@ pub const Stroke = struct {
 pub const Font = struct {
     size: Wh,
     thickness: ?f64 = null,
+    bold: ?bool = null,
+    italic: ?bool = null,
 };
 
 pub const Justify = struct {
@@ -366,11 +368,11 @@ pub const Line = struct {
     end: Xy,
 
     // shape common
-    layer: ?str = null,
-    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
+    layer: ?str = null,
+    layers: []str = &.{},
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -387,11 +389,11 @@ pub const Arc = struct {
     end: Xy,
 
     // shape common
-    layer: ?str = null,
-    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
+    layer: ?str = null,
+    layers: []str = &.{},
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -408,11 +410,11 @@ pub const Circle = struct {
     end: Xy,
 
     // shape common
-    layer: ?str = null,
-    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
+    layer: ?str = null,
+    layers: []str = &.{},
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -428,11 +430,11 @@ pub const Rect = struct {
     end: Xy,
 
     // shape common
-    layer: ?str = null,
-    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
+    layer: ?str = null,
+    layers: []str = &.{},
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -455,11 +457,11 @@ pub const Polygon = struct {
     pts: Pts,
 
     // shape common
-    layer: ?str = null,
-    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
+    layer: ?str = null,
+    layers: []str = &.{},
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -473,11 +475,11 @@ pub const Curve = struct {
     pts: Pts,
 
     // shape common
-    layer: ?str = null,
-    layers: []str = &.{},
     solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
+    layer: ?str = null,
+    layers: []str = &.{},
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -552,8 +554,9 @@ pub const Pad = struct {
     shape: E_pad_shape,
     at: Xyr,
     size: Wh,
-    layers: []str,
     drill: ?PadDrill = null,
+    layers: []str,
+    remove_unused_layers: ?bool = null,
     net: ?Net = null,
     solder_mask_margin: ?f64 = null,
     solder_paste_margin: ?f64 = null,
@@ -593,6 +596,7 @@ pub const Property = struct {
     name: str,
     value: str,
     at: Xyr,
+    unlocked: ?bool = null,
     layer: str,
     hide: ?bool = null,
     uuid: ?str = null,
@@ -638,14 +642,15 @@ pub const Footprint = struct {
     at: Xyr,
     path: ?str = null,
     propertys: []Property = &.{},
-    fp_texts: []FpText = &.{},
     attr: []E_Attr = &.{},
     fp_lines: []Line = &.{},
     fp_arcs: []Arc = &.{},
     fp_circles: []Circle = &.{},
     fp_rects: []Rect = &.{},
     fp_poly: []Polygon = &.{},
+    fp_texts: []FpText = &.{},
     pads: []Pad = &.{},
+    embedded_fonts: ?bool = null,
     models: []Model = &.{},
 
     pub const fields_meta = .{
@@ -766,6 +771,7 @@ pub const ZonePlacement = struct {
     source_type: ?E_zone_placement_source_type = null,
     source: ?str = null,
     enabled: bool = true,
+    sheetname: ?str = null,
 };
 
 pub const ZoneTeardrop = struct {
@@ -779,6 +785,7 @@ pub const ZoneAttr = struct {
 pub const Zone = struct {
     net: i32,
     net_name: str,
+    layer: ?str = null,
     layers: []str = &.{},
     uuid: ?str = null,
     name: ?str = null,
@@ -788,11 +795,11 @@ pub const Zone = struct {
     connect_pads: ?ConnectPads = null,
     min_thickness: ?f64 = null,
     filled_areas_thickness: ?bool = null,
-    fill: ?ZoneFill = null,
     keepout: ?ZoneKeepout = null,
+    placement: ?ZonePlacement = null,
+    fill: ?ZoneFill = null,
     polygon: Polygon,
     filled_polygon: []FilledPolygon = &.{},
-    placement: ?ZonePlacement = null,
 
     pub const fields_meta = .{
         .filled_polygon = structure.SexpField{ .multidict = true },
@@ -931,43 +938,43 @@ pub const Rules = struct {
 pub const PcbPlotParams = struct {
     layerselection: str = "0x00010fc_ffffffff",
     plot_on_all_layers_selection: str = "0x0000000_00000000",
-    disableapertmacros: bool = false,
-    usegerberextensions: bool = false,
-    usegerberattributes: bool = true,
-    usegerberadvancedattributes: bool = true,
-    creategerberjobfile: bool = true,
+    disableapertmacros: ?bool = null,
+    usegerberextensions: ?bool = null,
+    usegerberattributes: ?bool = null,
+    usegerberadvancedattributes: ?bool = null,
+    creategerberjobfile: ?bool = null,
     dashed_line_dash_ratio: f64 = 12.0,
     dashed_line_gap_ratio: f64 = 3.0,
     svgprecision: i32 = 4,
-    plotframeref: bool = false,
+    plotframeref: ?bool = null,
     viasonmask: ?bool = null,
     mode: i32 = 1,
-    useauxorigin: bool = false,
+    useauxorigin: ?bool = null,
     hpglpennumber: i32 = 1,
     hpglpenspeed: i32 = 20,
     hpglpendiameter: f64 = 15.0,
-    pdf_front_fp_property_popups: bool = true,
-    pdf_back_fp_property_popups: bool = true,
-    pdf_metadata: bool = true,
-    pdf_single_document: bool = false,
-    dxfpolygonmode: bool = true,
-    dxfimperialunits: bool = true,
-    dxfusepcbnewfont: bool = true,
-    psnegative: bool = false,
-    psa4output: bool = false,
-    plot_black_and_white: bool = true,
-    plotinvisibletext: bool = false,
-    sketchpadsonfab: bool = false,
-    plotreference: bool = true,
-    plotvalue: bool = true,
-    plotpadnumbers: bool = false,
-    hidednponfab: bool = false,
-    sketchdnponfab: bool = true,
-    crossoutdnponfab: bool = true,
-    plotfptext: bool = true,
-    subtractmaskfromsilk: bool = false,
+    pdf_front_fp_property_popups: ?bool = null,
+    pdf_back_fp_property_popups: ?bool = null,
+    pdf_metadata: ?bool = null,
+    pdf_single_document: ?bool = null,
+    dxfpolygonmode: ?bool = null,
+    dxfimperialunits: ?bool = null,
+    dxfusepcbnewfont: ?bool = null,
+    psnegative: ?bool = null,
+    psa4output: ?bool = null,
+    plot_black_and_white: ?bool = null,
+    plotinvisibletext: ?bool = null,
+    sketchpadsonfab: ?bool = null,
+    plotreference: ?bool = null,
+    plotvalue: ?bool = null,
+    plotpadnumbers: ?bool = null,
+    hidednponfab: ?bool = null,
+    sketchdnponfab: ?bool = null,
+    crossoutdnponfab: ?bool = null,
+    plotfptext: ?bool = null,
+    subtractmaskfromsilk: ?bool = null,
     outputformat: i32 = 1,
-    mirror: bool = false,
+    mirror: ?bool = null,
     drillshape: i32 = 1,
     scaleselection: i32 = 1,
     outputdirectory: str = "",
@@ -1018,7 +1025,6 @@ pub const KicadPcb = struct {
     nets: []Net = &.{},
     footprints: []Footprint = &.{},
     vias: []Via = &.{},
-    zones: []Zone = &.{},
     segments: []Segment = &.{},
     arcs: []ArcSegment = &.{},
     gr_lines: []Line = &.{},
@@ -1028,15 +1034,15 @@ pub const KicadPcb = struct {
     gr_rects: []Rect = &.{},
     gr_polys: []Polygon = &.{},
     gr_texts: []Text = &.{},
+    gr_text_boxes: []TextBox = &.{},
+    zones: []Zone = &.{},
     images: []Image = &.{},
     dimensions: []Dimension = &.{},
     groups: []Group = &.{},
     targets: []Target = &.{},
     embedded_fonts: ?bool = null,
     embedded_files: ?EmbeddedFiles = null,
-    // TODO: something broken with Margins
-    //gr_text_boxes: []TextBox = &.{},
-    //tables: []Table = &.{},
+    tables: []Table = &.{},
     generateds: []Generated = &.{},
 
     pub const fields_meta = .{
@@ -1061,6 +1067,7 @@ pub const KicadPcb = struct {
         .targets = structure.SexpField{ .multidict = true, .sexp_name = "target" },
         .generateds = structure.SexpField{ .multidict = true, .sexp_name = "generated" },
         .tables = structure.SexpField{ .multidict = true, .sexp_name = "table" },
+        .paper = structure.SexpField{ .symbol = false },
     };
 };
 
@@ -1121,10 +1128,10 @@ pub const RenderCache = struct {
 };
 
 pub const Margins = struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
 
     pub const fields_meta = .{
         .left = structure.SexpField{ .positional = true },
@@ -1146,19 +1153,19 @@ pub const Span = struct {
 
 pub const TextBox = struct {
     text: str,
-    locked: bool = false,
     start: ?Xy = null,
     end: ?Xy = null,
     pts: ?Pts = null,
-    angle: ?f64 = null,
-    stroke: ?Stroke = null,
-    border: ?bool = null,
     margins: ?Margins = null,
+    angle: ?f64 = null,
     layer: str,
-    span: ?Span = null,
-    effects: Effects,
-    render_cache: ?RenderCache = null,
     uuid: ?str = null,
+    effects: Effects,
+    border: ?bool = null,
+    stroke: ?Stroke = null,
+    locked: ?bool = null,
+    //span: ?Span = null,
+    //render_cache: ?RenderCache = null,
 
     pub const fields_meta = .{
         .text = structure.SexpField{ .positional = true },

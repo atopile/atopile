@@ -245,9 +245,9 @@ class Xyz:
 class Xyr:
     x: float
     y: float
-    r: float
+    r: float | None
 
-    def __init__(self, *, x: float, y: float, r: float) -> None: ...
+    def __init__(self, *, x: float, y: float, r: float | None) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -276,8 +276,17 @@ class Stroke:
 class Font:
     size: Wh
     thickness: float | None
+    bold: bool | None
+    italic: bool | None
 
-    def __init__(self, *, size: Wh, thickness: float | None) -> None: ...
+    def __init__(
+        self,
+        *,
+        size: Wh,
+        thickness: float | None,
+        bold: bool | None,
+        italic: bool | None,
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -322,11 +331,11 @@ class TextLayer:
 class Line:
     start: Xy
     end: Xy
-    layer: str | None
-    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
+    layer: str | None
+    layers: list[str]
     locked: bool | None
     uuid: str | None
 
@@ -335,11 +344,11 @@ class Line:
         *,
         start: Xy,
         end: Xy,
-        layer: str | None,
-        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
+        layer: str | None,
+        layers: list[str],
         locked: bool | None,
         uuid: str | None,
     ) -> None: ...
@@ -352,11 +361,11 @@ class Arc:
     start: Xy
     mid: Xy
     end: Xy
-    layer: str | None
-    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
+    layer: str | None
+    layers: list[str]
     locked: bool | None
     uuid: str | None
 
@@ -366,11 +375,11 @@ class Arc:
         start: Xy,
         mid: Xy,
         end: Xy,
-        layer: str | None,
-        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
+        layer: str | None,
+        layers: list[str],
         locked: bool | None,
         uuid: str | None,
     ) -> None: ...
@@ -382,11 +391,11 @@ class Arc:
 class Circle:
     center: Xy
     end: Xy
-    layer: str | None
-    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
+    layer: str | None
+    layers: list[str]
     locked: bool | None
     uuid: str | None
 
@@ -395,11 +404,11 @@ class Circle:
         *,
         center: Xy,
         end: Xy,
-        layer: str | None,
-        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
+        layer: str | None,
+        layers: list[str],
         locked: bool | None,
         uuid: str | None,
     ) -> None: ...
@@ -411,11 +420,11 @@ class Circle:
 class Rect:
     start: Xy
     end: Xy
-    layer: str | None
-    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
+    layer: str | None
+    layers: list[str]
     locked: bool | None
     uuid: str | None
 
@@ -424,11 +433,11 @@ class Rect:
         *,
         start: Xy,
         end: Xy,
-        layer: str | None,
-        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
+        layer: str | None,
+        layers: list[str],
         locked: bool | None,
         uuid: str | None,
     ) -> None: ...
@@ -448,11 +457,11 @@ class Pts:
 
 class Polygon:
     pts: Pts
-    layer: str | None
-    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
+    layer: str | None
+    layers: list[str]
     locked: bool | None
     uuid: str | None
 
@@ -460,11 +469,11 @@ class Polygon:
         self,
         *,
         pts: Pts,
-        layer: str | None,
-        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
+        layer: str | None,
+        layers: list[str],
         locked: bool | None,
         uuid: str | None,
     ) -> None: ...
@@ -475,11 +484,11 @@ class Polygon:
 
 class Curve:
     pts: Pts
-    layer: str | None
-    layers: list[str]
     solder_mask_margin: float | None
     stroke: Stroke | None
     fill: str | None
+    layer: str | None
+    layers: list[str]
     locked: bool | None
     uuid: str | None
 
@@ -487,11 +496,11 @@ class Curve:
         self,
         *,
         pts: Pts,
-        layer: str | None,
-        layers: list[str],
         solder_mask_margin: float | None,
         stroke: Stroke | None,
         fill: str | None,
+        layer: str | None,
+        layers: list[str],
         locked: bool | None,
         uuid: str | None,
     ) -> None: ...
@@ -584,8 +593,9 @@ class Pad:
     shape: str
     at: Xyr
     size: Wh
-    layers: list[str]
     drill: PadDrill | None
+    layers: list[str]
+    remove_unused_layers: bool | None
     net: Net | None
     solder_mask_margin: float | None
     solder_paste_margin: float | None
@@ -610,8 +620,9 @@ class Pad:
         shape: str,
         at: Xyr,
         size: Wh,
-        layers: list[str],
         drill: PadDrill | None,
+        layers: list[str],
+        remove_unused_layers: bool | None,
         net: Net | None,
         solder_mask_margin: float | None,
         solder_paste_margin: float | None,
@@ -647,6 +658,7 @@ class Property:
     name: str
     value: str
     at: Xyr
+    unlocked: bool | None
     layer: str
     hide: bool | None
     uuid: str | None
@@ -658,6 +670,7 @@ class Property:
         name: str,
         value: str,
         at: Xyr,
+        unlocked: bool | None,
         layer: str,
         hide: bool | None,
         uuid: str | None,
@@ -698,14 +711,15 @@ class Footprint:
     at: Xyr
     path: str | None
     propertys: list[Property]
-    fp_texts: list[FpText]
     attr: list[str]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
     fp_circles: list[Circle]
     fp_rects: list[Rect]
     fp_poly: list[Polygon]
+    fp_texts: list[FpText]
     pads: list[Pad]
+    embedded_fonts: bool | None
     models: list[Model]
 
     def __init__(
@@ -717,14 +731,15 @@ class Footprint:
         at: Xyr,
         path: str | None,
         propertys: list[Property],
-        fp_texts: list[FpText],
         attr: list[str],
         fp_lines: list[Line],
         fp_arcs: list[Arc],
         fp_circles: list[Circle],
         fp_rects: list[Rect],
         fp_poly: list[Polygon],
+        fp_texts: list[FpText],
         pads: list[Pad],
+        embedded_fonts: bool | None,
         models: list[Model],
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -906,9 +921,15 @@ class ZonePlacement:
     source_type: str | None
     source: str | None
     enabled: bool
+    sheetname: str | None
 
     def __init__(
-        self, *, source_type: str | None, source: str | None, enabled: bool
+        self,
+        *,
+        source_type: str | None,
+        source: str | None,
+        enabled: bool,
+        sheetname: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -936,6 +957,7 @@ class ZoneAttr:
 class Zone:
     net: int
     net_name: str
+    layer: str | None
     layers: list[str]
     uuid: str | None
     name: str | None
@@ -945,17 +967,18 @@ class Zone:
     connect_pads: ConnectPads | None
     min_thickness: float | None
     filled_areas_thickness: bool | None
-    fill: ZoneFill | None
     keepout: ZoneKeepout | None
+    placement: ZonePlacement | None
+    fill: ZoneFill | None
     polygon: Polygon
     filled_polygon: list[FilledPolygon]
-    placement: ZonePlacement | None
 
     def __init__(
         self,
         *,
         net: int,
         net_name: str,
+        layer: str | None,
         layers: list[str],
         uuid: str | None,
         name: str | None,
@@ -965,11 +988,11 @@ class Zone:
         connect_pads: ConnectPads | None,
         min_thickness: float | None,
         filled_areas_thickness: bool | None,
-        fill: ZoneFill | None,
         keepout: ZoneKeepout | None,
+        placement: ZonePlacement | None,
+        fill: ZoneFill | None,
         polygon: Polygon,
         filled_polygon: list[FilledPolygon],
-        placement: ZonePlacement | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1190,43 +1213,43 @@ class Rules:
 class PcbPlotParams:
     layerselection: str
     plot_on_all_layers_selection: str
-    disableapertmacros: bool
-    usegerberextensions: bool
-    usegerberattributes: bool
-    usegerberadvancedattributes: bool
-    creategerberjobfile: bool
+    disableapertmacros: bool | None
+    usegerberextensions: bool | None
+    usegerberattributes: bool | None
+    usegerberadvancedattributes: bool | None
+    creategerberjobfile: bool | None
     dashed_line_dash_ratio: float
     dashed_line_gap_ratio: float
     svgprecision: int
-    plotframeref: bool
+    plotframeref: bool | None
     viasonmask: bool | None
     mode: int
-    useauxorigin: bool
+    useauxorigin: bool | None
     hpglpennumber: int
     hpglpenspeed: int
     hpglpendiameter: float
-    pdf_front_fp_property_popups: bool
-    pdf_back_fp_property_popups: bool
-    pdf_metadata: bool
-    pdf_single_document: bool
-    dxfpolygonmode: bool
-    dxfimperialunits: bool
-    dxfusepcbnewfont: bool
-    psnegative: bool
-    psa4output: bool
-    plot_black_and_white: bool
-    plotinvisibletext: bool
-    sketchpadsonfab: bool
-    plotreference: bool
-    plotvalue: bool
-    plotpadnumbers: bool
-    hidednponfab: bool
-    sketchdnponfab: bool
-    crossoutdnponfab: bool
-    plotfptext: bool
-    subtractmaskfromsilk: bool
+    pdf_front_fp_property_popups: bool | None
+    pdf_back_fp_property_popups: bool | None
+    pdf_metadata: bool | None
+    pdf_single_document: bool | None
+    dxfpolygonmode: bool | None
+    dxfimperialunits: bool | None
+    dxfusepcbnewfont: bool | None
+    psnegative: bool | None
+    psa4output: bool | None
+    plot_black_and_white: bool | None
+    plotinvisibletext: bool | None
+    sketchpadsonfab: bool | None
+    plotreference: bool | None
+    plotvalue: bool | None
+    plotpadnumbers: bool | None
+    hidednponfab: bool | None
+    sketchdnponfab: bool | None
+    crossoutdnponfab: bool | None
+    plotfptext: bool | None
+    subtractmaskfromsilk: bool | None
     outputformat: int
-    mirror: bool
+    mirror: bool | None
     drillshape: int
     scaleselection: int
     outputdirectory: str
@@ -1236,43 +1259,43 @@ class PcbPlotParams:
         *,
         layerselection: str,
         plot_on_all_layers_selection: str,
-        disableapertmacros: bool,
-        usegerberextensions: bool,
-        usegerberattributes: bool,
-        usegerberadvancedattributes: bool,
-        creategerberjobfile: bool,
+        disableapertmacros: bool | None,
+        usegerberextensions: bool | None,
+        usegerberattributes: bool | None,
+        usegerberadvancedattributes: bool | None,
+        creategerberjobfile: bool | None,
         dashed_line_dash_ratio: float,
         dashed_line_gap_ratio: float,
         svgprecision: int,
-        plotframeref: bool,
+        plotframeref: bool | None,
         viasonmask: bool | None,
         mode: int,
-        useauxorigin: bool,
+        useauxorigin: bool | None,
         hpglpennumber: int,
         hpglpenspeed: int,
         hpglpendiameter: float,
-        pdf_front_fp_property_popups: bool,
-        pdf_back_fp_property_popups: bool,
-        pdf_metadata: bool,
-        pdf_single_document: bool,
-        dxfpolygonmode: bool,
-        dxfimperialunits: bool,
-        dxfusepcbnewfont: bool,
-        psnegative: bool,
-        psa4output: bool,
-        plot_black_and_white: bool,
-        plotinvisibletext: bool,
-        sketchpadsonfab: bool,
-        plotreference: bool,
-        plotvalue: bool,
-        plotpadnumbers: bool,
-        hidednponfab: bool,
-        sketchdnponfab: bool,
-        crossoutdnponfab: bool,
-        plotfptext: bool,
-        subtractmaskfromsilk: bool,
+        pdf_front_fp_property_popups: bool | None,
+        pdf_back_fp_property_popups: bool | None,
+        pdf_metadata: bool | None,
+        pdf_single_document: bool | None,
+        dxfpolygonmode: bool | None,
+        dxfimperialunits: bool | None,
+        dxfusepcbnewfont: bool | None,
+        psnegative: bool | None,
+        psa4output: bool | None,
+        plot_black_and_white: bool | None,
+        plotinvisibletext: bool | None,
+        sketchpadsonfab: bool | None,
+        plotreference: bool | None,
+        plotvalue: bool | None,
+        plotpadnumbers: bool | None,
+        hidednponfab: bool | None,
+        sketchdnponfab: bool | None,
+        crossoutdnponfab: bool | None,
+        plotfptext: bool | None,
+        subtractmaskfromsilk: bool | None,
         outputformat: int,
-        mirror: bool,
+        mirror: bool | None,
         drillshape: int,
         scaleselection: int,
         outputdirectory: str,
@@ -1326,7 +1349,6 @@ class KicadPcb:
     nets: list[Net]
     footprints: list[Footprint]
     vias: list[Via]
-    zones: list[Zone]
     segments: list[Segment]
     arcs: list[ArcSegment]
     gr_lines: list[Line]
@@ -1336,12 +1358,15 @@ class KicadPcb:
     gr_rects: list[Rect]
     gr_polys: list[Polygon]
     gr_texts: list[Text]
+    gr_text_boxes: list[TextBox]
+    zones: list[Zone]
     images: list[Image]
     dimensions: list[Dimension]
     groups: list[Group]
     targets: list[Target]
     embedded_fonts: bool | None
     embedded_files: EmbeddedFiles | None
+    tables: list[Table]
     generateds: list[Generated]
 
     def __init__(
@@ -1358,7 +1383,6 @@ class KicadPcb:
         nets: list[Net],
         footprints: list[Footprint],
         vias: list[Via],
-        zones: list[Zone],
         segments: list[Segment],
         arcs: list[ArcSegment],
         gr_lines: list[Line],
@@ -1368,12 +1392,15 @@ class KicadPcb:
         gr_rects: list[Rect],
         gr_polys: list[Polygon],
         gr_texts: list[Text],
+        gr_text_boxes: list[TextBox],
+        zones: list[Zone],
         images: list[Image],
         dimensions: list[Dimension],
         groups: list[Group],
         targets: list[Target],
         embedded_fonts: bool | None,
         embedded_files: EmbeddedFiles | None,
+        tables: list[Table],
         generateds: list[Generated],
     ) -> None: ...
     def __repr__(self) -> str: ...
@@ -1485,12 +1512,14 @@ class RenderCache:
     def __zig_address__(self) -> int: ...
 
 class Margins:
-    left: int
-    top: int
-    right: int
-    bottom: int
+    left: float
+    top: float
+    right: float
+    bottom: float
 
-    def __init__(self, *, left: int, top: int, right: int, bottom: int) -> None: ...
+    def __init__(
+        self, *, left: float, top: float, right: float, bottom: float
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -1508,37 +1537,33 @@ class Span:
 
 class TextBox:
     text: str
-    locked: bool
     start: Xy | None
     end: Xy | None
     pts: Pts | None
-    angle: float | None
-    stroke: Stroke | None
-    border: bool | None
     margins: Margins | None
+    angle: float | None
     layer: str
-    span: Span | None
-    effects: Effects
-    render_cache: RenderCache | None
     uuid: str | None
+    effects: Effects
+    border: bool | None
+    stroke: Stroke | None
+    locked: bool | None
 
     def __init__(
         self,
         *,
         text: str,
-        locked: bool,
         start: Xy | None,
         end: Xy | None,
         pts: Pts | None,
-        angle: float | None,
-        stroke: Stroke | None,
-        border: bool | None,
         margins: Margins | None,
+        angle: float | None,
         layer: str,
-        span: Span | None,
-        effects: Effects,
-        render_cache: RenderCache | None,
         uuid: str | None,
+        effects: Effects,
+        border: bool | None,
+        stroke: Stroke | None,
+        locked: bool | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

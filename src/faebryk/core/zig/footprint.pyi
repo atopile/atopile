@@ -25,48 +25,48 @@ type Allocator = Any
 
 class Footprint:
     name: str
-    layer: str
     uuid: str | None
     path: str | None
+    layer: str
     propertys: list[Property]
-    fp_texts: list[FpText]
     attr: list[str]
+    fp_circles: list[Circle]
     fp_lines: list[Line]
     fp_arcs: list[Arc]
-    fp_circles: list[Circle]
     fp_rects: list[Rect]
     fp_poly: list[Polygon]
+    fp_texts: list[FpText]
     pads: list[Pad]
     models: list[Model]
-    description: str | None
-    tags: list[str]
     version: int
     generator: str
     generator_version: str
+    description: str | None
+    tags: list[str]
     tedit: str | None
 
     def __init__(
         self,
         *,
         name: str,
-        layer: str,
         uuid: str | None,
         path: str | None,
+        layer: str,
         propertys: list[Property],
-        fp_texts: list[FpText],
         attr: list[str],
+        fp_circles: list[Circle],
         fp_lines: list[Line],
         fp_arcs: list[Arc],
-        fp_circles: list[Circle],
         fp_rects: list[Rect],
         fp_poly: list[Polygon],
+        fp_texts: list[FpText],
         pads: list[Pad],
         models: list[Model],
-        description: str | None,
-        tags: list[str],
         version: int,
         generator: str,
         generator_version: str,
+        description: str | None,
+        tags: list[str],
         tedit: str | None,
     ) -> None: ...
     def __repr__(self) -> str: ...

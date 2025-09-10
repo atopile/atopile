@@ -37,102 +37,195 @@ pub const SExp = struct {
     }
 
     pub fn prettify_sexp_string(allocator: std.mem.Allocator, sexp_raw: []const u8) ![]const u8 {
-        var out = std.ArrayList(u8).init(allocator);
-        defer out.deinit();
+        return prettify_sexp_string_kicad(allocator, sexp_raw, false);
+    }
 
-        var level: usize = 0;
-        var in_quotes = false;
-        var in_leaf_expr = true;
+    pub fn prettify_sexp_string_kicad(allocator: std.mem.Allocator, source: []const u8, compact_save: bool) ![]const u8 {
+        // Configuration - matching KiCad exactly
+        const quote_char: u8 = '"';
+        const indent_char: u8 = '\t';
+        const indent_size: usize = 1;
 
-        for (sexp_raw) |c| {
-            if (c == '"') {
-                in_quotes = !in_quotes;
+        // Special case limits from KiCad
+        const xy_special_case_column_limit: usize = 99;
+        const consecutive_token_wrap_threshold: usize = 72;
+
+        var formatted = std.ArrayList(u8).init(allocator);
+        defer formatted.deinit();
+        try formatted.ensureTotalCapacity(source.len);
+
+        var cursor: usize = 0;
+        var list_depth: usize = 0;
+        var last_non_whitespace: u8 = 0;
+        var in_quote = false;
+        var has_inserted_space = false;
+        var in_multi_line_list = false;
+        var in_xy = false;
+        var in_short_form = false;
+        var short_form_depth: usize = 0;
+        var column: usize = 0;
+        var backslash_count: usize = 0;
+
+        const isWhitespace = struct {
+            fn call(char: u8) bool {
+                return char == ' ' or char == '\t' or char == '\n' or char == '\r';
             }
+        }.call;
 
-            if (in_quotes) {
-                // When in quotes, preserve everything as-is
-                try out.append(c);
-            } else if (c == '\n') {
-                // Skip newlines when not in quotes
-                continue;
-            } else if (c == ' ' and out.items.len > 0 and out.items[out.items.len - 1] == ' ') {
-                // Skip consecutive spaces
-                continue;
-            } else if (c == '(') {
-                in_leaf_expr = true;
-                if (level != 0) {
-                    // Remove trailing space if any
-                    if (out.items.len > 0 and out.items[out.items.len - 1] == ' ') {
-                        _ = out.pop();
-                    }
-                    // Add newline and indentation
-                    try out.append('\n');
-                    for (0..level * 4) |_| {
-                        try out.append(' ');
-                    }
+        const nextNonWhitespace = struct {
+            fn call(src: []const u8, pos: usize) u8 {
+                var seek = pos;
+                while (seek < src.len and isWhitespace(src[seek])) {
+                    seek += 1;
                 }
-                level += 1;
-                try out.append(c);
-            } else if (c == ')') {
-                // Remove trailing space if any
-                if (out.items.len > 0 and out.items[out.items.len - 1] == ' ') {
-                    _ = out.pop();
+                if (seek >= src.len) return 0;
+                return src[seek];
+            }
+        }.call;
+
+        const isXY = struct {
+            fn call(src: []const u8, pos: usize) bool {
+                if (pos + 3 >= src.len) return false;
+                return src[pos + 1] == 'x' and src[pos + 2] == 'y' and src[pos + 3] == ' ';
+            }
+        }.call;
+
+        const isShortFormToken = struct {
+            fn call(src: []const u8, pos: usize) bool {
+                var seek = pos + 1;
+                var token = std.ArrayList(u8).init(std.heap.page_allocator);
+                defer token.deinit();
+
+                while (seek < src.len and std.ascii.isAlphabetic(src[seek])) {
+                    token.append(src[seek]) catch return false;
+                    seek += 1;
                 }
-                level -= 1;
-                if (!in_leaf_expr) {
-                    // Add newline and indentation before closing paren
-                    try out.append('\n');
-                    for (0..level * 4) |_| {
-                        try out.append(' ');
+
+                const token_str = token.items;
+                return std.mem.eql(u8, token_str, "font") or
+                    std.mem.eql(u8, token_str, "stroke") or
+                    std.mem.eql(u8, token_str, "fill") or
+                    std.mem.eql(u8, token_str, "teardrop") or
+                    std.mem.eql(u8, token_str, "offset") or
+                    std.mem.eql(u8, token_str, "rotate") or
+                    std.mem.eql(u8, token_str, "scale");
+            }
+        }.call;
+
+        while (cursor < source.len) {
+            const next = nextNonWhitespace(source, cursor);
+
+            if (isWhitespace(source[cursor]) and !in_quote) {
+                if (!has_inserted_space and // Only permit one space between chars
+                    list_depth > 0 and // Do not permit spaces in outer list
+                    last_non_whitespace != '(' and // Remove extra space after start of list
+                    next != ')' and // Remove extra space before end of list
+                    next != '(') // Remove extra space before newline
+                {
+                    if (in_xy or column < consecutive_token_wrap_threshold) {
+                        // Note that we only insert spaces here, no matter what kind of whitespace is
+                        // in the input. Newlines will be inserted as needed by the logic below.
+                        try formatted.append(' ');
+                        column += 1;
+                    } else if (in_short_form) {
+                        try formatted.append(' ');
+                    } else {
+                        try formatted.append('\n');
+                        for (0..list_depth * indent_size) |_| {
+                            try formatted.append(indent_char);
+                        }
+                        column = list_depth * indent_size;
+                        in_multi_line_list = true;
                     }
+                    has_inserted_space = true;
                 }
-                in_leaf_expr = false;
-                try out.append(c);
             } else {
-                try out.append(c);
+                has_inserted_space = false;
+
+                if (source[cursor] == '(' and !in_quote) {
+                    const current_is_xy = isXY(source, cursor);
+                    const current_is_short_form = compact_save and isShortFormToken(source, cursor);
+
+                    if (formatted.items.len == 0) {
+                        try formatted.append('(');
+                        column += 1;
+                    } else if (in_xy and current_is_xy and column < xy_special_case_column_limit) {
+                        // List-of-points special case
+                        try formatted.appendSlice(" (");
+                        column += 2;
+                    } else if (in_short_form) {
+                        try formatted.appendSlice(" (");
+                        column += 2;
+                    } else {
+                        try formatted.append('\n');
+                        for (0..list_depth * indent_size) |_| {
+                            try formatted.append(indent_char);
+                        }
+                        try formatted.append('(');
+                        column = list_depth * indent_size + 1;
+                    }
+
+                    in_xy = current_is_xy;
+
+                    if (current_is_short_form) {
+                        in_short_form = true;
+                        short_form_depth = list_depth;
+                    }
+
+                    list_depth += 1;
+                } else if (source[cursor] == ')' and !in_quote) {
+                    if (list_depth > 0) {
+                        list_depth -= 1;
+                    }
+
+                    if (in_short_form) {
+                        try formatted.append(')');
+                        column += 1;
+                    } else if (last_non_whitespace == ')' or in_multi_line_list) {
+                        try formatted.append('\n');
+                        for (0..list_depth * indent_size) |_| {
+                            try formatted.append(indent_char);
+                        }
+                        try formatted.append(')');
+                        column = list_depth * indent_size + 1;
+                        in_multi_line_list = false;
+                    } else {
+                        try formatted.append(')');
+                        column += 1;
+                    }
+
+                    if (short_form_depth == list_depth) {
+                        in_short_form = false;
+                        short_form_depth = 0;
+                    }
+                } else {
+                    // The output formatter escapes double-quotes (like \")
+                    // But a corner case is a sequence like \\"
+                    // therefore a '\' is attached to a '"' if a odd number of '\' is detected
+                    if (source[cursor] == '\\') {
+                        backslash_count += 1;
+                    } else if (source[cursor] == quote_char and (backslash_count & 1) == 0) {
+                        in_quote = !in_quote;
+                    }
+
+                    if (source[cursor] != '\\') {
+                        backslash_count = 0;
+                    }
+
+                    try formatted.append(source[cursor]);
+                    column += 1;
+                }
+
+                last_non_whitespace = source[cursor];
             }
+
+            cursor += 1;
         }
 
-        // Convert to string and process lines (similar to Python's final step)
-        const result_str = try out.toOwnedSlice();
+        // newline required at end of line / file for POSIX compliance. Keeps git diffs clean.
+        try formatted.append('\n');
 
-        // Split into lines and trim (except first line - KiCad workaround)
-        var lines = std.ArrayList([]const u8).init(allocator);
-        defer {
-            for (lines.items) |line| {
-                allocator.free(line);
-            }
-            lines.deinit();
-        }
-
-        var line_start: usize = 0;
-        var i: usize = 0;
-        while (i <= result_str.len) : (i += 1) {
-            if (i == result_str.len or result_str[i] == '\n') {
-                const line = result_str[line_start..i];
-                const trimmed_line = if (lines.items.len > 0)
-                    std.mem.trimRight(u8, line, " \t")
-                else
-                    line;
-                const owned_line = try allocator.dupe(u8, trimmed_line);
-                try lines.append(owned_line);
-                line_start = i + 1;
-            }
-        }
-
-        // Join lines with newlines
-        var final_result = std.ArrayList(u8).init(allocator);
-        defer final_result.deinit();
-
-        for (lines.items, 0..) |line, idx| {
-            if (idx > 0) {
-                try final_result.append('\n');
-            }
-            try final_result.appendSlice(line);
-        }
-
-        allocator.free(result_str);
-        return try final_result.toOwnedSlice();
+        return try formatted.toOwnedSlice();
     }
 
     pub fn str(self: SExp, writer: anytype) !void {
@@ -334,4 +427,24 @@ pub fn isForm(sexp: SExp, name: []const u8) bool {
     if (items.len == 0) return false;
     const sym = getSymbol(items[0]) orelse return false;
     return std.mem.eql(u8, sym, name);
+}
+
+// Check if a list is an XY coordinate (starts with "xy")
+pub fn isXYForm(sexp: SExp) bool {
+    return isForm(sexp, "xy");
+}
+
+// Check if a list is a short-form type (font, stroke, fill, etc.)
+pub fn isShortForm(sexp: SExp) bool {
+    const items = getList(sexp) orelse return false;
+    if (items.len == 0) return false;
+    const sym = getSymbol(items[0]) orelse return false;
+
+    return std.mem.eql(u8, sym, "font") or
+        std.mem.eql(u8, sym, "stroke") or
+        std.mem.eql(u8, sym, "fill") or
+        std.mem.eql(u8, sym, "teardrop") or
+        std.mem.eql(u8, sym, "offset") or
+        std.mem.eql(u8, sym, "rotate") or
+        std.mem.eql(u8, sym, "scale");
 }

@@ -190,6 +190,20 @@ def test_dump_load_equality(parser: type[kicad.types], path: Path):
     assert dump == dump2
 
 
+@pytest.mark.parametrize(
+    ("parser", "path"),
+    [
+        (kicad.pcb.PcbFile, PCBFILE),
+        (kicad.footprint.FootprintFile, FPFILE),
+    ],
+)
+def test_kicad_equal_format(parser: type[kicad.types], path: Path):
+    raw = path.read_text()
+    loaded = kicad.loads(parser, raw)
+    dump = kicad.dumps(loaded, Path("/tmp") / path.name if DUMP else None)
+    assert raw == dump
+
+
 def test_embedded():
     data = (
         "(kicad_pcb"
