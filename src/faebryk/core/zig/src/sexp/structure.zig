@@ -8,6 +8,12 @@ fn isOptional(comptime T: type) bool {
     return @typeInfo(T) == .optional;
 }
 
+pub const BooleanEncoding = enum {
+    yes_no,
+    symbol,
+    parantheses_symbol,
+};
+
 // Simplified field metadata
 pub const SexpField = struct {
     positional: bool = false,
@@ -15,6 +21,7 @@ pub const SexpField = struct {
     sexp_name: ?[]const u8 = null,
     order: i32 = 0,
     symbol: ?bool = null, // If true, encode strings as symbols (no quotes)
+    boolean_encoding: BooleanEncoding = .symbol,
 };
 
 fn _print_indent(writer: anytype, indent: usize) !void {
@@ -193,6 +200,7 @@ fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField 
             if (@hasField(@TypeOf(meta), "sexp_name")) result.sexp_name = meta.sexp_name;
             if (@hasField(@TypeOf(meta), "order")) result.order = meta.order;
             if (@hasField(@TypeOf(meta), "symbol")) result.symbol = meta.symbol;
+            if (@hasField(@TypeOf(meta), "boolean_encoding")) result.boolean_encoding = meta.boolean_encoding;
             return result;
         }
     }
@@ -437,7 +445,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                     .field_name = field.name,
                                     .sexp_preview = null,
                                 }, items[positional_idx]);
-                                @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], SexpField{});
+                                @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata);
                                 fields_set.set(field_idx);
                                 positional_idx += 1;
                             } else {
@@ -465,7 +473,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                         clearErrorContext();
 
                         // Try to decode this field
-                        if (decodeWithMetadata(field.type, allocator, items[positional_idx], SexpField{})) |value| {
+                        if (decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata)) |value| {
                             @field(result, field.name) = value;
                             fields_set.set(field_idx);
                             positional_idx += 1;
@@ -488,7 +496,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                         .field_name = field.name,
                         .sexp_preview = null,
                     }, items[positional_idx]);
-                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], SexpField{});
+                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata);
                     fields_set.set(field_idx);
                     positional_idx += 1;
                 }
@@ -537,8 +545,6 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
 
         if (ast.isList(items[i])) {
             const kv_items = ast.getList(items[i]).?;
-            if (kv_items.len < 2) continue;
-
             const key = ast.getSymbol(kv_items[0]) orelse continue;
 
             // Find matching field
@@ -571,7 +577,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                                 }, items[scan_idx]);
                                                 // For multidict entries, decode the rest as struct fields
                                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
-                                                const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, SexpField{});
+                                                const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
                                                 try values.append(scan_val);
                                             }
                                         }
@@ -598,11 +604,11 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                             @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or
                                 (@typeInfo(field.type) == .optional and
                                     @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
-                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, SexpField{})
+                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, field_metadata)
                             else if (kv_items.len == 2 and !isSlice(field.type, true))
-                                try decodeWithMetadata(field.type, allocator, kv_items[1], SexpField{})
+                                try decodeWithMetadata(field.type, allocator, kv_items[1], field_metadata)
                             else
-                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, SexpField{});
+                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, field_metadata);
                             fields_set.set(field_idx);
                         }
                     }
@@ -642,7 +648,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         .sexp_preview = null,
                                     }, item);
                                     // Parse the entire nested structure as the field value
-                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, item, SexpField{});
+                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, item, field_metadata);
                                     fields_set.set(field_idx);
                                     found_nested = true;
                                     break;
@@ -689,7 +695,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         .field_name = field.name,
                                         .sexp_preview = null,
                                     }, value_sexp);
-                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, SexpField{});
+                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, field_metadata);
                                     fields_set.set(field_idx);
                                     found_nested = true;
                                     break;
@@ -919,7 +925,18 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
 }
 
 fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
-    _ = metadata; // metadata not used for basic types
+    if (metadata.boolean_encoding == .parantheses_symbol) {
+        if (ast.getList(sexp)) |list| {
+            if (list.len == 0) return true;
+        }
+        const ctx = getErrorContext();
+        setErrorContext(.{
+            .path = if (ctx) |c| c.path else "bool",
+            .field_name = if (ctx) |c| c.field_name else null,
+            .sexp_preview = "expected list for parantheses boolean",
+        }, sexp);
+        return error.UnexpectedType;
+    }
     const sym = ast.getSymbol(sexp) orelse {
         // Get current context to preserve field name
         const ctx = getErrorContext();
@@ -979,13 +996,8 @@ fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
     return error.InvalidValue;
 }
 
-// Main encode function
-pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
-    return encodeWithMetadata(allocator, value, SexpField{});
-}
-
 // Main encode function with metadata
-pub fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
+pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
 
@@ -1030,7 +1042,7 @@ pub fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata
     switch (type_info) {
         .@"struct" => return try encodeStruct(allocator, value, metadata),
         .optional => {
-            if (value) |v| return try encodeWithMetadata(allocator, v, metadata);
+            if (value) |v| return try encode(allocator, v, metadata, name);
             return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
         },
         .pointer => |ptr| {
@@ -1038,7 +1050,7 @@ pub fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata
                 // Handle strings
                 return SExp{ .value = .{ .string = value }, .location = null };
             } else if (ptr.size == .slice) {
-                return try encodeSlice(allocator, value, metadata);
+                return try encodeSlice(allocator, value, metadata, name);
             }
             return error.InvalidType;
         },
@@ -1058,7 +1070,18 @@ pub fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata
             @memcpy(duped, str);
             return SExp{ .value = .{ .number = duped }, .location = null };
         },
-        .bool => return SExp{ .value = .{ .symbol = if (value) "yes" else "no" }, .location = null },
+        .bool => {
+            if (metadata.boolean_encoding == .parantheses_symbol) {
+                if (!value) {
+                    return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
+                }
+                const field_name = metadata.sexp_name orelse name;
+                var items = try allocator.alloc(SExp, 1);
+                items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                return SExp{ .value = .{ .list = items }, .location = null };
+            }
+            return SExp{ .value = .{ .symbol = if (value) "yes" else "no" }, .location = null };
+        },
         .@"enum" => {
             inline for (std.meta.fields(T)) |field| {
                 if (@intFromEnum(value) == field.value) {
@@ -1120,13 +1143,13 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
             // Handle optional positional fields differently
             if (comptime isOptional(field.type)) {
                 if (field_value) |val| {
-                    const encoded = try encodeWithMetadata(allocator, val, field_metadata);
+                    const encoded = try encode(allocator, val, field_metadata, field.name);
                     try items.append(encoded);
                 }
                 // Skip null optionals entirely
             } else {
                 if ((comptime isSlice(field.type, false)) and field_value.len == 0) {} else {
-                    const encoded = try encodeWithMetadata(allocator, field_value, field_metadata);
+                    const encoded = try encode(allocator, field_value, field_metadata, field.name);
                     try items.append(encoded);
                 }
             }
@@ -1146,7 +1169,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
                 if (comptime isSlice(@TypeOf(field_value), false)) {
                     for (field_value) |item| {
                         // Encode the item
-                        const encoded_item = try encodeWithMetadata(allocator, item, field_metadata_inner);
+                        const encoded_item = try encode(allocator, item, field_metadata_inner, field.name);
 
                         // For multidict structs, we want to unwrap the struct encoding
                         // and prepend the field name
@@ -1171,7 +1194,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
                 // Handle optional values
                 if (comptime isOptional(@TypeOf(field_value))) {
                     if (field_value) |val| {
-                        const encoded_val = try encodeWithMetadata(allocator, val, field_metadata_inner);
+                        const encoded_val = try encode(allocator, val, field_metadata_inner, field.name);
 
                         // Check if this is a slice or struct that should be unwrapped
                         if ((@typeInfo(@TypeOf(val)) == .pointer and
@@ -1203,7 +1226,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
                     }
                 } else {
                     // Check if we're encoding a struct (which would be a list)
-                    const encoded_value = try encodeWithMetadata(allocator, field_value, field_metadata_inner);
+                    const encoded_value = try encode(allocator, field_value, field_metadata_inner, field.name);
 
                     // If the field value is a struct (represented as a list), we need to flatten it
                     if (@typeInfo(@TypeOf(field_value)) == .@"struct") {
@@ -1269,11 +1292,19 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
                                 try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
                             }
                         } else {
-                            // Normal encoding for non-slice values
-                            var kv_items = try allocator.alloc(SExp, 2);
-                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                            kv_items[1] = encoded_value;
-                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                            if (@typeInfo(@TypeOf(field_value)) == .bool and field_metadata_inner.boolean_encoding == .parantheses_symbol) {
+                                if (field_value) {
+                                    try items.append(encoded_value);
+                                } else {
+                                    // free?
+                                }
+                            } else {
+                                // Normal encoding for non-slice values
+                                var kv_items = try allocator.alloc(SExp, 2);
+                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                                kv_items[1] = encoded_value;
+                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                            }
                         }
                     }
                 }
@@ -1284,10 +1315,10 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
     return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = null };
 }
 
-fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
+fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
     var items = try allocator.alloc(SExp, value.len);
     for (value, 0..) |item, i| {
-        items[i] = try encodeWithMetadata(allocator, item, metadata);
+        items[i] = try encode(allocator, item, metadata, name);
     }
     return SExp{ .value = .{ .list = items }, .location = null };
 }
@@ -1422,7 +1453,7 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
     defer arena.deinit();
 
     // Encode the data
-    const encoded = try encodeWithMetadata(arena.allocator(), data, SexpField{});
+    const encoded = try encode(arena.allocator(), data, SexpField{}, symbol_name);
 
     // The encoded result is a list of key-value pairs
     // We need to prepend the symbol name

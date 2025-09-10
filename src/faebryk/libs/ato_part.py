@@ -260,7 +260,7 @@ class AtoPart:
                         obj,
                         kicad.pcb.Property
                         if isinstance(obj, kicad.pcb.Footprint)
-                        else kicad.schematic.Property,
+                        else kicad.schematic.Property,  # type:ignore
                     )
                     return
                 raise _FileManuallyModified(

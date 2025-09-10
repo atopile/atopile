@@ -237,16 +237,9 @@ class SymbolUnit:
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
-class Power:
-    def __init__(self) -> None: ...
-    def __repr__(self) -> str: ...
-    @staticmethod
-    def __field_names__() -> list[str]: ...
-    def __zig_address__(self) -> int: ...
-
 class Symbol:
     name: str
-    power: Power | None
+    power: bool
     propertys: list[Property]
     pin_numbers: str | None
     pin_names: PinNames | None
@@ -259,7 +252,7 @@ class Symbol:
         self,
         *,
         name: str,
-        power: Power | None,
+        power: bool,
         propertys: list[Property],
         pin_numbers: str | None,
         pin_names: PinNames | None,

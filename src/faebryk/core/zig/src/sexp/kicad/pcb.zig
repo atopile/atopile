@@ -1034,12 +1034,12 @@ pub const KicadPcb = struct {
     dimensions: []Dimension = &.{},
     groups: []Group = &.{},
     targets: []Target = &.{},
-    // TODO:
-    // embedded_fonts: bool,
-    // embedded_files: EmbeddedFiles,
+    embedded_fonts: ?bool = null,
+    embedded_files: ?EmbeddedFiles = null,
+    // TODO: something broken with Margins
     //gr_text_boxes: []TextBox = &.{},
-    // tables: []Table = &.{},
-    // generateds: []Generated = &.{},
+    //tables: []Table = &.{},
+    generateds: []Generated = &.{},
 
     pub const fields_meta = .{
         // Note: layers is NOT multidict - it's a single (layers ...) entry containing multiple Layer items
@@ -1061,30 +1061,32 @@ pub const KicadPcb = struct {
         .dimensions = structure.SexpField{ .multidict = true, .sexp_name = "dimension" },
         .groups = structure.SexpField{ .multidict = true, .sexp_name = "group" },
         .targets = structure.SexpField{ .multidict = true, .sexp_name = "target" },
+        .generateds = structure.SexpField{ .multidict = true, .sexp_name = "generated" },
+        .tables = structure.SexpField{ .multidict = true, .sexp_name = "table" },
     };
 };
 
-// Additional structures referenced but not fully defined above
-pub const Data = struct {
-    data: str, // base64 encoded data
-
-    pub const fields_meta = .{
-        .data = structure.SexpField{ .positional = true },
-    };
+pub const Generated = struct {
+    uuid: str,
+    type: str,
+    name: str,
+    layer: str,
+    members: []str = &.{},
+    locked: ?bool = null,
 };
 
 pub const Image = struct {
     at: Xy,
     layer: str,
     scale: f64 = 1.0,
-    data: ?Data = null,
+    data: []str = &.{},
     uuid: ?str = null,
 };
 
 pub const EmbeddedFile = struct {
     name: str,
     type: E_embedded_file_type,
-    data: ?Data = null,
+    data: []str = &.{},
     checksum: ?str = null,
 };
 

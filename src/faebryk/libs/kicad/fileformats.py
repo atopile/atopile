@@ -1209,6 +1209,31 @@ class kicad:
         #    print(name, value)
         return t(**copied)
 
+    @staticmethod
+    def decompress(data: list[str]) -> bytes:
+        from base64 import b64decode
+
+        import zstd
+
+        merged = "".join(str(v) for v in data)
+        assert merged.startswith("|") and merged.endswith("|")
+        return zstd.decompress(b64decode(merged[1:-1]))
+
+    @staticmethod
+    def compress(data: bytes) -> list[str]:
+        from base64 import b64encode
+
+        import zstd
+
+        # from kicad:common/embedded_files.cpp
+        b64 = b64encode(zstd.compress(data)).decode()
+        CHUNK_LEN = 76
+        # chunk string to 76 characters
+        chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
+        chunks[0] = "|" + chunks[0]
+        chunks[-1] = chunks[-1] + "|"
+        return chunks
+
 
 class Property:
     class _Property(Protocol):

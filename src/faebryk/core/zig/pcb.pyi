@@ -694,15 +694,6 @@ class Model:
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
-class Attr:
-    attr: list[str]
-
-    def __init__(self, *, attr: list[str]) -> None: ...
-    def __repr__(self) -> str: ...
-    @staticmethod
-    def __field_names__() -> list[str]: ...
-    def __zig_address__(self) -> int: ...
-
 class Footprint:
     name: str
     layer: str
@@ -1352,6 +1343,9 @@ class KicadPcb:
     dimensions: list[Dimension]
     groups: list[Group]
     targets: list[Target]
+    embedded_fonts: bool | None
+    embedded_files: EmbeddedFiles | None
+    generateds: list[Generated]
 
     def __init__(
         self,
@@ -1381,16 +1375,33 @@ class KicadPcb:
         dimensions: list[Dimension],
         groups: list[Group],
         targets: list[Target],
+        embedded_fonts: bool | None,
+        embedded_files: EmbeddedFiles | None,
+        generateds: list[Generated],
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
-class Data:
-    data: str
+class Generated:
+    uuid: str
+    type: str
+    name: str
+    layer: str
+    members: list[str]
+    locked: bool | None
 
-    def __init__(self, *, data: str) -> None: ...
+    def __init__(
+        self,
+        *,
+        uuid: str,
+        type: str,
+        name: str,
+        layer: str,
+        members: list[str],
+        locked: bool | None,
+    ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
     def __field_names__() -> list[str]: ...
@@ -1400,11 +1411,11 @@ class Image:
     at: Xy
     layer: str
     scale: float
-    data: Data | None
+    data: list[str]
     uuid: str | None
 
     def __init__(
-        self, *, at: Xy, layer: str, scale: float, data: Data | None, uuid: str | None
+        self, *, at: Xy, layer: str, scale: float, data: list[str], uuid: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
@@ -1414,11 +1425,11 @@ class Image:
 class EmbeddedFile:
     name: str
     type: str
-    data: Data | None
+    data: list[str]
     checksum: str | None
 
     def __init__(
-        self, *, name: str, type: str, data: Data | None, checksum: str | None
+        self, *, name: str, type: str, data: list[str], checksum: str | None
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

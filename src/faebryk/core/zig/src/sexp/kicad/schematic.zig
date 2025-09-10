@@ -194,11 +194,9 @@ pub const SymbolUnit = struct {
     };
 };
 
-pub const Power = struct {};
-
 pub const Symbol = struct {
     name: str,
-    power: ?Power = null,
+    power: bool = false,
     propertys: []Property = &.{},
     pin_numbers: ?E_hide = null,
     pin_names: ?PinNames = null,
@@ -211,6 +209,7 @@ pub const Symbol = struct {
         .name = structure.SexpField{ .positional = true },
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
         .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
+        .power = structure.SexpField{ .boolean_encoding = .parantheses_symbol },
     };
 };
 
@@ -239,6 +238,7 @@ pub const SymbolInstance = struct {
     pub const fields_meta = .{
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
         .pins = structure.SexpField{ .multidict = true, .sexp_name = "pin" },
+        .fields_autoplaced = structure.SexpField{ .boolean_encoding = .parantheses_symbol },
     };
 };
 
@@ -292,6 +292,7 @@ pub const Sheet = struct {
     pub const fields_meta = .{
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
         .pins = structure.SexpField{ .multidict = true, .sexp_name = "pin" },
+        .fields_autoplaced = structure.SexpField{ .boolean_encoding = .parantheses_symbol },
     };
 };
 
@@ -307,6 +308,7 @@ pub const GlobalLabel = struct {
     pub const fields_meta = .{
         .text = structure.SexpField{ .positional = true },
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
+        .fields_autoplaced = structure.SexpField{ .boolean_encoding = .parantheses_symbol },
     };
 };
 

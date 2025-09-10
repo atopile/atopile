@@ -32,7 +32,7 @@ pub const SymbolUnit = struct {
 
 pub const Symbol = struct {
     name: str,
-    power: ?schematic.Power = null,
+    power: bool = false,
     propertys: []schematic.Property = &.{},
     pin_numbers: ?schematic.E_hide = null,
     pin_names: ?schematic.PinNames = null,
@@ -45,6 +45,7 @@ pub const Symbol = struct {
         .name = structure.SexpField{ .positional = true },
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
         .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
+        .power = structure.SexpField{ .boolean_encoding = .parantheses_symbol },
     };
 };
 

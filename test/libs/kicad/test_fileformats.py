@@ -61,8 +61,8 @@ def test_parser_project():
 
 def test_parser_schematics():
     sch = kicad.loads(kicad.schematic.SchematicFile, SCHFILE)
-    assert kicad.get(sch.kicad_sch.lib_symbols.symbols, "power:GND").power is not None
-    assert kicad.get(sch.kicad_sch.lib_symbols.symbols, "Device:R").power is None
+    assert kicad.get(sch.kicad_sch.lib_symbols.symbols, "power:GND").power
+    assert not kicad.get(sch.kicad_sch.lib_symbols.symbols, "Device:R").power
     assert (
         Property.get_property(
             kicad.get(
@@ -72,6 +72,9 @@ def test_parser_schematics():
         )
         == "http://www.ti.com/lit/ds/symlink/lm4990.pdf"
     )
+
+    # TODO remove
+    print(kicad.dumps(sch))
 
 
 def test_parser_symbols():
@@ -192,43 +195,61 @@ def test_dump_load_equality(parser: type[kicad.types], path: Path):
 
 def test_embedded():
     data = (
-        "(file"
-        '    (name "TCA9548APWR.kicad_sym")'
-        "    (type other)"
-        "    (data |KLUv/WCvPs0aACZjbCEA0zzzfQvw6FfUhoV7zwkZml8H6u0W2CGvs/b+/6/+twJfAGYAYAAObZxD"  # noqa: E501
-        "        yaFx2w/DxyoZmF75rlPl4JXc3R+RR2/x6w+/Eflm679kfZHc3d3doagRYQy2CwsMOEfkUWWjJV/D"  # noqa: E501
-        "        yHXeVT/+ieTuDk3Tcb6j/ozk7g5JrviJWWLZjB9Y7a1IART5IRzfyCEoeyc5ARBv3Q9S22JAgCVb"  # noqa: E501
-        "        aUcrAgCC8bI35Z8y1l278TcBTE5KE4TMS1BYJisGdckrQm1SS3wXpRgLz3MIMlpV1uQijza++rJz"  # noqa: E501
-        "        NlAzeoxYIRM0ZewPXoo0aVROf84dpZisJxVbJRStpDY9m7KalG9dX5zguu3r6XHGonjDynUWs90i"  # noqa: E501
-        "        poYP+l82e6qcssGr+UrWe5wYiB/TJDY9sMmNcv0bv33R6mvnV32grlmyZMmHr5bJDNOV4ZzHJawp"  # noqa: E501
-        "        L0u07BM0XZTjIHTQ0QRHB5TTuizDMO7aZqc4UJxXTavzAhy10U7jqGx2GDc3aV2dh1kyszyOgldo"  # noqa: E501
-        "        dD50WpecM3L9EgsmqgaRv6XiC5PUKXuCX5S0gLSma5JWfEUH/4bX/mXEGMf3AuKAmKBxvUMkI7MF"  # noqa: E501
-        "        RaksB2CGyJAMEXeFAa4pQQal4Eipik5DNTKpzqJJVHjaVCM7tdOvgDbEp1FVmQhT8GkV0AaiqpSJ"  # noqa: E501
-        "        qspeugUi1KKiDMoWoUAbBKihUmZKTO6NMkB4mlTLRRWStChGEJwWlTIoSSTk1rcBItOkWi5VFAlJ"  # noqa: E501
-        "        ajaCsDSpmEvJEcqZvQFC0qZaNhVv9k9FxgExaaRWuSgWjZGwgLSoNxsRpZxoJV0gxFRBNhQx31IW"  # noqa: E501
-        "        pbpcKWa0SlWgCvmoKxYSFqguH8WILFVxVchRz8ctaxVWL4PqD+GpCqgpIxtquPMKVj0ZyagthJfj"  # noqa: E501
-        "        r1VYjQw1f+cPGalR10ChTvresEJU9OXLjQLEpx+xCXHglqVAibcltepsEqsSStOjsaOiNvOWHg5G"  # noqa: E501
-        "        V6c/0F0aOmouAi+ywtzqa8sQGap9mMJdrKy3SwekXiYUk56peJepoJu+GM0OSHl/ombFd/pwZOOk"  # noqa: E501
-        "        Tl3FyynP6mQeT1GLGX9FSA24ETWdXAp/hzgeDkegljsUTt+G2Tyc7Bloulah7IHoXIAwuSQSnXSb"  # noqa: E501
-        "        p1lOLwTtiwntzFQB|"
+        "(kicad_pcb"
+        "    (version 20241229)"
+        "    (generator test_atopile)"
+        "    (generator_version latest)"
+        "    (embedded_files"
+        "       (file"
+        '           (name "TCA9548APWR.kicad_sym")'
+        "           (type other)"
+        "           (data |KLUv/WCvPs0aACZjbCEA0zzzfQvw6FfUhoV7zwkZml8H6u0W2CGvs/b+/6/+twJfAGYAYAAObZxD"  # noqa: E501
+        "               yaFx2w/DxyoZmF75rlPl4JXc3R+RR2/x6w+/Eflm679kfZHc3d3doagRYQy2CwsMOEfkUWWjJV/D"  # noqa: E501
+        "               yHXeVT/+ieTuDk3Tcb6j/ozk7g5JrviJWWLZjB9Y7a1IART5IRzfyCEoeyc5ARBv3Q9S22JAgCVb"  # noqa: E501
+        "               aUcrAgCC8bI35Z8y1l278TcBTE5KE4TMS1BYJisGdckrQm1SS3wXpRgLz3MIMlpV1uQijza++rJz"  # noqa: E501
+        "               NlAzeoxYIRM0ZewPXoo0aVROf84dpZisJxVbJRStpDY9m7KalG9dX5zguu3r6XHGonjDynUWs90i"  # noqa: E501
+        "               poYP+l82e6qcssGr+UrWe5wYiB/TJDY9sMmNcv0bv33R6mvnV32grlmyZMmHr5bJDNOV4ZzHJawp"  # noqa: E501
+        "               L0u07BM0XZTjIHTQ0QRHB5TTuizDMO7aZqc4UJxXTavzAhy10U7jqGx2GDc3aV2dh1kyszyOgldo"  # noqa: E501
+        "               dD50WpecM3L9EgsmqgaRv6XiC5PUKXuCX5S0gLSma5JWfEUH/4bX/mXEGMf3AuKAmKBxvUMkI7MF"  # noqa: E501
+        "               RaksB2CGyJAMEXeFAa4pQQal4Eipik5DNTKpzqJJVHjaVCM7tdOvgDbEp1FVmQhT8GkV0AaiqpSJ"  # noqa: E501
+        "               qspeugUi1KKiDMoWoUAbBKihUmZKTO6NMkB4mlTLRRWStChGEJwWlTIoSSTk1rcBItOkWi5VFAlJ"  # noqa: E501
+        "               ajaCsDSpmEvJEcqZvQFC0qZaNhVv9k9FxgExaaRWuSgWjZGwgLSoNxsRpZxoJV0gxFRBNhQx31IW"  # noqa: E501
+        "               pbpcKWa0SlWgCvmoKxYSFqguH8WILFVxVchRz8ctaxVWL4PqD+GpCqgpIxtquPMKVj0ZyagthJfj"  # noqa: E501
+        "               r1VYjQw1f+cPGalR10ChTvresEJU9OXLjQLEpx+xCXHglqVAibcltepsEqsSStOjsaOiNvOWHg5G"  # noqa: E501
+        "               V6c/0F0aOmouAi+ywtzqa8sQGap9mMJdrKy3SwekXiYUk56peJepoJu+GM0OSHl/ombFd/pwZOOk"  # noqa: E501
+        "               Tl3FyynP6mQeT1GLGX9FSA24ETWdXAp/hzgeDkegljsUTt+G2Tyc7Bloulah7IHoXIAwuSQSnXSb"  # noqa: E501
+        "               p1lOLwTtiwntzFQB|"
+        "           )"
+        '           (checksum "93211F8E59511F34A759EE478AABDE93")'
+        "       )"
         "    )"
-        '    (checksum "93211F8E59511F34A759EE478AABDE93")'
         ")"
     )
+    from faebryk.libs.kicad.fileformats import kicad
 
-    from faebryk.libs.sexp.dataclass_sexp import dumps, loads
+    pcb = kicad.loads(kicad.pcb.PcbFile, data)
 
-    sexp = loads(data, C_embedded_files)
-    s_data = not_none(sexp.files["TCA9548APWR.kicad_sym"].data)
-    text = s_data.uncompressed.decode("utf-8")
+    s_data = not_none(
+        kicad.get(
+            not_none(pcb.kicad_pcb.embedded_files).files, "TCA9548APWR.kicad_sym"
+        ).data
+    )
+    text = kicad.decompress(s_data).decode("utf-8")
 
     assert 'symbol "TCA9548APWR"' in text
 
-    encoded = dumps(sexp)
+    encoded = kicad.dumps(pcb)
 
-    sexp2 = loads(encoded, C_embedded_files)
+    sexp2 = kicad.loads(kicad.pcb.PcbFile, encoded)
     assert (
-        not_none(sexp2.files["TCA9548APWR.kicad_sym"].data).uncompressed.decode("utf-8")
+        kicad.decompress(
+            not_none(
+                kicad.get(
+                    not_none(sexp2.kicad_pcb.embedded_files).files,
+                    "TCA9548APWR.kicad_sym",
+                ).data
+            )
+        ).decode("utf-8")
         == text
     )
 
