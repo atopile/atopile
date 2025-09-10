@@ -302,34 +302,6 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
         }
     }
 
-    // Special case for single-field structs (but not for structs with positional fields)
-    // This handles cases like Effects{font: Font} receiving (font ...)
-    if (non_optional_non_default_count == 1 and items.len == 1 and !has_positional_fields) {
-        // Only apply if we have exactly one item and it's a list starting with the field name
-        if (ast.isList(items[0])) {
-            const item_list = ast.getList(items[0]).?;
-            if (item_list.len > 0 and ast.getSymbol(item_list[0]) != null) {
-                const sym = ast.getSymbol(item_list[0]).?;
-                inline for (fields) |field| {
-                    if (comptime std.mem.eql(u8, field.name, single_field_name.?)) {
-                        const field_metadata = comptime getSexpMetadata(T, field.name);
-                        const field_name = field_metadata.sexp_name orelse field.name;
-                        if (std.mem.eql(u8, sym, field_name)) {
-                            // The symbol matches the single field name
-                            // Pass the rest of the list (after the field name) to decode
-                            const value_sexp = if (item_list.len > 1)
-                                SExp{ .value = .{ .list = item_list[1..] }, .location = null }
-                            else
-                                SExp{ .value = .{ .list = &.{} }, .location = null };
-                            @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, SexpField{});
-                            return result;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
 
@@ -810,24 +782,6 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, me
     if (ast.isList(sexp)) {
         const items = ast.getList(sexp).?;
         if (items.len == 0) return null;
-
-        // For struct types with a single-element list
-        if (@typeInfo(T) == .@"struct" and items.len == 1) {
-            // Check if the single element is a list that looks like a complete struct
-            // (has multiple key-value pairs or is empty)
-            if (ast.isList(items[0])) {
-                const inner_list = ast.getList(items[0]).?;
-                // Only unwrap if this looks like a single complete struct representation
-                // not a single key-value pair like (clearance 0.5)
-                if (inner_list.len == 0 or inner_list.len > 2 or
-                    (inner_list.len > 0 and ast.getSymbol(inner_list[0]) == null))
-                {
-                    // This looks like a complete struct, unwrap it
-                    return try decodeWithMetadata(T, allocator, items[0], metadata);
-                }
-            }
-            // Otherwise keep it as a list for the struct decoder
-        }
     }
     return try decodeWithMetadata(T, allocator, sexp, metadata);
 }
@@ -1097,7 +1051,9 @@ pub fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata
         },
         .float => {
             var buf: [32]u8 = undefined;
-            const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
+            // round float to 10 decimal places
+            const rounded = std.math.round(value * 10e10) / 10e10;
+            const str = std.fmt.bufPrint(&buf, "{d}", .{rounded}) catch return error.OutOfMemory;
             const duped = try allocator.alloc(u8, str.len);
             @memcpy(duped, str);
             return SExp{ .value = .{ .number = duped }, .location = null };

@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import copy
 import logging
 
 from atopile.config import config as gcfg
@@ -100,7 +99,7 @@ class LayoutSync:
 
     def sync_groups(self):
         """Synchronize groups based on the layout map."""
-        self._old_groups = {g.name: copy.deepcopy(g) for g in self.pcb.groups if g.name}
+        self._old_groups = {g.name: kicad.copy(g) for g in self.pcb.groups if g.name}
         groups = {g.name: g for g in self.pcb.groups if g.name}
         atopile_footprints = {
             addr: fp

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from pathlib import Path
 import re
+from pathlib import Path
 
 import pytest
 
@@ -144,15 +144,18 @@ def test_empty_enum_positional():
     )
 
     def _effects(pcb: kicad.pcb.PcbFile):
-        return Property.get_property_obj(
-            kicad.get(pcb.kicad_pcb.footprints, "logos:faebryk_logo").propertys,
-            "Datasheet",
-        ).effects
+        return not_none(
+            Property.get_property_obj(
+                kicad.get(pcb.kicad_pcb.footprints, "logos:faebryk_logo").propertys,
+                "Datasheet",
+            ).effects
+        )
 
-    _effects(pcb).justifys.append(
-        kicad.pcb.Justify(justify1=kicad.pcb.E_justify.center_horizontal)
+    _effects(pcb).justify = kicad.pcb.Justify(
+        justify1=None, justify2=None, justify3=None
     )
-    _effects(pcb).justifys.append(kicad.pcb.Justify(justify1=kicad.pcb.E_justify.top))
+    not_none(_effects(pcb).justify).justify1 = ""
+    not_none(_effects(pcb).justify).justify2 = kicad.pcb.E_justify.TOP
 
     pcb_reload = kicad.loads(kicad.pcb.PcbFile, kicad.dumps(pcb))
 
@@ -160,9 +163,9 @@ def test_empty_enum_positional():
 
     # empty center string ignored
     # Check that justifys were added correctly
-    assert len(_effects(pcb).justifys) == 2
-    assert _effects(pcb).justifys[0].justify1 == kicad.pcb.E_justify.center_horizontal
-    assert _effects(pcb).justifys[1].justify1 == kicad.pcb.E_justify.top
+    assert not_none(_effects(pcb).justify).justify1 == ""
+    assert not_none(_effects(pcb).justify).justify2 == kicad.pcb.E_justify.TOP
+    assert not_none(_effects(pcb).justify).justify3 is None
 
 
 @pytest.mark.parametrize(
@@ -181,7 +184,9 @@ def test_dump_load_equality(parser: type[kicad.types], path: Path):
     loaded = kicad.loads(parser, path)
     dump = kicad.dumps(loaded, Path("/tmp") / path.name if DUMP else None)
     loaded_dump = kicad.loads(parser, dump)
-    dump2 = kicad.dumps(loaded_dump)
+    dump2 = kicad.dumps(
+        loaded_dump, Path("/tmp") / (path.name + ".dump") if DUMP else None
+    )
     assert dump == dump2
 
 
@@ -330,3 +335,73 @@ def test_list_struct_positional():
         ),
     )
     assert '(layers (0 "F.Cu" signal) (1 "B.Cu" signal))' in dumped
+
+
+def test_multidict_single():
+    sexp = """
+    (export (version "E")
+        (libparts
+            (libpart (lib "Connector") (part "TestPoint")
+                (pins
+                    (pin (num "1") (name "1") (type "passive"))
+                )
+            )
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    netlist = kicad.loads(kicad.netlist.NetlistFile, sexp)
+    assert not_none(netlist.netlist.libparts.libparts[0].pins).pin[0].num == "1"
+
+
+def test_multidict_multi():
+    sexp = """
+    (export (version "E")
+        (libparts
+            (libpart (lib "Connector") (part "TestPoint")
+                (pins
+                    (pin (num "1") (name "1") (type "passive"))
+                    (pin (num "2") (name "2") (type "passive"))
+                )
+            )
+        )
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    netlist = kicad.loads(kicad.netlist.NetlistFile, sexp)
+    assert not_none(netlist.netlist.libparts.libparts[0].pins).pin[0].num == "1"
+    assert not_none(netlist.netlist.libparts.libparts[0].pins).pin[1].num == "2"
+
+
+# def test_multidict_empty():
+#    sexp = """
+#    (export (version "E")
+#        (libparts
+#            (libpart (lib "Connector") (part "TestPoint")
+#                (pins
+#                )
+#            )
+#        )
+#    )
+#    """
+#    from faebryk.libs.kicad.fileformats import kicad
+#
+#    netlist = kicad.loads(kicad.netlist.NetlistFile, sexp)
+#    assert len(not_none(netlist.netlist.libparts.libparts[0].pins).pin) == 0
+
+
+def test_multidict_none():
+    sexp = """
+   (export (version "E")
+       (libparts
+           (libpart (lib "Connector") (part "TestPoint")
+           )
+       )
+   )
+   """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    netlist = kicad.loads(kicad.netlist.NetlistFile, sexp)
+    assert netlist.netlist.libparts.libparts[0].pins is None

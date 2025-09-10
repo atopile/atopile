@@ -48,11 +48,9 @@ C_wh = kicad.pcb.Wh
 Point = Geometry.Point
 Point2D = Geometry.Point2D
 
-# TODO
-# Justify = kicad.schematic.E_justify
-Justify = int
+type Justify = kicad.pcb.E_justify | str
 Alignment = tuple[Justify, Justify, Justify]
-# Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
+Alignment_Default = ("", "", "")
 
 
 def gen_uuid(mark: str = "") -> UUID:
@@ -368,7 +366,13 @@ class SchTransformer:
                 at=at,
                 effects=kicad.pcb.Effects(
                     font=font,
-                    justifys=[C_justify(list(alignment))] if alignment else [],
+                    justify=kicad.pcb.Justify(
+                        justify1=alignment[0],
+                        justify2=alignment[1],
+                        justify3=alignment[2],
+                    )
+                    if alignment
+                    else None,
                     hide=None,
                 ),
                 uuid=self.gen_uuid(mark=True),
@@ -446,7 +450,7 @@ class SchTransformer:
                         name="Reference",
                         value=reference_name,
                         id=None,
-                        at=None,
+                        at=C_xyr(x=0, y=0, r=0),
                         effects=None,
                     ),
                 )

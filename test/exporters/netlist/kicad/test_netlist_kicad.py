@@ -136,7 +136,7 @@ def netlist_manu():
                         ref="R1",
                         value="100Ω",
                         footprint="Resistor_SMD:R_0805_2012Metric",
-                        tstamps=str(next(tstamp)),
+                        tstamps=[str(next(tstamp))],
                         fields=N.Fields(fields=[]),
                         propertys=[],
                         datasheet=None,
@@ -147,7 +147,7 @@ def netlist_manu():
                         ref="R2",
                         value="200Ω",
                         footprint="Resistor_SMD:R_0805_2012Metric",
-                        tstamps=str(next(tstamp)),
+                        tstamps=[str(next(tstamp))],
                         fields=N.Fields(fields=[]),
                         propertys=[],
                         datasheet=None,
@@ -159,7 +159,7 @@ def netlist_manu():
             nets=N.Nets(
                 nets=[
                     N.Net(
-                        code=1,
+                        code="1",
                         name="+3V3",
                         nodes=[
                             N.Node(
@@ -177,7 +177,7 @@ def netlist_manu():
                         ],
                     ),
                     N.Net(
-                        code=2,
+                        code="2",
                         name="GND",
                         nodes=[
                             N.Node(
