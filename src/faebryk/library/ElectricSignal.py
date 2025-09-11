@@ -123,9 +123,33 @@ class ElectricSignal(F.Signal):
         elif len(resistors) == 1:
             return resistors[0].resistance.try_get_literal_subset()
         else:
-            # cannot determine effective resistance of multiple resistors without
-            # inspecting circuit topology
-            return None
+            # Calculate effective parallel resistance: 1/R_eff = 1/R1 + 1/R2 + ...
+            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+            try:
+                # Start with 1/R1
+                reciprocal_sum = None
+                for resistor in resistors:
+                    resistance_subset = resistor.resistance.try_get_literal_subset()
+                    if resistance_subset is None:
+                        # If any resistor's value cannot be determined, return None
+                        return None
+
+                    # Calculate 1/R for this resistor
+                    reciprocal = resistance_subset.op_invert()
+
+                    if reciprocal_sum is None:
+                        reciprocal_sum = reciprocal
+                    else:
+                        reciprocal_sum = reciprocal_sum + reciprocal
+
+                # Calculate R_eff = 1 / reciprocal_sum
+                if reciprocal_sum is not None:
+                    return reciprocal_sum.op_invert()
+                else:
+                    return None
+            except (ValueError, ZeroDivisionError):
+                # If calculation fails (e.g., zero resistance), return None
+                return None
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
