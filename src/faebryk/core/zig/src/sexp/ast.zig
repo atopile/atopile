@@ -32,7 +32,30 @@ pub const SExp = struct {
                 }
                 allocator.free(children);
             },
-            else => {},
+            .string => |string_val| {
+                // Free the duplicated string
+                if (string_val.len > 0) {
+                    allocator.free(string_val);
+                }
+            },
+            .symbol => |sym| {
+                // Free the duplicated symbol
+                if (sym.len > 0) {
+                    allocator.free(sym);
+                }
+            },
+            .number => |num| {
+                // Free the duplicated number
+                if (num.len > 0) {
+                    allocator.free(num);
+                }
+            },
+            .comment => |comment| {
+                // Free the duplicated comment
+                if (comment.len > 0) {
+                    allocator.free(comment);
+                }
+            },
         }
     }
 
@@ -327,10 +350,33 @@ pub const Parser = struct {
         switch (token.type) {
             .lparen => return try self.parseList(token.location),
             .rparen => return error.UnexpectedRightParen,
-            .symbol => return SExp{ .value = .{ .symbol = token.value }, .location = token.location },
-            .number => return SExp{ .value = .{ .number = token.value }, .location = token.location },
-            .string => return SExp{ .value = .{ .string = try _unescape_string(self.allocator, token.value) }, .location = token.location },
-            .comment => return SExp{ .value = .{ .comment = token.value }, .location = token.location },
+            .symbol => {
+                // CRITICAL FIX: Duplicate symbol to prevent use-after-free
+                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
+                @memcpy(duped, token.value);
+                return SExp{ .value = .{ .symbol = duped }, .location = token.location };
+            },
+            .number => {
+                // CRITICAL FIX: Duplicate number to prevent use-after-free
+                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
+                @memcpy(duped, token.value);
+                return SExp{ .value = .{ .number = duped }, .location = token.location };
+            },
+            .string => {
+                // CRITICAL FIX: Duplicate string to prevent use-after-free
+                // token.value points to the input buffer which may be freed later
+                const val = try _unescape_string(self.allocator, token.value);
+                const duped = self.allocator.alloc(u8, val.len) catch return error.OutOfMemory;
+                @memcpy(duped, val);
+                return SExp{ .value = .{ .string = duped }, .location = token.location };
+            },
+            //.string => return SExp{ .value = .{ .string = try _unescape_string(self.allocator, token.value) }, .location = token.location },
+            .comment => {
+                // CRITICAL FIX: Duplicate comment to prevent use-after-free
+                const duped = self.allocator.alloc(u8, token.value.len) catch return error.OutOfMemory;
+                @memcpy(duped, token.value);
+                return SExp{ .value = .{ .comment = duped }, .location = token.location };
+            },
         }
     }
 

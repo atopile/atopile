@@ -603,9 +603,10 @@ class PartLifecycle:
                 new_fp = True
 
             def _get_prop_uuid(name: str) -> str | None:
-                if name in pcb_fp.propertys:
-                    return pcb_fp.propertys[name].uuid
-                return None
+                try:
+                    return Property.get_property_obj(pcb_fp.propertys, name).uuid
+                except Property.PropertyNotSet:
+                    return None
 
             ## Apply propertys, Reference and atopile_address
             property_values = {}

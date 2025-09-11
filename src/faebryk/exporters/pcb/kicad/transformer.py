@@ -1831,10 +1831,12 @@ class PCB_Transformer:
             )
             for p in lib_footprint.pads
         ]
-        updates["propertys"] = {
-            *footprint.propertys,
-            *updates["propertys"],
+
+        props = {p.name: p for p in footprint.propertys} | {
+            p.name: p for p in updates["propertys"]
         }
+        updates["propertys"] = list(props.values())
+
         for name, update in updates.items():
             setattr(footprint, name, update)
 

@@ -396,6 +396,7 @@ pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
                 @field(obj.data.*, field_name_str)
             else
                 @field(obj.top.*, field_name_str);
+
             // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
             return py.PyUnicode_FromStringAndSize(val.ptr, @intCast(val.len));
         }
@@ -670,7 +671,11 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     if (ptr.size == .slice and ptr.child == u8) {
                         const new_val = py.PyUnicode_AsUTF8(value);
                         if (new_val == null) return -1;
-                        @field(obj.data.*, field_name_str) = std.mem.span(new_val.?);
+                        // CRITICAL FIX: Duplicate Python string instead of storing pointer to Python's buffer
+                        // Python can move or free its internal string buffer during GC
+                        const str_slice = std.mem.span(new_val.?);
+                        const str_copy = std.heap.c_allocator.dupe(u8, str_slice) catch return -1;
+                        @field(obj.data.*, field_name_str) = str_copy;
                     }
                 },
                 .@"enum" => {
@@ -1072,11 +1077,17 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                 }
 
                 if (value == null) {
-                    // Check if field has a default value
+                    // Check if field has a default value or is optional
+                    const field_info = @typeInfo(field.type);
+                    const is_optional = field_info == .optional;
+
                     if (field.default_value_ptr) |default_ptr| {
                         // Use the default value from the Zig struct
                         const default_value = @as(*const field.type, @ptrCast(@alignCast(default_ptr))).*;
                         @field(wrapper_obj.data.*, field.name) = default_value;
+                    } else if (is_optional) {
+                        // Optional field without explicit default - set to null
+                        @field(wrapper_obj.data.*, field.name) = null;
                     } else {
                         // Field is required but not provided and has no default
                         var error_msg: [256]u8 = undefined;

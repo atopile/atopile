@@ -799,6 +799,7 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metad
     if (child_type == u8) {
         switch (sexp.value) {
             .string => |str| {
+                // Duplicate strings to ensure proper memory ownership
                 const duped = try allocator.alloc(u8, str.len);
                 @memcpy(duped, str);
                 return duped;
