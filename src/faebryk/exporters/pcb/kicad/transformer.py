@@ -286,9 +286,9 @@ class PCB_Transformer:
         # Now, try to map between the footprints and the layout
         footprint_map: dict[Module, Footprint] = {}
         fps_by_atopile_addr = {
-            Property.get_property(f.propertys, "atopile_address"): f
+            addr: f
             for f in pcb.footprints
-            if "atopile_address" in f.propertys
+            if (addr := Property.try_get_property(f.propertys, "atopile_address"))
         }
         fps_by_path = {f.path: f for f in pcb.footprints if f.path is not None}
 

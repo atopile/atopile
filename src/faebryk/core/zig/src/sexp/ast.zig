@@ -268,6 +268,8 @@ pub const SExp = struct {
     }
 };
 
+// TODO: string escaping is super slow, consider using single quotes instead in the params
+
 // Helper function to escape quotes in strings
 fn _write_escaped_string(str: []const u8, writer: anytype) !void {
     // Count the number of quotes to determine the required size
@@ -279,6 +281,19 @@ fn _write_escaped_string(str: []const u8, writer: anytype) !void {
         last_char = c;
     }
     try writer.writeByte('"');
+}
+
+fn _unescape_string(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
+    var unescaped = std.ArrayList(u8).init(allocator);
+    // Pre-allocate with known maximum capacity since unescaping can only remove characters
+    try unescaped.ensureTotalCapacity(str.len);
+
+    for (str) |c| {
+        if (c != '\\') {
+            try unescaped.append(c);
+        }
+    }
+    return try unescaped.toOwnedSlice();
 }
 
 pub const ParseError = error{
@@ -314,7 +329,7 @@ pub const Parser = struct {
             .rparen => return error.UnexpectedRightParen,
             .symbol => return SExp{ .value = .{ .symbol = token.value }, .location = token.location },
             .number => return SExp{ .value = .{ .number = token.value }, .location = token.location },
-            .string => return SExp{ .value = .{ .string = token.value }, .location = token.location },
+            .string => return SExp{ .value = .{ .string = try _unescape_string(self.allocator, token.value) }, .location = token.location },
             .comment => return SExp{ .value = .{ .comment = token.value }, .location = token.location },
         }
     }

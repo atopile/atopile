@@ -437,3 +437,20 @@ def test_multidict_none():
 
     netlist = kicad.loads(kicad.netlist.NetlistFile, sexp)
     assert netlist.netlist.libparts.libparts[0].pins is None
+
+
+def test_string_escape():
+    test_string = 'foo"bar'
+
+    pcb = kicad.pcb.PcbFile(
+        kicad_pcb=kicad.pcb.KicadPcb(
+            version=0,
+            generator="faebryk",
+            generator_version=test_string,
+        )  # type: ignore
+    )
+
+    sexp = kicad.dumps(pcb)
+    pcb_load = kicad.loads(kicad.pcb.PcbFile, sexp)
+
+    assert pcb_load.kicad_pcb.generator_version == test_string

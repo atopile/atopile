@@ -105,8 +105,8 @@ pub const Tokenizer = struct {
         while (i <= 'f') : (i += 1) table[i] = true;
         i = 'A';
         while (i <= 'F') : (i += 1) table[i] = true;
-        table['x'] = true;  // For 0x prefix
-        table['_'] = true;  // For underscores in numbers
+        table['x'] = true; // For 0x prefix
+        table['_'] = true; // For underscores in numbers
         break :blk table;
     };
 

@@ -2581,6 +2581,27 @@ def compare_dataclasses[T](
                     require_dataclass_type_match=require_dataclass_type_match,
                 ).items()
             }
+        # zig types
+        case before, after if (
+            hasattr(type(before), "__field_names__")
+            and (type(before) is type(after))
+            or (
+                not require_dataclass_type_match
+                and hasattr(type(after), "__field_names__")
+                and type(before).__field_names__() == type(after).__field_names__()  # type: ignore
+            )
+        ):
+            return {
+                f".{f_name}{k}": v
+                for f_name in type(before).__field_names__()  # type: ignore
+                if f_name not in skip_keys
+                for k, v in compare_dataclasses(
+                    getattr(before, f_name),
+                    getattr(after, f_name),
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
+            }
         case _:
             return {"": _fmt(before, after)} if before != after else {}
 
