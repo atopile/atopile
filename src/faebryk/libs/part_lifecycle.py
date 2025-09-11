@@ -544,42 +544,29 @@ class PartLifecycle:
             # All modules MUST have a designator by this point
             ref = component.get_trait(F.has_designator).get_designator()
 
+            pcb_fp_t = f_fp.try_get_trait(PCB_Transformer.has_linked_kicad_footprint)
+            new_fp = pcb_fp_t is None
+
             ## Update existing footprint
-            if pcb_fp_t := f_fp.try_get_trait(
-                PCB_Transformer.has_linked_kicad_footprint
-            ):
+            if not new_fp:
+                assert pcb_fp_t is not None
                 pcb_fp = pcb_fp_t.get_fp()
 
-                # TODO: this is where I have to implement the footprint override
-                if True or fp_id != pcb_fp.name:
-                    # Copy the data structure so if we later mutate it we don't
-                    # end up w/ those changes everywhere
-                    _, lib_fp = lifecycle.library.get_footprint_from_identifier(
-                        fp_id, component
-                    )
+                # Copy the data structure so if we later mutate it we don't
+                # end up w/ those changes everywhere
+                _, lib_fp = lifecycle.library.get_footprint_from_identifier(
+                    fp_id, component
+                )
 
-                    existing_hash = Property.try_get_property(
-                        pcb_fp.propertys, PCB_Transformer._FP_LIB_HASH
-                    )
-
-                    # If the hash never existed, or it's changed then update the
-                    # footprint
-                    if (
-                        existing_hash is None
-                        or existing_hash
-                        != PCB_Transformer._hash_lib_fp(lib_fp.footprint)
-                    ):
-                        logger.info(
-                            f"Updating `{pcb_fp.name}`->`{fp_id}` on"
-                            f" `{address}` ({ref})",
-                            extra={"markdown": True},
-                        )
-                        # We need to manually override the name because the
-                        # footprint's data could've ultimately come from anywhere
-                        lib_fp.footprint.name = fp_id
-                        transformer.update_footprint_from_lib(pcb_fp, lib_fp.footprint)
-                        transformer.bind_footprint(pcb_fp, component)
-                new_fp = False
+                logger.info(
+                    f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
+                    extra={"markdown": True},
+                )
+                # We need to manually override the name because the
+                # footprint's data could've ultimately come from anywhere
+                lib_fp.footprint.name = fp_id
+                transformer.update_footprint_from_lib(pcb_fp, lib_fp.footprint)
+                transformer.bind_footprint(pcb_fp, component)
 
             ## Add new footprint
             else:
@@ -600,7 +587,6 @@ class PartLifecycle:
                 lib_fp.footprint.name = fp_id
                 pcb_fp = transformer.insert_footprint(lib_fp.footprint, insert_point)
                 transformer.bind_footprint(pcb_fp, component)
-                new_fp = True
 
             def _get_prop_uuid(name: str) -> str | None:
                 try:
@@ -641,6 +627,9 @@ class PartLifecycle:
                     )
                     + "]"
                 )
+
+            if "checksum" in property_values:
+                del property_values["checksum"]
 
             for prop_name, prop_value in property_values.items():
                 ### Get old property value, representing non-existent properties as None

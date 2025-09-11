@@ -2522,6 +2522,7 @@ def compare_dataclasses[T](
     after: T,
     skip_keys: tuple[str, ...] = (),
     require_dataclass_type_match: bool = True,
+    float_precision: int | None = 6,
 ) -> dict[str, dict[str, Any]]:
     """
     Check two dataclasses for equivalence (with some keys skipped).
@@ -2584,9 +2585,8 @@ def compare_dataclasses[T](
                 ).items()
             }
         # zig types
-        case before, after if (
-            hasattr(type(before), "__field_names__")
-            and (type(before) is type(after))
+        case before, after if hasattr(type(before), "__field_names__") and (
+            (type(before) is type(after))
             or (
                 not require_dataclass_type_match
                 and hasattr(type(after), "__field_names__")
@@ -2604,6 +2604,19 @@ def compare_dataclasses[T](
                     require_dataclass_type_match=require_dataclass_type_match,
                 ).items()
             }
+        case before, after if (
+            float_precision is not None
+            and isinstance(before, float)
+            and isinstance(after, float)
+        ):
+            difference = abs(after - before)
+            epsilon = 10**-float_precision
+            matches = difference < epsilon
+            return (
+                {"": _fmt(before, f"{after} (delta = {difference})")}
+                if not matches
+                else {}
+            )
         case _:
             return {"": _fmt(before, after)} if before != after else {}
 

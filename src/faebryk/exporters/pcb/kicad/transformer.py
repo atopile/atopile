@@ -1680,29 +1680,6 @@ class PCB_Transformer:
             & set(kicad.pcb.Footprint.__field_names__())
         }
 
-    @staticmethod
-    def _hash_lib_fp(lib_fp: kicad.footprint.Footprint) -> str:
-        return Property.get_property(lib_fp.propertys, "checksum")
-
-    _FP_LIB_HASH = "__atopile_lib_fp_hash__"
-
-    def _set_lib_fp_hash(
-        self, footprint: Footprint, lib_footprint: kicad.footprint.Footprint
-    ) -> None:
-        """Create a hidden property which stores the original lib footprint hash
-        so we can detect if the footprint has truly been updated, or if it's
-        merely been renamed"""
-        Property.set_property(
-            footprint,
-            self._make_fp_property(
-                property_name=self._FP_LIB_HASH,
-                layer="User.9",
-                # TODO
-                value=self._hash_lib_fp(lib_footprint),
-                uuid=self.gen_uuid(mark=True),
-            ),
-        )
-
     def insert_footprint(
         self,
         lib_footprint: kicad.footprint.Footprint,
@@ -1738,7 +1715,7 @@ class PCB_Transformer:
             **lib_attrs,
         )
 
-        self._set_lib_fp_hash(footprint, lib_footprint)
+        Property.delete_property(footprint, "checksum")
 
         return kicad.insert(self.pcb, "footprints", self.pcb.footprints, footprint)
 
@@ -1835,13 +1812,12 @@ class PCB_Transformer:
         props = {p.name: p for p in footprint.propertys} | {
             p.name: p for p in updates["propertys"]
         }
+        if "checksum" in props:
+            del props["checksum"]
         updates["propertys"] = list(props.values())
 
         for name, update in updates.items():
             setattr(footprint, name, update)
-
-        # Update the lib footprint hash, so we can avoid unnecessary updates later
-        self._set_lib_fp_hash(footprint, lib_footprint)
 
         # Set the boardside of the footprint
         self._set_footprint_side(footprint, original_side, logger)

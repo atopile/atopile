@@ -857,19 +857,27 @@ class kicad:
         return find(obj, lambda o: o.name == name)
 
     @staticmethod
-    def set[T: Named](parent, field: str, container: list[T], value: T) -> T:
+    def set[T: Named](
+        parent, field: str, container: list[T], value: T, index: int | None = None
+    ) -> T:
+        if index is None:
+            index = next(
+                (i for i, o in enumerate(container) if o.name == value.name), -1
+            )
         kicad.filter(parent, field, container, lambda o: o.name != value.name)
 
-        return kicad.insert(parent, field, container, value)
+        return kicad.insert(parent, field, container, value, index=index)
 
     # TODO: consider implementing mutable lists in zig
     @staticmethod
-    def insert[T](parent, field: str, container: list[T], *value: T) -> T:
+    def insert[T](parent, field: str, container: list[T], *value: T, index=-1) -> T:
         obj = getattr(parent, field)
-        newobj = [*obj, *value]
+        if index == -1:
+            index = len(obj)
+        newobj = [*obj[:index], *value, *obj[index:]]
 
         setattr(parent, field, newobj)
-        return getattr(parent, field)[-1]
+        return getattr(parent, field)[index]
 
     @staticmethod
     def filter[T](
@@ -1028,7 +1036,9 @@ class kicad:
                             uuid=k.uuid or kicad.gen_uuid(),
                             hide=k.hide,
                             effects=k.effects,
+                            unlocked=None,
                         ),
+                        index=0 if name == "Reference" else 1,
                     )
             texts = [
                 t
@@ -1253,45 +1263,58 @@ class Property:
     class PropertyNotSet(Exception):
         pass
 
-    @staticmethod
-    def _hashable(obj: _PropertyHolder, remove_uuid: bool = True):
-        copy = kicad.copy(obj)
+    class checksum:
+        @staticmethod
+        def _hashable(obj: "Property._PropertyHolder", remove_uuid: bool = True):
+            copy = kicad.copy(obj)
 
-        Property.delete_property(copy, "checksum")
-        # TODO: this doesn't work atm
-        # out = kicad.dumps(copy)
-        out = repr(copy)
+            Property.checksum.delete_checksum(copy)
+            # TODO: this doesn't work atm
+            # out = kicad.dumps(copy)
+            out = repr(copy)
 
-        if remove_uuid:
-            out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
+            if remove_uuid:
+                out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
 
-        return out
+            return out
 
-    @staticmethod
-    def set_checksum(obj: _PropertyHolder, p_type: type[_Property]):
-        Property.delete_property(obj, "checksum")
+        @staticmethod
+        def set_checksum(
+            obj: "Property._PropertyHolder", p_type: type["Property._Property"]
+        ):
+            Property.checksum.delete_checksum(obj)
 
-        attrs = {
-            "name": "checksum",
-            "value": Checksum.build(Property._hashable(obj)),
-            "at": kicad.pcb.Xyr(x=0, y=0, r=0),
-            "hide": True,
-        }
-        if p_type is kicad.pcb.Property:
-            attrs["layer"] = "F.Cu"
-        Property.set_property(
-            obj,
-            p_type(**attrs),
-        )
+            attrs = {
+                "name": "checksum",
+                "value": Checksum.build(Property.checksum._hashable(obj)),
+                "at": kicad.pcb.Xyr(x=0, y=0, r=0),
+                "hide": True,
+            }
+            if p_type is kicad.pcb.Property:
+                attrs["layer"] = "F.Cu"
+            Property.set_property(
+                obj,
+                p_type(**attrs),
+            )
 
-    @staticmethod
-    def verify_checksum(obj: _PropertyHolder):
-        checksum_stated = Property.get_property(obj.propertys, "checksum")
-        try:
-            Checksum.verify(checksum_stated, Property._hashable(obj))
-        except Checksum.Mismatch:
-            # legacy
-            Checksum.verify(checksum_stated, Property._hashable(obj, remove_uuid=False))
+        @staticmethod
+        def verify_checksum(obj: "Property._PropertyHolder"):
+            checksum_stated = Property.checksum.get_checksum(obj)
+            try:
+                Checksum.verify(checksum_stated, Property.checksum._hashable(obj))
+            except Checksum.Mismatch:
+                # legacy
+                Checksum.verify(
+                    checksum_stated, Property.checksum._hashable(obj, remove_uuid=False)
+                )
+
+        @staticmethod
+        def delete_checksum(obj: "Property._PropertyHolder"):
+            Property.delete_property(obj, "checksum")
+
+        @staticmethod
+        def get_checksum(obj: "Property._PropertyHolder") -> str:
+            return Property.get_property(obj.propertys, "checksum")
 
     @staticmethod
     def get_property_obj[T: _Property](obj: Iterable[T], name: str) -> T:
@@ -1312,8 +1335,10 @@ class Property:
         kicad.delete(parent, "propertys", parent.propertys, name)
 
     @staticmethod
-    def set_property[T: _Property](parent: _PropertyHolder, prop: T) -> T:
-        return kicad.set(parent, "propertys", parent.propertys, prop)
+    def set_property[T: _Property](
+        parent: _PropertyHolder, prop: T, index: int | None = None
+    ) -> T:
+        return kicad.set(parent, "propertys", parent.propertys, prop, index=index)
 
     @staticmethod
     def try_get_property(obj: Iterable[_Property], name: str) -> str | None:

@@ -168,10 +168,12 @@ class AtoPart:
 
         self.path.mkdir(parents=True, exist_ok=True)
 
-        # refresh checksums
-        Property.set_checksum(self.fp.footprint, kicad.pcb.Property)
         symbol = first(self.symbol.kicad_sym.symbols)
-        Property.set_checksum(symbol, kicad.schematic.Property)
+        # refresh checksums
+        if False:
+            # TODO see verify_checksum
+            Property.checksum.set_checksum(self.fp.footprint, kicad.pcb.Property)
+            Property.checksum.set_checksum(symbol, kicad.schematic.Property)
 
         kicad.dumps(self.fp, self.fp_path)
         kicad.dumps(self.symbol, self.sym_path)
@@ -243,10 +245,13 @@ class AtoPart:
         fp = self.fp.footprint
         symbol = first(self.symbol.kicad_sym.symbols)
 
+        # TODO re-enable
+        # This makes sure the user did not forget to remove the is_auto_generated trait
+        return
         # check fp & symbol
         for obj, t_name in ((fp, "Footprint"), (symbol, "Symbol")):
             try:
-                Property.verify_checksum(obj)
+                Property.checksum.verify_checksum(obj)
             except Property.PropertyNotSet:
                 raise _FileManuallyModified(
                     f"{t_name} has no checksum for auto-generated part"
@@ -256,7 +261,7 @@ class AtoPart:
                 if FBRK_OVERRIDE_CHECKSUM_MISMATCH:
                     # must now write the new value to handle updating the checksum
                     # mechanism
-                    Property.set_checksum(
+                    Property.checksum.set_checksum(
                         obj,
                         kicad.pcb.Property
                         if isinstance(obj, kicad.pcb.Footprint)

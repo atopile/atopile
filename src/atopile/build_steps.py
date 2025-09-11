@@ -316,18 +316,12 @@ def update_pcb(
     def _update_layout(
         pcb_file: kicad.pcb.PcbFile, original_pcb_file: kicad.pcb.PcbFile
     ) -> None:
-        pcb_original_normalized = round_dataclass(
-            sort_dataclass(original_pcb_file, sort_key=str, inplace=False), precision=2
-        )
-        pcb_normalized = round_dataclass(
-            sort_dataclass(pcb_file, sort_key=str, inplace=False), precision=2
-        )
-
         pcb_diff = compare_dataclasses(
-            before=pcb_original_normalized,
-            after=pcb_normalized,
-            skip_keys=("uuid", "__atopile_lib_fp_hash__"),
+            before=original_pcb_file,
+            after=pcb_file,
+            skip_keys=("uuid",),
             require_dataclass_type_match=False,
+            float_precision=2,
         )
 
         if config.build.frozen:
@@ -339,7 +333,7 @@ def update_pcb(
                     ".updated.kicad_pcb"
                 )
                 kicad.dumps(original_pcb_file, original_path)
-                kicad.dumps(pcb_normalized, updated_path)
+                kicad.dumps(pcb_file, updated_path)
 
                 # TODO: make this a real util
                 def _try_relative(path: Path) -> Path:
