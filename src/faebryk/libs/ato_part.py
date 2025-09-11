@@ -25,9 +25,73 @@ from faebryk.libs.kicad.fileformats_latest import (
 )
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.picker.picker import PickedPart
-from faebryk.libs.util import ConfigFlag, compare_dataclasses, starts_or_ends_replace
+from faebryk.libs.util import (
+    ConfigFlag,
+    compare_dataclasses,
+    sanitize_filepath_part,
+    starts_or_ends_replace,
+)
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["AtoPart", "load_footprint_with_fallback"]
+
+
+def load_footprint_with_fallback(
+    path: Path, footprint_filename: str
+) -> tuple[Path, "C_kicad_footprint_file"]:
+    """
+    Load footprint file with backward compatibility and auto-upgrade.
+
+    First tries to load the sanitized filename, then falls back to the original
+    unsanitized filename. If the unsanitized file is found, it's automatically
+    renamed to the sanitized version for future compatibility.
+
+    Args:
+        path: Directory containing the footprint file
+        footprint_filename: Original footprint filename from trait
+
+    Returns:
+        Tuple of (resolved_path, loaded_footprint_file)
+
+    Raises:
+        FileNotFoundError: If neither sanitized nor unsanitized file exists
+    """
+    from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
+
+    base_name = Path(footprint_filename).stem
+    sanitized_name = sanitize_filepath_part(base_name)
+
+    sanitized_path = path / f"{sanitized_name}.kicad_mod"
+    if sanitized_path.exists():
+        fp = kicad_footprint_file(sanitized_path)
+        return sanitized_path, fp
+
+    unsanitized_path = path / footprint_filename
+    if unsanitized_path.exists():
+        logger.info(f"Found legacy unsanitized footprint file: {unsanitized_path}")
+
+        if sanitized_path.exists():
+            logger.warning(
+                f"Both sanitized and unsanitized footprint files exist: "
+                f"{sanitized_path} and {unsanitized_path}. Using sanitized version."
+            )
+            fp = kicad_footprint_file(sanitized_path)
+            return sanitized_path, fp
+
+        logger.info(
+            f"Auto-upgrading footprint file: {unsanitized_path} -> {sanitized_path}"
+        )
+        unsanitized_path.rename(sanitized_path)
+
+        fp = kicad_footprint_file(sanitized_path)
+        return sanitized_path, fp
+
+    raise FileNotFoundError(
+        f"Footprint file not found: {footprint_filename} "
+        "(tried both sanitized and unsanitized versions)"
+    )
+
 
 FBRK_OVERRIDE_CHECKSUM_MISMATCH = ConfigFlag(
     "PART_OVERRIDE_CHECKSUM_MISMATCH",
@@ -58,8 +122,12 @@ class AtoPart:
     pick_part: PickedPart | None = None
 
     @property
+    def _sanitized_footprint_name(self) -> str:
+        return sanitize_filepath_part(self.fp.footprint.base_name)
+
+    @property
     def fp_path(self) -> Path:
-        return self.path / f"{self.fp.footprint.base_name}.kicad_mod"
+        return (self.path / self._sanitized_footprint_name).with_suffix(".kicad_mod")
 
     @property
     def sym_path(self) -> Path:
@@ -88,7 +156,7 @@ class AtoPart:
 
     def __post_init__(self):
         self.fp = deepcopy(self.fp)
-        self.fp.footprint.name = f"{self.identifier}:{self.fp.footprint.base_name}"
+        self.fp.footprint.name = f"{self.identifier}:{self._sanitized_footprint_name}"
 
         self.symbol = deepcopy(self.symbol)
 
@@ -290,7 +358,7 @@ class AtoPart:
 
         docstring = ato.parse_docstring()
 
-        fp = C_kicad_footprint_file.loads(path / atomic_trait._footprint)
+        _, fp = load_footprint_with_fallback(path, atomic_trait._footprint)
         symbol = C_kicad_sym_file.loads(path / atomic_trait._symbol)
         model = (
             C_kicad_model_file.loads(path / atomic_trait._model)
