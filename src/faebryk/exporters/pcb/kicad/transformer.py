@@ -217,6 +217,8 @@ class PCB_Transformer:
         FONT = Font(
             size=kicad.pcb.Wh(w=1 / FONT_SCALE, h=1 / FONT_SCALE),
             thickness=0.15 / FONT_SCALE,
+            bold=None,
+            italic=None,
         )
         self.font = FONT
 
@@ -1002,6 +1004,7 @@ class PCB_Transformer:
             net=net.number,
             net_name=net.name,
             layers=layers if len(layers) > 1 else [],
+            layer=layers[0] if len(layers) == 1 else None,
             uuid=self.gen_uuid(mark=True),
             name=f"layer_fill_{net.name}",
             polygon=kicad.pcb.Polygon(
@@ -1087,7 +1090,12 @@ class PCB_Transformer:
                 at=kicad.pcb.Xyr(
                     x=center_at.x, y=center_at.y + size.value.y / 2 + 1, r=0
                 ),
-                font=kicad.pcb.Font(size=kicad.pcb.Wh(w=0.75, h=0.75), thickness=0.15),
+                font=kicad.pcb.Font(
+                    size=kicad.pcb.Wh(w=0.75, h=0.75),
+                    thickness=0.15,
+                    bold=None,
+                    italic=None,
+                ),
                 layer="F.Fab" if layer.startswith("F.") else "B.Fab",
             )
         self.insert_geo(
@@ -1122,6 +1130,8 @@ class PCB_Transformer:
             font=kicad.pcb.Font(
                 size=kicad.pcb.Wh(w=1, h=1),
                 thickness=0.15,
+                bold=None,
+                italic=None,
             ),
             layer=layer,
         )
@@ -1161,7 +1171,7 @@ class PCB_Transformer:
 
             # Label
             if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
-                rot_angle = (to.r - fp.at.r) % 360
+                rot_angle = ((to.r or 0) - (fp.at.r or 0)) % 360
                 fp.fp_texts.append(
                     kicad.pcb.FpText(
                         type=kicad.pcb.E_fp_text_type.USER,
@@ -1185,17 +1195,17 @@ class PCB_Transformer:
             return
 
         # Rotate
-        rot_angle = (coord.r - fp.at.r) % 360
+        rot_angle = ((coord.r or 0) - (fp.at.r or 0)) % 360
 
         if rot_angle:
             # Rotation vector in kicad footprint objs not relative to footprint rotation
             #  or is it?
             for obj in fp.pads:
-                obj.at.r = (obj.at.r + rot_angle) % 360
+                obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
             # For some reason text rotates in the opposite direction
             #  or maybe not?
             for obj in fp.fp_texts + list(fp.propertys):
-                obj.at.r = (obj.at.r + rot_angle) % 360
+                obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
 
         fp.at = coord
 
@@ -1627,7 +1637,7 @@ class PCB_Transformer:
         center_at: kicad.pcb.Xyr,
         layer: str = "F.SilkS",
         font: kicad.pcb.Font = kicad.pcb.Font(
-            size=kicad.pcb.Wh(w=1, h=1), thickness=0.2
+            size=kicad.pcb.Wh(w=1, h=1), thickness=0.2, bold=None, italic=None
         ),
         knockout: bool = True,
         alignment: "kicad.pcb.Justify | None" = None,
@@ -1713,7 +1723,9 @@ class PCB_Transformer:
                     **{f: getattr(p, f) for f in kicad.pcb.Pad.__field_names__()},
                     # We have to handle the rotation separately because
                     # it must consider the rotation of the parent footprint
-                    "at": kicad.pcb.Xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
+                    "at": kicad.pcb.Xyr(
+                        x=p.at.x, y=p.at.y, r=(p.at.r or 0) + (at.r or 0)
+                    ),
                 },
             )
             for p in lib_footprint.pads
@@ -1812,7 +1824,9 @@ class PCB_Transformer:
                     **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
-                    "at": kicad.pcb.Xyr(x=p.at.x, y=p.at.y, r=p.at.r + footprint.at.r),
+                    "at": kicad.pcb.Xyr(
+                        x=p.at.x, y=p.at.y, r=(p.at.r or 0) + (footprint.at.r or 0)
+                    ),
                 },
             )
             for p in lib_footprint.pads
@@ -1904,6 +1918,7 @@ class PCB_Transformer:
             effects=kicad.pcb.Effects(font=self.font, hide=hide, justify=None),
             at=kicad.pcb.Xyr(x=0, y=0, r=0),
             hide=hide,
+            unlocked=None,
         )
 
     @staticmethod

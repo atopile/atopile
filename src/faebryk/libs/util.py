@@ -1365,6 +1365,8 @@ def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
     Unlike dataclasses.asdict because it doesn't convert children dataclasses to dicts.
     This is useful when reconstructing a dataclass from a dict.
     """
+    if hasattr(type(obj), "__field_names__"):
+        return {f: getattr(obj, f) for f in type(obj).__field_names__()}
     return {f.name: getattr(obj, f.name) for f in fields(obj)}
 
 
