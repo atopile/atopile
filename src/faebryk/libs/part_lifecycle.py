@@ -650,6 +650,10 @@ class PartLifecycle:
                         )
                         pcb_fp.propertys[prop_name].value = prop_value
 
+                    # Hide fab layer properties
+                    if prop.layer == "F.Fab":
+                        pcb_fp.propertys[prop_name].hide = True
+
                 ### If it's a new property, add it
                 else:
                     logger.info(

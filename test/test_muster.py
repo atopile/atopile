@@ -20,7 +20,7 @@ def _log_targets(targets: Generator[MusterTarget, None, None]) -> list[str]:
     logged_targets = []
     for t in targets:
         try:
-            t(Mock(), Mock(), Mock(), Mock())
+            t(Mock(), Mock(), Mock())
             logged_targets.append(t.name)
         except _InducedFailure:
             pass
@@ -280,7 +280,6 @@ def test_muster_success_tracking():
     app = Mock(spec=Module)
     solver = Mock(spec=Solver)
     pcb = Mock(spec=F.PCB)
-    log_context = Mock(spec=LoggingStage)
 
     # Test successful target execution
     success_func = Mock()
@@ -288,10 +287,10 @@ def test_muster_success_tracking():
 
     assert target.success is None  # Initially None
 
-    target(app, solver, pcb, log_context)
+    target(app, solver, pcb)
 
     assert target.success is True
-    success_func.assert_called_once_with(app, solver, pcb, log_context)
+    success_func.assert_called_once()
 
 
 def test_muster_failure_tracking():
@@ -301,7 +300,6 @@ def test_muster_failure_tracking():
     app = Mock(spec=Module)
     solver = Mock(spec=Solver)
     pcb = Mock(spec=F.PCB)
-    log_context = Mock(spec=LoggingStage)
 
     # Test failing target execution
     failure_func = Mock(side_effect=_InducedFailure)
@@ -310,10 +308,10 @@ def test_muster_failure_tracking():
     assert target.success is None  # Initially None
 
     with pytest.raises(_InducedFailure):
-        target(app, solver, pcb, log_context)
+        target(app, solver, pcb)
 
     assert target.success is False
-    failure_func.assert_called_once_with(app, solver, pcb, log_context)
+    failure_func.assert_called_once()
 
 
 def test_muster_select_skips_targets_with_failed_dependencies():

@@ -4,7 +4,6 @@ import logging
 import faebryk.library._F as F
 from atopile.build_steps import Tags, muster
 from atopile.build_steps import generate_default as default_target
-from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
 from atopile.errors import UserToolNotAvailableError
 from faebryk.core.module import Module
@@ -46,26 +45,19 @@ def build(app: Module) -> None:
 
     with accumulate() as accumulator:
         for target in muster.select(targets):
-            if target.virtual:
-                continue
-
             if target.name in config.build.exclude_targets:
                 logger.warning(f"Skipping excluded build step '{target.name}'")
                 continue
 
-            with accumulator.collect():
-                with LoggingStage(
-                    target.name,
-                    target.description or f"Building [green]'{target.name}'[/green]",
-                ) as log_context:
-                    if Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
-                        if target.implicit:
-                            logger.warning(
-                                f"Skipping target '{target.name}' because kicad-cli "
-                                "was not found"
-                            )
-                            continue
-                        else:
-                            raise UserToolNotAvailableError("kicad-cli not found")
+            if Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
+                if target.implicit:
+                    logger.warning(
+                        f"Skipping target '{target.name}' because kicad-cli "
+                        "was not found"
+                    )
+                    continue
+                else:
+                    raise UserToolNotAvailableError("kicad-cli not found")
 
-                    target(app, solver, pcb, log_context)
+            with accumulator.collect():
+                target(app, solver, pcb)
