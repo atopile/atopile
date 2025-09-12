@@ -108,7 +108,6 @@ class ElectricSignal(F.Signal):
             return None
 
         parallel_resistors: list[F.Resistor] = []
-        other_resistors: list[F.Resistor] = []
         for mif, _ in connected_to.items():
             if (maybe_parent := mif.get_parent()) is None:
                 continue
@@ -121,48 +120,43 @@ class ElectricSignal(F.Signal):
             assert len(other_side) == 1, "Resistors are bilateral"
 
             if self.reference.hv not in other_side[0].get_connected():
-                other_resistors.append(parent)
-                continue
+                # cannot trivially determine effective resistance
+                return None
 
             parallel_resistors.append(parent)
 
-        if other_resistors:
-            # cannot trivially determine effective resistance
-            return None
+        if len(parallel_resistors) == 0:
+            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
+        elif len(parallel_resistors) == 1:
+            (resistor,) = parallel_resistors
+            return resistor.resistance.try_get_literal_subset()
+        else:
+            resistances = [
+                resistor.resistance.try_get_literal_subset()
+                for resistor in parallel_resistors
+            ]
 
-        match len(parallel_resistors):
-            case 0:
-                return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
-            case 1:
-                (resistor,) = parallel_resistors
-                return resistor.resistance.try_get_literal_subset()
-            case _:
-                resistances = [
-                    resistor.resistance.try_get_literal_subset()
-                    for resistor in parallel_resistors
-                ]
+            if any(r is None for r in resistances):
+                # incomplete solution
+                return None
 
-                if any(r is None for r in resistances):
-                    # incomplete solution
-                    return None
+            if any(not isinstance(r, Quantity_Interval) for r in resistances):
+                # invalid resistance value
+                return None
 
-                if any(not isinstance(r, Quantity_Interval) for r in resistances):
-                    # invalid resistance value
-                    return None
-
-                # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
-                try:
-                    return cast_assert(
-                        (Quantity_Interval, Quantity_Interval_Disjoint),
-                        sum(
-                            [
-                                cast_assert(Quantity_Interval, r).op_invert()
-                                for r in resistances
-                            ]
-                        ),
-                    ).op_invert()
-                except ZeroDivisionError:
-                    return None
+            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+            try:
+                return cast_assert(
+                    (Quantity_Interval, Quantity_Interval_Disjoint),
+                    sum(
+                        [
+                            cast_assert(Quantity_Interval, r).op_invert()
+                            for r in resistances
+                        ]
+                    ),
+                ).op_invert()
+            except ZeroDivisionError:
+                return None
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
