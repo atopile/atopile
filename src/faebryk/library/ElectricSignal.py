@@ -9,8 +9,12 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
-from faebryk.libs.sets.quantity_sets import Quantity_Interval
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+)
 from faebryk.libs.units import P
+from faebryk.libs.util import cast_assert
 
 
 class ElectricSignal(F.Signal):
@@ -99,11 +103,12 @@ class ElectricSignal(F.Signal):
         return _can_be_surge_protected_defined(self.reference.lv, self.line)
 
     @property
-    def pull_resistance(self) -> Quantity_Interval | None:
+    def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
         if (connected_to := self.line.get_connected()) is None:
             return None
 
-        resistors: list[F.Resistor] = []
+        parallel_resistors: list[F.Resistor] = []
+        other_resistors: list[F.Resistor] = []
         for mif, _ in connected_to.items():
             if (maybe_parent := mif.get_parent()) is None:
                 continue
@@ -111,45 +116,53 @@ class ElectricSignal(F.Signal):
 
             if not isinstance(parent, F.Resistor):
                 continue
+
             other_side = [x for x in parent.unnamed if x is not mif]
-            if len(other_side) != 1:
-                continue
+            assert len(other_side) == 1, "Resistors are bilateral"
+
             if self.reference.hv not in other_side[0].get_connected():
+                other_resistors.append(parent)
                 continue
-            resistors.append(parent)
 
-        if len(resistors) == 0:
-            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
-        elif len(resistors) == 1:
-            return resistors[0].resistance.try_get_literal_subset()
-        else:
-            # Calculate effective parallel resistance: 1/R_eff = 1/R1 + 1/R2 + ...
-            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
-            try:
-                # Start with 1/R1
-                reciprocal_sum = None
-                for resistor in resistors:
-                    resistance_subset = resistor.resistance.try_get_literal_subset()
-                    if resistance_subset is None:
-                        # If any resistor's value cannot be determined, return None
-                        return None
+            parallel_resistors.append(parent)
 
-                    # Calculate 1/R for this resistor
-                    reciprocal = resistance_subset.op_invert()
+        if other_resistors:
+            # cannot trivially determine effective resistance
+            return None
 
-                    if reciprocal_sum is None:
-                        reciprocal_sum = reciprocal
-                    else:
-                        reciprocal_sum = reciprocal_sum + reciprocal
+        match len(parallel_resistors):
+            case 0:
+                return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
+            case 1:
+                (resistor,) = parallel_resistors
+                return resistor.resistance.try_get_literal_subset()
+            case _:
+                resistances = [
+                    resistor.resistance.try_get_literal_subset()
+                    for resistor in parallel_resistors
+                ]
 
-                # Calculate R_eff = 1 / reciprocal_sum
-                if reciprocal_sum is not None:
-                    return reciprocal_sum.op_invert()
-                else:
+                if any(r is None for r in resistances):
+                    # incomplete solution
                     return None
-            except (ValueError, ZeroDivisionError):
-                # If calculation fails (e.g., zero resistance), return None
-                return None
+
+                if any(not isinstance(r, Quantity_Interval) for r in resistances):
+                    # invalid resistance value
+                    return None
+
+                # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+                try:
+                    return cast_assert(
+                        (Quantity_Interval, Quantity_Interval_Disjoint),
+                        sum(
+                            [
+                                cast_assert(Quantity_Interval, r).op_invert()
+                                for r in resistances
+                            ]
+                        ),
+                    ).op_invert()
+                except ZeroDivisionError:
+                    return None
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
