@@ -1848,10 +1848,13 @@ class PCB_Transformer:
             if "uuid" in lib_obj_attrs:
                 del lib_obj_attrs["uuid"]
             if "at" in lib_obj_attrs and hasattr(at := lib_obj_attrs["at"], "r"):
+                r = (at.r or 0) + (pcb_fp.at.r or 0)
+                if r == 0 and at.r is None:
+                    r = None
                 lib_obj_attrs["at"] = kicad.pcb.Xyr(
                     x=at.x,
                     y=at.y,
-                    r=(at.r or 0) + (pcb_fp.at.r or 0),
+                    r=r,
                 )
 
             # update
