@@ -69,3 +69,67 @@ def test_i2c_requires_pulls():
     app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * P.kohm)
     app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * P.kohm)
     check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+
+
+def test_electric_signal_parallel_pull_resistance():
+    """Test that ElectricSignal correctly calculates parallel pull resistance."""
+
+    r1_value = L.Range.from_center_rel(10 * P.kohm, 0.02)
+    r2_value = L.Range.from_center_rel(20 * P.kohm, 0.02)
+    r3_value = L.Range.from_center_rel(30 * P.kohm, 0.02)
+
+    class TestModule(Module):
+        signal: F.ElectricSignal
+        power: F.ElectricPower
+
+        r1: F.Resistor
+        r2: F.Resistor
+        r3: F.Resistor
+
+        def __preinit__(self):
+            # Set specific resistance values for testing
+            self.r1.resistance.alias_is(r1_value)
+            self.r2.resistance.alias_is(r2_value)
+            self.r3.resistance.alias_is(r3_value)
+
+            # Connect signal reference
+            self.signal.reference.connect(self.power)
+
+            # Connect resistors in parallel from signal to power rail
+            self.signal.line.connect_via(self.r1, self.power.hv)
+            self.signal.line.connect_via(self.r2, self.power.hv)
+            self.signal.line.connect_via(self.r3, self.power.hv)
+
+    module = TestModule()
+
+    expected_resistance = (
+        r1_value.op_invert() + r2_value.op_invert() + r3_value.op_invert()
+    ).op_invert()
+
+    assert module.signal.pull_resistance == expected_resistance
+
+
+def test_electric_signal_single_pull_resistance():
+    """Test that ElectricSignal correctly handles single pull resistance."""
+
+    r1_value = L.Range.from_center_rel(10 * P.kohm, 0.02)
+
+    class TestModule(Module):
+        signal: F.ElectricSignal
+        power: F.ElectricPower
+
+        def __preinit__(self):
+            # Create single pull-up resistor
+            self.r1 = F.Resistor()
+
+            # Set specific resistance value
+            self.r1.resistance.alias_is(r1_value)
+
+            # Connect signal reference
+            self.signal.reference.connect(self.power)
+
+            # Connect single resistor from signal to power rail
+            self.signal.line.connect_via(self.r1, self.power.hv)
+
+    module = TestModule()
+    assert module.signal.pull_resistance == r1_value

@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from functools import reduce
 from typing import Iterable
 
 import faebryk.library._F as F
@@ -9,8 +10,12 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
-from faebryk.libs.sets.quantity_sets import Quantity_Interval
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+)
 from faebryk.libs.units import P
+from faebryk.libs.util import cast_assert
 
 
 class ElectricSignal(F.Signal):
@@ -99,11 +104,11 @@ class ElectricSignal(F.Signal):
         return _can_be_surge_protected_defined(self.reference.lv, self.line)
 
     @property
-    def pull_resistance(self) -> Quantity_Interval | None:
+    def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
         if (connected_to := self.line.get_connected()) is None:
             return None
 
-        resistors: list[F.Resistor] = []
+        parallel_resistors: list[F.Resistor] = []
         for mif, _ in connected_to.items():
             if (maybe_parent := mif.get_parent()) is None:
                 continue
@@ -111,21 +116,49 @@ class ElectricSignal(F.Signal):
 
             if not isinstance(parent, F.Resistor):
                 continue
-            other_side = [x for x in parent.unnamed if x is not mif]
-            if len(other_side) != 1:
-                continue
-            if self.reference.hv not in other_side[0].get_connected():
-                continue
-            resistors.append(parent)
 
-        if len(resistors) == 0:
+            other_side = [x for x in parent.unnamed if x is not mif]
+            assert len(other_side) == 1, "Resistors are bilateral"
+
+            if self.reference.hv not in other_side[0].get_connected():
+                # cannot trivially determine effective resistance
+                return None
+
+            parallel_resistors.append(parent)
+
+        if len(parallel_resistors) == 0:
             return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
-        elif len(resistors) == 1:
-            return resistors[0].resistance.try_get_literal_subset()
+        elif len(parallel_resistors) == 1:
+            (resistor,) = parallel_resistors
+            return resistor.resistance.try_get_literal_subset()
         else:
-            # cannot determine effective resistance of multiple resistors without
-            # inspecting circuit topology
-            return None
+            resistances = [
+                resistor.resistance.try_get_literal_subset()
+                for resistor in parallel_resistors
+            ]
+
+            if any(r is None for r in resistances):
+                # incomplete solution
+                return None
+
+            if any(not isinstance(r, Quantity_Interval) for r in resistances):
+                # invalid resistance value
+                return None
+
+            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+            try:
+                return cast_assert(
+                    (Quantity_Interval, Quantity_Interval_Disjoint),
+                    reduce(
+                        lambda a, b: a + b,
+                        [
+                            cast_assert(Quantity_Interval, r).op_invert()
+                            for r in resistances
+                        ],
+                    ),
+                ).op_invert()
+            except ZeroDivisionError:
+                return None
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
