@@ -215,22 +215,18 @@ class PartLifecycle:
             fp_table_path = build.paths.fp_lib_table
 
             try:
-                old_fp_table = kicad.loads(
-                    kicad.fp_lib_table.FpLibTableFile, fp_table_path
-                )
-                for lib in old_fp_table.fp_lib_table.libs:
+                fp_table = kicad.loads(kicad.fp_lib_table.FpLibTableFile, fp_table_path)
+                for lib in fp_table.fp_lib_table.libs:
                     if not lib.descr.startswith(MANAGED_LIB_PREFIX):
                         logger.warning(
                             f"Removing unmanaged footprint library `{lib.name}`"
                         )
             except FileNotFoundError:
                 # just generate if missing (e.g. on first run)
-                pass
+                fp_table = kicad.fp_lib_table.FpLibTableFile(
+                    fp_lib_table=kicad.fp_lib_table.FpLibTable(version=7, libs=[])
+                )
 
-            # recreate table to ensure sync
-            fp_table = kicad.fp_lib_table.FpLibTableFile(
-                fp_lib_table=kicad.fp_lib_table.FpLibTable(version=7, libs=[])
-            )
             # load all existing parts into new table
             for part_dir in sorted(
                 Gcfg.project.paths.parts.iterdir(), key=lambda x: x.name
@@ -263,13 +259,13 @@ class PartLifecycle:
 
             fpuri = Gcfg.project.get_relative_to_kicad_project(fppath.resolve())
 
-            if lib_name in fp_table.fp_lib_table.libs:
-                if fp_table.fp_lib_table.libs[lib_name].uri != fpuri:
+            if lib := kicad.try_get(fp_table.fp_lib_table.libs, lib_name):
+                if Path(lib.uri) != fpuri:
                     # TODO better exception
                     raise Exception(
                         f"Footprint library {lib_name} already exists at different"
-                        f" location: {fp_table.fp_lib_table.libs[lib_name].uri} != "
-                        f"{fpuri}. Manual ingestion required."
+                        f" location: `{lib.uri}` != `{fpuri}`."
+                        f" Manual ingestion required."
                     )
                 return fp_table
 

@@ -25,7 +25,7 @@ from dataclasses_json import (
 from more_itertools import first
 
 from faebryk.libs.checksum import Checksum
-from faebryk.libs.util import ConfigFlag, find, lazy_split
+from faebryk.libs.util import ConfigFlag, find, find_or, lazy_split
 
 logger = logging.getLogger(__name__)
 
@@ -855,6 +855,12 @@ class kicad:
     @staticmethod
     def get[T: Named](obj: Iterable[T], name: str) -> T:
         return find(obj, lambda o: o.name == name)
+
+    @staticmethod
+    def try_get[T: Named](
+        obj: Iterable[T], name: str, default: T | None = None
+    ) -> T | None:
+        return find_or(obj, lambda o: o.name == name, default=cast(T, default))
 
     @staticmethod
     def set[T: Named](
