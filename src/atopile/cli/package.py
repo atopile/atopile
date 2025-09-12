@@ -569,27 +569,47 @@ def verify(
 
     config.apply_options(entry=package_address)
 
-    success = True
+    with accumulate() as accumulator:
+        for validator in _DEFAULT_VALIDATORS:
+            with accumulator.collect():
+                validator(config)
 
-    try:
-        with accumulate() as accumulator:
-            for validator in _DEFAULT_VALIDATORS:
+        if strict:
+            logger.info("Running strict verification")
+            for validator in _STRICT_VALIDATORS:
                 with accumulator.collect():
                     validator(config)
 
-            if strict:
-                logger.info("Running strict verification")
-                for validator in _STRICT_VALIDATORS:
-                    with accumulator.collect():
-                        validator(config)
+    logger.info("Package verification successful! 🎉")
 
-        logger.info("Package verification successful! 🎉")
 
-    except Exception as e:
-        success = False
-        logger.error("Package verification failed: %s", e)
+@package_app.command()
+@capture("cli:package_report_status_start", "cli:package_report_status_end")
+def report_status(
+    success: Annotated[
+        bool,
+        typer.Argument(
+            help="Report the build status as successful.",
+        ),
+    ],
+    package_address: Annotated[
+        str | None,
+        typer.Argument(
+            help="Path/to/project or address (file.ato:Module) of the package "
+            "you want to report status for.",
+        ),
+    ] = None,
+    skip_auth: Annotated[
+        bool,
+        typer.Option("--skip-auth", "-s", help="Skip authentication."),
+    ] = False,
+):
+    """
+    Report the build status of a package to the package registry.
+    """
+    from atopile.config import config
 
-    from faebryk.libs.backend.packages.api import PackagesAPIClient
+    config.apply_options(entry=package_address)
 
     if config.project.package is None:
         raise UserException(
@@ -601,7 +621,6 @@ def verify(
             "Project has no package version. "
             "Please add a `version` section to your `ato.yaml` file."
         )
-    from atopile.version import get_installed_atopile_version
 
     try:
         git_hash = (
@@ -628,15 +647,18 @@ def verify(
         "Python version": platform.python_version(),
     }
 
+    from atopile.version import get_installed_atopile_version
+    from faebryk.libs.backend.packages.api import PackagesAPIClient
+
     api = PackagesAPIClient()
     api.report_build_status(
         identifier=config.project.package.identifier,
         version=config.project.package.version,
-        atopile_release=str(get_installed_atopile_version()),
+        atopile_release="0.12.3",  # str(get_installed_atopile_version()),
         atopile_githash=git_hash,
         builder_metadata=builder_metadata,
         is_building=success,
-        skip_auth=True,
+        skip_auth=skip_auth,
         built_at=datetime.now(),
     )
     print(f"Reported build status as {success}")
