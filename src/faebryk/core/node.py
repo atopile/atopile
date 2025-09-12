@@ -183,12 +183,15 @@ class InitVar(dataclass_InitVar):
 
 # -----------------------------------------------------------------------------
 
+ContainerT = Sequence | dict[str, Any]
+
 
 @post_init_decorator
 class Node(CNode):
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
     specialized_: list["Node"]
+    _container_by_node: dict["Node", ContainerT]
 
     _init: bool = False
     _mro: list[type] = []
@@ -198,10 +201,7 @@ class Node(CNode):
         pass
 
     def add[T: Node | GraphInterface](
-        self,
-        obj: T,
-        name: str | None = None,
-        container: Sequence | dict[str, Any] | None = None,
+        self, obj: T, name: str | None = None, container: ContainerT | None = None
     ) -> T:
         assert obj is not None
 
@@ -244,7 +244,47 @@ class Node(CNode):
         else:
             container.append(obj)
 
+        if isinstance(obj, Node):
+            self._container_by_node[obj] = container
+
         return obj
+
+    def replace_child[T: Node](self, from_node: "Node", to_node: "Node"):
+        """
+        Replace a child node with a new node. The original node is moved to the
+        runtime_anon container.
+        """
+
+        # FIXME: swap node names?
+
+        self._handle_add_node(from_node.get_name(), to_node)
+
+        try:
+            container = self._container_by_node.pop(from_node)
+        except KeyError:
+            if hasattr(self, from_node.get_name()):
+                container = self
+            else:
+                raise ValueError(f"Node {from_node} not found")
+
+        match container:
+            case dict():
+                container.pop(from_node.get_name())
+                container[to_node.get_name()] = to_node
+            case list():
+                idx = container.index(from_node)
+                container.pop(idx)
+                container.insert(idx, to_node)
+            case Node():
+                setattr(container, from_node.get_name(), to_node)
+            case _:
+                raise ValueError(f"Unsupported container type: {type(container)}")
+
+        if not isinstance(container, Node):
+            self._container_by_node[to_node] = container
+
+        self.runtime_anon.append(from_node)
+        return container
 
     def add_to_container[T: Node](
         self,
@@ -507,6 +547,7 @@ class Node(CNode):
         # Preserved for later inspection of signature, which is otherwise clobbered
         # by nanobind, so we only get (self, *args, **kwargs)
         self.__original_init__ = self.__init__
+        self._container_by_node = {}
 
     def __preinit__(self, *args, **kwargs) -> None: ...
 

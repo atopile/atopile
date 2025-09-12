@@ -322,6 +322,10 @@ class BuildTargetPaths(BaseConfigModel):
         # We deliberately don't set a root for an individual build
         super().__init__(**data)
 
+    @property
+    def picks_file(self) -> Path:
+        return self.layout.parent / "picks.ato"
+
     @classmethod
     def find_layout(cls, layout_base: Path) -> Path:
         """Find the layout associated with a build."""
