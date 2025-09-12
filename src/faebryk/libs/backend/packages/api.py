@@ -7,15 +7,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from importlib.metadata import version as get_package_version
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-import requests
 from dataclasses_json import config as dataclasses_json_config
 from dataclasses_json.api import dataclass_json
 
 from atopile.config import config
+from faebryk.libs.http import HTTPStatusError, Response, http_client
 from faebryk.libs.package.artifacts import Artifacts
 from faebryk.libs.package.dist import Dist
 from faebryk.libs.util import indented_container, once
@@ -300,7 +301,7 @@ class Errors:
     class PackagesApiError(Exception): ...
 
     class PackagesApiHTTPError(Exception):
-        def __init__(self, error: requests.exceptions.HTTPError, detail: str):
+        def __init__(self, error: HTTPStatusError, detail: str):
             super().__init__()
             self.error = error
             self.response = error.response
@@ -322,7 +323,7 @@ class Errors:
     class PackageNotFoundError(PackagesApiHTTPError):
         def __init__(
             self,
-            error: requests.exceptions.HTTPError,
+            error: HTTPStatusError,
             detail: str,
             package_identifier: str,
         ):
@@ -341,7 +342,7 @@ class Errors:
     class InvalidPackageIdentifierError(PackagesApiHTTPError):
         def __init__(
             self,
-            error: requests.exceptions.HTTPError,
+            error: HTTPStatusError,
             detail: str,
             package_identifier: str,
         ):
@@ -360,7 +361,7 @@ class Errors:
     class ReleaseNotFoundError(PackagesApiHTTPError):
         def __init__(
             self,
-            error: requests.exceptions.HTTPError,
+            error: HTTPStatusError,
             detail: str,
             package_identifier: str,
             release: str,
@@ -397,34 +398,46 @@ class PackagesAPIClient:
     def _cfg(self) -> ApiConfig:
         return self.ApiConfig()
 
-    def __init__(self):
-        self._client = requests.Session()
-        self._client.headers.update(
-            {
-                "User-Agent": (
-                    f"atopile/{get_package_version('atopile')} "
-                    f"({sys.platform}; "
-                    f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})"
-                ),
-            }
-        )
+    @property
+    @once
+    def _base_headers(self) -> dict[str, str]:
+        return {
+            "User-Agent": (
+                f"atopile/{get_package_version('atopile')} "
+                f"({sys.platform}; "
+                f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})"
+            ),
+        }
+
+    @property
+    @once
+    def _auth_headers(self) -> dict[str, str]:
+        """
+        Currently, the only supported authentication method is Github Actions OIDC.
+        """
+        try:
+            from github_oidc.client import get_actions_header
+
+            return get_actions_header(urlparse(self._cfg.api_url).netloc)
+        except Exception as e:
+            raise Errors.AuthenticationError(e) from e
 
     def _get(
         self,
         url: str,
         timeout: float = 10,
-    ) -> requests.Response:
-        response = self._client.get(
-            f"{self._cfg.api_url}{url}",
-            timeout=timeout,
+    ) -> Response:
+        with http_client(
+            self._base_headers,
             verify=not config.project.dangerously_skip_ssl_verification,
-        )
+        ) as client:
+            response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except HTTPStatusError as e:
             try:
                 detail = response.json()["detail"]
-            except (requests.JSONDecodeError, KeyError):
+            except (JSONDecodeError, KeyError):
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
@@ -434,26 +447,22 @@ class PackagesAPIClient:
         url: str,
         data: Any,
         timeout: float = 10,
-        authenticate: bool = False,
-    ) -> requests.Response:
-        headers = {}
-        if authenticate:
-            headers |= self._authenticate()
-
-        response = self._client.post(
-            f"{self._cfg.api_url}{url}",
-            json=data,
-            timeout=timeout,
-            headers=headers,
+        skip_auth: bool = False,
+    ) -> Response:
+        with http_client(
+            self._base_headers | ({} if skip_auth else self._auth_headers),
             verify=not config.project.dangerously_skip_ssl_verification,
-        )
+        ) as client:
+            response = client.post(
+                f"{self._cfg.api_url}{url}", json=data, timeout=timeout
+            )
         try:
             response.raise_for_status()
             assert response.json()["status"] == "ok"
-        except requests.exceptions.HTTPError as e:
+        except HTTPStatusError as e:
             try:
                 detail = response.json()["detail"]
-            except (requests.JSONDecodeError, KeyError):
+            except (JSONDecodeError, KeyError):
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
@@ -465,37 +474,30 @@ class PackagesAPIClient:
         data: dict[str, str],
         timeout: float = 10,
         skip_verify: bool = False,
-    ) -> requests.Response:
-        response = self._client.post(
-            url,
-            data=data,
-            files={
-                "file": (file_path.name, file_path.read_bytes()),
-                "Content-Type": "application/zip",
-            },
-            timeout=timeout,
-            verify=not skip_verify,
-        )
+    ) -> Response:
+        with http_client(
+            self._base_headers,
+            verify=(not skip_verify)
+            or config.project.dangerously_skip_ssl_verification,
+        ) as client:
+            response = client.post(
+                url,
+                data=data,
+                files={
+                    "file": (file_path.name, file_path.read_bytes()),
+                    "Content-Type": "application/zip",
+                },
+                timeout=timeout,
+            )
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except HTTPStatusError as e:
             try:
                 detail = response.json()["detail"]
-            except (requests.JSONDecodeError, KeyError):
+            except (JSONDecodeError, KeyError):
                 detail = response.text
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
-
-    def _authenticate(self) -> dict[str, str]:
-        """
-        Currently, the only supported authentication method is Github Actions OIDC.
-        """
-        try:
-            from github_oidc.client import get_actions_header
-
-            return get_actions_header(urlparse(self._cfg.api_url).netloc)
-        except Exception as e:
-            raise Errors.AuthenticationError(e) from e
 
     def publish(
         self,
@@ -523,7 +525,7 @@ class PackagesAPIClient:
                     artifacts_size=artifacts.bytes if artifacts else None,
                     manifest=dist.manifest.model_dump(mode="json"),
                 ).to_dict(),  # type: ignore
-                authenticate=not skip_auth,
+                skip_auth=skip_auth,
             )
         except Errors.PackagesApiHTTPError as e:
             if e.code == 409:
@@ -562,7 +564,7 @@ class PackagesAPIClient:
                 data=_Endpoints.PublishUploadComplete.Request(
                     release_id=response.release_id,
                 ).to_dict(),  # type: ignore
-                authenticate=not skip_auth,
+                skip_auth=skip_auth,
             )
         except Errors.PackagesApiHTTPError:
             raise
@@ -619,11 +621,15 @@ class PackagesAPIClient:
         url = release.info.download_url
         filepath = output_path / release.info.filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        # use requests to download the file to output_path
-        with requests.get(url, stream=True) as r:
-            r.raise_for_status()
+        # download the file to output_path
+        with http_client(
+            self._base_headers,
+            verify=not config.project.dangerously_skip_ssl_verification,
+        ) as client:
+            response = client.get(url)
+            response.raise_for_status()
             with filepath.open("wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in response.iter_bytes(chunk_size=8192):
                     f.write(chunk)
 
         return Dist(filepath)

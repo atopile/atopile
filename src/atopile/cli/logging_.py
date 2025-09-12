@@ -42,10 +42,6 @@ from . import console
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-import urllib3  # noqa: E402
-
-urllib3.disable_warnings()  # FIXME: SSL
-
 COLOR_LOGS = ConfigFlag("COLOR_LOGS", default=False)
 NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")

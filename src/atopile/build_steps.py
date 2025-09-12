@@ -103,11 +103,25 @@ class MusterTarget:
     dependencies: list["MusterTarget"] = field(default_factory=list)
     tags: set[Tags] = field(default_factory=set)
     produces_artifact: bool = False  # TODO: as list of file paths
+    success: bool | None = None
 
-    def __call__(
-        self, app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
-    ) -> None:
-        return self.func(app, solver, pcb, log_context)
+    def __call__(self, app: Module, solver: Solver, pcb: F.PCB) -> None:
+        if not self.virtual:
+            try:
+                with LoggingStage(
+                    self.name,
+                    self.description or f"Building [green]'{self.name}'[/green]",
+                ) as log_context:
+                    self.func(app, solver, pcb, log_context)
+            except Exception:
+                self.success = False
+                raise
+
+        self.success = True
+
+    @property
+    def succeeded(self) -> bool:
+        return self.success is True
 
 
 class Muster:
@@ -163,7 +177,7 @@ class Muster:
 
         return decorator
 
-    def select(self, selected_targets: set[str]) -> list[MusterTarget]:
+    def select(self, selected_targets: set[str]) -> Generator[MusterTarget, None, None]:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
@@ -186,7 +200,11 @@ class Muster:
             if target.name in selected_targets:
                 target.implicit = False
 
-        return [self.targets[name] for name in sorted_names if name in self.targets]
+        for target in [
+            self.targets[name] for name in sorted_names if name in self.targets
+        ]:
+            if all(dep.succeeded for dep in target.dependencies or []):
+                yield target
 
 
 muster = Muster()
@@ -731,7 +749,9 @@ def generate_i2c_tree(
     ],
     virtual=True,
 )
-def default(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) -> None:
+def generate_default(
+    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
     pass
 
 
@@ -739,13 +759,15 @@ def default(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) 
     "all",
     aliases=["*"],
     dependencies=[
-        default,
+        generate_default,
         generate_manufacturing_data,
         generate_3d_models,
     ],
     virtual=True,
 )
-def all(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) -> None:
+def generate_all(
+    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
     """Generate all targets."""
     pass
 

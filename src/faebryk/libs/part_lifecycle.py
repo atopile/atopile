@@ -643,9 +643,9 @@ class PartLifecycle:
                     ),
                 )
 
+
             # delete checksum
             Property.checksum.delete_checksum(pcb_fp)
-
             return pcb_fp, new_fp
 
     def __init__(self):

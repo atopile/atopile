@@ -404,16 +404,16 @@ class EasyEDAPart:
     ) -> str | None:
         import re
 
-        import requests
+        from faebryk.libs.http import http_client
 
         logger.debug(f"Crawling datasheet for {identifier}")
 
-        # make requests act like curl
-        lcsc_site = requests.get(
-            url,
-            headers={"User-Agent": "curl/7.81.0"},
+        with http_client(
+            headers={"User-Agent": "curl/7.81.0"},  # emulate curl
             verify=not Gcfg.project.dangerously_skip_ssl_verification,
-        )
+        ) as client:
+            lcsc_site = client.get(url)
+
         # find _{partno}.pdf in html
         match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
         if match:
