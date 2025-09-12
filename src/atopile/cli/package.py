@@ -654,7 +654,7 @@ def report_status(
     api.report_build_status(
         identifier=config.project.package.identifier,
         version=config.project.package.version,
-        atopile_release="0.12.3",  # str(get_installed_atopile_version()),
+        atopile_release=str(get_installed_atopile_version()),
         atopile_githash=git_hash,
         builder_metadata=builder_metadata,
         is_building=success,
