@@ -38,7 +38,6 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
     cast_assert,
-    dataclass_as_kwargs,
     find,
     groupby,
     hash_string,

@@ -5,7 +5,6 @@ import logging
 import tempfile
 import time
 from collections.abc import Callable, Generator
-from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -68,8 +67,6 @@ from faebryk.libs.util import (
     KeyErrorAmbiguous,
     compare_dataclasses,
     md_table,
-    round_dataclass,
-    sort_dataclass,
 )
 
 logger = logging.getLogger(__name__)

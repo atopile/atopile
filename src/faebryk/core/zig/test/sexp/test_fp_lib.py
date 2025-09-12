@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import difflib
 import logging
 from pathlib import Path
 

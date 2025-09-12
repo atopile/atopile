@@ -1082,7 +1082,8 @@ class kicad:
 
             if old.footprint.layer not in [None, "F.Cu"]:
                 raise ValueError(
-                    f"Invalid library footprint: layer must be F.Cu, got {old.footprint.layer}"
+                    f"Invalid library footprint: layer must be F.Cu, got"
+                    f" {old.footprint.layer}"
                 )
 
             return kicad.footprint.FootprintFile(

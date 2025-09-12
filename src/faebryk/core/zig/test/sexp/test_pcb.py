@@ -2,8 +2,6 @@
 import logging
 from pathlib import Path
 
-from faebryk.libs.kicad.fileformats import Property
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 

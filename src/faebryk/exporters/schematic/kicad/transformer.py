@@ -101,6 +101,8 @@ class SchTransformer:
         FONT = Font(
             size=C_wh(w=1 / FONT_SCALE, h=1 / FONT_SCALE),
             thickness=0.15 / FONT_SCALE,
+            bold=None,
+            italic=None,
         )
         self.font = FONT
 
@@ -171,6 +173,9 @@ class SchTransformer:
 
     def cleanup(self):
         """Delete faebryk-created objects in schematic."""
+
+        def visit_dataclass(*args):
+            raise NotImplementedError("Not implemented")
 
         # find all objects with path_len 2 (direct children of a list in pcb)
         candidates = [
