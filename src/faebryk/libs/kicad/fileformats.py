@@ -1061,6 +1061,8 @@ class kicad:
             ]
             for t in old.footprint.fp_texts:
                 if t.type == kicad.pcb.E_fp_text_type.REFERENCE:
+                    # already added it as property
+                    continue
                     texts.append(
                         kicad.pcb.FpText(
                             type=kicad.pcb.E_fp_text_type.USER,
