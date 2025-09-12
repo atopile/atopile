@@ -38,6 +38,7 @@ class Footprint:
     fp_texts: list[FpText]
     pads: list[Pad]
     models: list[Model]
+    embedded_fonts: bool | None
     version: int
     generator: str
     generator_version: str
@@ -62,6 +63,7 @@ class Footprint:
         fp_texts: list[FpText],
         pads: list[Pad],
         models: list[Model],
+        embedded_fonts: bool | None,
         version: int,
         generator: str,
         generator_version: str,

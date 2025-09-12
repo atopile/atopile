@@ -588,15 +588,19 @@ class PartLifecycle:
                 pcb_fp = transformer.insert_footprint(lib_fp.footprint, insert_point)
                 transformer.bind_footprint(pcb_fp, component)
 
-            def _get_prop_uuid(name: str) -> str | None:
-                try:
-                    return Property.get_property_obj(pcb_fp.propertys, name).uuid
-                except Property.PropertyNotSet:
-                    return None
+            def _prop_factory(prop_name: str, prop_value: str) -> kicad.pcb.Property:
+                return kicad.pcb.Property(
+                    name=prop_name,
+                    value=prop_value,
+                    at=kicad.pcb.Xyr(x=0, y=0, r=0),
+                    layer="User.9",
+                    uuid=PCB_Transformer.gen_uuid(mark=True),
+                    unlocked=None,
+                    hide=True,
+                    effects=None,
+                )
 
             ## Apply propertys, Reference and atopile_address
-            property_values = {}
-
             # Take any descriptive properties defined on the component
             if c_props_t := component.try_get_trait(F.has_descriptive_properties):
                 for prop_name, prop_value in c_props_t.get_properties().items():
@@ -604,21 +608,29 @@ class PartLifecycle:
                         prop_name,
                         PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
                     ):
-                        property_values[prop_name] = prop_value
+                        Property.set_property(
+                            pcb_fp, _prop_factory(prop_name, prop_value)
+                        )
 
             if c_props_t := component.try_get_trait(F.has_datasheet):
-                property_values["Datasheet"] = c_props_t.get_datasheet()
+                Property.set_property(
+                    pcb_fp, _prop_factory("Datasheet", c_props_t.get_datasheet())
+                )
 
-            property_values["Reference"] = ref
+            Property.set_property(pcb_fp, _prop_factory("Reference", ref))
 
             if value_t := component.try_get_trait(F.has_simple_value_representation):
-                property_values["Value"] = value_t.get_value()
+                Property.set_property(
+                    pcb_fp, _prop_factory("Value", value_t.get_value())
+                )
             else:
-                property_values["Value"] = ""
+                Property.set_property(pcb_fp, _prop_factory("Value", ""))
 
-            property_values["atopile_address"] = component.get_full_name()
+            Property.set_property(
+                pcb_fp, _prop_factory("atopile_address", component.get_full_name())
+            )
             if sub_pcb_t := component.try_get_trait(in_sub_pcb):
-                property_values["atopile_subaddresses"] = (
+                subaddresses = (
                     "["
                     + ", ".join(
                         sorted(
@@ -627,41 +639,16 @@ class PartLifecycle:
                     )
                     + "]"
                 )
+                Property.set_property(
+                    pcb_fp,
+                    _prop_factory(
+                        "atopile_subaddresses",
+                        subaddresses,
+                    ),
+                )
 
-            if "checksum" in property_values:
-                del property_values["checksum"]
-
-            for prop_name, prop_value in property_values.items():
-                ### Get old property value, representing non-existent properties as None
-                ### If the property value has changed, update it
-                if prop := Property.try_get_property(pcb_fp.propertys, prop_name):
-                    if prop_value != prop:
-                        logger.info(
-                            f"Updating `{prop_name}`->`{prop_value}` on"
-                            f" `{address}` ({ref})",
-                            extra={"markdown": True},
-                        )
-
-                        Property.get_property_obj(
-                            pcb_fp.propertys, prop_name
-                        ).value = prop_value
-
-                ### If it's a new property, add it
-                else:
-                    logger.info(
-                        f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
-                        extra={"markdown": True},
-                    )
-                    Property.set_property(
-                        pcb_fp,
-                        transformer._make_fp_property(
-                            property_name=prop_name,
-                            layer="User.9",
-                            value=prop_value,
-                            uuid=_get_prop_uuid(prop_name)
-                            or PCB_Transformer.gen_uuid(mark=True),
-                        ),
-                    )
+            # delete checksum
+            Property.checksum.delete_checksum(pcb_fp)
 
             return pcb_fp, new_fp
 

@@ -128,7 +128,7 @@ class LayoutSync:
                     members=[],
                     locked=False,
                 )
-                self.pcb.groups.append(group)
+                group = kicad.set(self.pcb, "groups", self.pcb.groups, group)  # type: ignore
                 groups[group_name] = group
             else:
                 group = groups[group_name]
@@ -144,7 +144,9 @@ class LayoutSync:
                 member for member in current_members if member is not None
             ]
 
-            kicad.clear_and_set(group, "members", group.members, current_members)
+            kicad.clear_and_set(
+                group, "members", group.members, sorted(current_members)
+            )
 
     def _generate_net_map(
         self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
@@ -393,20 +395,22 @@ class LayoutSync:
             if group_name in self._old_groups
             else set()
         )
-        for container in [
-            pcb.segments,
-            pcb.arcs,
-            pcb.vias,
-            pcb.zones,
+        for container, name in [
+            (pcb.segments, "segments"),
+            (pcb.arcs, "arcs"),
+            (pcb.vias, "vias"),
+            (pcb.zones, "zones"),
             *get_all_geo_containers(pcb),
-            pcb.images,
-            pcb.gr_texts,
-            pcb.gr_text_boxes,
+            (pcb.images, "images"),
+            (pcb.gr_texts, "gr_texts"),
+            (pcb.gr_text_boxes, "gr_text_boxes"),
             # top_pcb.tables,
         ]:
-            container[:] = [x for x in container if x.uuid not in to_delete]
+            new = [x for x in container if x.uuid not in to_delete]
+            kicad.clear_and_set(pcb, name, container, new)
+
         # delete non-atopile group footprints
-        pcb.footprints[:] = [
+        pcb.footprints = [
             fp
             for fp in pcb.footprints
             if fp.uuid not in to_delete or self._get_footprint_addr(fp)
@@ -454,13 +458,17 @@ class LayoutSync:
         new_other = self._sync_other(sub_pcb, top_pcb, offset)
 
         new_elements = new_fps + new_routes + new_other
+        new_elements_out = []
         for new_element in new_elements:
             container, container_name = PCB_Transformer.get_pcb_container(
                 new_element, top_pcb
             )
-            kicad.insert(top_pcb, container_name, container, new_element)
+            new_element_out = kicad.insert(
+                top_pcb, container_name, container, new_element
+            )
+            new_elements_out.append(new_element_out)
 
-        group.members.extend(e.uuid for e in new_elements)
+        group.members = list(set(group.members) | set(e.uuid for e in new_elements_out))
 
     def _get_net_number(self, pcb: PCB, net_name: str) -> int:
         """Get the net number for a given net name."""

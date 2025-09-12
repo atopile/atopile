@@ -858,19 +858,32 @@ class kicad:
 
     @staticmethod
     def set[T: Named](
-        parent, field: str, container: list[T], value: T, index: int | None = None
+        parent,
+        field: str,
+        container: list[T],
+        value: T,
+        index: int | None = None,
+        preserve_uuid: bool = True,
     ) -> T:
+        uuid = None
         if index is None:
             index = next(
                 (i for i, o in enumerate(container) if o.name == value.name), -1
             )
+            if index != -1:
+                uuid = getattr(container[index], "uuid", None)
         kicad.filter(parent, field, container, lambda o: o.name != value.name)
+
+        if preserve_uuid and hasattr(value, "uuid") and uuid:
+            setattr(value, "uuid", uuid)
 
         return kicad.insert(parent, field, container, value, index=index)
 
     # TODO: consider implementing mutable lists in zig
     @staticmethod
     def insert[T](parent, field: str, container: list[T], *value: T, index=-1) -> T:
+        if not value:
+            raise ValueError("No value to insert")
         obj = getattr(parent, field)
         if index == -1:
             index = len(obj)
@@ -896,7 +909,8 @@ class kicad:
     @staticmethod
     def clear_and_set[T](parent, field: str, container: list[T], values: list[T]):
         kicad.filter(parent, field, container, lambda _: False)
-        kicad.insert(parent, field, container, *values)
+        if values:
+            kicad.insert(parent, field, container, *values)
 
     class geo:
         @staticmethod
@@ -936,20 +950,15 @@ class kicad:
         def add(obj, *other):
             x = obj.x
             y = obj.y
-            r = obj.r if isinstance(obj, kicad.pcb.Xyr) else None
+            r = getattr(obj, "r", None) or 0
             for o in other:
                 x += o.x
                 y += o.y
-                if isinstance(o, kicad.pcb.Xyr):
-                    assert r is not None
-                    r += o.r
-            if isinstance(obj, kicad.pcb.Xy):
-                return kicad.pcb.Xy(x=x, y=y)
-            elif isinstance(obj, kicad.pcb.Xyr):
-                assert r is not None
+                r += getattr(o, "r", None) or 0
+            if hasattr(obj, "r"):
                 return kicad.pcb.Xyr(x=x, y=y, r=r)
             else:
-                raise ValueError(f"Unsupported type: {type(obj)}")
+                return kicad.pcb.Xy(x=x, y=y)
 
         @overload
         @staticmethod
@@ -965,20 +974,15 @@ class kicad:
         def sub(obj, *other):
             x = obj.x
             y = obj.y
-            r = obj.r if isinstance(obj, kicad.pcb.Xyr) else None
+            r = getattr(obj, "r", None) or 0
             for o in other:
                 x -= o.x
                 y -= o.y
-                if isinstance(o, kicad.pcb.Xyr):
-                    assert r is not None
-                    r -= o.r
-            if isinstance(obj, kicad.pcb.Xy):
+                r -= getattr(o, "r", None) or 0
+            if hasattr(obj, "r"):
                 return kicad.pcb.Xy(x=x, y=y)
-            elif isinstance(obj, kicad.pcb.Xyr):
-                assert r is not None
-                return kicad.pcb.Xyr(x=x, y=y, r=r)
             else:
-                raise ValueError(f"Unsupported type: {type(obj)}")
+                return kicad.pcb.Xyr(x=x, y=y, r=r)
 
         @staticmethod
         def neg(obj: "kicad.pcb.Xy") -> "kicad.pcb.Xy":
@@ -1062,6 +1066,18 @@ class kicad:
                             hide=t.hide,
                         )
                     )
+                elif not t.uuid:
+                    t.uuid = kicad.gen_uuid()
+
+            for p in old.footprint.pads:
+                if p.uuid:
+                    continue
+                p.uuid = kicad.gen_uuid()
+
+            if old.footprint.layer not in [None, "F.Cu"]:
+                raise ValueError(
+                    f"Invalid library footprint: layer must be F.Cu, got {old.footprint.layer}"
+                )
 
             return kicad.footprint.FootprintFile(
                 footprint=kicad.footprint.Footprint(
@@ -1147,6 +1163,7 @@ class kicad:
                     generator="faebryk_convert",
                     generator_version="v5",
                     tedit=old.footprint.tedit,
+                    embedded_fonts=False,
                 )
             )
         elif isinstance(old, kicad.symbol_v6.SymbolFile):
@@ -1338,6 +1355,11 @@ class Property:
     def set_property[T: _Property](
         parent: _PropertyHolder, prop: T, index: int | None = None
     ) -> T:
+        for p in parent.propertys:
+            if p.name == prop.name:
+                p.value = prop.value
+                return p
+
         return kicad.set(parent, "propertys", parent.propertys, prop, index=index)
 
     @staticmethod

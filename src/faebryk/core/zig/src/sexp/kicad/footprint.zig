@@ -21,6 +21,7 @@ pub const Footprint = struct {
     fp_texts: []pcb.FpText = &.{},
     pads: []pcb.Pad = &.{},
     models: []pcb.Model = &.{},
+    embedded_fonts: ?bool = null,
 
     // additional fields
     version: i32 = pcb.KICAD_FP_VERSION,

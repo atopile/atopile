@@ -570,13 +570,13 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
     @setEvalBranchQuota(100000);
     const field_name_str = std.mem.span(field_name);
 
-    // For struct types, we need to generate the binding at comptime
+    // For struct types, get the type name for registry lookup
     const child_info = @typeInfo(ChildType);
-    const type_name = if (child_info == .@"struct")
-        std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str })
+    const type_name_for_registry = if (child_info == .@"struct")
+        @typeName(ChildType) ++ "\x00"
     else
-        field_name;
-    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name) else void;
+        "";
+    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name_for_registry) else void;
 
     const getter = struct {
         var nested_type_obj: ?*py.PyTypeObject = null;
@@ -591,14 +591,23 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
             if (!init_mutex) {
                 init_mutex = true;
-                const result = py.PyType_Ready(&NestedBinding.type_object);
-                if (result < 0) {
-                    @panic("Failed to initialize optional nested type");
+
+                // Try to get the registered type object first
+                if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
+                    nested_type_obj = registered_obj;
+                } else {
+                    // Fallback: create a new binding if not found in registry
+                    const result = py.PyType_Ready(&NestedBinding.type_object);
+                    if (result < 0) {
+                        @panic("Failed to initialize optional nested type");
+                    }
+                    nested_type_obj = &NestedBinding.type_object;
+                    // Register the newly created type for future reuse
+                    registerTypeObject(type_name_for_registry, nested_type_obj.?);
                 }
-                nested_type_obj = &NestedBinding.type_object;
             }
 
-            return &NestedBinding.type_object;
+            return nested_type_obj.?;
         }
 
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
@@ -750,6 +759,8 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                         @panic("Failed to initialize slice nested type");
                     }
                     nested_type_obj = &NestedBinding.type_object;
+                    // Register the newly created type for future reuse
+                    registerTypeObject(type_name_for_registry, nested_type_obj.?);
                 }
             }
 
@@ -948,12 +959,12 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
 pub fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime FieldType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
 
-    // Generate a unique type name for the nested struct
-    const type_name = std.fmt.comptimePrint("{s}.{s}", .{ @typeName(FieldType), field_name_str });
+    // Use the type name for registry lookup
+    const type_name_for_registry = @typeName(FieldType) ++ "\x00";
 
     // Generate a Python binding for the nested struct type
     // We need to create this at comptime so it can be properly initialized
-    const NestedBinding = wrap_in_python(FieldType, type_name);
+    const NestedBinding = wrap_in_python(FieldType, type_name_for_registry);
 
     const getter = struct {
         // Store the type object statically and initialize it lazily
@@ -969,16 +980,22 @@ pub fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u
             if (!init_mutex) {
                 init_mutex = true;
 
-                // Set up the type properly
-                const result = py.PyType_Ready(&NestedBinding.type_object);
-                if (result < 0) {
-                    @panic("Failed to initialize nested type");
+                // Try to get the registered type object first
+                if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
+                    nested_type_obj = registered_obj;
+                } else {
+                    // Fallback: create a new binding if not found in registry
+                    const result = py.PyType_Ready(&NestedBinding.type_object);
+                    if (result < 0) {
+                        @panic("Failed to initialize nested type");
+                    }
+                    nested_type_obj = &NestedBinding.type_object;
+                    // Register the newly created type for future reuse
+                    registerTypeObject(type_name_for_registry, nested_type_obj.?);
                 }
-
-                nested_type_obj = &NestedBinding.type_object;
             }
 
-            return &NestedBinding.type_object;
+            return nested_type_obj.?;
         }
 
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {

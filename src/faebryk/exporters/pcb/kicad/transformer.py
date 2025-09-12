@@ -138,18 +138,23 @@ def per_point[R](
     return func(line[0]), func(line[1])
 
 
-def get_all_geo_containers(obj: PCB | Footprint) -> list[Sequence[Geom]]:
+def get_all_geo_containers(obj: PCB | Footprint) -> list[tuple[Sequence[Geom], str]]:
     if isinstance(obj, kicad.pcb.KicadPcb):
         return [
-            obj.gr_lines,
-            obj.gr_arcs,
-            obj.gr_circles,
-            obj.gr_rects,
-            obj.gr_curves,
-            obj.gr_polys,
+            (obj.gr_lines, "gr_lines"),
+            (obj.gr_arcs, "gr_arcs"),
+            (obj.gr_circles, "gr_circles"),
+            (obj.gr_rects, "gr_rects"),
+            (obj.gr_curves, "gr_curves"),
+            (obj.gr_polys, "gr_polys"),
         ]
     elif isinstance(obj, Footprint):
-        return [obj.fp_lines, obj.fp_arcs, obj.fp_circles, obj.fp_rects]
+        return [
+            (obj.fp_lines, "fp_lines"),
+            (obj.fp_arcs, "fp_arcs"),
+            (obj.fp_circles, "fp_circles"),
+            (obj.fp_rects, "fp_rects"),
+        ]
 
     raise TypeError(f"Unsupported type: {type(obj)}")
 
@@ -157,7 +162,7 @@ def get_all_geo_containers(obj: PCB | Footprint) -> list[Sequence[Geom]]:
 def get_all_geos(obj: PCB | Footprint) -> list[Geom]:
     candidates = get_all_geo_containers(obj)
 
-    return [geo for geos in candidates for geo in geos]
+    return [geo for geos, _ in candidates for geo in geos]
 
 
 class PCB_Transformer:
@@ -1782,6 +1787,85 @@ class PCB_Transformer:
         # Mark the footprint as being on the other side
         footprint.layer = _flip(footprint.layer)
 
+    @staticmethod
+    def identify_obj(obj: Any) -> Any:
+        match obj:
+            case kicad.pcb.Pad():
+                return obj.name
+            case kicad.pcb.Property():
+                return obj.name
+            # geos
+            case kicad.pcb.Line():
+                return obj.start.x, obj.start.y, obj.end.x, obj.end.y
+            case kicad.pcb.Arc():
+                return (
+                    obj.start.x,
+                    obj.start.y,
+                    obj.mid.x,
+                    obj.mid.y,
+                    obj.end.x,
+                    obj.end.y,
+                )
+            case kicad.pcb.Circle():
+                return obj.center.x, obj.center.y, obj.end.x, obj.end.y
+            case kicad.pcb.Rect():
+                return obj.start.x, obj.start.y, obj.end.x, obj.end.y
+            case kicad.pcb.Polygon():
+                return [(pt.x, pt.y) for pt in obj.pts.xys]
+            case kicad.pcb.Curve():
+                return [(pt.x, pt.y) for pt in obj.pts.xys]
+            case kicad.pcb.Text():
+                return obj.at.x, obj.at.y
+            case kicad.pcb.TextBox():
+                return obj.text
+
+    @staticmethod
+    def footprint_container_merge(
+        pcb_fp: kicad.pcb.Footprint,
+        lib_fp: kicad.footprint.Footprint,
+        attr: str,
+        keep_pcb_obj_if_not_in_lib: bool = False,
+    ):
+        """
+        keep uuid of src (or gen new one if not present)
+        do funky at rotation
+        drop everything in src if not in dst
+        """
+
+        lib_objs = {PCB_Transformer.identify_obj(o): o for o in getattr(lib_fp, attr)}
+        _pcb_objs = getattr(pcb_fp, attr)
+        if not keep_pcb_obj_if_not_in_lib:
+            _pcb_objs = kicad.filter(
+                pcb_fp,
+                attr,
+                _pcb_objs,
+                lambda o: PCB_Transformer.identify_obj(o) in lib_objs,
+            )
+
+        pcb_objs = {PCB_Transformer.identify_obj(o): o for o in _pcb_objs}
+
+        for ident, lib_obj in lib_objs.items():
+            lib_obj_attrs = {f: getattr(lib_obj, f) for f in lib_obj.__field_names__()}
+            if "uuid" in lib_obj_attrs:
+                del lib_obj_attrs["uuid"]
+            if "at" in lib_obj_attrs and hasattr(at := lib_obj_attrs["at"], "r"):
+                lib_obj_attrs["at"] = kicad.pcb.Xyr(
+                    x=at.x,
+                    y=at.y,
+                    r=(at.r or 0) + (pcb_fp.at.r or 0),
+                )
+
+            # update
+            if ident in pcb_objs:
+                pcb_obj = pcb_objs[ident]
+                for k, v in lib_obj_attrs.items():
+                    setattr(pcb_obj, k, v)
+            # new
+            else:
+                lib_obj_attrs["uuid"] = kicad.gen_uuid()
+                _pcb_obj = type(lib_obj)(**lib_obj_attrs)
+                pcb_obj = kicad.insert(pcb_fp, attr, getattr(pcb_fp, attr), _pcb_obj)
+
     def update_footprint_from_lib(
         self, footprint: Footprint, lib_footprint: kicad.footprint.Footprint
     ) -> Footprint:
@@ -1793,31 +1877,29 @@ class PCB_Transformer:
         """
         original_side = self.BoardSide(footprint.layer)
 
-        updates = self._fp_common_fields_dict(lib_footprint)
-        updates["pads"] = [
-            kicad.pcb.Pad(
-                **{
-                    # Cannot use asdict because it converts children dataclasses too
-                    **dataclass_as_kwargs(p),
-                    # We have to handle the rotation separately because
-                    # because it must consider the rotation of the parent footprint
-                    "at": kicad.pcb.Xyr(
-                        x=p.at.x, y=p.at.y, r=(p.at.r or 0) + (footprint.at.r or 0)
-                    ),
-                },
+        footprint.name = lib_footprint.name
+        # take layer from lib and then later flip
+        footprint.layer = lib_footprint.layer
+        # footprint.uuid | keep
+        # footprint.at | not in lib
+        # lib_footprint.path | not in pcb
+        footprint.attr = [a for a in lib_footprint.attr]
+        footprint.models = [m for m in lib_footprint.models]
+        footprint.embedded_fonts = lib_footprint.embedded_fonts
+
+        # pads
+        PCB_Transformer.footprint_container_merge(footprint, lib_footprint, "pads")
+        # geos (circles, lines, arcs, rects, poly, texts)
+        for _, container_name in get_all_geo_containers(footprint):
+            PCB_Transformer.footprint_container_merge(
+                footprint, lib_footprint, container_name
             )
-            for p in lib_footprint.pads
-        ]
 
-        props = {p.name: p for p in footprint.propertys} | {
-            p.name: p for p in updates["propertys"]
-        }
-        if "checksum" in props:
-            del props["checksum"]
-        updates["propertys"] = list(props.values())
-
-        for name, update in updates.items():
-            setattr(footprint, name, update)
+        # propertys, keep extra props (might come from us)
+        PCB_Transformer.footprint_container_merge(
+            footprint, lib_footprint, "propertys", keep_pcb_obj_if_not_in_lib=True
+        )
+        Property.checksum.delete_checksum(footprint)
 
         # Set the boardside of the footprint
         self._set_footprint_side(footprint, original_side, logger)

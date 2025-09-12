@@ -384,6 +384,7 @@ def update_pcb(
                 )
             else:
                 logger.info("No changes to layout. Passed --frozen check.")
+        # TODO this is always false
         elif original_pcb_file == pcb_file:
             logger.info(
                 "No changes to layout. Not writing %s", config.build.paths.layout
