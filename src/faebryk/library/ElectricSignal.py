@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from functools import reduce
 from typing import Iterable
 
 import faebryk.library._F as F
@@ -148,11 +149,12 @@ class ElectricSignal(F.Signal):
             try:
                 return cast_assert(
                     (Quantity_Interval, Quantity_Interval_Disjoint),
-                    sum(
+                    reduce(
+                        lambda a, b: a + b,
                         [
                             cast_assert(Quantity_Interval, r).op_invert()
                             for r in resistances
-                        ]
+                        ],
                     ),
                 ).op_invert()
             except ZeroDivisionError:
