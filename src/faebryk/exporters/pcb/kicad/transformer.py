@@ -1200,6 +1200,11 @@ class PCB_Transformer:
             logger.warning(f"Skipped no touch component: {fp.name}")
             return
 
+        # Flip
+        flip = PCB_Transformer.BoardSide(fp.layer) != PCB_Transformer.BoardSide(layer)
+        if flip:
+            PCB_Transformer._flip_obj(fp)
+
         # Rotate
         rot_angle = ((coord.r or 0) - (fp.at.r or 0)) % 360
 
@@ -1214,57 +1219,6 @@ class PCB_Transformer:
                 obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
 
         fp.at = coord
-
-        # Flip
-        flip = fp.layer != layer
-
-        if flip:
-
-            def _flip(x: str):
-                return x.replace("F.", "<F>.").replace("B.", "F.").replace("<F>.", "B.")
-
-            fp.layer = _flip(fp.layer)
-
-            # Mirror the footprint geometry about the Y-axis when flipping layers
-            # so that everything remains readable from the top view.
-            for pad in fp.pads:
-                pad.layers = [_flip(x) for x in pad.layers]
-                # Mirror pad centre and rotation
-                pad.at.y = -pad.at.y
-                if pad.at.r:
-                    pad.at.r = (360 - pad.at.r) % 360
-
-            # Mirror the remaining primitives inside the footprint.
-            for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys):
-                # Objects that expose an `at` attribute (text & properties)
-                if isinstance(obj, (kicad.pcb.FpText, kicad.pcb.Property)):
-                    obj.at.y = -obj.at.y
-                    if obj.at.r:
-                        obj.at.r = (360 - obj.at.r) % 360
-
-                # Geometric primitives -------------------------------------------------
-                if isinstance(obj, (kicad.pcb.Line, kicad.pcb.Rect)):
-                    obj.start.y = -obj.start.y
-                    obj.end.y = -obj.end.y
-                elif isinstance(obj, kicad.pcb.Arc):
-                    obj.start.y = -obj.start.y
-                    obj.mid.y = -obj.mid.y
-                    obj.end.y = -obj.end.y
-                elif isinstance(obj, kicad.pcb.Circle):
-                    obj.center.y = -obj.center.y
-                    obj.end.y = -obj.end.y
-                elif isinstance(obj, (kicad.pcb.Polygon, kicad.pcb.Curve)) and hasattr(
-                    obj, "pts"
-                ):
-                    # Flip every stored point; keep X, negate Y
-                    obj.pts.xys = [pt.__class__(pt.x, -pt.y) for pt in obj.pts.xys]  # type: ignore[attr-defined]
-
-                if isinstance(obj, kicad.pcb.Property):
-                    obj = obj.layer
-                if isinstance(obj, kicad.pcb.FpText):
-                    obj = obj.layer
-
-                kicad.geo.apply_to_layers(obj, _flip)
 
     @staticmethod
     def move_object(obj: Any, vector: kicad.pcb.Xy):
@@ -1732,10 +1686,16 @@ class PCB_Transformer:
     class _has_effects(Protocol):
         effects: kicad.pcb.Effects | None
 
-    def _mirror_justify(self, obj: _has_effects):
+    @staticmethod
+    def _mirror_justify(obj: _has_effects):
         if not obj.effects:
             obj.effects = kicad.pcb.Effects(
-                font=self.font,
+                font=kicad.pcb.Font(
+                    size=kicad.pcb.Wh(w=1, h=1),
+                    thickness=0.2,
+                    bold=None,
+                    italic=None,
+                ),
                 hide=None,
                 justify=None,
             )
@@ -1765,7 +1725,11 @@ class PCB_Transformer:
 
         assert False, "Broken justify: " + repr(effects.justify)
 
-    def _flip_obj(self, obj: Any):
+    @staticmethod
+    def _flip_obj(obj: Any):
+        # TODO: flippin in kicad is insanely fucked in the brain
+        # this kinda does the job for some simple cases
+
         match obj:
             case kicad.pcb.Footprint():
                 obj.at = kicad.pcb.Xyr(
@@ -1774,39 +1738,37 @@ class PCB_Transformer:
                     r=(((obj.at.r or 0) + 180) % 360) or None,
                 )
                 for _obj in obj.pads + obj.propertys + obj.fp_texts + get_all_geos(obj):
-                    self._flip_obj(_obj)
+                    PCB_Transformer._flip_obj(_obj)
             case kicad.pcb.Pad():
+                # TODO chamfers
+                # TODO flip shapes in custom pads
                 obj.at = kicad.pcb.Xyr(
                     x=obj.at.x,
                     y=-obj.at.y,
                     r=(((obj.at.r or 0) + 180) % 360) or None,
                 )
             case kicad.pcb.Arc():
-                start, mid, end = obj.start, obj.mid, obj.end
-                obj.start = kicad.pcb.Xy(x=end.x, y=-end.y)
-                obj.mid = kicad.pcb.Xy(x=mid.x, y=-mid.y)
-                obj.end = kicad.pcb.Xy(x=start.x, y=-start.y)
+                obj.start.y = -obj.start.y
+                obj.mid.y = -obj.mid.y
+                obj.end.y = -obj.end.y
             case kicad.pcb.Circle():
-                center, end = obj.center, obj.end
-                obj.center = kicad.pcb.Xy(x=center.x, y=-center.y)
-                obj.end = kicad.pcb.Xy(x=end.x, y=-end.y)
+                obj.center.y = -obj.center.y
+                obj.end.y = -obj.end.y
             case kicad.pcb.Rect():
-                start, end = obj.start, obj.end
-                obj.start = kicad.pcb.Xy(x=end.x, y=-end.y)
-                obj.end = kicad.pcb.Xy(x=start.x, y=-start.y)
+                obj.start.y = -obj.start.y
+                obj.end.y = -obj.end.y
             case kicad.pcb.Line():
-                obj.start = kicad.pcb.Xy(x=obj.start.x, y=-obj.start.y)
-                obj.end = kicad.pcb.Xy(x=obj.end.x, y=-obj.end.y)
-            case kicad.pcb.Polygon():
-                obj.pts.xys = [kicad.pcb.Xy(x=pt.x, y=-pt.y) for pt in obj.pts.xys]
-            case kicad.pcb.Curve():
-                obj.pts.xys = [kicad.pcb.Xy(x=pt.x, y=-pt.y) for pt in obj.pts.xys]
+                obj.start.y = -obj.start.y
+                obj.end.y = -obj.end.y
+            case kicad.pcb.Polygon() | kicad.pcb.Curve():
+                for pt in obj.pts.xys:
+                    pt.y = -pt.y
             case kicad.pcb.TextBox():
                 # TODO
                 pass
             case kicad.pcb.Text() | kicad.pcb.Property() | kicad.pcb.FpText():
-                obj.at = kicad.pcb.Xyr(x=obj.at.x, y=-obj.at.y, r=obj.at.r)
-                self._mirror_justify(obj)  # type: ignore
+                obj.at.y = -obj.at.y
+                PCB_Transformer._mirror_justify(obj)  # type: ignore
             case _:
                 raise ValueError(f"Cannot flip object of type {type(obj)}")
 
@@ -1918,11 +1880,10 @@ class PCB_Transformer:
         This will disconnect the footprint from any nets - which subsequentially
         must be reconnected.
         """
-        original_side = self.BoardSide(footprint.layer)
-
-        # pre-flip so matching works
-        if original_side != self.BoardSide(lib_footprint.layer):
-            self._flip_obj(footprint)
+        # Return FP to base position and save angle and layer
+        angle, layer = footprint.at.r, footprint.layer
+        to = kicad.pcb.Xyr(x=footprint.at.x, y=footprint.at.y, r=0)
+        PCB_Transformer.move_fp(footprint, to, lib_footprint.layer)
 
         footprint.name = lib_footprint.name
         # take layer from lib and then later flip
@@ -1950,9 +1911,10 @@ class PCB_Transformer:
         # fp_texts
         PCB_Transformer.footprint_container_merge(footprint, lib_footprint, "fp_texts")
 
-        # Set the boardside of the footprint
-        if original_side != self.BoardSide(footprint.layer):
-            self._flip_obj(footprint)
+        # Move back to original layer(flip) and angle
+        PCB_Transformer.move_fp(
+            footprint, kicad.pcb.Xyr(x=footprint.at.x, y=footprint.at.y, r=angle), layer
+        )
 
         return footprint
 
