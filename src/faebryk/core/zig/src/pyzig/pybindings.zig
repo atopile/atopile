@@ -299,3 +299,22 @@ pub fn Py_True() *PyObject {
 pub fn Py_False() *PyObject {
     return &_Py_FalseStruct;
 }
+
+// Exception types
+pub extern var PyExc_IndexError: *PyObject;
+
+// Rich comparison
+pub extern fn PyObject_RichCompareBool(o1: ?*PyObject, o2: ?*PyObject, opid: c_int) c_int;
+pub const Py_EQ: c_int = 2;
+
+// Sequence protocol for lists
+pub const PySequenceMethods = extern struct {
+    sq_length: ?*const fn (?*PyObject) callconv(.C) isize = null,
+    sq_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = null,
+    sq_repeat: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
+    sq_item: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
+    sq_ass_item: ?*const fn (?*PyObject, isize, ?*PyObject) callconv(.C) c_int = null,
+    sq_contains: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) c_int = null,
+    sq_inplace_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = null,
+    sq_inplace_repeat: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
+};

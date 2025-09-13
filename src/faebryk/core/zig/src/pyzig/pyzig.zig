@@ -1,5 +1,6 @@
 const std = @import("std");
 const py = @import("pybindings.zig");
+const mutable_list = @import("mutable_list.zig");
 
 // Global registry for type objects to avoid creating duplicates
 var type_registry = std.HashMap([]const u8, *py.PyTypeObject, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(std.heap.c_allocator);
@@ -769,65 +770,15 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
 
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
-            const slice = @field(obj.data.*, field_name_str);
 
-            // Create a Python list
-            const list = py.PyList_New(@intCast(slice.len));
-            if (list == null) return null;
+            // Get a pointer to the slice field for mutable access
+            const slice_ptr = &@field(obj.data.*, field_name_str);
 
-            for (slice, 0..) |*item, i| {
-                // Create Python object for each item
-                const wrapped = wrap_value_ptr(item) orelse {
-                    py.Py_DECREF(list.?);
-                    return null;
-                };
-                _ = py.PyList_SetItem(list, @intCast(i), wrapped);
-            }
+            // Get the element type object for struct types
+            const element_type_obj = if (child_info == .@"struct") getNestedTypeObj() else null;
 
-            return list;
-        }
-
-        fn wrap_value_ptr(item_ptr: *ChildType) ?*py.PyObject {
-            switch (child_info) {
-                .@"struct" => {
-                    // Create a new Python object for the struct using the registered type
-                    const type_obj = getNestedTypeObj();
-                    const pyobj = py.PyType_GenericAlloc(type_obj, 0);
-                    if (pyobj == null) return null;
-
-                    const NestedWrapper = PyObjectWrapper(ChildType);
-                    const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
-                    wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
-                    wrapper.data = item_ptr;
-
-                    return pyobj;
-                },
-                .int => return py.PyLong_FromLong(@intCast(item_ptr.*)),
-                .float => return py.PyFloat_FromDouble(@floatCast(item_ptr.*)),
-                .bool => if (item_ptr.*) return py.Py_True() else return py.Py_False(),
-                .pointer => |ptr| {
-                    if (ptr.size == .slice and ptr.child == u8) {
-                        // String slice - use PyUnicode_FromStringAndSize to handle non-null-terminated strings
-                        return py.PyUnicode_FromStringAndSize(item_ptr.*.ptr, @intCast(item_ptr.*.len));
-                    }
-                    // Other pointer types not yet supported
-                    const none = py.Py_None();
-                    py.Py_INCREF(none);
-                    return none;
-                },
-                .@"enum" => {
-                    // Convert enum to string
-                    const enum_str = @tagName(item_ptr.*);
-                    // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
-                    return py.PyUnicode_FromStringAndSize(enum_str.ptr, @intCast(enum_str.len));
-                },
-                else => {
-                    // Unsupported type - return None
-                    const none = py.Py_None();
-                    py.Py_INCREF(none);
-                    return none;
-                },
-            }
+            // Create a mutable list wrapper that directly modifies the Zig slice
+            return mutable_list.createMutableList(ChildType, slice_ptr, element_type_obj);
         }
     }.impl;
 
@@ -839,7 +790,11 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                 return -1;
             }
 
-            // Check if value is a list
+            // Check if it's our mutable list type - if so, we don't need to do anything
+            // since mutations are already reflected in the underlying slice
+            // TODO: Add proper type check for MutableList
+
+            // For now, only support assignment of regular Python lists
             if (py.PyList_Check(value) == 0) {
                 py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
                 return -1;
