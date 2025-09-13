@@ -3,8 +3,6 @@ TextLayer(knockout)
 layer/layers in geo
 | check in loading from pcb / converting
 
-fp_text added twice
-
 netnames
 | footprint-net
 
@@ -13,4 +11,11 @@ refactor encode to let bottom type build list (with name) instead of struct
 
 check old projects behavior
 
-arc broken
+arc conversion broken (midpoint)
+
+preserve hidden
+layout_sync + flip fucks rotation (see move_fp)
+
+assertion error: part_lifecycle:571 if adding IC to sub layout in layout_reuse example
+
+ref\*\*
