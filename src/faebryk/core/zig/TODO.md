@@ -16,6 +16,4 @@ arc conversion broken (midpoint)
 preserve hidden
 layout_sync + flip fucks rotation (see move_fp)
 
-assertion error: part_lifecycle:571 if adding IC to sub layout in layout_reuse example
-
-ref\*\*
+ref\*\* after adding new component
