@@ -31,7 +31,7 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
-from faebryk.libs.exceptions import DeprecatedException, UserException, downgrade
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
 from faebryk.libs.util import (
@@ -41,7 +41,6 @@ from faebryk.libs.util import (
     cast_assert,
     find,
     groupby,
-    hash_string,
     not_none,
     re_in,
     yield_missing,
@@ -214,7 +213,6 @@ class PCB_Transformer:
 
     def __init__(self, pcb: PCB, graph: Graph, app: Module) -> None:
         self.pcb = pcb
-        self.graph = graph
         self.app = app
 
         self.dimensions = None
@@ -236,6 +234,10 @@ class PCB_Transformer:
         self.default_component_insert_point = kicad.pcb.Xyr(x=0, y=0, r=0)
 
         self.attach()
+
+    @property
+    def graph(self):
+        return self.app.get_graph()
 
     def attach(self):
         """Bind footprints and nets from the PCB to the graph."""
@@ -298,7 +300,6 @@ class PCB_Transformer:
             for f in pcb.footprints
             if (addr := Property.try_get_property(f.propertys, "atopile_address"))
         }
-        fps_by_path = {f.path: f for f in pcb.footprints if f.path is not None}
 
         # Also try nodes without footprints, because they might get them later
         for module in GraphFunctions(graph).nodes_of_type(Module):
@@ -306,18 +307,6 @@ class PCB_Transformer:
 
             # First, try to find the footprint by the atopile address
             if fp := fps_by_atopile_addr.get(atopile_addr):
-                footprint_map[module] = fp
-                continue
-
-            # Then, try to find the footprint by the path (which looks like a UUID)
-            hashed_addr = hash_string(atopile_addr)
-            # TODO: @v0.4 remove this, it's a fallback for v0.2 designs
-            if fp := fps_by_path.get(f"/{hashed_addr}/{hashed_addr}"):
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        f"`{module.get_full_name()}` is linked to the layout using v0.2"
-                        " mechanism, please save the design to update."
-                    )
                 footprint_map[module] = fp
                 continue
 
