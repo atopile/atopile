@@ -885,7 +885,6 @@ class kicad:
 
         return kicad.insert(parent, field, container, value, index=index)
 
-    # TODO: consider implementing mutable lists in zig
     @staticmethod
     def insert[T](parent, field: str, container: list[T], *value: T, index=-1) -> T:
         if not value:
@@ -893,20 +892,24 @@ class kicad:
         obj = getattr(parent, field)
         if index == -1:
             index = len(obj)
-        newobj = [*obj[:index], *value, *obj[index:]]
 
-        setattr(parent, field, newobj)
-        return getattr(parent, field)[index]
+        for i, val in enumerate(value):
+            obj.insert(index + i, val)
+
+        return obj[index]
 
     @staticmethod
     def filter[T](
         parent, field: str, container: list[T], predicate: Callable[[T], bool]
     ):
         obj = getattr(parent, field)
-        newobj = [o for o in obj if predicate(o)]
 
-        setattr(parent, field, newobj)
-        return getattr(parent, field)
+        # Iterate backwards to avoid index shifting issues
+        for i in range(len(obj) - 1, -1, -1):
+            if not predicate(obj[i]):
+                obj.pop(i)
+
+        return obj
 
     @staticmethod
     def delete[T: Named](parent, field: str, container: list[T], name: str):
@@ -914,9 +917,11 @@ class kicad:
 
     @staticmethod
     def clear_and_set[T](parent, field: str, container: list[T], values: list[T]):
-        kicad.filter(parent, field, container, lambda _: False)
+        obj = getattr(parent, field)
+
+        obj.clear()
         if values:
-            kicad.insert(parent, field, container, *values)
+            obj.extend(values)
 
     class geo:
         @staticmethod
