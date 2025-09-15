@@ -10,11 +10,8 @@ check old projects behavior
 
 arc conversion broken (midpoint)
 
-preserve hidden
 layout_sync + flip fucks rotation (see move_fp)
 
-ref\*\* after adding new component
-
 mutable list
-
-- atm free slice when setting prop
+| atm free slice when setting prop
+| ref\*\* after adding new component
