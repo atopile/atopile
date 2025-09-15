@@ -9,6 +9,7 @@ refactor encode to let bottom type build list (with name) instead of struct
 check old projects behavior
 
 arc conversion broken (midpoint)
+| in easyeda2kicad
 
 layout_sync + flip fucks rotation (see move_fp)
 
