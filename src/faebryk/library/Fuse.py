@@ -47,29 +47,34 @@ class Fuse(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import Fuse, ElectricPower
 
-        fuse = new Fuse
-        fuse.trip_current = 2A +/- 10%
-        fuse.fuse_type = Fuse.FuseType.NON_RESETTABLE
-        fuse.response_type = Fuse.ResponseType.FAST
-        fuse.package = "1206"
+        module UsageExample:
+            # Connect fuse in series with power supply
+            power_input = new ElectricPower
+            protected_power = new ElectricPower
+            protected_power_ptc = new ElectricPower
 
-        # Connect fuse in series with power supply
-        power_input = new ElectricPower
-        protected_power = new ElectricPower
+            fuse = new Fuse
+            fuse.lcsc_id = "C151133"
+            # fuse.trip_current = 500mA +/- 10%
+            # fuse.fuse_type = "NON_RESETTABLE"
+            # fuse.response_type = "FAST"
+            # fuse.package = "1206"
 
-        # Fuse protects the circuit from overcurrent
-        power_input.hv ~> fuse ~> protected_power.hv
-        power_input.lv ~ protected_power.lv
+            power_input.hv ~> fuse ~> protected_power.hv
+            power_input.lv ~ protected_power.lv
 
-        # For resettable fuse (PTC)
-        ptc_fuse = new Fuse
-        ptc_fuse.trip_current = 500mA +/- 20%
-        ptc_fuse.fuse_type = Fuse.FuseType.RESETTABLE
-        ptc_fuse.response_type = Fuse.ResponseType.SLOW
+            # For resettable fuse (PTC)
+            ptc_fuse = new Fuse
+            ptc_fuse.lcsc_id = "C720075"
+            # ptc_fuse.trip_current = 500mA +/- 20%
+            # ptc_fuse.fuse_type = "RESETTABLE"
+            # ptc_fuse.response_type = "SLOW"
 
-        # Common applications: USB power protection, battery protection
+            power_input.hv ~> ptc_fuse ~> protected_power_ptc.hv
+            power_input.lv ~ protected_power_ptc.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

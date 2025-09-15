@@ -50,22 +50,28 @@ class BJT(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import BJT, Resistor, ElectricPower
+        #pragma experiment("BRIDGE_CONNECT")
 
-        bjt = new BJT
-        bjt.doping_type ="NPN"
-        bjt.mpn = "C373737
+        import BJT, Resistor, ElectricPower, ElectricSignal
 
-        # Use as amplifier with bias resistors
-        base_resistor = new Resistor
-        collector_resistor = new Resistor
-        power_supply = new ElectricPower
+        module UsageExample:
+            bjt = new BJT
+            bjt.doping_type = 'NPN'
+            bjt.lcsc_id = 'C373737'
 
-        # Basic amplifier configuration
-        power_supply.hv ~> collector_resistor ~> bjt.collector
-        bjt.emitter ~ power_supply.lv
-        input_signal ~> base_resistor ~> bjt.base
-        output_signal ~ bjt.collector
+            input_signal = new ElectricSignal
+
+            # Use as amplifier with bias resistors
+            base_resistor = new Resistor
+            base_resistor.resistance = 1kohm +/- 5%
+            collector_resistor = new Resistor
+            collector_resistor.resistance = 1kohm +/- 5%
+            power_supply = new ElectricPower
+
+            # Basic amplifier configuration
+            power_supply.hv ~> collector_resistor ~> bjt.collector
+            bjt.emitter ~ power_supply.lv
+            input_signal.line ~> base_resistor ~> bjt.base
         """,
         language=F.has_usage_example.Language.ato,
     )

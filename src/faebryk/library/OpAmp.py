@@ -62,34 +62,45 @@ class OpAmp(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import OpAmp, Resistor, ElectricPower, Electrical
 
-        opamp = new OpAmp
-        opamp.bandwidth = 1MHz +/- 10%
-        opamp.gain_bandwidth_product = 10MHz +/- 20%
-        opamp.input_offset_voltage = 1mV +/- 50%
-        opamp.slew_rate = 1V/us +/- 20%
-        opamp.package = "SOIC-8"
+        module OpAmpExample from OpAmp:
+            lcsc_id = "C2842352"
+            # package = new OpAmpPackage
+            # package.vp ~ power.hv
+            # package.gnd ~ power.lv
+            # package.inv ~ inverting_input
+            # package.ninv ~ non_inverting_input
+            # package.out ~ output
 
-        # Power supply connections (dual supply)
-        power_pos = new ElectricPower
-        power_neg = new ElectricPower
-        assert power_pos.voltage within 5V +/- 5%
-        assert power_neg.voltage within -5V +/- 5%
-        opamp.power.hv ~ power_pos.hv
-        opamp.power.lv ~ power_neg.lv
+            bandwidth = 1MHz +/- 10%
+            gain_bandwidth_product = 10MHz +/- 20%
+            input_offset_voltage = 1mV +/- 50%
 
-        # Non-inverting amplifier configuration
-        feedback_resistor = new Resistor
-        gain_resistor = new Resistor
-        feedback_resistor.resistance = 10kohm +/- 1%
-        gain_resistor.resistance = 1kohm +/- 1%
+        module UsageExample:
+            opamp = new OpAmpExample
 
-        # Connections for gain = 1 + (Rf/Rg) = 11
-        input_signal ~ opamp.non_inverting_input
-        opamp.inverting_input ~> gain_resistor ~> power_neg.lv
-        opamp.output ~> feedback_resistor ~> opamp.inverting_input
-        output_signal ~ opamp.output
+            # Power supply connections
+            power = new ElectricPower
+            assert power.voltage within 5V +/- 5%
+            opamp.power ~ power
+
+            # Non-inverting amplifier configuration
+            feedback_resistor = new Resistor
+            gain_resistor = new Resistor
+            feedback_resistor.resistance = 10kohm +/- 1%
+            gain_resistor.resistance = 1kohm +/- 1%
+
+            # Signal connections
+            input_signal = new Electrical
+            output_signal = new Electrical
+
+            # Connections for gain = 1 + (Rf/Rg) = 11
+            input_signal ~ opamp.non_inverting_input
+            opamp.inverting_input ~> gain_resistor ~> power.lv
+            opamp.output ~> feedback_resistor ~> opamp.inverting_input
+            output_signal ~ opamp.output
         """,
         language=F.has_usage_example.Language.ato,
     )

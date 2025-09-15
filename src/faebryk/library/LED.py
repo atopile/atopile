@@ -106,24 +106,29 @@ class LED(F.Diode):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import LED, Resistor, ElectricPower
 
-        led = new LED
-        led.forward_voltage = 2.1V +/- 10%
-        led.current = 1mA +/- 50%
-        led.max_current = 10mA
-        led.color = LED.Color.RED
-        led.brightness = 100mcd
-        led.package = "0603"
+        module UsageExample:
+            led = new LED
+            led.lcsc_id = "C2286"
+            # led.max_current = 10mA
+            # led.color = "RED"
+            # led.brightness = 0.1cd
+            # led.package = "0603"
 
-        # Connect with current limiting resistor
-        res = new Resistor
-        power = new ElectricPower
-        assert power.voltage within 5V +/- 5%
+            forward_voltage = 2.4V +/- 10%
+            current_range = 1mA +/- 50%
 
-        assert (power.voltage-led.forward_voltage) / res.resistance within led.current
+            # Connect with current limiting resistor
+            res = new Resistor
+            power = new ElectricPower
+            assert power.voltage within 5V +/- 5%
 
-        power.hv ~> res ~> led ~> power.lv
+            # select resistor value by constraining current
+            assert (power.voltage-forward_voltage)/res.resistance within current_range
+
+            power.hv ~> res ~> led ~> power.lv
         """,
         language=F.has_usage_example.Language.ato,
     )
