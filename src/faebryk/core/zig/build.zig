@@ -59,11 +59,6 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
 pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
     const PERF_ROOT = "test/sexp/performance";
 
-    const prettytable_dep = b.dependency("prettytable", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const sexp_mod = b.createModule(.{
         .root_source_file = b.path("src/sexp/lib.zig"),
     });
@@ -86,7 +81,6 @@ pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimi
         .optimize = optimize,
     });
     perf_synthetic.root_module.addImport("sexp", sexp_mod);
-    perf_synthetic.root_module.addImport("prettytable", prettytable_dep.module("prettytable"));
     b.installArtifact(perf_synthetic);
 
     // Add run steps for both performance tests
