@@ -454,3 +454,60 @@ def test_string_escape():
     pcb_load = kicad.loads(kicad.pcb.PcbFile, sexp)
 
     assert pcb_load.kicad_pcb.generator_version == test_string
+
+
+def test_mutable_list():
+    sexp = """
+    (fp_lib_table
+        (lib (name "test0") (type "KiCad") (uri "test") (options "") (descr "test0"))
+        (lib (name "test1") (type "KiCad") (uri "test") (options "") (descr "test1"))
+    )
+    """
+    from faebryk.libs.kicad.fileformats import kicad
+
+    def _ids(fp_lib_table: kicad.fp_lib_table.FpLibTableFile):
+        return [id(lib) for lib in fp_lib_table.fp_lib_table.libs]
+
+    fp_lib_table = kicad.loads(kicad.fp_lib_table.FpLibTableFile, sexp)
+    # len
+    assert len(fp_lib_table.fp_lib_table.libs) == 2
+
+    # index
+    assert fp_lib_table.fp_lib_table.libs[0].name == "test"
+    assert fp_lib_table.fp_lib_table.libs[1].name == "test2"
+
+    # for later
+    ids = _ids(fp_lib_table)
+
+    # iter
+    for i, lib in enumerate(fp_lib_table.fp_lib_table.libs):
+        assert lib.name == f"test{i}"
+
+    # append
+    fp_lib_table.fp_lib_table.libs.append(
+        kicad.fp_lib_table.FpLibEntry(
+            name="test2",
+            type="KiCad",
+            uri="test",
+            options="",
+            descr="test2",
+        )
+    )
+    assert len(fp_lib_table.fp_lib_table.libs) == 3
+    assert fp_lib_table.fp_lib_table.libs[2].name == "test2"
+
+    # check that original refs are still valid
+    assert _ids(fp_lib_table)[:2] == ids
+
+    # remove
+    fp_lib_table.fp_lib_table.libs.remove(fp_lib_table.fp_lib_table.libs[0])
+    assert len(fp_lib_table.fp_lib_table.libs) == 2
+    assert fp_lib_table.fp_lib_table.libs[0].name == "test1"
+    assert fp_lib_table.fp_lib_table.libs[1].name == "test2"
+
+    # check that original refs are still valid
+    assert _ids(fp_lib_table)[0] == ids[1]
+
+    # clear
+    fp_lib_table.fp_lib_table.libs.clear()
+    assert len(fp_lib_table.fp_lib_table.libs) == 0
