@@ -227,6 +227,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
     }
 
     switch (type_info) {
+        .array_list => return try decodeArrayList(T, allocator, sexp, metadata),
         .@"struct" => return try decodeStruct(T, allocator, sexp, metadata),
         .optional => |opt| return try decodeOptional(opt.child, allocator, sexp, metadata),
         .pointer => |ptr| {
@@ -792,6 +793,16 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, me
     return try decodeWithMetadata(T, allocator, sexp, metadata);
 }
 
+fn decodeArrayList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!std.ArrayList(std.meta.Child(T)) {
+    const child_type = std.meta.Child(T);
+    const items = ast.getList(sexp).?;
+    var result = std.ArrayList(child_type).initCapacity(allocator, items.len) catch return error.OutOfMemory;
+    for (items) |item| {
+        try result.append(try decodeWithMetadata(child_type, allocator, item, metadata));
+    }
+    return result;
+}
+
 fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
     const child_type = std.meta.Child(T);
 
@@ -816,10 +827,11 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metad
                 @memcpy(duped, num);
                 return duped;
             },
-
             else => {},
         }
     }
+
+    // TODO: remove support for non-u8 slices (should be ArrayList)
 
     // For non-u8 slices, check if we have a list
     const items = ast.getList(sexp) orelse return error.UnexpectedType;
@@ -1041,6 +1053,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     }
 
     switch (type_info) {
+        .array_list => return try encodeArrayList(allocator, value, metadata, name),
         .@"struct" => return try encodeStruct(allocator, value, metadata),
         .optional => {
             if (value) |v| return try encode(allocator, v, metadata, name);
@@ -1321,6 +1334,15 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
 }
 
 fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
+    // TODO: remove (only used for non-str slices)
+    var items = try allocator.alloc(SExp, value.len);
+    for (value, 0..) |item, i| {
+        items[i] = try encode(allocator, item, metadata, name);
+    }
+    return SExp{ .value = .{ .list = items }, .location = null };
+}
+
+fn encodeArrayList(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
     var items = try allocator.alloc(SExp, value.len);
     for (value, 0..) |item, i| {
         items[i] = try encode(allocator, item, metadata, name);

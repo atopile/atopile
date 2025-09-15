@@ -1,18 +1,20 @@
 const std = @import("std");
 const structure = @import("../structure.zig");
 
+const str = []const u8;
+
 // KiCad footprint library table entry
 pub const FpLibEntry = struct {
-    name: []const u8,
-    type: []const u8,
-    uri: []const u8,
-    options: []const u8,
-    descr: []const u8,
+    name: str,
+    type: str,
+    uri: str,
+    options: str,
+    descr: str,
 };
 
 pub const FpLibTable = struct {
     version: ?i32 = null,
-    libs: []FpLibEntry = &.{},
+    libs: std.ArrayList(FpLibEntry),
 
     pub const fields_meta = .{
         .libs = structure.SexpField{ .multidict = true, .sexp_name = "lib" },
