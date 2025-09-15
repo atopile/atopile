@@ -722,6 +722,7 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 }
 
 // Property for slice fields
+// TODO: remove support (should be std.ArrayList)
 pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
 
@@ -900,6 +901,83 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
             std.heap.c_allocator.free(@field(obj.data.*, field_name_str));
 
             @field(obj.data.*, field_name_str) = new_slice;
+
+            return 0;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
+fn getNestedTypeObj(comptime ChildType: type) *py.PyTypeObject {
+    const child_info = @typeInfo(ChildType);
+    if (child_info != .@"struct") unreachable;
+
+    const type_name_for_registry = @typeName(ChildType) ++ "\x00";
+    var nested_type_obj: ?*py.PyTypeObject = null;
+
+    if (nested_type_obj) |obj| {
+        return obj;
+    }
+
+    // Try to get the registered type object first
+    if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
+        nested_type_obj = registered_obj;
+    } else {
+        // Create a new binding if not found in registry
+        const NestedBinding = wrap_in_python(ChildType, type_name_for_registry);
+        const result = py.PyType_Ready(&NestedBinding.type_object);
+        if (result < 0) {
+            @panic("Failed to initialize array_list nested type");
+        }
+        nested_type_obj = &NestedBinding.type_object;
+        // Register the newly created type for future reuse
+        registerTypeObject(type_name_for_registry, nested_type_obj.?);
+    }
+
+    return nested_type_obj.?;
+}
+
+// Property for array_list fields
+pub fn array_list_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
+    const field_name_str = std.mem.span(field_name);
+
+    // For struct types, get the registered type name
+    const child_info = @typeInfo(ChildType);
+
+    const getter = struct {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+
+            // Get a pointer to the array_list field for mutable access
+            const array_list_ptr = &@field(obj.data.*, field_name_str);
+
+            // Get the element type object for struct types
+            const element_type_obj = if (child_info == .@"struct") getNestedTypeObj(ChildType) else null;
+
+            // Create a mutable list wrapper that directly modifies the Zig slice
+            return mutable_list.createMutableList(ChildType, array_list_ptr, element_type_obj);
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            // value must be a MutableList
+            if (py.Py_TYPE(value) != &mutable_list.type_object) {
+                py.PyErr_SetString(py.PyExc_TypeError, "Expected a MutableList");
+                return -1;
+            }
+
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            const list: *mutable_list.MutableList(ChildType) = @ptrCast(@alignCast(value));
+            @field(obj.data.*, field_name_str) = list.array_list.*;
+            list.array_list = &@field(obj.data.*, field_name_str);
+
+            // TODO: dealloc old list
 
             return 0;
         }
@@ -1512,9 +1590,11 @@ fn genProp(comptime WrapperType: type, comptime FieldType: type, comptime field_
                 return str_prop(WrapperType, field_name);
             }
             // Handle slices of structs
+            // TODO: remove support (should be std.ArrayList)
             return slice_prop(WrapperType, field_name, ptr.child);
         },
         .optional => |opt| return optional_prop(WrapperType, field_name, opt.child),
+        .array_list => |list| return array_list_prop(WrapperType, field_name, list.child),
         .@"struct" => return struct_prop(WrapperType, field_name, FieldType),
         .@"enum" => return enum_prop(WrapperType, field_name, FieldType), // Enums are strings in Python
         else => @compileError("Unsupported field type: " ++ @typeName(FieldType)),

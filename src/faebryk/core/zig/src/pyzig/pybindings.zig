@@ -237,6 +237,24 @@ pub inline fn Py_DECREF(obj: *PyObject) void {
     _ = obj;
 }
 
+// List type for inheritance
+pub extern var PyList_Type: PyTypeObject;
+
+// Object type checking - Py_TYPE is a macro, so we need to implement it
+// In CPython, Py_TYPE(o) is defined as (((PyObject*)(o))->ob_type)
+pub fn Py_TYPE(obj: ?*PyObject) ?*PyTypeObject {
+    if (obj == null) return null;
+
+    // Cast to a struct that matches PyObject's layout to access ob_type
+    const PyObjectLayout = extern struct {
+        ob_refcnt: isize,
+        ob_type: ?*PyTypeObject,
+    };
+
+    const obj_layout: *PyObjectLayout = @ptrCast(@alignCast(obj));
+    return obj_layout.ob_type;
+}
+
 // Error handling
 pub extern fn PyErr_SetString(exception: *PyObject, message: [*:0]const u8) void;
 pub extern fn PyErr_Clear() void;
@@ -318,3 +336,11 @@ pub const PySequenceMethods = extern struct {
     sq_inplace_concat: ?*const fn (?*PyObject, ?*PyObject) callconv(.C) ?*PyObject = null,
     sq_inplace_repeat: ?*const fn (?*PyObject, isize) callconv(.C) ?*PyObject = null,
 };
+
+// Additional Python ABC registration functions
+pub extern fn PyObject_IsInstance(obj: ?*PyObject, cls: ?*PyObject) c_int;
+pub extern fn PyObject_GetIter(obj: ?*PyObject) ?*PyObject;
+
+// Sequence protocol functions
+pub extern fn PySequence_Size(obj: ?*PyObject) isize;
+pub extern fn PySequence_GetItem(obj: ?*PyObject, index: isize) ?*PyObject;
