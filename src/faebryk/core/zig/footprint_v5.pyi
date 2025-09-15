@@ -50,12 +50,12 @@ class Circle:
 class Arc:
     start: Xy
     end: Xy
+    angle: float
     width: float
     layer: str
-    angle: float
 
     def __init__(
-        self, *, start: Xy, end: Xy, width: float, layer: str, angle: float
+        self, *, start: Xy, end: Xy, angle: float, width: float, layer: str
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod

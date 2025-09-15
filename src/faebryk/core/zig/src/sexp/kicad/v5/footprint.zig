@@ -22,9 +22,9 @@ pub const Circle = struct {
 pub const Arc = struct {
     start: pcb.Xy,
     end: pcb.Xy,
+    angle: f64,
     width: f64,
     layer: str,
-    angle: f64,
 };
 
 pub const Rect = struct {

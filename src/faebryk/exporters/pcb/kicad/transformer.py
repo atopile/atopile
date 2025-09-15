@@ -1848,6 +1848,10 @@ class PCB_Transformer:
                     y=at.y,
                     r=r,
                 )
+            pcb_obj = pcb_objs.get(ident)
+            if pcb_obj:
+                if hasattr(lib_obj, "hide"):
+                    lib_obj_attrs["hide"] = pcb_obj.hide
 
             # update
             if ident in pcb_objs:

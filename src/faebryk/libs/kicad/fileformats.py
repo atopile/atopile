@@ -1028,6 +1028,7 @@ class kicad:
 
     @staticmethod
     def convert(old: Any) -> Any:
+        old = kicad.copy(old)
         if isinstance(old, kicad.footprint_v5.FootprintFile):
 
             def _calc_arc_midpoint(arc: kicad.footprint_v5.Arc):
