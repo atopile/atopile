@@ -940,8 +940,10 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                 }
             }
 
-            // Free old slice if needed (be careful about memory management)
-            // For now, we'll just replace it (potential memory leak of old data)
+            // Free old slice
+            // TODO: be very careful about memory management here, python might still have a reference to the old slice
+            std.heap.c_allocator.free(@field(obj.data.*, field_name_str));
+
             @field(obj.data.*, field_name_str) = new_slice;
 
             return 0;
