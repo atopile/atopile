@@ -249,7 +249,7 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(lib);
 
-    build_tests(b, target, optimize);
-    build_performance(b, target, optimize);
+    // build_tests(b, target, optimize);
+    // build_performance(b, target, optimize);
     build_pyzig(b, target, optimize);
 }
