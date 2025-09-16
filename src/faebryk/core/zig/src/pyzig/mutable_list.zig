@@ -24,7 +24,7 @@ pub fn MutableList(comptime T: type) type {
             return obj;
         }
 
-        pub fn py_init(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) c_int {
+        pub fn py_init(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) c_int {
             var items_list: ?*py.PyObject = null;
             if (py.PyArg_ParseTuple(args, "O", &items_list) == 0) {
                 return -1;

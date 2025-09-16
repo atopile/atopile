@@ -8,6 +8,10 @@ fn isOptional(comptime T: type) bool {
     return @typeInfo(T) == .optional;
 }
 
+fn isArrayList(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "items");
+}
+
 pub const BooleanEncoding = enum {
     yes_no,
     symbol,
@@ -227,8 +231,11 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
     }
 
     switch (type_info) {
-        .array_list => return try decodeArrayList(T, allocator, sexp, metadata),
-        .@"struct" => return try decodeStruct(T, allocator, sexp, metadata),
+        .@"struct" => if (comptime isArrayList(T)) {
+            return try decodeArrayList(T, allocator, sexp, metadata);
+        } else {
+            return try decodeStruct(T, allocator, sexp, metadata);
+        },
         .optional => |opt| return try decodeOptional(opt.child, allocator, sexp, metadata),
         .pointer => |ptr| {
             if (ptr.size == .slice) {
@@ -793,8 +800,8 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, me
     return try decodeWithMetadata(T, allocator, sexp, metadata);
 }
 
-fn decodeArrayList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!std.ArrayList(std.meta.Child(T)) {
-    const child_type = std.meta.Child(T);
+fn decodeArrayList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
+    const child_type = std.meta.Child(std.meta.FieldType(T, .items));
     const items = ast.getList(sexp).?;
     var result = std.ArrayList(child_type).initCapacity(allocator, items.len) catch return error.OutOfMemory;
     for (items) |item| {
@@ -1053,8 +1060,11 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     }
 
     switch (type_info) {
-        .array_list => return try encodeArrayList(allocator, value, metadata, name),
-        .@"struct" => return try encodeStruct(allocator, value, metadata),
+        .@"struct" => if (comptime isArrayList(T)) {
+            return try encodeArrayList(allocator, value, metadata, name);
+        } else {
+            return try encodeStruct(allocator, value, metadata);
+        },
         .optional => {
             if (value) |v| return try encode(allocator, v, metadata, name);
             return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
@@ -1343,8 +1353,8 @@ fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField
 }
 
 fn encodeArrayList(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
-    var items = try allocator.alloc(SExp, value.len);
-    for (value, 0..) |item, i| {
+    var items = try allocator.alloc(SExp, value.items.len);
+    for (value.items, 0..) |item, i| {
         items[i] = try encode(allocator, item, metadata, name);
     }
     return SExp{ .value = .{ .list = items }, .location = null };

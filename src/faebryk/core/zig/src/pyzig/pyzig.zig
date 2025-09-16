@@ -2,6 +2,10 @@ const std = @import("std");
 const py = @import("pybindings.zig");
 const mutable_list = @import("mutable_list.zig");
 
+fn isArrayList(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "items");
+}
+
 // Global registry for type objects to avoid creating duplicates
 var type_registry = std.HashMap([]const u8, *py.PyTypeObject, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(std.heap.c_allocator);
 var registry_mutex = std.Thread.Mutex{};
@@ -573,11 +577,12 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
     // For struct types, get the type name for registry lookup
     const child_info = @typeInfo(ChildType);
-    const type_name_for_registry = if (child_info == .@"struct")
+    const type_name_for_registry = if (!comptime isArrayList(ChildType) and child_info == .@"struct")
         @typeName(ChildType) ++ "\x00"
     else
         "";
-    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name_for_registry) else void;
+
+    const NestedBinding = if (!comptime isArrayList(ChildType)) if (child_info == .@"struct") wrap_in_python(ChildType, type_name_for_registry) else void else void;
 
     const getter = struct {
         var nested_type_obj: ?*py.PyTypeObject = null;
@@ -627,8 +632,12 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                         }
                     },
                     .@"struct" => {
-                        // Create a new Python object for the nested struct
                         const type_obj = getNestedTypeObj();
+                        if (comptime isArrayList(ChildType)) {
+                            return mutable_list.createMutableList(ChildType, &@field(obj.data.*, field_name_str).?, type_obj);
+                        }
+
+                        // Create a new Python object for the nested struct
                         const pyobj = py.PyType_GenericAlloc(type_obj, 0);
                         if (pyobj == null) return null;
 
@@ -699,6 +708,17 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     };
                 },
                 .@"struct" => {
+                    if (comptime isArrayList(ChildType)) {
+                        const child_child_type = std.meta.Child(std.meta.FieldType(ChildType, .items));
+                        const list: *mutable_list.MutableList(child_child_type) = @ptrCast(@alignCast(value));
+                        if (@field(obj.data.*, field_name_str) == null) {
+                            @field(obj.data.*, field_name_str) = std.ArrayList(child_child_type).initCapacity(std.heap.c_allocator, list.array_list.items.len) catch return -1;
+                        }
+                        @field(obj.data.*, field_name_str) = list.array_list.*;
+                        list.array_list = &@field(obj.data.*, field_name_str);
+                        return 0;
+                    }
+
                     // Handle struct type - extract data from wrapped Python object
                     const WrapperType = PyObjectWrapper(ChildType);
                     const wrapper_obj: *WrapperType = @ptrCast(@alignCast(value));
@@ -723,224 +743,195 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
 // Property for slice fields
 // TODO: remove support (should be std.ArrayList)
-pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
-    const field_name_str = std.mem.span(field_name);
+// pub fn slice_pError("slice_prop is deprecated");
+// const field_name_str = std.mem.span(field_name);
 
-    // For struct types, get the registered type name
-    const child_info = @typeInfo(ChildType);
-    const type_name_for_registry = if (child_info == .@"struct")
-        @typeName(ChildType) ++ "\x00"
-    else
-        "";
+// // For struct types, get the registered type name
+// const child_info = @typeInfo(ChildType);
+// const type_name_for_registry = if (child_info == .@"struct")
+//     @typeName(ChildType) ++ "\x00"
+// else
+//     "";
 
-    const getter = struct {
-        var nested_type_obj: ?*py.PyTypeObject = null;
-        var init_mutex = false;
+// const getter = struct {
+//     var nested_type_obj: ?*py.PyTypeObject = null;
+//     var init_mutex = false;
 
-        fn getNestedTypeObj() *py.PyTypeObject {
-            if (child_info != .@"struct") unreachable;
+//     fn getNestedTypeObj() *py.PyTypeObject {
+//         if (child_info != .@"struct") unreachable;
 
-            if (nested_type_obj) |obj| {
-                return obj;
-            }
+//         if (nested_type_obj) |obj| {
+//             return obj;
+//         }
 
-            if (!init_mutex) {
-                init_mutex = true;
+//         if (!init_mutex) {
+//             init_mutex = true;
 
-                // Try to get the registered type object first
-                if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
-                    nested_type_obj = registered_obj;
-                } else {
-                    // Fallback: create a new binding if not found in registry
-                    // This should rarely happen if modules are properly initialized
-                    const fallback_name = std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str });
-                    const fallback_name_z = fallback_name ++ "\x00";
-                    const NestedBinding = wrap_in_python(ChildType, fallback_name_z);
-                    const result = py.PyType_Ready(&NestedBinding.type_object);
-                    if (result < 0) {
-                        @panic("Failed to initialize slice nested type");
-                    }
-                    nested_type_obj = &NestedBinding.type_object;
-                    // Register the newly created type for future reuse
-                    registerTypeObject(type_name_for_registry, nested_type_obj.?);
-                }
-            }
+//             // Try to get the registered type object first
+//             if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
+//                 nested_type_obj = registered_obj;
+//             } else {
+//                 // Fallback: create a new binding if not found in registry
+//                 // This should rarely happen if modules are properly initialized
+//                 const fallback_name = std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str });
+//                 const fallback_name_z = fallback_name ++ "\x00";
+//                 const NestedBinding = wrap_in_python(ChildType, fallback_name_z);
+//                 const result = py.PyType_Ready(&NestedBinding.type_object);
+//                 if (result < 0) {
+//                     @panic("Failed to initialize slice nested type");
+//                 }
+//                 nested_type_obj = &NestedBinding.type_object;
+//                 // Register the newly created type for future reuse
+//                 registerTypeObject(type_name_for_registry, nested_type_obj.?);
+//             }
+//         }
 
-            return nested_type_obj.?;
-        }
+//         return nested_type_obj.?;
+//     }
 
-        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
-            const obj: *struct_type = @ptrCast(@alignCast(self));
+//     fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+//         const obj: *struct_type = @ptrCast(@alignCast(self));
 
-            // Get a pointer to the slice field for mutable access
-            const slice_ptr = &@field(obj.data.*, field_name_str);
+//         // Get a pointer to the slice field for mutable access
+//         const slice_ptr = &@field(obj.data.*, field_name_str);
 
-            // Get the element type object for struct types
-            const element_type_obj = if (child_info == .@"struct") getNestedTypeObj() else null;
+//         // Get the element type object for struct types
+//         const element_type_obj = if (child_info == .@"struct") getNestedTypeObj() else null;
 
-            // Create a mutable list wrapper that directly modifies the Zig slice
-            return mutable_list.createMutableList(ChildType, slice_ptr, element_type_obj);
-        }
-    }.impl;
+//         // Create a mutable list wrapper that directly modifies the Zig slice
+//         return mutable_list.createMutableList(ChildType, slice_ptr, element_type_obj);
+//     }
+// }.impl;
 
-    const setter = struct {
-        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
-            const obj: *struct_type = @ptrCast(@alignCast(self));
-            if (value == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "Cannot delete slice attribute");
-                return -1;
-            }
+// const setter = struct {
+//     fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+//         const obj: *struct_type = @ptrCast(@alignCast(self));
+//         if (value == null) {
+//             py.PyErr_SetString(py.PyExc_TypeError, "Cannot delete slice attribute");
+//             return -1;
+//         }
 
-            // Check if it's our mutable list type - if so, we don't need to do anything
-            // since mutations are already reflected in the underlying slice
-            // TODO: Add proper type check for MutableList
+//         // Check if it's our mutable list type - if so, we don't need to do anything
+//         // since mutations are already reflected in the underlying slice
+//         // TODO: Add proper type check for MutableList
 
-            // For now, only support assignment of regular Python lists
-            if (py.PyList_Check(value) == 0) {
-                py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
-                return -1;
-            }
+//         // For now, only support assignment of regular Python lists
+//         if (py.PyList_Check(value) == 0) {
+//             py.PyErr_SetString(py.PyExc_TypeError, "Expected a list");
+//             return -1;
+//         }
 
-            const list_size = py.PyList_Size(value);
-            if (list_size < 0) {
-                return -1;
-            }
+//         const list_size = py.PyList_Size(value);
+//         if (list_size < 0) {
+//             return -1;
+//         }
 
-            // Allocate new slice
-            const new_slice = std.heap.c_allocator.alloc(ChildType, @intCast(list_size)) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate memory for slice");
-                return -1;
-            };
+//         // Allocate new slice
+//         const new_slice = std.heap.c_allocator.alloc(ChildType, @intCast(list_size)) catch {
+//             py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate memory for slice");
+//             return -1;
+//         };
 
-            // Convert each Python object to the child type
-            for (0..@intCast(list_size)) |i| {
-                const item = py.PyList_GetItem(value, @intCast(i));
-                if (item == null) {
-                    std.heap.c_allocator.free(new_slice);
-                    return -1;
-                }
+//         // Convert each Python object to the child type
+//         for (0..@intCast(list_size)) |i| {
+//             const item = py.PyList_GetItem(value, @intCast(i));
+//             if (item == null) {
+//                 std.heap.c_allocator.free(new_slice);
+//                 return -1;
+//             }
 
-                // Convert Python object to child type
-                switch (child_info) {
-                    .@"struct" => {
-                        // Extract struct data from Python wrapper
-                        const NestedWrapper = PyObjectWrapper(ChildType);
-                        const wrapper: *NestedWrapper = @ptrCast(@alignCast(item));
-                        new_slice[i] = wrapper.data.*;
-                    },
-                    .int => {
-                        const int_val = py.PyLong_AsLong(item);
-                        if (int_val == -1 and py.PyErr_Occurred() != null) {
-                            std.heap.c_allocator.free(new_slice);
-                            return -1;
-                        }
-                        new_slice[i] = @intCast(int_val);
-                    },
-                    .float => {
-                        const float_val = py.PyFloat_AsDouble(item);
-                        if (py.PyErr_Occurred() != null) {
-                            std.heap.c_allocator.free(new_slice);
-                            return -1;
-                        }
-                        new_slice[i] = @floatCast(float_val);
-                    },
-                    .bool => {
-                        const is_true = py.PyObject_IsTrue(item);
-                        if (is_true == -1) {
-                            std.heap.c_allocator.free(new_slice);
-                            return -1;
-                        }
-                        new_slice[i] = is_true == 1;
-                    },
-                    .pointer => |ptr| {
-                        if (ptr.size == .slice and ptr.child == u8) {
-                            // String slice
-                            const str_val = py.PyUnicode_AsUTF8(item);
-                            if (str_val == null) {
-                                std.heap.c_allocator.free(new_slice);
-                                return -1;
-                            }
-                            // Duplicate the string
-                            const str_span = std.mem.span(str_val.?);
-                            const str_copy = std.heap.c_allocator.dupe(u8, str_span) catch {
-                                std.heap.c_allocator.free(new_slice);
-                                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to duplicate string");
-                                return -1;
-                            };
-                            new_slice[i] = str_copy;
-                        } else {
-                            std.heap.c_allocator.free(new_slice);
-                            py.PyErr_SetString(py.PyExc_TypeError, "Unsupported pointer type in slice");
-                            return -1;
-                        }
-                    },
-                    .@"enum" => {
-                        // Handle enum items as strings
-                        const str_val = py.PyUnicode_AsUTF8(item);
-                        if (str_val == null) {
-                            std.heap.c_allocator.free(new_slice);
-                            return -1;
-                        }
-                        const enum_str = std.mem.span(str_val.?);
-                        new_slice[i] = std.meta.stringToEnum(ChildType, enum_str) orelse {
-                            std.heap.c_allocator.free(new_slice);
-                            py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in slice");
-                            return -1;
-                        };
-                    },
-                    else => {
-                        std.heap.c_allocator.free(new_slice);
-                        py.PyErr_SetString(py.PyExc_TypeError, "Unsupported type in slice");
-                        return -1;
-                    },
-                }
-            }
+//             // Convert Python object to child type
+//             switch (child_info) {
+//                 .@"struct" => {
+//                     // Extract struct data from Python wrapper
+//                     const NestedWrapper = PyObjectWrapper(ChildType);
+//                     const wrapper: *NestedWrapper = @ptrCast(@alignCast(item));
+//                     new_slice[i] = wrapper.data.*;
+//                 },
+//                 .int => {
+//                     const int_val = py.PyLong_AsLong(item);
+//                     if (int_val == -1 and py.PyErr_Occurred() != null) {
+//                         std.heap.c_allocator.free(new_slice);
+//                         return -1;
+//                     }
+//                     new_slice[i] = @intCast(int_val);
+//                 },
+//                 .float => {
+//                     const float_val = py.PyFloat_AsDouble(item);
+//                     if (py.PyErr_Occurred() != null) {
+//                         std.heap.c_allocator.free(new_slice);
+//                         return -1;
+//                     }
+//                     new_slice[i] = @floatCast(float_val);
+//                 },
+//                 .bool => {
+//                     const is_true = py.PyObject_IsTrue(item);
+//                     if (is_true == -1) {
+//                         std.heap.c_allocator.free(new_slice);
+//                         return -1;
+//                     }
+//                     new_slice[i] = is_true == 1;
+//                 },
+//                 .pointer => |ptr| {
+//                     if (ptr.size == .slice and ptr.child == u8) {
+//                         // String slice
+//                         const str_val = py.PyUnicode_AsUTF8(item);
+//                         if (str_val == null) {
+//                             std.heap.c_allocator.free(new_slice);
+//                             return -1;
+//                         }
+//                         // Duplicate the string
+//                         const str_span = std.mem.span(str_val.?);
+//                         const str_copy = std.heap.c_allocator.dupe(u8, str_span) catch {
+//                             std.heap.c_allocator.free(new_slice);
+//                             py.PyErr_SetString(py.PyExc_MemoryError, "Failed to duplicate string");
+//                             return -1;
+//                         };
+//                         new_slice[i] = str_copy;
+//                     } else {
+//                         std.heap.c_allocator.free(new_slice);
+//                         py.PyErr_SetString(py.PyExc_TypeError, "Unsupported pointer type in slice");
+//                         return -1;
+//                     }
+//                 },
+//                 .@"enum" => {
+//                     // Handle enum items as strings
+//                     const str_val = py.PyUnicode_AsUTF8(item);
+//                     if (str_val == null) {
+//                         std.heap.c_allocator.free(new_slice);
+//                         return -1;
+//                     }
+//                     const enum_str = std.mem.span(str_val.?);
+//                     new_slice[i] = std.meta.stringToEnum(ChildType, enum_str) orelse {
+//                         std.heap.c_allocator.free(new_slice);
+//                         py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in slice");
+//                         return -1;
+//                     };
+//                 },
+//                 else => {
+//                     std.heap.c_allocator.free(new_slice);
+//                     py.PyErr_SetString(py.PyExc_TypeError, "Unsupported type in slice");
+//                     return -1;
+//                 },
+//             }
+//         }
 
-            // Free old slice
-            // TODO: be very careful about memory management here, python might still have a reference to the old slice
-            std.heap.c_allocator.free(@field(obj.data.*, field_name_str));
+//         // Free old slice
+//         // TODO: be very careful about memory management here, python might still have a reference to the old slice
+//         std.heap.c_allocator.free(@field(obj.data.*, field_name_str));
 
-            @field(obj.data.*, field_name_str) = new_slice;
+//         @field(obj.data.*, field_name_str) = new_slice;
 
-            return 0;
-        }
-    }.impl;
+//         return 0;
+//     }
+// }.impl;
 
-    return .{
-        .name = field_name,
-        .get = getter,
-        .set = setter,
-    };
-}
-
-fn getNestedTypeObj(comptime ChildType: type) *py.PyTypeObject {
-    const child_info = @typeInfo(ChildType);
-    if (child_info != .@"struct") unreachable;
-
-    const type_name_for_registry = @typeName(ChildType) ++ "\x00";
-    var nested_type_obj: ?*py.PyTypeObject = null;
-
-    if (nested_type_obj) |obj| {
-        return obj;
-    }
-
-    // Try to get the registered type object first
-    if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
-        nested_type_obj = registered_obj;
-    } else {
-        // Create a new binding if not found in registry
-        const NestedBinding = wrap_in_python(ChildType, type_name_for_registry);
-        const result = py.PyType_Ready(&NestedBinding.type_object);
-        if (result < 0) {
-            @panic("Failed to initialize array_list nested type");
-        }
-        nested_type_obj = &NestedBinding.type_object;
-        // Register the newly created type for future reuse
-        registerTypeObject(type_name_for_registry, nested_type_obj.?);
-    }
-
-    return nested_type_obj.?;
-}
+// return .{
+//     .name = field_name,
+//     .get = getter,
+//     .set = setter,
+// };
+// }
 
 // Property for array_list fields
 pub fn array_list_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
@@ -950,6 +941,34 @@ pub fn array_list_prop(comptime struct_type: type, comptime field_name: [*:0]con
     const child_info = @typeInfo(ChildType);
 
     const getter = struct {
+        fn getNestedTypeObj() *py.PyTypeObject {
+            if (child_info != .@"struct") unreachable;
+
+            const type_name_for_registry = @typeName(ChildType) ++ "\x00";
+            var nested_type_obj: ?*py.PyTypeObject = null;
+
+            if (nested_type_obj) |obj| {
+                return obj;
+            }
+
+            // Try to get the registered type object first
+            if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
+                nested_type_obj = registered_obj;
+            } else {
+                // Create a new binding if not found in registry
+                const NestedBinding = wrap_in_python(ChildType, type_name_for_registry);
+                const result = py.PyType_Ready(&NestedBinding.type_object);
+                if (result < 0) {
+                    @panic("Failed to initialize array_list nested type");
+                }
+                nested_type_obj = &NestedBinding.type_object;
+                // Register the newly created type for future reuse
+                registerTypeObject(type_name_for_registry, nested_type_obj.?);
+            }
+
+            return nested_type_obj.?;
+        }
+
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
 
@@ -957,7 +976,7 @@ pub fn array_list_prop(comptime struct_type: type, comptime field_name: [*:0]con
             const array_list_ptr = &@field(obj.data.*, field_name_str);
 
             // Get the element type object for struct types
-            const element_type_obj = if (child_info == .@"struct") getNestedTypeObj(ChildType) else null;
+            const element_type_obj = if (child_info == .@"struct") getNestedTypeObj() else null;
 
             // Create a mutable list wrapper that directly modifies the Zig slice
             return mutable_list.createMutableList(ChildType, array_list_ptr, element_type_obj);
@@ -1588,16 +1607,25 @@ fn genProp(comptime WrapperType: type, comptime FieldType: type, comptime field_
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
                 return str_prop(WrapperType, field_name);
+            } else {
+                @compileLog(field_name);
+                @compileError("Unsupported pointer type " ++ @typeName(FieldType));
             }
             // Handle slices of structs
             // TODO: remove support (should be std.ArrayList)
-            return slice_prop(WrapperType, field_name, ptr.child);
+            // return slice_prop(WrapperType, field_name, ptr.child);
         },
         .optional => |opt| return optional_prop(WrapperType, field_name, opt.child),
-        .array_list => |list| return array_list_prop(WrapperType, field_name, list.child),
-        .@"struct" => return struct_prop(WrapperType, field_name, FieldType),
+        .@"struct" => if (isArrayList(FieldType)) {
+            return array_list_prop(WrapperType, field_name, FieldType.child);
+        } else {
+            return struct_prop(WrapperType, field_name, FieldType);
+        },
         .@"enum" => return enum_prop(WrapperType, field_name, FieldType), // Enums are strings in Python
-        else => @compileError("Unsupported field type: " ++ @typeName(FieldType)),
+        else => {
+            @compileLog(field_name);
+            @compileError("Unsupported field type: " ++ @typeName(FieldType));
+        },
     }
 }
 
