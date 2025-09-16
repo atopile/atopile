@@ -3,6 +3,10 @@ const structure = @import("../structure.zig");
 
 const str = []const u8;
 
+fn list(comptime T: type) type {
+    return ?std.ArrayList(T);
+}
+
 // Constants
 pub const KICAD_PCB_VERSION: i32 = 20241229;
 pub const KICAD_FP_VERSION: i32 = 20241229; // Footprint version - same as PCB version
@@ -372,7 +376,7 @@ pub const Line = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -393,7 +397,7 @@ pub const Arc = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -414,7 +418,7 @@ pub const Circle = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -434,7 +438,7 @@ pub const Rect = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -446,7 +450,7 @@ pub const Rect = struct {
 };
 
 pub const Pts = struct {
-    xys: []Xy = &.{},
+    xys: list(Xy) = null,
 
     pub const fields_meta = .{
         .xys = structure.SexpField{ .multidict = true, .sexp_name = "xy" },
@@ -461,7 +465,7 @@ pub const Polygon = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -479,7 +483,7 @@ pub const Curve = struct {
     stroke: ?Stroke = null,
     fill: ?E_fill = null,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     locked: ?bool = null,
     uuid: ?str = null,
 
@@ -555,7 +559,7 @@ pub const Pad = struct {
     at: Xyr,
     size: Wh,
     drill: ?PadDrill = null,
-    layers: []str,
+    layers: list(str) = null,
     remove_unused_layers: ?bool = null,
     net: ?Net = null,
     solder_mask_margin: ?f64 = null,
@@ -641,17 +645,17 @@ pub const Footprint = struct {
     uuid: ?str = null,
     at: Xyr,
     path: ?str = null,
-    propertys: []Property = &.{},
-    attr: []E_Attr = &.{},
-    fp_lines: []Line = &.{},
-    fp_arcs: []Arc = &.{},
-    fp_circles: []Circle = &.{},
-    fp_rects: []Rect = &.{},
-    fp_poly: []Polygon = &.{},
-    fp_texts: []FpText = &.{},
-    pads: []Pad = &.{},
+    propertys: list(Property) = null,
+    attr: list(E_Attr) = null,
+    fp_lines: list(Line) = null,
+    fp_arcs: list(Arc) = null,
+    fp_circles: list(Circle) = null,
+    fp_rects: list(Rect) = null,
+    fp_poly: list(Polygon) = null,
+    fp_texts: list(FpText) = null,
+    pads: list(Pad) = null,
     embedded_fonts: ?bool = null,
-    models: []Model = &.{},
+    models: list(Model) = null,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
@@ -680,7 +684,7 @@ pub const ViaLayer = struct {
 // Via structure
 pub const ViaPadstack = struct {
     mode: E_padstack_mode,
-    layers: []ViaLayer = &.{},
+    layers: list(ViaLayer) = null,
 
     pub const fields_meta = .{
         .mode = structure.SexpField{ .positional = true },
@@ -697,11 +701,11 @@ pub const Via = struct {
     at: Xy,
     size: f64,
     drill: f64,
-    layers: []str = &.{},
+    layers: list(str) = null,
     net: i32,
     remove_unused_layers: ?bool = null,
     keep_end_layers: ?bool = null,
-    zone_layer_connections: []str = &.{},
+    zone_layer_connections: list(str) = null,
     padstack: ?ViaPadstack = null,
     teardrops: ?Teardrop = null,
     tenting: ?ViaTenting = null,
@@ -786,7 +790,7 @@ pub const Zone = struct {
     net: i32,
     net_name: str,
     layer: ?str = null,
-    layers: []str = &.{},
+    layers: list(str) = null,
     uuid: ?str = null,
     name: ?str = null,
     hatch: Hatch,
@@ -799,7 +803,7 @@ pub const Zone = struct {
     placement: ?ZonePlacement = null,
     fill: ?ZoneFill = null,
     polygon: Polygon,
-    filled_polygon: []FilledPolygon = &.{},
+    filled_polygon: list(FilledPolygon) = null,
 
     pub const fields_meta = .{
         .filled_polygon = structure.SexpField{ .multidict = true },
@@ -855,7 +859,7 @@ pub const TitleBlock = struct {
     date: ?str = null,
     revision: ?str = null,
     company: ?str = null,
-    comment: []Comment = &.{},
+    comment: list(Comment) = null,
 
     pub const fields_meta = .{
         .comment = structure.SexpField{ .multidict = true },
@@ -887,7 +891,7 @@ pub const Layer = struct {
 };
 
 pub const Stackup = struct {
-    layers: []StackupLayer = &.{},
+    layers: list(StackupLayer) = null,
     copper_finish: ?E_copper_finish = null,
     dielectric_constraints: ?bool = null,
     edge_connector: ?E_edge_connector = null,
@@ -987,23 +991,14 @@ pub const PcbPlotParams = struct {
 
 // Special struct for tenting that encodes as positional symbols
 pub const Tenting = struct {
-    values: []str,
-
-    // Custom encoding to output values as positional symbols
-    pub fn encode(self: Tenting, allocator: std.mem.Allocator) !structure.SExp {
-        var items = try allocator.alloc(structure.SExp, self.values.len);
-        for (self.values, 0..) |val, i| {
-            items[i] = structure.SExp{ .value = .{ .symbol = val }, .location = null };
-        }
-        return structure.SExp{ .value = .{ .list = items }, .location = null };
-    }
+    values: list(str) = null,
 };
 
 pub const Setup = struct {
     stackup: ?Stackup = null,
     pad_to_mask_clearance: i32 = 0,
     allow_soldermask_bridges_in_footprints: bool = false,
-    tenting: []str = &.{},
+    tenting: list(str) = null,
     pcbplotparams: PcbPlotParams = .{},
     rules: ?Rules = null,
 
@@ -1020,30 +1015,30 @@ pub const KicadPcb = struct {
     general: General = .{},
     paper: ?E_paper_type = null,
     title_block: ?TitleBlock = null,
-    layers: []Layer = &.{},
+    layers: list(Layer) = null,
     setup: Setup = .{},
-    nets: []Net = &.{},
-    footprints: []Footprint = &.{},
-    vias: []Via = &.{},
-    segments: []Segment = &.{},
-    arcs: []ArcSegment = &.{},
-    gr_lines: []Line = &.{},
-    gr_arcs: []Arc = &.{},
-    gr_curves: []Curve = &.{},
-    gr_circles: []Circle = &.{},
-    gr_rects: []Rect = &.{},
-    gr_polys: []Polygon = &.{},
-    gr_texts: []Text = &.{},
-    gr_text_boxes: []TextBox = &.{},
-    zones: []Zone = &.{},
-    images: []Image = &.{},
-    dimensions: []Dimension = &.{},
-    groups: []Group = &.{},
-    targets: []Target = &.{},
+    nets: list(Net) = null,
+    footprints: list(Footprint) = null,
+    vias: list(Via) = null,
+    segments: list(Segment) = null,
+    arcs: list(ArcSegment) = null,
+    gr_lines: list(Line) = null,
+    gr_arcs: list(Arc) = null,
+    gr_curves: list(Curve) = null,
+    gr_circles: list(Circle) = null,
+    gr_rects: list(Rect) = null,
+    gr_polys: list(Polygon) = null,
+    gr_texts: list(Text) = null,
+    gr_text_boxes: list(TextBox) = null,
+    zones: list(Zone) = null,
+    images: list(Image) = null,
+    dimensions: list(Dimension) = null,
+    groups: list(Group) = null,
+    targets: list(Target) = null,
     embedded_fonts: ?bool = null,
     embedded_files: ?EmbeddedFiles = null,
-    tables: []Table = &.{},
-    generateds: []Generated = &.{},
+    tables: list(Table) = null,
+    generateds: list(Generated) = null,
 
     pub const fields_meta = .{
         // Note: layers is NOT multidict - it's a single (layers ...) entry containing multiple Layer items
@@ -1076,7 +1071,7 @@ pub const Generated = struct {
     type: str,
     name: str,
     layer: str,
-    members: []str = &.{},
+    members: list(str) = null,
     locked: ?bool = null,
 };
 
@@ -1084,19 +1079,19 @@ pub const Image = struct {
     at: Xy,
     layer: str,
     scale: f64 = 1.0,
-    data: []str = &.{},
+    data: list(str) = null,
     uuid: ?str = null,
 };
 
 pub const EmbeddedFile = struct {
     name: str,
     type: E_embedded_file_type,
-    data: []str = &.{},
+    data: list(str) = null,
     checksum: ?str = null,
 };
 
 pub const EmbeddedFiles = struct {
-    files: []EmbeddedFile = &.{},
+    files: list(EmbeddedFile) = null,
 
     pub const fields_meta = .{
         .files = structure.SexpField{ .multidict = true, .sexp_name = "file" },
@@ -1118,7 +1113,7 @@ pub const Teardrop = struct {
 pub const RenderCache = struct {
     text: str = "",
     rotation: f64 = 0,
-    polygons: []Polygon = &.{},
+    polygons: list(Polygon) = null,
 
     pub const fields_meta = .{
         .text = structure.SexpField{ .positional = true },
@@ -1194,7 +1189,7 @@ pub const TableCell = struct {
 };
 
 pub const Cells = struct {
-    table_cells: []TableCell = &.{},
+    table_cells: list(TableCell) = null,
 
     pub const fields_meta = .{
         .table_cells = structure.SexpField{ .multidict = true },
@@ -1217,15 +1212,15 @@ pub const Table = struct {
     column_count: i32,
     locked: ?bool = null,
     layer: str,
-    column_widths: []f64,
-    row_heights: []f64,
+    column_widths: list(f64) = null,
+    row_heights: list(f64) = null,
     cells: Cells,
     border: Border,
     separators: Separator,
 };
 
 pub const DimensionPts = struct {
-    xys: []Xy = &.{},
+    xys: list(Xy) = null,
 
     pub const fields_meta = .{
         .xys = structure.SexpField{ .multidict = true, .sexp_name = "xy" },
@@ -1270,7 +1265,7 @@ pub const Group = struct {
     name: ?str = null,
     uuid: ?str = null,
     locked: ?bool = null,
-    members: []str = &.{},
+    members: list(str) = null,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },

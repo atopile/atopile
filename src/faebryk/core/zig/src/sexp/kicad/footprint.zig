@@ -3,6 +3,10 @@ const structure = @import("../structure.zig");
 
 const str = []const u8;
 
+fn list(comptime T: type) type {
+    return ?std.ArrayList(T);
+}
+
 const pcb = @import("pcb.zig");
 
 pub const Footprint = struct {
@@ -11,16 +15,16 @@ pub const Footprint = struct {
     uuid: ?str = null,
     path: ?str = null,
     layer: str = "F.Cu",
-    propertys: []pcb.Property = &.{},
-    attr: []pcb.E_Attr = &.{},
-    fp_circles: []pcb.Circle = &.{},
-    fp_lines: []pcb.Line = &.{},
-    fp_arcs: []pcb.Arc = &.{},
-    fp_rects: []pcb.Rect = &.{},
-    fp_poly: []pcb.Polygon = &.{},
-    fp_texts: []pcb.FpText = &.{},
-    pads: []pcb.Pad = &.{},
-    models: []pcb.Model = &.{},
+    propertys: list(pcb.Property) = null,
+    attr: list(pcb.E_Attr) = null,
+    fp_circles: list(pcb.Circle) = null,
+    fp_lines: list(pcb.Line) = null,
+    fp_arcs: list(pcb.Arc) = null,
+    fp_rects: list(pcb.Rect) = null,
+    fp_poly: list(pcb.Polygon) = null,
+    fp_texts: list(pcb.FpText) = null,
+    pads: list(pcb.Pad) = null,
+    models: list(pcb.Model) = null,
     embedded_fonts: ?bool = null,
 
     // additional fields
@@ -28,7 +32,7 @@ pub const Footprint = struct {
     generator: str = "faebryk",
     generator_version: str = "latest",
     description: ?str = null,
-    tags: []str = &.{},
+    tags: list(str) = null,
     tedit: ?str = null,
 
     pub const fields_meta = .{

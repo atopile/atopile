@@ -5,6 +5,10 @@ const pcb = @import("../pcb.zig");
 
 const str = []const u8;
 
+fn list(comptime T: type) type {
+    return ?std.ArrayList(T);
+}
+
 pub const Circle = struct {
     center: pcb.Xy,
     radius: f64,
@@ -14,11 +18,11 @@ pub const Circle = struct {
 
 pub const SymbolUnit = struct {
     name: str,
-    polylines: []schematic.Polyline = &.{},
-    circles: []Circle = &.{},
-    rectangles: []schematic.Rect = &.{},
-    arcs: []schematic.Arc = &.{},
-    pins: []schematic.SymbolPin = &.{},
+    polylines: list(schematic.Polyline) = null,
+    circles: list(Circle) = null,
+    rectangles: list(schematic.Rect) = null,
+    arcs: list(schematic.Arc) = null,
+    pins: list(schematic.SymbolPin) = null,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
@@ -33,12 +37,12 @@ pub const SymbolUnit = struct {
 pub const Symbol = struct {
     name: str,
     power: bool = false,
-    propertys: []schematic.Property = &.{},
+    propertys: list(schematic.Property) = null,
     pin_numbers: ?schematic.E_hide = null,
     pin_names: ?schematic.PinNames = null,
     in_bom: ?bool = null,
     on_board: ?bool = null,
-    symbols: []SymbolUnit = &.{},
+    symbols: list(SymbolUnit) = null,
     convert: ?i32 = null,
 
     pub const fields_meta = .{
@@ -51,8 +55,8 @@ pub const Symbol = struct {
 
 pub const SymbolLib = struct {
     version: i32,
-    generator: []const u8,
-    symbols: []Symbol = &.{},
+    generator: str,
+    symbols: list(Symbol) = null,
 
     pub const fields_meta = .{
         .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },

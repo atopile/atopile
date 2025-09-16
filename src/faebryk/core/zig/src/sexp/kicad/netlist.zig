@@ -3,6 +3,10 @@ const structure = @import("../structure.zig");
 
 const str = []const u8;
 
+fn list(comptime T: type) type {
+    return ?std.ArrayList(T);
+}
+
 // Component structures
 pub const Property = struct {
     name: str,
@@ -31,7 +35,7 @@ pub const Field = struct {
 };
 
 pub const Fields = struct {
-    fields: []Field = &.{},
+    fields: list(Field) = null,
 
     pub const fields_meta = .{
         .fields = structure.SexpField{ .multidict = true, .sexp_name = "field" },
@@ -42,9 +46,9 @@ pub const Component = struct {
     ref: str,
     value: str,
     footprint: str,
-    propertys: []Property = &.{},
+    propertys: list(Property) = null,
     // TODO handle multiple tstamp values
-    tstamps: []str = &.{},
+    tstamps: list(str) = null,
     //tstamps: str,
     fields: ?Fields = null,
     sheetpath: ?Sheetpath = null,
@@ -57,7 +61,7 @@ pub const Component = struct {
 };
 
 pub const Components = struct {
-    comps: []Component = &.{},
+    comps: list(Component) = null,
 
     pub const fields_meta = .{
         .comps = structure.SexpField{ .multidict = true, .sexp_name = "comp" },
@@ -75,7 +79,7 @@ pub const Node = struct {
 pub const Net = struct {
     code: str,
     name: str,
-    nodes: []Node = &.{},
+    nodes: list(Node) = null,
 
     pub const fields_meta = .{
         .nodes = structure.SexpField{ .multidict = true, .sexp_name = "node" },
@@ -83,7 +87,7 @@ pub const Net = struct {
 };
 
 pub const Nets = struct {
-    nets: []Net = &.{},
+    nets: list(Net) = null,
 
     pub const fields_meta = .{
         .nets = structure.SexpField{ .multidict = true, .sexp_name = "net" },
@@ -102,7 +106,7 @@ pub const TitleBlock = struct {
     rev: str = "",
     date: str = "",
     source: str,
-    comment: []Comment = &.{},
+    comment: list(Comment) = null,
 
     pub const fields_meta = .{
         .comment = structure.SexpField{ .multidict = true },
@@ -133,7 +137,7 @@ pub const Fp = struct {
 };
 
 pub const Footprints = struct {
-    fps: []Fp = &.{},
+    fps: list(Fp) = null,
 
     pub const fields_meta = .{
         .fps = structure.SexpField{ .multidict = true, .sexp_name = "fp" },
@@ -147,7 +151,7 @@ pub const Pin = struct {
 };
 
 pub const Pins = struct {
-    pin: []Pin = &.{},
+    pin: list(Pin) = null,
 
     pub const fields_meta = .{
         .pin = structure.SexpField{ .multidict = true },
@@ -163,7 +167,7 @@ pub const Libpart = struct {
 };
 
 pub const Libparts = struct {
-    libparts: []Libpart = &.{},
+    libparts: list(Libpart) = null,
 
     pub const fields_meta = .{
         .libparts = structure.SexpField{ .multidict = true, .sexp_name = "libpart" },

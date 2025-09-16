@@ -4,6 +4,10 @@ const pcb = @import("../pcb.zig");
 
 const str = []const u8;
 
+fn list(comptime T: type) type {
+    return ?std.ArrayList(T);
+}
+
 pub const Line = struct {
     start: pcb.Xy,
     end: pcb.Xy,
@@ -54,20 +58,20 @@ pub const Footprint = struct {
     layer: str = "F.Cu",
     uuid: ?str = null,
     path: ?str = null,
-    propertys: []pcb.Property = &.{},
-    fp_texts: []pcb.FpText = &.{},
-    attr: []pcb.E_Attr = &.{},
-    fp_lines: []Line = &.{},
-    fp_arcs: []Arc = &.{},
-    fp_circles: []Circle = &.{},
-    fp_rects: []Rect = &.{},
-    fp_poly: []pcb.Polygon = &.{},
-    pads: []pcb.Pad = &.{},
+    propertys: list(pcb.Property) = null,
+    fp_texts: list(pcb.FpText) = null,
+    attr: list(pcb.E_Attr) = null,
+    fp_lines: list(Line) = null,
+    fp_arcs: list(Arc) = null,
+    fp_circles: list(Circle) = null,
+    fp_rects: list(Rect) = null,
+    fp_poly: list(pcb.Polygon) = null,
+    pads: list(pcb.Pad) = null,
     model: ?Model = null,
 
     // additional fields
     description: ?str = null,
-    tags: []str = &.{},
+    tags: list(str) = null,
     tedit: ?str = null,
 
     pub const fields_meta = .{
