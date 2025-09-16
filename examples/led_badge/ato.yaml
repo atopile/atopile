@@ -1,0 +1,45 @@
+requires-atopile: ^0.9.0
+
+paths:
+  src: .
+  layout: ./layouts
+
+builds:
+  badge:
+    entry: led_badge.ato:LED_BADGE
+    hide_designators: true
+    exclude_checks: ["PCB.requires_drc_check"]
+  strip10:
+    entry: led_badge.ato:SK6805EC20_strip10
+    exclude_checks: ["PCB.requires_drc_check"]
+  grid10x10:
+    entry: led_badge.ato:SK6805EC20_grid10x10
+    exclude_checks: ["PCB.requires_drc_check"]
+
+dependencies:
+  - type: registry
+    identifier: atopile/buttons
+  - type: registry
+    identifier: atopile/ti-tlv75901
+  - type: registry
+    identifier: atopile/usb-connectors
+    release: 0.2.2
+  - type: registry
+    identifier: atopile/addressable-leds
+  - type: registry
+    identifier: atopile/microphones
+  - type: registry
+    identifier: atopile/st-lsm6ds3
+  - type: registry
+    identifier: atopile/espressif-esp32-c3
+    release: 0.1.3
+  - type: registry
+    identifier: atopile/ti-tps563201
+  - type: registry
+    identifier: atopile/ti-tps63020
+  - type: registry
+    identifier: atopile/ti-bq25185
+  - type: registry
+    identifier: atopile/batteries
+  - type: registry
+    identifier: atopile/logos

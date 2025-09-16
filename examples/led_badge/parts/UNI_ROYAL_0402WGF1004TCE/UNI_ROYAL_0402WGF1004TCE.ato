@@ -1,0 +1,20 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component UNI_ROYAL_0402WGF1004TCE_package:
+    """1MΩ (1004) ±1%"""
+
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C26083", date="2025-09-15T18:05:52.264805+00:00", checksum="001a2d9eb10a2dd8094a8137f13608ce355c19c00f24d5cbecd524712f241e4e">
+
+    trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0402WGF1004TCE", footprint="R0402.kicad_mod", symbol="0402WGF1004TCE.kicad_sym", model="R0402_L1.0-W0.5-H0.4.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C26083", manufacturer="UNI-ROYAL", partno="0402WGF1004TCE">
+    trait has_designator_prefix<prefix="R">
+
+    # pins
+    pin 2
+    pin 1
