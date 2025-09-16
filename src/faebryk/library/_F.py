@@ -156,6 +156,7 @@ from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.CAN import CAN
+from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.EnablePin import EnablePin
