@@ -110,11 +110,15 @@ class TestNodeCompletions:
                 },
             ),
             (
-                F.LEDIndicator,
+                F.Inductor,
                 {
-                    "logic_in": lsp.CompletionItemKind.Interface,
-                    "power_in": lsp.CompletionItemKind.Interface,
-                    "led": lsp.CompletionItemKind.Field,
+                    "inductance": lsp.CompletionItemKind.Unit,
+                    "unnamed[0]": lsp.CompletionItemKind.Interface,
+                    "unnamed[1]": lsp.CompletionItemKind.Interface,
+                    "max_current": lsp.CompletionItemKind.Unit,
+                    "dc_resistance": lsp.CompletionItemKind.Unit,
+                    "saturation_current": lsp.CompletionItemKind.Unit,
+                    "self_resonant_frequency": lsp.CompletionItemKind.Unit,
                 },
             ),
         ],
@@ -295,34 +299,40 @@ class TestEndToEndCompletion:
                     f"Expected '{expected}' in completions: {labels}"
                 )
 
-    def test_led_indicator_completion_end_to_end(self):
-        """Test completion for 'led = new LEDIndicator' followed by 'led.'"""
+    def test_capacitor_completion_end_to_end(self):
+        """Test completion for 'capacitor = new Capacitor' followed by 'capacitor.'"""
         ato = """
-            import LEDIndicator
+            import Capacitor
             module TestModule:
-                led = new LEDIndicator
-                led.#|#
+                capacitor = new Capacitor
+                capacitor.#|#
             """
 
         with _to_mock(ato) as (mock_params, _):
             result = on_document_completion(mock_params)
 
-            # Should return a CompletionList with LED attributes
+            # Should return a CompletionList with Capacitor attributes
             assert isinstance(result, lsp.CompletionList)
             assert len(result.items) > 0
 
-            # Check for expected LED completions
+            # Check for expected Capacitor completions
             labels = {item.label for item in result.items}
 
-            assert labels == {"logic_in", "power_in", "led"}
+            assert labels == {
+                "capacitance",
+                "max_voltage",
+                "unnamed[0]",
+                "unnamed[1]",
+                "temperature_coefficient",
+            }
 
     def test_nested_field_completion_end_to_end(self):
         """Test completion for nested field access like 'module.submodule.field.'"""
         ato = """
-            import LEDIndicator
+            import PoweredLED
             module TestModule:
-                led_indicator = new LEDIndicator
-                led_indicator.led.led.#|#
+                poweredLED = new PoweredLED
+                poweredLED.led.#|#
             """
 
         with _to_mock(ato) as (mock_params, _):
