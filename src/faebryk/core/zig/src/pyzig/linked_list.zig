@@ -205,7 +205,11 @@ pub fn MutableLinkedList(comptime T: type) type {
             switch (ti) {
                 .int => return py.PyLong_FromLong(@intCast(item.*)),
                 .float => return py.PyFloat_FromDouble(@floatCast(item.*)),
-                .bool => return if (item.*) py.Py_True() else py.Py_False(),
+                .bool => {
+                    const r = if (item.*) py.Py_True() else py.Py_False();
+                    py.Py_INCREF(r);
+                    return r;
+                },
                 .pointer => |p| if (p.size == .slice and p.child == u8) return py.PyUnicode_FromStringAndSize(item.*.ptr, @intCast(item.*.len)) else {},
                 .@"struct" => if (self.element_type_obj) |type_obj| {
                     const pyobj = py.PyType_GenericAlloc(type_obj, 0);
