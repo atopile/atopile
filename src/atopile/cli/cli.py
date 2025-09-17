@@ -194,7 +194,7 @@ def dump_config(format: ConfigFormat = ConfigFormat.python):
 def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
-    from atopile import front_end
+    from atopile.compiler import front_end
     from atopile.config import config
 
     path = path.resolve().relative_to(Path.cwd())

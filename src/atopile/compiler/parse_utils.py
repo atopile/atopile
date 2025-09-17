@@ -11,7 +11,7 @@ from antlr4 import CommonTokenStream, InputStream, ParserRuleContext, Token
 from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from pygments import token as pygments_token
 
-from atopile.parser.AtoLexer import AtoLexer
+from atopile.compiler.parser.AtoLexer import AtoLexer
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:

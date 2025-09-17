@@ -6,8 +6,8 @@ from typing import override
 
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import front_end
 from atopile.address import AddressError, AddrStr
+from atopile.compiler import front_end
 from atopile.config import ProjectConfig, config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module

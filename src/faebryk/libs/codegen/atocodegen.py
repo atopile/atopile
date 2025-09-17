@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 
-from atopile.front_end import _FeatureFlags
+from atopile.compiler.front_end import _FeatureFlags
 
 logger = logging.getLogger(__name__)
 

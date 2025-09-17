@@ -34,9 +34,8 @@ from pint import UndefinedUnitError
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, errors
-from atopile.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
-from atopile.config import config, find_project_dir
-from atopile.datatypes import (
+from atopile.compiler.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
+from atopile.compiler.datatypes import (
     FieldRef,
     KeyOptItem,
     KeyOptMap,
@@ -46,10 +45,11 @@ from atopile.datatypes import (
     TypeRef,
     is_int,
 )
-from atopile.parse import parser
-from atopile.parse_utils import get_src_info_from_ctx
-from atopile.parser.AtoParser import AtoParser as ap
-from atopile.parser.AtoParserVisitor import AtoParserVisitor
+from atopile.compiler.parse import parser
+from atopile.compiler.parse_utils import get_src_info_from_ctx
+from atopile.compiler.parser.AtoParser import AtoParser as ap
+from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
+from atopile.config import config, find_project_dir
 from faebryk.core.node import FieldExistsError, NodeException
 from faebryk.core.parameter import (
     Arithmetic,

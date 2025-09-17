@@ -149,7 +149,7 @@ class GlobalAttributes(L.Module):
 
     @mpn.setter
     def mpn(self, value: str):
-        from atopile.front_end import DeprecatedException
+        from atopile.compiler.front_end import DeprecatedException
 
         if value.lower() == "dnp":
             raise DeprecatedException(
@@ -329,7 +329,7 @@ class Resistor(F.Resistor):
 
     @footprint.setter
     def footprint(self, value: str):
-        from atopile.front_end import DeprecatedException
+        from atopile.compiler.front_end import DeprecatedException
 
         if value.startswith("R"):
             try:
@@ -385,7 +385,7 @@ class CommonCapacitor(F.Capacitor):
 
     @footprint.setter
     def footprint(self, value: str):
-        from atopile.front_end import DeprecatedException
+        from atopile.compiler.front_end import DeprecatedException
 
         if value.startswith("C"):
             try:
