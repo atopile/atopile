@@ -18,12 +18,12 @@ from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
-from atopile import front_end
+from atopile.compiler import front_end
+from atopile.compiler.datatypes import FieldRef, ReferencePartType, TypeRef
+from atopile.compiler.parse_utils import get_src_info_from_token
+from atopile.compiler.parser import AtoParser as ap
 from atopile.config import find_project_dir
-from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
-from atopile.parse_utils import get_src_info_from_token
-from atopile.parser import AtoParser as ap
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node

@@ -58,8 +58,8 @@ def _init_python_app() -> "Module":
 def _init_ato_app() -> "Module":
     """Initialize a specific .ato build."""
 
-    from atopile import front_end
-    from atopile.datatypes import TypeRef
+    from atopile.compiler import front_end
+    from atopile.compiler.datatypes import TypeRef
     from faebryk.libs.library import L
 
     node = front_end.bob.build_file(
