@@ -272,18 +272,19 @@ def test_solve_realworld_bigger():
 @pytest.mark.usefixtures("setup_project_config")
 def test_solve_realworld_biggest():
     class App(Module):
-        led = L.f_field(F.LEDIndicator)(use_mosfet=False)
+        led = L.f_field(F.PoweredLED)(low_side_resistor=True)
         mcu: RP2040_ReferenceDesign
         usb_power: USB_C_PSU_Vertical
 
         def __preinit__(self):
-            self.led.led.led.color.constrain_subset(F.LED.Color.YELLOW)
-            self.led.led.led.brightness.constrain_subset(
+            self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+            self.led.led.brightness.constrain_subset(
                 TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
             )
 
             self.usb_power.power_out.connect(self.mcu.usb.usb_if.buspower)
-            self.mcu.rp2040.gpio[25].connect(self.led.logic_in)
+            self.mcu.rp2040.gpio[25].line.connect(self.led.power.hv)
+            self.usb_power.power_out.lv.connect(self.led.power.lv)
             self.mcu.rp2040.pinmux.enable(self.mcu.rp2040.gpio[25])
 
     app = App()
