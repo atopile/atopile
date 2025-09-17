@@ -4,7 +4,7 @@ const structure = @import("../structure.zig");
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return ?std.ArrayList(T);
+    return std.DoublyLinkedList(T);
 }
 
 // Constants
@@ -83,7 +83,7 @@ pub const E_hide = enum {
 
 // Basic structures
 pub const Pts = struct {
-    xys: list(Xy) = null,
+    xys: list(Xy) = .{},
 
     pub const fields_meta = .{
         .xys = structure.SexpField{ .multidict = true, .sexp_name = "xy" },
@@ -182,11 +182,11 @@ pub const SymbolPin = struct {
 
 pub const SymbolUnit = struct {
     name: str,
-    polylines: list(Polyline) = null,
-    circles: list(Circle) = null,
-    rectangles: list(Rect) = null,
-    arcs: list(Arc) = null,
-    pins: list(SymbolPin) = null,
+    polylines: list(Polyline) = .{},
+    circles: list(Circle) = .{},
+    rectangles: list(Rect) = .{},
+    arcs: list(Arc) = .{},
+    pins: list(SymbolPin) = .{},
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
@@ -201,12 +201,12 @@ pub const SymbolUnit = struct {
 pub const Symbol = struct {
     name: str,
     power: bool = false,
-    propertys: list(Property) = null,
+    propertys: list(Property) = .{},
     pin_numbers: ?E_hide = null,
     pin_names: ?PinNames = null,
     in_bom: ?bool = null,
     on_board: ?bool = null,
-    symbols: list(SymbolUnit) = null,
+    symbols: list(SymbolUnit) = .{},
     convert: ?i32 = null,
 
     pub const fields_meta = .{
@@ -235,8 +235,8 @@ pub const SymbolInstance = struct {
     on_board: bool = false,
     uuid: UUID,
     fields_autoplaced: bool = true,
-    propertys: list(Property) = null,
-    pins: list(InstancePin) = null,
+    propertys: list(Property) = .{},
+    pins: list(InstancePin) = .{},
     convert: ?i32 = null,
 
     pub const fields_meta = .{
@@ -290,8 +290,8 @@ pub const Sheet = struct {
     fill: Fill,
     uuid: UUID,
     fields_autoplaced: bool = true,
-    propertys: list(Property) = null,
-    pins: list(SheetPin) = null,
+    propertys: list(Property) = .{},
+    pins: list(SheetPin) = .{},
 
     pub const fields_meta = .{
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
@@ -307,7 +307,7 @@ pub const GlobalLabel = struct {
     effects: Effects,
     uuid: UUID,
     fields_autoplaced: bool = true,
-    propertys: list(Property) = null,
+    propertys: list(Property) = .{},
 
     pub const fields_meta = .{
         .text = structure.SexpField{ .positional = true },
@@ -349,7 +349,7 @@ pub const TitleBlock = struct {
 };
 
 pub const LibSymbols = struct {
-    symbols: list(Symbol) = null,
+    symbols: list(Symbol) = .{},
 
     pub const fields_meta = .{
         .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
@@ -377,16 +377,16 @@ pub const KicadSch = struct {
     uuid: UUID,
     lib_symbols: LibSymbols = .{},
     title_block: TitleBlock = .{},
-    junctions: list(Junction) = null,
-    wires: list(Wire) = null,
-    texts: list(Text) = null,
-    symbols: list(SymbolInstance) = null,
-    sheets: list(Sheet) = null,
-    global_labels: list(GlobalLabel) = null,
-    no_connects: list(Xy) = null,
-    buss: list(Bus) = null,
-    labels: list(Label) = null,
-    bus_entrys: list(BusEntry) = null,
+    junctions: list(Junction) = .{},
+    wires: list(Wire) = .{},
+    texts: list(Text) = .{},
+    symbols: list(SymbolInstance) = .{},
+    sheets: list(Sheet) = .{},
+    global_labels: list(GlobalLabel) = .{},
+    no_connects: list(Xy) = .{},
+    buss: list(Bus) = .{},
+    labels: list(Label) = .{},
+    bus_entrys: list(BusEntry) = .{},
 
     pub const fields_meta = .{
         .junctions = structure.SexpField{ .multidict = true, .sexp_name = "junction" },

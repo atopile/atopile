@@ -12,6 +12,10 @@ fn isArrayList(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasField(T, "items");
 }
 
+fn isLinkedList(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "first") and @hasField(T, "last") and @hasDecl(T, "Node");
+}
+
 pub const BooleanEncoding = enum {
     yes_no,
     symbol,
@@ -233,6 +237,8 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
     switch (type_info) {
         .@"struct" => if (comptime isArrayList(T)) {
             return try decodeArrayList(T, allocator, sexp, metadata);
+        } else if (comptime isLinkedList(T)) {
+            return try decodeLinkedList(T, allocator, sexp, metadata);
         } else {
             return try decodeStruct(T, allocator, sexp, metadata);
         },
@@ -246,7 +252,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
                 .field_name = null,
                 .sexp_preview = "unsupported pointer type (only slices are supported)",
             }, sexp);
-            return error.InvalidType;
+            return error.UnexpectedType;
         },
         .int => return try decodeInt(T, sexp, metadata),
         .float => return try decodeFloat(T, sexp, metadata),
@@ -259,7 +265,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
                 .field_name = null,
                 .sexp_preview = "union types require custom decode method",
             }, sexp);
-            return error.InvalidType;
+            return error.UnexpectedType;
         },
         else => {
             setErrorContext(.{
@@ -267,7 +273,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
                 .field_name = null,
                 .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "unsupported type: {s}", .{@typeName(T)}) catch "unsupported type",
             }, sexp);
-            return error.InvalidType;
+            return error.UnexpectedType;
         },
     }
 }
@@ -276,7 +282,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
     _ = metadata; // metadata not used at struct level, only for individual fields
     @setEvalBranchQuota(15000);
     const fields = std.meta.fields(T);
-    var result: T = std.mem.zeroInit(T, .{});
+    var result: T = undefined;
 
     const items = ast.getList(sexp) orelse {
         setErrorContext(.{
@@ -564,12 +570,9 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                     if (field_metadata.multidict) {
                         // Handle multidict fields
                         if (comptime isSlice(field.type, false)) {
-                            // Check if we already started collecting values for this field
                             if (!fields_set.isSet(field_idx)) {
                                 const ChildType = std.meta.Child(field.type);
-                                var values = std.ArrayList(ChildType).init(allocator);
-
-                                // Collect all matching entries from the entire list
+                                var values = std.ArrayList(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
                                 var scan_idx: usize = i;
                                 while (scan_idx < items.len) : (scan_idx += 1) {
                                     if (ast.isList(items[scan_idx])) {
@@ -577,13 +580,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         if (scan_kv.len >= 2) {
                                             const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                             if (std.mem.eql(u8, field_name, scan_key)) {
-                                                // Set context for multidict items
-                                                setErrorContext(.{
-                                                    .path = @typeName(T),
-                                                    .field_name = field.name,
-                                                    .sexp_preview = null,
-                                                }, items[scan_idx]);
-                                                // For multidict entries, decode the rest as struct fields
+                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[scan_idx]);
                                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
                                                 const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
                                                 try values.append(scan_val);
@@ -591,27 +588,63 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         }
                                     }
                                 }
-
                                 @field(result, field.name) = try values.toOwnedSlice();
+                                fields_set.set(field_idx);
+                            }
+                        } else if (comptime isArrayList(field.type)) {
+                            if (!fields_set.isSet(field_idx)) {
+                                const ChildType = std.meta.Child(std.meta.FieldType(field.type, .items));
+                                var values = std.ArrayList(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
+                                var scan_idx: usize = i;
+                                while (scan_idx < items.len) : (scan_idx += 1) {
+                                    if (ast.isList(items[scan_idx])) {
+                                        const scan_kv = ast.getList(items[scan_idx]).?;
+                                        if (scan_kv.len >= 2) {
+                                            const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
+                                            if (std.mem.eql(u8, field_name, scan_key)) {
+                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[scan_idx]);
+                                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
+                                                const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
+                                                try values.append(scan_val);
+                                            }
+                                        }
+                                    }
+                                }
+                                @field(result, field.name) = values;
+                                fields_set.set(field_idx);
+                            }
+                        } else if (comptime isLinkedList(field.type)) {
+                            if (!fields_set.isSet(field_idx)) {
+                                const NodeType = field.type.Node;
+                                const ChildType = std.meta.FieldType(NodeType, .data);
+                                var ll = field.type{ .first = null, .last = null };
+                                var scan_idx: usize = i;
+                                while (scan_idx < items.len) : (scan_idx += 1) {
+                                    if (ast.isList(items[scan_idx])) {
+                                        const scan_kv = ast.getList(items[scan_idx]).?;
+                                        if (scan_kv.len >= 2) {
+                                            const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
+                                            if (std.mem.eql(u8, field_name, scan_key)) {
+                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[scan_idx]);
+                                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
+                                                const val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
+                                                const node = try allocator.create(NodeType);
+                                                node.* = NodeType{ .data = val, .prev = null, .next = null };
+                                                if (ll.last) |last| { last.next = node; node.prev = last; } else ll.first = node;
+                                                ll.last = node;
+                                            }
+                                        }
+                                    }
+                                }
+                                @field(result, field.name) = ll;
                                 fields_set.set(field_idx);
                             }
                         }
                     } else {
-                        // Single value
+                        // Single value (non-multidict)
                         if (!fields_set.isSet(field_idx)) {
-                            // Set context before decoding so errors have proper context
-                            setErrorContext(.{
-                                .path = @typeName(T),
-                                .field_name = field.name,
-                                .sexp_preview = null,
-                            }, items[i]);
-
-                            // For struct fields, always pass the rest of the list (after the key)
-                            // This allows structs with positional fields to parse correctly
-                            // e.g., (drill 1.199998) -> PadDrill gets [1.199998]
-                            @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or
-                                (@typeInfo(field.type) == .optional and
-                                    @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
+                            setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[i]);
+                            @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
                                 try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, field_metadata)
                             else if (kv_items.len == 2 and !isSlice(field.type, true))
                                 try decodeWithMetadata(field.type, allocator, kv_items[1], field_metadata)
@@ -734,12 +767,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                         // Empty slice for multidict
                         @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
                     } else {
-                        // Use default if available
-                        const default_instance = std.mem.zeroInit(T, .{});
-                        const zero_value = std.mem.zeroes(field.type);
-                        if (!std.meta.eql(@field(default_instance, field.name), zero_value)) {
-                            @field(result, field.name) = @field(default_instance, field.name);
-                        } else if (field.default_value_ptr) |default_ptr| {
+                        // Use explicit default if available
+                        if (field.default_value_ptr) |default_ptr| {
                             // Use field default value
                             const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
                             @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
@@ -756,12 +785,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                         }
                     }
                 } else {
-                    // Use default if available
-                    const default_instance = std.mem.zeroInit(T, .{});
-                    const zero_value = std.mem.zeroes(field.type);
-                    if (!std.meta.eql(@field(default_instance, field.name), zero_value)) {
-                        @field(result, field.name) = @field(default_instance, field.name);
-                    } else if (field.default_value_ptr) |default_ptr| {
+                    // Use explicit default if available
+                    if (field.default_value_ptr) |default_ptr| {
                         // Use field default value
                         const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
                         @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
@@ -803,11 +828,30 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, me
 fn decodeArrayList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
     const child_type = std.meta.Child(std.meta.FieldType(T, .items));
     const items = ast.getList(sexp).?;
-    var result = std.ArrayList(child_type).initCapacity(allocator, items.len) catch return error.OutOfMemory;
+    // Pre-reserve headroom to keep existing element addresses stable when appending
+    // Important: tests expect appending not to invalidate references
+    const reserve: usize = if (items.len < 8) items.len + 8 else items.len + items.len / 2;
+    var result = std.ArrayList(child_type).initCapacity(allocator, reserve) catch return error.OutOfMemory;
     for (items) |item| {
         try result.append(try decodeWithMetadata(child_type, allocator, item, metadata));
     }
     return result;
+}
+
+fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
+    _ = metadata;
+    const NodeType = T.Node;
+    const child_type = std.meta.FieldType(NodeType, .data);
+    const items = ast.getList(sexp).?;
+    var ll = T{ .first = null, .last = null };
+    for (items) |item| {
+        const val = try decodeWithMetadata(child_type, allocator, item, .{});
+        const node = try allocator.create(NodeType);
+        node.* = NodeType{ .data = val, .prev = null, .next = null };
+        if (ll.last) |last| { last.next = node; node.prev = last; } else ll.first = node;
+        ll.last = node;
+    }
+    return ll;
 }
 
 fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
@@ -1062,6 +1106,8 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     switch (type_info) {
         .@"struct" => if (comptime isArrayList(T)) {
             return try encodeArrayList(allocator, value, metadata, name);
+        } else if (comptime isLinkedList(T)) {
+            return try encodeLinkedList(allocator, value, metadata, name);
         } else {
             return try encodeStruct(allocator, value, metadata);
         },
@@ -1118,7 +1164,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
             }
             unreachable;
         },
-        else => return error.InvalidType,
+        else => return error.UnexpectedType,
     }
 }
 
@@ -1153,7 +1199,7 @@ fn sortFieldIndices(comptime T: type) [std.meta.fields(T).len]usize {
 }
 
 fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
-    _ = metadata; // metadata not used at struct level, only for individual fields
+    _ = metadata;
     const T = @TypeOf(value);
     var items = std.ArrayList(SExp).init(allocator);
     defer items.deinit();
@@ -1161,186 +1207,65 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
     const fields = std.meta.fields(T);
     const sorted_indices = comptime sortFieldIndices(T);
 
-    // Process positional fields first (in sorted order)
-    inline for (sorted_indices) |field_idx| {
-        const field = fields[field_idx];
-        const field_metadata = comptime getSexpMetadata(T, field.name);
-        if (field_metadata.positional) {
-            const field_value = @field(value, field.name);
-
-            // Handle optional positional fields differently
-            if (comptime isOptional(field.type)) {
-                if (field_value) |val| {
-                    const encoded = try encode(allocator, val, field_metadata, field.name);
-                    try items.append(encoded);
-                }
-                // Skip null optionals entirely
-            } else {
-                if ((comptime isSlice(field.type, false)) and field_value.len == 0) {} else {
-                    const encoded = try encode(allocator, field_value, field_metadata, field.name);
-                    try items.append(encoded);
-                }
-            }
+    // Positional fields
+    inline for (sorted_indices) |idx| {
+        const f = fields[idx];
+        const fm = comptime getSexpMetadata(T, f.name);
+        if (!fm.positional) continue;
+        const fv = @field(value, f.name);
+        if (comptime isOptional(f.type)) {
+            if (fv) |vv| try items.append(try encode(allocator, vv, fm, f.name));
+        } else if (!((comptime isSlice(f.type, false)) and fv.len == 0)) {
+            try items.append(try encode(allocator, fv, fm, f.name));
         }
     }
 
-    // Then process non-positional fields (in sorted order)
-    inline for (sorted_indices) |field_idx| {
-        const field = fields[field_idx];
-        const field_metadata_inner = getSexpMetadata(T, field.name);
-        if (!field_metadata_inner.positional) {
-            const field_value = @field(value, field.name);
-            const field_name = field_metadata_inner.sexp_name orelse field.name;
+    // Non-positional fields
+    inline for (sorted_indices) |idx| {
+        const f = fields[idx];
+        const fm = comptime getSexpMetadata(T, f.name);
+        if (fm.positional) continue;
+        const fname = fm.sexp_name orelse f.name;
+        const fv = @field(value, f.name);
 
-            if (field_metadata_inner.multidict) {
-                // Handle multidict
-                if (comptime isSlice(@TypeOf(field_value), false)) {
-                    for (field_value) |item| {
-                        // Encode the item
-                        const encoded_item = try encode(allocator, item, field_metadata_inner, field.name);
-
-                        // For multidict structs, we want to unwrap the struct encoding
-                        // and prepend the field name
-                        if (ast.getList(encoded_item)) |item_contents| {
-                            // For other structs, unwrap and prepend the field name
-                            var kv_items = try allocator.alloc(SExp, item_contents.len + 1);
-                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                            for (item_contents, 0..) |content, idx| {
-                                kv_items[idx + 1] = content;
-                            }
-                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                        } else {
-                            // Not a list, encode normally
-                            var kv_items = try allocator.alloc(SExp, 2);
-                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                            kv_items[1] = encoded_item;
-                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                        }
-                    }
-                }
-            } else {
-                // Handle optional values
-                if (comptime isOptional(@TypeOf(field_value))) {
-                    if (field_value) |val| {
-                        const encoded_val = try encode(allocator, val, field_metadata_inner, field.name);
-
-                        // Check if this is a slice or struct that should be unwrapped
-                        if ((@typeInfo(@TypeOf(val)) == .pointer and
-                            @typeInfo(@TypeOf(val)).pointer.size == .slice) or
-                            @typeInfo(@TypeOf(val)) == .@"struct")
-                        {
-                            // For slices and structs, unwrap the list and prepend the field name
-                            if (ast.getList(encoded_val)) |slice_items| {
-                                var kv_items = try allocator.alloc(SExp, slice_items.len + 1);
-                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                                for (slice_items, 0..) |item, idx| {
-                                    kv_items[idx + 1] = item;
-                                }
-                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                            } else {
-                                // Fallback
-                                var kv_items = try allocator.alloc(SExp, 2);
-                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                                kv_items[1] = encoded_val;
-                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                            }
-                        } else {
-                            // For non-slices/structs, normal encoding
-                            var kv_items = try allocator.alloc(SExp, 2);
-                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                            kv_items[1] = encoded_val;
-                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                        }
-                    }
-                } else {
-                    // Check if we're encoding a struct (which would be a list)
-                    const encoded_value = try encode(allocator, field_value, field_metadata_inner, field.name);
-
-                    // If the field value is a struct (represented as a list), we need to flatten it
-                    if (@typeInfo(@TypeOf(field_value)) == .@"struct") {
-                        if (ast.getList(encoded_value)) |struct_items| {
-                            // Create a new list with the field name prepended to the struct's items
-                            var kv_items = try allocator.alloc(SExp, struct_items.len + 1);
-                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                            for (struct_items, 0..) |item, idx| {
-                                kv_items[idx + 1] = item;
-                            }
-                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                        } else {
-                            // Fallback to normal encoding
-                            var kv_items = try allocator.alloc(SExp, 2);
-                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                            kv_items[1] = encoded_value;
-                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                        }
-                    } else {
-                        // Check if this is a slice field
-                        if (@typeInfo(@TypeOf(field_value)) == .pointer and
-                            @typeInfo(@TypeOf(field_value)).pointer.size == .slice)
-                        {
-                            // For slices, unwrap the list and prepend the field name
-                            if (ast.getList(encoded_value)) |slice_items| {
-                                var kv_items = try allocator.alloc(SExp, slice_items.len + 1);
-                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-
-                                // Special handling for symbol slices
-                                const child_type = @typeInfo(@TypeOf(field_value)).pointer.child;
-                                if (field_metadata_inner.symbol orelse false) {
-                                    // Check if this is a slice of strings ([][]const u8)
-                                    if (@typeInfo(child_type) == .pointer and
-                                        @typeInfo(child_type).pointer.size == .slice and
-                                        @typeInfo(child_type).pointer.child == u8)
-                                    {
-                                        // This is a slice of strings that should be encoded as symbols
-                                        // Re-encode each item as a symbol
-                                        for (field_value, 0..) |str_val, idx| {
-                                            kv_items[idx + 1] = SExp{ .value = .{ .symbol = str_val }, .location = null };
-                                        }
-                                    } else {
-                                        // Normal slice encoding
-                                        for (slice_items, 0..) |item, idx| {
-                                            kv_items[idx + 1] = item;
-                                        }
-                                    }
-                                } else {
-                                    // Normal slice encoding
-                                    for (slice_items, 0..) |item, idx| {
-                                        kv_items[idx + 1] = item;
-                                    }
-                                }
-
-                                if (slice_items.len > 0) {
-                                    try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                                }
-                            } else {
-                                // Fallback for non-list encoding
-                                var kv_items = try allocator.alloc(SExp, 2);
-                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                                kv_items[1] = encoded_value;
-                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                            }
-                        } else {
-                            if (@typeInfo(@TypeOf(field_value)) == .bool and field_metadata_inner.boolean_encoding == .parantheses_symbol) {
-                                if (field_value) {
-                                    try items.append(encoded_value);
-                                } else {
-                                    // free?
-                                }
-                            } else {
-                                // Normal encoding for non-slice values
-                                var kv_items = try allocator.alloc(SExp, 2);
-                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                                kv_items[1] = encoded_value;
-                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
-                            }
-                        }
-                    }
+        if (fm.multidict) {
+            if (comptime isSlice(@TypeOf(fv), false)) {
+                for (fv) |elem| try appendKeyValue(allocator, &items, fname, try encode(allocator, elem, fm, f.name));
+            } else if (comptime isArrayList(@TypeOf(fv))) {
+                for (fv.items) |elem| try appendKeyValue(allocator, &items, fname, try encode(allocator, elem, fm, f.name));
+            } else if (comptime isLinkedList(@TypeOf(fv))) {
+                var n = fv.first; while (n) |node| : (n = node.next) {
+                    try appendKeyValue(allocator, &items, fname, try encode(allocator, node.data, fm, f.name));
                 }
             }
+            continue;
         }
+
+        if (comptime isOptional(@TypeOf(fv))) {
+            if (fv) |vv| try appendKeyValue(allocator, &items, fname, try encode(allocator, vv, fm, f.name));
+            continue;
+        }
+
+        try appendKeyValue(allocator, &items, fname, try encode(allocator, fv, fm, f.name));
     }
 
-    return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = null };
+    const out = try items.toOwnedSlice();
+    return SExp{ .value = .{ .list = out }, .location = null };
+}
+
+fn appendKeyValue(allocator: std.mem.Allocator, items: *std.ArrayList(SExp), key: []const u8, encoded: SExp) EncodeError!void {
+    if (ast.getList(encoded)) |lst| {
+        if (lst.len == 0) return; // omit empty list fields entirely
+        var kv = try allocator.alloc(SExp, lst.len + 1);
+        kv[0] = SExp{ .value = .{ .symbol = key }, .location = null };
+        for (lst, 0..) |it, i| kv[i + 1] = it;
+        try items.append(SExp{ .value = .{ .list = kv }, .location = null });
+    } else {
+        var kv2 = try allocator.alloc(SExp, 2);
+        kv2[0] = SExp{ .value = .{ .symbol = key }, .location = null };
+        kv2[1] = encoded;
+        try items.append(SExp{ .value = .{ .list = kv2 }, .location = null });
+    }
 }
 
 fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
@@ -1356,6 +1281,22 @@ fn encodeArrayList(allocator: std.mem.Allocator, value: anytype, metadata: SexpF
     var items = try allocator.alloc(SExp, value.items.len);
     for (value.items, 0..) |item, i| {
         items[i] = try encode(allocator, item, metadata, name);
+    }
+    return SExp{ .value = .{ .list = items }, .location = null };
+}
+
+fn encodeLinkedList(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
+    // Count nodes first
+    var count: usize = 0;
+    var it = value.first;
+    while (it) |n| : (it = n.next) count += 1;
+
+    var items = try allocator.alloc(SExp, count);
+    var i: usize = 0;
+    it = value.first;
+    while (it) |n| : (it = n.next) {
+        items[i] = try encode(allocator, n.data, metadata, name);
+        i += 1;
     }
     return SExp{ .value = .{ .list = items }, .location = null };
 }

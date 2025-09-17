@@ -12,9 +12,13 @@ pub const FpLibEntry = struct {
     descr: str,
 };
 
+fn list(comptime T: type) type {
+    return std.DoublyLinkedList(T);
+}
+
 pub const FpLibTable = struct {
     version: ?i32 = null,
-    libs: std.ArrayList(FpLibEntry),
+    libs: list(FpLibEntry) = .{},
 
     pub const fields_meta = .{
         .libs = structure.SexpField{ .multidict = true, .sexp_name = "lib" },

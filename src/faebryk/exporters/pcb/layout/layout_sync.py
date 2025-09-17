@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from itertools import chain
 
 from atopile.config import config as gcfg
 from atopile.layout import SubAddress
@@ -292,7 +293,7 @@ class LayoutSync:
         offset: kicad.pcb.Xy,
     ):
         new_objects = []
-        for track in sub_pcb.segments + sub_pcb.arcs + sub_pcb.zones + sub_pcb.vias:
+        for track in chain(sub_pcb.segments, sub_pcb.arcs, sub_pcb.zones, sub_pcb.vias):
             # Get source net name
             sub_net: kicad.pcb.Net | None = find_or(
                 sub_pcb.nets,
@@ -322,11 +323,11 @@ class LayoutSync:
 
     def _sync_other(self, sub_pcb: PCB, top_pcb: PCB, offset: kicad.pcb.Xy):
         new_graphics = []
-        for gr in (
-            get_all_geos(sub_pcb)
-            + sub_pcb.gr_text_boxes
-            + sub_pcb.gr_texts
-            + sub_pcb.images
+        for gr in chain(
+            get_all_geos(sub_pcb),
+            sub_pcb.gr_text_boxes,
+            sub_pcb.gr_texts,
+            sub_pcb.images,
             # TODO tables are weird about uuids
             # + sub_pcb.tables
         ):

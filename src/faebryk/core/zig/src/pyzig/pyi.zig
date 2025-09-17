@@ -42,7 +42,17 @@ pub const PyiGenerator = struct {
     }
 
     fn writeZigTypeToPython(self: *Self, writer: anytype, comptime T: type) !void {
-        switch (@typeInfo(T)) {
+        const ti = @typeInfo(T);
+        // Treat std.DoublyLinkedList(T) as list[T]
+        if (ti == .@"struct" and @hasField(T, "first") and @hasField(T, "last") and @hasDecl(T, "Node")) {
+            const NodeType = T.Node;
+            const Elem = std.meta.FieldType(NodeType, .data);
+            try writer.writeAll("list[");
+            try self.writeZigTypeToPython(writer, Elem);
+            try writer.writeAll("]");
+            return;
+        }
+        switch (ti) {
             .int => |int_info| {
                 try writer.writeAll(if (int_info.signedness == .signed) "int" else "int");
             },

@@ -5,7 +5,7 @@ const pcb = @import("../pcb.zig");
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return ?std.ArrayList(T);
+    return std.DoublyLinkedList(T);
 }
 
 pub const Line = struct {
@@ -58,20 +58,20 @@ pub const Footprint = struct {
     layer: str = "F.Cu",
     uuid: ?str = null,
     path: ?str = null,
-    propertys: list(pcb.Property) = null,
-    fp_texts: list(pcb.FpText) = null,
-    attr: list(pcb.E_Attr) = null,
-    fp_lines: list(Line) = null,
-    fp_arcs: list(Arc) = null,
-    fp_circles: list(Circle) = null,
-    fp_rects: list(Rect) = null,
-    fp_poly: list(pcb.Polygon) = null,
-    pads: list(pcb.Pad) = null,
+    propertys: list(pcb.Property) = .{},
+    fp_texts: list(pcb.FpText) = .{},
+    attr: list(pcb.E_Attr) = .{},
+    fp_lines: list(Line) = .{},
+    fp_arcs: list(Arc) = .{},
+    fp_circles: list(Circle) = .{},
+    fp_rects: list(Rect) = .{},
+    fp_poly: list(pcb.Polygon) = .{},
+    pads: list(pcb.Pad) = .{},
     model: ?Model = null,
 
     // additional fields
     description: ?str = null,
-    tags: list(str) = null,
+    tags: list(str) = .{},
     tedit: ?str = null,
 
     pub const fields_meta = .{

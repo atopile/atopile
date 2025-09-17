@@ -1,14 +1,17 @@
 const std = @import("std");
 const py = @import("pybindings.zig");
-const mutable_list = @import("mutable_list.zig");
+const linked_list = @import("linked_list.zig");
 
-fn isArrayList(comptime T: type) bool {
-    return @typeInfo(T) == .@"struct" and @hasField(T, "items");
+fn isLinkedList(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "first") and @hasField(T, "last") and @hasDecl(T, "Node");
 }
 
 // Global registry for type objects to avoid creating duplicates
 var type_registry = std.HashMap([]const u8, *py.PyTypeObject, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(std.heap.c_allocator);
 var registry_mutex = std.Thread.Mutex{};
+
+// Global cache to reuse list wrappers per underlying ArrayList pointer
+// No global list wrapper cache
 
 // Helper to register a type object in the global registry
 pub fn registerTypeObject(type_name: [*:0]const u8, type_obj: *py.PyTypeObject) void {
@@ -299,17 +302,19 @@ pub fn gen_repr(comptime struct_type: type) ?*const fn (?*py.PyObject) callconv(
     return repr;
 }
 
-pub fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) py.PyGetSetDef {
+pub fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime is_signed: bool) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
     const getter = struct {
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
             // Check if the wrapper has 'data' field (new style) or 'top' field (old style)
             const has_data = @hasField(struct_type, "data");
-            if (has_data) {
-                return py.PyLong_FromLong(@field(obj.data.*, field_name_str));
+            if (is_signed) {
+                const v: c_long = @intCast(if (has_data) @field(obj.data.*, field_name_str) else @field(obj.top.*, field_name_str));
+                return py.PyLong_FromLong(v);
             } else {
-                return py.PyLong_FromLong(@field(obj.top.*, field_name_str));
+                const v: c_ulonglong = @intCast(if (has_data) @field(obj.data.*, field_name_str) else @field(obj.top.*, field_name_str));
+                return py.PyLong_FromUnsignedLongLong(v);
             }
         }
     }.impl;
@@ -321,12 +326,14 @@ pub fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
                 return -1;
             }
 
-            const new_val = py.PyLong_AsLong(value);
+            // Accept both positive/negative; cast depending on signedness
+            const new_val_signed = py.PyLong_AsLongLong(value);
+            const new_val_unsigned: c_ulonglong = if (new_val_signed < 0) 0 else @intCast(new_val_signed);
             const has_data = @hasField(struct_type, "data");
             if (has_data) {
-                @field(obj.data.*, field_name_str) = @intCast(new_val);
+                if (is_signed) @field(obj.data.*, field_name_str) = @intCast(new_val_signed) else @field(obj.data.*, field_name_str) = @intCast(new_val_unsigned);
             } else {
-                @field(obj.top.*, field_name_str) = @intCast(new_val);
+                if (is_signed) @field(obj.top.*, field_name_str) = @intCast(new_val_signed) else @field(obj.top.*, field_name_str) = @intCast(new_val_unsigned);
             }
             return 0;
         }
@@ -577,12 +584,13 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
     // For struct types, get the type name for registry lookup
     const child_info = @typeInfo(ChildType);
-    const type_name_for_registry = if (!comptime isArrayList(ChildType) and child_info == .@"struct")
+    const type_name_for_registry = if (child_info == .@"struct")
         @typeName(ChildType) ++ "\x00"
     else
         "";
 
-    const NestedBinding = if (!comptime isArrayList(ChildType)) if (child_info == .@"struct") wrap_in_python(ChildType, type_name_for_registry) else void else void;
+    // Note: do not precompute a potentially-void NestedBinding at file scope.
+    // Create the binding only inside the struct branch to avoid referencing fields on 'void'.
 
     const getter = struct {
         var nested_type_obj: ?*py.PyTypeObject = null;
@@ -603,11 +611,12 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     nested_type_obj = registered_obj;
                 } else {
                     // Fallback: create a new binding if not found in registry
-                    const result = py.PyType_Ready(&NestedBinding.type_object);
+                    const Binding = wrap_in_python(ChildType, type_name_for_registry);
+                    const result = py.PyType_Ready(&Binding.type_object);
                     if (result < 0) {
                         @panic("Failed to initialize optional nested type");
                     }
-                    nested_type_obj = &NestedBinding.type_object;
+                    nested_type_obj = &Binding.type_object;
                     // Register the newly created type for future reuse
                     registerTypeObject(type_name_for_registry, nested_type_obj.?);
                 }
@@ -633,17 +642,13 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     },
                     .@"struct" => {
                         const type_obj = getNestedTypeObj();
-                        if (comptime isArrayList(ChildType)) {
-                            return mutable_list.createMutableList(ChildType, &@field(obj.data.*, field_name_str).?, type_obj);
-                        }
-
                         // Create a new Python object for the nested struct
                         const pyobj = py.PyType_GenericAlloc(type_obj, 0);
                         if (pyobj == null) return null;
 
                         const NestedWrapper = PyObjectWrapper(ChildType);
                         const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
-                        wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
+                        // Do not overwrite ob_base set by GenericAlloc
                         // Store a pointer to the original value instead of making a copy
                         // This allows mutations to be reflected in the original struct
                         wrapper.data = &@field(obj.data.*, field_name_str).?;
@@ -708,17 +713,6 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                     };
                 },
                 .@"struct" => {
-                    if (comptime isArrayList(ChildType)) {
-                        const child_child_type = std.meta.Child(std.meta.FieldType(ChildType, .items));
-                        const list: *mutable_list.MutableList(child_child_type) = @ptrCast(@alignCast(value));
-                        if (@field(obj.data.*, field_name_str) == null) {
-                            @field(obj.data.*, field_name_str) = std.ArrayList(child_child_type).initCapacity(std.heap.c_allocator, list.array_list.items.len) catch return -1;
-                        }
-                        @field(obj.data.*, field_name_str) = list.array_list.*;
-                        list.array_list = &@field(obj.data.*, field_name_str);
-                        return 0;
-                    }
-
                     // Handle struct type - extract data from wrapped Python object
                     const WrapperType = PyObjectWrapper(ChildType);
                     const wrapper_obj: *WrapperType = @ptrCast(@alignCast(value));
@@ -933,80 +927,109 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 // };
 // }
 
-// Property for array_list fields
-pub fn array_list_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
+// Property for linked_list fields
+pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
-
-    // For struct types, get the registered type name
     const child_info = @typeInfo(ChildType);
 
     const getter = struct {
         fn getNestedTypeObj() *py.PyTypeObject {
             if (child_info != .@"struct") unreachable;
-
             const type_name_for_registry = @typeName(ChildType) ++ "\x00";
             var nested_type_obj: ?*py.PyTypeObject = null;
-
-            if (nested_type_obj) |obj| {
-                return obj;
-            }
-
-            // Try to get the registered type object first
             if (getRegisteredTypeObject(type_name_for_registry)) |registered_obj| {
                 nested_type_obj = registered_obj;
             } else {
-                // Create a new binding if not found in registry
                 const NestedBinding = wrap_in_python(ChildType, type_name_for_registry);
                 const result = py.PyType_Ready(&NestedBinding.type_object);
-                if (result < 0) {
-                    @panic("Failed to initialize array_list nested type");
-                }
+                if (result < 0) @panic("Failed to initialize linked_list nested type");
                 nested_type_obj = &NestedBinding.type_object;
-                // Register the newly created type for future reuse
                 registerTypeObject(type_name_for_registry, nested_type_obj.?);
             }
-
             return nested_type_obj.?;
         }
-
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
-
-            // Get a pointer to the array_list field for mutable access
-            const array_list_ptr = &@field(obj.data.*, field_name_str);
-
-            // Get the element type object for struct types
+            const list_ptr = &@field(obj.data.*, field_name_str);
             const element_type_obj = if (child_info == .@"struct") getNestedTypeObj() else null;
-
-            // Create a mutable list wrapper that directly modifies the Zig slice
-            return mutable_list.createMutableList(ChildType, array_list_ptr, element_type_obj);
+            return linked_list.createMutableList(ChildType, list_ptr, element_type_obj);
         }
     }.impl;
 
     const setter = struct {
         fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
-            // value must be a MutableList
-            if (py.Py_TYPE(value) != &mutable_list.type_object) {
-                py.PyErr_SetString(py.PyExc_TypeError, "Expected a MutableList");
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null) return -1;
+
+            // Generic: accept any Python sequence and build a DoublyLinkedList
+            const LL = std.DoublyLinkedList(ChildType);
+            const NodeType = LL.Node;
+            var ll = LL{ .first = null, .last = null };
+
+            const seq_len = py.PySequence_Size(value);
+            if (seq_len < 0) {
+                py.PyErr_SetString(py.PyExc_TypeError, "Expected a sequence for linked list field");
                 return -1;
             }
 
-            const obj: *struct_type = @ptrCast(@alignCast(self));
-            const list: *mutable_list.MutableList(ChildType) = @ptrCast(@alignCast(value));
-            @field(obj.data.*, field_name_str) = list.array_list.*;
-            list.array_list = &@field(obj.data.*, field_name_str);
+            var i: isize = 0;
+            while (i < seq_len) : (i += 1) {
+                const item = py.PySequence_GetItem(value, i);
+                if (item == null) return -1;
+                defer py.Py_DECREF(item.?);
 
-            // TODO: dealloc old list
+                const node = std.heap.c_allocator.create(NodeType) catch return -1;
+                // convert
+                const child_ti = @typeInfo(ChildType);
+                switch (child_ti) {
+                    .@"struct" => {
+                        const nested = @as(*PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
+                        node.* = NodeType{ .data = nested.data.*, .prev = null, .next = null };
+                    },
+                    .@"enum" => {
+                        const s = py.PyUnicode_AsUTF8(item);
+                        if (s == null) { std.heap.c_allocator.destroy(node); return -1; }
+                        const enum_str = std.mem.span(s.?);
+                        const ev = std.meta.stringToEnum(ChildType, enum_str) orelse { std.heap.c_allocator.destroy(node); return -1; };
+                        node.* = NodeType{ .data = ev, .prev = null, .next = null };
+                    },
+                    .int => {
+                        const v = py.PyLong_AsLong(item);
+                        if (v == -1 and py.PyErr_Occurred() != null) { std.heap.c_allocator.destroy(node); return -1; }
+                        node.* = NodeType{ .data = @intCast(v), .prev = null, .next = null };
+                    },
+                    .float => {
+                        const v = py.PyFloat_AsDouble(item);
+                        if (v == -1.0 and py.PyErr_Occurred() != null) { std.heap.c_allocator.destroy(node); return -1; }
+                        node.* = NodeType{ .data = @floatCast(v), .prev = null, .next = null };
+                    },
+                    .bool => {
+                        const v = py.PyObject_IsTrue(item);
+                        if (v == -1) { std.heap.c_allocator.destroy(node); return -1; }
+                        node.* = NodeType{ .data = (v == 1), .prev = null, .next = null };
+                    },
+                    .pointer => |p| {
+                        if (p.size == .slice and p.child == u8) {
+                            const s = py.PyUnicode_AsUTF8(item);
+                            if (s == null) { std.heap.c_allocator.destroy(node); return -1; }
+                            const slice = std.mem.span(s.?);
+                            const dup = std.heap.c_allocator.dupe(u8, slice) catch { std.heap.c_allocator.destroy(node); return -1; };
+                            node.* = NodeType{ .data = dup, .prev = null, .next = null };
+                        } else { std.heap.c_allocator.destroy(node); return -1; }
+                    },
+                    else => { std.heap.c_allocator.destroy(node); return -1; },
+                }
 
+                if (ll.last) |last| { last.next = node; node.prev = last; } else ll.first = node;
+                ll.last = node;
+            }
+
+            @field(obj.data.*, field_name_str) = ll;
             return 0;
         }
     }.impl;
 
-    return .{
-        .name = field_name,
-        .get = getter,
-        .set = setter,
-    };
+    return .{ .name = field_name, .get = getter, .set = setter };
 }
 
 // Property for struct fields
@@ -1377,8 +1400,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
 
                                 @field(wrapper_obj.data.*, field.name) = slice;
                             } else {
-                                // Other pointer types not yet supported
-                                @field(wrapper_obj.data.*, field.name) = &.{};
+                                // Other pointer types not yet supported; leave at default
                             }
                         },
                         .optional => |opt| {
@@ -1454,9 +1476,133 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                             }
                         },
                         .@"struct" => {
-                            // Check if it's the correct type
-                            const nested_wrapper = @as(*PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
-                            @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                            if (comptime isLinkedList(field.type)) {
+                                // Convert any Python sequence into a DoublyLinkedList of child elements
+                                const NodeType = field.type.Node;
+                                const ChildType = @TypeOf(@as(NodeType, undefined).data);
+
+                                const seq_len = py.PySequence_Size(value);
+                                if (seq_len < 0) {
+                                    py.PyErr_SetString(py.PyExc_TypeError, "Expected a sequence for linked list field");
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                }
+
+                                var ll = field.type{ .first = null, .last = null };
+
+                                var i: isize = 0;
+                                while (i < seq_len) : (i += 1) {
+                                    const item = py.PySequence_GetItem(value, i);
+                                    if (item == null) {
+                                        // clean not needed: constructed nodes owned by struct allocator lifetime
+                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        return -1;
+                                    }
+
+                                    const node = std.heap.c_allocator.create(NodeType) catch {
+                                        py.Py_DECREF(item.?);
+                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        return -1;
+                                    };
+                                    // Fill node.data by converting Python item → ChildType
+                                    const child_info = @typeInfo(ChildType);
+                                    switch (child_info) {
+                                        .@"struct" => {
+                                            const nested = @as(*PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
+                                            node.* = NodeType{ .data = nested.data.*, .prev = null, .next = null };
+                                        },
+                                        .@"enum" => {
+                                            const s = py.PyUnicode_AsUTF8(item);
+                                            if (s == null) {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            const enum_str = std.mem.span(s.?);
+                                            const ev = std.meta.stringToEnum(ChildType, enum_str) orelse {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in list");
+                                                return -1;
+                                            };
+                                            node.* = NodeType{ .data = ev, .prev = null, .next = null };
+                                        },
+                                        .int => {
+                                            const v = py.PyLong_AsLong(item);
+                                            if (v == -1 and py.PyErr_Occurred() != null) {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            node.* = NodeType{ .data = @intCast(v), .prev = null, .next = null };
+                                        },
+                                        .float => {
+                                            const v = py.PyFloat_AsDouble(item);
+                                            if (v == -1.0 and py.PyErr_Occurred() != null) {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            node.* = NodeType{ .data = @floatCast(v), .prev = null, .next = null };
+                                        },
+                                        .bool => {
+                                            const v = py.PyObject_IsTrue(item);
+                                            if (v == -1) {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            node.* = NodeType{ .data = (v == 1), .prev = null, .next = null };
+                                        },
+                                        .pointer => |p| {
+                                            if (p.size == .slice and p.child == u8) {
+                                                const s = py.PyUnicode_AsUTF8(item);
+                                                if (s == null) {
+                                                    py.Py_DECREF(item.?);
+                                                    std.heap.c_allocator.destroy(node);
+                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    return -1;
+                                                }
+                                                const slice = std.mem.span(s.?);
+                                                const dup = std.heap.c_allocator.dupe(u8, slice) catch {
+                                                    py.Py_DECREF(item.?);
+                                                    std.heap.c_allocator.destroy(node);
+                                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                    return -1;
+                                                };
+                                                node.* = NodeType{ .data = dup, .prev = null, .next = null };
+                                            } else {
+                                                py.Py_DECREF(item.?);
+                                                std.heap.c_allocator.destroy(node);
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                py.PyErr_SetString(py.PyExc_TypeError, "Unsupported linked-list child pointer type");
+                                                return -1;
+                                            }
+                                        },
+                                        else => {
+                                            py.Py_DECREF(item.?);
+                                            std.heap.c_allocator.destroy(node);
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            py.PyErr_SetString(py.PyExc_TypeError, "Unsupported linked-list child type");
+                                            return -1;
+                                        },
+                                    }
+                                    py.Py_DECREF(item.?);
+
+                                    if (ll.last) |last| { last.next = node; node.prev = last; } else ll.first = node;
+                                    ll.last = node;
+                                }
+
+                                @field(wrapper_obj.data.*, field.name) = ll;
+                            } else {
+                                // Treat as nested struct
+                                const nested_wrapper = @as(*PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
+                                @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                            }
                         },
                         .@"enum" => {
                             // Handle enum as string
@@ -1473,8 +1619,23 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                             };
                         },
                         else => {
-                            // Unsupported type - use default
-                            @field(wrapper_obj.data.*, field.name) = std.mem.zeroInit(field.type, .{});
+                            // Unsupported type - set a sane empty default
+                            const FT = field.type;
+                            const fti = @typeInfo(FT);
+                            switch (fti) {
+                                .pointer => |p| {
+                                    if (p.size == .slice) {
+                                        // Assign empty slice of the correct child type
+                                        const empty: []p.child = &[_]p.child{};
+                                        @field(wrapper_obj.data.*, field.name) = empty;
+                                    } else {
+                                        // Other pointers: leave at default (no assignment)
+                                    }
+                                },
+                                else => {
+                                    @field(wrapper_obj.data.*, field.name) = std.mem.zeroInit(FT, .{});
+                                },
+                            }
                         },
                     }
                 }
@@ -1551,10 +1712,11 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
             return list;
         }
 
-        // Return the address of the Zig struct
+        // Return a stable identifier for the Python-side wrapper
         pub fn get_zig_address_func(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             _ = args; // No arguments needed
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
+            // Use underlying Zig struct address (stable if buffer not reallocated)
             return py.PyLong_FromUnsignedLongLong(@intFromPtr(wrapper_obj.data));
         }
 
@@ -1601,23 +1763,21 @@ fn genProp(comptime WrapperType: type, comptime FieldType: type, comptime field_
     const info = @typeInfo(FieldType);
 
     switch (info) {
-        .int => return int_prop(WrapperType, field_name),
+        .int => |int_info| return int_prop(WrapperType, field_name, int_info.signedness == .signed),
         .float => return float_prop(WrapperType, field_name),
         .bool => return bool_prop(WrapperType, field_name),
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
                 return str_prop(WrapperType, field_name);
-            } else {
-                @compileLog(field_name);
-                @compileError("Unsupported pointer type " ++ @typeName(FieldType));
             }
-            // Handle slices of structs
-            // TODO: remove support (should be std.ArrayList)
-            // return slice_prop(WrapperType, field_name, ptr.child);
+            // Temporary: expose unsupported pointer fields as non-accessible properties
+            return .{ .name = field_name, .get = null, .set = null };
         },
         .optional => |opt| return optional_prop(WrapperType, field_name, opt.child),
-        .@"struct" => if (isArrayList(FieldType)) {
-            return array_list_prop(WrapperType, field_name, FieldType.child);
+        .@"struct" => if (isLinkedList(FieldType)) {
+            const NodeType = FieldType.Node;
+            const child_t = std.meta.FieldType(NodeType, .data);
+            return linked_list_prop(WrapperType, field_name, child_t);
         } else {
             return struct_prop(WrapperType, field_name, FieldType);
         },

@@ -5,7 +5,7 @@ import logging
 import re
 from collections import defaultdict
 from enum import Enum, StrEnum, auto
-from itertools import pairwise
+from itertools import chain, pairwise
 from math import floor
 from typing import (
     TYPE_CHECKING,
@@ -1204,7 +1204,7 @@ class PCB_Transformer:
                 obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
             # For some reason text rotates in the opposite direction
             #  or maybe not?
-            for obj in fp.fp_texts + list(fp.propertys):
+            for obj in chain(fp.fp_texts, fp.propertys):
                 obj.at.r = ((obj.at.r or 0) + rot_angle) % 360
 
         fp.at = coord
@@ -1726,7 +1726,9 @@ class PCB_Transformer:
                     y=obj.at.y,
                     r=(((obj.at.r or 0) + 180) % 360) or None,
                 )
-                for _obj in obj.pads + obj.propertys + obj.fp_texts + get_all_geos(obj):
+                for _obj in chain(
+                    obj.pads, obj.propertys, obj.fp_texts, get_all_geos(obj)
+                ):
                     PCB_Transformer._flip_obj(_obj)
             case kicad.pcb.Pad():
                 # TODO chamfers
@@ -1943,7 +1945,7 @@ class PCB_Transformer:
                 zone.net = 0
 
         # Disconnect vias, and routing
-        for route in self.pcb.segments + self.pcb.arcs + self.pcb.vias:
+        for route in chain(self.pcb.segments, self.pcb.arcs, self.pcb.vias):
             if route.net == net.number:
                 route.net = 0
 

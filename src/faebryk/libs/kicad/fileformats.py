@@ -887,12 +887,7 @@ class kicad:
 
     @staticmethod
     def insert[T](parent, field: str, container: list[T], *value: T, index=-1) -> T:
-        if not value:
-            raise ValueError("No value to insert")
         obj = getattr(parent, field)
-        if index == -1:
-            index = len(obj)
-
         for i, val in enumerate(value):
             obj.insert(index + i, val)
 
@@ -920,8 +915,8 @@ class kicad:
         obj = getattr(parent, field)
 
         obj.clear()
-        if values:
-            obj.extend(values)
+        for val in values:
+            obj.append(val)
 
     class geo:
         @staticmethod
@@ -1242,17 +1237,17 @@ class kicad:
             return old
         if isinstance(old, (str, int, float, bool, tuple)):
             return old
-        if isinstance(old, list):
+        # Accept both Python lists and pyzig MutableList wrappers
+        # pyzig exposes lists as a C-extension type named 'pyzig.MutableList'
+        if isinstance(old, list) or (
+            type(old).__name__ == "MutableList"
+            and type(old).__module__ in ("pyzig", "pyzig_local")
+        ):
             return [kicad.copy(item) for item in old]  # type: ignore
         t = type(old)
         copied = {
             name: kicad.copy(getattr(old, name)) for name in old.__field_names__()
         }
-        # print("=" * 80)
-        # print(t, old)
-        # print("=" * 80)
-        # for name, value in copied.items():
-        #    print(name, value)
         return t(**copied)
 
     @staticmethod

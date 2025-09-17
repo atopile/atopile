@@ -459,6 +459,7 @@ def test_string_escape():
 def test_mutable_list():
     sexp = """
     (fp_lib_table
+        (version 7)
         (lib (name "test0") (type "KiCad") (uri "test") (options "") (descr "test0"))
         (lib (name "test1") (type "KiCad") (uri "test") (options "") (descr "test1"))
     )
@@ -466,15 +467,15 @@ def test_mutable_list():
     from faebryk.libs.kicad.fileformats import kicad
 
     def _ids(fp_lib_table: kicad.fp_lib_table.FpLibTableFile):
-        return [id(lib) for lib in fp_lib_table.fp_lib_table.libs]
+        return [lib.__zig_address__() for lib in fp_lib_table.fp_lib_table.libs]
 
     fp_lib_table = kicad.loads(kicad.fp_lib_table.FpLibTableFile, sexp)
     # len
     assert len(fp_lib_table.fp_lib_table.libs) == 2
 
     # index
-    assert fp_lib_table.fp_lib_table.libs[0].name == "test"
-    assert fp_lib_table.fp_lib_table.libs[1].name == "test2"
+    assert fp_lib_table.fp_lib_table.libs[0].name == "test0"
+    assert fp_lib_table.fp_lib_table.libs[1].name == "test1"
 
     # for later
     ids = _ids(fp_lib_table)
@@ -482,6 +483,10 @@ def test_mutable_list():
     # iter
     for i, lib in enumerate(fp_lib_table.fp_lib_table.libs):
         assert lib.name == f"test{i}"
+    # FIXME: without this segfault because our object have gone bad
+    # objects should not go bad, this is literally what we are testing with our
+    # _ids(fp_lib_table)[:2] == ids
+    lib = None
 
     # append
     fp_lib_table.fp_lib_table.libs.append(
@@ -496,8 +501,8 @@ def test_mutable_list():
     assert len(fp_lib_table.fp_lib_table.libs) == 3
     assert fp_lib_table.fp_lib_table.libs[2].name == "test2"
 
-    # check that original refs are still valid
-    assert _ids(fp_lib_table)[:2] == ids
+    new_ids = _ids(fp_lib_table)
+    assert new_ids[:2] == ids, f"references have gone bad {new_ids} != {ids}"
 
     # remove
     fp_lib_table.fp_lib_table.libs.remove(fp_lib_table.fp_lib_table.libs[0])

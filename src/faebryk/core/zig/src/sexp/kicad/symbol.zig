@@ -4,15 +4,15 @@ const structure = @import("../structure.zig");
 const str = []const u8;
 
 fn list(comptime T: type) type {
-    return ?std.ArrayList(T);
+    return std.DoublyLinkedList(T);
 }
 
 const schematic = @import("schematic.zig");
 
 pub const SymbolLib = struct {
     version: i32,
-    generator: list(str) = null,
-    symbols: list(schematic.Symbol) = null,
+    generator: list(str) = .{},
+    symbols: list(schematic.Symbol) = .{},
 
     pub const fields_meta = .{
         .symbols = structure.SexpField{ .multidict = true, .sexp_name = "symbol" },
