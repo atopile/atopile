@@ -1,6 +1,6 @@
 (kicad_symbol_lib
 	(version 20241229)
-	(generator "faebryk_convert")
+	(generator "f" "a" "e" "b" "r" "y" "k" "_" "c" "o" "n" "v" "e" "r" "t")
 	(symbol "0402WGF1000TCE"
 		(property "Reference" "R"
 			(id 0)
