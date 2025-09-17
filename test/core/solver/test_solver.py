@@ -894,6 +894,7 @@ def test_jlcpcb_pick_resistor():
     print(resistor.get_trait(F.has_part_picked).get_part())
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_jlcpcb_pick_capacitor():
     capacitor = F.Capacitor()
     capacitor.capacitance.constrain_subset(L.Range(100 * P.nF, 1 * P.uF))

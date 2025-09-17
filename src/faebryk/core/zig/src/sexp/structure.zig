@@ -43,11 +43,12 @@ fn _print_indent(writer: anytype, indent: usize) !void {
 pub const ErrorContext = struct {
     path: []const u8,
     field_name: ?[]const u8 = null,
-    sexp_preview: ?[]const u8 = null,
+    message: ?[]const u8 = null,
     line: ?usize = null,
     column: ?usize = null,
     end_line: ?usize = null,
     end_column: ?usize = null,
+    sexp: ?SExp = null,
 
     source: ?[]const u8 = null,
     indent: usize = 0,
@@ -90,7 +91,7 @@ pub const ErrorContext = struct {
     pub fn format(self: ErrorContext, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
-        try writer.print("ErrorContext(\n  Struct: {s},\n  Field: {?s},\n  Problem: {?s},\n  Location: {?d}:{?d} to {?d}:{?d}", .{ self.path, self.field_name, self.sexp_preview, self.line, self.column, self.end_line, self.end_column });
+        try writer.print("ErrorContext(\n  Struct: {s},\n  Field: {?s},\n  Problem: {?s},\n  Location: {?d}:{?d} to {?d}:{?d}", .{ self.path, self.field_name, self.message, self.line, self.column, self.end_line, self.end_column });
         if (self.source) |source| {
             try writer.print("\n", .{});
             try self.print_source(source, writer, self.indent + 2);
@@ -141,6 +142,13 @@ fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
         ctx.end_line = location.end.line;
         ctx.end_column = location.end.column;
     }
+    ctx.sexp = sexp;
+
+    // If no message set by caller, attach a concise preview of the offending expression
+    if (ctx.message == null) {
+        const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
+        if (preview) |p| ctx.message = p;
+    }
 
     current_error_context = ctx;
 }
@@ -164,17 +172,24 @@ fn formatSexpPreviewInternal(sexp: SExp, buf: *std.ArrayList(u8), depth: usize, 
         .symbol => |s| try buf.appendSlice(s),
         .string => |s| {
             try buf.append('"');
-            const preview_len = @min(s.len, max_len - buf.items.len - 2);
-            try buf.appendSlice(s[0..preview_len]);
-            if (preview_len < s.len) try buf.appendSlice("...");
+            // Compute safe budget for content (avoid underflow)
+            const budget = if (max_len > buf.items.len) max_len - buf.items.len else 0;
+            const reserve_for_tail: usize = 2; // closing quote and potential ellipsis
+            const content_budget = if (budget > reserve_for_tail) budget - reserve_for_tail else 0;
+            const preview_len = @min(s.len, content_budget);
+            if (preview_len > 0) try buf.appendSlice(s[0..preview_len]);
+            // Append ellipsis only if we have room
+            if (preview_len < s.len and content_budget >= 3) try buf.appendSlice("...");
             try buf.append('"');
         },
         .number => |n| try buf.appendSlice(n),
         .comment => |c| {
             try buf.appendSlice("; ");
-            const preview_len = @min(c.len, max_len - buf.items.len - 2);
-            try buf.appendSlice(c[0..preview_len]);
-            if (preview_len < c.len) try buf.appendSlice("...");
+            const budget = if (max_len > buf.items.len) max_len - buf.items.len else 0;
+            const content_budget = budget;
+            const preview_len = @min(c.len, content_budget);
+            if (preview_len > 0) try buf.appendSlice(c[0..preview_len]);
+            if (preview_len < c.len and content_budget >= 3) try buf.appendSlice("...");
         },
         .list => |items| {
             try buf.append('(');
@@ -250,7 +265,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
             setErrorContext(.{
                 .path = @typeName(T),
                 .field_name = null,
-                .sexp_preview = "unsupported pointer type (only slices are supported)",
+                .message = "unsupported pointer type (only slices are supported)",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -263,7 +278,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
             setErrorContext(.{
                 .path = @typeName(T),
                 .field_name = null,
-                .sexp_preview = "union types require custom decode method",
+                .message = "union types require custom decode method",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -271,7 +286,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
             setErrorContext(.{
                 .path = @typeName(T),
                 .field_name = null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "unsupported type: {s}", .{@typeName(T)}) catch "unsupported type",
+                .message = std.fmt.allocPrint(std.heap.page_allocator, "unsupported type: {s}", .{@typeName(T)}) catch "unsupported type",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -288,7 +303,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
         setErrorContext(.{
             .path = @typeName(T),
             .field_name = null,
-            .sexp_preview = "expected list for struct",
+            .message = "expected list for struct",
         }, sexp);
         return error.UnexpectedType;
     };
@@ -457,7 +472,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                 setErrorContext(.{
                                     .path = @typeName(T),
                                     .field_name = field.name,
-                                    .sexp_preview = null,
+                                    .message = null,
                                 }, items[positional_idx]);
                                 @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata);
                                 fields_set.set(field_idx);
@@ -508,7 +523,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                     setErrorContext(.{
                         .path = @typeName(T),
                         .field_name = field.name,
-                        .sexp_preview = null,
+                        .message = null,
                     }, items[positional_idx]);
                     @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata);
                     fields_set.set(field_idx);
@@ -580,7 +595,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         if (scan_kv.len >= 2) {
                                             const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                             if (std.mem.eql(u8, field_name, scan_key)) {
-                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[scan_idx]);
+                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[scan_idx]);
                                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
                                                 const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
                                                 try values.append(scan_val);
@@ -602,7 +617,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         if (scan_kv.len >= 2) {
                                             const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                             if (std.mem.eql(u8, field_name, scan_key)) {
-                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[scan_idx]);
+                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[scan_idx]);
                                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
                                                 const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
                                                 try values.append(scan_val);
@@ -625,12 +640,15 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                         if (scan_kv.len >= 2) {
                                             const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                             if (std.mem.eql(u8, field_name, scan_key)) {
-                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[scan_idx]);
+                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[scan_idx]);
                                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
                                                 const val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
                                                 const node = try allocator.create(NodeType);
                                                 node.* = NodeType{ .data = val, .prev = null, .next = null };
-                                                if (ll.last) |last| { last.next = node; node.prev = last; } else ll.first = node;
+                                                if (ll.last) |last| {
+                                                    last.next = node;
+                                                    node.prev = last;
+                                                } else ll.first = node;
                                                 ll.last = node;
                                             }
                                         }
@@ -643,7 +661,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                     } else {
                         // Single value (non-multidict)
                         if (!fields_set.isSet(field_idx)) {
-                            setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .sexp_preview = null }, items[i]);
+                            setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[i]);
                             @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
                                 try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, field_metadata)
                             else if (kv_items.len == 2 and !isSlice(field.type, true))
@@ -686,7 +704,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                     setErrorContext(.{
                                         .path = @typeName(T),
                                         .field_name = field.name,
-                                        .sexp_preview = null,
+                                        .message = null,
                                     }, item);
                                     // Parse the entire nested structure as the field value
                                     @field(result, field.name) = try decodeWithMetadata(field.type, allocator, item, field_metadata);
@@ -734,7 +752,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                                     setErrorContext(.{
                                         .path = @typeName(T),
                                         .field_name = field.name,
-                                        .sexp_preview = null,
+                                        .message = null,
                                     }, value_sexp);
                                     @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, field_metadata);
                                     fields_set.set(field_idx);
@@ -779,7 +797,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                             setErrorContext(.{
                                 .path = @typeName(T),
                                 .field_name = field.name,
-                                .sexp_preview = preview,
+                                .message = preview,
                             }, sexp);
                             return error.MissingField;
                         }
@@ -797,7 +815,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, meta
                         setErrorContext(.{
                             .path = @typeName(T),
                             .field_name = field.name,
-                            .sexp_preview = preview,
+                            .message = preview,
                         }, sexp);
                         return error.MissingField;
                     }
@@ -848,7 +866,10 @@ fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, 
         const val = try decodeWithMetadata(child_type, allocator, item, .{});
         const node = try allocator.create(NodeType);
         node.* = NodeType{ .data = val, .prev = null, .next = null };
-        if (ll.last) |last| { last.next = node; node.prev = last; } else ll.first = node;
+        if (ll.last) |last| {
+            last.next = node;
+            node.prev = last;
+        } else ll.first = node;
         ll.last = node;
     }
     return ll;
@@ -907,7 +928,7 @@ fn decodeInt(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
+                .message = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -915,7 +936,7 @@ fn decodeInt(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+                .message = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -923,7 +944,7 @@ fn decodeInt(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = "expected number for integer",
+                .message = "expected number for integer",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -932,7 +953,7 @@ fn decodeInt(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
         setErrorContext(.{
             .path = if (ctx) |c| c.path else @typeName(T),
             .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
+            .message = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
         }, sexp);
         return error.InvalidValue;
     };
@@ -949,7 +970,7 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
+                .message = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -957,7 +978,7 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+                .message = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -965,7 +986,7 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got list '{s}' but expected number", .{l}) catch "list instead of number",
+                .message = std.fmt.allocPrint(std.heap.page_allocator, "got list '{s}' but expected number", .{l}) catch "list instead of number",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -973,7 +994,7 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = "expected number for float",
+                .message = "expected number for float",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -982,7 +1003,7 @@ fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T 
         setErrorContext(.{
             .path = if (ctx) |c| c.path else @typeName(T),
             .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
+            .message = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
         }, sexp);
         return error.InvalidValue;
     };
@@ -997,7 +1018,7 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
         setErrorContext(.{
             .path = if (ctx) |c| c.path else "bool",
             .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = "expected list for parantheses boolean",
+            .message = "expected list for parantheses boolean",
         }, sexp);
         return error.UnexpectedType;
     }
@@ -1007,7 +1028,7 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
         setErrorContext(.{
             .path = if (ctx) |c| c.path else "bool",
             .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = "expected symbol for boolean",
+            .message = "expected symbol for boolean",
         }, sexp);
         return error.UnexpectedType;
     };
@@ -1021,7 +1042,7 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
     setErrorContext(.{
         .path = if (ctx) |c| c.path else "bool",
         .field_name = if (ctx) |c| c.field_name else null,
-        .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "invalid boolean value '{s}' (expected yes/no/true/false)", .{sym}) catch "invalid boolean value",
+        .message = std.fmt.allocPrint(std.heap.page_allocator, "invalid boolean value '{s}' (expected yes/no/true/false)", .{sym}) catch "invalid boolean value",
     }, sexp);
     return error.InvalidValue;
 }
@@ -1038,7 +1059,7 @@ fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = "expected symbol or string for enum",
+                .message = "expected symbol or string for enum",
             }, sexp);
             return error.UnexpectedType;
         },
@@ -1055,7 +1076,7 @@ fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
     setErrorContext(.{
         .path = if (ctx) |c| c.path else @typeName(T),
         .field_name = if (ctx) |c| c.field_name else null,
-        .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value",
+        .message = std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value",
     }, sexp);
     return error.InvalidValue;
 }
@@ -1145,15 +1166,8 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
             return SExp{ .value = .{ .number = duped }, .location = null };
         },
         .bool => {
-            if (metadata.boolean_encoding == .parantheses_symbol) {
-                if (!value) {
-                    return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
-                }
-                const field_name = metadata.sexp_name orelse name;
-                var items = try allocator.alloc(SExp, 1);
-                items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                return SExp{ .value = .{ .list = items }, .location = null };
-            }
+            // Already handled by encodeStruct
+            if (metadata.boolean_encoding == .parantheses_symbol) unreachable;
             return SExp{ .value = .{ .symbol = if (value) "yes" else "no" }, .location = null };
         },
         .@"enum" => {
@@ -1234,7 +1248,8 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
             } else if (comptime isArrayList(@TypeOf(fv))) {
                 for (fv.items) |elem| try appendKeyValue(allocator, &items, fname, try encode(allocator, elem, fm, f.name));
             } else if (comptime isLinkedList(@TypeOf(fv))) {
-                var n = fv.first; while (n) |node| : (n = node.next) {
+                var n = fv.first;
+                while (n) |node| : (n = node.next) {
                     try appendKeyValue(allocator, &items, fname, try encode(allocator, node.data, fm, f.name));
                 }
             }
@@ -1243,6 +1258,11 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
 
         if (comptime isOptional(@TypeOf(fv))) {
             if (fv) |vv| try appendKeyValue(allocator, &items, fname, try encode(allocator, vv, fm, f.name));
+            continue;
+        }
+
+        if (comptime @TypeOf(fv) == bool and fm.boolean_encoding == .parantheses_symbol) {
+            if (fv) try items.append(SExp{ .value = .{ .symbol = fname }, .location = null });
             continue;
         }
 
@@ -1352,7 +1372,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
             //                setErrorContext(.{
             //                    .path = @typeName(T),
             //                    .field_name = null,
-            //                    .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, sym }) catch "wrong symbol",
+            //                    .message = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, sym }) catch "wrong symbol",
             //                }, s);
             //                return error.UnexpectedType;
             //            }
@@ -1365,7 +1385,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
             //        setErrorContext(.{
             //            .path = @typeName(T),
             //            .field_name = null,
-            //            .sexp_preview = "empty list cannot be a wrapped structure",
+            //            .message = "empty list cannot be a wrapped structure",
             //        }, s);
             //        return error.UnexpectedType;
             //    }
@@ -1374,7 +1394,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
             //    setErrorContext(.{
             //        .path = @typeName(T),
             //        .field_name = null,
-            //        .sexp_preview = "expected list for wrapped structure",
+            //        .message = "expected list for wrapped structure",
             //    }, s);
             //    return error.UnexpectedType;
             //}
@@ -1387,7 +1407,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
         setErrorContext(.{
             .path = @typeName(T),
             .field_name = null,
-            .sexp_preview = "expected list at top level",
+            .message = "expected list at top level",
         }, sexp);
         return error.UnexpectedType;
     };
@@ -1395,7 +1415,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
         setErrorContext(.{
             .path = @typeName(T),
             .field_name = null,
-            .sexp_preview = "empty top-level list",
+            .message = "empty top-level list",
         }, sexp);
         return error.UnexpectedType;
     }
@@ -1404,7 +1424,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
         setErrorContext(.{
             .path = @typeName(T),
             .field_name = null,
-            .sexp_preview = "expected symbol as first element",
+            .message = "expected symbol as first element",
         }, file_list[0]);
         return error.UnexpectedType;
     };
@@ -1412,7 +1432,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
         setErrorContext(.{
             .path = @typeName(T),
             .field_name = null,
-            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol",
+            .message = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol",
         }, file_list[0]);
         return error.UnexpectedType;
     }

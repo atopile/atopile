@@ -2544,8 +2544,15 @@ def compare_dataclasses[T](
             == {field.name for field in fields(a) if field.name not in skip_keys}
         )
 
+    def _is_pyzig_mutable_list(x: Any) -> bool:
+        t = type(x)
+        return t.__name__ == "MutableList" and t.__module__ in ("pyzig", "pyzig_local")
+
+    def _is_list_like(x: Any) -> bool:
+        return isinstance(x, list) or _is_pyzig_mutable_list(x)
+
     match (before, after):
-        case (list(), list()):
+        case (b, a) if _is_list_like(b) and _is_list_like(a):
             return {
                 f"[{i}]{k}": v
                 for i, (b, a) in enumerate(zip(before, after))

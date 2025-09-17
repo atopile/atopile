@@ -16,3 +16,7 @@ layout_sync + flip fucks rotation (see move_fp)
 mutable list
 | atm free slice when setting prop
 | ref\*\* after adding new component
+
+layout-reuse
+
+- traces fucked after layout apply

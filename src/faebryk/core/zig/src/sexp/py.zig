@@ -225,84 +225,87 @@ fn generateModule(
 
             // Parse the S-expression string
             const file = FileType.loads(persistent_allocator, .{ .string = input_copy }) catch |err| {
-                // Get the error context for better diagnostics
-                const error_context = sexp.structure.getErrorContext();
+                const ctx = sexp.structure.getErrorContext();
+                var buf: [2048]u8 = undefined;
 
-                var error_msg: [1024]u8 = undefined;
-                const msg = if (error_context) |ctx| blk: {
-                    if (err == error.MissingField) {
-                        if (ctx.line) |line| {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}' (near line {})", .{
-                                ctx.field_name orelse "unknown",
-                                ctx.path,
-                                line,
-                            }) catch {
-                                break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}'", .{
-                                    ctx.field_name orelse "unknown",
-                                    ctx.path,
-                                }) catch "Failed to parse file";
-                            };
-                        } else {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}'", .{
-                                ctx.field_name orelse "unknown",
-                                ctx.path,
-                            }) catch "Failed to parse file";
-                        }
-                    } else if (err == error.UnexpectedValue) {
-                        if (ctx.sexp_preview) |preview| {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}': got '{s}'", .{
-                                ctx.path,
-                                preview,
-                            }) catch {
-                                break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}'", .{ctx.path}) catch "Failed to parse file";
-                            };
-                        } else {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}'", .{ctx.path}) catch "Failed to parse file";
-                        }
-                    } else if (err == error.UnexpectedType) {
-                        const field_info = if (ctx.field_name) |field|
-                            std.fmt.allocPrint(std.heap.c_allocator, ", field '{s}'", .{field}) catch ""
-                        else
-                            "";
-
-                        if (ctx.sexp_preview) |preview| {
-                            if (ctx.line) |line| {
-                                break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s} at line {}: {s}", .{
-                                    ctx.path,
-                                    field_info,
-                                    line,
-                                    preview,
-                                }) catch {
-                                    break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s}: {s}", .{
-                                        ctx.path,
-                                        field_info,
-                                        preview,
-                                    }) catch "Failed to parse file";
-                                };
-                            } else {
-                                break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s}: {s}", .{
-                                    ctx.path,
-                                    field_info,
-                                    preview,
-                                }) catch "Failed to parse file";
-                            }
-                        } else {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "UnexpectedType in '{s}'{s}", .{
-                                ctx.path,
-                                field_info,
-                            }) catch "Failed to parse file";
-                        }
-                    } else {
-                        break :blk std.fmt.bufPrintZ(&error_msg, "Error in '{s}': {}", .{
-                            ctx.path,
-                            err,
-                        }) catch {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Failed to parse: {}", .{err}) catch "Failed to parse file";
-                        };
-                    }
-                } else blk: {
-                    break :blk std.fmt.bufPrintZ(&error_msg, "Failed to parse: {}", .{err}) catch "Failed to parse file";
+                // Map error to short name
+                const err_name = switch (err) {
+                    error.MissingField => "MissingField",
+                    error.UnexpectedType => "UnexpectedType",
+                    error.UnexpectedValue => "UnexpectedValue",
+                    error.InvalidValue => "InvalidValue",
+                    error.DuplicateKey => "DuplicateKey",
+                    error.AssertionFailed => "AssertionFailed",
+                    error.OutOfMemory => "OutOfMemory",
+                    else => "Error",
                 };
+
+                // Extract a source snippet for the current line
+                const msg = if (ctx) |c| blk: {
+                    const field_info = if (c.field_name) |f|
+                        std.fmt.allocPrint(std.heap.c_allocator, " field '{s}'", .{f}) catch ""
+                    else "";
+                    const has_loc = c.line != null;
+                    const loc = if (has_loc) std.fmt.allocPrint(std.heap.c_allocator, " at {d}:{?d}", .{ c.line.?, c.column }) catch "" else "";
+                    const detail = c.message orelse "";
+
+                    // Find the error line in input_copy
+                    var line_text: []const u8 = "";
+                    if (has_loc) {
+                        const ln: usize = c.line.?;
+                        var idx: usize = 0;
+                        var current: usize = 1;
+                        var start: usize = 0;
+                        while (idx < input_str.len) : (idx += 1) {
+                            if (input_str[idx] == '\n') {
+                                if (current == ln) {
+                                    line_text = input_str[start..idx];
+                                    break;
+                                }
+                                current += 1;
+                                start = idx + 1;
+                            }
+                        }
+                        if (line_text.len == 0 and current == ln and start <= input_str.len) {
+                            line_text = input_str[start..];
+                        }
+                        // Trim overly long lines
+                        if (line_text.len > 200) {
+                            line_text = line_text[0..200];
+                        }
+                    }
+
+                    // Caret underline
+                    var caret_buf: [256]u8 = undefined;
+                    var caret_len: usize = 0;
+                    if (has_loc) {
+                        const col: usize = c.column orelse 1;
+                        const underline_len: usize = if (c.end_column) |ec| @max(@as(usize, 1), ec - col) else 1;
+                        // Avoid overflow
+                        const spaces = @min(col - 1, caret_buf.len);
+                        var i: usize = 0;
+                        while (i < spaces and caret_len < caret_buf.len) : (i += 1) {
+                            caret_buf[caret_len] = ' ';
+                            caret_len += 1;
+                        }
+                        var j: usize = 0;
+                        while (j < underline_len and caret_len < caret_buf.len) : (j += 1) {
+                            caret_buf[caret_len] = '^';
+                            caret_len += 1;
+                        }
+                    }
+
+                    // Compose final message with snippet when available
+                    if (has_loc and line_text.len > 0) {
+                        break :blk std.fmt.bufPrintZ(
+                            &buf,
+                            "{s} in {s}{s}{s}: {s}\nsource: {s}\n         {s}",
+                            .{ err_name, c.path, field_info, loc, detail, line_text, caret_buf[0..caret_len] },
+                        ) catch "Parse error";
+                    } else {
+                        break :blk std.fmt.bufPrintZ(&buf, "{s} in {s}{s}{s}: {s}", .{ err_name, c.path, field_info, loc, detail }) catch "Parse error";
+                    }
+                } else std.fmt.bufPrintZ(&buf, "{s}: {}", .{ err_name, err }) catch "Parse error";
 
                 py.PyErr_SetString(py.PyExc_ValueError, msg);
                 return null;
