@@ -407,19 +407,19 @@ class LayoutSync:
             (pcb.gr_text_boxes, "gr_text_boxes"),
             # top_pcb.tables,
         ]:
-            new = [x for x in container if x.uuid not in to_delete]
-            kicad.clear_and_set(pcb, name, container, new)
+            kicad.filter(pcb, name, container, lambda x: x.uuid not in to_delete)
 
         # delete non-atopile group footprints
-        pcb.footprints = [
-            fp
-            for fp in pcb.footprints
-            if fp.uuid not in to_delete or self._get_footprint_addr(fp)
-        ]
+        kicad.filter(
+            pcb,
+            "footprints",
+            pcb.footprints,
+            lambda x: x.uuid not in to_delete
+            or (self._get_footprint_addr(x) is not None),
+        )
 
     def pull_group_layout(self, group_name: str):
         """Pull layout for a specific group from its source file."""
-
         if group_name not in self.groups:
             logger.warning(f"No layout map found for group {group_name}")
             return
@@ -455,21 +455,24 @@ class LayoutSync:
         new_fps = self._sync_footprints(
             sub_pcb, top_pcb, inverted_addr_map, net_map, offset
         )
+
         new_routes = self._sync_routes(sub_pcb, top_pcb, net_map, offset)
         new_other = self._sync_other(sub_pcb, top_pcb, offset)
 
         new_elements = new_fps + new_routes + new_other
         new_elements_out = []
-        for new_element in new_elements:
+        for new_group_uuid in new_elements:
             container, container_name = PCB_Transformer.get_pcb_container(
-                new_element, top_pcb
+                new_group_uuid, top_pcb
             )
             new_element_out = kicad.insert(
-                top_pcb, container_name, container, new_element
+                top_pcb, container_name, container, new_group_uuid
             )
             new_elements_out.append(new_element_out)
 
-        group.members = list(set(group.members) | set(e.uuid for e in new_elements_out))
+        new_group_uuids = set(e.uuid for e in new_elements_out) - set(group.members)
+        for new_group_uuid in new_group_uuids:
+            group.members.append(new_group_uuid)
 
     def _get_net_number(self, pcb: PCB, net_name: str) -> int:
         """Get the net number for a given net name."""
