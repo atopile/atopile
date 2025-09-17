@@ -1,0 +1,45 @@
+import Resistor
+import Electrical
+
+module X:
+    input_cnt: int
+
+    inputs = new Electrical[input_cnt]
+
+    # => assert input_cnt >= 2
+    inputs[2] ~ inputs[1]
+
+    for input in inputs:
+        assert input.voltage <= 10V
+
+    if input_cnt >= 5:
+        inputs[5] ~ inputs[0]
+
+    p1 : int
+    p2 : int
+    A = new Resistor[p1]
+    B = new Resistor[p2]
+    # => assert p1 is p2
+    # creates anonymous composite arraynode A_B where A_B.A -> A, A_B.B -> B
+    # also adds trait that allows a,b syntax
+    for pair in zip(A, B):
+        pair.A ~ pair.B
+    # syntax sugar
+    for a,b in zip(A, B):
+        pass
+
+    # imagine type CType with same trait
+    C = new CType[5]
+    for a,b in C:
+        a ~ b
+
+    # basically same as above without `is` constraint
+    # creates special indexable trait
+    for a,b in combinations(A, B):
+        pass
+
+module CType:
+    A = new Resistor
+    B = new Resistor
+
+    trait indexable<A, B>
