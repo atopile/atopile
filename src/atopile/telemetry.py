@@ -19,20 +19,45 @@ import importlib.metadata
 import logging
 import os
 import time
+import traceback
 import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any, Unpack
+from queue import Empty, Full, Queue
+from threading import Event, Thread
+from typing import Any, TypedDict, Unpack
 
-from posthog import Posthog
-from posthog.args import OptionalCaptureArgs
 from ruamel.yaml import YAML
 
+from faebryk.libs.http import http_client
 from faebryk.libs.paths import get_config_dir
 from faebryk.libs.util import cast_assert, once
 
 log = logging.getLogger(__name__)
+
+
+PH_PROJECT_API_KEY = "phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt"
+PH_API_HOST = "https://telemetry.atopileapi.com"
+PH_CAPTURE_ENDPOINT = "/capture/"
+DEFAULT_QUEUE_SIZE = 256
+WORKER_SLEEP_SECONDS = 0.1
+REQUEST_TIMEOUT_SECONDS = 5.0
+RETRY_DELAY_SECONDS = 0.5
+MAX_RETRIES = 1
+FLUSH_TIMEOUT_SECONDS = 2.0
+
+
+class CaptureArgs(TypedDict, total=False):
+    distinct_id: str
+    properties: dict[str, Any]
+    timestamp: str
+    context: dict[str, Any]
+
+
+@dataclass(slots=True)
+class _TelemetryEvent:
+    payload: dict[str, Any]
 
 
 class _MockClient:
@@ -41,46 +66,195 @@ class _MockClient:
     def capture_exception(
         self,
         exception: Exception,
-        **kwargs: Unpack[OptionalCaptureArgs],
+        **kwargs: Any,
     ) -> None:
         pass
 
     def capture(
         self,
         event: str,
-        **kwargs: Unpack[OptionalCaptureArgs],
+        **kwargs: Any,
     ) -> None:
         pass
 
-    def flush(self) -> None:
+    def flush(self, timeout: float | None = None) -> None:
         pass
 
 
+class TelemetryClient:
+    def __init__(
+        self,
+        api_key: str,
+        host: str,
+        *,
+        queue_size: int = DEFAULT_QUEUE_SIZE,
+        max_retries: int = MAX_RETRIES,
+    ) -> None:
+        self._api_key = api_key
+        self._host = host.rstrip("/")
+        self._queue: Queue[_TelemetryEvent] = Queue(maxsize=queue_size)
+        self._stop = Event()
+        self._max_retries = max_retries
+        self._headers = {
+            "Content-Type": "application/json",
+            "User-Agent": f"atopile/{importlib.metadata.version('atopile')}",
+        }
+        self._worker = Thread(
+            target=self._worker_loop,
+            name="telemetry-worker",
+            daemon=True,
+        )
+        self._worker.start()
+        self.disabled = False
+
+    def capture(self, event: str, **kwargs: Unpack[CaptureArgs]) -> None:
+        if self.disabled or self._stop.is_set():
+            return
+
+        payload: dict[str, Any] = {
+            "api_key": self._api_key,
+            "event": event,
+        }
+
+        distinct_id = kwargs.get("distinct_id")
+        if distinct_id is not None:
+            payload["distinct_id"] = str(distinct_id)
+
+        if properties := kwargs.get("properties"):
+            payload["properties"] = dict(properties)
+
+        if timestamp := kwargs.get("timestamp"):
+            payload["timestamp"] = timestamp
+
+        if context := kwargs.get("context"):
+            payload["context"] = dict(context)
+
+        self._enqueue(_TelemetryEvent(payload=payload))
+
+    def capture_exception(
+        self,
+        exception: Exception,
+        **kwargs: Unpack[CaptureArgs],
+    ) -> None:
+        if self.disabled or self._stop.is_set():
+            return
+
+        properties = dict(kwargs.get("properties") or {})
+        properties.setdefault("$exception_message", str(exception))
+        properties.setdefault("$exception_type", type(exception).__name__)
+        properties.setdefault(
+            "$exception_stack_trace",
+            "".join(
+                traceback.format_exception(
+                    type(exception), exception, exception.__traceback__
+                )
+            ),
+        )
+
+        distinct_id = kwargs.get("distinct_id")
+        if distinct_id is not None and "$exception_person" not in properties:
+            properties["$exception_person"] = str(distinct_id)
+
+        self.capture(
+            "$exception",
+            distinct_id=distinct_id,
+            properties=properties,
+            timestamp=kwargs.get("timestamp"),
+            context=kwargs.get("context"),
+        )
+
+    def flush(self, timeout: float | None = None) -> None:
+        if self.disabled:
+            return
+
+        self._stop.set()
+        deadline = None if timeout is None else time.monotonic() + timeout
+
+        while not self._queue.empty():
+            if deadline is not None and time.monotonic() >= deadline:
+                break
+            time.sleep(min(WORKER_SLEEP_SECONDS, 0.05))
+
+        remaining = None
+        if deadline is not None:
+            remaining = max(0.0, deadline - time.monotonic())
+
+        try:
+            self._worker.join(remaining)
+        except RuntimeError:
+            pass
+
+        self.disabled = True
+
+    def _enqueue(self, event: _TelemetryEvent) -> None:
+        try:
+            self._queue.put_nowait(event)
+        except Full:
+            log.debug("Dropping telemetry event because queue is full")
+
+    def _worker_loop(self) -> None:
+        while True:
+            if self._stop.is_set() and self._queue.empty():
+                break
+
+            try:
+                event = self._queue.get(timeout=WORKER_SLEEP_SECONDS)
+            except Empty:
+                continue
+
+            try:
+                self._send_with_retry(event.payload)
+            finally:
+                self._queue.task_done()
+
+    def _send_with_retry(self, payload: dict[str, Any]) -> None:
+        attempts = self._max_retries + 1
+
+        for attempt in range(attempts):
+            if self._send(payload):
+                return
+
+            if attempt < attempts - 1:
+                time.sleep(RETRY_DELAY_SECONDS)
+
+        log.debug("Dropping telemetry event after retries exhausted")
+
+    def _send(self, payload: dict[str, Any]) -> bool:
+        try:
+            with http_client(headers=self._headers) as client:
+                response = client.post(
+                    f"{self._host}{PH_CAPTURE_ENDPOINT}",
+                    json=payload,
+                    timeout=REQUEST_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+        except Exception as e:
+            log.debug("Failed to send telemetry event: %s", e, exc_info=e)
+            return False
+
+        return True
+
+
 @once
-def _get_posthog_client() -> Posthog | _MockClient:
+def _get_telemetry_client() -> TelemetryClient | _MockClient:
     try:
-        return Posthog(
-            # write-only API key, intended to be made public
-            project_api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
-            host="https://telemetry.atopileapi.com",
-            sync_mode=False,
-            thread=2,
-            flush_at=1,
-            flush_interval=0.1,
+        return TelemetryClient(
+            api_key=PH_PROJECT_API_KEY,
+            host=PH_API_HOST,
         )
     except Exception as e:
         log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
         return _MockClient()
 
 
-client = _get_posthog_client()
+client = _get_telemetry_client()
 
 
 def _flush_telemetry_on_exit() -> None:
     """Flush telemetry data when the program exits."""
     try:
         if not client.disabled:
-            client.flush()
+            client.flush(FLUSH_TIMEOUT_SECONDS)
     except Exception as e:
         log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
 

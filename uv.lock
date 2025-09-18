@@ -85,7 +85,6 @@ dependencies = [
     { name = "pathvalidate" },
     { name = "pint" },
     { name = "platformdirs" },
-    { name = "posthog" },
     { name = "prompt-toolkit" },
     { name = "psutil" },
     { name = "pydantic-settings" },
@@ -158,7 +157,6 @@ requires-dist = [
     { name = "pathvalidate", specifier = ">=3.2.1" },
     { name = "pint", specifier = ">=0.24.4" },
     { name = "platformdirs", specifier = ">=4.3.6" },
-    { name = "posthog", specifier = "==6.0.3" },
     { name = "prompt-toolkit", specifier = "==3.0.51" },
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
@@ -1691,23 +1689,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
-]
-
-[[package]]
-name = "posthog"
-version = "6.0.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "backoff" },
-    { name = "distro" },
-    { name = "python-dateutil" },
-    { name = "requests" },
-    { name = "six" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/39/a2/1b68562124b0d0e615fa8431cc88c84b3db6526275c2c19a419579a49277/posthog-6.0.3.tar.gz", hash = "sha256:9005abb341af8fedd9d82ca0359b3d35a9537555cdc9881bfb469f7c0b4b0ec5", size = 91861, upload-time = "2025-07-07T07:14:08.21Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/f1/a8d86245d41c8686f7d828a4959bdf483e8ac331b249b48b8c61fc884a1c/posthog-6.0.3-py3-none-any.whl", hash = "sha256:4b808c907f3623216a9362d91fdafce8e2f57a8387fb3020475c62ec809be56d", size = 108978, upload-time = "2025-07-07T07:14:06.451Z" },
 ]
 
 [[package]]
