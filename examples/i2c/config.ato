@@ -1,0 +1,10 @@
+#pragma experiment("TRAITS")
+
+from "i2c.ato" import App
+from "config_traits.py" import has_project_config
+
+module I2C_Project:
+    app = new App
+
+    trait has_project_config<version_major=1, version_minor=0, version_patch=0>
+

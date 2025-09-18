@@ -5,6 +5,8 @@ paths:
   layout: ./layout
 
 builds:
-  default:
-    entry: i2c.ato:App
+  # default:
+  #   entry: i2c.ato:App
+  config:
+    entry: config.ato:I2C_Project
 
