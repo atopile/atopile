@@ -1802,9 +1802,9 @@ class PCB_Transformer:
             case kicad.pcb.Rect():
                 return _round(obj.start.x, obj.start.y, obj.end.x, obj.end.y)
             case kicad.pcb.Polygon():
-                return [_round(pt.x, pt.y) for pt in obj.pts.xys]
+                return tuple(_round(pt.x, pt.y) for pt in obj.pts.xys)
             case kicad.pcb.Curve():
-                return [_round(pt.x, pt.y) for pt in obj.pts.xys]
+                return tuple(_round(pt.x, pt.y) for pt in obj.pts.xys)
             case kicad.pcb.Text() | kicad.pcb.FpText():
                 return _round(obj.at.x, obj.at.y)
             case kicad.pcb.TextBox():
