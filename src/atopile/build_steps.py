@@ -177,17 +177,24 @@ class Muster:
 
         return decorator
 
-    def select(self, selected_targets: set[str]) -> Generator[MusterTarget, None, None]:
+    def select(
+        self, selected_targets: set[str], excluded_targets: set[str] | None = None
+    ) -> Generator[MusterTarget, None, None]:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
+        excluded_targets = excluded_targets or set()
+
         with accumulate() as accumulator:
-            for target in selected_targets:
+            for target in selected_targets | excluded_targets:
                 with accumulator.collect():
                     if target not in self.targets:
                         raise UserBadParameterError(
                             f"Target `{target}` not recognized."
                         )
+
+        if excluded_targets:
+            selected_targets = selected_targets - excluded_targets
 
         subgraph = self.dependency_dag.get_subgraph(
             selector_func=lambda name: name in selected_targets
