@@ -17,9 +17,7 @@ def test_normalize_git_remote_url(git_remote):
 
 
 def test_init_client():
-    assert isinstance(
-        telemetry.client, (telemetry.TelemetryClient, telemetry._MockClient)
-    )
+    assert isinstance(telemetry.client, telemetry.TelemetryClient)
 
 
 def test_capture_event():

@@ -35,7 +35,7 @@
 2. **Build TelemetryClient**
    - Implement queue, worker thread, `_send_event` helper, and `flush(timeout)`.
    - Ensure `capture`/`capture_exception` short-circuit when disabled or opt-out.
-   - Keep `_MockClient` for init failures.
+- Instantiate `TelemetryClient` in disabled mode if initialization fails, instead of relying on a separate mock class.
 3. **Wire Into Existing Flow**
    - Swap `_get_posthog_client()` for `_get_telemetry_client()` returning the new class.
    - Update module-level `client` usage, atexit hook, and decorators to use the new interface with minimal changes.

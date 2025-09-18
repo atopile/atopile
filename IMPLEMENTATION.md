@@ -132,7 +132,7 @@ class TelemetryClient:
 ## Implementation Checklist
 1. Remove PostHog imports and dependency entries.
 2. Introduce `TelemetryClient` in `telemetry.py` along with helper types and constants.
-3. Replace `_get_posthog_client()` usage with `_get_telemetry_client()` returning the new class (keeping `_MockClient` fallback for safety).
+3. Replace `_get_posthog_client()` usage with `_get_telemetry_client()` returning the new class (falling back to a disabled `TelemetryClient` instance on failure).
 4. Update capture helpers, context manager, and tests to reference the new client.
 5. Add targeted unit tests in `test/` (e.g., `test/test_telemetry_client.py`).
 6. Regenerate `uv.lock` and run `pytest` to confirm stability.

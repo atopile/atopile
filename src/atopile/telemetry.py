@@ -60,27 +60,6 @@ class _TelemetryEvent:
     payload: dict[str, Any]
 
 
-class _MockClient:
-    disabled = False
-
-    def capture_exception(
-        self,
-        exception: Exception,
-        **kwargs: Any,
-    ) -> None:
-        pass
-
-    def capture(
-        self,
-        event: str,
-        **kwargs: Any,
-    ) -> None:
-        pass
-
-    def flush(self, timeout: float | None = None) -> None:
-        pass
-
-
 class TelemetryClient:
     def __init__(
         self,
@@ -89,6 +68,7 @@ class TelemetryClient:
         *,
         queue_size: int = DEFAULT_QUEUE_SIZE,
         max_retries: int = MAX_RETRIES,
+        start_worker: bool = True,
     ) -> None:
         self._api_key = api_key
         self._host = host.rstrip("/")
@@ -99,13 +79,17 @@ class TelemetryClient:
             "Content-Type": "application/json",
             "User-Agent": f"atopile/{importlib.metadata.version('atopile')}",
         }
-        self._worker = Thread(
-            target=self._worker_loop,
-            name="telemetry-worker",
-            daemon=True,
-        )
-        self._worker.start()
-        self.disabled = False
+        self._worker: Thread | None = None
+        if start_worker:
+            self._worker = Thread(
+                target=self._worker_loop,
+                name="telemetry-worker",
+                daemon=True,
+            )
+            self._worker.start()
+            self.disabled = False
+        else:
+            self.disabled = True
 
     def capture(self, event: str, **kwargs: Unpack[CaptureArgs]) -> None:
         if self.disabled or self._stop.is_set():
@@ -164,7 +148,7 @@ class TelemetryClient:
         )
 
     def flush(self, timeout: float | None = None) -> None:
-        if self.disabled:
+        if self.disabled and self._worker is None:
             return
 
         self._stop.set()
@@ -179,10 +163,11 @@ class TelemetryClient:
         if deadline is not None:
             remaining = max(0.0, deadline - time.monotonic())
 
-        try:
-            self._worker.join(remaining)
-        except RuntimeError:
-            pass
+        if self._worker is not None:
+            try:
+                self._worker.join(remaining)
+            except RuntimeError:
+                pass
 
         self.disabled = True
 
@@ -236,7 +221,7 @@ class TelemetryClient:
 
 
 @once
-def _get_telemetry_client() -> TelemetryClient | _MockClient:
+def _get_telemetry_client() -> TelemetryClient:
     try:
         return TelemetryClient(
             api_key=PH_PROJECT_API_KEY,
@@ -244,7 +229,11 @@ def _get_telemetry_client() -> TelemetryClient | _MockClient:
         )
     except Exception as e:
         log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
-        return _MockClient()
+        return TelemetryClient(
+            api_key=PH_PROJECT_API_KEY,
+            host=PH_API_HOST,
+            start_worker=False,
+        )
 
 
 client = _get_telemetry_client()
