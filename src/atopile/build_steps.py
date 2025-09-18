@@ -752,6 +752,7 @@ def generate_i2c_tree(
         generate_manifest,
         generate_variable_report,
         generate_i2c_tree,
+        checks,
     ],
     virtual=True,
 )
