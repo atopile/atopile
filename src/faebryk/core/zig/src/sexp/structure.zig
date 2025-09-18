@@ -8,12 +8,16 @@ fn isOptional(comptime T: type) bool {
     return @typeInfo(T) == .optional;
 }
 
-fn isArrayList(comptime T: type) bool {
-    return @typeInfo(T) == .@"struct" and @hasField(T, "items");
-}
-
 fn isLinkedList(comptime T: type) bool {
     return @typeInfo(T) == .@"struct" and @hasField(T, "first") and @hasField(T, "last") and @hasDecl(T, "Node");
+}
+
+fn isSimpleType(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .int, .float, .bool, .@"enum" => true,
+        // Don't consider strings as simple - they need to be freed
+        else => false,
+    };
 }
 
 pub const BooleanEncoding = enum {
@@ -153,6 +157,29 @@ fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
     current_error_context = ctx;
 }
 
+// Lightweight helpers to cut boilerplate when setting error context
+inline fn _baseCtx(comptime T: type, field_name: ?[]const u8) ErrorContext {
+    if (getErrorContext()) |c| {
+        return .{ .path = c.path, .field_name = field_name orelse c.field_name };
+    }
+    return .{ .path = @typeName(T), .field_name = field_name };
+}
+
+inline fn setCtx(comptime T: type, sexp: SExp, field_name: ?[]const u8, msg: ?[]const u8) void {
+    var ctx = _baseCtx(T, field_name);
+    ctx.message = msg;
+    setErrorContext(ctx, sexp);
+}
+
+inline fn setCtxFromCurrent(comptime T: type, sexp: SExp, msg: []const u8) void {
+    setCtx(T, sexp, null, msg);
+}
+
+inline fn setCtxPath(comptime path: []const u8, sexp: SExp, field_name: ?[]const u8, msg: ?[]const u8) void {
+    const ctx: ErrorContext = .{ .path = path, .field_name = field_name, .message = msg };
+    setErrorContext(ctx, sexp);
+}
+
 // Helper to format S-expression preview
 fn formatSexpPreview(allocator: std.mem.Allocator, sexp: SExp) ![]u8 {
     var buf = std.ArrayList(u8).init(allocator);
@@ -250,9 +277,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
     }
 
     switch (type_info) {
-        .@"struct" => if (comptime isArrayList(T)) {
-            return try decodeArrayList(T, allocator, sexp, metadata);
-        } else if (comptime isLinkedList(T)) {
+        .@"struct" => if (comptime isLinkedList(T)) {
             return try decodeLinkedList(T, allocator, sexp, metadata);
         } else {
             return try decodeStruct(T, allocator, sexp, metadata);
@@ -262,11 +287,7 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
             if (ptr.size == .slice) {
                 return try decodeSlice(T, allocator, sexp, metadata);
             }
-            setErrorContext(.{
-                .path = @typeName(T),
-                .field_name = null,
-                .message = "unsupported pointer type (only slices are supported)",
-            }, sexp);
+            setCtx(T, sexp, null, "unsupported pointer type (only slices are supported)");
             return error.UnexpectedType;
         },
         .int => return try decodeInt(T, sexp, metadata),
@@ -275,556 +296,341 @@ pub fn decodeWithMetadata(comptime T: type, allocator: std.mem.Allocator, sexp: 
         .@"enum" => return try decodeEnum(T, sexp, metadata),
         .@"union" => {
             // If no custom decode, unions need custom decoders
-            setErrorContext(.{
-                .path = @typeName(T),
-                .field_name = null,
-                .message = "union types require custom decode method",
-            }, sexp);
+            setCtx(T, sexp, null, "union types require custom decode method");
             return error.UnexpectedType;
         },
         else => {
-            setErrorContext(.{
-                .path = @typeName(T),
-                .field_name = null,
-                .message = std.fmt.allocPrint(std.heap.page_allocator, "unsupported type: {s}", .{@typeName(T)}) catch "unsupported type",
-            }, sexp);
+            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "unsupported type: {s}", .{@typeName(T)}) catch "unsupported type");
             return error.UnexpectedType;
         },
     }
 }
 
 fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
-    _ = metadata; // metadata not used at struct level, only for individual fields
+    _ = metadata;
     @setEvalBranchQuota(15000);
-    const fields = std.meta.fields(T);
+    const flds = std.meta.fields(T);
     var result: T = undefined;
 
     const items = ast.getList(sexp) orelse {
-        setErrorContext(.{
-            .path = @typeName(T),
-            .field_name = null,
-            .message = "expected list for struct",
-        }, sexp);
+        setCtx(T, sexp, null, "expected list for struct");
         return error.UnexpectedType;
     };
 
-    // Special case: if the struct has exactly one non-optional, non-default field and the sexp
-    // is a single nested structure matching that field, treat the entire sexp as that field's value
-    // This handles cases like (font ...) being passed to Effects{font: Font}
-    comptime var non_optional_non_default_count: usize = 0;
-    comptime var single_field_name: ?[]const u8 = null;
-    comptime {
-        for (fields) |field| {
-            if (!isOptional(field.type)) {
-                // Check if field has a default value
-                const has_default = field.default_value_ptr != null;
-
-                if (!has_default) {
-                    non_optional_non_default_count += 1;
-                    single_field_name = field.name;
-                }
-            }
-        }
-    }
-
-    // Check if struct has any positional fields
-    comptime var has_positional_fields = false;
-    comptime {
-        for (fields) |field| {
-            const field_metadata = getSexpMetadata(T, field.name);
-            if (field_metadata.positional) {
-                has_positional_fields = true;
-                break;
-            }
-        }
-    }
-
-    // Track which fields have been set
-    var fields_set = std.StaticBitSet(fields.len).initEmpty();
-
-    // Add errdefer to clean up partial allocations on error
+    var fields_set = std.StaticBitSet(flds.len).initEmpty();
     errdefer {
-        // Free any fields that were already allocated
-        inline for (fields, 0..) |field, idx| {
-            if (fields_set.isSet(idx)) {
-                free(field.type, allocator, @field(result, field.name));
-            }
-        }
+        inline for (flds, 0..) |field, idx| if (fields_set.isSet(idx)) free(field.type, allocator, @field(result, field.name));
     }
 
-    // First, count how many key-value pairs we have
-    var kv_count: usize = 0;
-    for (items) |item| {
-        if (ast.isList(item)) {
-            const kv_items = ast.getList(item).?;
-            if (kv_items.len >= 2) {
-                if (ast.getSymbol(kv_items[0]) != null) {
-                    kv_count += 1;
-                }
-            }
+    try handlePositionalFields(T, allocator, items, &result, &fields_set);
+    try handleKeyValuesAndBooleans(T, allocator, items, &result, &fields_set);
+    try finalizeUnsetFields(T, allocator, items, sexp, &result, &fields_set);
+
+    return result;
+}
+
+// Determine start index for positional parsing (skip lowercase type symbol if present)
+fn positionalStart(comptime T: type, items: []const SExp) usize {
+    if (items.len == 0) return 0;
+    if (ast.getSymbol(items[0])) |sym| {
+        const type_name = @typeName(T);
+        var last_dot: usize = 0;
+        for (type_name, 0..) |c, i| {
+            if (c == '.') last_dot = i + 1;
+        }
+        const short_name = type_name[last_dot..];
+        var lower_buf: [128]u8 = undefined;
+        if (short_name.len <= lower_buf.len) {
+            for (short_name, 0..) |c, i| lower_buf[i] = std.ascii.toLower(c);
+            const lower_name = lower_buf[0..short_name.len];
+            if (std.mem.eql(u8, sym, lower_name)) return 1;
         }
     }
+    return 0;
+}
 
-    // Check if this is a struct with only positional fields
-    const all_positional = comptime blk: {
-        var all_pos = true;
-        var has_fields = false;
-        for (fields) |field| {
-            const field_metadata_inner = getSexpMetadata(T, field.name);
-            has_fields = true;
-            if (!field_metadata_inner.positional) {
-                all_pos = false;
-                break;
-            }
-        }
-        break :blk all_pos and has_fields;
-    };
-
-    // For structs with only positional fields, check if we need to skip a type symbol
-    // This handles cases like (xyz 0 0 0) where "xyz" is the type name
-    // But NOT cases like (edge 0.5) where "edge" is actual data
-    var positional_start: usize = 0;
-    if (all_positional and items.len > 0) {
-        if (ast.getSymbol(items[0])) |sym| {
-            // Only skip if the symbol looks like a type name (lowercase version of struct name)
-            const type_name = @typeName(T);
-            var last_dot: usize = 0;
-            for (type_name, 0..) |c, i| {
-                if (c == '.') last_dot = i + 1;
-            }
-            const short_name = type_name[last_dot..];
-
-            // Create lowercase version for comparison
-            var lower_buf: [128]u8 = undefined;
-            if (short_name.len <= lower_buf.len) {
-                for (short_name, 0..) |c, i| {
-                    lower_buf[i] = std.ascii.toLower(c);
-                }
-                const lower_name = lower_buf[0..short_name.len];
-
-                if (std.mem.eql(u8, sym, lower_name)) {
-                    positional_start = 1;
-                }
-            }
-        }
+fn hasAnyPositionalFields(comptime T: type) bool {
+    const fields = std.meta.fields(T);
+    inline for (fields) |field| {
+        const fm = comptime getSexpMetadata(T, field.name);
+        if (fm.positional) return true;
     }
+    return false;
+}
 
-    // Process positional fields based on order
-    var positional_idx: usize = positional_start;
+fn allFieldsPositional(comptime T: type) bool {
+    const fields = std.meta.fields(T);
+    var has_fields = false;
+    inline for (fields) |field| {
+        has_fields = true;
+        const fm = comptime getSexpMetadata(T, field.name);
+        if (!fm.positional) return false;
+    }
+    return has_fields;
+}
+
+fn handlePositionalFields(comptime T: type, allocator: std.mem.Allocator, items: []const SExp, result: *T, fields_set: anytype) DecodeError!void {
+    const fields = std.meta.fields(T);
+    if (!comptime hasAnyPositionalFields(T)) return;
+
+    var idx: usize = if (comptime allFieldsPositional(T)) positionalStart(T, items) else 0;
+
     inline for (fields, 0..) |field, field_idx| {
-        const field_metadata = comptime getSexpMetadata(T, field.name);
-        if (field_metadata.positional) {
-            // For positional fields, we need to find the next non-list item
-            while (positional_idx < items.len and ast.isList(items[positional_idx])) {
-                positional_idx += 1;
-            }
+        const fm = comptime getSexpMetadata(T, field.name);
+        if (fm.positional) {
+            while (idx < items.len and ast.isList(items[idx])) idx += 1;
 
-            if (positional_idx < items.len) {
-                // Check if this field has a default value (either optional or has default_value_ptr)
+            if (idx >= items.len) {
+                if (comptime isOptional(field.type)) {
+                    @field(result.*, field.name) = null;
+                    fields_set.set(field_idx);
+                }
+            } else {
                 const has_default = comptime isOptional(field.type) or field.default_value_ptr != null;
+                var consumed = false;
 
-                // For positional fields with defaults, check if the current item matches the expected type
-                // This handles cases like PadDrill where shape has a default and might be skipped
                 if (has_default) {
-                    const actual_type = if (comptime isOptional(field.type))
-                        @typeInfo(field.type).optional.child
-                    else
-                        field.type;
-                    const type_info = @typeInfo(actual_type);
-
-                    // For enum fields with defaults, check if current item is a matching symbol
-                    if (type_info == .@"enum") {
-                        if (ast.getSymbol(items[positional_idx])) |sym| {
-                            // Check if this symbol is a valid enum value
-                            var is_valid_enum = false;
-                            inline for (std.meta.fields(actual_type)) |enum_field| {
-                                // Check both the field name and any custom sexp_name
-                                if (std.mem.eql(u8, sym, enum_field.name)) {
-                                    is_valid_enum = true;
-                                    break;
-                                }
-                                // Also check if enum has custom sexp_name metadata
-                                if (@hasDecl(actual_type, "fields_meta")) {
-                                    if (@hasField(@TypeOf(actual_type.fields_meta), enum_field.name)) {
-                                        const enum_meta = @field(actual_type.fields_meta, enum_field.name);
-                                        if (@hasField(@TypeOf(enum_meta), "sexp_name")) {
-                                            const sexp_name = enum_meta.sexp_name;
-                                            if (@typeInfo(@TypeOf(sexp_name)) == .optional) {
-                                                if (sexp_name) |name| {
-                                                    if (std.mem.eql(u8, sym, name)) {
-                                                        is_valid_enum = true;
-                                                        break;
-                                                    }
-                                                }
-                                            } else {
-                                                if (std.mem.eql(u8, sym, sexp_name)) {
-                                                    is_valid_enum = true;
-                                                    break;
-                                                }
+                    const actual_type = if (comptime isOptional(field.type)) @typeInfo(field.type).optional.child else field.type;
+                    if (@typeInfo(actual_type) == .@"enum") {
+                        if (ast.getSymbol(items[idx])) |sym| {
+                            var ok = false;
+                            inline for (std.meta.fields(actual_type)) |ef| {
+                                if (std.mem.eql(u8, sym, ef.name)) ok = true;
+                                if (@hasDecl(actual_type, "fields_meta") and @hasField(@TypeOf(actual_type.fields_meta), ef.name)) {
+                                    const em = @field(actual_type.fields_meta, ef.name);
+                                    if (@hasField(@TypeOf(em), "sexp_name")) {
+                                        const sn = em.sexp_name;
+                                        if (@typeInfo(@TypeOf(sn)) == .optional) {
+                                            if (sn) |name| {
+                                                if (std.mem.eql(u8, sym, name)) ok = true;
                                             }
                                         }
                                     }
                                 }
                             }
-
-                            if (is_valid_enum) {
-                                // This is a valid enum value, decode it
-                                setErrorContext(.{
-                                    .path = @typeName(T),
-                                    .field_name = field.name,
-                                    .message = null,
-                                }, items[positional_idx]);
-                                @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata);
+                            if (ok) {
+                                setCtx(T, items[idx], field.name, null);
+                                @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, items[idx], fm);
                                 fields_set.set(field_idx);
-                                positional_idx += 1;
+                                idx += 1;
+                                consumed = true;
                             } else {
-                                // Not a valid enum value, skip this field (use default/null)
-                                if (comptime isOptional(field.type)) {
-                                    @field(result, field.name) = null;
-                                }
-                                // For non-optional with default, the default was already set by zeroInit
+                                if (comptime isOptional(field.type)) @field(result.*, field.name) = null;
                                 fields_set.set(field_idx);
-                                // Don't advance positional_idx - let next field try this item
                             }
                         } else {
-                            // Not a symbol, skip this enum field (use default/null)
-                            if (comptime isOptional(field.type)) {
-                                @field(result, field.name) = null;
-                            }
-                            // For non-optional with default, the default was already set by zeroInit
+                            if (comptime isOptional(field.type)) @field(result.*, field.name) = null;
                             fields_set.set(field_idx);
-                            // Don't advance positional_idx - let next field try this item
-                        }
-                    } else {
-                        // For other types with defaults, try to decode and handle errors
-                        // Save the current error context in case decode fails
-                        const saved_ctx = getErrorContext();
-                        clearErrorContext();
-
-                        // Try to decode this field
-                        if (decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata)) |value| {
-                            @field(result, field.name) = value;
-                            fields_set.set(field_idx);
-                            positional_idx += 1;
-                        } else |_| {
-                            // Decode failed, this item doesn't match this field type
-                            // Restore context and skip this field
-                            current_error_context = saved_ctx;
-                            if (comptime isOptional(field.type)) {
-                                @field(result, field.name) = null;
-                            }
-                            // For non-optional with default, the default was already set by zeroInit
-                            fields_set.set(field_idx);
-                            // Don't advance positional_idx - let next field try this item
                         }
                     }
-                } else {
-                    // Required positional field - decode normally
-                    setErrorContext(.{
-                        .path = @typeName(T),
-                        .field_name = field.name,
-                        .message = null,
-                    }, items[positional_idx]);
-                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, items[positional_idx], field_metadata);
-                    fields_set.set(field_idx);
-                    positional_idx += 1;
+
+                    if (!consumed and @typeInfo(actual_type) != .@"enum") {
+                        const saved = getErrorContext();
+                        clearErrorContext();
+                        if (decodeWithMetadata(field.type, allocator, items[idx], fm)) |val| {
+                            @field(result.*, field.name) = val;
+                            fields_set.set(field_idx);
+                            idx += 1;
+                            consumed = true;
+                        } else |_| {
+                            current_error_context = saved;
+                            if (comptime isOptional(field.type)) @field(result.*, field.name) = null;
+                            fields_set.set(field_idx);
+                        }
+                    }
                 }
-            } else if (comptime isOptional(field.type)) {
-                // No more items, set optional field to null
-                @field(result, field.name) = null;
-                fields_set.set(field_idx);
+
+                if (!has_default) {
+                    setCtx(T, items[idx], field.name, null);
+                    @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, items[idx], fm);
+                    fields_set.set(field_idx);
+                    idx += 1;
+                }
             }
         }
     }
+}
 
-    // Process key-value pairs and standalone boolean fields
+fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, items: []const SExp, result: *T, fields_set: anytype) DecodeError!void {
+    const fields = std.meta.fields(T);
     var i: usize = 0;
     while (i < items.len) : (i += 1) {
-        // First check if this is a standalone symbol (potential boolean field)
         if (ast.getSymbol(items[i])) |sym| {
-            // Check if this matches a boolean field
             inline for (fields, 0..) |field, field_idx| {
-                // Only process boolean fields that haven't been set
                 if (!fields_set.isSet(field_idx) and @typeInfo(field.type) == .bool) {
-                    const field_metadata = comptime getSexpMetadata(T, field.name);
-                    const field_name = field_metadata.sexp_name orelse field.name;
-                    if (std.mem.eql(u8, sym, field_name)) {
-                        // Found a matching boolean field - set it to true
-                        @field(result, field.name) = true;
+                    const fm = comptime getSexpMetadata(T, field.name);
+                    const fname = fm.sexp_name orelse field.name;
+                    if (std.mem.eql(u8, sym, fname)) {
+                        @field(result.*, field.name) = true;
                         fields_set.set(field_idx);
-                        break;
                     }
                 }
-                // Also handle optional boolean fields
                 if (!fields_set.isSet(field_idx) and comptime isOptional(field.type)) {
                     const child = @typeInfo(field.type).optional.child;
                     if (@typeInfo(child) == .bool) {
-                        const field_metadata = comptime getSexpMetadata(T, field.name);
-                        const field_name = field_metadata.sexp_name orelse field.name;
-                        if (std.mem.eql(u8, sym, field_name)) {
-                            // Found a matching optional boolean field - set it to true
-                            @field(result, field.name) = true;
+                        const fm = comptime getSexpMetadata(T, field.name);
+                        const fname = fm.sexp_name orelse field.name;
+                        if (std.mem.eql(u8, sym, fname)) {
+                            @field(result.*, field.name) = true;
                             fields_set.set(field_idx);
-                            break;
                         }
                     }
                 }
             }
         }
 
-        if (ast.isList(items[i])) {
-            const kv_items = ast.getList(items[i]).?;
-            const key = ast.getSymbol(kv_items[0]) orelse continue;
+        if (!ast.isList(items[i])) continue;
+        const kv_items = ast.getList(items[i]).?;
+        const key = ast.getSymbol(kv_items[0]) orelse continue;
 
-            // Find matching field
-            inline for (fields, 0..) |field, field_idx| {
-                const field_metadata = comptime getSexpMetadata(T, field.name);
-                const field_name = field_metadata.sexp_name orelse field.name;
-
-                if (std.mem.eql(u8, key, field_name)) {
-                    if (field_metadata.multidict) {
-                        // Handle multidict fields
-                        if (comptime isSlice(field.type, false)) {
-                            if (!fields_set.isSet(field_idx)) {
-                                const ChildType = std.meta.Child(field.type);
-                                var values = std.ArrayList(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
-                                var scan_idx: usize = i;
-                                while (scan_idx < items.len) : (scan_idx += 1) {
-                                    if (ast.isList(items[scan_idx])) {
-                                        const scan_kv = ast.getList(items[scan_idx]).?;
-                                        if (scan_kv.len >= 2) {
-                                            const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
-                                            if (std.mem.eql(u8, field_name, scan_key)) {
-                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[scan_idx]);
-                                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
-                                                const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
-                                                try values.append(scan_val);
-                                            }
-                                        }
-                                    }
-                                }
-                                @field(result, field.name) = try values.toOwnedSlice();
-                                fields_set.set(field_idx);
-                            }
-                        } else if (comptime isArrayList(field.type)) {
-                            if (!fields_set.isSet(field_idx)) {
-                                const ChildType = std.meta.Child(std.meta.FieldType(field.type, .items));
-                                var values = std.ArrayList(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
-                                var scan_idx: usize = i;
-                                while (scan_idx < items.len) : (scan_idx += 1) {
-                                    if (ast.isList(items[scan_idx])) {
-                                        const scan_kv = ast.getList(items[scan_idx]).?;
-                                        if (scan_kv.len >= 2) {
-                                            const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
-                                            if (std.mem.eql(u8, field_name, scan_key)) {
-                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[scan_idx]);
-                                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
-                                                const scan_val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
-                                                try values.append(scan_val);
-                                            }
-                                        }
-                                    }
-                                }
-                                @field(result, field.name) = values;
-                                fields_set.set(field_idx);
-                            }
-                        } else if (comptime isLinkedList(field.type)) {
-                            if (!fields_set.isSet(field_idx)) {
-                                const NodeType = field.type.Node;
-                                const ChildType = std.meta.FieldType(NodeType, .data);
-                                var ll = field.type{ .first = null, .last = null };
-                                var scan_idx: usize = i;
-                                while (scan_idx < items.len) : (scan_idx += 1) {
-                                    if (ast.isList(items[scan_idx])) {
-                                        const scan_kv = ast.getList(items[scan_idx]).?;
-                                        if (scan_kv.len >= 2) {
-                                            const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
-                                            if (std.mem.eql(u8, field_name, scan_key)) {
-                                                setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[scan_idx]);
-                                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
-                                                const val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, field_metadata);
-                                                const node = try allocator.create(NodeType);
-                                                node.* = NodeType{ .data = val, .prev = null, .next = null };
-                                                if (ll.last) |last| {
-                                                    last.next = node;
-                                                    node.prev = last;
-                                                } else ll.first = node;
-                                                ll.last = node;
-                                            }
-                                        }
-                                    }
-                                }
-                                @field(result, field.name) = ll;
-                                fields_set.set(field_idx);
-                            }
-                        }
-                    } else {
-                        // Single value (non-multidict)
+        inline for (fields, 0..) |field, field_idx| {
+            const fm = comptime getSexpMetadata(T, field.name);
+            const fname = fm.sexp_name orelse field.name;
+            if (std.mem.eql(u8, key, fname)) {
+                if (fm.multidict) {
+                    if (comptime isSlice(field.type, false)) {
                         if (!fields_set.isSet(field_idx)) {
-                            setErrorContext(.{ .path = @typeName(T), .field_name = field.name, .message = null }, items[i]);
-                            @field(result, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
-                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, field_metadata)
-                            else if (kv_items.len == 2 and !isSlice(field.type, true))
-                                try decodeWithMetadata(field.type, allocator, kv_items[1], field_metadata)
-                            else
-                                try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, field_metadata);
+                            const ChildType = std.meta.Child(field.type);
+                            var values = std.ArrayList(ChildType).initCapacity(allocator, items.len + 8) catch return error.OutOfMemory;
+                            var scan_idx: usize = i;
+                            while (scan_idx < items.len) : (scan_idx += 1) {
+                                if (!ast.isList(items[scan_idx])) continue;
+                                const scan_kv = ast.getList(items[scan_idx]).?;
+                                if (scan_kv.len < 2) continue;
+                                const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
+                                if (!std.mem.eql(u8, fname, scan_key)) continue;
+                                setCtx(T, items[scan_idx], field.name, null);
+                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
+                                try values.append(try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, fm));
+                            }
+                            @field(result.*, field.name) = try values.toOwnedSlice();
                             fields_set.set(field_idx);
                         }
+                    } else if (comptime isLinkedList(field.type)) {
+                        if (!fields_set.isSet(field_idx)) {
+                            const NodeType = field.type.Node;
+                            const ChildType = std.meta.FieldType(NodeType, .data);
+                            var ll = field.type{ .first = null, .last = null };
+                            var scan_idx: usize = i;
+                            while (scan_idx < items.len) : (scan_idx += 1) {
+                                if (!ast.isList(items[scan_idx])) continue;
+                                const scan_kv = ast.getList(items[scan_idx]).?;
+                                if (scan_kv.len < 2) continue;
+                                const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
+                                if (!std.mem.eql(u8, fname, scan_key)) continue;
+                                setCtx(T, items[scan_idx], field.name, null);
+                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
+                                const val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, fm);
+                                const node = try allocator.create(NodeType);
+                                node.* = NodeType{ .data = val, .prev = null, .next = null };
+                                if (ll.last) |last| {
+                                    last.next = node;
+                                    node.prev = last;
+                                } else ll.first = node;
+                                ll.last = node;
+                            }
+                            @field(result.*, field.name) = ll;
+                            fields_set.set(field_idx);
+                        }
+                    }
+                } else {
+                    if (!fields_set.isSet(field_idx)) {
+                        setCtx(T, items[i], field.name, null);
+                        @field(result.*, field.name) = if (@typeInfo(field.type) == .@"struct" or (@typeInfo(field.type) == .optional and @typeInfo(@typeInfo(field.type).optional.child) == .@"struct"))
+                            try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, fm)
+                        else if (kv_items.len == 2 and !isSlice(field.type, true))
+                            try decodeWithMetadata(field.type, allocator, kv_items[1], fm)
+                        else
+                            try decodeWithMetadata(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null }, fm);
+                        fields_set.set(field_idx);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn finalizeUnsetFields(comptime T: type, allocator: std.mem.Allocator, items: []const SExp, sexp: SExp, result: *T, fields_set: anytype) DecodeError!void {
+    const fields = std.meta.fields(T);
+    inline for (fields, 0..) |field, field_idx| {
+        if (!fields_set.isSet(field_idx)) {
+            const fm = comptime getSexpMetadata(T, field.name);
+            const fname = fm.sexp_name orelse field.name;
+
+            var found_nested = false;
+            for (items) |item| {
+                if (!ast.isList(item)) continue;
+                const nested_items = ast.getList(item).?;
+                if (nested_items.len == 0) continue;
+                const sym = ast.getSymbol(nested_items[0]) orelse continue;
+                if (!std.mem.eql(u8, sym, fname)) continue;
+                if (nested_items.len == 1 and field.default_value_ptr != null) {
+                    fields_set.set(field_idx);
+                    found_nested = true;
+                    break;
+                }
+                setCtx(T, item, field.name, null);
+                @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, item, fm);
+                fields_set.set(field_idx);
+                found_nested = true;
+                break;
+            }
+
+            if (!found_nested) {
+                for (items, 0..) |item, idx| {
+                    const sym = ast.getSymbol(item) orelse continue;
+                    if (!std.mem.eql(u8, sym, fname)) continue;
+                    if (idx + 1 >= items.len) {
+                        if (field.default_value_ptr != null) {
+                            fields_set.set(field_idx);
+                            found_nested = true;
+                        }
+                        break;
+                    }
+                    var looks_like_value = true;
+                    if (ast.getSymbol(items[idx + 1])) |next_sym| {
+                        inline for (fields) |check_field| {
+                            const cm = comptime getSexpMetadata(T, check_field.name);
+                            const cn = cm.sexp_name orelse check_field.name;
+                            if (std.mem.eql(u8, next_sym, cn)) looks_like_value = false;
+                        }
+                    }
+                    if (looks_like_value and field.default_value_ptr == null) {
+                        const value_items = items[idx + 1 ..];
+                        const value_sexp = if (value_items.len == 1) value_items[0] else SExp{ .value = .{ .list = @constCast(value_items) }, .location = null };
+                        setCtx(T, value_sexp, field.name, null);
+                        @field(result.*, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, fm);
+                        fields_set.set(field_idx);
+                        found_nested = true;
+                    } else if (field.default_value_ptr != null) {
+                        fields_set.set(field_idx);
+                        found_nested = true;
                     }
                     break;
                 }
             }
-        }
-    }
-
-    // Check required fields and set defaults
-    inline for (fields, 0..) |field, field_idx| {
-        if (!fields_set.isSet(field_idx)) {
-            const field_metadata = comptime getSexpMetadata(T, field.name);
-            const field_name = field_metadata.sexp_name orelse field.name;
-
-            // Before giving up, check if there's a single nested structure that matches this field
-            // This handles cases like (effects (font ...)) where font is the only content
-            var found_nested = false;
-
-            for (items) |item| {
-                if (ast.isList(item)) {
-                    const nested_items = ast.getList(item).?;
-                    if (nested_items.len > 0) {
-                        if (ast.getSymbol(nested_items[0])) |sym| {
-                            if (std.mem.eql(u8, sym, field_name)) {
-                                // Check if this is just (field_name) with no value
-                                if (nested_items.len == 1 and field.default_value_ptr != null) {
-                                    // Use default value
-                                    fields_set.set(field_idx);
-                                    found_nested = true;
-                                    break;
-                                } else {
-                                    // Found a nested structure that matches this field
-                                    setErrorContext(.{
-                                        .path = @typeName(T),
-                                        .field_name = field.name,
-                                        .message = null,
-                                    }, item);
-                                    // Parse the entire nested structure as the field value
-                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, item, field_metadata);
-                                    fields_set.set(field_idx);
-                                    found_nested = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Also check if we have a symbol followed by other items that form the value
-            // This handles cases like: font (size ...) (thickness ...)
-            if (!found_nested) {
-                for (items, 0..) |item, idx| {
-                    if (ast.getSymbol(item)) |sym| {
-                        if (std.mem.eql(u8, sym, field_name)) {
-                            if (idx + 1 < items.len) {
-                                // Check if next items could be values (not other field names)
-                                var looks_like_value = true;
-                                if (ast.getSymbol(items[idx + 1])) |next_sym| {
-                                    // Check if next symbol is another field name
-                                    inline for (fields) |check_field| {
-                                        const check_meta = comptime getSexpMetadata(T, check_field.name);
-                                        const check_name = check_meta.sexp_name orelse check_field.name;
-                                        if (std.mem.eql(u8, next_sym, check_name)) {
-                                            looks_like_value = false;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (looks_like_value and field.default_value_ptr == null) {
-                                    // Found the field name as a symbol with values following
-                                    const value_items = items[idx + 1 ..];
-                                    const value_sexp = if (value_items.len == 1)
-                                        // Single item: pass directly
-                                        value_items[0]
-                                    else
-                                        // Multiple items: wrap in a list
-                                        SExp{ .value = .{ .list = value_items }, .location = null };
-
-                                    setErrorContext(.{
-                                        .path = @typeName(T),
-                                        .field_name = field.name,
-                                        .message = null,
-                                    }, value_sexp);
-                                    @field(result, field.name) = try decodeWithMetadata(field.type, allocator, value_sexp, field_metadata);
-                                    fields_set.set(field_idx);
-                                    found_nested = true;
-                                    break;
-                                } else if (field.default_value_ptr != null) {
-                                    // Standalone field name with default - use default
-                                    fields_set.set(field_idx);
-                                    found_nested = true;
-                                    break;
-                                }
-                            } else if (field.default_value_ptr != null) {
-                                // Standalone field name at end with default - use default
-                                fields_set.set(field_idx);
-                                found_nested = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
 
             if (!found_nested) {
-                // Handle different field types
                 if (comptime isOptional(field.type)) {
-                    @field(result, field.name) = null;
+                    @field(result.*, field.name) = null;
+                    fields_set.set(field_idx);
                 } else if (comptime isSlice(field.type, false)) {
-                    const field_metadata_check = comptime getSexpMetadata(T, field.name);
-                    if (field_metadata_check.multidict) {
-                        // Empty slice for multidict
-                        @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
-                    } else {
-                        // Use explicit default if available
-                        if (field.default_value_ptr) |default_ptr| {
-                            // Use field default value
-                            const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
-                            @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
-                        } else {
-                            // Set error context before returning error
-                            // Use page allocator for preview since error context is global
-                            const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
-                            setErrorContext(.{
-                                .path = @typeName(T),
-                                .field_name = field.name,
-                                .message = preview,
-                            }, sexp);
-                            return error.MissingField;
-                        }
+                    if (fm.multidict) {
+                        @field(result.*, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
+                        fields_set.set(field_idx);
                     }
+                } else if (field.default_value_ptr) |default_ptr| {
+                    const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                    @memcpy(@as([*]u8, @ptrCast(&@field(result.*, field.name)))[0..@sizeOf(field.type)], default_bytes);
+                    fields_set.set(field_idx);
                 } else {
-                    // Use explicit default if available
-                    if (field.default_value_ptr) |default_ptr| {
-                        // Use field default value
-                        const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
-                        @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
-                    } else {
-                        // Set error context before returning error
-                        // Use page allocator for preview since error context is global
-                        const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
-                        setErrorContext(.{
-                            .path = @typeName(T),
-                            .field_name = field.name,
-                            .message = preview,
-                        }, sexp);
-                        return error.MissingField;
-                    }
+                    const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
+                    setCtx(T, sexp, field.name, preview);
+                    return error.MissingField;
                 }
             }
         }
     }
-
-    return result;
 }
 
 fn isSlice(comptime T: type, optional: bool) bool {
@@ -841,19 +647,6 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, me
         if (items.len == 0) return null;
     }
     return try decodeWithMetadata(T, allocator, sexp, metadata);
-}
-
-fn decodeArrayList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
-    const child_type = std.meta.Child(std.meta.FieldType(T, .items));
-    const items = ast.getList(sexp).?;
-    // Pre-reserve headroom to keep existing element addresses stable when appending
-    // Important: tests expect appending not to invalidate references
-    const reserve: usize = if (items.len < 8) items.len + 8 else items.len + items.len / 2;
-    var result = std.ArrayList(child_type).initCapacity(allocator, reserve) catch return error.OutOfMemory;
-    for (items) |item| {
-        try result.append(try decodeWithMetadata(child_type, allocator, item, metadata));
-    }
-    return result;
 }
 
 fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metadata: SexpField) DecodeError!T {
@@ -918,93 +711,53 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, metad
 
 fn decodeInt(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
     _ = metadata; // metadata not used for basic types
-    // Get current context to preserve field name
-    const ctx = getErrorContext();
 
     const str = switch (sexp.value) {
         .number => |n| n,
         .string => |s| {
             // More helpful error for common mistake of quoting numbers
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
-            }, sexp);
+            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number");
             return error.UnexpectedType;
         },
         .symbol => |s| {
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
-            }, sexp);
+            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number");
             return error.UnexpectedType;
         },
         else => {
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = "expected number for integer",
-            }, sexp);
+            setCtx(T, sexp, null, "expected number for integer");
             return error.UnexpectedType;
         },
     };
     return std.fmt.parseInt(T, str, 10) catch {
-        setErrorContext(.{
-            .path = if (ctx) |c| c.path else @typeName(T),
-            .field_name = if (ctx) |c| c.field_name else null,
-            .message = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
-        }, sexp);
+        setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str);
         return error.InvalidValue;
     };
 }
 
 fn decodeFloat(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
     _ = metadata; // metadata not used for basic types
-    // Get current context to preserve field name
-    const ctx = getErrorContext();
 
     const str = switch (sexp.value) {
         .number => |n| n,
         .string => |s| {
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
-            }, sexp);
+            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number");
             return error.UnexpectedType;
         },
         .symbol => |s| {
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
-            }, sexp);
+            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number");
             return error.UnexpectedType;
         },
         .list => |l| {
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = std.fmt.allocPrint(std.heap.page_allocator, "got list '{s}' but expected number", .{l}) catch "list instead of number",
-            }, sexp);
+            setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "got list '{s}' but expected number", .{l}) catch "list instead of number");
             return error.UnexpectedType;
         },
         else => {
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = "expected number for float",
-            }, sexp);
+            setCtx(T, sexp, null, "expected number for float");
             return error.UnexpectedType;
         },
     };
     return std.fmt.parseFloat(T, str) catch {
-        setErrorContext(.{
-            .path = if (ctx) |c| c.path else @typeName(T),
-            .field_name = if (ctx) |c| c.field_name else null,
-            .message = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
-        }, sexp);
+        setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str);
         return error.InvalidValue;
     };
 }
@@ -1014,22 +767,11 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
         if (ast.getList(sexp)) |list| {
             if (list.len == 0) return true;
         }
-        const ctx = getErrorContext();
-        setErrorContext(.{
-            .path = if (ctx) |c| c.path else "bool",
-            .field_name = if (ctx) |c| c.field_name else null,
-            .message = "expected list for parantheses boolean",
-        }, sexp);
+        setCtxPath("bool", sexp, null, "expected list for parantheses boolean");
         return error.UnexpectedType;
     }
     const sym = ast.getSymbol(sexp) orelse {
-        // Get current context to preserve field name
-        const ctx = getErrorContext();
-        setErrorContext(.{
-            .path = if (ctx) |c| c.path else "bool",
-            .field_name = if (ctx) |c| c.field_name else null,
-            .message = "expected symbol for boolean",
-        }, sexp);
+        setCtxPath("bool", sexp, null, "expected symbol for boolean");
         return error.UnexpectedType;
     };
     if (std.mem.eql(u8, sym, "yes")) return true;
@@ -1037,13 +779,7 @@ fn decodeBool(sexp: SExp, metadata: SexpField) DecodeError!bool {
     if (std.mem.eql(u8, sym, "true")) return true;
     if (std.mem.eql(u8, sym, "false")) return false;
 
-    // Get current context to preserve field name
-    const ctx = getErrorContext();
-    setErrorContext(.{
-        .path = if (ctx) |c| c.path else "bool",
-        .field_name = if (ctx) |c| c.field_name else null,
-        .message = std.fmt.allocPrint(std.heap.page_allocator, "invalid boolean value '{s}' (expected yes/no/true/false)", .{sym}) catch "invalid boolean value",
-    }, sexp);
+    setCtxPath("bool", sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid boolean value '{s}' (expected yes/no/true/false)", .{sym}) catch "invalid boolean value");
     return error.InvalidValue;
 }
 
@@ -1054,13 +790,7 @@ fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
         .symbol => |s| s,
         .string => |s| s,
         else => {
-            // Get current context to preserve field name
-            const ctx = getErrorContext();
-            setErrorContext(.{
-                .path = if (ctx) |c| c.path else @typeName(T),
-                .field_name = if (ctx) |c| c.field_name else null,
-                .message = "expected symbol or string for enum",
-            }, sexp);
+            setCtx(T, sexp, null, "expected symbol or string for enum");
             return error.UnexpectedType;
         },
     };
@@ -1071,13 +801,7 @@ fn decodeEnum(comptime T: type, sexp: SExp, metadata: SexpField) DecodeError!T {
         }
     }
 
-    // Get current context to preserve field name
-    const ctx = getErrorContext();
-    setErrorContext(.{
-        .path = if (ctx) |c| c.path else @typeName(T),
-        .field_name = if (ctx) |c| c.field_name else null,
-        .message = std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value",
-    }, sexp);
+    setCtx(T, sexp, null, std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ enum_str, @typeName(T) }) catch "invalid enum value");
     return error.InvalidValue;
 }
 
@@ -1125,9 +849,7 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype, metadata: SexpField,
     }
 
     switch (type_info) {
-        .@"struct" => if (comptime isArrayList(T)) {
-            return try encodeArrayList(allocator, value, metadata, name);
-        } else if (comptime isLinkedList(T)) {
+        .@"struct" => if (comptime isLinkedList(T)) {
             return try encodeLinkedList(allocator, value, metadata, name);
         } else {
             return try encodeStruct(allocator, value, metadata);
@@ -1245,8 +967,6 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype, metadata: SexpFiel
         if (fm.multidict) {
             if (comptime isSlice(@TypeOf(fv), false)) {
                 for (fv) |elem| try appendKeyValue(allocator, &items, fname, try encode(allocator, elem, fm, f.name));
-            } else if (comptime isArrayList(@TypeOf(fv))) {
-                for (fv.items) |elem| try appendKeyValue(allocator, &items, fname, try encode(allocator, elem, fm, f.name));
             } else if (comptime isLinkedList(@TypeOf(fv))) {
                 var n = fv.first;
                 while (n) |node| : (n = node.next) {
@@ -1292,14 +1012,6 @@ fn encodeSlice(allocator: std.mem.Allocator, value: anytype, metadata: SexpField
     // TODO: remove (only used for non-str slices)
     var items = try allocator.alloc(SExp, value.len);
     for (value, 0..) |item, i| {
-        items[i] = try encode(allocator, item, metadata, name);
-    }
-    return SExp{ .value = .{ .list = items }, .location = null };
-}
-
-fn encodeArrayList(allocator: std.mem.Allocator, value: anytype, metadata: SexpField, name: []const u8) EncodeError!SExp {
-    var items = try allocator.alloc(SExp, value.items.len);
-    for (value.items, 0..) |item, i| {
         items[i] = try encode(allocator, item, metadata, name);
     }
     return SExp{ .value = .{ .list = items }, .location = null };
@@ -1404,36 +1116,20 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
 
     // The file structure is (symbol_name ...)
     const file_list = ast.getList(sexp) orelse {
-        setErrorContext(.{
-            .path = @typeName(T),
-            .field_name = null,
-            .message = "expected list at top level",
-        }, sexp);
+        setCtx(T, sexp, null, "expected list at top level");
         return error.UnexpectedType;
     };
     if (file_list.len < 1) {
-        setErrorContext(.{
-            .path = @typeName(T),
-            .field_name = null,
-            .message = "empty top-level list",
-        }, sexp);
+        setCtx(T, sexp, null, "empty top-level list");
         return error.UnexpectedType;
     }
 
     const symbol = ast.getSymbol(file_list[0]) orelse {
-        setErrorContext(.{
-            .path = @typeName(T),
-            .field_name = null,
-            .message = "expected symbol as first element",
-        }, file_list[0]);
+        setCtx(T, file_list[0], null, "expected symbol as first element");
         return error.UnexpectedType;
     };
     if (!std.mem.eql(u8, symbol, expected_symbol)) {
-        setErrorContext(.{
-            .path = @typeName(T),
-            .field_name = null,
-            .message = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol",
-        }, file_list[0]);
+        setCtx(T, file_list[0], null, std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol");
         return error.UnexpectedType;
     }
 
@@ -1533,12 +1229,4 @@ fn freeSlice(comptime T: type, allocator: std.mem.Allocator, value: T) void {
     if (value.len > 0) {
         allocator.free(value);
     }
-}
-
-fn isSimpleType(comptime T: type) bool {
-    return switch (@typeInfo(T)) {
-        .int, .float, .bool, .@"enum" => true,
-        // Don't consider strings as simple - they need to be freed
-        else => false,
-    };
 }
