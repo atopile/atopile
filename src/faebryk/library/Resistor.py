@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
+from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -18,6 +19,8 @@ class Resistor(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R
     )
+
+    type: GraphInterface
 
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
