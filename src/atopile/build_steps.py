@@ -258,9 +258,7 @@ def post_design_checks(
     )
 
 
-@muster.register(
-    "load-pcb", description="Loading PCB", dependencies=[post_design_checks]
-)
+@muster.register("load-pcb", description="Loading PCB", dependencies=[prepare_build])
 def load_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -325,9 +323,7 @@ def post_solve_checks(
     )
 
 
-@muster.register(
-    "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
-)
+@muster.register("update-pcb", description="Updating PCB", dependencies=[prepare_nets])
 def update_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -486,6 +482,15 @@ def post_pcb_checks(
         raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
 
+@muster.register(
+    "checks",
+    dependencies=[post_design_checks, post_solve_checks, post_pcb_checks],
+    virtual=True,
+)
+def checks(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) -> None:
+    pass
+
+
 @muster.register("build-design", dependencies=[update_pcb], virtual=True)
 def build_design(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -629,7 +634,7 @@ def generate_2d_render(
 @muster.register(
     "mfg-data",
     tags={Tags.REQUIRES_KICAD},
-    dependencies=[generate_3d_models, post_pcb_checks],
+    dependencies=[build_design, checks],
     produces_artifact=True,
 )
 def generate_manufacturing_data(
