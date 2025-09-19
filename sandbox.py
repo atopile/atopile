@@ -45,7 +45,10 @@ class NodeType(NNode):
     def execute(self) -> NNode:
         node = NNode()
         node.type.connect(self.self_gif)
-        for rule in self.get_children(direct_only=True, types=Rule):
+        for rule in self.get_children(direct_only=True, types=MakeChild):
+            assert isinstance(rule, Rule)
+            rule.execute(node)
+        for rule in self.get_children(direct_only=True, types=Connect):
             assert isinstance(rule, Rule)
             rule.execute(node)
 
@@ -112,24 +115,32 @@ class MakeChild(Rule):
 
 
 class Connect(Rule):
-    gif1_pointer: GraphInterfaceReference
-    gif2_pointer: GraphInterfaceReference
+    gif1_reference: GraphInterfaceReference
+    gif2_reference: GraphInterfaceReference
 
     def __init__(self, gifs: list[GraphInterface]):
         super().__init__()
         self._gifs = gifs
-        # For each GraphInterface in the list, create a corresponding GraphInterfaceReference.
+
+    def __postinit__(self):
+        self.gif1_reference.connect(self._gifs[0], link=LinkPointer())
+        self.gif2_reference.connect(self._gifs[1], link=LinkPointer())
 
     def execute(self, node: NNode) -> None:
         super().execute(node)
-        assert isinstance(self.gif1_pointer, GraphInterfaceReference)
-        assert isinstance(self.gif2_pointer, GraphInterfaceReference)
-        node1_reference = self.gif1_pointer.get_reference()
-        node2_reference = self.gif2_pointer.get_reference()
-        assert isinstance(node1_reference, NNode)
-        assert isinstance(node2_reference, NNode)
+        assert isinstance(self.gif1_reference, GraphInterfaceReference)
+        assert isinstance(self.gif2_reference, GraphInterfaceReference)
+        node1_reference = self.gif1_reference.get_reference()
+        node2_reference = self.gif2_reference.get_reference()
 
-        node1_reference.connections.connect(node2_reference.connections)
+        assert isinstance(node1_reference, ChildRef)
+        assert isinstance(node2_reference, ChildRef)
+        node1_instance = node.get_child_by_name(node1_reference._identifier)
+        node2_instance = node.get_child_by_name(node2_reference._identifier)
+
+        assert isinstance(node1_instance, NNode)
+        assert isinstance(node2_instance, NNode)
+        node1_instance.connections.connect(node2_instance.connections)
 
 
 ## CAN BRIDGE TYPE ##
@@ -167,53 +178,53 @@ can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
 can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
 type_resistor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
-# dummy_connect = Connect([p1_ref.connections, p2_ref.connections])
-# type_resistor.add(dummy_connect, name="dummy_connect")
+dummy_connect = Connect([p1_ref.self_gif, p2_ref.self_gif])
+type_resistor.add(dummy_connect, name="dummy_connect")
 
-## CAPACITOR TYPE ###
-type_capacitor = NodeType("Capacitor")
-p1_ref = ChildRef("p1").with_nodetype(type_electrical)
-p1_rule = MakeChild().with_child_reference(p1_ref)
-type_capacitor.add(p1_rule, name=p1_ref._identifier)
+# ## CAPACITOR TYPE ###
+# type_capacitor = NodeType("Capacitor")
+# p1_ref = ChildRef("p1").with_nodetype(type_electrical)
+# p1_rule = MakeChild().with_child_reference(p1_ref)
+# type_capacitor.add(p1_rule, name=p1_ref._identifier)
 
-p2_ref = ChildRef("p2").with_nodetype(type_electrical)
-p2_rule = MakeChild().with_child_reference(p2_ref)
-type_capacitor.add(p2_rule, name=p2_ref._identifier)
+# p2_ref = ChildRef("p2").with_nodetype(type_electrical)
+# p2_rule = MakeChild().with_child_reference(p2_ref)
+# type_capacitor.add(p2_rule, name=p2_ref._identifier)
 
-capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
-capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
-type_capacitor.add(capacitance_rule, name=capacitance_ref._identifier)
+# capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
+# capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
+# type_capacitor.add(capacitance_rule, name=capacitance_ref._identifier)
 
-max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
-max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
-type_capacitor.add(max_voltage_rule, name=max_voltage_ref._identifier)
+# max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
+# max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
+# type_capacitor.add(max_voltage_rule, name=max_voltage_ref._identifier)
 
-can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
-can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
-type_capacitor.add(can_bridge_rule, name=can_bridge_ref._identifier)
+# can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
+# can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
+# type_capacitor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
 
-## RC FILTER TYPE ##
-type_rc_filter = NodeType("RCFilter")
-in_ref = ChildRef("in_").with_nodetype(type_electrical)
-in_rule = MakeChild().with_child_reference(in_ref)
-type_rc_filter.add(in_rule, name=in_ref._identifier)
+# ## RC FILTER TYPE ##
+# type_rc_filter = NodeType("RCFilter")
+# in_ref = ChildRef("in_").with_nodetype(type_electrical)
+# in_rule = MakeChild().with_child_reference(in_ref)
+# type_rc_filter.add(in_rule, name=in_ref._identifier)
 
-out_ref = ChildRef("out").with_nodetype(type_electrical)
-out_rule = MakeChild().with_child_reference(out_ref)
-type_rc_filter.add(out_rule, name=out_ref._identifier)
+# out_ref = ChildRef("out").with_nodetype(type_electrical)
+# out_rule = MakeChild().with_child_reference(out_ref)
+# type_rc_filter.add(out_rule, name=out_ref._identifier)
 
-resistor_ref = ChildRef("resistor").with_nodetype(type_resistor)
-resistor_rule = MakeChild().with_child_reference(resistor_ref)
-type_rc_filter.add(resistor_rule, name=resistor_ref._identifier)
+# resistor_ref = ChildRef("resistor").with_nodetype(type_resistor)
+# resistor_rule = MakeChild().with_child_reference(resistor_ref)
+# type_rc_filter.add(resistor_rule, name=resistor_ref._identifier)
 
-capacitor_ref = ChildRef("capacitor").with_nodetype(type_capacitor)
-capacitor_rule = MakeChild().with_child_reference(capacitor_ref)
-type_rc_filter.add(capacitor_rule, name=capacitor_ref._identifier)
+# capacitor_ref = ChildRef("capacitor").with_nodetype(type_capacitor)
+# capacitor_rule = MakeChild().with_child_reference(capacitor_ref)
+# type_rc_filter.add(capacitor_rule, name=capacitor_ref._identifier)
 
-cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter)
-cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
-type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
+# cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter)
+# cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
+# type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
 
 # print(dummy_node.children.get_children())
 
@@ -228,6 +239,7 @@ type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
 
 
 resistor_instance = type_resistor.execute()
+resistor_instance2 = type_resistor.execute()
 # capacitor_instance = type_capacitor.execute()
 # rc_filter_instance = type_rc_filter.execute()
 
@@ -237,14 +249,15 @@ resistor_instance = type_resistor.execute()
 def _collect_from(
     start: Node,
     graph=None,
-) -> tuple[list[Node], list[tuple[GraphInterface, GraphInterface]]]:
+) -> tuple[list[Node], list[tuple[GraphInterface, GraphInterface, object | None]]]:
     """
     Traverse graph from a starting hypernode by following children edges.
     Returns discovered hypernodes and interface-level edges.
     """
     seen_nodes: set[Node] = set()
     nodes: list[Node] = []
-    iface_edges: list[tuple[GraphInterface, GraphInterface]] = []
+    # Store (from_gif, to_gif, link_or_none)
+    iface_edges: list[tuple[GraphInterface, GraphInterface, object | None]] = []
     seen_if_ids: set[tuple[int, int]] = set()
 
     q: deque[Node] = deque([start])
@@ -265,20 +278,25 @@ def _collect_from(
         # collect ALL interfaces owned by this node by scanning the graph
         all_gifs = [gif for gif in _graph.get_gifs() if gif.node is n]
 
-        # connect self to owned interfaces (if not already)
+        # connect self to owned interfaces (layout helper only; no real link)
         for gif in all_gifs:
             key = (id(n.self_gif), id(gif))
             if key not in seen_if_ids:
                 seen_if_ids.add(key)
-                iface_edges.append((n.self_gif, gif))
+                iface_edges.append((n.self_gif, gif, None))
 
-        # from every owned interface, follow connections
+        # from every owned interface, follow connections (with link type)
         for lg in all_gifs:
-            for other in lg.get_gif_edges():
+            # use edges dict to fetch Link objects
+            try:
+                edge_map = lg.edges
+            except Exception:
+                edge_map = {other: None for other in lg.get_gif_edges()}
+            for other, link in edge_map.items():
                 key = (id(lg), id(other))
                 if key not in seen_if_ids:
                     seen_if_ids.add(key)
-                    iface_edges.append((lg, other))
+                    iface_edges.append((lg, other, link))
                 # enqueue the node owning the connected interface
                 q.append(other.node)
 
@@ -333,7 +351,7 @@ class InteractiveTypeGraphVisualizer:
 
         # Build hypernode adjacency from interface edges
         self.hn_adj: dict[Node, set[Node]] = {n: set() for n in self.nodes}
-        for a, b in self.iface_edges:
+        for a, b, _link in self.iface_edges:
             na = self.iface_to_node.get(a)
             nb = self.iface_to_node.get(b)
             if na is None or nb is None or na is nb:
@@ -516,46 +534,73 @@ class InteractiveTypeGraphVisualizer:
                 )
 
     def _separate_overlapping_nodes(self):
-        """Separate overlapping nodes using force-based positioning"""
-        min_distance = 45.0  # Minimum distance between node centers
-        max_iterations = 50
-        force_strength = 0.1
+        """Separate overlapping nodes using force-based positioning and real radii."""
 
-        for iteration in range(max_iterations):
+        def node_draw_radius(n: Node) -> float:
+            # Mirror the interface radius logic used later for drawing
+            try:
+                k = max(1, len(_interfaces_of(n, self.graph)))
+            except Exception:
+                k = 1
+            r_if_local = max(6.0, 1.2 * k)
+            return r_if_local * 1.9  # match drawing scale
+
+        max_iterations = 200
+        padding = 8.0
+        force_strength = 0.25
+        damping = 0.6
+        max_step = 6.0
+
+        # Keep root fixed to stabilize layout
+        fixed_nodes = {self.root}
+
+        for _ in range(max_iterations):
             forces = {node: (0.0, 0.0) for node in self.hn_pos.keys()}
 
-            # Calculate repulsive forces between all pairs of nodes
+            # Pairwise repulsion if circles overlap (based on radii)
             nodes_list = list(self.hn_pos.keys())
-            for i, node1 in enumerate(nodes_list):
-                for node2 in nodes_list[i + 1 :]:
-                    x1, y1 = self.hn_pos[node1]
-                    x2, y2 = self.hn_pos[node2]
+            for i, n1 in enumerate(nodes_list):
+                x1, y1 = self.hn_pos[n1]
+                r1 = node_draw_radius(n1)
+                for n2 in nodes_list[i + 1 :]:
+                    x2, y2 = self.hn_pos[n2]
+                    r2 = node_draw_radius(n2)
 
                     dx = x2 - x1
                     dy = y2 - y1
-                    distance = math.sqrt(dx * dx + dy * dy)
+                    dist = math.hypot(dx, dy)
+                    min_dist = r1 + r2 + padding
 
-                    if distance < min_distance and distance > 0:
-                        # Calculate repulsive force
-                        force_magnitude = (min_distance - distance) / distance
-                        fx = -dx * force_magnitude * force_strength
-                        fy = -dy * force_magnitude * force_strength
+                    if dist == 0:
+                        # Nudge randomly if perfectly overlapping
+                        dx, dy, dist = 1.0, 0.0, 1.0
 
-                        # Apply forces
-                        forces[node1] = (forces[node1][0] + fx, forces[node1][1] + fy)
-                        forces[node2] = (forces[node2][0] - fx, forces[node2][1] - fy)
+                    if dist < min_dist:
+                        overlap = (min_dist - dist) / dist
+                        fx = -dx * overlap * force_strength
+                        fy = -dy * overlap * force_strength
 
-            # Apply forces to update positions
+                        fx = max(-max_step, min(max_step, fx))
+                        fy = max(-max_step, min(max_step, fy))
+
+                        if n1 not in fixed_nodes:
+                            forces[n1] = (forces[n1][0] + fx, forces[n1][1] + fy)
+                        if n2 not in fixed_nodes:
+                            forces[n2] = (forces[n2][0] - fx, forces[n2][1] - fy)
+
+            # Apply forces
             total_movement = 0.0
-            for node, (fx, fy) in forces.items():
-                x, y = self.hn_pos[node]
-                new_x = x + fx
-                new_y = y + fy
-                self.hn_pos[node] = (new_x, new_y)
-                total_movement += abs(fx) + abs(fy)
+            for n, (fx, fy) in forces.items():
+                if n in fixed_nodes:
+                    continue
+                x, y = self.hn_pos[n]
+                dx = fx * damping
+                dy = fy * damping
+                if dx or dy:
+                    self.hn_pos[n] = (x + dx, y + dy)
+                    total_movement += abs(dx) + abs(dy)
 
-            # Stop if system has stabilized
-            if total_movement < 0.1:
+            if total_movement < 0.05:
                 break
 
     def _node_label(self, n: Node) -> str:
@@ -701,7 +746,7 @@ class InteractiveTypeGraphVisualizer:
             )
 
         # Draw interface edges with color by connection type
-        for a, b in self.iface_edges:
+        for a, b, link in self.iface_edges:
             pa = self.pos.get(a)
             pb = self.pos.get(b)
             if pa is None or pb is None:
@@ -712,7 +757,13 @@ class InteractiveTypeGraphVisualizer:
             edge_alpha = 0.7
 
             try:
-                if a.name == "rules" or b.name == "rules":
+                # Highest priority: link type
+                from faebryk.core.link import LinkPointer as _LP
+
+                if link is not None and isinstance(link, _LP):
+                    edge_color = "#ff7f0e"  # orange for LinkPointer
+                    edge_width = 1.7
+                elif a.name == "rules" or b.name == "rules":
                     edge_color = "#d33"  # rule connections
                     edge_width = 1.5
                 elif a.name == "type" or b.name == "type":
