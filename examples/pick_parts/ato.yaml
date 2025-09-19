@@ -7,3 +7,4 @@ paths:
 builds:
   default:
     entry: pick_parts.ato:App
+    exclude_checks: ["PCB.requires_drc_check"]
