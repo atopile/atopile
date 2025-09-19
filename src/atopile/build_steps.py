@@ -490,7 +490,7 @@ def post_pcb_checks(
 
 
 @muster.register(
-    "checks",
+    "check-design",
     dependencies=[post_design_checks, post_solve_checks, post_pcb_checks],
     virtual=True,
 )
