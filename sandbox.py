@@ -78,6 +78,10 @@ class FieldDeclaration(Rule):
         node.add(obj, name=self.identifier)
 
 
+class RefNode(NNode):
+    pass
+
+
 class ChildRef(NNode):
     node_type_pointer: GraphInterfaceReference
 
@@ -114,21 +118,33 @@ class MakeChild(Rule):
         node.add(obj, name=identifier)
 
 
+class NestedReference(NNode):
+    child_ref_pointer: GraphInterfaceReference
+    prev: GraphInterface
+    next: GraphInterface
+
+    def with_child_reference(self, child_ref: ChildRef) -> "NestedReference":
+        self.child_ref_pointer.connect(child_ref.self_gif, link=LinkPointer())
+        return self
+
+
 class Connect(Rule):
-    def __init__(self, identifiers: list[str]):
-        super().__init__()
-        self._identifiers = identifiers
+    def with_nested_references(self, nested_refs: list[NestedReference]) -> "Connect":
+        self._nested_refs = nested_refs
+        return self
 
     def execute(self, node: NNode) -> None:
         super().execute(node)
 
         instances = []
-        for identifier in self._identifiers:
-            id_bits = identifier.split(".")
-            target_node = node
-            for bit in id_bits:
-                assert isinstance(target_node, NNode)
-                target_node = target_node.get_child_by_name(bit)
+        target_node = node  # start from high level node
+        for nested_ref in self._nested_refs:
+            while len(nested_ref.next.get_connected_nodes([NNode])) > 0:
+                child_ref = nested_ref.child_ref_pointer.get_reference()
+                assert isinstance(child_ref, ChildRef)
+                child_identifier = child_ref._identifier
+                target_node = target_node.get_child_by_name(child_identifier)
+                nested_ref = nested_ref.next.get_connected_nodes([NestedReference])[0]
             instances.append(target_node)
 
         for instance in instances[1:]:
@@ -136,9 +152,6 @@ class Connect(Rule):
             assert isinstance(instance, NNode)
             instances[0].connections.connect(instance.connections)
 
-
-# class NestedReference(NNode):
-#     def __init__(self, identifier: str):
 
 ## CAN BRIDGE TYPE ##
 type_can_bridge = NodeType("CanBridge")
@@ -175,18 +188,18 @@ can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
 can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
 type_resistor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
-dummy_connect = Connect(["p1", "p2"])
-type_resistor.add(dummy_connect, name="dummy_connect")
+# dummy_connect = Connect(["p1", "p2"])
+# type_resistor.add(dummy_connect, name="dummy_connect")
 
 # ## CAPACITOR TYPE ###
 type_capacitor = NodeType("Capacitor")
-p1_ref = ChildRef("p1").with_nodetype(type_electrical)
-p1_rule = MakeChild().with_child_reference(p1_ref)
-type_capacitor.add(p1_rule, name=p1_ref._identifier)
+cp1_ref = ChildRef("p1").with_nodetype(type_electrical)
+cp1_rule = MakeChild().with_child_reference(cp1_ref)
+type_capacitor.add(cp1_rule, name=cp1_ref._identifier)
 
-p2_ref = ChildRef("p2").with_nodetype(type_electrical)
-p2_rule = MakeChild().with_child_reference(p2_ref)
-type_capacitor.add(p2_rule, name=p2_ref._identifier)
+cp2_ref = ChildRef("p2").with_nodetype(type_electrical)
+cp2_rule = MakeChild().with_child_reference(cp2_ref)
+type_capacitor.add(cp2_rule, name=cp2_ref._identifier)
 
 capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
 capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
@@ -223,7 +236,16 @@ cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter
 cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
 type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
 
-rp1_cp1_connection = Connect(["resistor.p1", "capacitor.p1"])
+
+r_nref = NestedReference().with_child_reference(resistor_ref)
+rp1_nref = NestedReference().with_child_reference(p1_ref)
+r_nref.next.connect(rp1_nref.prev)
+
+c_nref = NestedReference().with_child_reference(capacitor_ref)
+cp1_nref = NestedReference().with_child_reference(cp1_ref)
+c_nref.next.connect(cp1_nref.prev)
+
+rp1_cp1_connection = Connect().with_nested_references([r_nref, c_nref])
 type_rc_filter.add(rp1_cp1_connection, name="rp1_cp1_connection")
 
 # print(dummy_node.children.get_children())
@@ -244,6 +266,7 @@ type_rc_filter.add(rp1_cp1_connection, name="rp1_cp1_connection")
 rc_filter_instance = type_rc_filter.execute()
 
 # --------------- Visualization ---------------
+# !!AI SLOP!! from here on out
 
 
 def _collect_from(
