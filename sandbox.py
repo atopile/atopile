@@ -115,33 +115,30 @@ class MakeChild(Rule):
 
 
 class Connect(Rule):
-    gif1_reference: GraphInterfaceReference
-    gif2_reference: GraphInterfaceReference
-
-    def __init__(self, gifs: list[GraphInterface]):
+    def __init__(self, identifiers: list[str]):
         super().__init__()
-        self._gifs = gifs
-
-    def __postinit__(self):
-        self.gif1_reference.connect(self._gifs[0], link=LinkPointer())
-        self.gif2_reference.connect(self._gifs[1], link=LinkPointer())
+        self._identifiers = identifiers
 
     def execute(self, node: NNode) -> None:
         super().execute(node)
-        assert isinstance(self.gif1_reference, GraphInterfaceReference)
-        assert isinstance(self.gif2_reference, GraphInterfaceReference)
-        node1_reference = self.gif1_reference.get_reference()
-        node2_reference = self.gif2_reference.get_reference()
 
-        assert isinstance(node1_reference, ChildRef)
-        assert isinstance(node2_reference, ChildRef)
-        node1_instance = node.get_child_by_name(node1_reference._identifier)
-        node2_instance = node.get_child_by_name(node2_reference._identifier)
+        instances = []
+        for identifier in self._identifiers:
+            id_bits = identifier.split(".")
+            target_node = node
+            for bit in id_bits:
+                assert isinstance(target_node, NNode)
+                target_node = target_node.get_child_by_name(bit)
+            instances.append(target_node)
 
-        assert isinstance(node1_instance, NNode)
-        assert isinstance(node2_instance, NNode)
-        node1_instance.connections.connect(node2_instance.connections)
+        for instance in instances[1:]:
+            assert isinstance(instances[0], NNode)
+            assert isinstance(instance, NNode)
+            instances[0].connections.connect(instance.connections)
 
+
+# class NestedReference(NNode):
+#     def __init__(self, identifier: str):
 
 ## CAN BRIDGE TYPE ##
 type_can_bridge = NodeType("CanBridge")
@@ -178,53 +175,56 @@ can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
 can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
 type_resistor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
-dummy_connect = Connect([p1_ref.self_gif, p2_ref.self_gif])
+dummy_connect = Connect(["p1", "p2"])
 type_resistor.add(dummy_connect, name="dummy_connect")
 
 # ## CAPACITOR TYPE ###
-# type_capacitor = NodeType("Capacitor")
-# p1_ref = ChildRef("p1").with_nodetype(type_electrical)
-# p1_rule = MakeChild().with_child_reference(p1_ref)
-# type_capacitor.add(p1_rule, name=p1_ref._identifier)
+type_capacitor = NodeType("Capacitor")
+p1_ref = ChildRef("p1").with_nodetype(type_electrical)
+p1_rule = MakeChild().with_child_reference(p1_ref)
+type_capacitor.add(p1_rule, name=p1_ref._identifier)
 
-# p2_ref = ChildRef("p2").with_nodetype(type_electrical)
-# p2_rule = MakeChild().with_child_reference(p2_ref)
-# type_capacitor.add(p2_rule, name=p2_ref._identifier)
+p2_ref = ChildRef("p2").with_nodetype(type_electrical)
+p2_rule = MakeChild().with_child_reference(p2_ref)
+type_capacitor.add(p2_rule, name=p2_ref._identifier)
 
-# capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
-# capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
-# type_capacitor.add(capacitance_rule, name=capacitance_ref._identifier)
+capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
+capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
+type_capacitor.add(capacitance_rule, name=capacitance_ref._identifier)
 
-# max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
-# max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
-# type_capacitor.add(max_voltage_rule, name=max_voltage_ref._identifier)
+max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
+max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
+type_capacitor.add(max_voltage_rule, name=max_voltage_ref._identifier)
 
-# can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
-# can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
-# type_capacitor.add(can_bridge_rule, name=can_bridge_ref._identifier)
+can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
+can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
+type_capacitor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
 
-# ## RC FILTER TYPE ##
-# type_rc_filter = NodeType("RCFilter")
-# in_ref = ChildRef("in_").with_nodetype(type_electrical)
-# in_rule = MakeChild().with_child_reference(in_ref)
-# type_rc_filter.add(in_rule, name=in_ref._identifier)
+## RC FILTER TYPE ##
+type_rc_filter = NodeType("RCFilter")
+in_ref = ChildRef("in_").with_nodetype(type_electrical)
+in_rule = MakeChild().with_child_reference(in_ref)
+type_rc_filter.add(in_rule, name=in_ref._identifier)
 
-# out_ref = ChildRef("out").with_nodetype(type_electrical)
-# out_rule = MakeChild().with_child_reference(out_ref)
-# type_rc_filter.add(out_rule, name=out_ref._identifier)
+out_ref = ChildRef("out").with_nodetype(type_electrical)
+out_rule = MakeChild().with_child_reference(out_ref)
+type_rc_filter.add(out_rule, name=out_ref._identifier)
 
-# resistor_ref = ChildRef("resistor").with_nodetype(type_resistor)
-# resistor_rule = MakeChild().with_child_reference(resistor_ref)
-# type_rc_filter.add(resistor_rule, name=resistor_ref._identifier)
+resistor_ref = ChildRef("resistor").with_nodetype(type_resistor)
+resistor_rule = MakeChild().with_child_reference(resistor_ref)
+type_rc_filter.add(resistor_rule, name=resistor_ref._identifier)
 
-# capacitor_ref = ChildRef("capacitor").with_nodetype(type_capacitor)
-# capacitor_rule = MakeChild().with_child_reference(capacitor_ref)
-# type_rc_filter.add(capacitor_rule, name=capacitor_ref._identifier)
+capacitor_ref = ChildRef("capacitor").with_nodetype(type_capacitor)
+capacitor_rule = MakeChild().with_child_reference(capacitor_ref)
+type_rc_filter.add(capacitor_rule, name=capacitor_ref._identifier)
 
-# cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter)
-# cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
-# type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
+cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter)
+cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
+type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
+
+rp1_cp1_connection = Connect(["resistor.p1", "capacitor.p1"])
+type_rc_filter.add(rp1_cp1_connection, name="rp1_cp1_connection")
 
 # print(dummy_node.children.get_children())
 
@@ -238,10 +238,10 @@ type_resistor.add(dummy_connect, name="dummy_connect")
 # node_type.instances.connect(resistor.type)
 
 
-resistor_instance = type_resistor.execute()
-resistor_instance2 = type_resistor.execute()
+# resistor_instance = type_resistor.execute()
+# resistor_instance2 = type_resistor.execute()
 # capacitor_instance = type_capacitor.execute()
-# rc_filter_instance = type_rc_filter.execute()
+rc_filter_instance = type_rc_filter.execute()
 
 # --------------- Visualization ---------------
 
@@ -459,6 +459,28 @@ class InteractiveTypeGraphVisualizer:
             for i, n in enumerate(layer):
                 self.hn_pos[n] = (xs[i], y)
 
+        # Stagger instances vertically so they are not on the same height,
+        # but still roughly at the instance level
+        base_y_instances = -3 * level_gap_y
+        inst_list = levels.get(3, [])
+        for i, inst in enumerate(inst_list):
+            if inst not in self.hn_pos:
+                continue
+            x, _y = self.hn_pos[inst]
+            sign = -1 if i % 2 else 1
+            amplitude = 0.3 * level_gap_y + (i // 2) * 4.0
+            self.hn_pos[inst] = (x, base_y_instances + sign * amplitude)
+
+        # Stagger child-instances per parent to emphasize grouping,
+        # keep them below the instance level
+        base_y_children = -4 * level_gap_y
+        for parent, ch in instance_to_children.items():
+            for j, child in enumerate(ch):
+                if child not in self.hn_pos:
+                    continue
+                cx, _cy = self.hn_pos[child]
+                self.hn_pos[child] = (cx, base_y_children - j * 6.0)
+
         # Group instances near their type parents
         instance_offset_distance = 40.0  # Distance from parent type
         for type_node, instances in type_to_instances.items():
@@ -606,6 +628,7 @@ class InteractiveTypeGraphVisualizer:
     def _node_label(self, n: Node) -> str:
         return (
             getattr(n, "identifier", None)
+            or getattr(n, "_identifier", None)  # show ChildRef identifier
             or getattr(n, "name", None)
             or n.get_name(True)
             or n.__class__.__name__
@@ -714,24 +737,28 @@ class InteractiveTypeGraphVisualizer:
             label_main = self._node_label(n)
             label_type = n.__class__.__name__
 
-            # main name slightly above center, type slightly below
+            # Place labels further apart, scaled with circle radius
+            label_offset = max(0.5, 0.55 * r_draw)
+
+            # main name above center, larger font
             main_text = self.ax.text(
                 cx,
-                cy + 0.25,
+                cy + label_offset,
                 label_main,
                 ha="center",
                 va="center",
-                fontsize=8,
+                fontsize=12,
                 weight="bold",
                 zorder=20,
             )
+            # type below center
             type_text = self.ax.text(
                 cx,
-                cy - 0.25,
+                cy - label_offset,
                 f"[{label_type}]",
                 ha="center",
                 va="center",
-                fontsize=6,
+                fontsize=7,
                 color="#555555",
                 style="italic",
                 zorder=20,
