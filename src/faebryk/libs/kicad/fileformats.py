@@ -800,19 +800,27 @@ class kicad:
         raise ValueError(f"Unsupported type: {t} ({type(t)})")
 
     @staticmethod
-    def loads[T: kicad.types](
-        t: type[T], path_or_string_or_data: Path | str | list
-    ) -> T:
-        if isinstance(path_or_string_or_data, list):
-            import sexpdata
-
-            data = sexpdata.dumps(path_or_string_or_data)
-        elif isinstance(path_or_string_or_data, Path):
-            data = path_or_string_or_data.read_text(encoding="utf-8")
+    def loads[T: kicad.types](t: type[T], path_or_sexpstring: Path | str) -> T:
+        """
+        Attention: object returned is shared, so be careful with mutations!
+        """
+        path = None
+        if isinstance(path_or_sexpstring, Path):
+            path = path_or_sexpstring
+            if not hasattr(kicad.loads, "cache"):
+                kicad.loads.cache = {}
+            if path in kicad.loads.cache:
+                out = kicad.loads.cache[path]
+                assert isinstance(out, t)
+                return out
+            data = path.read_text(encoding="utf-8")
         else:
-            data = path_or_string_or_data
+            data = path_or_sexpstring
 
-        return cast(T, kicad.type_to_module(t).loads(data))
+        out = cast(T, kicad.type_to_module(t).loads(data))
+        if path:
+            kicad.loads.cache[path] = out
+        return out
 
     @staticmethod
     def dumps(obj: types, path: Path | None = None):
@@ -823,7 +831,8 @@ class kicad:
         # TODO should live in zig
         # some files have trailing newlines, some don't
         if isinstance(obj, kicad.footprint.FootprintFile):
-            raw = raw.strip("\n")
+            if raw.endswith("\n"):
+                raw = raw[: -len("\n")]
 
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)

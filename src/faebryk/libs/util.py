@@ -2891,17 +2891,28 @@ def debug_perf(*args):
         logger = logging.getLogger(module)
 
         def _wrapper(*args, **kwargs):
+            mem_start = psutil.Process().memory_info().rss
             start = time.perf_counter()
             result = func(*args, **kwargs)
             end = time.perf_counter()
+            mem_end = psutil.Process().memory_info().rss
             diff = end - start
+            mem_diff = mem_end - mem_start
 
             for i, prefix in enumerate(["", "m", "u", "n"]):
                 if diff * (1000**i) >= 1:
                     diff = round(diff * (1000**i), 2)
                     break
 
-            logger.info(f"{func.__name__} took {diff} {prefix}s")
+            for i, mem_prefix in enumerate(["", "K", "M", "G"]):
+                if mem_diff / (1000**i) <= 1000:
+                    mem_diff = round(mem_diff / (1000**i), 2)
+                    break
+
+            logger.info(
+                f"{func.__name__} took {diff} {prefix}s "
+                f"and used {mem_diff} {mem_prefix}B"
+            )
             return result
 
         return _wrapper  # type: ignore
