@@ -15,15 +15,15 @@ class Top(Node):
 
 # Types
 class Version(Node):
-    major = p_field(domain=R.Domains.Numbers.NATURAL)
-    minor = p_field(domain=R.Domains.Numbers.NATURAL)
-    patch = p_field(domain=R.Domains.Numbers.NATURAL)
+    major = p_field(domain=R.Domains.Numbers.NATURAL())
+    minor = p_field(domain=R.Domains.Numbers.NATURAL())
+    patch = p_field(domain=R.Domains.Numbers.NATURAL())
 
     def set_version(self, version_str: str):
         if version_str is not None:
-            self.major.alias_is(version_str.split(".")[0])
-            self.minor.alias_is(version_str.split(".")[1])
-            self.patch.alias_is(version_str.split(".")[2])
+            self.major.alias_is(int(version_str.split(".")[0]))
+            self.minor.alias_is(int(version_str.split(".")[1]))
+            self.patch.alias_is(int(version_str.split(".")[2]))
 
 class Dependency(Node):
     identifier: p_field()
@@ -47,12 +47,12 @@ class Author(Node):
 class is_project(Module.TraitT.decless()):
     required_atopile_version: Version
 
-    def __init__(self, version_str: str = None):
+    def __init__(self, required_atopile_version: str = None):
         super().__init__()
-        self._version_str = version_str
+        self._required_atopile_version = required_atopile_version
 
     def __postinit__(self):
-        self.required_atopile_version.set_version(self._version_str)
+        self.required_atopile_version.set_version(self._required_atopile_version)
 
 class is_package(Module.TraitT.decless()):
     author: Author
@@ -63,24 +63,26 @@ class is_package(Module.TraitT.decless()):
     def __init__(self,
         author_name: str = None,
         author_email: str = None,
-        version_str: str = None,
+        package_version: str = None,
         package_identifier: str = None,
         repository_url: str = None
         ):
         super().__init__()
         self._author_name = author_name
         self._author_email = author_email
-        self._version_str = version_str
+        self._package_version = package_version
         self._package_identifier = package_identifier
         self._repository_url = repository_url
 
     def __postinit__(self):
-        self.package_version.set_version(self._version_str)
+        self.package_version.set_version(self._package_version)
 
 class has_dependencies(Module.TraitT.decless()):
     dependency_interface: GraphInterface
 
 class is_pcb(Module.TraitT.decless()):
+    layout_path: p_field()
+    hide_designators: p_field(domain=R.Domains.BOOL)
     pass
 
 # trait1 = is_project(version_str="1.0.0")

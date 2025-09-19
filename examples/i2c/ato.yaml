@@ -1,12 +1,6 @@
-requires-atopile: ^0.10.0
-
-paths:
-  src: ./
-  layout: ./layout
-
 builds:
-  # default:
-  #   entry: i2c.ato:App
   config:
     entry: config.ato:I2C_Project
 
+paths:
+  src: ./

@@ -83,11 +83,10 @@ def build(
             with accumulator.collect(), log_user_errors(logger), build:
                 logger.info("Building '%s'", config.build.name)
                 app = buildlib.init_app()
-
                 # TODO: add a way to override the following with custom build machinery
                 buildutil.build(app)
 
-    logger.info("Build successful! 🚀")
+    logger.info("FUCK YEAH BOIS 🚀")
 
     selected_build_names = list(config.selected_builds)
     for build_name in selected_build_names:
@@ -109,3 +108,4 @@ def build(
                 reload_pcb(build.paths.layout, backup_path=build.paths.output_base)
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
+

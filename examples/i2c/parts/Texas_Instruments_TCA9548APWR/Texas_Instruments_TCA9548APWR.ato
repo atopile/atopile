@@ -7,7 +7,7 @@ import is_auto_generated
 component Texas_Instruments_TCA9548APWR_package:
     # This trait marks this file as auto-generated
     # If you want to manually change it, remove the trait
-    trait is_auto_generated<system="ato_part", source="easyeda:C130026", date="2025-09-18T17:13:05.281708+00:00", checksum="99d3af6be5a29abed8427332cdd16358cdb4f7bb61086679f65aabd76271bd81">
+    trait is_auto_generated<system="ato_part", source="easyeda:C130026", date="2025-09-19T00:16:08.099331+00:00", checksum="8031d98fb9ef2c7a5bbbd97741e408f9ff2eaaa740c824c543114840503b9fae">
 
     trait is_atomic_part<manufacturer="Texas Instruments", partnumber="TCA9548APWR", footprint="TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL.kicad_mod", symbol="TCA9548APWR.kicad_sym", model="TSSOP-24_L7.8-W4.4-H1.0-LS6.4-P0.65.step">
     trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C130026", manufacturer="Texas Instruments", partno="TCA9548APWR">

@@ -1,10 +1,12 @@
 #pragma experiment("TRAITS")
 
 from "i2c.ato" import App
-from "config_traits.py" import has_project_config
+from "config_traits.py" import is_project
+from "config_traits.py" import is_package
+from "config_traits.py" import has_dependencies
 
 module I2C_Project:
+    trait is_project<required_atopile_version="0.12.4">
+    trait is_package<author_name="John Doe", author_email="john.doe@example.com", package_version="1.0.0", package_identifier="john-doe/i2c", repository_url="https://github.com/john-doe/i2c">
+    
     app = new App
-
-    trait has_project_config<version_major=1, version_minor=0, version_patch=0>
-
