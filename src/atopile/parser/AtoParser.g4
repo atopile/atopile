@@ -187,7 +187,9 @@ assert_stmt
 
 trait_stmt
     // TODO: move namespacing to type_reference
-    : TRAIT type_reference (DOUBLE_COLON constructor)? template?
+    : TRAIT field_reference? type_reference (
+        DOUBLE_COLON constructor
+    )? template?
     ;
 constructor
     : name

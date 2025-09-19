@@ -41,6 +41,11 @@ def setup() -> None:
     except Exception as e:
         logger.warning(f"Couldn't remove legacy config file: {e!r}")
 
+    # if running is ci skip plugin installation
+    from atopile.telemetry import PropertyLoaders
+
+    if PropertyLoaders.ci_provider():
+        return
     try:
         install_kicad_plugin()
     except Exception as e:

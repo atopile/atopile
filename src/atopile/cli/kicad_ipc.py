@@ -8,7 +8,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import kicad
 
 kicad_ipc_app = typer.Typer(rich_markup_mode="rich")
 
@@ -112,7 +112,7 @@ def layout_sync(
     gcfg.select_build(build.name)
 
     # Create layout sync instance
-    pcb_file = C_kicad_pcb_file.loads(pcb_path)
+    pcb_file = kicad.loads(kicad.pcb.PcbFile, pcb_path)
     sync = LayoutSync(pcb_file.kicad_pcb)
 
     if not sync.groups:
@@ -144,7 +144,7 @@ def layout_sync(
 
     # Save the PCB
     logger.info(f"Saving PCB to {pcb_path}")
-    pcb_file.dumps(pcb_path)
+    kicad.dumps(pcb_file, pcb_path)
 
     # Reload in KiCad if requested
     logger.info("Reloading PCB in KiCad...")

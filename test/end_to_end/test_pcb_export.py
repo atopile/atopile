@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import Property, kicad
 from test.end_to_end.conftest import dump_and_run
 
 
@@ -12,13 +12,15 @@ class PcbSummary:
     footprints: list[str]
 
     @classmethod
-    def from_pcb(cls, pcb: C_kicad_pcb_file):
+    def from_pcb(cls, pcb: kicad.pcb.PcbFile):
         return cls(
             num_layers=len(pcb.kicad_pcb.layers),
-            nets=sorted([net.name for net in pcb.kicad_pcb.nets]),
+            nets=sorted(
+                [net.name for net in pcb.kicad_pcb.nets if net.name is not None]
+            ),
             footprints=sorted(
                 [
-                    footprint.propertys.get("Reference").value
+                    Property.get_property(footprint.propertys, "Reference")
                     for footprint in pcb.kicad_pcb.footprints
                 ],
             ),
@@ -40,7 +42,7 @@ class PcbSummary:
 
 
 def summarize_pcb_file(pcb_file: Path) -> PcbSummary:
-    pcb = C_kicad_pcb_file.loads(pcb_file.read_text(encoding="utf-8"))
+    pcb = kicad.loads(kicad.pcb.PcbFile, pcb_file.read_text(encoding="utf-8"))
     return PcbSummary.from_pcb(pcb)
 
 
@@ -52,7 +54,7 @@ module App:
 
 SIMPLE_APP_PCB_SUMMARY = PcbSummary(
     num_layers=29,
-    nets=["", "a-net-0", "a-net-1"],
+    nets=["a-net-0", "a-net-1"],
     footprints=["R1"],
 )
 
@@ -73,7 +75,7 @@ def test_empty_design(tmpdir: Path):
     assert "Creating new layout" in stderr
 
     assert summarize_pcb_file(pcb_file) == PcbSummary(
-        num_layers=29, nets=[""], footprints=[]
+        num_layers=29, nets=[], footprints=[]
     )
 
 

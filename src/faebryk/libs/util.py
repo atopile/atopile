@@ -1365,6 +1365,8 @@ def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
     Unlike dataclasses.asdict because it doesn't convert children dataclasses to dicts.
     This is useful when reconstructing a dataclass from a dict.
     """
+    if hasattr(type(obj), "__field_names__"):
+        return {f: getattr(obj, f) for f in type(obj).__field_names__()}
     return {f.name: getattr(obj, f.name) for f in fields(obj)}
 
 
@@ -2520,6 +2522,7 @@ def compare_dataclasses[T](
     after: T,
     skip_keys: tuple[str, ...] = (),
     require_dataclass_type_match: bool = True,
+    float_precision: int | None = 6,
 ) -> dict[str, dict[str, Any]]:
     """
     Check two dataclasses for equivalence (with some keys skipped).
@@ -2541,8 +2544,15 @@ def compare_dataclasses[T](
             == {field.name for field in fields(a) if field.name not in skip_keys}
         )
 
+    def _is_pyzig_mutable_list(x: Any) -> bool:
+        t = type(x)
+        return t.__name__ == "MutableList" and t.__module__ in ("pyzig", "pyzig_local")
+
+    def _is_list_like(x: Any) -> bool:
+        return isinstance(x, list) or _is_pyzig_mutable_list(x)
+
     match (before, after):
-        case (list(), list()):
+        case (b, a) if _is_list_like(b) and _is_list_like(a):
             return {
                 f"[{i}]{k}": v
                 for i, (b, a) in enumerate(zip(before, after))
@@ -2581,6 +2591,39 @@ def compare_dataclasses[T](
                     require_dataclass_type_match=require_dataclass_type_match,
                 ).items()
             }
+        # zig types
+        case before, after if hasattr(type(before), "__field_names__") and (
+            (type(before) is type(after))
+            or (
+                not require_dataclass_type_match
+                and hasattr(type(after), "__field_names__")
+                and type(before).__field_names__() == type(after).__field_names__()  # type: ignore
+            )
+        ):
+            return {
+                f".{f_name}{k}": v
+                for f_name in type(before).__field_names__()  # type: ignore
+                if f_name not in skip_keys
+                for k, v in compare_dataclasses(
+                    getattr(before, f_name),
+                    getattr(after, f_name),
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
+            }
+        case before, after if (
+            float_precision is not None
+            and isinstance(before, float)
+            and isinstance(after, float)
+        ):
+            difference = abs(after - before)
+            epsilon = 10**-float_precision
+            matches = difference < epsilon
+            return (
+                {"": _fmt(before, f"{after} (delta = {difference})")}
+                if not matches
+                else {}
+            )
         case _:
             return {"": _fmt(before, after)} if before != after else {}
 
@@ -2839,6 +2882,87 @@ def match_iterables[T, U](
         raise ValueError("All iterables must have unique keys")
     dicts = [{k: vs[0] for k, vs in d.items()} for d in multi_dicts]
     return zip_dicts_by_key(*dicts)  # type: ignore
+
+
+def debug_perf(*args):
+    def _debug_perf[T: Callable](func: T) -> T:
+        # get module of function
+        module = func.__module__
+        logger = logging.getLogger(module)
+
+        def _wrapper(*args, **kwargs):
+            mem_start = psutil.Process().memory_info().rss
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            end = time.perf_counter()
+            mem_end = psutil.Process().memory_info().rss
+            diff = end - start
+            mem_diff = mem_end - mem_start
+
+            for i, prefix in enumerate(["", "m", "u", "n"]):
+                if diff * (1000**i) >= 1:
+                    diff = round(diff * (1000**i), 2)
+                    break
+
+            for i, mem_prefix in enumerate(["", "K", "M", "G"]):
+                if mem_diff / (1000**i) <= 1000:
+                    mem_diff = round(mem_diff / (1000**i), 2)
+                    break
+
+            logger.info(
+                f"{func.__name__} took {diff} {prefix}s "
+                f"and used {mem_diff} {mem_prefix}B"
+            )
+            return result
+
+        return _wrapper  # type: ignore
+
+    if args:
+        return _debug_perf(*args)
+    return _debug_perf
+
+
+@dataclass
+class PythonLib:
+    include_path: Path
+    name: str
+    dir_path: Path | None
+
+
+def get_python_lib():
+    import sysconfig
+
+    python_include = sysconfig.get_paths()["include"]
+
+    if sys.platform.startswith("win"):
+        python_lib = f"python{sys.version_info.major}{sys.version_info.minor}"
+    else:
+        python_lib = f"python{sys.version_info.major}.{sys.version_info.minor}"
+
+    if sys.platform.startswith("win"):
+        LIB_EXT = ".lib"
+        LIB_PREFIX = ""
+    elif sys.platform.startswith("darwin"):
+        LIB_EXT = ".dylib"
+        LIB_PREFIX = "lib"
+    else:
+        LIB_EXT = ".so"
+        LIB_PREFIX = "lib"
+
+    # if running in uv with managed python
+    if sys.platform.startswith("win"):
+        lib_dir = Path(python_include).parent / "libs"
+    else:
+        lib_dir = Path(python_include).parent.parent / "lib"
+
+    path = lib_dir / f"{LIB_PREFIX}{python_lib}{LIB_EXT}"
+    lib_dir = lib_dir if path.exists() else None
+
+    return PythonLib(
+        include_path=Path(python_include),
+        name=python_lib,
+        dir_path=lib_dir,
+    )
 
 
 def debounce(delay_s: float):

@@ -30,6 +30,7 @@ from faebryk.libs.util import (
     KeyErrorAmbiguous,
     KeyErrorNotFound,
     Tree,
+    debug_perf,
     indented_container,
     partition,
     try_or,
@@ -407,6 +408,7 @@ def pick_topologically(
 
 
 # TODO should be a Picker
+@debug_perf
 def pick_part_recursively(
     module: Module, solver: Solver, progress: Advancable | None = None
 ):

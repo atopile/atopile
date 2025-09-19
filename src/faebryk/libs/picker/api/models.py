@@ -4,7 +4,6 @@
 import functools
 import logging
 from dataclasses import asdict, dataclass, field, make_dataclass
-from textwrap import indent
 from typing import Any
 
 from dataclasses_json import config as dataclass_json_config
@@ -247,8 +246,8 @@ class Component:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Attached component {self.lcsc_display} to module {module}: \n"
-                f"{indent(str(self.attributes), ' ' * 4)}\n--->\n"
-                f"{indent(module.pretty_params(), ' ' * 4)}"
+                # f"{indent(str(self.attributes), ' ' * 4)}\n--->\n"
+                # f"{indent(module.pretty_params(), ' ' * 4)}"
             )
 
     def __rich_repr__(self):

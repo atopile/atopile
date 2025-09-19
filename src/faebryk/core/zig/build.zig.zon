@@ -1,0 +1,11 @@
+.{
+    .name = .sexp,
+    .version = "0.0.0",
+    .fingerprint = 0xa1315b6721b93292,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{},
+}
