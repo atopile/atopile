@@ -7,9 +7,8 @@
 from itertools import pairwise
 from typing import Any, Callable, Collection, Iterable
 
-import dash_core_components as dcc
 import dash_cytoscape as cyto
-from dash import Dash, html
+from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
 from rich.console import Console
 from rich.table import Table
