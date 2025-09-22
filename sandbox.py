@@ -129,28 +129,44 @@ class NestedReference(NNode):
 
 
 class Connect(Rule):
-    def with_nested_references(self, nested_refs: list[NestedReference]) -> "Connect":
-        self._nested_refs = nested_refs
+    def with_nested_references(self, refs: list[NestedReference]) -> "Connect":
+        self._refs = refs
         return self
 
     def execute(self, node: NNode) -> None:
         super().execute(node)
 
-        instances = []
-        target_node = node  # start from high level node
-        for nested_ref in self._nested_refs:
-            while len(nested_ref.next.get_connected_nodes([NNode])) > 0:
-                child_ref = nested_ref.child_ref_pointer.get_reference()
-                assert isinstance(child_ref, ChildRef)
-                child_identifier = child_ref._identifier
-                target_node = target_node.get_child_by_name(child_identifier)
-                nested_ref = nested_ref.next.get_connected_nodes([NestedReference])[0]
-            instances.append(target_node)
+        # Recursive implementation
+        def resolve_nested_reference(
+            parent_node: NNode, nested_ref: NestedReference
+        ) -> Node:
+            # Get child reference of this nested reference
+            child_ref = nested_ref.child_ref_pointer.get_reference()
+            assert isinstance(child_ref, ChildRef)
+            child_identifier = child_ref._identifier
+            ref_node = parent_node.get_child_by_name(child_identifier)
+            assert isinstance(ref_node, NNode)
 
-        for instance in instances[1:]:
-            assert isinstance(instances[0], NNode)
+            # If next NR, resolve it starting from the instance returned by first NR
+            if len(nested_ref.next.get_connected_nodes(types=[NestedReference])) > 0:
+                next_nested_ref = list(
+                    nested_ref.next.get_connected_nodes(types=[NestedReference])
+                )[0]
+                assert isinstance(next_nested_ref, NestedReference)
+                ref_node = resolve_nested_reference(ref_node, next_nested_ref)
+
+            return ref_node
+
+        nodes_to_connect = []
+        for ref in self._refs:
+            resolved_target_node = resolve_nested_reference(node, ref)
+            assert isinstance(resolved_target_node, NNode)
+            nodes_to_connect.append(resolved_target_node)
+
+        for instance in nodes_to_connect[1:]:
+            assert isinstance(nodes_to_connect[0], NNode)
             assert isinstance(instance, NNode)
-            instances[0].connections.connect(instance.connections)
+            nodes_to_connect[0].connections.connect(instance.connections)
 
 
 ## CAN BRIDGE TYPE ##
@@ -188,8 +204,6 @@ can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
 can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
 type_resistor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
-# dummy_connect = Connect(["p1", "p2"])
-# type_resistor.add(dummy_connect, name="dummy_connect")
 
 # ## CAPACITOR TYPE ###
 type_capacitor = NodeType("Capacitor")
@@ -238,15 +252,15 @@ type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
 
 
 r_nref = NestedReference().with_child_reference(resistor_ref)
-rp1_nref = NestedReference().with_child_reference(p1_ref)
-r_nref.next.connect(rp1_nref.prev)
+rp2_nref = NestedReference().with_child_reference(p2_ref)
+r_nref.next.connect(rp2_nref.prev)
 
 c_nref = NestedReference().with_child_reference(capacitor_ref)
 cp1_nref = NestedReference().with_child_reference(cp1_ref)
 c_nref.next.connect(cp1_nref.prev)
 
 rp1_cp1_connection = Connect().with_nested_references([r_nref, c_nref])
-type_rc_filter.add(rp1_cp1_connection, name="rp1_cp1_connection")
+type_rc_filter.add(rp1_cp1_connection, name="rp2_cp1_connection")
 
 # print(dummy_node.children.get_children())
 

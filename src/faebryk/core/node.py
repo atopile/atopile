@@ -189,6 +189,7 @@ class Node(CNode):
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
     specialized_: list["Node"]
+    implements_type: GraphInterface
 
     _init: bool = False
     _mro: list[type] = []
@@ -373,7 +374,7 @@ class Node(CNode):
 
         return dict(fabfields), dict(nonfabfields)
 
-    def _setup_fields(self):
+    def _setup_fields(self):  # TODO: Build instance graph here from typegraph
         clsfields, _ = self.__faebryk_fields__()
         LL_Types = (Node, GraphInterface)
 
@@ -384,7 +385,7 @@ class Node(CNode):
         #    filtered_str = "   FILTERED" if filtered else ""
         #    print(
         #        f"{cls.__qualname__+"."+name+filtered_str:<60} = {str(obj):<70} "
-        # "| {type(obj)}"
+        # "| {type(obj)}
         #    )
 
         added_objects: dict[str, Node | GraphInterface] = {}
@@ -521,7 +522,9 @@ class Node(CNode):
             )
         self._setup(*args, **kwargs)
 
-    def __init_subclass__(cls, *, init: bool = True) -> None:
+    def __init_subclass__(
+        cls, *, init: bool = True
+    ) -> None:  # TODO: Build typgraph here
         cls._init = init
         post_init_decorator(cls)
         Node_mro = CNode.mro()
