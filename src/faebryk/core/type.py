@@ -76,12 +76,14 @@ def instantiate(type_node: _Node) -> _Node:
     ):
         return node
 
+    # TODO: lazy way to make children before executing connect rules
     for rule in type_node.get_children(direct_only=True, types=[_Node]):
         if isinstance(rule, Class_MakeChild.Proto_MakeChild):
             assert isinstance(rule, _Node)
             Class_MakeChild.execute(make_child_instance=rule, parent_node=node)
 
-        elif isinstance(rule, Class_Connect.Proto_Connect):
+    for rule in type_node.get_children(direct_only=True, types=[_Node]):
+        if isinstance(rule, Class_Connect.Proto_Connect):
             assert isinstance(rule, _Node)
             Class_Connect.execute(connect_instance=rule, parent_node=node)
 
@@ -180,12 +182,18 @@ class Class_NestedReference:
     @runtime_checkable
     class Proto_NestedReference(Protocol):
         child_ref_pointer: GraphInterfaceReference
-        next: GraphInterfaceReference
+        next: GraphInterface
 
     @staticmethod
-    def init_nested_reference_instance(node: _Node, child_ref: _Node, next: _Node):
+    def init_nested_reference_instance(
+        node: _Node, child_ref: _Node, next: _Node | None
+    ):
         node.child_ref_pointer = GraphInterfaceReference()
-        node.next = GraphInterfaceReference()
+        node.next = GraphInterface()
+        assert isinstance(node, Class_NestedReference.Proto_NestedReference)
+        node.child_ref_pointer.connect(child_ref.self_gif, link=LinkPointer())
+        if next is not None:
+            node.next.connect(next.self_gif, link=LinkDirect())
         return node
 
 
@@ -225,7 +233,8 @@ class Class_Connect:
                     )[0]
                     assert isinstance(next_nested_ref, _Node)
                     ref_node = resolve_reference_node(ref_node, next_nested_ref)
-                    return ref_node
+
+                return ref_node
 
             elif isinstance(reference_node, Class_ChildReference.Proto_ChildReference):
                 child_identifier = reference_node._identifier
@@ -246,7 +255,9 @@ class Class_Connect:
         for instance in nodes_to_connect[1:]:
             assert isinstance(nodes_to_connect[0], _Node)
             assert isinstance(instance, _Node)
-            nodes_to_connect[0].connections.connect(instance.connections)
+            nodes_to_connect[0].connections.connect(
+                instance.connections, link=LinkDirect()
+            )
 
 
 def get_child_by_name(node: _Node, name: str):
@@ -283,39 +294,88 @@ class Class_CanBridge:
         return node.out.get_referenced_gif().node
 
 
+# BUILT IN TYPES FOR TYPEGRAPH GENERATION
 TwoTerminal = Class_ImplementsTrait.init_trait_type(_Node(), "TwoTerminal")
 CanBridge = Class_CanBridge.init_can_bridge_node(_Node())
 Type_MakeChild = Class_ImplementsType.init_type_node(_Node(), "MakeChild")
 Type_Connect = Class_ImplementsType.init_type_node(_Node(), "Connect")
+Type_NestedReference = Class_ImplementsType.init_type_node(_Node(), "NestedReference")
 
 
 # print(Type_ImplementsTrait.get_children(direct_only=True, types=[_Node]))
 
-# ## ELECTRICAL TYPE ##
+### ELECTRICAL TYPE ###
 Type_Electrical = Class_ImplementsType.init_type_node(_Node(), "Electrical")
 # electrical = instantiate(Type_Electrical)
 
-# ### RESISTOR TYPE ###
+### RESISTOR TYPE ###
 Type_Resistor = Class_ImplementsType.init_type_node(_Node(), "Resistor")
 
 p1_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Electrical, _Node(), "p1"
+    Type_Electrical, instantiate(Type_Electrical), "p1"
 )
 p1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p1_ref)
 Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
 
 p2_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Electrical, _Node(), "p2"
+    Type_Electrical, instantiate(Type_Electrical), "p2"
 )
 p2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p2_ref)
 Type_Resistor.children.connect(p2_rule.parent, LinkNamedParent("p2"))
 
-p1p2_connect_rule = Class_Connect.init_connect_node_instance(
-    instantiate(Type_Connect), [p1_ref, p2_ref]
-)
-Type_Resistor.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
+### CAPACITOR TYPE ###
+Type_Capacitor = Class_ImplementsType.init_type_node(_Node(), "Capacitor")
 
-resistor = instantiate(Type_Resistor)
+c1_ref = Class_ChildReference.init_child_reference_instance(
+    Type_Electrical, instantiate(Type_Electrical), "p1"
+)
+c1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c1_ref)
+Type_Capacitor.children.connect(c1_rule.parent, LinkNamedParent("p1"))
+
+c2_ref = Class_ChildReference.init_child_reference_instance(
+    Type_Electrical, instantiate(Type_Electrical), "p2"
+)
+c2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c2_ref)
+Type_Capacitor.children.connect(c2_rule.parent, LinkNamedParent("p2"))
+
+### RC FILTER TYPE ###
+Type_RCFilter = Class_ImplementsType.init_type_node(_Node(), "RCFilter")
+
+r_ref = Class_ChildReference.init_child_reference_instance(
+    Type_Resistor, instantiate(Type_Resistor), "resistor"
+)
+r_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), r_ref)
+Type_RCFilter.children.connect(r_rule.parent, LinkNamedParent("resistor"))
+
+c_ref = Class_ChildReference.init_child_reference_instance(
+    Type_Capacitor, instantiate(Type_Capacitor), "capacitor"
+)
+c_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c_ref)
+Type_RCFilter.children.connect(c_rule.parent, LinkNamedParent("capacitor"))
+
+r1p1_ref = Class_NestedReference.init_nested_reference_instance(
+    instantiate(Type_NestedReference), p1_ref, None
+)
+r1_ref = Class_NestedReference.init_nested_reference_instance(
+    instantiate(Type_NestedReference), r_ref, r1p1_ref
+)
+
+c1p2_ref = Class_NestedReference.init_nested_reference_instance(
+    instantiate(Type_NestedReference), c2_ref, None
+)
+c2_ref = Class_NestedReference.init_nested_reference_instance(
+    instantiate(Type_NestedReference), c_ref, c1p2_ref
+)
+
+p1p2_connect_rule = Class_Connect.init_connect_node_instance(
+    instantiate(Type_Connect), [r1_ref, c2_ref]
+)
+Type_RCFilter.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
+
+
+# resistor = instantiate(Type_Resistor)
+# capacitor = instantiate(Type_Capacitor)
+rc_filter = instantiate(Type_RCFilter)
 
 # rules = Type_Resistor.get_children(direct_only=True, types=[_Node])
 # for rule in rules:
