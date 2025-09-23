@@ -603,9 +603,9 @@ class InteractiveTypeGraphVisualizer:
             # Outline color by type: NodeType -> black, Rule -> red, Instances/others -> blue
             try:
                 from faebryk.core.type import (
+                    Class_ChildReference,
                     Class_ImplementsType,
                     Class_MakeChild,
-                    Class_ChildReference,
                 )
 
                 is_nodetype = isinstance(n, Class_ImplementsType.Proto_Type)
