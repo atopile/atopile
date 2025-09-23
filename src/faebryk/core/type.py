@@ -1,17 +1,20 @@
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from git.util import T
 
 from faebryk.core.cpp import (
     GraphInterface,
     GraphInterfaceHierarchical,
+    GraphInterfaceModuleConnection,
     GraphInterfaceReference,
+    LinkDirect,
     LinkNamedParent,
     LinkParent,
     LinkPointer,
     LinkSibling,
 )
 from faebryk.core.node import CNode, Node
+from faebryk.libs.util import cast
 
 # Manually create Trait type and implements_type instance here,
 
@@ -29,13 +32,16 @@ from faebryk.core.node import CNode, Node
 
 
 class _Node(CNode):
-    def __init__(self):
-        super().__init__()
-        CNode.transfer_ownership(self)
-
     @runtime_checkable
     class Proto_Node(Protocol):
         is_type: GraphInterfaceHierarchical
+        connections: GraphInterfaceHierarchical
+
+    def __init__(self):
+        super().__init__()
+        # self.is_type = GraphInterfaceHierarchical(is_parent=False)
+        self.connections = GraphInterfaceModuleConnection()
+        CNode.transfer_ownership(self)
 
     def __setattr__(self, name: str, value, /) -> None:
         super().__setattr__(name, value)
@@ -70,22 +76,14 @@ def instantiate(type_node: _Node) -> _Node:
     ):
         return node
 
-    for rule in type_node.get_children(
-        direct_only=True, types=[Class_MakeChild.Proto_MakeChild]
-    ):
-        assert isinstance(rule, Class_MakeChild.Proto_MakeChild)
-        child_reference = rule.child_ref_pointer.get_reference()
-        assert isinstance(child_reference, Class_ChildReference.Proto_ChildReference)
-        child_identifier = child_reference._identifier
-        child_type_node = child_reference.node_type_pointer.get_reference()
-        assert isinstance(child_type_node, _Node)
-        child_node_instance = instantiate(child_type_node)
+    for rule in type_node.get_children(direct_only=True, types=[_Node]):
+        if isinstance(rule, Class_MakeChild.Proto_MakeChild):
+            assert isinstance(rule, _Node)
+            Class_MakeChild.execute(make_child_instance=rule, parent_node=node)
 
-        compose(node, child_node_instance, name=child_identifier)
-
-    # for rule in type_node.get_children(direct_only=True, types=Connect):
-    #     assert isinstance(rule, Rule)
-    #     rule.execute(node)
+        elif isinstance(rule, Class_Connect.Proto_Connect):
+            assert isinstance(rule, _Node)
+            Class_Connect.execute(connect_instance=rule, parent_node=node)
 
     return node
 
@@ -139,16 +137,17 @@ class Class_MakeChild:
         child_ref_pointer: GraphInterfaceReference
 
     @staticmethod
-    def init_make_child(node: _Node, child_ref: _Node) -> _Node:
+    def init_make_child_instance(node: _Node, child_ref: _Node) -> _Node:
+        node.child_ref_pointer = GraphInterfaceReference()
         assert isinstance(node, Class_MakeChild.Proto_MakeChild)
         # assert isinstance(child_ref, Class_ChildReference.Proto_ChildReference)
         node.child_ref_pointer.connect(child_ref.self_gif, link=LinkPointer())
         return node
 
     @staticmethod
-    def execute(type_node: _Node, node: _Node) -> None:
-        assert isinstance(type_node, Class_MakeChild.Proto_MakeChild)
-        child_ref = type_node.child_ref_pointer.get_reference()
+    def execute(make_child_instance: _Node, parent_node: _Node) -> None:
+        assert isinstance(make_child_instance, Class_MakeChild.Proto_MakeChild)
+        child_ref = make_child_instance.child_ref_pointer.get_reference()
         assert isinstance(child_ref, Class_ChildReference.Proto_ChildReference)
         identifier = child_ref._identifier
 
@@ -156,7 +155,7 @@ class Class_MakeChild:
         assert isinstance(child_type_node, _Node)
         new_node = instantiate(child_type_node)
 
-        compose(node, new_node, name=identifier)
+        compose(parent_node, new_node, name=identifier)
 
 
 class Class_ChildReference:
@@ -166,13 +165,98 @@ class Class_ChildReference:
         node_type_pointer: GraphInterfaceReference
 
     @staticmethod
-    def init_child_reference(type_node: _Node, node: _Node, identifier: str) -> _Node:
+    def init_child_reference_instance(
+        type_node: _Node, node: _Node, identifier: str
+    ) -> _Node:
         node._identifier = identifier
         node.node_type_pointer = GraphInterfaceReference()
         assert isinstance(node, Class_ChildReference.Proto_ChildReference)
         node.node_type_pointer.connect(type_node.self_gif, link=LinkPointer())
 
         return node
+
+
+class Class_NestedReference:
+    @runtime_checkable
+    class Proto_NestedReference(Protocol):
+        child_ref_pointer: GraphInterfaceReference
+        next: GraphInterfaceReference
+
+    @staticmethod
+    def init_nested_reference_instance(node: _Node, child_ref: _Node, next: _Node):
+        node.child_ref_pointer = GraphInterfaceReference()
+        node.next = GraphInterfaceReference()
+        return node
+
+
+class Class_Connect:
+    @runtime_checkable
+    class Proto_Connect(Protocol):
+        refs_gif: list[GraphInterface]
+
+    @staticmethod
+    def init_connect_node_instance(node: _Node, refs: list[_Node]):
+        node.refs_gif = GraphInterface()
+        assert isinstance(node, Class_Connect.Proto_Connect)
+        for ref in refs:
+            assert isinstance(ref, _Node)
+            node.refs_gif.connect(ref.self_gif, link=LinkDirect())
+        return node
+
+    @staticmethod
+    def execute(connect_instance: _Node, parent_node: _Node) -> None:
+        # Recursive implementation
+        def resolve_reference_node(
+            parent_node: _Node,
+            reference_node: _Node,
+        ) -> _Node | None:
+            # Get child reference of this nested reference
+            if isinstance(reference_node, Class_NestedReference.Proto_NestedReference):
+                child_ref = reference_node.child_ref_pointer.get_reference()
+                assert isinstance(child_ref, Class_ChildReference.Proto_ChildReference)
+                child_identifier = child_ref._identifier
+                ref_node = get_child_by_name(parent_node, child_identifier)
+                assert isinstance(ref_node, _Node)
+
+                # If next NR, resolve it starting from the instance returned by first NR
+                if len(reference_node.next.get_connected_nodes(types=[_Node])) > 0:
+                    next_nested_ref = list(
+                        reference_node.next.get_connected_nodes(types=[_Node])
+                    )[0]
+                    assert isinstance(next_nested_ref, _Node)
+                    ref_node = resolve_reference_node(ref_node, next_nested_ref)
+                    return ref_node
+
+            elif isinstance(reference_node, Class_ChildReference.Proto_ChildReference):
+                child_identifier = reference_node._identifier
+                ref_node = get_child_by_name(parent_node, child_identifier)
+                assert isinstance(ref_node, _Node)
+                return ref_node
+
+        # assert isinstance(parent_node, _Node)
+        nodes_to_connect = []
+        assert isinstance(connect_instance, Class_Connect.Proto_Connect)
+        assert isinstance(connect_instance.refs_gif, GraphInterface)
+        for ref_node in connect_instance.refs_gif.get_connected_nodes(types=[_Node]):
+            assert isinstance(ref_node, _Node)
+            resolved_target_node = resolve_reference_node(parent_node, ref_node)
+            assert isinstance(resolved_target_node, _Node)
+            nodes_to_connect.append(resolved_target_node)
+
+        for instance in nodes_to_connect[1:]:
+            assert isinstance(nodes_to_connect[0], _Node)
+            assert isinstance(instance, _Node)
+            nodes_to_connect[0].connections.connect(instance.connections)
+
+
+def get_child_by_name(node: _Node, name: str):
+    if hasattr(node, name):
+        return cast(_Node, getattr(node, name))
+    for p in node.get_children(direct_only=True, types=[_Node]):
+        assert isinstance(p, _Node)
+        if p.get_name() == name:
+            return p
+    raise ValueError(f"No child with name {name} found")
 
 
 class Class_CanBridge:
@@ -202,40 +286,41 @@ class Class_CanBridge:
 TwoTerminal = Class_ImplementsTrait.init_trait_type(_Node(), "TwoTerminal")
 CanBridge = Class_CanBridge.init_can_bridge_node(_Node())
 Type_MakeChild = Class_ImplementsType.init_type_node(_Node(), "MakeChild")
+Type_Connect = Class_ImplementsType.init_type_node(_Node(), "Connect")
+
 
 # print(Type_ImplementsTrait.get_children(direct_only=True, types=[_Node]))
 
 # ## ELECTRICAL TYPE ##
 Type_Electrical = Class_ImplementsType.init_type_node(_Node(), "Electrical")
-electrical = instantiate(Type_Electrical)
+# electrical = instantiate(Type_Electrical)
 
 # ### RESISTOR TYPE ###
 Type_Resistor = Class_ImplementsType.init_type_node(_Node(), "Resistor")
-p1_ref = Class_ChildReference.init_child_reference(Type_Electrical, _Node(), "p1")
-# p1_rule = Class_MakeChild.init_make_child(_Node(), p1_ref)
-# Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
 
-# children = Type_Electrical.children.get_children()
-# for child in children:
-#     assert isinstance(child, _Node.Proto_Node)
-#     print(child.is_type.get_parent()[0])
+p1_ref = Class_ChildReference.init_child_reference_instance(
+    Type_Electrical, _Node(), "p1"
+)
+p1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p1_ref)
+Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
 
-# visualize_type_graph(Type_ImplementsType)
+p2_ref = Class_ChildReference.init_child_reference_instance(
+    Type_Electrical, _Node(), "p2"
+)
+p2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p2_ref)
+Type_Resistor.children.connect(p2_rule.parent, LinkNamedParent("p2"))
 
+p1p2_connect_rule = Class_Connect.init_connect_node_instance(
+    instantiate(Type_Connect), [p1_ref, p2_ref]
+)
+Type_Resistor.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
 
-### Construction Rules ###
+resistor = instantiate(Type_Resistor)
 
-# class FieldDeclaration(Rule):
-#     def __init__(self, identifier: str | None, nodetype: type[_Node]):
-#         super().__init__()
-#         self.identifier = identifier
-#         self.nodetype = nodetype
-
-#     def execute(self, node: _Node) -> None:
-#         super().execute(node)
-#         obj = self.nodetype()
-
-#         node.add(obj, name=self.identifier)
+# rules = Type_Resistor.get_children(direct_only=True, types=[_Node])
+# for rule in rules:
+#     if isinstance(rule, Class_MakeChild.Proto_MakeChild):
+#         print(rule.get_name())
 
 
 # class Connect(_Node):

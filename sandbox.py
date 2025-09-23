@@ -623,8 +623,9 @@ class InteractiveTypeGraphVisualizer:
                 ec_color = "#d33"
                 face_color = "#ffe8e8"
             else:
-                ec_color = "#1f77b4"
-                face_color = "#e8f4ff"
+                # Instances/others → green
+                ec_color = "#2ca02c"
+                face_color = "#e8fbe8"
 
             circle = patches.Circle(
                 (cx, cy),
@@ -640,13 +641,13 @@ class InteractiveTypeGraphVisualizer:
             label_main = self._node_label(n)
             label_type = n.__class__.__name__
 
-            # Place labels further apart, scaled with circle radius
+            # Label offsets scaled with circle radius
             label_offset = max(0.5, 0.55 * r_draw)
 
-            # main name above center, larger font
+            # main name centered inside the circle
             main_text = self.ax.text(
                 cx,
-                cy + label_offset,
+                cy,
                 label_main,
                 ha="center",
                 va="center",
