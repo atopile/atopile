@@ -49,24 +49,32 @@ pub const EdgeComposition = struct {
         return edge.from;
     }
 
-    pub fn visit_children(bound_node: graph.BoundNodeReference, ctx: *anyopaque, f: fn (*anyopaque, NodeReference) void) void {
+    pub fn visit_children(
+        bound_node: graph.BoundNodeReference,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, NodeReference) visitor.VisitResult(void),
+    ) visitor.VisitResult(void) {
         const Visit = struct {
             target: graph.BoundNodeReference,
             cb_ctx: *anyopaque,
-            cb: fn (*anyopaque, NodeReference) void,
+            cb: *const fn (*anyopaque, NodeReference) visitor.VisitResult(void),
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 const child = EdgeComposition.get_child_of(bound_edge.edge, self.target.node);
                 if (child) |c| {
-                    self.cb(self.cb_ctx, c);
+                    const child_result = self.cb(self.cb_ctx, c);
+                    switch (child_result) {
+                        .CONTINUE => {},
+                        else => return child_result,
+                    }
                 }
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        _ = GraphView.visit_edges_of_type(bound_node, get_tid(), void, &visit, Visit.visit);
+        return GraphView.visit_edges_of_type(bound_node, get_tid(), void, &visit, Visit.visit);
     }
 
     pub fn get_parent(bound_node: graph.BoundNodeReference) ?NodeReference {
@@ -107,18 +115,46 @@ test "basic" {
     var g = graph.GraphView.init(std.testing.allocator);
     const n1 = try Node.init(a);
     const n2 = try Node.init(a);
+    const n3 = try Node.init(a);
 
     const bn1 = try g.insert_node(n1);
     const bn2 = try g.insert_node(n2);
+    const bn3 = try g.insert_node(n3);
 
-    const be12 = try EdgeComposition.add_child(bn1, n2, "child");
+    const be12 = try EdgeComposition.add_child(bn1, n2, "child1");
+    const be13 = try EdgeComposition.add_child(bn1, n3, "child2");
 
-    const parent = EdgeComposition.get_parent(bn2);
-    try std.testing.expect(Node.is(parent.?, n1));
+    const parent_bn2 = EdgeComposition.get_parent(bn2);
+    const parent_bn3 = EdgeComposition.get_parent(bn3);
+    try std.testing.expect(Node.is(parent_bn2.?, n1));
+    try std.testing.expect(Node.is(parent_bn3.?, n1));
+
+    const CollectChildren = struct {
+        children: std.ArrayList(NodeReference),
+
+        pub fn visit(ctx: *anyopaque, child: NodeReference) visitor.VisitResult(void) {
+            const self: *@This() = @ptrCast(@alignCast(ctx));
+            self.children.append(child) catch |err| {
+                return visitor.VisitResult(void){ .ERROR = err };
+            };
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var visit = CollectChildren{ .children = std.ArrayList(NodeReference).init(a) };
+    defer visit.children.deinit();
+    const result = EdgeComposition.visit_children(bn1, &visit, CollectChildren.visit);
+
+    try std.testing.expectEqual(result, visitor.VisitResult(void){ .EXHAUSTED = {} });
+    try std.testing.expectEqual(visit.children.items.len, 2);
+    try std.testing.expect(Node.is(visit.children.items[0], n2));
+    try std.testing.expect(Node.is(visit.children.items[1], n3));
 
     // cleanup
     g.deinit();
     try n1.deinit();
     try n2.deinit();
+    try n3.deinit();
     try be12.edge.deinit();
+    try be13.edge.deinit();
 }
