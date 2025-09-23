@@ -15,6 +15,7 @@ from faebryk.core.link import LinkPointer
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
+from faebryk.core.type import *
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -23,244 +24,98 @@ from faebryk.libs.units import P
 #         self.name: str | None = None
 #         self.value = value
 
-type_sentinel = Node()
+# ## CAN BRIDGE TYPE ##
+# type_can_bridge = NodeType("CanBridge")
+# trait_ref = ChildRef("trait").with_nodetype(type_trait)
+# trait_rule = MakeChild().with_child_reference(trait_ref)
+# type_can_bridge.add(trait_rule, name=trait_ref._identifier)
 
+# ## ELECTRICAL TYPE ##
+# type_electrical = NodeType("Electrical")
 
-class NNode(Node):
-    instances: GraphInterface
-    type: GraphInterface
-    connections: GraphInterface
+# ### RESISTOR TYPE ###
+# type_resistor = NodeType("Resistor")
+# p1_ref = ChildRef("p1").with_nodetype(type_electrical)
+# p1_rule = MakeChild().with_child_reference(p1_ref)
+# type_resistor.add(p1_rule, name=p1_ref._identifier)
 
+# p2_ref = ChildRef("p2").with_nodetype(type_electrical)
+# p2_rule = MakeChild().with_child_reference(p2_ref)
+# type_resistor.add(p2_rule, name=p2_ref._identifier)
 
-class NodeType(NNode):
-    def __init__(self, identifier: str):
-        super().__init__()
-        self.identifier = identifier
+# resistance_ref = ChildRef("resistance").with_nodetype(type_parameter)
+# resistance_rule = MakeChild().with_child_reference(resistance_ref)
+# type_resistor.add(resistance_rule, name=resistance_ref._identifier)
 
-    def __postinit__(self):
-        self.type.connect(type_sentinel.self_gif)
-        pass
-        # self.add(GraphInterface(), "rules")
+# max_power_ref = ChildRef("max_power").with_nodetype(type_parameter)
+# max_power_rule = MakeChild().with_child_reference(max_power_ref)
+# type_resistor.add(max_power_rule, name=max_power_ref._identifier)
 
-    def execute(self) -> NNode:
-        node = NNode()
-        node.type.connect(self.self_gif)
-        for rule in self.get_children(direct_only=True, types=MakeChild):
-            assert isinstance(rule, Rule)
-            rule.execute(node)
-        for rule in self.get_children(direct_only=True, types=Connect):
-            assert isinstance(rule, Rule)
-            rule.execute(node)
+# max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
+# max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
+# type_resistor.add(max_voltage_rule, name=max_voltage_ref._identifier)
 
-        return node
+# can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
+# can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
+# type_resistor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
 
-type_make_child = NodeType("MakeChild")
-type_trait = NodeType("Trait")
-type_parameter = NodeType("Parameter")
+# # ## CAPACITOR TYPE ###
+# type_capacitor = NodeType("Capacitor")
+# cp1_ref = ChildRef("p1").with_nodetype(type_electrical)
+# cp1_rule = MakeChild().with_child_reference(cp1_ref)
+# type_capacitor.add(cp1_rule, name=cp1_ref._identifier)
 
+# cp2_ref = ChildRef("p2").with_nodetype(type_electrical)
+# cp2_rule = MakeChild().with_child_reference(cp2_ref)
+# type_capacitor.add(cp2_rule, name=cp2_ref._identifier)
 
-class Rule(NNode):
-    def execute(self, node: NNode) -> None:
-        pass
+# capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
+# capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
+# type_capacitor.add(capacitance_rule, name=capacitance_ref._identifier)
 
+# max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
+# max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
+# type_capacitor.add(max_voltage_rule, name=max_voltage_ref._identifier)
 
-class FieldDeclaration(Rule):
-    def __init__(self, identifier: str | None, nodetype: type[NNode]):
-        super().__init__()
-        self.identifier = identifier
-        self.nodetype = nodetype
+# can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
+# can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
+# type_capacitor.add(can_bridge_rule, name=can_bridge_ref._identifier)
 
-    def execute(self, node: NNode) -> None:
-        super().execute(node)
-        obj = self.nodetype()
 
-        node.add(obj, name=self.identifier)
+# ## RC FILTER TYPE ##
+# type_rc_filter = NodeType("RCFilter")
+# in_ref = ChildRef("in_").with_nodetype(type_electrical)
+# in_rule = MakeChild().with_child_reference(in_ref)
+# type_rc_filter.add(in_rule, name=in_ref._identifier)
 
+# out_ref = ChildRef("out").with_nodetype(type_electrical)
+# out_rule = MakeChild().with_child_reference(out_ref)
+# type_rc_filter.add(out_rule, name=out_ref._identifier)
 
-class RefNode(NNode):
-    pass
+# resistor_ref = ChildRef("resistor").with_nodetype(type_resistor)
+# resistor_rule = MakeChild().with_child_reference(resistor_ref)
+# type_rc_filter.add(resistor_rule, name=resistor_ref._identifier)
 
+# capacitor_ref = ChildRef("capacitor").with_nodetype(type_capacitor)
+# capacitor_rule = MakeChild().with_child_reference(capacitor_ref)
+# type_rc_filter.add(capacitor_rule, name=capacitor_ref._identifier)
 
-class ChildRef(NNode):
-    node_type_pointer: GraphInterfaceReference
+# cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter)
+# cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
+# type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
 
-    def __init__(self, identifier: str):
-        super().__init__()
-        self._identifier = identifier
 
-    def with_nodetype(self, child_type_ref: NodeType) -> "ChildRef":
-        self.node_type_pointer.connect(child_type_ref.self_gif, link=LinkPointer())
-        return self
+# r_nref = NestedReference().with_child_reference(resistor_ref)
+# rp2_nref = NestedReference().with_child_reference(p2_ref)
+# r_nref.next.connect(rp2_nref.prev)
 
+# c_nref = NestedReference().with_child_reference(capacitor_ref)
+# cp1_nref = NestedReference().with_child_reference(cp1_ref)
+# c_nref.next.connect(cp1_nref.prev)
 
-class MakeChild(Rule):
-    child_ref_pointer: GraphInterfaceReference
-
-    def __postinit__(self):
-        self.type.connect(type_make_child.self_gif)
-
-    def with_child_reference(self, child_ref: ChildRef) -> "MakeChild":
-        self.child_ref_pointer.connect(child_ref.self_gif, link=LinkPointer())
-        return self
-
-    def execute(self, node: NNode) -> None:
-        super().execute(node)
-
-        child_ref = self.child_ref_pointer.get_reference()
-        assert isinstance(child_ref, ChildRef)
-        identifier = child_ref._identifier
-
-        node_type = child_ref.node_type_pointer.get_reference()
-        assert isinstance(node_type, NodeType)
-        obj = node_type.execute()
-
-        node.add(obj, name=identifier)
-
-
-class NestedReference(NNode):
-    child_ref_pointer: GraphInterfaceReference
-    prev: GraphInterface
-    next: GraphInterface
-
-    def with_child_reference(self, child_ref: ChildRef) -> "NestedReference":
-        self.child_ref_pointer.connect(child_ref.self_gif, link=LinkPointer())
-        return self
-
-
-class Connect(Rule):
-    def with_nested_references(self, refs: list[NestedReference]) -> "Connect":
-        self._refs = refs
-        return self
-
-    def execute(self, node: NNode) -> None:
-        super().execute(node)
-
-        # Recursive implementation
-        def resolve_nested_reference(
-            parent_node: NNode, nested_ref: NestedReference
-        ) -> Node:
-            # Get child reference of this nested reference
-            child_ref = nested_ref.child_ref_pointer.get_reference()
-            assert isinstance(child_ref, ChildRef)
-            child_identifier = child_ref._identifier
-            ref_node = parent_node.get_child_by_name(child_identifier)
-            assert isinstance(ref_node, NNode)
-
-            # If next NR, resolve it starting from the instance returned by first NR
-            if len(nested_ref.next.get_connected_nodes(types=[NestedReference])) > 0:
-                next_nested_ref = list(
-                    nested_ref.next.get_connected_nodes(types=[NestedReference])
-                )[0]
-                assert isinstance(next_nested_ref, NestedReference)
-                ref_node = resolve_nested_reference(ref_node, next_nested_ref)
-
-            return ref_node
-
-        nodes_to_connect = []
-        for ref in self._refs:
-            resolved_target_node = resolve_nested_reference(node, ref)
-            assert isinstance(resolved_target_node, NNode)
-            nodes_to_connect.append(resolved_target_node)
-
-        for instance in nodes_to_connect[1:]:
-            assert isinstance(nodes_to_connect[0], NNode)
-            assert isinstance(instance, NNode)
-            nodes_to_connect[0].connections.connect(instance.connections)
-
-
-## CAN BRIDGE TYPE ##
-type_can_bridge = NodeType("CanBridge")
-trait_ref = ChildRef("trait").with_nodetype(type_trait)
-trait_rule = MakeChild().with_child_reference(trait_ref)
-type_can_bridge.add(trait_rule, name=trait_ref._identifier)
-
-## ELECTRICAL TYPE ##
-type_electrical = NodeType("Electrical")
-
-### RESISTOR TYPE ###
-type_resistor = NodeType("Resistor")
-p1_ref = ChildRef("p1").with_nodetype(type_electrical)
-p1_rule = MakeChild().with_child_reference(p1_ref)
-type_resistor.add(p1_rule, name=p1_ref._identifier)
-
-p2_ref = ChildRef("p2").with_nodetype(type_electrical)
-p2_rule = MakeChild().with_child_reference(p2_ref)
-type_resistor.add(p2_rule, name=p2_ref._identifier)
-
-resistance_ref = ChildRef("resistance").with_nodetype(type_parameter)
-resistance_rule = MakeChild().with_child_reference(resistance_ref)
-type_resistor.add(resistance_rule, name=resistance_ref._identifier)
-
-max_power_ref = ChildRef("max_power").with_nodetype(type_parameter)
-max_power_rule = MakeChild().with_child_reference(max_power_ref)
-type_resistor.add(max_power_rule, name=max_power_ref._identifier)
-
-max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
-max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
-type_resistor.add(max_voltage_rule, name=max_voltage_ref._identifier)
-
-can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
-can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
-type_resistor.add(can_bridge_rule, name=can_bridge_ref._identifier)
-
-
-# ## CAPACITOR TYPE ###
-type_capacitor = NodeType("Capacitor")
-cp1_ref = ChildRef("p1").with_nodetype(type_electrical)
-cp1_rule = MakeChild().with_child_reference(cp1_ref)
-type_capacitor.add(cp1_rule, name=cp1_ref._identifier)
-
-cp2_ref = ChildRef("p2").with_nodetype(type_electrical)
-cp2_rule = MakeChild().with_child_reference(cp2_ref)
-type_capacitor.add(cp2_rule, name=cp2_ref._identifier)
-
-capacitance_ref = ChildRef("capacitance").with_nodetype(type_parameter)
-capacitance_rule = MakeChild().with_child_reference(capacitance_ref)
-type_capacitor.add(capacitance_rule, name=capacitance_ref._identifier)
-
-max_voltage_ref = ChildRef("max_voltage").with_nodetype(type_parameter)
-max_voltage_rule = MakeChild().with_child_reference(max_voltage_ref)
-type_capacitor.add(max_voltage_rule, name=max_voltage_ref._identifier)
-
-can_bridge_ref = ChildRef("can_bridge").with_nodetype(type_can_bridge)
-can_bridge_rule = MakeChild().with_child_reference(can_bridge_ref)
-type_capacitor.add(can_bridge_rule, name=can_bridge_ref._identifier)
-
-
-## RC FILTER TYPE ##
-type_rc_filter = NodeType("RCFilter")
-in_ref = ChildRef("in_").with_nodetype(type_electrical)
-in_rule = MakeChild().with_child_reference(in_ref)
-type_rc_filter.add(in_rule, name=in_ref._identifier)
-
-out_ref = ChildRef("out").with_nodetype(type_electrical)
-out_rule = MakeChild().with_child_reference(out_ref)
-type_rc_filter.add(out_rule, name=out_ref._identifier)
-
-resistor_ref = ChildRef("resistor").with_nodetype(type_resistor)
-resistor_rule = MakeChild().with_child_reference(resistor_ref)
-type_rc_filter.add(resistor_rule, name=resistor_ref._identifier)
-
-capacitor_ref = ChildRef("capacitor").with_nodetype(type_capacitor)
-capacitor_rule = MakeChild().with_child_reference(capacitor_ref)
-type_rc_filter.add(capacitor_rule, name=capacitor_ref._identifier)
-
-cutoff_frequency_ref = ChildRef("cutoff_frequency").with_nodetype(type_parameter)
-cutoff_frequency_rule = MakeChild().with_child_reference(cutoff_frequency_ref)
-type_rc_filter.add(cutoff_frequency_rule, name=cutoff_frequency_ref._identifier)
-
-
-r_nref = NestedReference().with_child_reference(resistor_ref)
-rp2_nref = NestedReference().with_child_reference(p2_ref)
-r_nref.next.connect(rp2_nref.prev)
-
-c_nref = NestedReference().with_child_reference(capacitor_ref)
-cp1_nref = NestedReference().with_child_reference(cp1_ref)
-c_nref.next.connect(cp1_nref.prev)
-
-rp1_cp1_connection = Connect().with_nested_references([r_nref, c_nref])
-type_rc_filter.add(rp1_cp1_connection, name="rp2_cp1_connection")
+# rp1_cp1_connection = Connect().with_nested_references([r_nref, c_nref])
+# type_rc_filter.add(rp1_cp1_connection, name="rp2_cp1_connection")
 
 # print(dummy_node.children.get_children())
 
@@ -277,7 +132,9 @@ type_rc_filter.add(rp1_cp1_connection, name="rp2_cp1_connection")
 # resistor_instance = type_resistor.execute()
 # resistor_instance2 = type_resistor.execute()
 # capacitor_instance = type_capacitor.execute()
-rc_filter_instance = type_rc_filter.execute()
+# rc_filter_instance = type_rc_filter.execute()
+# electric_signal_instance = type_electrical.execute()
+
 
 # --------------- Visualization ---------------
 # !!AI SLOP!! from here on out
@@ -400,28 +257,35 @@ class InteractiveTypeGraphVisualizer:
         # Assign canonical levels by category
         # 0: sentinel, 1: NodeTypes, 2: Rules, 3: Instances, 4: Children of Instances
         def _is_nodetype(n: Node) -> bool:
+            # Treat Class_ImplementsType.Proto_Type as type nodes
             try:
-                return isinstance(n, NodeType)
+                from faebryk.core.type import Class_ImplementsType
+
+                return isinstance(n, Class_ImplementsType.Proto_Type)
             except Exception:
                 return False
 
         def _is_rule(n: Node) -> bool:
+            # MakeChild nodes in the type graph
             try:
-                return isinstance(n, Rule)
+                from faebryk.core.type import Class_MakeChild
+
+                return isinstance(n, Class_MakeChild.Proto_MakeChild)
             except Exception:
                 return False
 
         def _is_instance(n: Node) -> bool:
-            # instance: not NodeType/Rule and has a type connection to a NodeType
+            # Instance nodes have an is_type hierarchical GIF connected to a type's instances
             if _is_nodetype(n) or _is_rule(n):
                 return False
             try:
-                type_edges = (
-                    n.type.get_gif_edges() if hasattr(n, "type") and n.type else []
-                )
+                is_type_gif = getattr(n, "is_type", None)
+                if is_type_gif is None:
+                    return False
+                parent = is_type_gif.get_parent()
+                return parent is not None
             except Exception:
-                type_edges = []
-            return any(_is_nodetype(g.node) for g in type_edges)
+                return False
 
         # precompute instance set
         instance_set: set[Node] = {n for n in self.nodes if _is_instance(n)}
@@ -738,16 +602,18 @@ class InteractiveTypeGraphVisualizer:
 
             # Outline color by type: NodeType -> black, Rule -> red, Instances/others -> blue
             try:
-                is_nodetype = isinstance(n, NodeType)
+                from faebryk.core.type import (
+                    Class_ImplementsType,
+                    Class_MakeChild,
+                    Class_ChildReference,
+                )
+
+                is_nodetype = isinstance(n, Class_ImplementsType.Proto_Type)
+                is_rule = isinstance(n, Class_MakeChild.Proto_MakeChild)
+                is_childref = isinstance(n, Class_ChildReference.Proto_ChildReference)
             except Exception:
                 is_nodetype = False
-            try:
-                is_rule = isinstance(n, Rule)
-            except Exception:
                 is_rule = False
-            try:
-                is_childref = isinstance(n, ChildRef)
-            except Exception:
                 is_childref = False
 
             if is_nodetype:
@@ -830,8 +696,13 @@ class InteractiveTypeGraphVisualizer:
                 elif a.name == "rules" or b.name == "rules":
                     edge_color = "#d33"  # rule connections
                     edge_width = 1.5
-                elif a.name == "type" or b.name == "type":
-                    edge_color = "#2ca02c"  # type connections
+                elif (
+                    a.name == "is_type"
+                    or b.name == "is_type"
+                    or a.name == "instances"
+                    or b.name == "instances"
+                ):
+                    edge_color = "#2ca02c"  # type-instance connections
                     edge_width = 1.5
                 elif a.name == "connections" or b.name == "connections":
                     edge_color = "#1f77b4"  # connections interfaces -> blue
@@ -1131,7 +1002,7 @@ def visualize_type_graph(root: Node, figsize: tuple[int, int] = (20, 14)) -> Non
 
 
 # Start visualization from type_sentinel
-visualize_type_graph(type_sentinel)
+visualize_type_graph(Type_ImplementsType)
 # children = type_resistor.get_children(True, types=Rule)
 # for child in children:
 #     print(type(child))
