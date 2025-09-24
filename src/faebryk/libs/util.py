@@ -1303,6 +1303,34 @@ class Tree[T](dict[T, "Tree[T]"]):
 
         return out
 
+    def pretty_print(
+        self, node_renderer: Callable[[T], str] = lambda n: repr(n)
+    ) -> str:
+        def draw(tree: "Tree[T]", prefix: str, lines: list[str]) -> None:
+            items = list(tree.items())
+            for idx, (node, subtree) in enumerate(items):
+                is_last = idx == len(items) - 1
+                connector = "└── " if is_last else "├── "
+                lines.append(prefix + connector + node_renderer(node))
+                if subtree:
+                    child_prefix = prefix + ("    " if is_last else "│   ")
+                    draw(subtree, child_prefix, lines)
+
+        items = list(self.items())
+        if not items:
+            return ""
+
+        lines: list[str] = []
+        if len(items) == 1:
+            node, subtree = items[0]
+            lines.append(node_renderer(node))
+            if subtree:
+                draw(subtree, "", lines)
+        else:
+            draw(self, "", lines)
+
+        return "\n".join(lines) + "\n"
+
     def copy(self) -> "Tree[T]":
         return Tree({k: v.copy() for k, v in self.items()})
 
