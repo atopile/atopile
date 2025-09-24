@@ -8,8 +8,8 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.pcb import Xy
-from faebryk.core.zig.schematic import (
+from faebryk.core.zig.gen.sexp.pcb import Xy
+from faebryk.core.zig.gen.sexp.schematic import (
     Arc,
     Fill,
     PinNames,

@@ -2,11 +2,13 @@ const std = @import("std");
 
 const py_lib_name = "pyzig";
 
-fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
+const ModuleMap = std.StringArrayHashMap(*std.Build.Module);
+
+fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
     // Build a small executable that generates the pyi files
     const pyi_exe = b.addExecutable(.{
         .name = "pyi",
-        .root_source_file = b.path("src/sexp/pyi.zig"),
+        .root_source_file = b.path("src/python/pyi.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -14,11 +16,11 @@ fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
     });
-    const sexp_mod = b.addModule("sexp", .{
-        .root_source_file = b.path("src/sexp/lib.zig"),
-    });
     pyi_exe.root_module.addImport("pyzig", pyzig_mod);
-    pyi_exe.root_module.addImport("sexp", sexp_mod);
+
+    for (modules.keys()) |name| {
+        pyi_exe.root_module.addImport(name, modules.get(name).?);
+    }
 
     // Run the executable to generate pyi files
     const run_gen = b.addRunArtifact(pyi_exe);
@@ -34,18 +36,16 @@ fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
 
 fn addPythonExtension(
     b: *std.Build,
+    modules: ModuleMap,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     python_include: []const u8,
     python_lib_opt: ?[]const u8,
     python_lib_dir_opt: ?[]const u8,
 ) void {
-    // Check if we should use auto-generated bindings
-    const root_file = "src/sexp/py.zig";
-
     const python_ext = b.addSharedLibrary(.{
         .name = py_lib_name,
-        .root_source_file = b.path(root_file),
+        .root_source_file = b.path("src/python/py.zig"),
         .target = target,
         .optimize = optimize,
         .pic = true,
@@ -54,11 +54,11 @@ fn addPythonExtension(
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
     });
-    const sexp_mod = b.addModule("sexp", .{
-        .root_source_file = b.path("src/sexp/lib.zig"),
-    });
     python_ext.root_module.addImport("pyzig", pyzig_mod);
-    python_ext.root_module.addImport("sexp", sexp_mod);
+
+    for (modules.keys()) |name| {
+        python_ext.root_module.addImport(name, modules.get(name).?);
+    }
 
     python_ext.addIncludePath(.{ .cwd_relative = python_include });
 
@@ -91,50 +91,25 @@ fn addPythonExtension(
     });
 
     // Generate pyi file at build time (no Python needed!)
-    const pyi_step = build_pyi(b, target, optimize);
+    const pyi_step = build_pyi(b, modules, target, optimize);
 
     const python_ext_step = b.step("python-ext", "Build Python extension module");
     python_ext_step.dependOn(&install_python_ext.step);
     python_ext_step.dependOn(pyi_step);
 }
 
-fn build_pyzig(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
-    const lib_mod = b.createModule(.{
-        .root_source_file = b.path("src/pyzig/demo/root.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // Create library build step (optional, not part of default)
-    const lib = b.addLibrary(.{
-        .linkage = .static,
-        .name = py_lib_name,
-        .root_module = lib_mod,
-    });
-    const lib_step = b.step("lib", "Build static library");
-    lib_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
-
-    // Creates a step for unit testing. This only builds the test executable
-    // but does not run it.
-    const lib_unit_tests = b.addTest(.{
-        .root_module = lib_mod,
-    });
-
-    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
-
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
-    const test_step = b.step("test-pyzig", "Run unit tests");
-    test_step.dependOn(&run_lib_unit_tests.step);
-
-    // Add Python extension if options are provided
+fn build_python_module(
+    b: *std.Build,
+    modules: ModuleMap,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
     const python_include = b.option([]const u8, "python-include", "Python include directory path");
     const python_lib = b.option([]const u8, "python-lib", "Python library name (Windows only; e.g., python313)");
     const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
 
     if (python_include) |include_path| {
-        addPythonExtension(b, target, optimize, include_path, python_lib, python_lib_dir);
+        addPythonExtension(b, modules, target, optimize, include_path, python_lib, python_lib_dir);
     }
 }
 
@@ -142,14 +117,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Build a library from the source files
-    const lib = b.addStaticLibrary(.{
-        .name = "sexp",
+    _ = b.addModule("sexp", .{
         .root_source_file = b.path("src/sexp/lib.zig"),
-        .target = target,
-        .optimize = optimize,
     });
-    b.installArtifact(lib);
+    _ = b.addModule("graph", .{
+        .root_source_file = b.path("src/graph/lib.zig"),
+    });
 
-    build_pyzig(b, target, optimize);
+    build_python_module(b, b.modules, target, optimize);
 }

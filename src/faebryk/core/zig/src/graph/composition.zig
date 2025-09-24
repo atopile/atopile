@@ -38,14 +38,15 @@ pub const EdgeComposition = struct {
     pub fn get_child_node(E: EdgeReference) NodeReference {
         return E.to;
     }
-    fn get_child_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
+
+    pub fn get_child_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
         if (Node.is(edge.to, node)) {
             return null;
         }
         return get_child_node(edge);
     }
 
-    fn get_parent_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
+    pub fn get_parent_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
         if (Node.is(edge.from, node)) {
             return null;
         }
