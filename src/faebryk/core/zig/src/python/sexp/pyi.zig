@@ -17,19 +17,28 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
     const file = try std.fs.cwd().createFile(file_path, .{});
     defer file.close();
 
+    const import_root = "from faebryk.core.zig.gen.sexp";
+
     // Hack: Footprint imports some types from pcb
     if (std.mem.eql(u8, name, "footprint")) {
-        try file.writeAll("from faebryk.core.zig.pcb import Xyr, Property, FpText, Line, Arc, Circle, Rect, Polygon, Pad, Model, E_Attr\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".pcb import Xyr, Property, FpText, Line, Arc, Circle, Rect, Polygon, Pad, Model, E_Attr\n");
     } else if (std.mem.eql(u8, name, "symbol")) {
-        try file.writeAll("from faebryk.core.zig.schematic import Symbol\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".schematic import Symbol\n");
     } else if (std.mem.eql(u8, name, "schematic")) {
-        try file.writeAll("from faebryk.core.zig.pcb import Xy, Xyr, Wh, Effects\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".pcb import Xy, Xyr, Wh, Effects\n");
     } else if (std.mem.eql(u8, name, "footprint_v5")) {
-        try file.writeAll("from faebryk.core.zig.pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr, E_Attr\n");
-        try file.writeAll("from faebryk.core.zig.footprint import Tags\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".pcb import FpText, ModelXyz, Pad, Polygon, Property, Xy, Xyr, E_Attr\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".footprint import Tags\n");
     } else if (std.mem.eql(u8, name, "symbol_v6")) {
-        try file.writeAll("from faebryk.core.zig.pcb import Xy\n");
-        try file.writeAll("from faebryk.core.zig.schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Property, PinNames, Arc\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".pcb import Xy\n");
+        try file.writeAll(import_root);
+        try file.writeAll(".schematic import Polyline, Rect, SymbolPin, Fill, Stroke, Property, PinNames, Arc\n");
     }
     try file.writeAll(content);
 
@@ -40,17 +49,7 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
     try file.writeAll(std.fmt.comptimePrint("def dumps(obj: {s}) -> str: ...\n", .{typename}));
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    // Get output directory from command line args
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
-
-    const output_dir = if (args.len > 1) args[1] else "zig-out/lib";
-
+pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8) !void {
     // Ensure output directory exists
     std.fs.cwd().makePath(output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;

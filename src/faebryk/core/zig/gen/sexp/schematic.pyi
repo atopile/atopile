@@ -8,7 +8,7 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.pcb import Effects, Xy, Xyr
+from faebryk.core.zig.gen.sexp.pcb import Effects, Xy, Xyr
 
 # Dirty hack to not error in ruff check
 type Allocator = Any

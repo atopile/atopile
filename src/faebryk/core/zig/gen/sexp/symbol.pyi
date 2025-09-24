@@ -8,7 +8,7 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.schematic import Symbol
+from faebryk.core.zig.gen.sexp.schematic import Symbol
 
 # Dirty hack to not error in ruff check
 type Allocator = Any

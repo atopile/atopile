@@ -7,15 +7,14 @@ const bind = pyzig.pyzig;
 
 // Generic module generation function
 fn generateModule(
-    comptime name: []const u8,
-    comptime module_name: [:0]const u8,
+    comptime name: [:0]const u8,
     comptime T: type,
     comptime FileType: type,
-    comptime has_loads_dumps: bool,
 ) type {
     return struct {
         // Store reference to the registered File type
         var registered_file_type: ?*py.PyTypeObject = null;
+        const name_ = name;
 
         // Create a custom module binding that uses the correct module name prefix
         const ModuleBinding = struct {
@@ -103,7 +102,7 @@ fn generateModule(
 
                             if (is_type_name) {
                                 // Generate bindings for this struct with the correct module name
-                                const full_name = module_name ++ "." ++ decl.name;
+                                const full_name = name_ ++ "." ++ decl.name;
                                 const name_z = full_name ++ "\x00";
                                 const binding = bind.wrap_in_python(inner_type, name_z);
 
@@ -125,7 +124,7 @@ fn generateModule(
                                 bind.registerTypeObject(type_name_z, &binding.type_object);
 
                                 // Store reference to the File type if it matches
-                                if (has_loads_dumps and inner_type == FileType) {
+                                if (inner_type == FileType) {
                                     registered_file_type = &binding.type_object;
                                 }
                             }
@@ -137,7 +136,7 @@ fn generateModule(
         };
 
         // Only generate File bindings if loads/dumps are needed
-        const FileBinding = if (has_loads_dumps) blk: {
+        const FileBinding = blk: {
             // Get the type name of FileType (e.g., "PcbFile", "FootprintFile")
             const type_info = @typeInfo(FileType);
             const type_simple_name = if (type_info == .@"struct")
@@ -160,12 +159,12 @@ fn generateModule(
                 type_simple_name;
 
             // Create full type name like "pyzig.pcb.PcbFile"
-            const full_type_name = module_name ++ "." ++ struct_name;
+            const full_type_name = name_ ++ "." ++ struct_name;
             break :blk bind.wrap_in_python(FileType, full_type_name);
-        } else void;
+        };
 
         // Module methods - loads/dumps if applicable
-        var methods = if (has_loads_dumps) blk: {
+        var methods = blk: {
             break :blk [_]py.PyMethodDef{
                 .{
                     .ml_name = "loads",
@@ -181,14 +180,12 @@ fn generateModule(
                 },
                 py.ML_SENTINEL,
             };
-        } else [_]py.PyMethodDef{
-            py.ML_SENTINEL,
         };
 
         // Module definition
         var module_def = py.PyModuleDef{
             .m_base = .{},
-            .m_name = module_name,
+            .m_name = name_,
             .m_doc = "Python bindings module",
             .m_size = -1,
             .m_methods = &methods,
@@ -197,11 +194,6 @@ fn generateModule(
         // Python wrapper for loads function
         fn py_loads(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             _ = self;
-
-            if (!has_loads_dumps) {
-                py.PyErr_SetString(py.PyExc_NotImplementedError, "loads not implemented for this module");
-                return null;
-            }
 
             // Parse the string argument
             const str_ptr = py.PyUnicode_AsUTF8(args);
@@ -244,7 +236,8 @@ fn generateModule(
                 const msg = if (ctx) |c| blk: {
                     const field_info = if (c.field_name) |f|
                         std.fmt.allocPrint(std.heap.c_allocator, " field '{s}'", .{f}) catch ""
-                    else "";
+                    else
+                        "";
                     const has_loc = c.line != null;
                     const loc = if (has_loc) std.fmt.allocPrint(std.heap.c_allocator, " at {d}:{?d}", .{ c.line.?, c.column }) catch "" else "";
                     const detail = c.message orelse "";
@@ -338,11 +331,6 @@ fn generateModule(
         fn py_dumps(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             _ = self;
 
-            if (!has_loads_dumps) {
-                py.PyErr_SetString(py.PyExc_NotImplementedError, "dumps not implemented for this module");
-                return null;
-            }
-
             // args should be a File object
             if (args == null) {
                 py.PyErr_SetString(py.PyExc_TypeError, "dumps() requires a file argument");
@@ -379,17 +367,22 @@ fn generateModule(
             return null;
         }
 
-        pub fn createModule() ?*py.PyObject {
+        pub fn addToModule(root: *py.PyObject) ?*py.PyObject {
             // Create the module
             const module = py.PyModule_Create2(&module_def, 1013);
             if (module == null) {
-                py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to create {s} module", .{name}));
+                py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to create {s} module", .{name_}));
                 return null;
             }
 
             // Register all structs in the module
             if (ModuleBinding.register_all(module) < 0) {
-                py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to register {s} types", .{name}));
+                py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to register {s} types", .{name_}));
+                return null;
+            }
+
+            if (py.PyModule_AddObject(root, name_, module) < 0) {
+                py.PyErr_SetString(py.PyExc_ValueError, std.fmt.comptimePrint("Failed to add {s} submodule", .{name_}));
                 return null;
             }
 
@@ -399,15 +392,15 @@ fn generateModule(
 }
 
 // Generate modules using the generic function
-const PcbModule = generateModule("pcb", "pyzig.pcb", sexp.kicad.pcb, sexp.kicad.pcb.PcbFile, true);
-const FootprintModule = generateModule("footprint", "pyzig.footprint", sexp.kicad.footprint, sexp.kicad.footprint.FootprintFile, true);
-const NetlistModule = generateModule("netlist", "pyzig.netlist", sexp.kicad.netlist, sexp.kicad.netlist.NetlistFile, true);
-const FpLibTableModule = generateModule("fp_lib_table", "pyzig.fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile, true);
-const SymbolModule = generateModule("symbol", "pyzig.symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile, true);
-const SchematicModule = generateModule("schematic", "pyzig.schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile, true);
+const PcbModule = generateModule("pcb", sexp.kicad.pcb, sexp.kicad.pcb.PcbFile);
+const FootprintModule = generateModule("footprint", sexp.kicad.footprint, sexp.kicad.footprint.FootprintFile);
+const NetlistModule = generateModule("netlist", sexp.kicad.netlist, sexp.kicad.netlist.NetlistFile);
+const FpLibTableModule = generateModule("fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile);
+const SymbolModule = generateModule("symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile);
+const SchematicModule = generateModule("schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile);
 
-const FootprintV5Module = generateModule("footprint_v5", "pyzig.footprint_v5", sexp.kicad.v5.footprint, sexp.kicad.v5.footprint.FootprintFile, true);
-const SymbolV6Module = generateModule("symbol_v6", "pyzig.symbol_v6", sexp.kicad.v6.symbol, sexp.kicad.v6.symbol.SymbolFile, true);
+const FootprintV5Module = generateModule("footprint_v5", sexp.kicad.v5.footprint, sexp.kicad.v5.footprint.FootprintFile);
+const SymbolV6Module = generateModule("symbol_v6", sexp.kicad.v6.symbol, sexp.kicad.v6.symbol.SymbolFile);
 
 // Add more modules as needed
 
@@ -419,97 +412,30 @@ var main_methods = [_]py.PyMethodDef{
 // Main module definition
 var main_module_def = py.PyModuleDef{
     .m_base = .{},
-    .m_name = "pyzig",
+    .m_name = "sexp",
     .m_doc = "Auto-generated Python extension for Zig functions",
     .m_size = -1,
     .m_methods = &main_methods,
 };
 
 // Module initialization function
-export fn PyInit_pyzig() ?*py.PyObject {
+pub fn make_python_module() ?*py.PyObject {
     // Create the main module
     const module = py.PyModule_Create2(&main_module_def, 1013);
     if (module == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, "Failed to create sexp module");
         return null;
     }
 
-    // Create and add the pcb submodule
-    const pcb_module = PcbModule.createModule();
-    if (pcb_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "pcb", pcb_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add pcb submodule");
-        return null;
-    }
+    _ = PcbModule.addToModule(module.?);
+    _ = FootprintModule.addToModule(module.?);
+    _ = NetlistModule.addToModule(module.?);
+    _ = FpLibTableModule.addToModule(module.?);
+    _ = SymbolModule.addToModule(module.?);
+    _ = SchematicModule.addToModule(module.?);
 
-    // Create and add the footprint submodule
-    const footprint_module = FootprintModule.createModule();
-    if (footprint_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "footprint", footprint_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add footprint submodule");
-        return null;
-    }
-
-    // Create and add the netlist submodule
-    const netlist_module = NetlistModule.createModule();
-    if (netlist_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "netlist", netlist_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add netlist submodule");
-        return null;
-    }
-
-    // Create and add the fp_lib_table submodule
-    const fp_lib_table_module = FpLibTableModule.createModule();
-    if (fp_lib_table_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "fp_lib_table", fp_lib_table_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add fp_lib_table submodule");
-        return null;
-    }
-
-    const symbol_module = SymbolModule.createModule();
-    if (symbol_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "symbol", symbol_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add symbol submodule");
-        return null;
-    }
-
-    const schematic_module = SchematicModule.createModule();
-    if (schematic_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "schematic", schematic_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add schematic submodule");
-        return null;
-    }
-
-    const footprint_v5_module = FootprintV5Module.createModule();
-    if (footprint_v5_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "footprint_v5", footprint_v5_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add footprint_v5 submodule");
-        return null;
-    }
-
-    const symbol_v6_module = SymbolV6Module.createModule();
-    if (symbol_v6_module == null) {
-        return null;
-    }
-    if (py.PyModule_AddObject(module, "symbol_v6", symbol_v6_module) < 0) {
-        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add symbol_v6 submodule");
-        return null;
-    }
-
-    // Add more modules as needed
+    _ = FootprintV5Module.addToModule(module.?);
+    _ = SymbolV6Module.addToModule(module.?);
 
     return module;
 }
