@@ -26,6 +26,8 @@ fn build_pyi(b: *std.Build, modules: ModuleMap, target: std.Build.ResolvedTarget
     const run_gen = b.addRunArtifact(pyi_exe);
     // Pass the output directory as an argument
     run_gen.addArg(b.getInstallPath(.lib, "."));
+    // Pass source directory for manual pyi files
+    run_gen.addArg(b.path("src/python/").getPath(b));
 
     // Create a step that ensures the output directory exists
     const make_dir_step = b.addSystemCommand(&.{ "mkdir", "-p", b.getInstallPath(.lib, ".") });

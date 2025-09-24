@@ -40,14 +40,14 @@ pub const EdgeComposition = struct {
     }
 
     pub fn get_child_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.equals(edge.target, node)) {
+        if (Node.is_same(edge.target, node)) {
             return null;
         }
         return get_child_node(edge);
     }
 
     pub fn get_parent_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.equals(edge.source, node)) {
+        if (Node.is_same(edge.source, node)) {
             return null;
         }
         return get_parent_node(edge);
@@ -78,7 +78,7 @@ pub const EdgeComposition = struct {
         };
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        return GraphView.visit_edges_of_type(bound_node, get_tid(), void, &visit, Visit.visit);
+        return bound_node.visit_edges_of_type(get_tid(), void, &visit, Visit.visit);
     }
 
     pub fn get_parent_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
@@ -97,7 +97,7 @@ pub const EdgeComposition = struct {
 
         var visit = Visit{ .bound_node = bound_node };
 
-        const result = GraphView.visit_edges_of_type(bound_node, get_tid(), graph.BoundEdgeReference, &visit, Visit.visit);
+        const result = bound_node.visit_edges_of_type(get_tid(), graph.BoundEdgeReference, &visit, Visit.visit);
         switch (result) {
             .OK => return result.OK,
             .EXHAUSTED => return null,
@@ -138,8 +138,8 @@ test "basic" {
 
     const parent_edge_bn2 = EdgeComposition.get_parent_edge(bn2);
     const parent_edge_bn3 = EdgeComposition.get_parent_edge(bn3);
-    try std.testing.expect(Node.equals(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), n1));
-    try std.testing.expect(Node.equals(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), n1));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), n1));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), n1));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn2.?.edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn3.?.edge), "child2"));
 
@@ -161,8 +161,8 @@ test "basic" {
 
     try std.testing.expectEqual(result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(visit.child_edges.items.len, 2);
-    try std.testing.expect(Node.equals(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), n2));
-    try std.testing.expect(Node.equals(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), n2));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
 

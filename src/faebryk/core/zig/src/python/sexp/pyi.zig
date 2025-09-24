@@ -49,7 +49,8 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
     try file.writeAll(std.fmt.comptimePrint("def dumps(obj: {s}) -> str: ...\n", .{typename}));
 }
 
-pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8) !void {
+pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir: []const u8) !void {
+    _ = source_dir;
     // Ensure output directory exists
     std.fs.cwd().makePath(output_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
