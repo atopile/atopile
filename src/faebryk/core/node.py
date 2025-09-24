@@ -878,11 +878,20 @@ class Node(ZNode):
                 if child.has_trait(trait)
             )
 
-    def get_first_child_of_type[U: Node](self, child_type: type[U]) -> U:
-        for level in self.get_tree(types=Node).iter_by_depth():
+    def get_first_child_of_type[U: Node](
+        self, child_type: type[U], direct_only: bool = False
+    ) -> U:
+        levels = (
+            [self.get_children(direct_only=True, types=child_type)]
+            if direct_only
+            else self.get_tree(types=Node).iter_by_depth()
+        )
+
+        for level in levels:
             for child in level:
                 if isinstance(child, child_type):
                     return child
+
         raise KeyErrorNotFound(f"No child of type {child_type} found")
 
     # ----------------------------------------------------------------------------------
