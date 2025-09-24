@@ -21,7 +21,7 @@ import dash_cytoscape as cyto
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
 
-from atopile.compiler import graph_types as ct
+from atopile.compiler import ir_types as ir
 from faebryk.core.node import Node
 from faebryk.exporters.visualize.interactive_params_base import Layout
 from faebryk.libs.util import typename
@@ -46,49 +46,49 @@ _GROUP_COLOURS = {
 
 _GROUP_TYPES: dict[str, tuple[type[Node], ...]] = {
     "structure": (
-        ct.CompilationUnit,
-        ct.File,
-        ct.Scope,
-        ct.BlockDefinition,
-        ct.TextFragment,
+        ir.CompilationUnit,
+        ir.File,
+        ir.Scope,
+        ir.BlockDefinition,
+        ir.TextFragment,
     ),
     "statement": (
-        ct.AssignNewStmt,
-        ct.AssignQuantityStmt,
-        ct.DeclarationStmt,
-        ct.PragmaStmt,
-        ct.ImportStmt,
-        ct.ConnectStmt,
-        ct.DirectedConnectStmt,
-        ct.CumAssignStmt,
-        ct.SetAssignStmt,
-        ct.RetypeStmt,
-        ct.SignaldefStmt,
-        ct.AssertStmt,
-        ct.PassStmt,
-        ct.ForStmt,
-        ct.PinDeclaration,
-        ct.StringStmt,
+        ir.AssignNewStmt,
+        ir.AssignQuantityStmt,
+        ir.DeclarationStmt,
+        ir.PragmaStmt,
+        ir.ImportStmt,
+        ir.ConnectStmt,
+        ir.DirectedConnectStmt,
+        ir.CumAssignStmt,
+        ir.SetAssignStmt,
+        ir.RetypeStmt,
+        ir.SignaldefStmt,
+        ir.AssertStmt,
+        ir.PassStmt,
+        ir.ForStmt,
+        ir.PinDeclaration,
+        ir.StringStmt,
     ),
     "reference": (
-        ct.FieldRef,
-        ct.FieldRefPart,
-        ct.TypeRef,
-        ct.Template,
-        ct.TemplateArg,
+        ir.FieldRef,
+        ir.FieldRefPart,
+        ir.TypeRef,
+        ir.Template,
+        ir.TemplateArg,
     ),
     "literal": (
-        ct.Quantity,
-        ct.BilateralQuantity,
-        ct.BoundedQuantity,
-        ct.String,
-        ct.Number,
-        ct.Boolean,
+        ir.Quantity,
+        ir.BilateralQuantity,
+        ir.BoundedQuantity,
+        ir.String,
+        ir.Number,
+        ir.Boolean,
     ),
     "support": (
-        ct.SourceChunk,
-        ct.Whitespace,
-        ct.Comment,
+        ir.SourceChunk,
+        ir.Whitespace,
+        ir.Comment,
     ),
 }
 
@@ -111,46 +111,17 @@ def _trim(text: str, limit: int = 60) -> str:
 
 def _extra_lines(node: Node) -> list[str]:
     match node:
-        case ct.SourceChunk() as chunk:
+        case ir.SourceChunk() as chunk:
             return (
                 [f"text={_trim(chunk.text.replace('\n', '\\n'))}"] if chunk.text else []
             )
-        case ct.PragmaStmt() as pragma:
-            return [f"pragma={_trim(pragma.pragma)}"]
-        case ct.ImportStmt() as imp:
-            return [f"path={_trim(str(imp.path))}"] if imp.path else []
-        case ct.AssignNewStmt() as stmt:
-            extra: list[str] = []
-            if stmt.new_count is not None:
-                extra.append(f"count={stmt.new_count}")
-            if stmt.template is not None:
-                extra.append("template")
-            return extra
-        case ct.AssignQuantityStmt() as stmt:
-            return ["quantity"] if stmt.quantity else []
-        case ct.Quantity() as quantity:
-            return [f"value={quantity.value}"]
-        case ct.TypeRef() as tref:
-            return [f"name={tref.name}"]
-        case ct.FieldRefPart() as part:
-            extra = [f"name={part.name}"]
-            if part.key is not None:
-                extra.append(f"key={part.key}")
-            return extra
-        case ct.String() as s:
-            return [f"value={_trim(s.value)}"]
-        case ct.Number() as n:
-            return [f"value={n.value}"]
-        case ct.Boolean() as b:
-            return [f"value={b.value}"]
         case _:
             return []
 
 
 def _node_label(node: Node) -> str:
-    name = node.get_name(accept_no_parent=True) or "<anon>"
     type_name = typename(node)
-    parts = [f"{name} ({type_name})"]
+    parts = [f"{type_name}"]
     parts.extend(_extra_lines(node))
     return "\n".join(parts)
 
@@ -336,7 +307,7 @@ def _add_controls(app: Dash, layout: Layout) -> None:
         return current_layout
 
 
-def visualize_compiler_graph(root: Node, *, height: int | None = None) -> None:
+def visualize(root: Node, *, height: int | None = None) -> None:
     """Launch an interactive Dash visualizer for a compiler ``Node`` tree."""
 
     nodes, edges = _collect(root)
@@ -382,4 +353,4 @@ def visualize_compiler_graph(root: Node, *, height: int | None = None) -> None:
     app.run(jupyter_height=height or 1000)
 
 
-__all__ = ["visualize_compiler_graph"]
+__all__ = ["visualize"]
