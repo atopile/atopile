@@ -1,3 +1,3 @@
-const graph = @import("graph.zig");
-const composition = @import("composition.zig");
-const visitor = @import("visitor.zig");
+pub const graph = @import("graph.zig");
+pub const composition = @import("composition.zig");
+pub const visitor = @import("visitor.zig");

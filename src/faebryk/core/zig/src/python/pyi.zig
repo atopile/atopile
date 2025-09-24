@@ -1,5 +1,10 @@
 const std = @import("std");
-const sexp_pyi = @import("sexp/pyi.zig");
+
+fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, comptime T: type, comptime name: []const u8) !void {
+    const out = try std.fs.path.join(allocator, &.{ output_dir, name });
+    defer allocator.free(out);
+    try T.make_pyi(allocator, out);
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -22,7 +27,11 @@ pub fn main() !void {
         if (err != error.PathAlreadyExists) return err;
     };
 
-    const sexp_output_dir = try std.fs.path.join(allocator, &.{ output_dir, "sexp" });
-    defer allocator.free(sexp_output_dir);
-    try sexp_pyi.make_pyi(allocator, sexp_output_dir);
+    // TODO: instead of giving responsibility to modules just directly use pyigenerator here
+    // But first need to make pyigenerator better to do more fancy stuff
+
+    const sexp_pyi = @import("sexp/pyi.zig");
+    try make_pyi(allocator, output_dir, sexp_pyi, "sexp");
+    const graph_pyi = @import("graph/pyi.zig");
+    try make_pyi(allocator, output_dir, graph_pyi, "graph");
 }
