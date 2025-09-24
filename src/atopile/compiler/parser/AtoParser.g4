@@ -31,7 +31,6 @@ simple_stmts
     ;
 simple_stmt
     : import_stmt
-    | dep_import_stmt
     | assign_stmt
     | cum_assign_stmt
     | set_assign_stmt
@@ -53,7 +52,7 @@ compound_stmt
     ;
 
 blockdef
-    : blocktype name blockdef_super? COLON block
+    : blocktype type_reference blockdef_super? COLON block
     ;
 // TODO @v0.4 consider ()
 blockdef_super
@@ -68,14 +67,8 @@ block
     | NEWLINE INDENT stmt+ DEDENT
     ;
 
-// TODO: @v0.4 remove the deprecated import form
-dep_import_stmt
-    : IMPORT type_reference FROM string
-    ;
 import_stmt
-    : (FROM string)? IMPORT type_reference (
-        COMMA type_reference
-    )*
+    : (FROM string)? IMPORT type_reference
     ;
 
 declaration_stmt
@@ -121,7 +114,10 @@ retype_stmt
 
 directed_connect_stmt
     // only one type of SPERM per stmt allowed. both here for better error messages
-    : bridgeable ((SPERM | LSPERM) bridgeable)+
+    : bridgeable (SPERM | LSPERM) (
+        bridgeable
+        | directed_connect_stmt
+    )
     ;
 connect_stmt
     : mif WIRE mif
@@ -330,7 +326,7 @@ field_reference
     : field_reference_part (DOT field_reference_part)* pin_reference_end?
     ;
 type_reference
-    : name (DOT name)*
+    : name
     ;
 // TODO better unit
 unit
