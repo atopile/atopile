@@ -100,15 +100,15 @@ def load():
     pyzig = importlib.util.module_from_spec(spec)
     sys.modules["pyzig_local"] = pyzig  # Use different name to avoid conflicts
     spec.loader.exec_module(pyzig)
+    return pyzig
 
 
 # Fallback to editable build-on-import
 if is_editable_install():
     compile_zig()
-    load()
-    import pyzig_local  # type: ignore
+    pyzig = load()
 
-    _load_module(["faebryk", "core", "zig"], pyzig_local)
+    _load_module(["faebryk", "core", "zig"], pyzig)
 else:
     import pyzig
 
