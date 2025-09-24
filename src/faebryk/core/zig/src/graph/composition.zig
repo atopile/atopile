@@ -32,22 +32,22 @@ pub const EdgeComposition = struct {
     }
 
     pub fn get_parent_node(E: EdgeReference) NodeReference {
-        return E.from;
+        return E.source;
     }
 
     pub fn get_child_node(E: EdgeReference) NodeReference {
-        return E.to;
+        return E.target;
     }
 
     pub fn get_child_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is(edge.to, node)) {
+        if (Node.equals(edge.target, node)) {
             return null;
         }
         return get_child_node(edge);
     }
 
     pub fn get_parent_of(edge: EdgeReference, node: NodeReference) ?NodeReference {
-        if (Node.is(edge.from, node)) {
+        if (Node.equals(edge.source, node)) {
             return null;
         }
         return get_parent_node(edge);
@@ -138,8 +138,8 @@ test "basic" {
 
     const parent_edge_bn2 = EdgeComposition.get_parent_edge(bn2);
     const parent_edge_bn3 = EdgeComposition.get_parent_edge(bn3);
-    try std.testing.expect(Node.is(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), n1));
-    try std.testing.expect(Node.is(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), n1));
+    try std.testing.expect(Node.equals(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), n1));
+    try std.testing.expect(Node.equals(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), n1));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn2.?.edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn3.?.edge), "child2"));
 
@@ -161,8 +161,8 @@ test "basic" {
 
     try std.testing.expectEqual(result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(visit.child_edges.items.len, 2);
-    try std.testing.expect(Node.is(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), n2));
-    try std.testing.expect(Node.is(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
+    try std.testing.expect(Node.equals(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), n2));
+    try std.testing.expect(Node.equals(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
 
