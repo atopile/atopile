@@ -4,7 +4,7 @@ const visitor = @import("visitor.zig");
 
 const NodeRefMap = struct {
     pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
-        return Node.equals(a, b);
+        return Node.is_same(a, b);
     }
 
     pub fn hash(_: @This(), adapted_key: NodeReference) u64 {
@@ -13,6 +13,20 @@ const NodeRefMap = struct {
 
     pub fn T(V: type) type {
         return std.HashMap(NodeReference, V, NodeRefMap, std.hash_map.default_max_load_percentage);
+    }
+};
+
+const EdgeRefMap = struct {
+    pub fn eql(_: @This(), a: EdgeReference, b: EdgeReference) bool {
+        return Edge.is_same(a, b);
+    }
+
+    pub fn hash(_: @This(), adapted_key: EdgeReference) u64 {
+        return adapted_key.uuid;
+    }
+
+    pub fn T(V: type) type {
+        return std.HashMap(EdgeReference, V, EdgeRefMap, std.hash_map.default_max_load_percentage);
     }
 };
 
@@ -177,7 +191,7 @@ pub const Node = struct {
         self._ref_count.allocator.destroy(self);
     }
 
-    pub fn equals(N1: NodeReference, N2: NodeReference) bool {
+    pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
         return UUID.equals(N1.uuid, N2.uuid);
     }
 
@@ -247,11 +261,31 @@ pub const Edge = struct {
     pub fn is_instance(E: EdgeReference, T: Type) bool {
         return E.edge_type == T;
     }
+
+    pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
+        return UUID.equals(E1.uuid, E2.uuid);
+    }
 };
 
 pub const BoundNodeReference = struct {
     node: NodeReference,
     g: *GraphView,
+
+    pub fn get_edges(self: *const @This()) ?*const std.ArrayList(EdgeReference) {
+        return self.g.get_edges(self.node);
+    }
+
+    pub fn get_edges_of_type(self: *const @This(), T: Edge.Type) ?*const std.ArrayList(EdgeReference) {
+        return self.g.get_edges_of_type(self.node, T);
+    }
+
+    pub fn visit_edges(self: *const @This(), comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+        return self.g.visit_edges(self.node, T, ctx, f);
+    }
+
+    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.Type, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+        return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f);
+    }
 };
 
 pub const BoundEdgeReference = struct {
@@ -324,7 +358,7 @@ pub const GraphView = struct {
         g.nodes.deinit();
     }
 
-    pub fn insert_node(g: *GraphView, node: NodeReference) !BoundNodeReference {
+    pub fn insert_node(g: *@This(), node: NodeReference) !BoundNodeReference {
         try g.nodes.append(node);
         node._ref_count.inc(g);
 
@@ -338,7 +372,15 @@ pub const GraphView = struct {
         };
     }
 
-    pub fn insert_edge(g: *GraphView, edge: EdgeReference) !BoundEdgeReference {
+    pub fn bind(g: *@This(), node: NodeReference) BoundNodeReference {
+        // TODO maybe checks
+        return BoundNodeReference{
+            .node = node,
+            .g = g,
+        };
+    }
+
+    pub fn insert_edge(g: *@This(), edge: EdgeReference) !BoundEdgeReference {
         try g.edges.append(edge);
         edge._ref_count.inc(g);
 
@@ -363,23 +405,23 @@ pub const GraphView = struct {
         };
     }
 
-    pub fn get_edges(g: *GraphView, node: NodeReference) ?*const std.ArrayList(EdgeReference) {
+    pub fn get_edges(g: *@This(), node: NodeReference) ?*const std.ArrayList(EdgeReference) {
         return g.neighbors.getPtr(node);
     }
 
-    pub fn get_edges_of_type(g: *GraphView, node: NodeReference, T: Edge.Type) ?*const std.ArrayList(EdgeReference) {
+    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.Type) ?*const std.ArrayList(EdgeReference) {
         return g.neighbor_by_type.getPtr(node).?.getPtr(T);
     }
 
-    pub fn visit_edges(bound_node: BoundNodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    pub fn visit_edges(g: *@This(), node: NodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
-        const edges = bound_node.g.get_edges(bound_node.node);
+        const edges = g.get_edges(node);
         if (edges == null) {
             return Result{ .EXHAUSTED = {} };
         }
 
         for (edges.?.items) |edge| {
-            const bound_edge = BoundEdgeReference{ .edge = edge, .g = bound_node.g };
+            const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
             const result = f(ctx, bound_edge);
             switch (result) {
                 .CONTINUE => {},
@@ -393,15 +435,15 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn visit_edges_of_type(bound_node: BoundNodeReference, edge_type: Edge.Type, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.Type, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
-        const edges = bound_node.g.get_edges_of_type(bound_node.node, edge_type);
+        const edges = g.get_edges_of_type(node, edge_type);
         if (edges == null) {
             return Result{ .EXHAUSTED = {} };
         }
 
         for (edges.?.items) |edge| {
-            const bound_edge = BoundEdgeReference{ .edge = edge, .g = bound_node.g };
+            const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
             const result = f(ctx, bound_edge);
             switch (result) {
                 .CONTINUE => {},

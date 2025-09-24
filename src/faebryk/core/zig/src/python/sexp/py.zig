@@ -121,7 +121,7 @@ fn generateModule(
                                 // Register the type object globally for reuse
                                 const type_name = @typeName(inner_type);
                                 const type_name_z = type_name ++ "\x00";
-                                bind.registerTypeObject(type_name_z, &binding.type_object);
+                                pyzig.type_registry.registerTypeObject(type_name_z, &binding.type_object);
 
                                 // Store reference to the File type if it matches
                                 if (inner_type == FileType) {

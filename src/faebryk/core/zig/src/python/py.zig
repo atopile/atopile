@@ -55,6 +55,7 @@ export fn PyInit_pyzig() ?*py.PyObject {
     }
 
     _ = add_module(nested, "sexp", sexp_py) orelse return null;
+    _ = add_module(nested, "graph", graph_py) orelse return null;
     _ = add_module(root, "graph", graph_py) orelse return null;
 
     return root;

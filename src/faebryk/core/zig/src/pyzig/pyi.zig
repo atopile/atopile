@@ -271,6 +271,17 @@ pub const PyiGenerator = struct {
                                 try self.output.writer().print("None", .{});
                             }
                             try self.output.writer().print(": ...\n", .{});
+                        } else {
+                            try self.output.writer().print("    @staticmethod\n", .{});
+                            try self.output.writer().print("    def {s}(", .{decl.name});
+                            try self.generateFunctionParameters(fn_info, false, false);
+                            try self.output.writer().print(") -> ", .{});
+                            if (fn_info.return_type) |ret_type| {
+                                try self.writeZigTypeToPython(self.output.writer(), ret_type);
+                            } else {
+                                try self.output.writer().print("None", .{});
+                            }
+                            try self.output.writer().print(": ...\n", .{});
                         }
                     },
                     else => {},

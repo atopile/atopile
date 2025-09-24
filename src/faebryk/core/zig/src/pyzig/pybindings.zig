@@ -216,6 +216,11 @@ pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
 pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;
 pub extern fn PyUnicode_FromStringAndSize(str: [*c]const u8, size: isize) ?*PyObject;
 pub extern fn PyUnicode_AsUTF8(obj: ?*PyObject) ?[*:0]const u8;
+pub extern fn PyRun_StringFlags(code: [*:0]const u8, start: c_int, globals: ?*PyObject, locals: ?*PyObject, flags: ?*anyopaque) ?*PyObject;
+
+pub const Py_single_input: c_int = 256;
+pub const Py_file_input: c_int = 257;
+pub const Py_eval_input: c_int = 258;
 
 // Python constants
 pub extern var _Py_NoneStruct: PyObject;
