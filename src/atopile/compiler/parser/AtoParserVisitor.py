@@ -59,11 +59,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#dep_import_stmt.
-    def visitDep_import_stmt(self, ctx:AtoParser.Dep_import_stmtContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#import_stmt.
     def visitImport_stmt(self, ctx:AtoParser.Import_stmtContext):
         return self.visitChildren(ctx)
