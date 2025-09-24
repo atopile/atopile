@@ -3,6 +3,14 @@ const py = @import("pybindings.zig");
 const type_registry = @import("type_registry.zig");
 const util = @import("util.zig");
 
+// Auto-generated Python wrapper for a Zig struct
+pub fn PyObjectWrapper(comptime T: type) type {
+    return struct {
+        ob_base: py.PyObject_HEAD,
+        data: *T,
+    };
+}
+
 fn genZigAddress(comptime WrapperType: type, comptime T: type) type {
     const info = @typeInfo(T);
     if (info != .@"struct") {
@@ -27,6 +35,14 @@ fn genZigAddress(comptime WrapperType: type, comptime T: type) type {
             };
         }
     };
+}
+
+/// static init function that raises a typeerror
+fn initRaise(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+    _ = self;
+    _ = args;
+    py.PyErr_SetString(py.PyExc_TypeError, "Don't call __init__ on this type");
+    return null;
 }
 
 // Main comptime function to wrap a struct in Python bindings
@@ -69,90 +85,39 @@ pub fn wrap_in_python(comptime T: type, comptime override_name: ?[*:0]const u8) 
         };
     };
 }
-// Auto-generated Python wrapper for a Zig struct
-pub fn PyObjectWrapper(comptime T: type) type {
-    return struct {
-        ob_base: py.PyObject_HEAD,
-        data: *T,
-    };
-}
 
-// Wrap an entire module worth of structs
-pub fn wrap_in_python_module(comptime module: type) type {
+pub fn wrap_in_python_simple(comptime T: type) type {
     @setEvalBranchQuota(100000);
-    const module_info = @typeInfo(module);
-    if (module_info != .@"struct") {
-        @compileError("wrap_in_python_module expects a module (struct)");
+    const info = @typeInfo(T);
+    if (info != .@"struct") {
+        @compileError("wrap_in_python only supports structs");
     }
+    const exported_name = @typeName(T) ++ "\x00";
+
+    const WrapperType = PyObjectWrapper(T);
+
+    const genStruct = @import("genstruct.zig");
 
     return struct {
-        // Count how many structs we'll wrap
-        const struct_count = blk: {
-            var count: usize = 0;
-            for (module_info.@"struct".decls) |decl| {
-                const decl_value = @field(module, decl.name);
-                const decl_type = @TypeOf(decl_value);
-                const decl_info = @typeInfo(decl_type);
+        // store generated struct here, so function pointers to them persist
+        pub const generated_repr = genStruct.genStructRepr(WrapperType, T);
+        pub const generated_zig_address = genZigAddress(WrapperType, T);
 
-                if (decl_info == .type) {
-                    const inner_type = decl_value;
-                    const inner_info = @typeInfo(inner_type);
-                    if (inner_info == .@"struct") {
-                        // Check if it's a data struct (starts with uppercase)
-                        const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
-                        if (is_type_name) {
-                            count += 1;
-                        }
-                    }
-                }
-            }
-            break :blk count;
+        pub const generated_methods = [_]py.PyMethodDef{
+            generated_zig_address.method(),
+            py.ML_SENTINEL,
         };
 
-        // Register all bindings with Python
-        pub fn register_all(py_module: ?*py.PyObject) c_int {
-            // Process each declaration
-            inline for (module_info.@"struct".decls) |decl| {
-                const decl_value = @field(module, decl.name);
-                const decl_type = @TypeOf(decl_value);
-                const decl_info = @typeInfo(decl_type);
-
-                // Check if it's a type (struct)
-                if (decl_info == .type) {
-                    const inner_type = decl_value;
-                    const inner_info = @typeInfo(inner_type);
-                    if (inner_info == .@"struct") {
-                        // Check if it's a data struct (starts with uppercase, convention for types)
-                        const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
-
-                        if (is_type_name) {
-                            // Generate bindings for this struct
-                            const full_name = "pyzig." ++ decl.name;
-                            const name_z = full_name ++ "\x00";
-                            const binding = wrap_in_python(inner_type, name_z);
-
-                            // Register with Python
-                            if (py.PyType_Ready(&binding.type_object) < 0) {
-                                return -1;
-                            }
-
-                            binding.type_object.ob_base.ob_base.ob_refcnt += 1;
-                            const reg_name = decl.name ++ "\x00";
-                            if (py.PyModule_AddObject(py_module, reg_name, @ptrCast(&binding.type_object)) < 0) {
-                                binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
-                                return -1;
-                            }
-
-                            // Register the type object globally for reuse
-                            const type_name = @typeName(inner_type);
-                            const type_name_z = type_name ++ "\x00";
-                            type_registry.registerTypeObject(type_name_z, &binding.type_object);
-                        }
-                    }
-                }
-            }
-            return 0;
-        }
+        // The actual PyTypeObject
+        pub var type_object = py.PyTypeObject{
+            .ob_base = .{ .ob_base = .{ .ob_refcnt = 1, .ob_type = null }, .ob_size = 0 },
+            .tp_name = exported_name,
+            .tp_basicsize = @sizeOf(WrapperType),
+            .tp_repr = @ptrCast(&generated_repr.impl),
+            .tp_flags = py.Py_TPFLAGS_DEFAULT | py.Py_TPFLAGS_BASETYPE,
+            .tp_methods = @as([*]py.PyMethodDef, @ptrCast(@constCast(&generated_methods))),
+            .tp_init = @ptrCast(&initRaise),
+        };
     };
 }
 

@@ -100,6 +100,8 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                 } else {
                                     break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?any}\n", .{ field.name, field_value });
                                 }
+                            } else if (child_info == .pointer) {
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {*}\n", .{ field.name, field_value });
                             } else {
                                 break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?}\n", .{ field.name, field_value });
                             }

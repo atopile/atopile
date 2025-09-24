@@ -10,12 +10,14 @@ from typing import Callable
 Literal = int | float | str | bool
 
 class Node:
+    __init__: None
     @staticmethod
     def create(**attrs: Literal) -> Node: ...
     def get_attr(self, key: str) -> Literal | None: ...
     def is_same(self, other: Node) -> bool: ...
 
 class Edge:
+    __init__: None
     Type = int
 
     @staticmethod
@@ -41,6 +43,7 @@ class Edge:
     def is_same(self, other: Edge) -> bool: ...
 
 class BoundNode:
+    __init__: None
     @property
     def node(self) -> Node: ...
     @property
@@ -55,12 +58,14 @@ class BoundNode:
     ) -> None: ...
 
 class BoundEdge:
+    __init__: None
     @property
     def edge(self) -> Edge: ...
     @property
     def g(self) -> GraphView: ...
 
 class GraphView:
+    __init__: None
     def insert_node(self, node: Node) -> BoundNode: ...
     def insert_edge(self, edge: Edge) -> BoundEdge: ...
     def bind(self, node: Node) -> BoundNode: ...
