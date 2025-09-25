@@ -1,341 +1,22 @@
 """
-Defines and generates an AST graph from the ANTLR4-generated AST.
+Generates an AST graph from the ANTLR4-generated AST.
 
 Exists as a stop-gap until we move away from the ANTLR4 compiler front-end.
 """
 
 import itertools
 from collections.abc import Iterable
-from dataclasses import dataclass
-from decimal import Decimal
-from enum import StrEnum
 from pathlib import Path
 
 from antlr4 import ParserRuleContext
 from antlr4.TokenStreamRewriter import TokenStreamRewriter
 
+import atopile.compiler.ast_types as AST
 from atopile.compiler.parse import parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.node import Node
 from faebryk.libs.sets.numeric_sets import is_int
-
-
-@dataclass(order=True)
-class FileLocation:
-    start_line: int
-    start_col: int
-    end_line: int
-    end_col: int
-
-
-class AST:
-    """
-    Graph-based representation of an ato file, constructed by the parser.
-
-    Rules:
-    - Must contain all information to reconstruct the original file exactly, regardless
-      of syntactic validity.
-    - Invalid *structure* should be impossible to represent.
-    """
-
-    class SourceChunk(Node):
-        """
-        A context-free chunk of source code. May not be syntactically valid.
-        TODO: Only available in leaf types
-        """
-
-        text: str
-        file_location: FileLocation
-
-        def __init__(self, text: str, file_location: FileLocation) -> None:
-            super().__init__()
-            self.text = text
-            self.file_location = file_location
-
-    class ASTNode(Node): ...
-
-    class TypeRef(ASTNode):
-        name: str
-
-        def __init__(self, name: str) -> None:
-            super().__init__()
-            self.name = name
-
-    class ImportPath(ASTNode):
-        path: str
-
-        def __init__(self, path: str) -> None:
-            super().__init__()
-            self.path = path
-
-    class FieldRefPart(ASTNode):
-        name: str
-        key: int | None
-
-        def __init__(self, name: str, key: int | None = None) -> None:
-            super().__init__()
-            self.name = name
-            self.key = key
-
-    class FieldRef(ASTNode):
-        """Dotted field reference composed of parts, each with optional key."""
-
-        def __init__(self) -> None:
-            super().__init__()
-
-    class Quantity(ASTNode):
-        value: float
-        unit: str | None
-
-        def __init__(self, value: float, unit: str | None) -> None:
-            super().__init__()
-            self.unit = unit
-            self.value = value
-
-    class String(ASTNode):
-        value: str
-
-        def __init__(self, value: str) -> None:
-            super().__init__()
-            self.value = value
-
-    class Number(ASTNode):
-        value: Decimal
-
-        def __init__(self, value: Decimal) -> None:
-            super().__init__()
-            self.value = value
-
-    class Boolean(ASTNode):
-        value: bool
-
-        def __init__(self, value: bool) -> None:
-            super().__init__()
-            self.value = value
-
-    class BilateralQuantity(ASTNode):
-        _quantity: "AST.Quantity"
-        _tolerance: "AST.Quantity"
-
-        def __init__(self, quantity: "AST.Quantity", tolerance: "AST.Quantity") -> None:
-            super().__init__()
-            self._quantity = quantity
-            self._tolerance = tolerance
-
-        def __postinit__(self):
-            self.add(self._quantity, name="quantity")
-            self.add(self._tolerance, name="tolerance")
-
-    class BoundedQuantity(ASTNode):
-        ...
-        # def __init__(self, start: Quantity | None, end: Quantity | None) -> None:
-        #     super().__init__()
-        #     self.start = start
-        #     self.end = end
-
-    class Scope(ASTNode): ...
-
-    class File(ASTNode):
-        """A single .ato file."""
-
-        path: Path | None = None
-        scope: "AST.Scope"
-
-    class TextFragment(ASTNode):
-        """A context-free fragment of ato code."""
-
-        scope: "AST.Scope"
-
-    class Whitespace(ASTNode): ...
-
-    class Comment(ASTNode): ...
-
-    class BlockDefinition(ASTNode):
-        class BlockType(StrEnum):
-            COMPONENT = "component"
-            MODULE = "module"
-            INTERFACE = "interface"
-
-        block_type: BlockType
-        scope: "AST.Scope"
-        _type_ref: "AST.TypeRef"
-        _super_type_ref: "AST.TypeRef | None"
-
-        def __init__(
-            self,
-            block_type: BlockType,
-            type_ref: "AST.TypeRef",
-            super_type_ref: "AST.TypeRef | None" = None,
-        ) -> None:
-            super().__init__()
-            self.block_type = block_type
-            self._type_ref = type_ref
-            self._super_type_ref = super_type_ref
-
-        def __postinit__(self):
-            self.add(self._type_ref, name="type_ref")
-            if self._super_type_ref is not None:
-                self.add(self._super_type_ref, name="super_type_ref")
-
-    class CompilationUnit(ASTNode):
-        """A compilable unit of ato code."""
-
-        _context: "AST.File | AST.TextFragment"
-
-        def __init__(self, context: "AST.File | AST.TextFragment") -> None:
-            super().__init__()
-            self._context = context
-
-        def __postinit__(self):
-            self.add(self._context, name="context")
-
-    class ForStmt(ASTNode):
-        source: "AST.SourceChunk"
-        scope: "AST.Scope"
-        iterable: "AST.FieldRef"
-
-    class PragmaStmt(ASTNode):
-        pragma: str
-
-        def __init__(self, pragma: str) -> None:
-            super().__init__()
-            self.pragma = pragma
-
-    class ImportStmt(ASTNode):
-        _path: "AST.ImportPath | None"
-        _type_ref: "AST.TypeRef"
-
-        def __init__(
-            self, path: "AST.ImportPath | None", type_ref: "AST.TypeRef"
-        ) -> None:
-            super().__init__()
-            self._path = path
-            self._type_ref = type_ref
-
-        def __postinit__(self):
-            if self._path is not None:
-                self.add(self._path, name="path")
-            self.add(self._type_ref, name="type_ref")
-
-    class AssignQuantityStmt(ASTNode):
-        _field_ref: "AST.FieldRef"
-        _quantity: "AST.Quantity | AST.BilateralQuantity | AST.BoundedQuantity"
-
-        def __init__(
-            self,
-            field_ref: "AST.FieldRef",
-            quantity: "AST.Quantity | AST.BilateralQuantity | AST.BoundedQuantity",
-        ) -> None:
-            super().__init__()
-            self._field_ref = field_ref
-            self._quantity = quantity
-
-        def __postinit__(self):
-            self.add(self._field_ref, name="field_ref")
-            self.add(self._quantity, name="quantity")
-
-    class TemplateArg(ASTNode):
-        name: str
-
-    class Template(ASTNode):
-        args: list["AST.TemplateArg"]
-
-    class AssignNewStmt(ASTNode):
-        _field_ref: "AST.FieldRef"
-        _type_ref: "AST.TypeRef"
-        _template: "AST.Template | None"
-        new_count: int | None
-
-        def __init__(
-            self,
-            field_ref: "AST.FieldRef",
-            type_ref: "AST.TypeRef",
-            template: "AST.Template | None" = None,
-            count: int | None = None,
-        ) -> None:
-            super().__init__()
-            self._field_ref = field_ref
-            self._type_ref = type_ref
-            self._template = template
-            self.new_count = count
-
-        def __postinit__(self):
-            self.add(self._field_ref, name="field_ref")
-            self.add(self._type_ref, name="type_ref")
-            if self._template is not None:
-                self.add(self._template, name="template")
-
-    class CumAssignStmt(ASTNode): ...
-
-    class SetAssignStmt(ASTNode): ...
-
-    class ConnectStmt(ASTNode):
-        _left_connectable: "AST.FieldRef"
-        _right_connectable: "AST.FieldRef"
-
-        def __init__(
-            self, left_connectable: "AST.FieldRef", right_connectable: "AST.FieldRef"
-        ) -> None:
-            super().__init__()
-            self._left_connectable = left_connectable
-            self._right_connectable = right_connectable
-
-        def __postinit__(self):
-            self.add(self._left_connectable, name="left")
-            self.add(self._right_connectable, name="right")
-
-    class DirectedConnectStmt(ASTNode):
-        class Direction(StrEnum):
-            RIGHT = "RIGHT"
-            LEFT = "LEFT"
-
-        direction: Direction
-        _left_bridgeable: "AST.FieldRef"
-        _right_bridgeable: "AST.FieldRef | AST.DirectedConnectStmt"
-
-        def __init__(
-            self,
-            left_bridgeable: "AST.FieldRef",
-            right_bridgeable: "AST.FieldRef | AST.DirectedConnectStmt",
-            direction: Direction,
-        ) -> None:
-            super().__init__()
-            self._left_bridgeable = left_bridgeable
-            self._right_bridgeable = right_bridgeable
-            self.direction = direction
-
-        def __postinit__(self):
-            self.add(self._left_bridgeable, name="left")
-            self.add(self._right_bridgeable, name="right")
-
-    class RetypeStmt(ASTNode): ...
-
-    class PinDeclaration(ASTNode): ...
-
-    class SignaldefStmt(ASTNode): ...
-
-    class AssertStmt(ASTNode): ...
-
-    class DeclarationStmt(ASTNode):
-        source: "AST.SourceChunk"
-        field_ref: "AST.FieldRef"
-        type_ref: "AST.TypeRef | None"
-
-    class StringStmt(ASTNode):
-        _string: "AST.String"
-
-        def __init__(self, string: "AST.String") -> None:
-            super().__init__()
-            self._string = string
-
-        def __postinit__(self):
-            self.add(self._string, name="string")
-
-    class PassStmt(ASTNode): ...
-
-    class TraitStmt(ASTNode): ...
 
 
 class Visitor(AtoParserVisitor):
@@ -361,13 +42,28 @@ class Visitor(AtoParserVisitor):
 
         return AST.SourceChunk(
             text,
-            FileLocation(
+            AST.FileLocation(
                 start_token.line,  # type: ignore
                 start_token.column,  # type: ignore
                 stop_token.line,  # type: ignore
                 stop_token.column,  # type: ignore
             ),
         )
+
+    def _visitScopeChildren(self, ctx: ParserRuleContext, scope: AST.Scope) -> None:
+        for child in ctx.getChildren():
+            match node_or_nodes := self.visit(child):
+                case AST.ASTNode() | AST.SourceChunk():
+                    scope.add(node_or_nodes)
+                case Iterable():
+                    for node in node_or_nodes:
+                        # FIXME: assert is ASTNode
+                        if isinstance(node, AST.ASTNode):
+                            scope.add(node)
+                case None:
+                    pass
+                case _:
+                    raise ValueError(f"Unexpected node type: {type(node_or_nodes)}")
 
     def visitName(self, ctx: AtoParser.NameContext) -> str:
         return ctx.getText()
@@ -401,21 +97,7 @@ class Visitor(AtoParserVisitor):
                 self.visitTypeReference(super_type_ref.type_reference())
             )
 
-        scope = block_definition.scope
-
-        for child in ctx.block().getChildren():
-            match node_or_nodes := self.visit(child):
-                case AST.ASTNode() | AST.SourceChunk():
-                    scope.add(node_or_nodes)
-                case Iterable():
-                    for node in node_or_nodes:
-                        # FIXME: assert is CompilerNode
-                        if isinstance(node, AST.ASTNode):
-                            scope.add(node)
-                case None:
-                    pass
-                case _:
-                    raise ValueError(f"Unexpected node type: {type(node_or_nodes)}")
+        self._visitScopeChildren(ctx.block(), block_definition.scope)
 
         return block_definition
 
@@ -425,16 +107,14 @@ class Visitor(AtoParserVisitor):
         # currently difficult due to comments going to a hidden channel
         file.add(self._extract_source(ctx))
 
-        scope = file.scope
-
         for child in ctx.getChildren():
             match node_or_nodes := self.visit(child):
                 case AST.ASTNode() | AST.SourceChunk():
-                    scope.add(node_or_nodes)
+                    file.add(node_or_nodes)
                 case Iterable():
                     for node in node_or_nodes:
                         assert isinstance(node, AST.ASTNode), "missing a visitor method"
-                        scope.add(node)
+                        file.add(node)
                 case None:
                     pass
                 case _:
