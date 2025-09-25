@@ -119,14 +119,16 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    _ = b.addModule("sexp", .{
-        .root_source_file = b.path("src/sexp/lib.zig"),
-    });
-    _ = b.addModule("graph", .{
+    const graph_mod = b.addModule("graph", .{
         .root_source_file = b.path("src/graph/lib.zig"),
     });
-    _ = b.addModule("faebryk", .{
+    const faebryk_mod = b.addModule("faebryk", .{
         .root_source_file = b.path("src/faebryk/lib.zig"),
+    });
+    faebryk_mod.addImport("graph", graph_mod);
+
+    _ = b.addModule("sexp", .{
+        .root_source_file = b.path("src/sexp/lib.zig"),
     });
 
     build_python_module(b, b.modules, target, optimize);
