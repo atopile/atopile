@@ -7,12 +7,12 @@ pub const PyiGenerator = struct {
     const Self = @This();
 
     const python_keywords = [_][]const u8{
-        "False",  "None",    "True",   "and",   "as",     "assert",
-        "async",  "await",   "break",  "class", "continue", "def",
-        "del",    "elif",    "else",   "except","finally", "for",
-        "from",   "global",  "if",     "import","in",     "is",
-        "lambda", "nonlocal","not",    "or",    "pass",   "raise",
-        "return", "try",     "while",  "with",  "yield",  "match",
+        "False",  "None",     "True",  "and",    "as",       "assert",
+        "async",  "await",    "break", "class",  "continue", "def",
+        "del",    "elif",     "else",  "except", "finally",  "for",
+        "from",   "global",   "if",    "import", "in",       "is",
+        "lambda", "nonlocal", "not",   "or",     "pass",     "raise",
+        "return", "try",      "while", "with",   "yield",    "match",
         "case",
     };
 
@@ -104,8 +104,7 @@ pub const PyiGenerator = struct {
 
                 const child_info = @typeInfo(ptr_info.child);
                 switch (child_info) {
-                    .@"struct", .@"union", .pointer, .optional =>
-                        try self.writeZigTypeToPython(writer, ptr_info.child),
+                    .@"struct", .@"union", .pointer, .optional => try self.writeZigTypeToPython(writer, ptr_info.child),
                     else => try writer.writeAll("Any"),
                 }
             },
@@ -411,5 +410,23 @@ pub const PyiGenerator = struct {
         try self.generateFunctionDefinitions(T);
 
         return self.output.toOwnedSlice();
+    }
+
+    pub fn manualModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, comptime T: type, output_dir: []const u8, source_dir: []const u8) !void {
+        _ = T;
+        const manual_dir = try std.fs.path.join(allocator, &.{ source_dir, "manual" });
+        defer allocator.free(manual_dir);
+        const manual_file_path = try std.fs.path.join(allocator, &.{ manual_dir, name ++ ".pyi" });
+        defer allocator.free(manual_file_path);
+        const manual_file = try std.fs.cwd().openFile(manual_file_path, .{});
+        defer manual_file.close();
+        const manual_content = try manual_file.readToEndAlloc(allocator, 1024 * 1024);
+        defer allocator.free(manual_content);
+        var path_buf: [256]u8 = undefined;
+        const file_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.pyi", .{ output_dir, name });
+        const file = try std.fs.cwd().createFile(file_path, .{});
+        defer file.close();
+        try file.writeAll(manual_content);
+        try file.writeAll("\n");
     }
 };
