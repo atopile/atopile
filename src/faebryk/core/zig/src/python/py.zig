@@ -49,12 +49,12 @@ export fn PyInit_pyzig() ?*py.PyObject {
         return null;
     }
 
-    const sexp_py = @import("sexp/py.zig");
+    const sexp_py = @import("sexp/sexp_py.zig");
     _ = add_module(nested, "sexp", sexp_py) orelse return null;
-    const graph_py = @import("graph/py.zig");
+    const graph_py = @import("graph/graph_py.zig");
     _ = add_module(nested, "graph", graph_py) orelse return null;
-    //const faebryk_py = @import("faebryk/py.zig");
-    //_ = add_module(nested, "faebryk", faebryk_py) orelse return null;
+    const faebryk_py = @import("faebryk/faebryk_py.zig");
+    _ = add_module(nested, "faebryk", faebryk_py) orelse return null;
 
     return root;
 }

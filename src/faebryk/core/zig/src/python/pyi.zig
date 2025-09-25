@@ -34,10 +34,10 @@ pub fn main() !void {
     // TODO: instead of giving responsibility to modules just directly use pyigenerator here
     // But first need to make pyigenerator better to do more fancy stuff
 
-    const sexp_pyi = @import("sexp/pyi.zig");
+    const sexp_pyi = @import("sexp/sexp_pyi.zig");
     try make_pyi(allocator, output_dir, sexp_pyi, "sexp", source_dir);
-    const graph_pyi = @import("graph/pyi.zig");
+    const graph_pyi = @import("graph/graph_pyi.zig");
     try make_pyi(allocator, output_dir, graph_pyi, "graph", source_dir);
-    const faebryk_pyi = @import("faebryk/pyi.zig");
+    const faebryk_pyi = @import("faebryk/faebryk_pyi.zig");
     try make_pyi(allocator, output_dir, faebryk_pyi, "faebryk", source_dir);
 }
