@@ -210,6 +210,7 @@ pub const GS_SENTINEL = PyGetSetDef{
 
 // PyObject conversions
 pub extern fn PyLong_FromLong(value: c_long) ?*PyObject;
+pub extern fn PyLong_FromLongLong(value: c_longlong) ?*PyObject;
 pub extern fn PyLong_FromUnsignedLongLong(value: c_ulonglong) ?*PyObject;
 pub extern fn PyLong_AsLong(obj: ?*PyObject) c_long;
 pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
@@ -285,6 +286,7 @@ pub extern fn PyTuple_GetItem(tuple: ?*PyObject, pos: isize) ?*PyObject;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
 pub extern fn PyDict_New() ?*PyObject;
 pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
+pub extern fn PyDict_Next(dict: ?*PyObject, pos: *isize, key: *?*PyObject, value: *?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
 pub extern fn PyFloat_AsDouble(obj: ?*PyObject) f64;
 pub extern fn PyObject_IsTrue(obj: ?*PyObject) c_int;
