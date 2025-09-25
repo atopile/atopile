@@ -23,7 +23,7 @@ fn ensureType(comptime name: [:0]const u8, storage: *?*py.PyTypeObject) ?*py.PyT
     return null;
 }
 
-fn makeWrapperPyObject(
+pub fn makeWrapperPyObject(
     comptime name: [:0]const u8,
     storage: *?*py.PyTypeObject,
     comptime Wrapper: type,
@@ -50,14 +50,14 @@ fn makeBoundNodePyObject(value: graph.graph.BoundNodeReference) ?*py.PyObject {
     };
     ptr.* = value;
 
-    const pyobj = makeWrapperPyObject("BoundNodeReference\x00", &bound_node_type, BoundNodeWrapper, ptr);
+    const pyobj = makeWrapperPyObject("BoundNodeReference", &bound_node_type, BoundNodeWrapper, ptr);
     if (pyobj == null) {
         allocator.destroy(ptr);
     }
     return pyobj;
 }
 
-fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObject {
+pub fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObject {
     const allocator = std.heap.c_allocator;
     const ptr = allocator.create(graph.graph.BoundEdgeReference) catch {
         py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
@@ -65,7 +65,7 @@ fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObject {
     };
     ptr.* = value;
 
-    const pyobj = makeWrapperPyObject("BoundEdgeReference\x00", &bound_edge_type, BoundEdgeWrapper, ptr);
+    const pyobj = makeWrapperPyObject("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, ptr);
     if (pyobj == null) {
         allocator.destroy(ptr);
     }
@@ -74,62 +74,65 @@ fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObject {
 
 const VisitResultVoid = visitor.VisitResult(void);
 
-const VisitCallbackCtx = struct {
+pub const BoundEdgeVisitor = struct {
     py_ctx: ?*py.PyObject,
     callable: ?*py.PyObject,
     had_error: bool = false,
+
+    pub fn call(ctx_ptr: *anyopaque, bound_edge: graph.graph.BoundEdgeReference) VisitResultVoid {
+        const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+
+        const edge_obj = makeBoundEdgePyObject(bound_edge) orelse {
+            ctx.had_error = true;
+            return VisitResultVoid{ .ERROR = error.Callback };
+        };
+
+        const args_tuple = py.PyTuple_New(2) orelse {
+            ctx.had_error = true;
+            py.Py_DECREF(edge_obj);
+            return VisitResultVoid{ .ERROR = error.Callback };
+        };
+
+        const ctx_handle: *py.PyObject = if (ctx.py_ctx) |c| c else py.Py_None();
+        py.Py_INCREF(ctx_handle);
+        if (py.PyTuple_SetItem(args_tuple, 0, ctx_handle) < 0) {
+            ctx.had_error = true;
+            py.Py_DECREF(edge_obj);
+            py.Py_DECREF(args_tuple);
+            return VisitResultVoid{ .ERROR = error.Callback };
+        }
+
+        if (py.PyTuple_SetItem(args_tuple, 1, edge_obj) < 0) {
+            ctx.had_error = true;
+            py.Py_DECREF(args_tuple);
+            py.Py_DECREF(edge_obj);
+            return VisitResultVoid{ .ERROR = error.Callback };
+        }
+
+        const result = py.PyObject_Call(ctx.callable, args_tuple, null);
+        if (result == null) {
+            ctx.had_error = true;
+            py.Py_DECREF(args_tuple);
+            return VisitResultVoid{ .ERROR = error.Callback };
+        }
+
+        py.Py_DECREF(result.?);
+        py.Py_DECREF(args_tuple);
+        return VisitResultVoid{ .CONTINUE = {} };
+    }
 };
 
-fn visitEdgesCallback(ctx_ptr: *anyopaque, bound_edge: graph.graph.BoundEdgeReference) VisitResultVoid {
-    const ctx = @as(*VisitCallbackCtx, @ptrCast(@alignCast(ctx_ptr)));
+pub const GraphViewWrapper = bind.PyObjectWrapper(graph.graph.GraphView);
+pub const NodeWrapper = bind.PyObjectWrapper(graph.graph.Node);
+pub const EdgeWrapper = bind.PyObjectWrapper(graph.graph.Edge);
+pub const BoundNodeWrapper = bind.PyObjectWrapper(graph.graph.BoundNodeReference);
+pub const BoundEdgeWrapper = bind.PyObjectWrapper(graph.graph.BoundEdgeReference);
 
-    const edge_obj = makeBoundEdgePyObject(bound_edge) orelse {
-        ctx.had_error = true;
-        return VisitResultVoid{ .ERROR = error.Callback };
-    };
-
-    const args = py.PyTuple_New(2) orelse {
-        ctx.had_error = true;
-        return VisitResultVoid{ .ERROR = error.Callback };
-    };
-
-    const ctx_handle: *py.PyObject = if (ctx.py_ctx) |c| c else py.Py_None();
-    py.Py_INCREF(ctx_handle);
-    if (py.PyTuple_SetItem(args, 0, ctx_handle) < 0) {
-        ctx.had_error = true;
-        py.Py_DECREF(args);
-        return VisitResultVoid{ .ERROR = error.Callback };
-    }
-
-    if (py.PyTuple_SetItem(args, 1, edge_obj) < 0) {
-        ctx.had_error = true;
-        py.Py_DECREF(args);
-        return VisitResultVoid{ .ERROR = error.Callback };
-    }
-
-    const result = py.PyObject_Call(ctx.callable, args, null);
-    if (result == null) {
-        ctx.had_error = true;
-        py.Py_DECREF(args);
-        return VisitResultVoid{ .ERROR = error.Callback };
-    }
-
-    py.Py_DECREF(result.?);
-    py.Py_DECREF(args);
-    return VisitResultVoid{ .CONTINUE = {} };
-}
-
-const GraphViewWrapper = bind.PyObjectWrapper(graph.graph.GraphView);
-const NodeWrapper = bind.PyObjectWrapper(graph.graph.Node);
-const EdgeWrapper = bind.PyObjectWrapper(graph.graph.Edge);
-const BoundNodeWrapper = bind.PyObjectWrapper(graph.graph.BoundNodeReference);
-const BoundEdgeWrapper = bind.PyObjectWrapper(graph.graph.BoundEdgeReference);
-
-var graph_view_type: ?*py.PyTypeObject = null;
-var node_type: ?*py.PyTypeObject = null;
-var edge_type: ?*py.PyTypeObject = null;
-var bound_node_type: ?*py.PyTypeObject = null;
-var bound_edge_type: ?*py.PyTypeObject = null;
+pub var graph_view_type: ?*py.PyTypeObject = null;
+pub var node_type: ?*py.PyTypeObject = null;
+pub var edge_type: ?*py.PyTypeObject = null;
+pub var bound_node_type: ?*py.PyTypeObject = null;
+pub var bound_edge_type: ?*py.PyTypeObject = null;
 
 const Literal = graph.graph.Literal;
 
@@ -197,7 +200,7 @@ fn literalToPyObject(literal: Literal) ?*py.PyObject {
     };
 }
 
-fn castWrapper(
+pub fn castWrapper(
     comptime name: [:0]const u8,
     storage: *?*py.PyTypeObject,
     comptime Wrapper: type,
@@ -293,7 +296,7 @@ fn wrap_node_create() type {
             };
 
             success = true;
-            return makeWrapperPyObject("Node\x00", &node_type, NodeWrapper, node);
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, node);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
@@ -310,20 +313,15 @@ fn wrap_node_create() type {
 fn wrap_node_get_attr() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Node\x00", &node_type, NodeWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "key is required");
-                return null;
+            const arg_def = struct {
+                key: *py.PyObject,
             };
 
-            const key_obj = py.PyDict_GetItemString(kw, "key");
-            if (key_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "key is required");
-                return null;
-            }
-            const key_c = py.PyUnicode_AsUTF8(key_obj);
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const key_c = py.PyUnicode_AsUTF8(kwarg_obj.key);
             if (key_c == null) {
                 py.PyErr_SetString(py.PyExc_TypeError, "Attribute key must be str");
                 return null;
@@ -352,20 +350,15 @@ fn wrap_node_get_attr() type {
 fn wrap_node_is_same() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Node\x00", &node_type, NodeWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "other is required");
-                return null;
+            const arg_def = struct {
+                other: *py.PyObject,
             };
 
-            const other_obj = py.PyDict_GetItemString(kw, "other");
-            if (other_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "other is required");
-                return null;
-            }
-            const other = castWrapper("Node\x00", &node_type, NodeWrapper, other_obj) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const other = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.other) orelse return null;
             const same = graph.graph.Node.is_same(wrapper.data, other.data);
 
             const result = if (same) py.Py_True() else py.Py_False();
@@ -397,57 +390,46 @@ fn wrap_node(root: *py.PyObject) void {
 fn wrap_edge_create() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            if (!bind.check_no_positional_args(self, args)) return null;
-
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are required");
-                return null;
+            const arg_def = struct {
+                source: *py.PyObject,
+                target: *py.PyObject,
+                edge_type: *py.PyObject,
+                directional: ?*py.PyObject = null,
+                name: ?*py.PyObject = null,
             };
 
-            const source_obj = py.PyDict_GetItemString(kw, "source");
-            if (source_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "source is required");
-                return null;
-            }
-            const source = castWrapper("Node\x00", &node_type, NodeWrapper, source_obj) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
 
-            const target_obj = py.PyDict_GetItemString(kw, "target");
-            if (target_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "target is required");
-                return null;
-            }
-            const target = castWrapper("Node\x00", &node_type, NodeWrapper, target_obj) orelse return null;
+            const source = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.source) orelse return null;
+            const target = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.target) orelse return null;
 
-            const edge_type_obj = py.PyDict_GetItemString(kw, "edge_type");
-            if (edge_type_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "edge_type is required");
-                return null;
-            }
-            const edge_type_raw = py.PyLong_AsLongLong(edge_type_obj);
+            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
             if (py.PyErr_Occurred() != null) return null;
             const edge_type_value: graph.graph.Edge.Type = @intCast(edge_type_raw);
 
-            const directional_obj = py.PyDict_GetItemString(kw, "directional");
             var directional_value: ?bool = null;
-            if (directional_obj != null and directional_obj != py.Py_None()) {
-                const truth = py.PyObject_IsTrue(directional_obj);
-                if (truth == -1) return null;
-                directional_value = truth == 1;
+            if (kwarg_obj.directional) |directional_obj| {
+                if (directional_obj != py.Py_None()) {
+                    const truth = py.PyObject_IsTrue(directional_obj);
+                    if (truth == -1) return null;
+                    directional_value = truth == 1;
+                }
             }
 
-            const name_obj = py.PyDict_GetItemString(kw, "name");
             var name_copy: ?[]const u8 = null;
-            if (name_obj != null and name_obj != py.Py_None()) {
-                const name_c = py.PyUnicode_AsUTF8(name_obj);
-                if (name_c == null) {
-                    py.PyErr_SetString(py.PyExc_TypeError, "name must be a string");
-                    return null;
+            if (kwarg_obj.name) |name_obj| {
+                if (name_obj != py.Py_None()) {
+                    const name_c = py.PyUnicode_AsUTF8(name_obj);
+                    if (name_c == null) {
+                        py.PyErr_SetString(py.PyExc_TypeError, "name must be a string");
+                        return null;
+                    }
+                    const name_slice = std.mem.span(name_c.?);
+                    name_copy = std.heap.c_allocator.dupe(u8, name_slice) catch {
+                        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                        return null;
+                    };
                 }
-                const name_slice = std.mem.span(name_c.?);
-                name_copy = std.heap.c_allocator.dupe(u8, name_slice) catch {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                    return null;
-                };
             }
 
             const allocator = std.heap.c_allocator;
@@ -467,12 +449,12 @@ fn wrap_edge_create() type {
             edge_ptr.name = name_copy;
 
             const skip = &.{ "source", "target", "edge_type", "directional", "name" };
-            applyAttributes(&edge_ptr.dynamic, kw, skip) catch {
+            applyAttributes(&edge_ptr.dynamic, kwargs, skip) catch {
                 return null;
             };
 
             success = true;
-            return makeWrapperPyObject("Edge\x00", &edge_type, EdgeWrapper, edge_ptr);
+            return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, edge_ptr);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
@@ -489,20 +471,15 @@ fn wrap_edge_create() type {
 fn wrap_edge_get_attr() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "key is required");
-                return null;
+            const arg_def = struct {
+                key: *py.PyObject,
             };
 
-            const key_obj = py.PyDict_GetItemString(kw, "key");
-            if (key_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "key is required");
-                return null;
-            }
-            const key_c = py.PyUnicode_AsUTF8(key_obj);
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const key_c = py.PyUnicode_AsUTF8(kwarg_obj.key);
             if (key_c == null) {
                 py.PyErr_SetString(py.PyExc_TypeError, "Attribute key must be str");
                 return null;
@@ -531,20 +508,15 @@ fn wrap_edge_get_attr() type {
 fn wrap_edge_is_same() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "other is required");
-                return null;
+            const arg_def = struct {
+                other: *py.PyObject,
             };
 
-            const other_obj = py.PyDict_GetItemString(kw, "other");
-            if (other_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "other is required");
-                return null;
-            }
-            const other = castWrapper("Edge\x00", &edge_type, EdgeWrapper, other_obj) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const other = castWrapper("Edge", &edge_type, EdgeWrapper, kwarg_obj.other) orelse return null;
 
             const same = graph.graph.Edge.is_same(wrapper.data, other.data);
             const result = if (same) py.Py_True() else py.Py_False();
@@ -566,8 +538,8 @@ fn wrap_edge_is_same() type {
 fn wrap_edge_get_source() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node\x00", &node_type, NodeWrapper, wrapper.data.source);
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.source);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
@@ -584,8 +556,8 @@ fn wrap_edge_get_source() type {
 fn wrap_edge_get_target() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node\x00", &node_type, NodeWrapper, wrapper.data.target);
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.target);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
@@ -602,7 +574,7 @@ fn wrap_edge_get_target() type {
 fn wrap_edge_get_edge_type() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
             const val: c_longlong = @intCast(wrapper.data.edge_type);
             return py.PyLong_FromLongLong(val);
         }
@@ -621,7 +593,7 @@ fn wrap_edge_get_edge_type() type {
 fn wrap_edge_get_directional() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
             if (wrapper.data.directional) |value| {
                 const py_bool = if (value) py.Py_True() else py.Py_False();
                 py.Py_INCREF(py_bool);
@@ -645,7 +617,7 @@ fn wrap_edge_get_directional() type {
 fn wrap_edge_get_name() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge\x00", &edge_type, EdgeWrapper, self) orelse return null;
+            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
             if (wrapper.data.name) |value| {
                 const ptr: [*c]const u8 = if (value.len == 0) "" else @ptrCast(value.ptr);
                 const length: isize = @intCast(value.len);
@@ -684,8 +656,8 @@ fn wrap_edge(root: *py.PyObject) void {
 fn wrap_bound_node_get_node() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundNodeReference\x00", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node\x00", &node_type, NodeWrapper, wrapper.data.node);
+            const wrapper = castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.node);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
@@ -702,8 +674,8 @@ fn wrap_bound_node_get_node() type {
 fn wrap_bound_node_get_graph() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundNodeReference\x00", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-            return makeWrapperPyObject("GraphView\x00", &graph_view_type, GraphViewWrapper, wrapper.data.g);
+            const wrapper = castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
+            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
@@ -720,43 +692,28 @@ fn wrap_bound_node_get_graph() type {
 fn wrap_bound_node_visit_edges_of_type() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundNodeReference\x00", &bound_node_type, BoundNodeWrapper, self) orelse return null;
+            const wrapper = castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
 
-            if (!bind.check_no_positional_args(self, args)) return null;
-            if (kwargs == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "visit_edges_of_type requires keyword arguments");
-                return null;
-            }
+            const arg_def = struct {
+                edge_type: *py.PyObject,
+                ctx: *py.PyObject,
+                f: *py.PyObject,
+            };
 
-            const edge_type_obj = py.PyDict_GetItemString(kwargs, "edge_type");
-            if (edge_type_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "edge_type is required");
-                return null;
-            }
-            const edge_type_raw = py.PyLong_AsLongLong(edge_type_obj);
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
             if (py.PyErr_Occurred() != null) return null;
             const edge_type_value: graph.graph.Edge.Type = @intCast(edge_type_raw);
 
-            const ctx_obj = blk: {
-                if (py.PyDict_GetItemString(kwargs, "ctx")) |c| break :blk c;
-                py.PyErr_SetString(py.PyExc_TypeError, "ctx is required");
-                return null;
-            };
+            py.Py_INCREF(kwarg_obj.ctx);
+            py.Py_INCREF(kwarg_obj.f);
 
-            const callable_obj = blk: {
-                if (py.PyDict_GetItemString(kwargs, "f")) |c| break :blk c;
-                py.PyErr_SetString(py.PyExc_TypeError, "f is required");
-                return null;
-            };
+            var visit_ctx = BoundEdgeVisitor{ .py_ctx = kwarg_obj.ctx, .callable = kwarg_obj.f };
+            const result = wrapper.data.visit_edges_of_type(edge_type_value, void, @ptrCast(&visit_ctx), BoundEdgeVisitor.call);
 
-            py.Py_INCREF(ctx_obj);
-            py.Py_INCREF(callable_obj);
-
-            var visit_ctx = VisitCallbackCtx{ .py_ctx = ctx_obj, .callable = callable_obj };
-            const result = wrapper.data.visit_edges_of_type(edge_type_value, void, @ptrCast(&visit_ctx), visitEdgesCallback);
-
-            py.Py_DECREF(ctx_obj);
-            py.Py_DECREF(callable_obj);
+            py.Py_DECREF(kwarg_obj.ctx);
+            py.Py_DECREF(kwarg_obj.f);
 
             if (visit_ctx.had_error) {
                 return null;
@@ -796,7 +753,7 @@ fn wrap_bound_node(root: *py.PyObject) void {
 
     if (bound_node_type) |typ| {
         typ.ob_base.ob_base.ob_refcnt += 1;
-        if (py.PyModule_AddObject(root, "BoundNode\x00", @ptrCast(typ)) < 0) {
+        if (py.PyModule_AddObject(root, "BoundNode", @ptrCast(typ)) < 0) {
             typ.ob_base.ob_base.ob_refcnt -= 1;
         }
     }
@@ -805,8 +762,8 @@ fn wrap_bound_node(root: *py.PyObject) void {
 fn wrap_bound_edge_get_edge() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundEdgeReference\x00", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Edge\x00", &edge_type, EdgeWrapper, wrapper.data.edge);
+            const wrapper = castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, wrapper.data.edge);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
@@ -823,8 +780,8 @@ fn wrap_bound_edge_get_edge() type {
 fn wrap_bound_edge_get_graph() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundEdgeReference\x00", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("GraphView\x00", &graph_view_type, GraphViewWrapper, wrapper.data.g);
+            const wrapper = castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
 
         pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
@@ -848,7 +805,7 @@ fn wrap_bound_edge(root: *py.PyObject) void {
 
     if (bound_edge_type) |typ| {
         typ.ob_base.ob_base.ob_refcnt += 1;
-        if (py.PyModule_AddObject(root, "BoundEdge\x00", @ptrCast(typ)) < 0) {
+        if (py.PyModule_AddObject(root, "BoundEdge", @ptrCast(typ)) < 0) {
             typ.ob_base.ob_base.ob_refcnt -= 1;
         }
     }
@@ -868,7 +825,7 @@ fn wrap_graphview_create() type {
 
             graph_ptr.* = graph.graph.GraphView.init(allocator);
 
-            const pyobj = makeWrapperPyObject("GraphView\x00", &graph_view_type, GraphViewWrapper, graph_ptr);
+            const pyobj = makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, graph_ptr);
             if (pyobj == null) {
                 graph_ptr.deinit();
                 allocator.destroy(graph_ptr);
@@ -891,20 +848,15 @@ fn wrap_graphview_create() type {
 fn wrap_graphview_insert_node() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("GraphView\x00", &graph_view_type, GraphViewWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "node is required");
-                return null;
+            const arg_def = struct {
+                node: *py.PyObject,
             };
 
-            const node_obj = py.PyDict_GetItemString(kw, "node");
-            if (node_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "node is required");
-                return null;
-            }
-            const node = castWrapper("Node\x00", &node_type, NodeWrapper, node_obj) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const node = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.node) orelse return null;
 
             const bound = wrapper.data.insert_node(node.data) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to insert node");
@@ -928,20 +880,15 @@ fn wrap_graphview_insert_node() type {
 fn wrap_graphview_insert_edge() type {
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("GraphView\x00", &graph_view_type, GraphViewWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "edge is required");
-                return null;
+            const arg_def = struct {
+                edge: *py.PyObject,
             };
 
-            const edge_obj = py.PyDict_GetItemString(kw, "edge");
-            if (edge_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "edge is required");
-                return null;
-            }
-            const edge = castWrapper("Edge\x00", &edge_type, EdgeWrapper, edge_obj) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const edge = castWrapper("Edge", &edge_type, EdgeWrapper, kwarg_obj.edge) orelse return null;
 
             const bound = wrapper.data.insert_edge(edge.data) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to insert edge");
@@ -966,20 +913,15 @@ fn wrap_graphview_bind() type {
     const FnType = fn (?*py.PyObject, ?*py.PyObject, ?*py.PyObject) callconv(.C) ?*py.PyObject;
     return struct {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("GraphView\x00", &graph_view_type, GraphViewWrapper, self) orelse return null;
-            if (!bind.check_no_positional_args(self, args)) return null;
+            const wrapper = castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
-            const kw = kwargs orelse {
-                py.PyErr_SetString(py.PyExc_TypeError, "node is required");
-                return null;
+            const arg_def = struct {
+                node: *py.PyObject,
             };
 
-            const node_obj = py.PyDict_GetItemString(kw, "node");
-            if (node_obj == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "node is required");
-                return null;
-            }
-            const node = castWrapper("Node\x00", &node_type, NodeWrapper, node_obj) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+
+            const node = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.node) orelse return null;
 
             const bound = wrapper.data.bind(node.data);
             return makeBoundNodePyObject(bound);

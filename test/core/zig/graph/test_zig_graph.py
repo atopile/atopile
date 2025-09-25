@@ -54,9 +54,9 @@ def test_edge_composition_create():
 
     edge = EdgeComposition.create(parent=parent, child=child, child_identifier="kid")
 
-    assert EdgeComposition.is_instance(edge) is True
+    assert EdgeComposition.is_instance(edge=edge) is True
     assert edge.directional() is True
-    assert EdgeComposition.get_name(edge) == "kid"
+    assert EdgeComposition.get_name(edge=edge) == "kid"
     assert EdgeComposition.get_tid() == edge.edge_type()
 
 
@@ -90,22 +90,27 @@ def test_edge_composition_add_child_and_visit():
         bound_node=parent_bound,
         ctx=collected,
         f=lambda ctx, bound_edge: ctx.append(
-            EdgeComposition.get_name(bound_edge.edge())
+            EdgeComposition.get_name(edge=bound_edge.edge())
         ),
     )
 
     assert collected == ["kid_a", "kid_b"]
 
-    parent_edge_a = EdgeComposition.get_parent_edge(child_a_bound)
+    parent_edge_a = EdgeComposition.get_parent_edge(bound_node=child_a_bound)
     assert parent_edge_a is not None
     assert parent_edge_a.edge().is_same(other=edge_a.edge())
 
-    parent_edge_b = EdgeComposition.get_parent_edge(child_b_bound)
+    parent_edge_b = EdgeComposition.get_parent_edge(bound_node=child_b_bound)
     assert parent_edge_b is not None
     assert parent_edge_b.edge().is_same(other=edge_b.edge())
 
-    assert EdgeComposition.get_parent_edge(parent_bound) is None
+    assert EdgeComposition.get_parent_edge(bound_node=parent_bound) is None
 
 
 if __name__ == "__main__":
+    test_minimal_graph()
+    test_edge_composition_create()
     test_edge_composition_add_child_and_visit()
+
+    print("-" * 80)
+    print("All tests passed")
