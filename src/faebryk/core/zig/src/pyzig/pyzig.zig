@@ -182,3 +182,82 @@ pub fn ensureTypeObject(
     type_registry.registerTypeObject(type_name_for_registry, &Binding.type_object);
     return &Binding.type_object;
 }
+
+pub fn parse_kwargs(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject, comptime T: type) ?T {
+    if (!check_no_positional_args(self, args)) return null;
+
+    const kw = kwargs orelse {
+        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are required");
+        return null;
+    };
+
+    // iterate through fields of T
+    const info = @typeInfo(T);
+    if (info != .@"struct") {
+        @compileError("parse_kwargs only supports structs");
+    }
+    const struct_info = info.@"struct";
+    var data: T = undefined;
+    inline for (struct_info.fields) |field| {
+        const field_name_z = field.name ++ "\x00";
+        const value = py.PyDict_GetItemString(kw, field_name_z);
+        if (value) |v| {
+            @field(data, field.name) = v;
+        } else {
+            if (@typeInfo(field.type) == .optional) {
+                @field(data, field.name) = null;
+            } else {
+                py.PyErr_SetString(py.PyExc_TypeError, "keyword argument is required");
+                return null;
+            }
+        }
+    }
+    return data;
+}
+
+pub fn parse_single_arg(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) ?*py.PyObject {
+    _ = self;
+
+    if (kwargs != null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are not allowed");
+        return null;
+    }
+
+    if (args == null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "expects exactly one argument");
+        return null;
+    }
+
+    const arg_count = py.PyTuple_Size(args);
+    if (arg_count < 0) {
+        return null;
+    }
+    if (arg_count != 1) {
+        py.PyErr_SetString(py.PyExc_TypeError, "expects exactly one argument");
+        return null;
+    }
+
+    const arg = py.PyTuple_GetItem(args, 0);
+    if (arg == null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "expects exactly one argument");
+        return null;
+    }
+
+    return arg.?;
+}
+
+pub fn parse_static_property(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) bool {
+    _ = self;
+
+    if (kwargs != null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are not allowed");
+        return false;
+    }
+
+    if (args != null and py.PyTuple_Size(args.?) != 0) {
+        py.PyErr_SetString(py.PyExc_TypeError, "expects no arguments");
+        return false;
+    }
+
+    return true;
+}
