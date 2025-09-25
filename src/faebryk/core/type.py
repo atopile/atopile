@@ -258,6 +258,7 @@ class Class_Connect:
             )
 
 
+### UTILITY FUNCTIONS ###
 def get_child_by_name(node: _Node, name: str):
     if hasattr(node, name):
         return cast(_Node, getattr(node, name))
@@ -280,6 +281,19 @@ def get_type_by_name(name: str) -> _Node | None:
             if parent_node._identifier == name:
                 return parent_node
     return None
+
+
+def make_child_rule_and_child_ref(
+    child_type_node: _Node, name: str, parent_node: _Node
+):
+    assert isinstance(child_type_node, Class_ImplementsType.Proto_Type)
+    child_ref = Class_ChildReference.init_child_reference_instance(
+        child_type_node, instantiate(child_type_node), name
+    )
+    make_child = Class_MakeChild.init_make_child_instance(
+        instantiate(Type_MakeChild), child_ref
+    )
+    parent_node.children.connect(make_child.parent, LinkNamedParent(name))
 
 
 class Class_CanBridge:
@@ -313,6 +327,7 @@ Type_MakeChild = Class_ImplementsType.init_type_node(_Node(), "MakeChild")
 Type_ChildReference = Class_ImplementsType.init_type_node(_Node(), "ChildReference")
 Type_NestedReference = Class_ImplementsType.init_type_node(_Node(), "NestedReference")
 Type_ModuleInterface = Class_ImplementsType.init_type_node(_Node(), "ModuleInterface")
+Type_Parameter = Class_ImplementsType.init_type_node(_Node(), "Parameter")
 # Type_Connect = Class_ImplementsType.init_type_node(_Node(), "Connect")
 
 

@@ -20,6 +20,7 @@ from typing import (
 
 from deprecated import deprecated
 from more_itertools import partition
+from numpy import isin
 from ordered_set import OrderedSet
 
 from faebryk.core.cpp import Node as CNode
@@ -61,10 +62,6 @@ class FieldExistsError(FieldError):
 
 class FieldContainerError(FieldError):
     pass
-
-
-def list_field[T: Node](n: int, if_type: Callable[[], T]) -> list[T]:
-    return d_field(lambda: times(n, if_type))
 
 
 class fab_field:
@@ -113,37 +110,68 @@ class rt_field[T, O](constructed_field):
 class _d_field[T](fab_field):
     def __init__(self, default_factory: Callable[[], T]) -> None:
         self.default_factory = default_factory
+        self.meta: dict[str, Any] = {}
 
     def __repr__(self) -> str:
         return f"{super().__repr__()}{self.default_factory=})"
 
 
-def d_field[T](default_factory: Callable[[], T]) -> T:
-    return _d_field(default_factory)  # type: ignore
+def list_field[T: Node](n: int, if_type: Callable[[], T]) -> _d_field[list[T]]:
+    def factory() -> list[T]:
+        return times(n, if_type)
+
+    wrapper = _d_field(factory)
+    # Metadata used by type-graph autogen; keep keys stable across helpers
+    wrapper.meta["kind"] = "list_field"
+    wrapper.meta["count"] = n
+    wrapper.meta["elem_factory"] = if_type
+    # Back-compat keys
+    wrapper.meta["constructor"] = if_type
+    wrapper.meta["args"] = (n, if_type)
+    wrapper.meta["kwargs"] = {}
+
+    return wrapper
 
 
-def f_field[T, **P](con: Callable[P, T]) -> Callable[P, T]:
+def d_field[T](default_factory: Callable[[], T]) -> _d_field[T]:
+    return _d_field(default_factory)
+
+
+def f_field[T, **P](con: Callable[P, T]) -> Callable[P, _d_field[T]]:
     # con is either type or classmethod (alternative constructor)
     # TODO implement
     assert isinstance(con, type) or True
 
-    def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], T]:
-        def __() -> T:
+    def _(*args: P.args, **kwargs: P.kwargs) -> _d_field[T]:
+        def factory() -> T:
             return con(*args, **kwargs)
 
-        return _d_field(__)  # type: ignore
+        wrapper = _d_field(factory)
+        wrapper.meta["kind"] = "f_field"
+        wrapper.meta["constructor"] = con
+        wrapper.meta["args"] = args
+        wrapper.meta["kwargs"] = kwargs
+        return wrapper
 
     return _  # type: ignore
 
 
-def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, list[T]]:
+def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, _d_field[list[T]]]:
     assert isinstance(con, type)
 
-    def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], list[T]]:
-        def __() -> list[T]:
+    def _(*args: P.args, **kwargs: P.kwargs) -> _d_field[list[T]]:
+        def factory() -> list[T]:
             return [con(*args, **kwargs) for _ in range(n)]
 
-        return _d_field(__)  # type: ignore
+        wrapper = _d_field(factory)
+        wrapper.meta["kind"] = "list_f_field"
+        wrapper.meta["count"] = n
+        wrapper.meta["constructor"] = con
+        wrapper.meta["args"] = args
+        wrapper.meta["kwargs"] = kwargs
+        return wrapper
+
+        return __
 
     return _  # type: ignore
 
@@ -543,11 +571,6 @@ class Node(CNode):
         if node_instances:
             raise FieldError(f"Node instances not allowed: {node_instances}")
 
-        node_list = ["Resistor", "Capacitor", "Electrical"]
-
-        # if cls.__name__ not in node_list:
-        # return
-        # before calling register_python_nodetype(cls)
         mod = getattr(cls, "__module__", "")
         # print(cls.__name__, mod)
         if "faebryk.library" not in mod:
@@ -587,20 +610,37 @@ class Node(CNode):
                 if "GraphInterface" in obj.__name__:
                     # print("SKIP", name, obj.__name__)
                     return
-                print(name, obj.__name__)
                 child_type_node = Types.get_type_by_name(obj.__name__)
-                assert isinstance(
-                    child_type_node, Types.Class_ImplementsType.Proto_Type
-                )
-                child_ref = Types.Class_ChildReference.init_child_reference_instance(
-                    child_type_node, Types.instantiate(child_type_node), name
-                )
-                make_child = Types.Class_MakeChild.init_make_child_instance(
-                    Types.instantiate(Types.Type_MakeChild), child_ref
-                )
-                type_node.children.connect(
-                    make_child.parent, Types.LinkNamedParent(name)
-                )
+                if not child_type_node:
+                    raise ValueError(f"Child type node not found for {obj.__name__}")
+                print(name, obj.__name__)
+                Types.make_child_rule_and_child_ref(child_type_node, name, type_node)
+
+            elif isinstance(obj, _d_field):
+                print("D_FIELD", name, obj.meta)
+                print(name)
+                child_type = obj.meta.get("constructor")
+                assert isinstance(child_type, type)
+                child_type_name = child_type.__name__
+                if "GraphInterface" in child_type_name:
+                    # print("SKIP", name, obj.__name__)
+                    return
+                child_type_node = Types.get_type_by_name(child_type_name)
+                if not child_type_node:
+                    raise ValueError(f"Child type node not found for {child_type_name}")
+                if obj.meta.get("kind") == "list_field":
+                    n = obj.meta.get("count", 0)
+                    if n > 0:
+                        for i in range(n):
+                            Types.make_child_rule_and_child_ref(
+                                child_type_node, f"{name}[{i}]", type_node
+                            )
+                elif obj.meta.get("kind") == "f_field":
+                    Types.make_child_rule_and_child_ref(
+                        child_type_node, name, type_node
+                    )
+                else:
+                    raise ValueError(f"Unknown field kind: {obj.meta.get('kind')}")
 
             # print("SKIPPED", name, type(obj).__name__)
             # raise NotImplementedError()
@@ -611,6 +651,9 @@ class Node(CNode):
         )
         # for all nonrt fields, setup the field
         for name, obj in nonrt:
+            setup_field(name, obj)
+
+        for name, obj in rt:
             setup_field(name, obj)
 
     @staticmethod
