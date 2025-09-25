@@ -15,7 +15,7 @@ pub const EdgeInterfaceConnection = struct {
     var tid: ?Edge.Type = null;
 
     // TODO (see graph.zig)
-    fn get_tid() Edge.Type {
+    pub fn get_tid() Edge.Type {
         if (tid == null) {
             tid = Edge.register_type();
         }
