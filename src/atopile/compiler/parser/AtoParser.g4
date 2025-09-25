@@ -32,8 +32,6 @@ simple_stmts
 simple_stmt
     : import_stmt
     | assign_stmt
-    | cum_assign_stmt
-    | set_assign_stmt
     | connect_stmt
     | directed_connect_stmt
     | retype_stmt
@@ -80,24 +78,6 @@ field_reference_or_declaration
     ;
 assign_stmt
     : field_reference_or_declaration '=' assignable
-    ;
-cum_assign_stmt
-    : field_reference_or_declaration cum_operator cum_assignable
-    ;
-// TODO: consider sets cum operator
-set_assign_stmt
-    : field_reference_or_declaration (
-        OR_ASSIGN
-        | AND_ASSIGN
-    ) cum_assignable
-    ;
-cum_operator
-    : ADD_ASSIGN
-    | SUB_ASSIGN
-    ;
-cum_assignable
-    : literal_physical
-    | arithmetic_expression
     ;
 
 assignable
