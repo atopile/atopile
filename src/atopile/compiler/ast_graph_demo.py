@@ -1,21 +1,22 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from atopile.compiler.ast_graph import AST, FileLocation, build_file
+import atopile.compiler.ast_types as AST
+from atopile.compiler.ast_graph import build_file
 from faebryk.libs.util import KeyErrorNotFound
 
 
-def file_loc_key(node: AST.ASTNode) -> FileLocation:
+def file_loc_key(node: AST.ASTNode) -> AST.FileLocation:
     try:
         (source_chunk,) = node.get_children(types=AST.SourceChunk, direct_only=True)
         return source_chunk.file_location
     except ValueError:
-        return FileLocation(0, 0, 0, 0)
+        return AST.FileLocation(0, 0, 0, 0)
 
 
 def _iter_nodes(node: AST.ASTNode) -> Iterator[AST.ASTNode]:
     """
-    Pre-order traversal of CompilerNode tree, yielding (and terminating on) nodes with a
+    Pre-order traversal of ASTNode tree, yielding (and terminating on) nodes with a
     SourceChunk child
     """
     if node.get_children(types=AST.SourceChunk, direct_only=True):
