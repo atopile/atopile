@@ -1,37 +1,37 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-import atopile.compiler.ir_types as ir
-from atopile.compiler.ir_builder import build_file
+from atopile.compiler.ast_graph import AST, FileLocation, build_file
 from faebryk.libs.util import KeyErrorNotFound
 
 
-def file_loc_key(node: ir.CompilerNode) -> ir.FileLocation:
+def file_loc_key(node: AST.ASTNode) -> FileLocation:
     try:
-        (source_chunk,) = node.get_children(types=ir.SourceChunk, direct_only=True)
+        (source_chunk,) = node.get_children(types=AST.SourceChunk, direct_only=True)
         return source_chunk.file_location
     except ValueError:
-        return ir.FileLocation(0, 0, 0, 0)
+        return FileLocation(0, 0, 0, 0)
 
 
-def _iter_nodes(node: ir.CompilerNode) -> Iterator[ir.CompilerNode]:
+def _iter_nodes(node: AST.ASTNode) -> Iterator[AST.ASTNode]:
     """
     Pre-order traversal of CompilerNode tree, yielding (and terminating on) nodes with a
     SourceChunk child
     """
-    if node.get_children(types=ir.SourceChunk, direct_only=True):
+    if node.get_children(types=AST.SourceChunk, direct_only=True):
         yield node
     else:
         for child in sorted(
-            node.get_children(direct_only=True, types=ir.CompilerNode), key=file_loc_key
+            node.get_children(direct_only=True, types=AST.ASTNode),
+            key=file_loc_key,
         ):
             yield from _iter_nodes(child)
 
 
-def print_tree(example: ir.CompilerNode) -> None:
-    def _renderer(n: ir.CompilerNode) -> str:
+def print_tree(example: AST.ASTNode) -> None:
+    def _renderer(n: AST.ASTNode) -> str:
         try:
-            text = n.get_first_child_of_type(ir.SourceChunk, direct_only=True).text
+            text = n.get_first_child_of_type(AST.SourceChunk, direct_only=True).text
         except KeyErrorNotFound:
             text = ""
 
@@ -40,11 +40,11 @@ def print_tree(example: ir.CompilerNode) -> None:
 
         return f"{type(n).__name__}: `{text}`"
 
-    print(example.get_tree(types=ir.CompilerNode).pretty_print(node_renderer=_renderer))
+    print(example.get_tree(types=AST.ASTNode).pretty_print(node_renderer=_renderer))
 
 
-def visualize(example: ir.CompilerNode):
-    from atopile.compiler.ir_viewer import visualize
+def visualize(example: AST.ASTNode):
+    from atopile.compiler.ast_viewer import visualize
 
     visualize(example)
 
