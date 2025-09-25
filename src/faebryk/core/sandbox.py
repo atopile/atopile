@@ -1,23 +1,20 @@
 import math
 from collections import deque
-from mmap import PROT_READ
-from typing import cast
 
 import matplotlib.patches as patches
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 from matplotlib.widgets import Button
 
 import faebryk.library._F as F
-from faebryk.core.graphinterface import GraphInterface, GraphInterfaceReference
-from faebryk.core.link import LinkPointer
-from faebryk.core.module import Module
+
+# from faebryk.library.Resistor import Resistor
+from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node
-from faebryk.core.parameter import Parameter
-from faebryk.core.type import *
-from faebryk.libs.library import L
-from faebryk.libs.units import P
+from faebryk.core.type import Type_ImplementsType, _Node
+
+# Import concrete Modules to trigger Node.__init_subclass__ registration
+# and autogeneration of MakeChild/ChildReference nodes
 
 # class Attribute[T = str | int | float]:
 #     def __init__(self, value: T | None) -> None:
@@ -207,7 +204,7 @@ def _interfaces_of(node: Node, graph=None) -> list[GraphInterface]:
 
 
 class InteractiveTypeGraphVisualizer:
-    def __init__(self, root: Node, figsize: tuple[int, int] = (20, 14)):
+    def __init__(self, root: _Node, figsize: tuple[int, int] = (20, 14)):
         self.root = root
         self.graph = root.get_graph()
         self.nodes, self.iface_edges = _collect_from(root, self.graph)
@@ -526,7 +523,7 @@ class InteractiveTypeGraphVisualizer:
             if total_movement < 0.05:
                 break
 
-    def _node_label(self, n: Node) -> str:
+    def _node_label(self, n: _Node) -> str:
         return (
             getattr(n, "identifier", None)
             or getattr(n, "_identifier", None)  # show ChildRef identifier
@@ -615,6 +612,30 @@ class InteractiveTypeGraphVisualizer:
                 is_nodetype = False
                 is_rule = False
                 is_childref = False
+
+            # Fallback to structural checks (attributes) if Protocol isinstance fails
+            if not is_rule and hasattr(n, "child_ref_pointer"):
+                is_rule = True
+            if not is_childref and hasattr(n, "node_type_pointer"):
+                is_childref = True
+
+            # Additional fallback: if node has is_type parent whose identifier/name is "MakeChild"
+            if not is_rule:
+                try:
+                    is_type_gif = getattr(n, "is_type", None)
+                    if is_type_gif is not None:
+                        parent_info = is_type_gif.get_parent()
+                        if parent_info is not None:
+                            pnode, _pname = parent_info
+                            pid = (
+                                getattr(pnode, "_identifier", None)
+                                or getattr(pnode, "identifier", None)
+                                or pnode.get_name()
+                            )
+                            if pid == "MakeChild":
+                                is_rule = True
+                except Exception:
+                    pass
 
             if is_nodetype:
                 ec_color = "#000000"
@@ -996,20 +1017,15 @@ class InteractiveTypeGraphVisualizer:
         plt.show()
 
 
-def visualize_type_graph(root: Node, figsize: tuple[int, int] = (20, 14)) -> None:
+def visualize_type_graph(root: _Node, figsize: tuple[int, int] = (20, 14)) -> None:
     """Create and display an interactive type graph visualization"""
     visualizer = InteractiveTypeGraphVisualizer(root, figsize)
     visualizer.show()
 
 
-# Start visualization from type_sentinel
+# Ensure registry runs for these Python classes and autogen rules are created
+
+# register_python_nodetype(PyResistor)
+# register_python_nodetype(PyCapacitor)
+
 visualize_type_graph(Type_ImplementsType)
-# children = type_resistor.get_children(True, types=Rule)
-# for child in children:
-#     print(type(child))
-
-# print(type_resistor.rules.get_connected_nodes([Node]))
-
-# from faebryk.exporters.visualize.interactive_params import visualize_parameters
-
-# visualize_parameters(rc_filter_instance.get_graph(), height=1400)

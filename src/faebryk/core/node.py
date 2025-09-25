@@ -233,9 +233,9 @@ class Node(CNode):
 
         try:
             if isinstance(obj, GraphInterface):
-                self._handle_add_gif(name, obj)
+                Node._handle_add_gif(self, name, obj)
             else:
-                self._handle_add_node(name, obj)
+                Node._handle_add_node(self, name, obj)
         except Node._Skipped:
             return obj
 
@@ -395,9 +395,9 @@ class Node(CNode):
             del objects[name]
             try:
                 if isinstance(obj, GraphInterface):
-                    self._handle_add_gif(name, obj)
+                    Node._handle_add_gif(self, name, obj)
                 elif isinstance(obj, Node):
-                    self._handle_add_node(name, obj)
+                    Node._handle_add_node(self, name, obj)
                 else:
                     raise TypeError(
                         f"Cannot handle adding field {name=} of type {type(obj)}"
@@ -525,6 +525,8 @@ class Node(CNode):
     def __init_subclass__(
         cls, *, init: bool = True
     ) -> None:  # TODO: Build typgraph here
+        # init_subclass is called when a new subclass of Node is defined,
+        # not when an instance of Node is created
         cls._init = init
         post_init_decorator(cls)
         Node_mro = CNode.mro()
@@ -541,25 +543,97 @@ class Node(CNode):
         if node_instances:
             raise FieldError(f"Node instances not allowed: {node_instances}")
 
-    def _handle_add_gif(self, name: str, gif: GraphInterface):
-        gif.node = self
-        gif.name = name
-        gif.connect(self.self_gif, LinkSibling())
+        node_list = ["Resistor", "Capacitor", "Electrical"]
 
-    def _handle_add_node(self, name: str, node: "Node"):
+        # if cls.__name__ not in node_list:
+        # return
+        # before calling register_python_nodetype(cls)
+        mod = getattr(cls, "__module__", "")
+        # print(cls.__name__, mod)
+        if "faebryk.library" not in mod:
+            return
+        print(cls.__name__)
+        # Typegraph initialized here, implements_type and implements_trait generated
+        import faebryk.core.type as Types
+
+        # Create the type node for this class
+        type_node = Types.Class_ImplementsType.init_type_node(
+            Types._Node(), cls.__name__
+        )
+        try:
+            from faebryk.core.trait import Trait
+
+            if issubclass(cls, Trait):
+                Types.compose(type_node, Types.instantiate(Types.Type_ImplementsTrait))
+                print("TRAIT", cls.__name__)
+        except ImportError:
+            print("IMPORT ERROR", cls.__name__)
+            pass
+
+        clsfields, _ = cls.__faebryk_fields__()
+        LL_Types = (Node, GraphInterface)
+
+        # added_objects: dict[str, Node | GraphInterface] = {}
+        objects: dict[str, Node | GraphInterface] = {}
+
+        # ADD Child Node
+        # Get the type node for the child
+        def setup_field(name, obj):
+            if isinstance(obj, str):
+                raise NotImplementedError()
+
+            # type annotation
+            if isinstance(obj, type):
+                if "GraphInterface" in obj.__name__:
+                    # print("SKIP", name, obj.__name__)
+                    return
+                print(name, obj.__name__)
+                child_type_node = Types.get_type_by_name(obj.__name__)
+                assert isinstance(
+                    child_type_node, Types.Class_ImplementsType.Proto_Type
+                )
+                child_ref = Types.Class_ChildReference.init_child_reference_instance(
+                    child_type_node, Types.instantiate(child_type_node), name
+                )
+                make_child = Types.Class_MakeChild.init_make_child_instance(
+                    Types.instantiate(Types.Type_MakeChild), child_ref
+                )
+                type_node.children.connect(
+                    make_child.parent, Types.LinkNamedParent(name)
+                )
+
+            # print("SKIPPED", name, type(obj).__name__)
+            # raise NotImplementedError()
+
+        # Split into nonrt and rt fields
+        nonrt, rt = partition(
+            lambda x: isinstance(x[1], constructed_field), clsfields.items()
+        )
+        # for all nonrt fields, setup the field
+        for name, obj in nonrt:
+            setup_field(name, obj)
+
+    @staticmethod
+    def _handle_add_gif(node: "Node", name: str, gif: GraphInterface):
+        gif.node = node
+        gif.name = name
+        gif.connect(node.self_gif, LinkSibling())
+
+    @staticmethod
+    def _handle_add_node(parent_node: "Node", name: str, node: "Node"):
         if node.get_parent():
-            raise NodeAlreadyBound(self, node)
+            raise NodeAlreadyBound(parent_node, node)
 
         from faebryk.core.trait import TraitImpl
 
         if TraitImpl.is_traitimpl(node):
-            if self.has_trait(node.__trait__):
+            if parent_node.has_trait(node.__trait__):
                 if not node.handle_duplicate(
-                    cast(TraitImpl, self.get_trait(node.__trait__)), self
+                    cast(TraitImpl, parent_node.get_trait(node.__trait__)), parent_node
                 ):
                     raise Node._Skipped()
 
-        node.parent.connect(self.children, LinkNamedParent(name))
+        node.parent.connect(parent_node.children, LinkNamedParent(name))
         node._handle_added_to_parent()
 
     def _remove_child(self, node: "Node"):

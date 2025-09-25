@@ -11,6 +11,10 @@ from faebryk.libs.units import P
 class Resistor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
+    # type annotation
+    p1: F.Electrical
+    p2: F.Electrical
+
     resistance = L.p_field(units=P.ohm)
     max_power = L.p_field(units=P.W)
     max_voltage = L.p_field(units=P.V)

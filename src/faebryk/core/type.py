@@ -1,7 +1,5 @@
 from typing import Any, Protocol, runtime_checkable
 
-from git.util import T
-
 from faebryk.core.cpp import (
     GraphInterface,
     GraphInterfaceHierarchical,
@@ -270,6 +268,20 @@ def get_child_by_name(node: _Node, name: str):
     raise ValueError(f"No child with name {name} found")
 
 
+def get_type_by_name(name: str) -> _Node | None:
+    assert isinstance(Type_ImplementsType, Class_ImplementsType.Proto_Type)
+    implements_type_instances_gif = Type_ImplementsType.instances
+    for instance in implements_type_instances_gif.get_children():
+        assert isinstance(instance, _Node)
+        if parent_tuple := instance.get_parent():
+            parent_node = parent_tuple[0]
+            assert isinstance(parent_node, _Node)
+            assert isinstance(parent_node, Class_ImplementsType.Proto_Type)
+            if parent_node._identifier == name:
+                return parent_node
+    return None
+
+
 class Class_CanBridge:
     @runtime_checkable
     class Proto_CanBridge(Protocol):
@@ -295,84 +307,91 @@ class Class_CanBridge:
 
 
 # BUILT IN TYPES FOR TYPEGRAPH GENERATION
-TwoTerminal = Class_ImplementsTrait.init_trait_type(_Node(), "TwoTerminal")
-CanBridge = Class_CanBridge.init_can_bridge_node(_Node())
+# TwoTerminal = Class_ImplementsTrait.init_trait_type(_Node(), "TwoTerminal")
+# CanBridge = Class_CanBridge.init_can_bridge_node(_Node())
 Type_MakeChild = Class_ImplementsType.init_type_node(_Node(), "MakeChild")
-Type_Connect = Class_ImplementsType.init_type_node(_Node(), "Connect")
+Type_ChildReference = Class_ImplementsType.init_type_node(_Node(), "ChildReference")
 Type_NestedReference = Class_ImplementsType.init_type_node(_Node(), "NestedReference")
+Type_ModuleInterface = Class_ImplementsType.init_type_node(_Node(), "ModuleInterface")
+# Type_Connect = Class_ImplementsType.init_type_node(_Node(), "Connect")
 
 
 # print(Type_ImplementsTrait.get_children(direct_only=True, types=[_Node]))
 
-### ELECTRICAL TYPE ###
-Type_Electrical = Class_ImplementsType.init_type_node(_Node(), "Electrical")
-# electrical = instantiate(Type_Electrical)
+# ### ELECTRICAL TYPE ###
+# Type_Electrical = Class_ImplementsType.init_type_node(_Node(), "Electrical")
+# # electrical = instantiate(Type_Electrical)
 
-### RESISTOR TYPE ###
-Type_Resistor = Class_ImplementsType.init_type_node(_Node(), "Resistor")
+# ### RESISTOR TYPE ###
+# Type_Resistor = Class_ImplementsType.init_type_node(_Node(), "Resistor")
 
-p1_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Electrical, instantiate(Type_Electrical), "p1"
-)
-p1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p1_ref)
-Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
+# p1_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p1"
+# )
+# p1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p1_ref)
+# Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
 
-p2_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Electrical, instantiate(Type_Electrical), "p2"
-)
-p2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p2_ref)
-Type_Resistor.children.connect(p2_rule.parent, LinkNamedParent("p2"))
+# p2_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p2"
+# )
+# p2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p2_ref)
+# Type_Resistor.children.connect(p2_rule.parent, LinkNamedParent("p2"))
 
-### CAPACITOR TYPE ###
-Type_Capacitor = Class_ImplementsType.init_type_node(_Node(), "Capacitor")
+# ### CAPACITOR TYPE ###
+# Type_Capacitor = Class_ImplementsType.init_type_node(_Node(), "Capacitor")
 
-c1_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Electrical, instantiate(Type_Electrical), "p1"
-)
-c1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c1_ref)
-Type_Capacitor.children.connect(c1_rule.parent, LinkNamedParent("p1"))
+# c1_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p1"
+# )
+# c1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c1_ref)
+# Type_Capacitor.children.connect(c1_rule.parent, LinkNamedParent("p1"))
 
-c2_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Electrical, instantiate(Type_Electrical), "p2"
-)
-c2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c2_ref)
-Type_Capacitor.children.connect(c2_rule.parent, LinkNamedParent("p2"))
+# c2_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p2"
+# )
+# c2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c2_ref)
+# Type_Capacitor.children.connect(c2_rule.parent, LinkNamedParent("p2"))
 
-### RC FILTER TYPE ###
-Type_RCFilter = Class_ImplementsType.init_type_node(_Node(), "RCFilter")
+# ### RC FILTER TYPE ###
+# Type_RCFilter = Class_ImplementsType.init_type_node(_Node(), "RCFilter")
 
-r_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Resistor, instantiate(Type_Resistor), "resistor"
-)
-r_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), r_ref)
-Type_RCFilter.children.connect(r_rule.parent, LinkNamedParent("resistor"))
+# r_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Resistor, instantiate(Type_Resistor), "resistor"
+# )
+# r_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), r_ref)
+# Type_RCFilter.children.connect(r_rule.parent, LinkNamedParent("resistor"))
 
-c_ref = Class_ChildReference.init_child_reference_instance(
-    Type_Capacitor, instantiate(Type_Capacitor), "capacitor"
-)
-c_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c_ref)
-Type_RCFilter.children.connect(c_rule.parent, LinkNamedParent("capacitor"))
+# c_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Capacitor, instantiate(Type_Capacitor), "capacitor"
+# )
+# c_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c_ref)
+# Type_RCFilter.children.connect(c_rule.parent, LinkNamedParent("capacitor"))
 
-r1p1_ref = Class_NestedReference.init_nested_reference_instance(
-    instantiate(Type_NestedReference), p1_ref, None
-)
-r1_ref = Class_NestedReference.init_nested_reference_instance(
-    instantiate(Type_NestedReference), r_ref, r1p1_ref
-)
+# r1p1_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), p1_ref, None
+# )
+# r1_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), r_ref, r1p1_ref
+# )
 
-c1p2_ref = Class_NestedReference.init_nested_reference_instance(
-    instantiate(Type_NestedReference), c2_ref, None
-)
-c2_ref = Class_NestedReference.init_nested_reference_instance(
-    instantiate(Type_NestedReference), c_ref, c1p2_ref
-)
+# c1p2_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), c2_ref, None
+# )
+# c2_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), c_ref, c1p2_ref
+# )
 
-p1p2_connect_rule = Class_Connect.init_connect_node_instance(
-    instantiate(Type_Connect), [r1_ref, c2_ref]
-)
-Type_RCFilter.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
+# p1p2_connect_rule = Class_Connect.init_connect_node_instance(
+#     instantiate(Type_Connect), [r1_ref, c2_ref]
+# )
+# Type_RCFilter.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
 
 
 # resistor = instantiate(Type_Resistor)
 # capacitor = instantiate(Type_Capacitor)
-rc_filter = instantiate(Type_RCFilter)
+# rc_filter = instantiate(Type_RCFilter)
+
+
+_registered: dict[type[Node], _Node] = {}
+# node = get_type_by_name("Electrical")
+# print(node._identifier)
