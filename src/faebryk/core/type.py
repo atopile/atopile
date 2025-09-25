@@ -11,7 +11,7 @@ from faebryk.core.cpp import (
     LinkPointer,
     LinkSibling,
 )
-from faebryk.core.node import CNode, Node
+from faebryk.core.node import CNode
 from faebryk.libs.util import cast
 
 # Manually create Trait type and implements_type instance here,
@@ -49,8 +49,8 @@ class _Node(CNode):
             self.self_gif.connect(value, link=LinkSibling())
         elif isinstance(value, CNode):
             value.parent.connect(value.children, LinkNamedParent(name))
-        if isinstance(value, Node):
-            value._handle_added_to_parent()
+        # if isinstance(value, Node):
+        #     value._handle_added_to_parent()
 
 
 def compose(parent: _Node, child: _Node, name: str | None = None):
@@ -258,6 +258,30 @@ class Class_Connect:
             )
 
 
+class Class_CanBridge:
+    @runtime_checkable
+    class Proto_CanBridge(Protocol):
+        in_: GraphInterfaceReference
+        out: GraphInterfaceReference
+
+    @staticmethod
+    def init_can_bridge_node(node: _Node):
+        Class_ImplementsTrait.init_trait_type(node, "CanBridge")
+
+        node.in_ = GraphInterfaceReference()
+        node.out = GraphInterfaceReference()
+
+    @staticmethod
+    def get_in(node: _Node):
+        assert isinstance(node, Class_CanBridge.Proto_CanBridge)
+        return node.in_.get_referenced_gif().node
+
+    @staticmethod
+    def get_out(node: _Node):
+        assert isinstance(node, Class_CanBridge.Proto_CanBridge)
+        return node.out.get_referenced_gif().node
+
+
 ### UTILITY FUNCTIONS ###
 def get_child_by_name(node: _Node, name: str):
     if hasattr(node, name):
@@ -296,30 +320,6 @@ def make_child_rule_and_child_ref(
     parent_node.children.connect(make_child.parent, LinkNamedParent(name))
 
 
-class Class_CanBridge:
-    @runtime_checkable
-    class Proto_CanBridge(Protocol):
-        in_: GraphInterfaceReference
-        out: GraphInterfaceReference
-
-    @staticmethod
-    def init_can_bridge_node(node: _Node):
-        Class_ImplementsTrait.init_trait_type(node, "CanBridge")
-
-        node.in_ = GraphInterfaceReference()
-        node.out = GraphInterfaceReference()
-
-    @staticmethod
-    def get_in(node: _Node):
-        assert isinstance(node, Class_CanBridge.Proto_CanBridge)
-        return node.in_.get_referenced_gif().node
-
-    @staticmethod
-    def get_out(node: _Node):
-        assert isinstance(node, Class_CanBridge.Proto_CanBridge)
-        return node.out.get_referenced_gif().node
-
-
 # BUILT IN TYPES FOR TYPEGRAPH GENERATION
 # TwoTerminal = Class_ImplementsTrait.init_trait_type(_Node(), "TwoTerminal")
 # CanBridge = Class_CanBridge.init_can_bridge_node(_Node())
@@ -329,84 +329,3 @@ Type_NestedReference = Class_ImplementsType.init_type_node(_Node(), "NestedRefer
 Type_ModuleInterface = Class_ImplementsType.init_type_node(_Node(), "ModuleInterface")
 Type_Parameter = Class_ImplementsType.init_type_node(_Node(), "Parameter")
 # Type_Connect = Class_ImplementsType.init_type_node(_Node(), "Connect")
-
-
-# print(Type_ImplementsTrait.get_children(direct_only=True, types=[_Node]))
-
-# ### ELECTRICAL TYPE ###
-# Type_Electrical = Class_ImplementsType.init_type_node(_Node(), "Electrical")
-# # electrical = instantiate(Type_Electrical)
-
-# ### RESISTOR TYPE ###
-# Type_Resistor = Class_ImplementsType.init_type_node(_Node(), "Resistor")
-
-# p1_ref = Class_ChildReference.init_child_reference_instance(
-#     Type_Electrical, instantiate(Type_Electrical), "p1"
-# )
-# p1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p1_ref)
-# Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
-
-# p2_ref = Class_ChildReference.init_child_reference_instance(
-#     Type_Electrical, instantiate(Type_Electrical), "p2"
-# )
-# p2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p2_ref)
-# Type_Resistor.children.connect(p2_rule.parent, LinkNamedParent("p2"))
-
-# ### CAPACITOR TYPE ###
-# Type_Capacitor = Class_ImplementsType.init_type_node(_Node(), "Capacitor")
-
-# c1_ref = Class_ChildReference.init_child_reference_instance(
-#     Type_Electrical, instantiate(Type_Electrical), "p1"
-# )
-# c1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c1_ref)
-# Type_Capacitor.children.connect(c1_rule.parent, LinkNamedParent("p1"))
-
-# c2_ref = Class_ChildReference.init_child_reference_instance(
-#     Type_Electrical, instantiate(Type_Electrical), "p2"
-# )
-# c2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c2_ref)
-# Type_Capacitor.children.connect(c2_rule.parent, LinkNamedParent("p2"))
-
-# ### RC FILTER TYPE ###
-# Type_RCFilter = Class_ImplementsType.init_type_node(_Node(), "RCFilter")
-
-# r_ref = Class_ChildReference.init_child_reference_instance(
-#     Type_Resistor, instantiate(Type_Resistor), "resistor"
-# )
-# r_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), r_ref)
-# Type_RCFilter.children.connect(r_rule.parent, LinkNamedParent("resistor"))
-
-# c_ref = Class_ChildReference.init_child_reference_instance(
-#     Type_Capacitor, instantiate(Type_Capacitor), "capacitor"
-# )
-# c_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c_ref)
-# Type_RCFilter.children.connect(c_rule.parent, LinkNamedParent("capacitor"))
-
-# r1p1_ref = Class_NestedReference.init_nested_reference_instance(
-#     instantiate(Type_NestedReference), p1_ref, None
-# )
-# r1_ref = Class_NestedReference.init_nested_reference_instance(
-#     instantiate(Type_NestedReference), r_ref, r1p1_ref
-# )
-
-# c1p2_ref = Class_NestedReference.init_nested_reference_instance(
-#     instantiate(Type_NestedReference), c2_ref, None
-# )
-# c2_ref = Class_NestedReference.init_nested_reference_instance(
-#     instantiate(Type_NestedReference), c_ref, c1p2_ref
-# )
-
-# p1p2_connect_rule = Class_Connect.init_connect_node_instance(
-#     instantiate(Type_Connect), [r1_ref, c2_ref]
-# )
-# Type_RCFilter.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
-
-
-# resistor = instantiate(Type_Resistor)
-# capacitor = instantiate(Type_Capacitor)
-# rc_filter = instantiate(Type_RCFilter)
-
-
-_registered: dict[type[Node], _Node] = {}
-# node = get_type_by_name("Electrical")
-# print(node._identifier)

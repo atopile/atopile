@@ -20,7 +20,6 @@ from typing import (
 
 from deprecated import deprecated
 from more_itertools import partition
-from numpy import isin
 from ordered_set import OrderedSet
 
 from faebryk.core.cpp import Node as CNode
@@ -28,6 +27,7 @@ from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
+from faebryk.core.type import _Node, compose, get_type_by_name, instantiate
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
@@ -170,8 +170,6 @@ def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, _d_field[li
         wrapper.meta["args"] = args
         wrapper.meta["kwargs"] = kwargs
         return wrapper
-
-        return __
 
     return _  # type: ignore
 
@@ -416,6 +414,17 @@ class Node(CNode):
         # "| {type(obj)}
         #    )
 
+        nonrt, rt = partition(
+            lambda x: isinstance(x[1], constructed_field), clsfields.items()
+        )
+
+        type_node_name = self.__class__.__name__
+        print("RUNNING INSTANTIATION FOR", type_node_name)
+        type_node = get_type_by_name(type_node_name)
+        if type_node is None:
+            raise ValueError(f"Type node {type_node_name} not found")
+        self.instance_node = instantiate(type_node)
+
         added_objects: dict[str, Node | GraphInterface] = {}
         objects: dict[str, Node | GraphInterface] = {}
 
@@ -486,21 +495,15 @@ class Node(CNode):
                     f'An exception occurred while constructing field "{name}"',
                 ) from e
 
-        nonrt, rt = partition(
-            lambda x: isinstance(x[1], constructed_field), clsfields.items()
-        )
-        for name, obj in nonrt:
-            setup_field(name, obj)
+        # for name, obj in list(objects.items()):
+        #     handle_add(name, obj)
 
-        for name, obj in list(objects.items()):
-            handle_add(name, obj)
+        # # rt fields depend on full self
+        # for name, obj in rt:
+        #     setup_field(name, obj)
 
-        # rt fields depend on full self
-        for name, obj in rt:
-            setup_field(name, obj)
-
-            for name, obj in list(objects.items()):
-                handle_add(name, obj)
+        #     for name, obj in list(objects.items()):
+        #         handle_add(name, obj)
 
         return added_objects, clsfields
 
@@ -571,36 +574,31 @@ class Node(CNode):
         if node_instances:
             raise FieldError(f"Node instances not allowed: {node_instances}")
 
+        # Generate typegraph -----------------------------------------------------------
         mod = getattr(cls, "__module__", "")
-        # print(cls.__name__, mod)
         if "faebryk.library" not in mod:
             return
         print(cls.__name__)
         # Typegraph initialized here, implements_type and implements_trait generated
         import faebryk.core.type as Types
 
-        # Create the type node for this class
+        # Generate type node
         type_node = Types.Class_ImplementsType.init_type_node(
             Types._Node(), cls.__name__
         )
         try:
             from faebryk.core.trait import Trait
 
-            if issubclass(cls, Trait):
+            if issubclass(cls, Trait):  # Add ImplementsTrait node to mark trait
                 Types.compose(type_node, Types.instantiate(Types.Type_ImplementsTrait))
                 print("TRAIT", cls.__name__)
         except ImportError:
             print("IMPORT ERROR", cls.__name__)
             pass
 
+        # Generate fabll il fields and add child nodes
         clsfields, _ = cls.__faebryk_fields__()
-        LL_Types = (Node, GraphInterface)
 
-        # added_objects: dict[str, Node | GraphInterface] = {}
-        objects: dict[str, Node | GraphInterface] = {}
-
-        # ADD Child Node
-        # Get the type node for the child
         def setup_field(name, obj):
             if isinstance(obj, str):
                 raise NotImplementedError()

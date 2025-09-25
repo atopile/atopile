@@ -16,6 +16,7 @@ from faebryk.core.type import Type_ImplementsType, _Node
 # Import concrete Modules to trigger Node.__init_subclass__ registration
 # and autogeneration of MakeChild/ChildReference nodes
 
+# OLD EXAMLES --------------------------------------------------------------------------
 # class Attribute[T = str | int | float]:
 #     def __init__(self, value: T | None) -> None:
 #         self.name: str | None = None
@@ -131,6 +132,82 @@ from faebryk.core.type import Type_ImplementsType, _Node
 # capacitor_instance = type_capacitor.execute()
 # rc_filter_instance = type_rc_filter.execute()
 # electric_signal_instance = type_electrical.execute()
+
+# NEW EXAMLES --------------------------------------------------------------------------
+# print(Type_ImplementsTrait.get_children(direct_only=True, types=[_Node]))
+
+# ### ELECTRICAL TYPE ###
+# Type_Electrical = Class_ImplementsType.init_type_node(_Node(), "Electrical")
+# # electrical = instantiate(Type_Electrical)
+
+# ### RESISTOR TYPE ###
+# Type_Resistor = Class_ImplementsType.init_type_node(_Node(), "Resistor")
+
+# p1_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p1"
+# )
+# p1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p1_ref)
+# Type_Resistor.children.connect(p1_rule.parent, LinkNamedParent("p1"))
+
+# p2_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p2"
+# )
+# p2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), p2_ref)
+# Type_Resistor.children.connect(p2_rule.parent, LinkNamedParent("p2"))
+
+# ### CAPACITOR TYPE ###
+# Type_Capacitor = Class_ImplementsType.init_type_node(_Node(), "Capacitor")
+
+# c1_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p1"
+# )
+# c1_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c1_ref)
+# Type_Capacitor.children.connect(c1_rule.parent, LinkNamedParent("p1"))
+
+# c2_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Electrical, instantiate(Type_Electrical), "p2"
+# )
+# c2_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c2_ref)
+# Type_Capacitor.children.connect(c2_rule.parent, LinkNamedParent("p2"))
+
+# ### RC FILTER TYPE ###
+# Type_RCFilter = Class_ImplementsType.init_type_node(_Node(), "RCFilter")
+
+# r_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Resistor, instantiate(Type_Resistor), "resistor"
+# )
+# r_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), r_ref)
+# Type_RCFilter.children.connect(r_rule.parent, LinkNamedParent("resistor"))
+
+# c_ref = Class_ChildReference.init_child_reference_instance(
+#     Type_Capacitor, instantiate(Type_Capacitor), "capacitor"
+# )
+# c_rule = Class_MakeChild.init_make_child_instance(instantiate(Type_MakeChild), c_ref)
+# Type_RCFilter.children.connect(c_rule.parent, LinkNamedParent("capacitor"))
+
+# r1p1_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), p1_ref, None
+# )
+# r1_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), r_ref, r1p1_ref
+# )
+
+# c1p2_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), c2_ref, None
+# )
+# c2_ref = Class_NestedReference.init_nested_reference_instance(
+#     instantiate(Type_NestedReference), c_ref, c1p2_ref
+# )
+
+# p1p2_connect_rule = Class_Connect.init_connect_node_instance(
+#     instantiate(Type_Connect), [r1_ref, c2_ref]
+# )
+# Type_RCFilter.children.connect(p1p2_connect_rule.parent, LinkNamedParent("p1p2connect"))
+
+
+# resistor = instantiate(Type_Resistor)
+# capacitor = instantiate(Type_Capacitor)
+# rc_filter = instantiate(Type_RCFilter)
 
 
 # --------------- Visualization ---------------
@@ -1027,5 +1104,7 @@ def visualize_type_graph(root: _Node, figsize: tuple[int, int] = (20, 14)) -> No
 
 # register_python_nodetype(PyResistor)
 # register_python_nodetype(PyCapacitor)
+
+r = F.Resistor()
 
 visualize_type_graph(Type_ImplementsType)
