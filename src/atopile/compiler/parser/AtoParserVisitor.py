@@ -79,26 +79,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#cum_assign_stmt.
-    def visitCum_assign_stmt(self, ctx:AtoParser.Cum_assign_stmtContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#set_assign_stmt.
-    def visitSet_assign_stmt(self, ctx:AtoParser.Set_assign_stmtContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#cum_operator.
-    def visitCum_operator(self, ctx:AtoParser.Cum_operatorContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#cum_assignable.
-    def visitCum_assignable(self, ctx:AtoParser.Cum_assignableContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#assignable.
     def visitAssignable(self, ctx:AtoParser.AssignableContext):
         return self.visitChildren(ctx)

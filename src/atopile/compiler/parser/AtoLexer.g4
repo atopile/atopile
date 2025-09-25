@@ -149,18 +149,6 @@ NOT_EQ_1: '<>';
 NOT_EQ_2: '!=';
 AT: '@';
 ARROW: '->';
-ADD_ASSIGN: '+=';
-SUB_ASSIGN: '-=';
-MULT_ASSIGN: '*=';
-AT_ASSIGN: '@=';
-DIV_ASSIGN: '/=';
-AND_ASSIGN: '&=';
-OR_ASSIGN: '|=';
-XOR_ASSIGN: '^=';
-LEFT_SHIFT_ASSIGN: '<<=';
-RIGHT_SHIFT_ASSIGN: '>>=';
-POWER_ASSIGN: '**=';
-IDIV_ASSIGN: '//=';
 
 // From Python3.12 lexer example credit Robert Einhorn (MIT License)
 // https://github.com/antlr/grammars-v4/blob/6d13b1068d0fc9eba30a3f291fe62026fbc71c2f/python/python3_12/PythonLexer.g4#L169
