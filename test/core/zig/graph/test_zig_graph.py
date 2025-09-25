@@ -14,14 +14,16 @@ def test_minimal_graph():
     n1 = Node.create()
     n2 = Node.create()
     n3 = Node.create()
-    e12 = Edge.create(n1, n2, 0)
-    e13 = Edge.create(n1, n3, 0)
+    e120 = Edge.create(n1, n2, 0)
+    e130 = Edge.create(n1, n3, 0)
+    e121 = Edge.create(n1, n2, 1)
 
     bn1 = g.insert_node(n1)
     g.insert_node(n2)
     g.insert_node(n3)
-    g.insert_edge(e12)
-    g.insert_edge(e13)
+    g.insert_edge(e120)
+    g.insert_edge(e130)
+    g.insert_edge(e121)
 
     # print(repr(g))
 
@@ -33,7 +35,6 @@ def test_minimal_graph():
 
     bn1.visit_edges_of_type(
         edge_type=0,
-        T=Ctx,
         ctx=ctx,
         f=lambda ctx, edge: ctx.edges.append(edge.edge()),
     )
