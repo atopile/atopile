@@ -9,240 +9,265 @@ pub fn shortTypeName(comptime T: type) [:0]const u8 {
     return full[last..];
 }
 
+const indent_step = 2;
+
+fn isSimpleValueType(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .bool, .int, .float, .comptime_int, .comptime_float => true,
+        .@"enum" => true,
+        .optional => |opt| isSimpleValueType(opt.child),
+        .pointer => |ptr| ptr.size == .slice and ptr.child == u8,
+        else => false,
+    };
+}
+
 pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
     const T = @TypeOf(value);
-    const info = @typeInfo(T);
+    comptime if (@typeInfo(T) != .@"struct") @compileError("printStruct expects a struct");
 
-    switch (info) {
-        .@"struct" => |s| {
-            var pos: usize = 0;
-
-            // Write struct name and opening brace
-            const header = try std.fmt.bufPrintZ(buf[pos..], "{s} {{\n", .{@typeName(T)});
-            pos += header.len;
-
-            // Write each field
-            inline for (s.fields) |field| {
-                const field_value = @field(value, field.name);
-                const field_type = @TypeOf(field_value);
-                const field_type_info = @typeInfo(field_type);
-
-                // Check field type for special handling
-                const is_string = switch (field_type_info) {
-                    .pointer => |ptr| ptr.size == .slice and ptr.child == u8 and ptr.is_const,
-                    else => false,
-                };
-
-                const is_struct = switch (field_type_info) {
-                    .@"struct" => true,
-                    else => false,
-                };
-
-                if (is_string) {
-                    // Handle string fields
-                    const field_str = try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{s}\"\n", .{ field.name, field_value });
-                    pos += field_str.len;
-                } else if (is_struct) {
-                    // Handle struct fields recursively
-                    const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: ", .{field.name});
-                    pos += field_header.len;
-
-                    // Recursively print the struct, adjusting indentation
-                    var temp_buf: [4096]u8 = undefined; // Increased for nested structs
-                    const struct_str = try printStruct(field_value, &temp_buf);
-
-                    // Add indentation to each line of the struct output
-                    var line_iter = std.mem.splitScalar(u8, struct_str, '\n');
-                    var first_line = true;
-                    while (line_iter.next()) |line| {
-                        if (line.len == 0) continue; // Skip empty lines
-
-                        const indented_line = if (first_line) blk: {
-                            first_line = false;
-                            break :blk try std.fmt.bufPrintZ(buf[pos..], "{s}\n", .{line});
-                        } else try std.fmt.bufPrintZ(buf[pos..], "  {s}\n", .{line});
-                        pos += indented_line.len;
-                    }
-                } else {
-                    // Handle other field types including optionals and slices
-                    const field_str = switch (field_type_info) {
-                        .optional => |opt| blk: {
-                            // Check what type is inside the optional
-                            const child_info = @typeInfo(opt.child);
-
-                            // Check if the optional contains a struct
-                            if (child_info == .@"struct") {
-                                if (field_value) |val| {
-                                    // Handle optional struct recursively
-                                    const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: ", .{field.name});
-                                    pos += field_header.len;
-
-                                    // Recursively print the struct
-                                    var temp_buf: [4096]u8 = undefined; // Increased for nested structs
-                                    const struct_str = try printStruct(val, &temp_buf);
-
-                                    // Add indentation to each line of the struct output
-                                    var line_iter = std.mem.splitScalar(u8, struct_str, '\n');
-                                    var first_line = true;
-                                    while (line_iter.next()) |line| {
-                                        if (line.len == 0) continue; // Skip empty lines
-
-                                        const indented_line = if (first_line) blk2: {
-                                            first_line = false;
-                                            break :blk2 try std.fmt.bufPrintZ(buf[pos..], "{s}\n", .{line});
-                                        } else try std.fmt.bufPrintZ(buf[pos..], "  {s}\n", .{line});
-                                        pos += indented_line.len;
-                                    }
-                                    // Return empty string to indicate we've already handled output
-                                    break :blk "";
-                                } else {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: null\n", .{field.name});
-                                }
-                            } else if (child_info == .pointer and child_info.pointer.size == .slice) {
-                                // Optional slice - use {?s} for optional strings
-                                if (child_info.pointer.child == u8) {
-                                    if (field_value == null) {
-                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: None\n", .{field.name});
-                                    } else {
-                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{?s}\"\n", .{ field.name, field_value });
-                                    }
-                                } else {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?any}\n", .{ field.name, field_value });
-                                }
-                            } else if (child_info == .pointer) {
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {*}\n", .{ field.name, field_value });
-                            } else {
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?}\n", .{ field.name, field_value });
-                            }
-                        },
-                        .pointer => |ptr| blk: {
-                            if (ptr.size == .slice) {
-                                if (ptr.child == u8) {
-                                    // String slice - print with quotes
-                                    const str_slice: []const u8 = field_value;
-                                    // Check if string is printable
-                                    var is_printable = true;
-                                    for (str_slice) |c| {
-                                        if (c < 32 or c > 126) {
-                                            is_printable = false;
-                                            break;
-                                        }
-                                    }
-                                    if (is_printable and str_slice.len > 0) {
-                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{s}\"\n", .{ field.name, str_slice });
-                                    } else {
-                                        // Non-printable or empty, show as byte array
-                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
-                                    }
-                                } else {
-                                    // Check if it's a slice of structs
-                                    const child_info = @typeInfo(ptr.child);
-                                    if (child_info == .@"struct") {
-                                        // Slice of structs - format them nicely with line breaks
-                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [\n", .{field.name});
-                                        pos += field_header.len;
-
-                                        // Print each struct in the slice with proper indentation
-                                        for (field_value, 0..) |item, i| {
-                                            // Add indentation for array items
-                                            const indent = try std.fmt.bufPrintZ(buf[pos..], "    ", .{});
-                                            pos += indent.len;
-
-                                            // Recursively print the struct
-                                            var item_buf: [8192]u8 = undefined;
-                                            const item_str = try printStruct(item, &item_buf);
-
-                                            // Add extra indentation to each line of the nested struct
-                                            var line_iter = std.mem.splitScalar(u8, item_str, '\n');
-                                            var first_line = true;
-                                            while (line_iter.next()) |line| {
-                                                if (line.len == 0) continue;
-
-                                                if (!first_line) {
-                                                    const nested_indent = try std.fmt.bufPrintZ(buf[pos..], "    ", .{});
-                                                    pos += nested_indent.len;
-                                                }
-                                                first_line = false;
-
-                                                const line_out = try std.fmt.bufPrintZ(buf[pos..], "{s}\n", .{line});
-                                                pos += line_out.len;
-                                            }
-
-                                            if (i < field_value.len - 1) {
-                                                // Add comma between items
-                                                const comma = try std.fmt.bufPrintZ(buf[pos..], "    ,\n", .{});
-                                                pos += comma.len;
-                                            }
-                                        }
-
-                                        const closer = try std.fmt.bufPrintZ(buf[pos..], "  ]\n", .{});
-                                        pos += closer.len;
-                                        // Return empty string to indicate we've already handled output
-                                        break :blk "";
-                                    } else if (child_info == .pointer and child_info.pointer.size == .slice and child_info.pointer.child == u8) {
-                                        // Slice of strings ([][]const u8)
-                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [", .{field.name});
-                                        pos += field_header.len;
-
-                                        // Print each string in the slice
-                                        for (field_value, 0..) |item, i| {
-                                            if (i > 0) {
-                                                const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
-                                                pos += comma.len;
-                                            }
-
-                                            const str_item: []const u8 = item;
-                                            // Check if string is printable
-                                            var is_printable = true;
-                                            for (str_item) |c| {
-                                                if (c < 32 or c > 126) {
-                                                    is_printable = false;
-                                                    break;
-                                                }
-                                            }
-
-                                            if (is_printable and str_item.len > 0) {
-                                                const str_out = try std.fmt.bufPrintZ(buf[pos..], "\"{s}\"", .{str_item});
-                                                pos += str_out.len;
-                                            } else {
-                                                // Show as byte array
-                                                const bytes_out = try std.fmt.bufPrintZ(buf[pos..], "{any}", .{str_item});
-                                                pos += bytes_out.len;
-                                            }
-                                        }
-
-                                        const closer = try std.fmt.bufPrintZ(buf[pos..], "]\n", .{});
-                                        pos += closer.len;
-                                        // Return empty string to indicate we've already handled output
-                                        break :blk "";
-                                    } else {
-                                        // Other non-struct slice types
-                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
-                                    }
-                                }
-                            } else {
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
-                            }
-                        },
-                        else => try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value }),
-                    };
-                    // Only add to pos if we didn't already handle it (optional struct case returns empty string)
-                    if (field_str.len > 0) {
-                        pos += field_str.len;
-                    }
-                }
-            }
-
-            // Write closing brace
-            const footer = try std.fmt.bufPrintZ(buf[pos..], "}}\n", .{});
-            pos += footer.len;
-
-            // Null-terminate the string
-            if (pos >= buf.len) return error.BufferTooSmall;
-            buf[pos] = 0;
-
-            return buf[0..pos :0];
-        },
-        else => @compileError("Not a struct"),
+    if (buf.len == 0) return error.BufferTooSmall;
+    var stream = std.io.fixedBufferStream(buf[0 .. buf.len - 1]);
+    {
+        const writer = stream.writer();
+        try printStructInline(writer, value, 0);
+        try writer.writeByte('\n');
     }
+    const written = stream.pos;
+    buf[written] = 0;
+    return buf[0..written :0];
+}
+
+fn printStructInline(writer: anytype, value: anytype, indent: usize) anyerror!void {
+    const T = @TypeOf(value);
+    const info = @typeInfo(T).@"struct";
+
+    try writer.print("{s} {{\n", .{@typeName(T)});
+    inline for (info.fields) |field| {
+        const field_value = @field(value, field.name);
+        try printField(writer, field.name, field_value, indent);
+    }
+    try writeIndent(writer, indent);
+    try writer.writeAll("}");
+}
+
+fn isSimpleInline(value: anytype) bool {
+    const T = @TypeOf(value);
+    if (isAllocatorType(T)) return true;
+    if (comptime isSimpleValueType(T)) return true;
+    return switch (@typeInfo(T)) {
+        .optional => value == null,
+        else => false,
+    };
+}
+
+fn printField(writer: anytype, comptime name: []const u8, value: anytype, parent_indent: usize) anyerror!void {
+    const field_indent = parent_indent + indent_step;
+    const simple_type = isSimpleInline(value);
+    try writeIndent(writer, field_indent);
+    try writer.print("{s}:", .{name});
+    if (simple_type) {
+        try writer.writeByte(' ');
+        try printValue(writer, value, field_indent);
+        try writer.writeByte('\n');
+        return;
+    }
+
+    try writer.writeByte('\n');
+    try writeIndent(writer, field_indent + indent_step);
+    try printValue(writer, value, field_indent + indent_step);
+    try writer.writeByte('\n');
+}
+
+fn printValue(writer: anytype, value: anytype, indent: usize) anyerror!void {
+    const T = @TypeOf(value);
+
+    if (isAllocatorType(T)) {
+        try writer.writeAll("<allocator>");
+        return;
+    }
+
+    if (comptime isArrayListType(T)) {
+        try printArrayList(writer, value, indent);
+        return;
+    }
+
+    if (comptime isHashMapType(T)) {
+        try printHashMap(writer, value, indent);
+        return;
+    }
+
+    switch (@typeInfo(T)) {
+        .optional => {
+            if (value) |some| {
+                try printValue(writer, some, indent);
+            } else {
+                try writer.writeAll("null");
+            }
+        },
+        .pointer => |ptr| {
+            if (ptr.size == .slice) {
+                if (ptr.child == u8) {
+                    try printString(writer, value);
+                } else {
+                    try printSlice(writer, value, indent);
+                }
+            } else if (ptr.size == .one and comptime isArrayListType(ptr.child)) {
+                try printArrayList(writer, value.*, indent);
+            } else if (ptr.size == .one and comptime isHashMapType(ptr.child)) {
+                try printHashMap(writer, value.*, indent);
+            } else if (ptr.size == .one and @typeInfo(ptr.child) == .@"struct") {
+                if (ptr.is_allowzero and value == null) {
+                    try writer.writeAll("null");
+                } else {
+                    try printStructInline(writer, value.*, indent);
+                }
+            } else if (ptr.size == .one and ptr.child == u8 and ptr.is_const) {
+                try printString(writer, std.mem.span(value));
+            } else if (ptr.size == .one) {
+                try writer.print("{any}", .{value});
+            } else {
+                try writer.print("{any}", .{value});
+            }
+        },
+        .array => |arr| {
+            if (arr.child == u8) {
+                try printString(writer, value);
+            } else {
+                try printSlice(writer, value[0..], indent);
+            }
+        },
+        .vector => {
+            try printSlice(writer, value[0..], indent);
+        },
+        .@"struct" => {
+            try printStructInline(writer, value, indent);
+        },
+        .@"union", .@"enum", .error_union, .error_set, .float, .int, .bool, .comptime_float, .comptime_int => {
+            try writer.print("{any}", .{value});
+        },
+        else => {
+            try writer.print("{any}", .{value});
+        },
+    }
+}
+
+fn writeIndent(writer: anytype, indent: usize) anyerror!void {
+    try writer.writeByteNTimes(' ', indent);
+}
+
+fn isAllocatorType(comptime T: type) bool {
+    if (T == std.mem.Allocator) return true;
+    return switch (@typeInfo(T)) {
+        .pointer => |ptr| isAllocatorType(ptr.child),
+        .optional => |opt| isAllocatorType(opt.child),
+        else => false,
+    };
+}
+
+fn isArrayListType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    return @hasField(T, "items") and (@hasField(T, "capacity") or @hasField(T, "list"));
+}
+
+fn isHashMapType(comptime T: type) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    return @hasField(T, "unmanaged") and @hasField(T, "allocator") and @hasDecl(T, "iterator");
+}
+
+fn printString(writer: anytype, slice: []const u8) anyerror!void {
+    try writer.writeByte('"');
+    try writer.print("{}", .{std.fmt.fmtSliceEscapeLower(slice)});
+    try writer.writeByte('"');
+}
+
+fn printSlice(writer: anytype, slice: anytype, indent: usize) anyerror!void {
+    try writer.writeAll("[");
+    if (slice.len == 0) {
+        try writer.writeAll("]");
+        return;
+    }
+    try writer.writeByte('\n');
+    for (slice, 0..) |item, index| {
+        try writeIndent(writer, indent + indent_step);
+        try printValue(writer, item, indent + indent_step);
+        if (index + 1 < slice.len) {
+            try writer.writeByte('\n');
+        }
+    }
+    try writer.writeByte('\n');
+    try writeIndent(writer, indent);
+    try writer.writeAll("]");
+}
+
+fn printArrayList(writer: anytype, list_value: anytype, indent: usize) anyerror!void {
+    const T = @TypeOf(list_value);
+    switch (@typeInfo(T)) {
+        .pointer => |ptr| {
+            if (ptr.size == .one) {
+                try printArrayList(writer, list_value.*, indent);
+                return;
+            }
+        },
+        else => {},
+    }
+
+    if (!comptime @hasField(T, "items")) {
+        try writer.print("{any}", .{list_value});
+        return;
+    }
+
+    const items = list_value.items;
+    try writer.writeAll("[");
+    if (items.len == 0) {
+        try writer.writeAll("]");
+        return;
+    }
+    try writer.writeByte('\n');
+    for (items, 0..) |item, index| {
+        try writeIndent(writer, indent + indent_step);
+        try printValue(writer, item, indent + indent_step);
+        if (index + 1 < items.len) {
+            try writer.writeByte('\n');
+        }
+    }
+    try writer.writeByte('\n');
+    try writeIndent(writer, indent);
+    try writer.writeAll("]");
+}
+
+fn printHashMap(writer: anytype, map_value: anytype, indent: usize) anyerror!void {
+    const T = @TypeOf(map_value);
+    switch (@typeInfo(T)) {
+        .pointer => |ptr| {
+            if (ptr.size == .one) {
+                try printHashMap(writer, map_value.*, indent);
+                return;
+            }
+        },
+        else => {},
+    }
+
+    var map_copy = map_value;
+    const map_ptr = &map_copy;
+
+    try writer.print("{s} {{", .{@typeName(T)});
+    var it = map_ptr.iterator();
+    var first = true;
+    while (it.next()) |entry| {
+        if (first) {
+            first = false;
+            try writer.writeByte('\n');
+        } else {
+            try writer.writeByte('\n');
+        }
+        try writeIndent(writer, indent + indent_step);
+        try printValue(writer, entry.key_ptr.*, indent + indent_step);
+        try writer.writeAll(": ");
+        try printValue(writer, entry.value_ptr.*, indent + indent_step);
+    }
+    if (!first) {
+        try writer.writeByte('\n');
+        try writeIndent(writer, indent);
+    }
+    try writer.writeAll("}");
 }
