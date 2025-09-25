@@ -116,10 +116,16 @@ pub fn wrap_in_python_simple(comptime T: type, comptime UseWrapperType: ?type, c
         // store generated struct here, so function pointers to them persist
         pub const generated_repr = genStruct.genStructRepr(WrapperType, T);
         pub const generated_zig_address = genZigAddress(WrapperType, T);
+        pub const passed_methods = extra_methods;
 
-        pub const generated_methods = extra_methods ++ [_]py.PyMethodDef{
-            generated_zig_address.method(),
-            py.ML_SENTINEL,
+        pub const generated_methods = blk: {
+            var buf: [extra_methods.len + 2]py.PyMethodDef = undefined;
+            for (extra_methods, 0..) |method, i| {
+                buf[i] = method.method(&method.impl);
+            }
+            buf[extra_methods.len] = generated_zig_address.method();
+            buf[extra_methods.len + 1] = py.ML_SENTINEL;
+            break :blk buf;
         };
 
         // The actual PyTypeObject
@@ -133,6 +139,22 @@ pub fn wrap_in_python_simple(comptime T: type, comptime UseWrapperType: ?type, c
             .tp_init = @ptrCast(&initRaise),
         };
     };
+}
+
+pub fn wrap_namespace_struct(root: *py.PyObject, comptime T: type, extra_methods: anytype) void {
+    const type_name = util.shortTypeName(T);
+
+    const binding = wrap_in_python_simple(T, null, extra_methods);
+    if (py.PyType_Ready(&binding.type_object) < 0) {
+        @panic("Failed to ready type object");
+    }
+
+    binding.type_object.ob_base.ob_base.ob_refcnt += 1;
+    if (py.PyModule_AddObject(root, type_name, @ptrCast(&binding.type_object)) < 0) {
+        binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
+        @panic("Failed to add type object to module");
+    }
+    type_registry.registerTypeObject(type_name, &binding.type_object);
 }
 
 pub fn ensureTypeObject(

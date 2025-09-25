@@ -349,3 +349,5 @@ pub extern fn PyObject_GetIter(obj: ?*PyObject) ?*PyObject;
 // Sequence protocol functions
 pub extern fn PySequence_Size(obj: ?*PyObject) isize;
 pub extern fn PySequence_GetItem(obj: ?*PyObject, index: isize) ?*PyObject;
+
+pub const PyMethodDefFn = fn (self: ?*PyObject, args: ?*PyObject) callconv(.C) ?*PyObject;
