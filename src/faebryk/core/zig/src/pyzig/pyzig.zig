@@ -46,6 +46,20 @@ fn initRaise(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObjec
     return null;
 }
 
+fn return_none(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+    _ = self;
+    _ = args;
+    // return None
+    return py.Py_None();
+}
+
+fn raise_not_implemented(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+    _ = self;
+    _ = args;
+    py.PyErr_SetString(py.PyExc_NotImplementedError, "Not implemented");
+    return null;
+}
+
 // Main comptime function to wrap a struct in Python bindings
 pub fn wrap_in_python(comptime T: type, comptime override_name: ?[*:0]const u8) type {
     @setEvalBranchQuota(100000);
@@ -87,7 +101,7 @@ pub fn wrap_in_python(comptime T: type, comptime override_name: ?[*:0]const u8) 
     };
 }
 
-pub fn wrap_in_python_simple(comptime T: type) type {
+pub fn wrap_in_python_simple(comptime T: type, comptime UseWrapperType: ?type, comptime extra_methods: anytype) type {
     @setEvalBranchQuota(100000);
     const info = @typeInfo(T);
     if (info != .@"struct") {
@@ -95,7 +109,7 @@ pub fn wrap_in_python_simple(comptime T: type) type {
     }
     const exported_name = @typeName(T) ++ "\x00";
 
-    const WrapperType = PyObjectWrapper(T);
+    const WrapperType = UseWrapperType orelse PyObjectWrapper(T);
 
     const genStruct = @import("genstruct.zig");
 
@@ -104,7 +118,7 @@ pub fn wrap_in_python_simple(comptime T: type) type {
         pub const generated_repr = genStruct.genStructRepr(WrapperType, T);
         pub const generated_zig_address = genZigAddress(WrapperType, T);
 
-        pub const generated_methods = [_]py.PyMethodDef{
+        pub const generated_methods = extra_methods ++ [_]py.PyMethodDef{
             generated_zig_address.method(),
             py.ML_SENTINEL,
         };
