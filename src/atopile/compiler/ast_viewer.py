@@ -1,12 +1,13 @@
 # This file is part of the atopile project
 # SPDX-License-Identifier: MIT
 
-"""Interactive visualizer for compiler graph nodes.
+"""
+Interactive visualizer for compiler graph nodes.
 
 This mirrors the general approach used by
 ``faebryk.exporters.visualize.interactive_params`` but operates on the
-``atopile.compiler.graph_types`` node hierarchy instead.  It builds a tree of the
-compiler graph, colours nodes by coarse categories, and allows switching between
+``atopile.compiler.ast_graph.AST`` node hierarchy instead.  It builds a tree of the
+AST graph, colours nodes by coarse categories, and allows switching between
 ``fcose`` and ``dagre`` layouts for easier exploration of the structure parsed by
 the compiler.
 """
@@ -21,7 +22,7 @@ import dash_cytoscape as cyto
 from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
 
-from atopile.compiler import ir_types as ir
+from atopile.compiler.ast_graph import AST
 from faebryk.core.node import Node
 from faebryk.exporters.visualize.interactive_params_base import Layout
 from faebryk.libs.util import typename
@@ -46,49 +47,49 @@ _GROUP_COLOURS = {
 
 _GROUP_TYPES: dict[str, tuple[type[Node], ...]] = {
     "structure": (
-        ir.CompilationUnit,
-        ir.File,
-        ir.Scope,
-        ir.BlockDefinition,
-        ir.TextFragment,
+        AST.CompilationUnit,
+        AST.File,
+        AST.Scope,
+        AST.BlockDefinition,
+        AST.TextFragment,
     ),
     "statement": (
-        ir.AssignNewStmt,
-        ir.AssignQuantityStmt,
-        ir.DeclarationStmt,
-        ir.PragmaStmt,
-        ir.ImportStmt,
-        ir.ConnectStmt,
-        ir.DirectedConnectStmt,
-        ir.CumAssignStmt,
-        ir.SetAssignStmt,
-        ir.RetypeStmt,
-        ir.SignaldefStmt,
-        ir.AssertStmt,
-        ir.PassStmt,
-        ir.ForStmt,
-        ir.PinDeclaration,
-        ir.StringStmt,
+        AST.AssignNewStmt,
+        AST.AssignQuantityStmt,
+        AST.DeclarationStmt,
+        AST.PragmaStmt,
+        AST.ImportStmt,
+        AST.ConnectStmt,
+        AST.DirectedConnectStmt,
+        AST.CumAssignStmt,
+        AST.SetAssignStmt,
+        AST.RetypeStmt,
+        AST.SignaldefStmt,
+        AST.AssertStmt,
+        AST.PassStmt,
+        AST.ForStmt,
+        AST.PinDeclaration,
+        AST.StringStmt,
     ),
     "reference": (
-        ir.FieldRef,
-        ir.FieldRefPart,
-        ir.TypeRef,
-        ir.Template,
-        ir.TemplateArg,
+        AST.FieldRef,
+        AST.FieldRefPart,
+        AST.TypeRef,
+        AST.Template,
+        AST.TemplateArg,
     ),
     "literal": (
-        ir.Quantity,
-        ir.BilateralQuantity,
-        ir.BoundedQuantity,
-        ir.String,
-        ir.Number,
-        ir.Boolean,
+        AST.Quantity,
+        AST.BilateralQuantity,
+        AST.BoundedQuantity,
+        AST.String,
+        AST.Number,
+        AST.Boolean,
     ),
     "support": (
-        ir.SourceChunk,
-        ir.Whitespace,
-        ir.Comment,
+        AST.SourceChunk,
+        AST.Whitespace,
+        AST.Comment,
     ),
 }
 
@@ -111,7 +112,7 @@ def _trim(text: str, limit: int = 60) -> str:
 
 def _extra_lines(node: Node) -> list[str]:
     match node:
-        case ir.SourceChunk() as chunk:
+        case AST.SourceChunk() as chunk:
             return (
                 [f"text={_trim(chunk.text.replace('\n', '\\n'))}"] if chunk.text else []
             )
