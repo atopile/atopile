@@ -1,4 +1,4 @@
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 from faebryk.core.cpp import (
     GraphInterface,
@@ -53,39 +53,42 @@ class _Node(CNode):
         #     value._handle_added_to_parent()
 
 
-def compose(parent: _Node, child: _Node, name: str | None = None):
+def compose(parent: _Node, child: _Node, name: str):
     link = LinkParent() if not name else LinkNamedParent(name)
     child.parent.connect(parent.children, link)
+    # if name:
+    #     setattr(parent, "child_node", child)
     return parent
 
 
-def instantiate(type_node: _Node) -> _Node:
+def instantiate(type_node: _Node, name: str = ""):
     node = _Node()
+    added_objects: dict[str, _Node | GraphInterface] = {name: node}
     node.is_type = GraphInterfaceHierarchical(is_parent=False)
     assert isinstance(node, _Node.Proto_Node)
     assert isinstance(type_node, Class_ImplementsType.Proto_Type)
-    node.is_type.connect(
-        type_node.instances, LinkNamedParent("Link_names_are_going_away_anyways?")
-    )
+    node.is_type.connect(type_node.instances, LinkNamedParent(name))
 
     if (
         type_node._identifier == "ImplementsTrait"
         or type_node._identifier == "ImplementsType"
     ):
-        return node
+        return node, added_objects
 
-    # TODO: lazy way to make children before executing connect rules
     for rule in type_node.get_children(direct_only=True, types=[_Node]):
         if isinstance(rule, Class_MakeChild.Proto_MakeChild):
             assert isinstance(rule, _Node)
-            Class_MakeChild.execute(make_child_instance=rule, parent_node=node)
+            added_children = Class_MakeChild.execute(
+                make_child_instance=rule, parent_node=node
+            )
+            added_objects.update(added_children)
 
-    for rule in type_node.get_children(direct_only=True, types=[_Node]):
-        if isinstance(rule, Class_Connect.Proto_Connect):
-            assert isinstance(rule, _Node)
-            Class_Connect.execute(connect_instance=rule, parent_node=node)
+    # for rule in type_node.get_children(direct_only=True, types=[_Node]):
+    #     if isinstance(rule, Class_Connect.Proto_Connect):
+    #         assert isinstance(rule, _Node)
+    #         Class_Connect.execute(connect_instance=rule, parent_node=node)
 
-    return node
+    return node, added_objects
 
 
 # Base Traits --------------------------------------------------------------------------
@@ -102,13 +105,13 @@ class Class_ImplementsType:
         # bootstrap
         if identifier == "ImplementsType":
             return type_node
-        compose(type_node, instantiate(Type_ImplementsType))
+        compose(type_node, instantiate(Type_ImplementsType)[0], "ImplementsType")
         return type_node
 
 
 Type_ImplementsType = Class_ImplementsType.init_type_node(_Node(), "ImplementsType")
 # need to manually set it now that it's bootstrapped
-compose(Type_ImplementsType, instantiate(Type_ImplementsType))
+compose(Type_ImplementsType, instantiate(Type_ImplementsType)[0], "ImplementsType")
 
 
 class Class_ImplementsTrait:
@@ -118,14 +121,14 @@ class Class_ImplementsTrait:
         # bootstrap
         if identifier == "ImplementsTrait":
             return trait_node
-        compose(trait_node, instantiate(Type_ImplementsTrait))
+        compose(trait_node, instantiate(Type_ImplementsTrait)[0], "ImplementsTrait")
         return trait_node
 
 
 Type_ImplementsTrait = Class_ImplementsTrait.init_trait_type(_Node(), "ImplementsTrait")
 # now that we have trait, init our base traits with it
-compose(Type_ImplementsTrait, instantiate(Type_ImplementsTrait))
-compose(Type_ImplementsType, instantiate(Type_ImplementsTrait))
+compose(Type_ImplementsTrait, instantiate(Type_ImplementsTrait)[0], "ImplementsTrait")
+compose(Type_ImplementsType, instantiate(Type_ImplementsTrait)[0], "ImplementsTrait")
 
 
 # Standard Types =======================================================================
@@ -145,7 +148,10 @@ class Class_MakeChild:
         return node
 
     @staticmethod
-    def execute(make_child_instance: _Node, parent_node: _Node) -> None:
+    def execute(
+        make_child_instance: _Node,
+        parent_node: _Node,
+    ):
         assert isinstance(make_child_instance, Class_MakeChild.Proto_MakeChild)
         child_ref = make_child_instance.child_ref_pointer.get_reference()
         assert isinstance(child_ref, Class_ChildReference.Proto_ChildReference)
@@ -153,9 +159,11 @@ class Class_MakeChild:
 
         child_type_node = child_ref.node_type_pointer.get_reference()
         assert isinstance(child_type_node, _Node)
-        new_node = instantiate(child_type_node)
+        new_node, added_objects = instantiate(child_type_node, name=identifier)
 
         compose(parent_node, new_node, name=identifier)
+
+        return added_objects
 
 
 class Class_ChildReference:
@@ -301,8 +309,9 @@ def get_type_by_name(name: str) -> _Node | None:
         if parent_tuple := instance.get_parent():
             parent_node = parent_tuple[0]
             assert isinstance(parent_node, _Node)
-            assert isinstance(parent_node, Class_ImplementsType.Proto_Type)
-            if parent_node._identifier == name:
+            if not isinstance(parent_node, Class_ImplementsType.Proto_Type):
+                continue
+            if getattr(parent_node, "_identifier", None) == name:
                 return parent_node
     return None
 
@@ -312,10 +321,10 @@ def make_child_rule_and_child_ref(
 ):
     assert isinstance(child_type_node, Class_ImplementsType.Proto_Type)
     child_ref = Class_ChildReference.init_child_reference_instance(
-        child_type_node, instantiate(child_type_node), name
+        child_type_node, instantiate(child_type_node)[0], name
     )
     make_child = Class_MakeChild.init_make_child_instance(
-        instantiate(Type_MakeChild), child_ref
+        instantiate(Type_MakeChild, name)[0], child_ref
     )
     parent_node.children.connect(make_child.parent, LinkNamedParent(name))
 

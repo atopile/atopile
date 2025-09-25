@@ -1,5 +1,6 @@
 import math
 from collections import deque
+from enum import Enum, auto
 
 import matplotlib.patches as patches
 import matplotlib.patheffects as path_effects
@@ -10,8 +11,17 @@ import faebryk.library._F as F
 
 # from faebryk.library.Resistor import Resistor
 from faebryk.core.graphinterface import GraphInterface
+from faebryk.core.link import LinkPointer
 from faebryk.core.node import Node
-from faebryk.core.type import Type_ImplementsType, _Node
+from faebryk.core.type import (
+    Class_ChildReference,
+    Class_Connect,
+    Class_ImplementsType,
+    Class_MakeChild,
+    Class_NestedReference,
+    Type_ImplementsType,
+    _Node,
+)
 
 # Import concrete Modules to trigger Node.__init_subclass__ registration
 # and autogeneration of MakeChild/ChildReference nodes
@@ -214,10 +224,27 @@ from faebryk.core.type import Type_ImplementsType, _Node
 # !!AI SLOP!! from here on out
 
 
+class NodeCategory(Enum):
+    ROOT = auto()
+    TYPE = auto()
+    MAKE_CHILD = auto()
+    CHILD_REF = auto()
+    NESTED_REF = auto()
+    CONNECT = auto()
+    INSTANCE = auto()
+    CHILD_INSTANCE = auto()
+    OTHER = auto()
+
+
 def _collect_from(
     start: Node,
     graph=None,
-) -> tuple[list[Node], list[tuple[GraphInterface, GraphInterface, object | None]]]:
+) -> tuple[
+    list[Node],
+    list[tuple[GraphInterface, GraphInterface, object | None]],
+    dict[Node, list[GraphInterface]],
+    dict[GraphInterface, list[tuple[GraphInterface, object | None]]],
+]:
     """
     Traverse graph from a starting hypernode by following children edges.
     Returns discovered hypernodes and interface-level edges.
@@ -232,6 +259,16 @@ def _collect_from(
     # defer graph fetch until needed
     _graph = graph or start.get_graph()
 
+    all_gifs = tuple(_graph.get_gifs())
+    gifs_by_node: dict[Node, list[GraphInterface]] = {}
+    iface_neighbors: dict[
+        GraphInterface, list[tuple[GraphInterface, object | None]]
+    ] = {}
+
+    for gif in all_gifs:
+        gifs_by_node.setdefault(gif.node, []).append(gif)
+        iface_neighbors.setdefault(gif, [])
+
     while q:
         n = q.popleft()
         if n in seen_nodes:
@@ -243,18 +280,23 @@ def _collect_from(
         for child in n.children.get_children():
             q.append(child)
 
-        # collect ALL interfaces owned by this node by scanning the graph
-        all_gifs = [gif for gif in _graph.get_gifs() if gif.node is n]
+        # collect interfaces owned by this node
+        owned_gifs = gifs_by_node.get(n, [])
+        if not owned_gifs and getattr(n, "self_gif", None) is not None:
+            owned_gifs = [n.self_gif]
+            gifs_by_node[n] = owned_gifs
 
         # connect self to owned interfaces (layout helper only; no real link)
-        for gif in all_gifs:
+        for gif in owned_gifs:
             key = (id(n.self_gif), id(gif))
             if key not in seen_if_ids:
                 seen_if_ids.add(key)
                 iface_edges.append((n.self_gif, gif, None))
+                iface_neighbors.setdefault(n.self_gif, []).append((gif, None))
+                iface_neighbors.setdefault(gif, []).append((n.self_gif, None))
 
         # from every owned interface, follow connections (with link type)
-        for lg in all_gifs:
+        for lg in owned_gifs:
             # use edges dict to fetch Link objects
             try:
                 edge_map = lg.edges
@@ -265,26 +307,26 @@ def _collect_from(
                 if key not in seen_if_ids:
                     seen_if_ids.add(key)
                     iface_edges.append((lg, other, link))
+                iface_neighbors.setdefault(lg, []).append((other, link))
+                iface_neighbors.setdefault(other, []).append((lg, link))
                 # enqueue the node owning the connected interface
                 q.append(other.node)
 
-    return nodes, iface_edges
+    filtered_gifs_by_node = {n: gifs_by_node.get(n, []) for n in nodes}
 
-
-def _interfaces_of(node: Node, graph=None) -> list[GraphInterface]:
-    # Return all GIFs owned by the node (including self)
-    _graph = graph or node.get_graph()
-    gifs = [gif for gif in _graph.get_gifs() if gif.node is node]
-    if node.self_gif not in gifs:
-        gifs.append(node.self_gif)
-    return gifs
+    return nodes, iface_edges, filtered_gifs_by_node, iface_neighbors
 
 
 class InteractiveTypeGraphVisualizer:
     def __init__(self, root: _Node, figsize: tuple[int, int] = (20, 14)):
         self.root = root
         self.graph = root.get_graph()
-        self.nodes, self.iface_edges = _collect_from(root, self.graph)
+        (
+            self.nodes,
+            self.iface_edges,
+            self.gifs_by_node,
+            self.iface_neighbors,
+        ) = _collect_from(root, self.graph)
 
         # Build data structures
         self._build_data_structures()
@@ -313,9 +355,11 @@ class InteractiveTypeGraphVisualizer:
     def _build_data_structures(self):
         # Build mapping: interface -> owning hypernode
         self.iface_to_node: dict[GraphInterface, Node] = {}
-        for n in self.nodes:
-            for gif in _interfaces_of(n, self.graph):
-                self.iface_to_node[gif] = n
+        for node, gifs in self.gifs_by_node.items():
+            for gif in gifs:
+                self.iface_to_node[gif] = node
+
+        self.all_interfaces = list(self.iface_to_node.keys())
 
         # Build hypernode adjacency from interface edges
         self.hn_adj: dict[Node, set[Node]] = {n: set() for n in self.nodes}
@@ -327,208 +371,379 @@ class InteractiveTypeGraphVisualizer:
             self.hn_adj[na].add(nb)
             self.hn_adj[nb].add(na)
 
+    def _interfaces_of(self, node: Node) -> list[GraphInterface]:
+        gifs = self.gifs_by_node.get(node)
+        if not gifs:
+            sg = getattr(node, "self_gif", None)
+            return [sg] if sg is not None else []
+        return gifs
+
     def _calculate_layout(self):
-        # Assign canonical levels by category
-        # 0: sentinel, 1: NodeTypes, 2: Rules, 3: Instances, 4: Children of Instances
-        def _is_nodetype(n: Node) -> bool:
-            # Treat Class_ImplementsType.Proto_Type as type nodes
-            try:
-                from faebryk.core.type import Class_ImplementsType
-
-                return isinstance(n, Class_ImplementsType.Proto_Type)
-            except Exception:
-                return False
-
-        def _is_rule(n: Node) -> bool:
-            # MakeChild nodes in the type graph
-            try:
-                from faebryk.core.type import Class_MakeChild
-
-                return isinstance(n, Class_MakeChild.Proto_MakeChild)
-            except Exception:
-                return False
-
-        def _is_instance(n: Node) -> bool:
-            # Instance nodes have an is_type hierarchical GIF connected to a type's instances
-            if _is_nodetype(n) or _is_rule(n):
-                return False
-            try:
-                is_type_gif = getattr(n, "is_type", None)
-                if is_type_gif is None:
-                    return False
-                parent = is_type_gif.get_parent()
-                return parent is not None
-            except Exception:
-                return False
-
-        # precompute instance set
-        instance_set: set[Node] = {n for n in self.nodes if _is_instance(n)}
-
-        def _is_child_instance(n: Node) -> bool:
-            if n in instance_set:
-                # child instance should not include the parent instance itself
-                # Determine if parent is an instance
-                try:
-                    parent = n.get_parent()
-                except Exception:
-                    parent = None
-                if parent is None:
-                    return False
-                pnode, _ = parent
-                return pnode in instance_set
-            return False
-
-        levels: dict[int, list[Node]] = {}
-        for n in self.nodes:
-            if n is self.root:
-                l = 0
-            elif _is_nodetype(n):
-                l = 1
-            elif _is_rule(n):
-                l = 2
-            elif _is_child_instance(n):
-                l = 4
-            elif _is_instance(n):
-                l = 3
-            else:
-                # Unclassified: place between rules and instances
-                l = 3
-            levels.setdefault(l, []).append(n)
-
-        # Base grid positions per level with increased spacing
         self.hn_pos: dict[Node, tuple[float, float]] = {}
-        level_gap_y = 50.0  # Increased vertical spacing
-        base_spacing_x = 60.0  # Increased horizontal spacing
+        self.node_category: dict[Node, NodeCategory] = {}
 
-        # Special handling for instance grouping
-        type_to_instances = {}
-        instance_to_children = {}
-        for n in self.nodes:
-            # Check if this node is an instance of a type
-            if hasattr(n, "type") and n.type:
-                # Find the type this instance belongs to
-                type_connections = n.type.get_gif_edges()
-                for type_gif in type_connections:
-                    type_node = type_gif.node
-                    if isinstance(type_node, NodeType):
-                        if type_node not in type_to_instances:
-                            type_to_instances[type_node] = []
-                        type_to_instances[type_node].append(n)
-        # Map instances to their child instances
-        for inst in list(instance_set):
-            try:
-                ch = inst.children.get_children()
-            except Exception:
-                ch = []
-            # Only keep children that are also in our traversal set
-            ch = [c for c in ch if c in self.nodes]
-            if ch:
-                instance_to_children[inst] = ch
+        for node in self.nodes:
+            self.node_category[node] = self._categorize_node(node)
 
-        for l in sorted(levels.keys()):
-            layer = levels[l]
-            k = max(1, len(layer))
-            span = base_spacing_x * (k - 1)
-            xs = [(-span / 2.0) + i * base_spacing_x for i in range(k)]
-            y = -l * level_gap_y
-            for i, n in enumerate(layer):
-                self.hn_pos[n] = (xs[i], y)
+        self.node_category[self.root] = NodeCategory.ROOT
 
-        # Stagger instances vertically so they are not on the same height,
-        # but still roughly at the instance level
-        base_y_instances = -3 * level_gap_y
-        inst_list = levels.get(3, [])
-        for i, inst in enumerate(inst_list):
-            if inst not in self.hn_pos:
-                continue
-            x, _y = self.hn_pos[inst]
-            sign = -1 if i % 2 else 1
-            amplitude = 0.3 * level_gap_y + (i // 2) * 4.0
-            self.hn_pos[inst] = (x, base_y_instances + sign * amplitude)
+        self._type_owner_cache: dict[Node, Node | None] = {}
 
-        # Stagger child-instances per parent to emphasize grouping,
-        # keep them below the instance level
-        base_y_children = -4 * level_gap_y
-        for parent, ch in instance_to_children.items():
-            for j, child in enumerate(ch):
-                if child not in self.hn_pos:
-                    continue
-                cx, _cy = self.hn_pos[child]
-                self.hn_pos[child] = (cx, base_y_children - j * 6.0)
+        for node in self.nodes:
+            if self.node_category[node] in {NodeCategory.INSTANCE, NodeCategory.OTHER}:
+                if self._has_instance_parent(node):
+                    self.node_category[node] = NodeCategory.CHILD_INSTANCE
 
-        # Group instances near their type parents
-        instance_offset_distance = 40.0  # Distance from parent type
-        for type_node, instances in type_to_instances.items():
-            if type_node in self.hn_pos and instances:
-                type_x, type_y = self.hn_pos[type_node]
+        self.type_owner: dict[Node, Node | None] = {}
+        for node in self.nodes:
+            self.type_owner[node] = self._resolve_type_owner(node)
 
-                # Arrange instances in a circle around their type
-                num_instances = len(instances)
-                for i, instance in enumerate(instances):
-                    if instance in self.hn_pos:
-                        angle = 2 * math.pi * i / num_instances
-                        offset_x = instance_offset_distance * math.cos(angle)
-                        offset_y = instance_offset_distance * math.sin(angle)
+        clusters: dict[Node, list[Node]] = {}
+        for node in self.nodes:
+            owner = self.type_owner.get(node)
+            if owner is None:
+                owner = self.root
+            clusters.setdefault(owner, []).append(node)
 
-                        # Place instance near its type, but maintain level structure
-                        instance_x, instance_y = self.hn_pos[instance]
-                        self.hn_pos[instance] = (
-                            type_x + offset_x,
-                            instance_y,  # Keep original y-level
-                        )
+        clusters.setdefault(self.root, [])
+        if self.root not in clusters[self.root]:
+            clusters[self.root].append(self.root)
 
-        # Pull instances toward the centroid of their child instances (to be near children)
-        child_alpha = 0.7
-        for inst, ch in instance_to_children.items():
-            if inst not in self.hn_pos:
-                continue
-            xs = [self.hn_pos[c][0] for c in ch if c in self.hn_pos]
-            if not xs:
-                continue
-            mean_x = sum(xs) / len(xs)
-            x, y = self.hn_pos[inst]
-            self.hn_pos[inst] = ((1 - child_alpha) * x + child_alpha * mean_x, y)
+        cluster_order = sorted(clusters.keys(), key=self._cluster_sort_key)
+        cluster_spacing = 220.0
+        total_clusters = len(cluster_order)
+        center_offset = (total_clusters - 1) / 2 if total_clusters else 0.0
 
-        # Pull remaining nodes toward their parents (non-instance relationships)
-        alpha = 0.6  # Increased attraction strength
-        for l in sorted(levels.keys()):
-            if l == 0:
-                continue
-            for n in levels[l]:
-                # Skip instances that are already positioned near their types
-                is_positioned_instance = any(
-                    n in instances for instances in type_to_instances.values()
+        level_rows = {
+            NodeCategory.ROOT: -1,
+            NodeCategory.TYPE: 0,
+            NodeCategory.MAKE_CHILD: 1,
+            NodeCategory.CHILD_REF: 2,
+            NodeCategory.NESTED_REF: 2,
+            NodeCategory.CONNECT: 2,
+            NodeCategory.INSTANCE: 3,
+            NodeCategory.CHILD_INSTANCE: 4,
+            NodeCategory.OTHER: 3,
+        }
+
+        level_gap_y = 120.0
+        horizontal_spacing = 70.0
+        grid_vertical_spacing = 70.0
+        max_grid_cols = 6
+
+        def category_y(cat: NodeCategory) -> float:
+            row = level_rows.get(cat, level_rows[NodeCategory.OTHER])
+            return -row * level_gap_y
+
+        def place_nodes(
+            nodes: list[Node],
+            center_x: float,
+            category: NodeCategory,
+            allow_grid: bool = False,
+        ) -> None:
+            if not nodes:
+                return
+            y = category_y(category)
+            if allow_grid and len(nodes) > max_grid_cols:
+                cols = min(
+                    max_grid_cols,
+                    max(1, int(math.ceil(math.sqrt(len(nodes))))),
                 )
-                if is_positioned_instance:
-                    continue
+                rows = int(math.ceil(len(nodes) / cols))
+                for idx, node in enumerate(nodes):
+                    col = idx % cols
+                    row = idx // cols
+                    x = center_x + (col - (cols - 1) / 2) * horizontal_spacing
+                    y_offset = row * grid_vertical_spacing
+                    self.hn_pos[node] = (x, y - y_offset)
+            else:
+                width = horizontal_spacing * max(0, len(nodes) - 1)
+                start = center_x - width / 2
+                for idx, node in enumerate(nodes):
+                    self.hn_pos[node] = (
+                        start + idx * horizontal_spacing,
+                        y,
+                    )
 
-                parents = [
-                    p for p in self.hn_adj.get(n, set()) if levels.get(p) == l - 1
-                ]
-                if not parents:
-                    continue
-                mean_x = sum(self.hn_pos[p][0] for p in parents) / len(parents)
-                x, y = self.hn_pos[n]
-                self.hn_pos[n] = ((1 - alpha) * x + alpha * mean_x, y)
+        category_layout_order = [
+            NodeCategory.MAKE_CHILD,
+            NodeCategory.CHILD_REF,
+            NodeCategory.NESTED_REF,
+            NodeCategory.CONNECT,
+            NodeCategory.INSTANCE,
+            NodeCategory.CHILD_INSTANCE,
+            NodeCategory.OTHER,
+        ]
 
-        # Apply collision detection and node separation
+        for idx, owner in enumerate(cluster_order):
+            center_x = (idx - center_offset) * cluster_spacing
+            nodes_in_cluster = clusters[owner]
+            unique_nodes = list(dict.fromkeys(nodes_in_cluster))
+
+            buckets: dict[NodeCategory, list[Node]] = {}
+            for node in unique_nodes:
+                cat = self.node_category.get(node, NodeCategory.OTHER)
+                buckets.setdefault(cat, []).append(node)
+
+            owner_cat = self.node_category.get(owner, NodeCategory.OTHER)
+            owner_y = category_y(owner_cat)
+            self.hn_pos[owner] = (center_x, owner_y)
+
+            if owner in buckets.get(owner_cat, []):
+                buckets[owner_cat] = [n for n in buckets[owner_cat] if n is not owner]
+
+            for category in category_layout_order:
+                bucket = buckets.get(category)
+                if not bucket:
+                    continue
+                sorted_bucket = sorted(
+                    bucket,
+                    key=lambda n: self._node_label(n).lower(),
+                )
+                allow_grid = category in {
+                    NodeCategory.INSTANCE,
+                    NodeCategory.CHILD_INSTANCE,
+                }
+                place_nodes(sorted_bucket, center_x, category, allow_grid=allow_grid)
+
+        for node in self.nodes:
+            if node not in self.hn_pos:
+                self.hn_pos[node] = (
+                    0.0,
+                    category_y(self.node_category.get(node, NodeCategory.OTHER)),
+                )
+
         self._separate_overlapping_nodes()
 
-        # Place interfaces within each hypernode in a smaller circle
         self.pos: dict[GraphInterface, tuple[float, float]] = {}
         self.r_if_by_node: dict[Node, float] = {}
-        for n in self.nodes:
-            center = self.hn_pos[n]
-            ifaces = _interfaces_of(n, self.graph)
+        for node in self.nodes:
+            center = self.hn_pos[node]
+            ifaces = self._interfaces_of(node)
             k = max(1, len(ifaces))
-            r_if_local = max(6.0, 1.2 * k)  # Increased interface radius
-            self.r_if_by_node[n] = r_if_local
+            r_if_local = max(6.0, 1.2 * k)
+            self.r_if_by_node[node] = r_if_local
             for j, gif in enumerate(ifaces):
-                a = 2 * math.pi * j / k
+                angle = 2 * math.pi * j / k
                 self.pos[gif] = (
-                    center[0] + r_if_local * math.cos(a),
-                    center[1] + r_if_local * math.sin(a),
+                    center[0] + r_if_local * math.cos(angle),
+                    center[1] + r_if_local * math.sin(angle),
                 )
+
+    def _cluster_sort_key(self, owner: Node) -> tuple[int, str]:
+        if owner is self.root:
+            return (0, "")
+        category = self.node_category.get(owner, NodeCategory.OTHER)
+        priority = 1 if category == NodeCategory.TYPE else 2
+        return (priority, self._node_label(owner).lower())
+
+    def _categorize_node(self, node: Node) -> NodeCategory:
+        if node is self.root:
+            return NodeCategory.ROOT
+
+        try:
+            if isinstance(node, Class_ImplementsType.Proto_Type):
+                return NodeCategory.TYPE
+        except Exception:
+            pass
+
+        try:
+            if isinstance(node, Class_MakeChild.Proto_MakeChild):
+                return NodeCategory.MAKE_CHILD
+        except Exception:
+            pass
+
+        try:
+            if isinstance(node, Class_ChildReference.Proto_ChildReference):
+                return NodeCategory.CHILD_REF
+        except Exception:
+            pass
+
+        try:
+            if isinstance(node, Class_NestedReference.Proto_NestedReference):
+                return NodeCategory.NESTED_REF
+        except Exception:
+            pass
+
+        try:
+            if isinstance(node, Class_Connect.Proto_Connect):
+                return NodeCategory.CONNECT
+        except Exception:
+            pass
+
+        if hasattr(node, "node_type_pointer"):
+            return NodeCategory.CHILD_REF
+
+        if hasattr(node, "child_ref_pointer"):
+            return NodeCategory.MAKE_CHILD
+
+        if hasattr(node, "refs_gif"):
+            return NodeCategory.CONNECT
+
+        if getattr(node, "is_type", None) is not None:
+            return NodeCategory.INSTANCE
+
+        return NodeCategory.OTHER
+
+    def _has_instance_parent(self, node: Node) -> bool:
+        try:
+            parent_info = node.get_parent()
+        except Exception:
+            return False
+        if not parent_info:
+            return False
+        parent_node, _ = parent_info
+        if parent_node not in self.nodes:
+            return False
+        return self.node_category.get(parent_node) in {
+            NodeCategory.INSTANCE,
+            NodeCategory.CHILD_INSTANCE,
+        }
+
+    def _resolve_type_owner(self, node: Node) -> Node | None:
+        if node in self._type_owner_cache:
+            return self._type_owner_cache[node]
+
+        if node is self.root:
+            self._type_owner_cache[node] = self.root
+            return self.root
+
+        category = self.node_category.get(node, NodeCategory.OTHER)
+        if category == NodeCategory.TYPE:
+            self._type_owner_cache[node] = node
+            return node
+
+        pointer_attrs = (
+            "node_type_pointer",
+            "type_pointer",
+            "type",
+        )
+        for attr in pointer_attrs:
+            owner = self._node_from_pointer(getattr(node, attr, None))
+            if owner and owner in self.nodes:
+                if self.node_category.get(owner) == NodeCategory.TYPE:
+                    self._type_owner_cache[node] = owner
+                    return owner
+
+        child_ref = self._node_from_pointer(getattr(node, "child_ref_pointer", None))
+        if child_ref and child_ref is not node:
+            owner = self._resolve_type_owner(child_ref)
+            if owner:
+                self._type_owner_cache[node] = owner
+                return owner
+
+        is_type_if = getattr(node, "is_type", None)
+        if is_type_if is not None:
+            for neighbor_if, _link in self.iface_neighbors.get(is_type_if, []):
+                owner = self.iface_to_node.get(neighbor_if)
+                if owner and self.node_category.get(owner) == NodeCategory.TYPE:
+                    self._type_owner_cache[node] = owner
+                    return owner
+
+        try:
+            parent_info = node.get_parent()
+        except Exception:
+            parent_info = None
+        if parent_info:
+            parent_node, _ = parent_info
+            if parent_node in self.nodes and parent_node is not node:
+                owner = self._resolve_type_owner(parent_node)
+                if owner:
+                    self._type_owner_cache[node] = owner
+                    return owner
+
+        self._type_owner_cache[node] = None
+        return None
+
+    def _node_from_pointer(self, pointer) -> Node | None:
+        if pointer is None:
+            return None
+        try:
+            ref = pointer.get_reference()
+        except AttributeError:
+            ref = pointer
+        except Exception:
+            return None
+
+        if isinstance(ref, GraphInterface):
+            return self.iface_to_node.get(ref)
+        if isinstance(ref, Node):
+            return ref
+        if hasattr(ref, "node") and isinstance(ref.node, Node):
+            return ref.node
+        return None
+
+    def _category_display_name(self, category: NodeCategory) -> str:
+        return {
+            NodeCategory.ROOT: "Root",
+            NodeCategory.TYPE: "Type",
+            NodeCategory.MAKE_CHILD: "MakeChild",
+            NodeCategory.CHILD_REF: "ChildRef",
+            NodeCategory.NESTED_REF: "NestedRef",
+            NodeCategory.CONNECT: "Connect",
+            NodeCategory.INSTANCE: "Instance",
+            NodeCategory.CHILD_INSTANCE: "Child Instance",
+            NodeCategory.OTHER: "Other",
+        }.get(category, "Other")
+
+    def _node_style(self, node: Node) -> tuple[str, str]:
+        category = self.node_category.get(node, NodeCategory.OTHER)
+        style_map = {
+            NodeCategory.ROOT: ("#f8fafc", "#0f172a"),
+            NodeCategory.TYPE: ("#dbeafe", "#1d4ed8"),
+            NodeCategory.MAKE_CHILD: ("#fef3c7", "#d97706"),
+            NodeCategory.CHILD_REF: ("#fce7f3", "#be185d"),
+            NodeCategory.NESTED_REF: ("#f3e8ff", "#7c3aed"),
+            NodeCategory.CONNECT: ("#cffafe", "#0f766e"),
+            NodeCategory.INSTANCE: ("#dcfce7", "#15803d"),
+            NodeCategory.CHILD_INSTANCE: ("#f0fdf4", "#16a34a"),
+            NodeCategory.OTHER: ("#e2e8f0", "#475569"),
+        }
+        return style_map.get(category, style_map[NodeCategory.OTHER])
+
+    def _edge_style(
+        self,
+        a: GraphInterface,
+        b: GraphInterface,
+        link: object | None,
+    ) -> tuple[str, float, float]:
+        owner_a = self.iface_to_node.get(a)
+        owner_b = self.iface_to_node.get(b)
+        cat_a = self.node_category.get(owner_a, NodeCategory.OTHER)
+        cat_b = self.node_category.get(owner_b, NodeCategory.OTHER)
+
+        names = {getattr(a, "name", ""), getattr(b, "name", "")}
+
+        color = "#6b7280"
+        width = 1.3
+        alpha = 0.75
+
+        if isinstance(link, LinkPointer):
+            color = "#fb923c"
+            width = 1.9
+        elif {"is_type", "instances"} & names:
+            color = "#16a34a"
+            width = 1.7
+        elif "child_ref_pointer" in names or "node_type_pointer" in names:
+            color = "#d946ef"
+            width = 1.6
+        elif "refs_gif" in names:
+            color = "#0ea5e9"
+            width = 1.6
+        elif NodeCategory.CONNECT in {cat_a, cat_b} or NodeCategory.NESTED_REF in {
+            cat_a,
+            cat_b,
+        }:
+            color = "#2563eb"
+            width = 1.5
+        elif NodeCategory.TYPE in {cat_a, cat_b} and {
+            NodeCategory.INSTANCE,
+            NodeCategory.CHILD_INSTANCE,
+        } & {cat_a, cat_b}:
+            color = "#22c55e"
+            width = 1.6
+
+        return color, width, alpha
 
     def _separate_overlapping_nodes(self):
         """Separate overlapping nodes using force-based positioning and real radii."""
@@ -536,7 +751,7 @@ class InteractiveTypeGraphVisualizer:
         def node_draw_radius(n: Node) -> float:
             # Mirror the interface radius logic used later for drawing
             try:
-                k = max(1, len(_interfaces_of(n, self.graph)))
+                k = max(1, len(self._interfaces_of(n)))
             except Exception:
                 k = 1
             r_if_local = max(6.0, 1.2 * k)
@@ -1106,5 +1321,6 @@ def visualize_type_graph(root: _Node, figsize: tuple[int, int] = (20, 14)) -> No
 # register_python_nodetype(PyCapacitor)
 
 r = F.Resistor()
+print(r.added_objects)
 
-visualize_type_graph(Type_ImplementsType)
+# visualize_type_graph(Type_ImplementsType)

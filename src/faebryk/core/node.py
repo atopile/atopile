@@ -124,8 +124,6 @@ def list_field[T: Node](n: int, if_type: Callable[[], T]) -> _d_field[list[T]]:
     # Metadata used by type-graph autogen; keep keys stable across helpers
     wrapper.meta["kind"] = "list_field"
     wrapper.meta["count"] = n
-    wrapper.meta["elem_factory"] = if_type
-    # Back-compat keys
     wrapper.meta["constructor"] = if_type
     wrapper.meta["args"] = (n, if_type)
     wrapper.meta["kwargs"] = {}
@@ -402,108 +400,17 @@ class Node(CNode):
 
     def _setup_fields(self):  # TODO: Build instance graph here from typegraph
         clsfields, _ = self.__faebryk_fields__()
-        LL_Types = (Node, GraphInterface)
-
-        # for name, obj in clsfields_unf.items():
-        #    if isinstance(obj, _d_field):
-        #        obj = obj.type
-        #    filtered = name not in clsfields
-        #    filtered_str = "   FILTERED" if filtered else ""
-        #    print(
-        #        f"{cls.__qualname__+"."+name+filtered_str:<60} = {str(obj):<70} "
-        # "| {type(obj)}
-        #    )
-
-        nonrt, rt = partition(
-            lambda x: isinstance(x[1], constructed_field), clsfields.items()
-        )
 
         type_node_name = self.__class__.__name__
         print("RUNNING INSTANTIATION FOR", type_node_name)
         type_node = get_type_by_name(type_node_name)
         if type_node is None:
             raise ValueError(f"Type node {type_node_name} not found")
-        self.instance_node = instantiate(type_node)
+        self.instance_node, added_objects = instantiate(type_node, name="instance")
+        self.added_objects = added_objects
 
-        added_objects: dict[str, Node | GraphInterface] = {}
-        objects: dict[str, Node | GraphInterface] = {}
-
-        def handle_add(name, obj):
-            del objects[name]
-            try:
-                if isinstance(obj, GraphInterface):
-                    Node._handle_add_gif(self, name, obj)
-                elif isinstance(obj, Node):
-                    Node._handle_add_node(self, name, obj)
-                else:
-                    raise TypeError(
-                        f"Cannot handle adding field {name=} of type {type(obj)}"
-                    )
-            except Node._Skipped:
-                return
-            added_objects[name] = obj
-
-        def append(name, inst):
-            if isinstance(inst, LL_Types):
-                objects[name] = inst
-            elif isinstance(inst, list):
-                for i, obj in enumerate(inst):
-                    assert obj is not None
-                    objects[f"{name}[{i}]"] = obj
-            elif isinstance(inst, dict):
-                for k, obj in inst.items():
-                    objects[f"{name}[{k}]"] = obj
-
-            return inst
-
-        def _setup_field(name, obj):
-            if isinstance(obj, str):
-                raise NotImplementedError()
-
-            if (origin := get_origin(obj)) is not None:
-                if isinstance(origin, type):
-                    setattr(self, name, append(name, origin()))
-                    return
-                raise NotImplementedError(origin)
-
-            if isinstance(obj, _d_field):
-                setattr(self, name, append(name, obj.default_factory()))
-                return
-
-            if isinstance(obj, type):
-                setattr(self, name, append(name, obj()))
-                return
-
-            if isinstance(obj, constructed_field):
-                if (constructed := obj.__construct__(self)) is not None:
-                    append(name, constructed)
-                return
-
-            raise NotImplementedError()
-
-        def setup_field(name, obj):
-            try:
-                _setup_field(name, obj)
-            except Exception as e:
-                # this is a bit of a hack to provide complete context to debuggers
-                # for underlying field construction errors
-                if in_debug_session():
-                    raise
-                raise FieldConstructionError(
-                    self,
-                    name,
-                    f'An exception occurred while constructing field "{name}"',
-                ) from e
-
-        # for name, obj in list(objects.items()):
-        #     handle_add(name, obj)
-
-        # # rt fields depend on full self
-        # for name, obj in rt:
-        #     setup_field(name, obj)
-
-        #     for name, obj in list(objects.items()):
-        #         handle_add(name, obj)
+        # TODO: setup field for all the already instantiated nodes, return added objects and clsfields
+        # Now we can skip instantiating child and connecting it to parent bc its handled in instantiate()
 
         return added_objects, clsfields
 
@@ -586,11 +493,16 @@ class Node(CNode):
         type_node = Types.Class_ImplementsType.init_type_node(
             Types._Node(), cls.__name__
         )
+        cls.type_node = type_node
         try:
             from faebryk.core.trait import Trait
 
             if issubclass(cls, Trait):  # Add ImplementsTrait node to mark trait
-                Types.compose(type_node, Types.instantiate(Types.Type_ImplementsTrait))
+                Types.compose(
+                    type_node,
+                    Types.instantiate(Types.Type_ImplementsTrait)[0],
+                    "ImplementsTrait",
+                )
                 print("TRAIT", cls.__name__)
         except ImportError:
             print("IMPORT ERROR", cls.__name__)
@@ -608,6 +520,7 @@ class Node(CNode):
                 if "GraphInterface" in obj.__name__:
                     # print("SKIP", name, obj.__name__)
                     return
+                print(obj.__name__)
                 child_type_node = Types.get_type_by_name(obj.__name__)
                 if not child_type_node:
                     raise ValueError(f"Child type node not found for {obj.__name__}")
@@ -623,6 +536,7 @@ class Node(CNode):
                 if "GraphInterface" in child_type_name:
                     # print("SKIP", name, obj.__name__)
                     return
+                print(child_type_name)
                 child_type_node = Types.get_type_by_name(child_type_name)
                 if not child_type_node:
                     raise ValueError(f"Child type node not found for {child_type_name}")
