@@ -1,5 +1,14 @@
 const std = @import("std");
 
+pub fn shortTypeName(comptime T: type) [:0]const u8 {
+    const full = @typeName(T);
+    var last: usize = 0;
+    for (full, 0..) |c, i| {
+        if (c == '.') last = i + 1;
+    }
+    return full[last..];
+}
+
 pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
     const T = @TypeOf(value);
     const info = @typeInfo(T);

@@ -19,35 +19,35 @@ var main_module_def = py.PyModuleDef{
     .m_methods = &main_methods,
 };
 
-fn wrap_graphview_create(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-    _ = self;
-    _ = args;
+// ====================================================================================================================
 
-    //
-    return null;
+fn wrap_graphview_create() type {
+    return struct {
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = self;
+            _ = args;
+
+            //
+            return null;
+        }
+
+        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
+            return .{
+                .ml_name = "create",
+                .ml_meth = @ptrCast(impl_fn),
+                .ml_flags = py.METH_NOARGS | py.METH_STATIC,
+                .ml_doc = "Create a new GraphView",
+            };
+        }
+    };
 }
 
 fn wrap_graphview(root: *py.PyObject) void {
-    const extra_methods = [_]py.PyMethodDef{
-        .{
-            .ml_name = "create",
-            .ml_meth = @ptrCast(&wrap_graphview_create),
-            .ml_flags = py.METH_NOARGS | py.METH_STATIC,
-            .ml_doc = "Create a new GraphView",
-        },
+    const extra_methods = [_]type{
+        wrap_graphview_create(),
+        // TODO add more methods
     };
-
-    const graphview_binding = bind.wrap_in_python_simple(graph.graph.GraphView, null, extra_methods);
-    if (py.PyType_Ready(&graphview_binding.type_object) < 0) {
-        return;
-    }
-
-    graphview_binding.type_object.ob_base.ob_base.ob_refcnt += 1;
-    if (py.PyModule_AddObject(root, "GraphView", @ptrCast(&graphview_binding.type_object)) < 0) {
-        graphview_binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
-        return;
-    }
-    pyzig.type_registry.registerTypeObject("GraphView", &graphview_binding.type_object);
+    bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
 }
 
 fn wrap_graph_module(root: *py.PyObject) ?*py.PyObject {
@@ -57,7 +57,7 @@ fn wrap_graph_module(root: *py.PyObject) ?*py.PyObject {
     }
 
     // TODO register types (GraphView, Node, Edge, ...)
-    _ = wrap_graphview(module.?);
+    wrap_graphview(module.?);
 
     if (py.PyModule_AddObject(root, "graph", module) < 0) {
         return null;
@@ -65,6 +65,8 @@ fn wrap_graph_module(root: *py.PyObject) ?*py.PyObject {
 
     return module;
 }
+
+// ====================================================================================================================
 
 pub fn make_python_module() ?*py.PyObject {
     const module = py.PyModule_Create2(&main_module_def, 1013);
