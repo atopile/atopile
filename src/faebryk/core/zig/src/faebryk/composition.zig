@@ -1,6 +1,8 @@
-const graph = @import("graph.zig");
+const graph_mod = @import("graph");
 const std = @import("std");
-const visitor = @import("visitor.zig");
+
+const graph = graph_mod.graph;
+const visitor = graph_mod.visitor;
 
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;

@@ -125,6 +125,9 @@ pub fn build(b: *std.Build) void {
     _ = b.addModule("graph", .{
         .root_source_file = b.path("src/graph/lib.zig"),
     });
+    _ = b.addModule("faebryk", .{
+        .root_source_file = b.path("src/faebryk/lib.zig"),
+    });
 
     build_python_module(b, b.modules, target, optimize);
 }

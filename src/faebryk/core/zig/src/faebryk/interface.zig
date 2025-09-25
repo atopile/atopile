@@ -2,6 +2,8 @@ const graph = @import("graph.zig");
 const std = @import("std");
 const visitor = @import("visitor.zig");
 
+pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
+
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;
 const Edge = graph.Edge;

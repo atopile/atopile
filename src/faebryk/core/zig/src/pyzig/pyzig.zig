@@ -59,6 +59,15 @@ fn raise_not_implemented(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) 
     return null;
 }
 
+pub fn check_no_positional_args(self: ?*py.PyObject, args: ?*py.PyObject) bool {
+    _ = self;
+    if (args != null and py.PyTuple_Size(args) != 0) {
+        py.PyErr_SetString(py.PyExc_TypeError, "This function does not take positional arguments");
+        return false;
+    }
+    return true;
+}
+
 // Main comptime function to wrap a struct in Python bindings
 pub fn wrap_in_python(comptime T: type, comptime override_name: ?[*:0]const u8) type {
     @setEvalBranchQuota(100000);

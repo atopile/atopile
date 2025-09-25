@@ -1,5 +1,5 @@
 const std = @import("std");
-const graph = @import("graph");
+const faebryk = @import("faebryk");
 const pyzig = @import("pyzig");
 
 pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir: []const u8) !void {
@@ -7,5 +7,5 @@ pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir
         if (err != error.PathAlreadyExists) return err;
     };
 
-    try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "graph", graph.graph, output_dir, source_dir);
+    try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "composition", faebryk.composition, output_dir, source_dir);
 }
