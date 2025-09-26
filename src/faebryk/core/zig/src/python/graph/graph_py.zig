@@ -6,22 +6,7 @@ const pyzig = @import("pyzig");
 const py = pyzig.pybindings;
 const bind = pyzig.pyzig;
 const type_registry = pyzig.type_registry;
-
-fn ensureType(comptime name: [:0]const u8, storage: *?*py.PyTypeObject) ?*py.PyTypeObject {
-    if (storage.*) |t| {
-        return t;
-    }
-
-    if (type_registry.getRegisteredTypeObject(name)) |t| {
-        storage.* = t;
-        return t;
-    }
-
-    var err_buf: [64]u8 = undefined;
-    const msg = std.fmt.bufPrintZ(&err_buf, "{s} type not registered", .{name}) catch "Type not registered";
-    py.PyErr_SetString(py.PyExc_ValueError, msg);
-    return null;
-}
+const method_descr = bind.method_descr;
 
 pub fn makeWrapperPyObject(
     comptime name: [:0]const u8,
@@ -29,7 +14,7 @@ pub fn makeWrapperPyObject(
     comptime Wrapper: type,
     data_ptr: anytype,
 ) ?*py.PyObject {
-    const type_obj = ensureType(name, storage) orelse return null;
+    const type_obj = bind.ensureType(name, storage) orelse return null;
 
     const pyobj = py.PyType_GenericAlloc(type_obj, 0);
     if (pyobj == null) {
@@ -200,31 +185,6 @@ fn literalToPyObject(literal: Literal) ?*py.PyObject {
     };
 }
 
-pub fn castWrapper(
-    comptime name: [:0]const u8,
-    storage: *?*py.PyTypeObject,
-    comptime Wrapper: type,
-    obj: ?*py.PyObject,
-) ?*Wrapper {
-    const type_obj = ensureType(name, storage) orelse return null;
-    if (obj == null) {
-        var err_buf: [64]u8 = undefined;
-        const msg = std.fmt.bufPrintZ(&err_buf, "Expected {s}", .{name}) catch "Invalid object";
-        py.PyErr_SetString(py.PyExc_TypeError, msg);
-        return null;
-    }
-
-    const obj_type = py.Py_TYPE(obj);
-    if (obj_type == null or obj_type.? != type_obj) {
-        var err_buf: [64]u8 = undefined;
-        const msg = std.fmt.bufPrintZ(&err_buf, "Expected {s}", .{name}) catch "Invalid object";
-        py.PyErr_SetString(py.PyExc_TypeError, msg);
-        return null;
-    }
-
-    return @as(*Wrapper, @ptrCast(@alignCast(obj.?)));
-}
-
 fn shouldSkip(key: []const u8, skip: []const []const u8) bool {
     for (skip) |k| {
         if (std.mem.eql(u8, key, k)) return true;
@@ -277,6 +237,13 @@ fn applyAttributes(dynamic: *graph.graph.DynamicAttributes, kwargs: ?*py.PyObjec
 
 fn wrap_node_create() type {
     return struct {
+        pub const descr = method_descr{
+            .name = "create",
+            .doc = "Create a new Node",
+            .args_def = struct {},
+            .static = true,
+        };
+
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             if (!bind.check_no_positional_args(self, args)) return null;
 
@@ -298,28 +265,24 @@ fn wrap_node_create() type {
             success = true;
             return makeWrapperPyObject("Node", &node_type, NodeWrapper, node);
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "create",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS | py.METH_STATIC,
-                .ml_doc = "Create a new Node",
-            };
-        }
     };
 }
 
 fn wrap_node_get_attr() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
-
-            const arg_def = struct {
+        pub const descr = method_descr{
+            .name = "get_attr",
+            .doc = "Return attribute value for the given key",
+            .args_def = struct {
                 key: *py.PyObject,
-            };
+            },
+            .static = false,
+        };
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
+
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const key_c = py.PyUnicode_AsUTF8(kwarg_obj.key);
             if (key_c == null) {
@@ -335,44 +298,34 @@ fn wrap_node_get_attr() type {
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "get_attr",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Return attribute value for the given key",
-            };
-        }
     };
 }
 
 fn wrap_node_is_same() type {
     return struct {
+        pub const descr = method_descr{
+            .name = "is_same",
+            .doc = "Compare two Node instances",
+            .args_def = struct {
+                other: *graph.graph.Node,
+
+                pub const fields_meta = .{
+                    .other = bind.ARG{ .Wrapper = NodeWrapper, .storage = &node_type },
+                };
+            },
+            .static = false,
+        };
+
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
 
-            const arg_def = struct {
-                other: *py.PyObject,
-            };
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
-
-            const other = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.other) orelse return null;
-            const same = graph.graph.Node.is_same(wrapper.data, other.data);
+            const same = graph.graph.Node.is_same(wrapper.data, kwarg_obj.other);
 
             const result = if (same) py.Py_True() else py.Py_False();
             py.Py_INCREF(result);
             return result;
-        }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "is_same",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Compare two Node instances",
-            };
         }
     };
 }
@@ -389,19 +342,26 @@ fn wrap_node(root: *py.PyObject) void {
 
 fn wrap_edge_create() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const arg_def = struct {
-                source: *py.PyObject,
-                target: *py.PyObject,
+        pub const descr = method_descr{
+            .name = "create",
+            .doc = "Create a new Edge",
+            .args_def = struct {
+                source: *graph.graph.Node,
+                target: *graph.graph.Node,
                 edge_type: *py.PyObject,
                 directional: ?*py.PyObject = null,
                 name: ?*py.PyObject = null,
-            };
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+                pub const fields_meta = .{
+                    .source = bind.ARG{ .Wrapper = NodeWrapper, .storage = &node_type },
+                    .target = bind.ARG{ .Wrapper = NodeWrapper, .storage = &node_type },
+                };
+            },
+            .static = true,
+        };
 
-            const source = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.source) orelse return null;
-            const target = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.target) orelse return null;
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
             if (py.PyErr_Occurred() != null) return null;
@@ -433,7 +393,7 @@ fn wrap_edge_create() type {
             }
 
             const allocator = std.heap.c_allocator;
-            const edge_ptr = graph.graph.Edge.init(allocator, source.data, target.data, edge_type_value) catch {
+            const edge_ptr = graph.graph.Edge.init(allocator, kwarg_obj.source, kwarg_obj.target, edge_type_value) catch {
                 if (name_copy) |n| std.heap.c_allocator.free(@constCast(n));
                 py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate Edge");
                 return null;
@@ -456,28 +416,24 @@ fn wrap_edge_create() type {
             success = true;
             return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, edge_ptr);
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "create",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS | py.METH_STATIC,
-                .ml_doc = "Create a new Edge",
-            };
-        }
     };
 }
 
 fn wrap_edge_get_attr() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-
-            const arg_def = struct {
+        pub const descr = method_descr{
+            .name = "get_attr",
+            .doc = "Return attribute value for the given key",
+            .args_def = struct {
                 key: *py.PyObject,
-            };
+            },
+            .static = false,
+        };
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const key_c = py.PyUnicode_AsUTF8(kwarg_obj.key);
             if (key_c == null) {
@@ -493,107 +449,97 @@ fn wrap_edge_get_attr() type {
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "get_attr",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Return attribute value for the given key",
-            };
-        }
     };
 }
 
 fn wrap_edge_is_same() type {
     return struct {
+        pub const descr = method_descr{
+            .name = "is_same",
+            .doc = "Compare two Edge instances",
+            .args_def = struct {
+                other: *graph.graph.Edge,
+
+                pub const fields_meta = .{
+                    .other = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &edge_type },
+                };
+            },
+            .static = false,
+        };
+
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
 
-            const arg_def = struct {
-                other: *py.PyObject,
-            };
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
-
-            const other = castWrapper("Edge", &edge_type, EdgeWrapper, kwarg_obj.other) orelse return null;
-
-            const same = graph.graph.Edge.is_same(wrapper.data, other.data);
+            const same = graph.graph.Edge.is_same(wrapper.data, kwarg_obj.other);
             const result = if (same) py.Py_True() else py.Py_False();
             py.Py_INCREF(result);
             return result;
-        }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "is_same",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Compare two Edge instances",
-            };
         }
     };
 }
 
 fn wrap_edge_get_source() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.source);
-        }
+        pub const descr = method_descr{
+            .name = "source",
+            .doc = "Return the source Node",
+            .args_def = struct {},
+            .static = false,
+        };
 
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "source",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the source Node",
-            };
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.source);
         }
     };
 }
 
 fn wrap_edge_get_target() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.target);
-        }
+        pub const descr = method_descr{
+            .name = "target",
+            .doc = "Return the target Node",
+            .args_def = struct {},
+            .static = false,
+        };
 
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "target",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the target Node",
-            };
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.target);
         }
     };
 }
 
 fn wrap_edge_get_edge_type() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+        pub const descr = method_descr{
+            .name = "edge_type",
+            .doc = "Return the edge type identifier",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
             const val: c_longlong = @intCast(wrapper.data.edge_type);
             return py.PyLong_FromLongLong(val);
-        }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "edge_type",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the edge type identifier",
-            };
         }
     };
 }
 
 fn wrap_edge_get_directional() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+        pub const descr = method_descr{
+            .name = "directional",
+            .doc = "Return whether the edge is directional",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
             if (wrapper.data.directional) |value| {
                 const py_bool = if (value) py.Py_True() else py.Py_False();
                 py.Py_INCREF(py_bool);
@@ -602,22 +548,20 @@ fn wrap_edge_get_directional() type {
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "directional",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return whether the edge is directional",
-            };
-        }
     };
 }
 
 fn wrap_edge_get_name() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
+        pub const descr = method_descr{
+            .name = "name",
+            .doc = "Return the edge name if present",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
             if (wrapper.data.name) |value| {
                 const ptr: [*c]const u8 = if (value.len == 0) "" else @ptrCast(value.ptr);
                 const length: isize = @intCast(value.len);
@@ -625,15 +569,6 @@ fn wrap_edge_get_name() type {
             }
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
-        }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "name",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the edge name if present",
-            };
         }
     };
 }
@@ -655,52 +590,53 @@ fn wrap_edge(root: *py.PyObject) void {
 
 fn wrap_bound_node_get_node() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.node);
-        }
+        pub const descr = method_descr{
+            .name = "node",
+            .doc = "Return the underlying Node",
+            .args_def = struct {},
+            .static = false,
+        };
 
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "node",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the underlying Node",
-            };
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.node);
         }
     };
 }
 
 fn wrap_bound_node_get_graph() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
-        }
+        pub const descr = method_descr{
+            .name = "g",
+            .doc = "Return the owning GraphView",
+            .args_def = struct {},
+            .static = false,
+        };
 
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "g",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the owning GraphView",
-            };
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
+            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
     };
 }
 
 fn wrap_bound_node_visit_edges_of_type() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-
-            const arg_def = struct {
+        pub const descr = method_descr{
+            .name = "visit_edges_of_type",
+            .doc = "Visit edges of a specific type",
+            .args_def = struct {
                 edge_type: *py.PyObject,
                 ctx: *py.PyObject,
                 f: *py.PyObject,
-            };
+            },
+            .static = false,
+        };
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
+
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
             if (py.PyErr_Occurred() != null) return null;
@@ -730,15 +666,6 @@ fn wrap_bound_node_visit_edges_of_type() type {
             py.Py_INCREF(py.Py_None());
             return py.Py_None();
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "visit_edges_of_type",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Visit edges of a specific type",
-            };
-        }
     };
 }
 
@@ -761,36 +688,32 @@ fn wrap_bound_node(root: *py.PyObject) void {
 
 fn wrap_bound_edge_get_edge() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, wrapper.data.edge);
-        }
+        pub const descr = method_descr{
+            .name = "edge",
+            .doc = "Return the underlying Edge",
+            .args_def = struct {},
+            .static = false,
+        };
 
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "edge",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the underlying Edge",
-            };
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, wrapper.data.edge);
         }
     };
 }
 
 fn wrap_bound_edge_get_graph() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
-        }
+        pub const descr = method_descr{
+            .name = "g",
+            .doc = "Return the owning GraphView",
+            .args_def = struct {},
+            .static = false,
+        };
 
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "g",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS,
-                .ml_doc = "Return the owning GraphView",
-            };
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
+            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
     };
 }
@@ -813,7 +736,14 @@ fn wrap_bound_edge(root: *py.PyObject) void {
 
 fn wrap_graphview_create() type {
     return struct {
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+        pub const descr = method_descr{
+            .name = "create",
+            .doc = "Create a new GraphView",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             _ = self;
             _ = args;
             const allocator = std.heap.c_allocator;
@@ -833,107 +763,91 @@ fn wrap_graphview_create() type {
 
             return pyobj;
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFn) py.PyMethodDef {
-            return .{
-                .ml_name = "create",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_NOARGS | py.METH_STATIC,
-                .ml_doc = "Create a new GraphView",
-            };
-        }
     };
 }
 
 fn wrap_graphview_insert_node() type {
     return struct {
+        pub const descr = method_descr{
+            .name = "insert_node",
+            .doc = "Insert a Node into the graph",
+            .args_def = struct {
+                node: *graph.graph.Node,
+
+                pub const fields_meta = .{
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &node_type },
+                };
+            },
+            .static = false,
+        };
+
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
-            const arg_def = struct {
-                node: *py.PyObject,
-            };
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
-
-            const node = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.node) orelse return null;
-
-            const bound = wrapper.data.insert_node(node.data) catch {
+            const bound = wrapper.data.insert_node(kwarg_obj.node) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to insert node");
                 return null;
             };
 
             return makeBoundNodePyObject(bound);
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "insert_node",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Insert a Node into the graph",
-            };
-        }
     };
 }
 
 fn wrap_graphview_insert_edge() type {
     return struct {
+        pub const descr = method_descr{
+            .name = "insert_edge",
+            .doc = "Insert an Edge into the graph",
+            .args_def = struct {
+                edge: *graph.graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &edge_type },
+                };
+            },
+            .static = false,
+        };
+
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
-            const arg_def = struct {
-                edge: *py.PyObject,
-            };
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
-
-            const edge = castWrapper("Edge", &edge_type, EdgeWrapper, kwarg_obj.edge) orelse return null;
-
-            const bound = wrapper.data.insert_edge(edge.data) catch {
+            const bound = wrapper.data.insert_edge(kwarg_obj.edge) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to insert edge");
                 return null;
             };
 
             return makeBoundEdgePyObject(bound);
         }
-
-        pub fn method(impl_fn: *const py.PyMethodDefFnKW) py.PyMethodDef {
-            return .{
-                .ml_name = "insert_edge",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Insert an Edge into the graph",
-            };
-        }
     };
 }
 
 fn wrap_graphview_bind() type {
-    const FnType = fn (?*py.PyObject, ?*py.PyObject, ?*py.PyObject) callconv(.C) ?*py.PyObject;
     return struct {
+        pub const descr = method_descr{
+            .name = "bind",
+            .doc = "Bind an existing Node to the graph",
+            .args_def = struct {
+                node: *graph.graph.Node,
+
+                pub const fields_meta = .{
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &node_type },
+                };
+            },
+            .static = false,
+        };
+
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
 
-            const arg_def = struct {
-                node: *py.PyObject,
-            };
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, arg_def) orelse return null;
-
-            const node = castWrapper("Node", &node_type, NodeWrapper, kwarg_obj.node) orelse return null;
-
-            const bound = wrapper.data.bind(node.data);
+            const bound = wrapper.data.bind(kwarg_obj.node);
             return makeBoundNodePyObject(bound);
-        }
-
-        pub fn method(impl_fn: *const FnType) py.PyMethodDef {
-            return .{
-                .ml_name = "bind",
-                .ml_meth = @ptrCast(impl_fn),
-                .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS,
-                .ml_doc = "Bind an existing Node to the graph",
-            };
         }
     };
 }

@@ -129,8 +129,13 @@ pub fn wrap_in_python_simple(comptime T: type, comptime UseWrapperType: ?type, c
 
         pub const generated_methods = blk: {
             var buf: [extra_methods.len + 2]py.PyMethodDef = undefined;
-            for (extra_methods, 0..) |method, i| {
-                buf[i] = method.method(&method.impl);
+            for (passed_methods, 0..) |method, i| {
+                buf[i] = py.PyMethodDef{
+                    .ml_name = method.descr.name,
+                    .ml_meth = @ptrCast(&method.impl),
+                    .ml_flags = py.METH_VARARGS | py.METH_KEYWORDS | (if (method.descr.static) py.METH_STATIC else 0),
+                    .ml_doc = method.descr.doc,
+                };
             }
             buf[extra_methods.len] = generated_zig_address.method();
             buf[extra_methods.len + 1] = py.ML_SENTINEL;
@@ -183,26 +188,103 @@ pub fn ensureTypeObject(
     return &Binding.type_object;
 }
 
-pub fn parse_kwargs(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject, comptime T: type) ?T {
-    if (!check_no_positional_args(self, args)) return null;
+pub fn ensureType(comptime name: [:0]const u8, storage: *?*py.PyTypeObject) ?*py.PyTypeObject {
+    if (storage.*) |t| {
+        return t;
+    }
 
-    const kw = kwargs orelse {
-        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are required");
+    if (type_registry.getRegisteredTypeObject(name)) |t| {
+        storage.* = t;
+        return t;
+    }
+
+    var err_buf: [64]u8 = undefined;
+    const msg = std.fmt.bufPrintZ(&err_buf, "{s} type not registered", .{name}) catch "Type not registered";
+    py.PyErr_SetString(py.PyExc_ValueError, msg);
+    return null;
+}
+
+pub fn castWrapper(
+    comptime name: [:0]const u8,
+    storage: *?*py.PyTypeObject,
+    comptime Wrapper: type,
+    obj: ?*py.PyObject,
+) ?*Wrapper {
+    const type_obj = ensureType(name, storage) orelse return null;
+    if (obj == null) {
+        var err_buf: [64]u8 = undefined;
+        const msg = std.fmt.bufPrintZ(&err_buf, "Expected {s}", .{name}) catch "Invalid object";
+        py.PyErr_SetString(py.PyExc_TypeError, msg);
         return null;
-    };
+    }
 
+    const obj_type = py.Py_TYPE(obj);
+    if (obj_type == null or obj_type.? != type_obj) {
+        var err_buf: [64]u8 = undefined;
+        const msg = std.fmt.bufPrintZ(&err_buf, "Expected {s}", .{name}) catch "Invalid object";
+        py.PyErr_SetString(py.PyExc_TypeError, msg);
+        return null;
+    }
+
+    return @as(*Wrapper, @ptrCast(@alignCast(obj.?)));
+}
+
+pub fn is_pyobject(comptime T: type) bool {
+    return @typeInfo(T) == .@"opaque" or (@typeInfo(T) == .pointer and is_pyobject(@typeInfo(T).pointer.child)) or (@typeInfo(T) == .optional and is_pyobject(@typeInfo(T).optional.child));
+}
+
+pub const ARG = struct {
+    Wrapper: type,
+    storage: *?*py.PyTypeObject,
+};
+
+pub const method_descr = struct {
+    name: [:0]const u8,
+    doc: [:0]const u8,
+    args_def: type,
+    static: bool = false,
+};
+
+pub fn parse_kwargs(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject, comptime T: type) ?T {
     // iterate through fields of T
     const info = @typeInfo(T);
     if (info != .@"struct") {
         @compileError("parse_kwargs only supports structs");
     }
     const struct_info = info.@"struct";
+
+    if (!check_no_positional_args(self, args)) return null;
+
+    if (struct_info.fields.len == 0) {
+        return .{};
+    }
+
+    const kw = kwargs orelse {
+        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are required");
+        return null;
+    };
+
     var data: T = undefined;
     inline for (struct_info.fields) |field| {
         const field_name_z = field.name ++ "\x00";
         const value = py.PyDict_GetItemString(kw, field_name_z);
         if (value) |v| {
-            @field(data, field.name) = v;
+            if (comptime is_pyobject(field.type)) {
+                @field(data, field.name) = v;
+            } else {
+                const meta = @field(T, "fields_meta");
+                const inner_type = @typeInfo(field.type).pointer.child;
+                const meta_name = comptime util.shortTypeName(inner_type);
+                const arg: ARG = @field(meta, field.name);
+                const wrapper_type = arg.Wrapper;
+                const storage = arg.storage;
+                const obj = castWrapper(meta_name, storage, wrapper_type, v);
+                if (obj == null) {
+                    py.PyErr_SetString(py.PyExc_TypeError, "Invalid object");
+                    return null;
+                }
+                @field(data, field.name) = obj.?.data;
+            }
         } else {
             if (@typeInfo(field.type) == .optional) {
                 @field(data, field.name) = null;
