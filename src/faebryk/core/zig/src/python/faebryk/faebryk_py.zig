@@ -44,34 +44,22 @@ fn wrap_edge_composition_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const identifier_c = py.PyUnicode_AsUTF8(kwarg_obj.child_identifier);
-            if (identifier_c == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "child_identifier must be a string");
-                return null;
-            }
-            const identifier_slice = std.mem.span(identifier_c.?);
-
-            const allocator = std.heap.c_allocator;
-            const identifier_copy = allocator.dupe(u8, identifier_slice) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate child_identifier");
-                return null;
-            };
-            const identifier_const: []const u8 = identifier_copy;
+            const identifier_const: []const u8 = bind.unwrap_str_copy(kwarg_obj.child_identifier) orelse return null;
 
             const edge_ref = faebryk.composition.EdgeComposition.init(
-                allocator,
+                std.heap.c_allocator,
                 kwarg_obj.parent,
                 kwarg_obj.child,
                 identifier_const,
             ) catch {
-                allocator.free(identifier_copy);
+                std.heap.c_allocator.free(identifier_const);
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to create EdgeComposition edge");
                 return null;
             };
 
-            const edge_obj = graph_py.makeWrapperPyObject("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
+            const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
-                allocator.free(identifier_copy);
+                std.heap.c_allocator.free(identifier_const);
                 edge_ref.deinit() catch {};
                 return null;
             }
@@ -100,9 +88,7 @@ fn wrap_edge_composition_is_instance() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const is_match = faebryk.composition.EdgeComposition.is_instance(kwarg_obj.edge);
-            const py_bool = if (is_match) py.Py_True() else py.Py_False();
-            py.Py_INCREF(py_bool);
-            return py_bool;
+            return bind.wrap_bool(is_match);
         }
     };
 }
