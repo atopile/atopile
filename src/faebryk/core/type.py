@@ -11,7 +11,7 @@ from faebryk.core.cpp import (
     LinkPointer,
     LinkSibling,
 )
-from faebryk.core.node import CNode
+from faebryk.core.cpp import Node as CNode
 from faebryk.libs.util import cast
 
 # Manually create Trait type and implements_type instance here,

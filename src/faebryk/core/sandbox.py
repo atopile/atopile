@@ -1320,7 +1320,7 @@ def visualize_type_graph(root: _Node, figsize: tuple[int, int] = (20, 14)) -> No
 # register_python_nodetype(PyResistor)
 # register_python_nodetype(PyCapacitor)
 
-r = F.Resistor()
-print(r.added_objects)
+# r = F.Resistor()
+# print(r.added_objects)
 
-# visualize_type_graph(Type_ImplementsType)
+visualize_type_graph(Type_ImplementsType)

@@ -27,7 +27,7 @@ from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
-from faebryk.core.type import _Node, compose, get_type_by_name, instantiate
+from faebryk.core.type import get_type_by_name, instantiate
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
@@ -520,23 +520,23 @@ class Node(CNode):
                 if "GraphInterface" in obj.__name__:
                     # print("SKIP", name, obj.__name__)
                     return
-                print(obj.__name__)
+                # print(obj.__name__)
                 child_type_node = Types.get_type_by_name(obj.__name__)
                 if not child_type_node:
                     raise ValueError(f"Child type node not found for {obj.__name__}")
-                print(name, obj.__name__)
+                # print(name, obj.__name__)
                 Types.make_child_rule_and_child_ref(child_type_node, name, type_node)
 
             elif isinstance(obj, _d_field):
-                print("D_FIELD", name, obj.meta)
-                print(name)
+                # print("D_FIELD", name, obj.meta)
+                # print(name)
                 child_type = obj.meta.get("constructor")
                 assert isinstance(child_type, type)
                 child_type_name = child_type.__name__
                 if "GraphInterface" in child_type_name:
                     # print("SKIP", name, obj.__name__)
                     return
-                print(child_type_name)
+                # print(child_type_name)
                 child_type_node = Types.get_type_by_name(child_type_name)
                 if not child_type_node:
                     raise ValueError(f"Child type node not found for {child_type_name}")
