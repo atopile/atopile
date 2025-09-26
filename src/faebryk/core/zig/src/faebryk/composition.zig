@@ -84,29 +84,7 @@ pub const EdgeComposition = struct {
     }
 
     pub fn get_parent_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        const Visit = struct {
-            bound_node: graph.BoundNodeReference,
-
-            pub fn visit(ctx: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundEdgeReference) {
-                const self: *@This() = @ptrCast(@alignCast(ctx));
-                const parent = EdgeComposition.get_parent_of(bound_edge.edge, self.bound_node.node);
-                if (parent) |_| {
-                    return visitor.VisitResult(graph.BoundEdgeReference){ .OK = bound_edge };
-                }
-                return visitor.VisitResult(graph.BoundEdgeReference){ .CONTINUE = {} };
-            }
-        };
-
-        var visit = Visit{ .bound_node = bound_node };
-
-        const result = bound_node.visit_edges_of_type(get_tid(), graph.BoundEdgeReference, &visit, Visit.visit);
-        switch (result) {
-            .OK => return result.OK,
-            .EXHAUSTED => return null,
-            .CONTINUE => unreachable,
-            .STOP => unreachable,
-            .ERROR => |err| @panic(@errorName(err)),
-        }
+        return Edge.get_single_edge(bound_node, get_tid(), true);
     }
 
     pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: str) !graph.BoundEdgeReference {
