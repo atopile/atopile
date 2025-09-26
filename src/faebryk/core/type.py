@@ -321,7 +321,7 @@ def make_child_rule_and_child_ref(
 ):
     assert isinstance(child_type_node, Class_ImplementsType.Proto_Type)
     child_ref = Class_ChildReference.init_child_reference_instance(
-        child_type_node, instantiate(child_type_node)[0], name
+        child_type_node, instantiate(Type_ChildReference)[0], name
     )
     make_child = Class_MakeChild.init_make_child_instance(
         instantiate(Type_MakeChild, name)[0], child_ref
