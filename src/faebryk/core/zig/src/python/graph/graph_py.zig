@@ -8,25 +8,6 @@ const bind = pyzig.pyzig;
 const type_registry = pyzig.type_registry;
 const method_descr = bind.method_descr;
 
-pub fn makeWrapperPyObject(
-    comptime name: [:0]const u8,
-    storage: *?*py.PyTypeObject,
-    comptime Wrapper: type,
-    data_ptr: anytype,
-) ?*py.PyObject {
-    const type_obj = bind.ensureType(name, storage) orelse return null;
-
-    const pyobj = py.PyType_GenericAlloc(type_obj, 0);
-    if (pyobj == null) {
-        return null;
-    }
-
-    const wrapper = @as(*Wrapper, @ptrCast(@alignCast(pyobj)));
-    wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
-    wrapper.data = data_ptr;
-    return pyobj;
-}
-
 fn makeBoundNodePyObject(value: graph.graph.BoundNodeReference) ?*py.PyObject {
     const allocator = std.heap.c_allocator;
     const ptr = allocator.create(graph.graph.BoundNodeReference) catch {
@@ -35,7 +16,7 @@ fn makeBoundNodePyObject(value: graph.graph.BoundNodeReference) ?*py.PyObject {
     };
     ptr.* = value;
 
-    const pyobj = makeWrapperPyObject("BoundNodeReference", &bound_node_type, BoundNodeWrapper, ptr);
+    const pyobj = bind.wrap_obj("BoundNodeReference", &bound_node_type, BoundNodeWrapper, ptr);
     if (pyobj == null) {
         allocator.destroy(ptr);
     }
@@ -50,7 +31,7 @@ pub fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObjec
     };
     ptr.* = value;
 
-    const pyobj = makeWrapperPyObject("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, ptr);
+    const pyobj = bind.wrap_obj("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, ptr);
     if (pyobj == null) {
         allocator.destroy(ptr);
     }
@@ -263,7 +244,7 @@ fn wrap_node_create() type {
             };
 
             success = true;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, node);
+            return bind.wrap_obj("Node", &node_type, NodeWrapper, node);
         }
     };
 }
@@ -281,22 +262,15 @@ fn wrap_node_get_attr() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const key_c = py.PyUnicode_AsUTF8(kwarg_obj.key);
-            if (key_c == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "Attribute key must be str");
-                return null;
-            }
+            const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
 
-            const key_slice = std.mem.span(key_c.?);
             if (wrapper.data.dynamic.values.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
+            return bind.wrap_none();
         }
     };
 }
@@ -318,14 +292,10 @@ fn wrap_node_is_same() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const same = graph.graph.Node.is_same(wrapper.data, kwarg_obj.other);
-
-            const result = if (same) py.Py_True() else py.Py_False();
-            py.Py_INCREF(result);
-            return result;
+            return bind.wrap_bool(same);
         }
     };
 }
@@ -363,9 +333,7 @@ fn wrap_edge_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
-            if (py.PyErr_Occurred() != null) return null;
-            const edge_type_value: graph.graph.Edge.Type = @intCast(edge_type_raw);
+            const edge_type_value: graph.graph.Edge.Type = bind.unwrap_int(graph.graph.Edge.Type, kwarg_obj.edge_type) orelse return null;
 
             var directional_value: ?bool = null;
             if (kwarg_obj.directional) |directional_obj| {
@@ -379,16 +347,7 @@ fn wrap_edge_create() type {
             var name_copy: ?[]const u8 = null;
             if (kwarg_obj.name) |name_obj| {
                 if (name_obj != py.Py_None()) {
-                    const name_c = py.PyUnicode_AsUTF8(name_obj);
-                    if (name_c == null) {
-                        py.PyErr_SetString(py.PyExc_TypeError, "name must be a string");
-                        return null;
-                    }
-                    const name_slice = std.mem.span(name_c.?);
-                    name_copy = std.heap.c_allocator.dupe(u8, name_slice) catch {
-                        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                        return null;
-                    };
+                    name_copy = bind.unwrap_str_copy(name_obj) orelse return null;
                 }
             }
 
@@ -414,7 +373,7 @@ fn wrap_edge_create() type {
             };
 
             success = true;
-            return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, edge_ptr);
+            return bind.wrap_obj("Edge", &edge_type, EdgeWrapper, edge_ptr);
         }
     };
 }
@@ -432,16 +391,9 @@ fn wrap_edge_get_attr() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const key_c = py.PyUnicode_AsUTF8(kwarg_obj.key);
-            if (key_c == null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "Attribute key must be str");
-                return null;
-            }
-
-            const key_slice = std.mem.span(key_c.?);
+            const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
             if (wrapper.data.dynamic.values.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
@@ -469,13 +421,10 @@ fn wrap_edge_is_same() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const same = graph.graph.Edge.is_same(wrapper.data, kwarg_obj.other);
-            const result = if (same) py.Py_True() else py.Py_False();
-            py.Py_INCREF(result);
-            return result;
+            return bind.wrap_bool(same);
         }
     };
 }
@@ -491,7 +440,7 @@ fn wrap_edge_get_source() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.source);
+            return bind.wrap_obj("Node", &node_type, NodeWrapper, wrapper.data.source);
         }
     };
 }
@@ -507,7 +456,7 @@ fn wrap_edge_get_target() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.target);
+            return bind.wrap_obj("Node", &node_type, NodeWrapper, wrapper.data.target);
         }
     };
 }
@@ -523,8 +472,7 @@ fn wrap_edge_get_edge_type() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            const val: c_longlong = @intCast(wrapper.data.edge_type);
-            return py.PyLong_FromLongLong(val);
+            return bind.wrap_int(wrapper.data.edge_type);
         }
     };
 }
@@ -540,13 +488,7 @@ fn wrap_edge_get_directional() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            if (wrapper.data.directional) |value| {
-                const py_bool = if (value) py.Py_True() else py.Py_False();
-                py.Py_INCREF(py_bool);
-                return py_bool;
-            }
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
+            return bind.wrap_bool(wrapper.data.directional);
         }
     };
 }
@@ -562,13 +504,7 @@ fn wrap_edge_get_name() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            if (wrapper.data.name) |value| {
-                const ptr: [*c]const u8 = if (value.len == 0) "" else @ptrCast(value.ptr);
-                const length: isize = @intCast(value.len);
-                return py.PyUnicode_FromStringAndSize(ptr, length);
-            }
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
+            return bind.wrap_str(wrapper.data.name);
         }
     };
 }
@@ -599,7 +535,7 @@ fn wrap_bound_node_get_node() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Node", &node_type, NodeWrapper, wrapper.data.node);
+            return bind.wrap_obj("Node", &node_type, NodeWrapper, wrapper.data.node);
         }
     };
 }
@@ -615,7 +551,7 @@ fn wrap_bound_node_get_graph() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
+            return bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
     };
 }
@@ -635,12 +571,9 @@ fn wrap_bound_node_visit_edges_of_type() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
-            if (py.PyErr_Occurred() != null) return null;
-            const edge_type_value: graph.graph.Edge.Type = @intCast(edge_type_raw);
+            const edge_type_value: graph.graph.Edge.Type = bind.unwrap_int(graph.graph.Edge.Type, kwarg_obj.edge_type) orelse return null;
 
             py.Py_INCREF(kwarg_obj.ctx);
             py.Py_INCREF(kwarg_obj.f);
@@ -663,8 +596,7 @@ fn wrap_bound_node_visit_edges_of_type() type {
                 else => {},
             }
 
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
+            return bind.wrap_none();
         }
     };
 }
@@ -697,7 +629,7 @@ fn wrap_bound_edge_get_edge() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("Edge", &edge_type, EdgeWrapper, wrapper.data.edge);
+            return bind.wrap_obj("Edge", &edge_type, EdgeWrapper, wrapper.data.edge);
         }
     };
 }
@@ -713,7 +645,7 @@ fn wrap_bound_edge_get_graph() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("BoundEdgeReference", &bound_edge_type, BoundEdgeWrapper, self) orelse return null;
-            return makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
+            return bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, wrapper.data.g);
         }
     };
 }
@@ -755,7 +687,7 @@ fn wrap_graphview_create() type {
 
             graph_ptr.* = graph.graph.GraphView.init(allocator);
 
-            const pyobj = makeWrapperPyObject("GraphView", &graph_view_type, GraphViewWrapper, graph_ptr);
+            const pyobj = bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, graph_ptr);
             if (pyobj == null) {
                 graph_ptr.deinit();
                 allocator.destroy(graph_ptr);
@@ -783,7 +715,6 @@ fn wrap_graphview_insert_node() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound = wrapper.data.insert_node(kwarg_obj.node) catch {
@@ -813,7 +744,6 @@ fn wrap_graphview_insert_edge() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound = wrapper.data.insert_edge(kwarg_obj.edge) catch {
@@ -843,7 +773,6 @@ fn wrap_graphview_bind() type {
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
-
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const bound = wrapper.data.bind(kwarg_obj.node);

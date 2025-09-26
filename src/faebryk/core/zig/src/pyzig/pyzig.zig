@@ -297,49 +297,84 @@ pub fn parse_kwargs(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObj
     return data;
 }
 
-pub fn parse_single_arg(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) ?*py.PyObject {
-    _ = self;
-
-    if (kwargs != null) {
-        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are not allowed");
-        return null;
-    }
-
-    if (args == null) {
-        py.PyErr_SetString(py.PyExc_TypeError, "expects exactly one argument");
-        return null;
-    }
-
-    const arg_count = py.PyTuple_Size(args);
-    if (arg_count < 0) {
-        return null;
-    }
-    if (arg_count != 1) {
-        py.PyErr_SetString(py.PyExc_TypeError, "expects exactly one argument");
-        return null;
-    }
-
-    const arg = py.PyTuple_GetItem(args, 0);
-    if (arg == null) {
-        py.PyErr_SetString(py.PyExc_TypeError, "expects exactly one argument");
-        return null;
-    }
-
-    return arg.?;
+pub fn wrap_none() ?*py.PyObject {
+    const out = py.Py_None();
+    py.Py_INCREF(out);
+    return out;
 }
 
-pub fn parse_static_property(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) bool {
-    _ = self;
+pub fn wrap_bool(value: ?bool) ?*py.PyObject {
+    const out = if (value == null) py.Py_None() else if (value.?) py.Py_True() else py.Py_False();
+    py.Py_INCREF(out);
+    return out;
+}
 
-    if (kwargs != null) {
-        py.PyErr_SetString(py.PyExc_TypeError, "keyword arguments are not allowed");
-        return false;
+pub fn wrap_str(value: ?[]const u8) ?*py.PyObject {
+    if (value == null) {
+        const out = py.Py_None();
+        py.Py_INCREF(out);
+        return out;
+    }
+    const ptr: [*c]const u8 = if (value.?.len == 0) "" else @ptrCast(value.?.ptr);
+    const length: isize = @intCast(value.?.len);
+    const out = py.PyUnicode_FromStringAndSize(ptr, length);
+    if (out == null) {
+        return null;
+    }
+    py.Py_INCREF(out.?);
+    return out.?;
+}
+
+pub fn unwrap_str(obj: ?*py.PyObject) ?[]const u8 {
+    const ptr = py.PyUnicode_AsUTF8(obj);
+    if (ptr == null) {
+        py.PyErr_SetString(py.PyExc_TypeError, "Expected a string");
+        return null;
+    }
+    const slice = std.mem.span(ptr.?);
+    return slice;
+}
+
+pub fn unwrap_str_copy(obj: ?*py.PyObject) ?[]u8 {
+    const slice = unwrap_str(obj) orelse return null;
+    const copy = std.heap.c_allocator.dupe(u8, slice) catch {
+        py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate string");
+        return null;
+    };
+    return copy;
+}
+
+pub fn wrap_int(value: anytype) ?*py.PyObject {
+    const out = py.PyLong_FromLongLong(@intCast(value));
+    if (out == null) {
+        return null;
+    }
+    py.Py_INCREF(out.?);
+    return out.?;
+}
+
+pub fn unwrap_int(comptime T: type, obj: ?*py.PyObject) ?T {
+    const raw = py.PyLong_AsLongLong(obj);
+    if (py.PyErr_Occurred() != null) return null;
+    const value: T = @intCast(raw);
+    return value;
+}
+
+pub fn wrap_obj(
+    comptime name: [:0]const u8,
+    storage: *?*py.PyTypeObject,
+    comptime Wrapper: type,
+    data_ptr: anytype,
+) ?*py.PyObject {
+    const type_obj = ensureType(name, storage) orelse return null;
+
+    const pyobj = py.PyType_GenericAlloc(type_obj, 0);
+    if (pyobj == null) {
+        return null;
     }
 
-    if (args != null and py.PyTuple_Size(args.?) != 0) {
-        py.PyErr_SetString(py.PyExc_TypeError, "expects no arguments");
-        return false;
-    }
-
-    return true;
+    const wrapper = @as(*Wrapper, @ptrCast(@alignCast(pyobj)));
+    wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
+    wrapper.data = data_ptr;
+    return pyobj;
 }
