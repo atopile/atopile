@@ -265,6 +265,59 @@ pub const Edge = struct {
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
         return UUID.equals(E1.uuid, E2.uuid);
     }
+
+    pub fn get_source(E: EdgeReference) ?NodeReference {
+        if (E.directional) |d| {
+            if (d) {
+                return E.source;
+            }
+            return E.target;
+        }
+        return null;
+    }
+
+    pub fn get_target(E: EdgeReference) ?NodeReference {
+        if (E.directional) |d| {
+            if (d) {
+                return E.target;
+            }
+            return E.source;
+        }
+        return null;
+    }
+
+    /// No guarantee that there is only one
+    pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: Type, is_target: ?bool) ?BoundEdgeReference {
+        const Visit = struct {
+            bound_node: BoundNodeReference,
+            is_target: ?bool,
+
+            pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
+                const self: *@This() = @ptrCast(@alignCast(ctx));
+                if (self.is_target) |d| {
+                    const target = bound_edge.edge.get_target();
+                    if (target) |t| {
+                        if (d and Node.is_same(t, self.bound_node.node)) {
+                            return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                        }
+                    }
+                    return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
+                }
+                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+            }
+        };
+
+        var visit = Visit{ .bound_node = bound_node, .is_target = is_target };
+
+        const result = bound_node.visit_edges_of_type(edge_type, BoundEdgeReference, &visit, Visit.visit);
+        switch (result) {
+            .OK => return result.OK,
+            .EXHAUSTED => return null,
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+            .ERROR => |err| @panic(@errorName(err)),
+        }
+    }
 };
 
 pub const BoundNodeReference = struct {
