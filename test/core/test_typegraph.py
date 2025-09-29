@@ -4,6 +4,7 @@ from faebryk.core.type import (
     Class_ChildReference,
     Class_ImplementsType,
     Class_MakeChild,
+    Type_ChildReference,
     Type_ImplementsTrait,
     Type_ImplementsType,
     _Node,
@@ -48,6 +49,8 @@ def test_resistor_type_generation() -> None:
     assert isinstance(make_child_rule, Class_MakeChild.Proto_MakeChild)
     child_reference = make_child_rule.child_ref_pointer.get_reference()
     assert isinstance(child_reference, Class_ChildReference.Proto_ChildReference)
+    assert isinstance(child_reference, _Node.Proto_Node)
+    assert child_reference.is_type.get_children() is Type_ChildReference
     child_type_node = child_reference.node_type_pointer.get_reference()
     assert isinstance(child_type_node, Class_ImplementsType.Proto_Type)
     assert child_type_node._identifier == "Parameter"
