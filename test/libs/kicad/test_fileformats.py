@@ -483,10 +483,6 @@ def test_mutable_list():
     # iter
     for i, lib in enumerate(fp_lib_table.fp_lib_table.libs):
         assert lib.name == f"test{i}"
-    # FIXME: without this segfault because our object have gone bad
-    # objects should not go bad, this is literally what we are testing with our
-    # _ids(fp_lib_table)[:2] == ids
-    lib = None
 
     # append
     fp_lib_table.fp_lib_table.libs.append(
