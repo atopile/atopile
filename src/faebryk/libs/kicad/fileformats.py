@@ -1307,6 +1307,9 @@ class Property:
     class checksum:
         @staticmethod
         def _hashable(obj: "Property._PropertyHolder", remove_uuid: bool = True):
+            # TODO: only used by ato part for verifying user didnt accidentally modify
+            # will fix later when we care about that
+            raise NotImplementedError("Not implemented")
             copy = kicad.copy(obj)
 
             Property.checksum.delete_checksum(copy)
