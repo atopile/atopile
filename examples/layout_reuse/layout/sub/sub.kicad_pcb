@@ -92,7 +92,7 @@
 		(uuid "57cb3b0c-5482-4552-96cd-38176023a93a")
 		(at 56.35 49.52 -90)
 		(property "Reference" "R2"
-			(at 0 -4 90)
+			(at 0 -4 270)
 			(layer "F.SilkS")
 			(uuid "08ceb7e2-048f-4a07-ab4e-5d3701319b5b")
 			(effects
@@ -103,7 +103,7 @@
 			)
 		)
 		(property "Value" "1kΩ ±1% 62.5mW"
-			(at 0 4 90)
+			(at 0 4 270)
 			(layer "F.Fab")
 			(uuid "7eb4f650-f995-4c9e-980d-7c049bddf959")
 			(effects
@@ -230,6 +230,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "fec15044-451b-46e6-b6f5-a38ecd67a2ed")
 		)
 		(fp_line
@@ -240,6 +242,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "71e2209c-86da-46d1-b2f7-58a555d130ac")
 		)
 		(fp_line
@@ -250,6 +254,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "7214eef2-d16b-4197-b373-be648147aabb")
 		)
 		(fp_line
@@ -260,6 +266,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "3b1c1c9e-3810-45d4-9a78-4a72f0a0e73d")
 		)
 		(fp_line
@@ -270,6 +278,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "953f1bb3-e5a9-4935-b952-a2e492e3dfea")
 		)
 		(fp_line
@@ -280,6 +290,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "0233d866-d061-4eb7-ac0d-0c8481ff1b05")
 		)
 		(fp_circle
@@ -289,12 +301,12 @@
 				(width 0.06)
 				(type solid)
 			)
-			(fill no)
 			(layer "F.Fab")
+			(locked no)
 			(uuid "304f974e-8a6a-42dd-b918-7d5670b7d6b6")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 -4 90)
+			(at 0 -4 270)
 			(layer "F.SilkS")
 			(uuid "6a453693-d81e-4295-881a-8e160ca398e2")
 			(effects
@@ -304,8 +316,8 @@
 				)
 			)
 		)
-		(fp_text user "${REFERENCE}"
-			(at 0 0 90)
+		(fp_text user "%R"
+			(at 0 0 270)
 			(layer "F.Fab")
 			(uuid "ed12c730-aecd-432d-aafe-54bccc3ff659")
 			(effects
@@ -318,14 +330,14 @@
 		(pad "1" smd rect
 			(at -0.43 0 270)
 			(size 0.57 0.54)
-			(layers "F.Cu" "F.Mask" "F.Paste")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(net 4 "footprint-net-1")
 			(uuid "985643a9-ddd2-4c96-8f5a-0fd81f3626cd")
 		)
 		(pad "2" smd rect
 			(at 0.43 0 270)
 			(size 0.57 0.54)
-			(layers "F.Cu" "F.Mask" "F.Paste")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(net 2 "footprint-net-2")
 			(uuid "f1292ee9-a1a0-4407-a8ed-9eb18b20bcef")
 		)
@@ -347,7 +359,7 @@
 		(uuid "fa11144f-ed91-4e11-b776-ff795d0d48c1")
 		(at 56.35 46.92 -90)
 		(property "Reference" "R1"
-			(at 0 -4 90)
+			(at 0 -4 270)
 			(layer "F.SilkS")
 			(uuid "96d1e851-f1a4-4052-b570-c9f815b748fd")
 			(effects
@@ -358,7 +370,7 @@
 			)
 		)
 		(property "Value" "1kΩ ±1% 62.5mW"
-			(at 0 4 90)
+			(at 0 4 270)
 			(layer "F.Fab")
 			(uuid "417fd9ab-cf2e-43ec-bb9a-33f6e19b41e6")
 			(effects
@@ -485,6 +497,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "b6506bd9-e75a-43df-8368-4e761075630c")
 		)
 		(fp_line
@@ -495,6 +509,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "c3a930bb-368b-499d-96a3-b75688f5a4b1")
 		)
 		(fp_line
@@ -505,6 +521,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "23ef93c5-4448-469c-969c-b6481a4d4c3c")
 		)
 		(fp_line
@@ -515,6 +533,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "6f320834-b983-4cce-9ad3-6a5b52564c62")
 		)
 		(fp_line
@@ -525,6 +545,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "58163c8d-94a2-435b-bddc-e620f0977675")
 		)
 		(fp_line
@@ -535,6 +557,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "d5e9b1ab-9759-4c53-b58e-1e05a7bb716d")
 		)
 		(fp_circle
@@ -544,12 +568,12 @@
 				(width 0.06)
 				(type solid)
 			)
-			(fill no)
 			(layer "F.Fab")
+			(locked no)
 			(uuid "d5142a73-87cb-4474-b91a-8a40aed94f52")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 -4 90)
+			(at 0 -4 270)
 			(layer "F.SilkS")
 			(uuid "c30088ed-3159-45dd-97ff-36ebe8d11d77")
 			(effects
@@ -559,8 +583,8 @@
 				)
 			)
 		)
-		(fp_text user "${REFERENCE}"
-			(at 0 0 90)
+		(fp_text user "%R"
+			(at 0 0 270)
 			(layer "F.Fab")
 			(uuid "98cc6259-d9ce-4798-b3a3-b4a9ba79e15a")
 			(effects
@@ -573,14 +597,14 @@
 		(pad "1" smd rect
 			(at -0.43 0 270)
 			(size 0.57 0.54)
-			(layers "F.Cu" "F.Mask" "F.Paste")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(net 3 "footprint-net-0")
 			(uuid "2f9feea8-2469-4214-ab4f-7c1823a851b8")
 		)
 		(pad "2" smd rect
 			(at 0.43 0 270)
 			(size 0.57 0.54)
-			(layers "F.Cu" "F.Mask" "F.Paste")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(net 4 "footprint-net-1")
 			(uuid "c492712a-257a-48bc-9e54-cc3245f2ff10")
 		)
@@ -602,7 +626,7 @@
 		(uuid "fda06f83-eade-492e-bd40-eeb91f04a46a")
 		(at 56.35 51.95 -90)
 		(property "Reference" "R3"
-			(at 0 -4 90)
+			(at 0 -4 270)
 			(layer "F.SilkS")
 			(uuid "251c5918-28b1-4133-9915-fa9279f8098a")
 			(effects
@@ -613,7 +637,7 @@
 			)
 		)
 		(property "Value" "1kΩ ±1% 62.5mW"
-			(at 0 4 90)
+			(at 0 4 270)
 			(layer "F.Fab")
 			(uuid "a5ad83b5-1f39-4c27-a79e-5083347e9f49")
 			(effects
@@ -740,6 +764,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "9d69f9b5-4033-4e14-8509-0bf9e616b4be")
 		)
 		(fp_line
@@ -750,6 +776,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "412a9edf-8939-4972-89d5-7fe91a9c2032")
 		)
 		(fp_line
@@ -760,6 +788,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "72f8d778-8752-4b20-8b53-af3a5fa74d32")
 		)
 		(fp_line
@@ -770,6 +800,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "f46fc49d-f2c7-42f2-a4fa-ebd457118497")
 		)
 		(fp_line
@@ -780,6 +812,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "22901306-5f7b-473a-9ddc-c3b9ff536e3a")
 		)
 		(fp_line
@@ -790,6 +824,8 @@
 				(type solid)
 			)
 			(layer "F.SilkS")
+			(layers "F.SilkS")
+			(locked no)
 			(uuid "91f4e338-ffa8-43d8-91ab-1db6dcd1907b")
 		)
 		(fp_circle
@@ -799,12 +835,12 @@
 				(width 0.06)
 				(type solid)
 			)
-			(fill no)
 			(layer "F.Fab")
+			(locked no)
 			(uuid "a201140b-4939-46d8-8f51-e614cc1956fe")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 -4 90)
+			(at 0 -4 270)
 			(layer "F.SilkS")
 			(uuid "6826f4db-977f-451e-adfa-6f1f94629c3d")
 			(effects
@@ -814,8 +850,8 @@
 				)
 			)
 		)
-		(fp_text user "${REFERENCE}"
-			(at 0 0 90)
+		(fp_text user "%R"
+			(at 0 0 270)
 			(layer "F.Fab")
 			(uuid "7f372114-c9f5-4b60-b892-abcdab228aec")
 			(effects
@@ -828,14 +864,14 @@
 		(pad "1" smd rect
 			(at -0.43 0 270)
 			(size 0.57 0.54)
-			(layers "F.Cu" "F.Mask" "F.Paste")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(net 2 "footprint-net-2")
 			(uuid "71a68694-8c8b-4290-8042-f5cd24e71155")
 		)
 		(pad "2" smd rect
 			(at 0.43 0 270)
 			(size 0.57 0.54)
-			(layers "F.Cu" "F.Mask" "F.Paste")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(net 1 "footprint-net-3")
 			(uuid "154cb28d-7fcc-4777-8348-75829ba15f54")
 		)

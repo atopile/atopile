@@ -1,7 +1,7 @@
 (kicad_symbol_lib
 	(version 20241229)
 	(generator "faebryk_convert")
-	(symbol "0402WGF5101TCE"
+	(symbol "0603WAF1003T5E"
 		(property "Reference" "R"
 			(id 0)
 			(at 0 5.08 0)
@@ -11,7 +11,7 @@
 				)
 			)
 		)
-		(property "Value" "0402WGF5101TCE"
+		(property "Value" "0603WAF1003T5E"
 			(id 1)
 			(at 0 -5.08 0)
 			(effects
@@ -20,7 +20,7 @@
 				)
 			)
 		)
-		(property "Footprint" "C25905:R0402"
+		(property "Footprint" "C25803:R0603"
 			(id 2)
 			(at 0 -7.62 0)
 			(effects
@@ -29,7 +29,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_5-1KR-5101-1_C25905.html"
+		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_100KR-1003-1_C25803.html"
 			(id 3)
 			(at 0 -10.16 0)
 			(effects
@@ -38,7 +38,7 @@
 				)
 			)
 		)
-		(property "LCSC Part" "C25905"
+		(property "LCSC Part" "C25803"
 			(id 5)
 			(at 0 -12.7 0)
 			(effects
@@ -49,7 +49,7 @@
 		)
 		(in_bom yes)
 		(on_board yes)
-		(symbol "0402WGF5101TCE_0_1"
+		(symbol "0603WAF1003T5E_0_1"
 			(rectangle
 				(start -2.54 1.02)
 				(end 2.54 -1.02)

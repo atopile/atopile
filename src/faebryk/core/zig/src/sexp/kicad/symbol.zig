@@ -11,7 +11,7 @@ const schematic = @import("schematic.zig");
 
 pub const SymbolLib = struct {
     version: i32,
-    generator: list(str) = .{},
+    generator: str = "",
     symbols: list(schematic.Symbol) = .{},
 
     pub const fields_meta = .{
