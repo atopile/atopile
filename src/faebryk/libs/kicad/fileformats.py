@@ -25,7 +25,7 @@ from dataclasses_json import (
 from more_itertools import first
 
 from faebryk.libs.checksum import Checksum
-from faebryk.libs.util import ConfigFlag, find, find_or, lazy_split
+from faebryk.libs.util import ConfigFlag, compare_dataclasses, find, find_or, lazy_split
 
 logger = logging.getLogger(__name__)
 
@@ -1229,10 +1229,15 @@ class kicad:
             )
         raise ValueError(f"Unsupported type: {type(old)}")
 
-    # TODO
     @staticmethod
     def compare_without_uuid(old: Any, new: Any):
-        return False
+        return compare_dataclasses(
+            before=old,
+            after=new,
+            skip_keys=("uuid",),
+            require_dataclass_type_match=False,
+            float_precision=2,
+        )
 
     class KicadStruct(Protocol):
         @staticmethod

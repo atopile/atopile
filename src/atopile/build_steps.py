@@ -65,7 +65,6 @@ from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import (
     DAG,
     KeyErrorAmbiguous,
-    compare_dataclasses,
     md_table,
 )
 
@@ -331,12 +330,9 @@ def update_pcb(
     def _update_layout(
         pcb_file: kicad.pcb.PcbFile, original_pcb_file: kicad.pcb.PcbFile
     ) -> None:
-        pcb_diff = compare_dataclasses(
-            before=original_pcb_file,
-            after=pcb_file,
-            skip_keys=("uuid",),
-            require_dataclass_type_match=False,
-            float_precision=2,
+        pcb_diff = kicad.compare_without_uuid(
+            original_pcb_file,
+            pcb_file,
         )
 
         if config.build.frozen:
