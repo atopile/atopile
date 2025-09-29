@@ -46,6 +46,7 @@ from faebryk.libs.util import (
     re_in,
     robustly_rm_dir,
     sanitize_filepath_part,
+    try_or,
 )
 
 logger = logging.getLogger(__name__)
@@ -283,7 +284,7 @@ class PartLifecycle:
             if not getattr(self, "_printed_alert", False):
                 # check if any running pcbnew instances
                 # TODO: actually pass pcb
-                if opened_in_pcbnew(pcb_path=None):
+                if try_or(lambda: opened_in_pcbnew(pcb_path=None), default=True):
                     logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
                     self._printed_alert = True
 
