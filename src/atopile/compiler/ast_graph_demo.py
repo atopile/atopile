@@ -1,39 +1,15 @@
-from collections.abc import Iterator
 from pathlib import Path
 
 import atopile.compiler.ast_types as AST
 from atopile.compiler.ast_graph import build_file
-from faebryk.libs.util import KeyErrorNotFound
 
 
-def file_loc_key(node: AST.ASTNode) -> AST.FileLocation:
-    try:
-        (source_chunk,) = node.get_children(types=AST.SourceChunk, direct_only=True)
-        return source_chunk.file_location
-    except ValueError:
-        return AST.FileLocation(0, 0, 0, 0)
-
-
-def _iter_nodes(node: AST.ASTNode) -> Iterator[AST.ASTNode]:
-    """
-    Pre-order traversal of ASTNode tree, yielding (and terminating on) nodes with a
-    SourceChunk child
-    """
-    if node.get_children(types=AST.SourceChunk, direct_only=True):
-        yield node
-    else:
-        for child in sorted(
-            node.get_children(direct_only=True, types=AST.ASTNode),
-            key=file_loc_key,
-        ):
-            yield from _iter_nodes(child)
-
-
-def print_tree(example: AST.ASTNode) -> None:
-    def _renderer(n: AST.ASTNode) -> str:
+def print_tree(example: AST._Node) -> None:
+    def _renderer(n: AST._Node) -> str:
         try:
-            text = n.get_first_child_of_type(AST.SourceChunk, direct_only=True).text
-        except KeyErrorNotFound:
+            (source_chunk,) = n.get_children(types=AST.SourceChunk, direct_only=True)
+            text = source_chunk.text
+        except ValueError:
             text = ""
 
         if "\n" in text:
@@ -44,7 +20,7 @@ def print_tree(example: AST.ASTNode) -> None:
     print(example.get_tree(types=AST.ASTNode).pretty_print(node_renderer=_renderer))
 
 
-def visualize(example: AST.ASTNode):
+def visualize(example: AST._Node):
     from atopile.compiler.ast_viewer import visualize
 
     visualize(example)

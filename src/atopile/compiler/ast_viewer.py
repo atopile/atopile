@@ -23,7 +23,7 @@ from dash import Dash, dcc, html
 from dash.dependencies import Input, Output, State
 
 from atopile.compiler.ast_graph import AST
-from faebryk.core.node import Node
+from atopile.compiler.ast_types import ASTNode as Node
 from faebryk.exporters.visualize.interactive_params_base import Layout
 from faebryk.libs.util import typename
 
@@ -55,6 +55,7 @@ _GROUP_TYPES: dict[str, tuple[type[Node], ...]] = {
     ),
     "statement": (
         AST.AssignNewStmt,
+        AST.AssignValueStmt,
         AST.AssignQuantityStmt,
         AST.DeclarationStmt,
         AST.PragmaStmt,
@@ -74,6 +75,9 @@ _GROUP_TYPES: dict[str, tuple[type[Node], ...]] = {
     "reference": (
         AST.FieldRef,
         AST.FieldRefPart,
+        AST.IterableFieldRef,
+        AST.FieldRefList,
+        AST.Slice,
         AST.TypeRef,
         AST.Template,
         AST.TemplateArg,
@@ -85,6 +89,12 @@ _GROUP_TYPES: dict[str, tuple[type[Node], ...]] = {
         AST.String,
         AST.Number,
         AST.Boolean,
+        AST.Expression,
+        AST.BinaryExpression,
+        AST.GroupExpression,
+        AST.FunctionCall,
+        AST.ComparisonClause,
+        AST.ComparisonExpression,
     ),
     "support": (
         AST.SourceChunk,
