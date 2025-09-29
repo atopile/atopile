@@ -19,10 +19,7 @@ pub fn MutableLinkedList(comptime T: type) type {
         }
 
         fn count(self: *Self) usize {
-            var c: usize = 0;
-            var it = self.list.first;
-            while (it) |n| : (it = n.next) c += 1;
-            return c;
+            return self.list.len;
         }
         fn nodeAt(self: *Self, idx: usize) ?*std.DoublyLinkedList(T).Node {
             var i: usize = 0;
@@ -62,16 +59,12 @@ pub fn MutableLinkedList(comptime T: type) type {
                 py.PyErr_SetString(py.PyExc_MemoryError, "append failed");
                 return null;
             };
-            node.* = Node{ .data = undefined, .prev = null, .next = null };
+            node.* = Node{ .data = undefined };
             if (!s.convertPythonToZig(value, &node.data)) {
                 std.heap.c_allocator.destroy(node);
                 return null;
             }
-            if (s.list.last) |last| {
-                last.next = node;
-                node.prev = last;
-            } else s.list.first = node;
-            s.list.last = node;
+            s.list.append(node);
             const none = py.Py_None();
             py.Py_INCREF(none);
             return none;
@@ -90,34 +83,22 @@ pub fn MutableLinkedList(comptime T: type) type {
                 py.PyErr_SetString(py.PyExc_MemoryError, "insert failed");
                 return null;
             };
-            node.* = Node{ .data = undefined, .prev = null, .next = null };
+            node.* = Node{ .data = undefined };
             if (!s.convertPythonToZig(item, &node.data)) {
                 std.heap.c_allocator.destroy(node);
                 return null;
             }
             if (actual == len) {
-                if (s.list.last) |last| {
-                    last.next = node;
-                    node.prev = last;
-                } else s.list.first = node;
-                s.list.last = node;
+                s.list.append(node);
             } else if (actual == 0) {
-                if (s.list.first) |first| {
-                    node.next = first;
-                    first.prev = node;
-                } else s.list.last = node;
-                s.list.first = node;
+                s.list.prepend(node);
             } else {
                 const before = s.nodeAt(@intCast(actual)) orelse {
                     std.heap.c_allocator.destroy(node);
                     py.PyErr_SetString(py.PyExc_IndexError, "index out of range");
                     return null;
                 };
-                const prev = before.prev;
-                node.next = before;
-                node.prev = prev;
-                if (prev) |p| p.next = node;
-                before.prev = node;
+                s.list.insertBefore(before, node);
             }
             const none = py.Py_None();
             py.Py_INCREF(none);
@@ -126,13 +107,9 @@ pub fn MutableLinkedList(comptime T: type) type {
         fn list_clear(self: ?*py.PyObject, args: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             _ = args;
             const s: *Self = @ptrCast(@alignCast(self));
-            var it = s.list.first;
-            while (it) |n| {
-                const nx = n.next;
-                std.heap.c_allocator.destroy(n);
-                it = nx;
+            while (s.list.pop()) |node| {
+                std.heap.c_allocator.destroy(node);
             }
-            s.list.* = .{};
             const none = py.Py_None();
             py.Py_INCREF(none);
             return none;
@@ -144,9 +121,7 @@ pub fn MutableLinkedList(comptime T: type) type {
             var it = s.list.first;
             while (it) |n| : (it = n.next) {
                 if (&n.data == w.data) {
-                    if (n.prev) |p| p.next = n.next else s.list.first = n.next;
-                    if (n.next) |nx| nx.prev = n.prev;
-                    if (s.list.last == n) s.list.last = n.prev;
+                    s.list.remove(n);
                     std.heap.c_allocator.destroy(n);
                     const none = py.Py_None();
                     py.Py_INCREF(none);
@@ -191,9 +166,7 @@ pub fn MutableLinkedList(comptime T: type) type {
                 py.PyErr_SetString(py.PyExc_IndexError, "index out of range");
                 return null;
             };
-            if (n.prev) |p| p.next = n.next else s.list.first = n.next;
-            if (n.next) |nx| nx.prev = n.prev;
-            if (s.list.last == n) s.list.last = n.prev;
+            s.list.remove(n);
             std.heap.c_allocator.destroy(n);
             const none = py.Py_None();
             py.Py_INCREF(none);

@@ -510,7 +510,7 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                         if (!fields_set.isSet(field_idx)) {
                             const NodeType = field.type.Node;
                             const ChildType = std.meta.FieldType(NodeType, .data);
-                            var ll = field.type{ .first = null, .last = null };
+                            var ll = field.type{};
                             var scan_idx: usize = i;
                             while (scan_idx < items.len) : (scan_idx += 1) {
                                 if (!ast.isList(items[scan_idx])) continue;
@@ -522,12 +522,8 @@ fn handleKeyValuesAndBooleans(comptime T: type, allocator: std.mem.Allocator, it
                                 const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
                                 const val = try decodeWithMetadata(ChildType, allocator, scan_struct_sexp, fm);
                                 const node = try allocator.create(NodeType);
-                                node.* = NodeType{ .data = val, .prev = null, .next = null };
-                                if (ll.last) |last| {
-                                    last.next = node;
-                                    node.prev = last;
-                                } else ll.first = node;
-                                ll.last = node;
+                                node.* = NodeType{ .data = val };
+                                ll.append(node);
                             }
                             @field(result.*, field.name) = ll;
                             fields_set.set(field_idx);
@@ -654,16 +650,12 @@ fn decodeLinkedList(comptime T: type, allocator: std.mem.Allocator, sexp: SExp, 
     const NodeType = T.Node;
     const child_type = std.meta.FieldType(NodeType, .data);
     const items = ast.getList(sexp).?;
-    var ll = T{ .first = null, .last = null };
+    var ll = T{};
     for (items) |item| {
         const val = try decodeWithMetadata(child_type, allocator, item, .{});
         const node = try allocator.create(NodeType);
-        node.* = NodeType{ .data = val, .prev = null, .next = null };
-        if (ll.last) |last| {
-            last.next = node;
-            node.prev = last;
-        } else ll.first = node;
-        ll.last = node;
+        node.* = NodeType{ .data = val };
+        ll.append(node);
     }
     return ll;
 }

@@ -511,7 +511,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
             // Generic: accept any Python sequence and build a DoublyLinkedList
             const LL = std.DoublyLinkedList(ChildType);
             const NodeType = LL.Node;
-            var ll = LL{ .first = null, .last = null };
+            var ll = LL{};
 
             const seq_len = py.PySequence_Size(value);
             if (seq_len < 0) {
@@ -531,7 +531,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                 switch (child_ti) {
                     .@"struct" => {
                         const nested = @as(*PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
-                        node.* = NodeType{ .data = nested.data.*, .prev = null, .next = null };
+                        node.* = NodeType{ .data = nested.data.* };
                     },
                     .@"enum" => {
                         const s = py.PyUnicode_AsUTF8(item);
@@ -544,7 +544,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                             std.heap.c_allocator.destroy(node);
                             return -1;
                         };
-                        node.* = NodeType{ .data = ev, .prev = null, .next = null };
+                        node.* = NodeType{ .data = ev };
                     },
                     .int => {
                         const v = py.PyLong_AsLong(item);
@@ -552,7 +552,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                             std.heap.c_allocator.destroy(node);
                             return -1;
                         }
-                        node.* = NodeType{ .data = @intCast(v), .prev = null, .next = null };
+                        node.* = NodeType{ .data = @intCast(v) };
                     },
                     .float => {
                         const v = py.PyFloat_AsDouble(item);
@@ -560,7 +560,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                             std.heap.c_allocator.destroy(node);
                             return -1;
                         }
-                        node.* = NodeType{ .data = @floatCast(v), .prev = null, .next = null };
+                        node.* = NodeType{ .data = @floatCast(v) };
                     },
                     .bool => {
                         const v = py.PyObject_IsTrue(item);
@@ -568,7 +568,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                             std.heap.c_allocator.destroy(node);
                             return -1;
                         }
-                        node.* = NodeType{ .data = (v == 1), .prev = null, .next = null };
+                        node.* = NodeType{ .data = (v == 1) };
                     },
                     .pointer => |p| {
                         if (p.size == .slice and p.child == u8) {
@@ -582,7 +582,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                                 std.heap.c_allocator.destroy(node);
                                 return -1;
                             };
-                            node.* = NodeType{ .data = dup, .prev = null, .next = null };
+                            node.* = NodeType{ .data = dup };
                         } else {
                             std.heap.c_allocator.destroy(node);
                             return -1;
@@ -593,12 +593,7 @@ pub fn linked_list_prop(comptime struct_type: type, comptime field_name: [*:0]co
                         return -1;
                     },
                 }
-
-                if (ll.last) |last| {
-                    last.next = node;
-                    node.prev = last;
-                } else ll.first = node;
-                ll.last = node;
+                ll.append(node);
             }
 
             const list_ptr = wrapperFieldPtr(struct_type, FieldType, field_name_slice, obj);
@@ -1023,7 +1018,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                     return -1;
                                 }
 
-                                var ll = field.type{ .first = null, .last = null };
+                                var ll = field.type{};
 
                                 var i: isize = 0;
                                 while (i < seq_len) : (i += 1) {
@@ -1044,7 +1039,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                     switch (child_info) {
                                         .@"struct" => {
                                             const nested = @as(*PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
-                                            node.* = NodeType{ .data = nested.data.*, .prev = null, .next = null };
+                                            node.* = NodeType{ .data = nested.data.* };
                                         },
                                         .@"enum" => {
                                             const s = py.PyUnicode_AsUTF8(item);
@@ -1061,7 +1056,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                 py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in list");
                                                 return -1;
                                             };
-                                            node.* = NodeType{ .data = ev, .prev = null, .next = null };
+                                            node.* = NodeType{ .data = ev };
                                         },
                                         .int => {
                                             const v = py.PyLong_AsLong(item);
@@ -1071,7 +1066,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            node.* = NodeType{ .data = @intCast(v), .prev = null, .next = null };
+                                            node.* = NodeType{ .data = @intCast(v) };
                                         },
                                         .float => {
                                             const v = py.PyFloat_AsDouble(item);
@@ -1081,7 +1076,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            node.* = NodeType{ .data = @floatCast(v), .prev = null, .next = null };
+                                            node.* = NodeType{ .data = @floatCast(v) };
                                         },
                                         .bool => {
                                             const v = py.PyObject_IsTrue(item);
@@ -1091,7 +1086,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            node.* = NodeType{ .data = (v == 1), .prev = null, .next = null };
+                                            node.* = NodeType{ .data = (v == 1) };
                                         },
                                         .pointer => |p| {
                                             if (p.size == .slice and p.child == u8) {
@@ -1109,7 +1104,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                                     std.heap.c_allocator.destroy(wrapper_obj.data);
                                                     return -1;
                                                 };
-                                                node.* = NodeType{ .data = dup, .prev = null, .next = null };
+                                                node.* = NodeType{ .data = dup };
                                             } else {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
@@ -1128,11 +1123,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                                     }
                                     py.Py_DECREF(item.?);
 
-                                    if (ll.last) |last| {
-                                        last.next = node;
-                                        node.prev = last;
-                                    } else ll.first = node;
-                                    ll.last = node;
+                                    ll.append(node);
                                 }
 
                                 @field(wrapper_obj.data.*, field.name) = ll;
