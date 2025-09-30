@@ -1,0 +1,15 @@
+{
+  "folders": [
+	{
+		"path": "../../../../../nonos"
+	},
+	{
+		"path": "../../../.."
+	},
+	{
+		"name": "badge",
+		"path": "../badge"
+	}
+],
+  "settings": {}
+}

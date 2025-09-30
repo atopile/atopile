@@ -1,0 +1,154 @@
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("TRAITS")
+
+# Standard library imports
+import ElectricPower
+import Resistor
+import ElectricLogic
+import I2C
+import I2S
+import can_bridge_by_name
+
+# Package imports from https://packages.atopile.io/
+from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
+from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
+from "atopile/ti-bq25185/ti-bq25185.ato" import TI_BQ25185
+from "atopile/batteries/batteries.ato" import EMB_BATTERY_LP402535
+from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
+from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805EC20_driver
+from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434
+from "atopile/logos/logos.ato" import atopile_logo_25x6mm
+
+module LED_BADGE:
+    """
+    LED Badge with:
+    - ESP32-C3 microcontroller module
+    - 10x10 LED matrix, 100 LEDs
+    - USB-C connector
+    - Battery connector
+    - Battery charger with power path
+    - Buck-boost converter to 3.3V
+    - Accelerometer
+    """
+    microcontroller = new ESP32_C3_MINI_1_driver
+    microphone = new TDK_InvenSense_ICS_43434
+    usb_c = new USBCConn
+    buck_boost = new TPS63020_driver
+    charger = new TI_BQ25185
+    battery = new EMB_BATTERY_LP402535
+    led_grid = new SK6805EC20_grid10x10
+    atopile_logo = new atopile_logo_25x6mm
+
+    charger.charge_current_limit = battery.model.capacity / 2h +/- 10%
+
+    # Power
+    power_3v3 = new ElectricPower
+
+    # Power path: USB 5V -> Charger -> Battery / System -> BuckBoost -> 3V3 rail
+    usb_c.usb2.usb_if.buspower ~ charger.power_input
+    charger.power_battery ~ battery.power
+    charger.power_system ~> buck_boost ~> power_3v3
+
+    # Buck boost enable
+    buck_boost_en_pullup = new Resistor
+    buck_boost_en_pullup.resistance = 10kohm +/- 1%
+    buck_boost_en_pullup.package = "R0402"
+    buck_boost.package.EN ~> buck_boost_en_pullup ~> usb_c.usb2.usb_if.buspower.vcc
+
+    # Charger TS/MR: add 10k pull-down to ground to emulate 25C NTC
+    ts_mr_pull_down = new Resistor
+    ts_mr_pull_down.resistance = 10kohm +/- 5%
+    ts_mr_pull_down.package = "R0402"
+    charger.temp_sense.line ~> ts_mr_pull_down ~> charger.power_system.lv
+
+    # Configure Power
+    usb_c.usb2.usb_if.buspower.voltage = 5V +/- 5%
+    charger.input_current_limit = 500mA
+    buck_boost.v_out = 3.3V +/- 5%
+    battery.model.capacity = 300mAh
+    assert battery.model.voltage is 3V to 4.2V
+    # assert charger.battery_voltage_limit_high is 4.2V
+    # assert charger.battery_voltage_limit_low is 3.0V
+    assert charger.power_battery.voltage within 3.0V to 4.2V
+
+    # Connect 3.3 V rail to loads
+    power_3v3 ~ microcontroller.power
+    power_3v3 ~ microphone.power
+    power_3v3 ~ led_grid.power
+
+    # USB data
+    usb_c.usb2.usb_if.d ~ microcontroller.usb_if.d
+
+    # I2S for microphone (mapped via GPIOs 3/4/5)
+    i2s_bus = new I2S
+    i2s_bus ~ microcontroller.i2s
+    i2s_bus ~ microphone.i2s
+
+    # LED Data
+    led_grid.data_in ~ microcontroller.gpio[8]
+
+    # Net naming
+    microcontroller.gpio[8].line.override_net_name = "led_data"
+    i2s_bus.ws.line.override_net_name = "i2s_ws"
+    i2s_bus.sck.line.override_net_name = "i2s_sck"
+    i2s_bus.sd.line.override_net_name = "i2s_sd"
+    power_3v3.hv.override_net_name = "power_3v3"
+    power_3v3.lv.override_net_name = "gnd"
+    charger.power_system.hv.override_net_name = "power_system"
+    charger.power_battery.hv.override_net_name = "power_battery"
+    usb_c.usb2.usb_if.buspower.hv.override_net_name = "usb_power"
+    usb_c.usb2.usb_if.d.p.line.override_net_name = "usb_P"
+    usb_c.usb2.usb_if.d.n.line.override_net_name = "usb_N"
+
+
+module SK6805EC20_strip10:
+    """
+    Row of 10 SK6805 addressable LEDs behaving like a single LED that can be bridged by name.
+    """
+    # Instantiate 10 individual LED drivers
+    leds = new SK6805EC20_driver[10]
+
+    # Shared power rail for all LEDs
+    power = new ElectricPower
+    for led in leds:
+        power ~ led.power
+
+    # Serial data interface (input → chain → output)
+    data_in  = new ElectricLogic
+    data_out = new ElectricLogic
+
+    # Tie logic references to the power rail
+    power ~ data_in.reference
+    power ~ data_out.reference
+
+    # Chain the LEDs' data lines
+    data_in ~> leds[0] ~> leds[1] ~> leds[2] ~> leds[3] ~> leds[4] ~> leds[5] ~> leds[6] ~> leds[7] ~> leds[8] ~> leds[9] ~> data_out
+
+    # Expose the strip as a single bridgable element
+    trait can_bridge_by_name<input_name = "data_in", output_name = "data_out">
+
+
+module SK6805EC20_grid10x10:
+    """
+    10 × 10 LED matrix (100 LEDs) constructed from 10 rows of 10 LEDs.
+    Presents itself as one bridgable LED for easy chaining.
+    """
+    rows = new SK6805EC20_strip10[10]
+
+    # Shared power rail for all rows
+    power = new ElectricPower
+    for row in rows:
+        power ~ row.power
+
+    # Serial data interface for the whole matrix
+    data_in  = new ElectricLogic
+    data_out = new ElectricLogic
+
+    power ~ data_in.reference
+    power ~ data_out.reference
+
+    # Chain the rows
+    data_in ~> rows[0] ~> rows[1] ~> rows[2] ~> rows[3] ~> rows[4] ~> rows[5] ~> rows[6] ~> rows[7] ~> rows[8] ~> rows[9] ~> data_out
+
+    trait can_bridge_by_name<input_name = "data_in", output_name = "data_out">
