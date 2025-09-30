@@ -61,12 +61,14 @@ pub const EdgeInterfaceConnection = struct {
 
 test "basic" {
     const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
     const n1 = try Node.init(a);
     defer _ = n1.deinit() catch {};
     const n2 = try Node.init(a);
     defer _ = n2.deinit() catch {};
     const n3 = try Node.init(a);
     defer _ = n3.deinit() catch {};
+    defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
 
     std.debug.print("n1.uuid = {}\n", .{n1.uuid});
     std.debug.print("n2.uuid = {}\n", .{n2.uuid});
@@ -85,8 +87,20 @@ test "basic" {
     std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].uuid});
     std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].uuid});
 
+    const n2_ref = EdgeInterfaceConnection.get_connected(e1, n1);
+    std.debug.print("n2.uuid = {}\n", .{n2.uuid});
+    std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.uuid});
+
     EdgeInterfaceConnection.connect(e1, n3, n1);
 
     std.debug.print("e1.source.uuid = {}\n", .{e1.source.uuid});
     std.debug.print("e1.target.uuid = {}\n", .{e1.target.uuid});
+
+    const bn1 = try g.insert_node(n1);
+    const bn2 = try g.insert_node(n2);
+
+    _ = bn1;
+    _ = bn2;
+
+    // EdgeInterfaceConnection.visit_connected_edges(e1);
 }
