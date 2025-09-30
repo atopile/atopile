@@ -8,8 +8,7 @@ from kipy import KiCad
 from kipy.errors import ApiError, ConnectionError
 
 from atopile.cli.logging_ import ALERT
-from faebryk.libs.kicad.fileformat_config import C_kicad_config_common
-from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import C_kicad_config_common, kicad
 from faebryk.libs.kicad.paths import get_config_common, get_ipc_socket_path
 from faebryk.libs.util import (
     compare_dataclasses,
@@ -100,7 +99,7 @@ class PCBnew:
         return True
 
         def _cleanup(raw: str):
-            out = C_kicad_pcb_file.loads(raw)
+            out = kicad.loads(kicad.pcb.PcbFile, raw)
             for fp in out.kicad_pcb.footprints:
                 fp.unknown = None
 

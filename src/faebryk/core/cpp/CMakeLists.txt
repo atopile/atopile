@@ -87,9 +87,10 @@ if(GLOBAL_PRINTF_DEBUG)
 endif()
 
 # source files ---------------------------------------------------------
-include_directories(${CMAKE_SOURCE_DIR}/include)
+# Use the directory local to this CMake file, not the top-level source dir
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 file(GLOB_RECURSE SOURCE_FILES 
-  "${CMAKE_SOURCE_DIR}/src/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
 

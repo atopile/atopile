@@ -7,7 +7,7 @@ from pathlib import Path
 
 from kicadcliwrapper.generated.kicad_cli import kicad_cli as k
 
-from faebryk.libs.kicad.fileformats_latest import C_kicad_drc_report_file
+from faebryk.libs.kicad.fileformats import C_kicad_drc_report_file
 
 
 def run_drc(pcb: Path):

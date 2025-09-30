@@ -10,8 +10,9 @@ from natsort import natsorted
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.exporters.pcb.kicad.transformer import PCB, PCB_Transformer
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.library import L
 from faebryk.libs.util import duplicates, groupby, md_list
 
@@ -82,11 +83,8 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
     Load designators from attached footprints and attach them to the nodes.
     """
 
-    def _get_reference(fp: PCB.C_pcb_footprint):
-        try:
-            return fp.propertys["Reference"].value
-        except KeyError:
-            return None
+    def _get_reference(fp: kicad.pcb.Footprint):
+        return Property.try_get_property(fp.propertys, "Reference")
 
     def _get_pcb_designator(fp_trait: PCB_Transformer.has_linked_kicad_footprint):
         fp = fp_trait.get_fp()
