@@ -359,7 +359,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     return -1;
                                 }
 
-                                var ll = field.type{ .first = null, .last = null };
+                                var ll = field.type{};
 
                                 var i: isize = 0;
                                 while (i < seq_len) : (i += 1) {
@@ -380,7 +380,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     switch (child_info) {
                                         .@"struct" => {
                                             const nested = @as(*pyzig.PyObjectWrapper(ChildType), @ptrCast(@alignCast(item)));
-                                            node.* = NodeType{ .data = nested.data.*, .prev = null, .next = null };
+                                            node.* = NodeType{ .data = nested.data.* };
                                         },
                                         .@"enum" => {
                                             const s = py.PyUnicode_AsUTF8(item);
@@ -397,7 +397,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 py.PyErr_SetString(py.PyExc_ValueError, "Invalid enum value in list");
                                                 return -1;
                                             };
-                                            node.* = NodeType{ .data = ev, .prev = null, .next = null };
+                                            node.* = NodeType{ .data = ev };
                                         },
                                         .int => {
                                             const v = py.PyLong_AsLong(item);
@@ -407,7 +407,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            node.* = NodeType{ .data = @intCast(v), .prev = null, .next = null };
+                                            node.* = NodeType{ .data = @intCast(v) };
                                         },
                                         .float => {
                                             const v = py.PyFloat_AsDouble(item);
@@ -417,7 +417,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            node.* = NodeType{ .data = @floatCast(v), .prev = null, .next = null };
+                                            node.* = NodeType{ .data = @floatCast(v) };
                                         },
                                         .bool => {
                                             const v = py.PyObject_IsTrue(item);
@@ -427,7 +427,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                                 return -1;
                                             }
-                                            node.* = NodeType{ .data = (v == 1), .prev = null, .next = null };
+                                            node.* = NodeType{ .data = (v == 1) };
                                         },
                                         .pointer => |p| {
                                             if (p.size == .slice and p.child == u8) {
@@ -445,7 +445,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                                     std.heap.c_allocator.destroy(wrapper_obj.data);
                                                     return -1;
                                                 };
-                                                node.* = NodeType{ .data = dup, .prev = null, .next = null };
+                                                node.* = NodeType{ .data = dup };
                                             } else {
                                                 py.Py_DECREF(item.?);
                                                 std.heap.c_allocator.destroy(node);
@@ -464,11 +464,7 @@ pub fn genStructInit(comptime WrapperType: type, comptime T: type) type {
                                     }
                                     py.Py_DECREF(item.?);
 
-                                    if (ll.last) |last| {
-                                        last.next = node;
-                                        node.prev = last;
-                                    } else ll.first = node;
-                                    ll.last = node;
+                                    ll.append(node);
                                 }
 
                                 @field(wrapper_obj.data.*, field.name) = ll;
