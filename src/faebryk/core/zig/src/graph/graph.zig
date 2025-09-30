@@ -8,7 +8,7 @@ const NodeRefMap = struct {
     }
 
     pub fn hash(_: @This(), adapted_key: NodeReference) u64 {
-        return adapted_key.uuid;
+        return adapted_key.attributes.uuid;
     }
 
     pub fn T(V: type) type {
@@ -46,20 +46,6 @@ const IntMap = struct {
 };
 
 const EdgeTypeMap = IntMap;
-
-const StrMap = struct {
-    pub fn eql(_: @This(), a: str, b: str) bool {
-        return std.mem.eql(u8, a, b);
-    }
-
-    pub fn hash(_: @This(), adapted_key: str) u64 {
-        return std.hash_map.hashString(adapted_key);
-    }
-
-    pub fn T(V: type) type {
-        return std.HashMap(str, V, StrMap, std.hash_map.default_max_load_percentage);
-    }
-};
 
 pub const Literal = union(enum) {
     Int: i64,
@@ -119,11 +105,11 @@ pub const Attribute = struct {
 };
 
 pub const DynamicAttributes = struct {
-    values: StrMap.T(Literal),
+    values: std.StringHashMap(Literal),
 
     fn init(allocator: std.mem.Allocator) @This() {
         return .{
-            .values = StrMap.T(Literal).init(allocator),
+            .values = std.StringHashMap(Literal).init(allocator),
         };
     }
 
@@ -143,6 +129,20 @@ pub const GraphReferenceCounter = struct {
     parent: *anyopaque,
     allocator: std.mem.Allocator,
 
+    pub fn init(allocator: std.mem.Allocator, parent: *anyopaque) @This() {
+        return .{
+            .ref_count = 0,
+            .parent = parent,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn check_in_use(self: *@This()) !void {
+        if (self.ref_count > 0) {
+            return error.InUse;
+        }
+    }
+
     pub fn inc(self: *@This(), g: *GraphView) void {
         _ = g;
         self.ref_count += 1;
@@ -156,10 +156,11 @@ pub const GraphReferenceCounter = struct {
 
 pub const UUID = struct {
     const T = u64;
-    var prng = std.Random.DefaultPrng.init(0);
 
-    pub fn gen_uuid() UUID.T {
-        return prng.random().int(UUID.T);
+    pub fn gen_uuid(obj: *anyopaque) UUID.T {
+        // convert pointer to int
+        // guaranteed to be unique inside process
+        return @intFromPtr(obj);
     }
 
     pub fn equals(U1: UUID.T, U2: UUID.T) bool {
@@ -167,107 +168,145 @@ pub const UUID = struct {
     }
 };
 
-pub const Node = struct {
+pub const NodeAttributes = struct {
     uuid: UUID.T,
     dynamic: DynamicAttributes,
+
+    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
+        self.dynamic.visit(ctx, f);
+    }
+};
+
+pub const Node = struct {
+    attributes: NodeAttributes,
     _ref_count: GraphReferenceCounter,
 
     pub fn init(allocator: std.mem.Allocator) !NodeReference {
         const node = try allocator.create(Node);
-        node.uuid = UUID.gen_uuid();
-        node.dynamic = DynamicAttributes.init(allocator);
-        node._ref_count = .{
-            .parent = node,
-            .allocator = allocator,
-        };
+
+        // Attributes
+        node.attributes.uuid = UUID.gen_uuid(node);
+        node.attributes.dynamic = DynamicAttributes.init(allocator);
+
+        node._ref_count = GraphReferenceCounter.init(allocator, node);
         return node;
     }
 
     pub fn deinit(self: *@This()) !void {
-        if (self._ref_count.ref_count > 0) {
-            return error.InUse;
-        }
-        self.dynamic.deinit();
+        try self._ref_count.check_in_use();
+        self.attributes.dynamic.deinit();
         self._ref_count.allocator.destroy(self);
     }
 
     pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
-        return UUID.equals(N1.uuid, N2.uuid);
-    }
-
-    pub fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "type", Literal{ .Int = @intFromEnum(self.node_type) }, false);
-        f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
-        self.dynamic.visit(ctx, f);
+        return UUID.equals(N1.attributes.uuid, N2.attributes.uuid);
     }
 };
 
 pub const NodeReference = *Node;
 pub const EdgeReference = *Edge;
 
-pub const Edge = struct {
-    source: NodeReference,
-    target: NodeReference,
-
+pub const EdgeAttributes = struct {
+    source_id: UUID.T,
+    target_id: UUID.T,
     uuid: UUID.T,
-    edge_type: Type,
+    edge_type: Edge.EdgeType,
     directional: ?bool,
     name: ?str,
     dynamic: DynamicAttributes,
-    _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, T: Type) !*@This() {
-        var edge = try allocator.create(Edge);
-        edge.source = source;
-        edge.target = target;
-        edge.uuid = UUID.gen_uuid();
-        edge.edge_type = T;
-        edge.dynamic = DynamicAttributes.init(allocator);
-        edge._ref_count = .{
-            .parent = edge,
-            .allocator = allocator,
-        };
-        return edge;
-    }
-
-    pub fn deinit(self: *@This()) !void {
-        if (self._ref_count.ref_count > 0) {
-            return error.InUse;
-        }
-        self.dynamic.deinit();
-        self._ref_count.allocator.destroy(self);
-    }
-
-    fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "source", Literal{ .Int = self.source.uuid }, false);
-        f(ctx, "target", Literal{ .Int = self.target.uuid }, false);
+    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        f(ctx, "source", Literal{ .Int = self.source_id }, false);
+        f(ctx, "target", Literal{ .Int = self.target_id }, false);
         f(ctx, "type", Literal{ .Int = @intFromEnum(self.edge_type) }, false);
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
         f(ctx, "directional", Literal{ .Bool = self.directional.? }, false);
         f(ctx, "name", Literal{ .String = self.name.? }, false);
         self.dynamic.visit(ctx, f);
     }
+};
 
-    pub const Type = i64;
-    pub var type_counter: Type = 0;
+pub fn ComptimeIntSet(max_count: usize, int_type: type) type {
+    return struct {
+        values: [max_count]int_type = undefined,
+        count: usize = 0,
 
-    // pretty janky and not deterministic, for testing ok
-    pub fn register_type() Type {
-        const out = type_counter;
-        type_counter += 1;
-        return out;
+        pub fn add(self: *@This(), value: int_type) !void {
+            for (self.values[0..self.count]) |v| {
+                if (v == value) {
+                    return error.AlreadyExists;
+                }
+            }
+            if (self.count == max_count) {
+                return error.MaxCountReached;
+            }
+            self.values[self.count] = value;
+            self.count += 1;
+        }
+
+        pub fn contains(self: *@This(), value: int_type) bool {
+            for (self.values[0..self.count]) |v| {
+                if (v == value) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    };
+}
+
+pub const Edge = struct {
+    source: NodeReference,
+    target: NodeReference,
+
+    attributes: EdgeAttributes,
+    _ref_count: GraphReferenceCounter,
+
+    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: EdgeType) !*@This() {
+        var edge = try allocator.create(Edge);
+        edge.source = source;
+        edge.target = target;
+
+        // Attributes
+        edge.attributes.uuid = UUID.gen_uuid(edge);
+        edge.attributes.edge_type = edge_type;
+        edge.attributes.source_id = source.attributes.uuid;
+        edge.attributes.target_id = target.attributes.uuid;
+        edge.attributes.dynamic = DynamicAttributes.init(allocator);
+
+        edge._ref_count = GraphReferenceCounter.init(allocator, edge);
+        return edge;
     }
 
-    pub fn is_instance(E: EdgeReference, T: Type) bool {
-        return E.edge_type == T;
+    pub fn deinit(self: *@This()) !void {
+        try self._ref_count.check_in_use();
+        self.attributes.dynamic.deinit();
+        self._ref_count.allocator.destroy(self);
+    }
+
+    pub const EdgeType = i64;
+    pub var type_set: IntMap.T(void) = IntMap.T(void).init(std.heap.page_allocator);
+
+    /// Register type and check for duplicates during runtime
+    /// Can't do during compile because python will do during runtime
+    pub fn register_type(edge_type: EdgeType) !void {
+        if (type_set.get(edge_type)) |_| {
+            return error.DuplicateType;
+        }
+        try type_set.put(edge_type, {});
+    }
+
+    pub fn is_instance(E: EdgeReference, T: EdgeType) bool {
+        return E.attributes.edge_type == T;
     }
 
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
-        return UUID.equals(E1.uuid, E2.uuid);
+        return UUID.equals(E1.attributes.uuid, E2.attributes.uuid);
     }
 
     pub fn get_source(E: EdgeReference) ?NodeReference {
-        if (E.directional) |d| {
+        if (E.attributes.directional) |d| {
             if (d) {
                 return E.source;
             }
@@ -277,7 +316,7 @@ pub const Edge = struct {
     }
 
     pub fn get_target(E: EdgeReference) ?NodeReference {
-        if (E.directional) |d| {
+        if (E.attributes.directional) |d| {
             if (d) {
                 return E.target;
             }
@@ -287,7 +326,7 @@ pub const Edge = struct {
     }
 
     /// No guarantee that there is only one
-    pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: Type, is_target: ?bool) ?BoundEdgeReference {
+    pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: EdgeType, is_target: ?bool) ?BoundEdgeReference {
         const Visit = struct {
             bound_node: BoundNodeReference,
             is_target: ?bool,
@@ -328,7 +367,7 @@ pub const BoundNodeReference = struct {
         return self.g.get_edges(self.node);
     }
 
-    pub fn get_edges_of_type(self: *const @This(), T: Edge.Type) ?*const std.ArrayList(EdgeReference) {
+    pub fn get_edges_of_type(self: *const @This(), T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
         return self.g.get_edges_of_type(self.node, T);
     }
 
@@ -336,7 +375,7 @@ pub const BoundNodeReference = struct {
         return self.g.visit_edges(self.node, T, ctx, f);
     }
 
-    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.Type, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
         return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f);
     }
 };
@@ -439,18 +478,18 @@ pub const GraphView = struct {
 
         // handle caches
         const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
-        if (!from_neighbors.contains(edge.edge_type)) {
-            try from_neighbors.put(edge.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
+        if (!from_neighbors.contains(edge.attributes.edge_type)) {
+            try from_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
         }
         try g.neighbors.getPtr(edge.source).?.append(edge);
-        try from_neighbors.getPtr(edge.edge_type).?.append(edge);
+        try from_neighbors.getPtr(edge.attributes.edge_type).?.append(edge);
 
         const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
-        if (!to_neighbors.contains(edge.edge_type)) {
-            try to_neighbors.put(edge.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
+        if (!to_neighbors.contains(edge.attributes.edge_type)) {
+            try to_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
         }
         try g.neighbors.getPtr(edge.target).?.append(edge);
-        try to_neighbors.getPtr(edge.edge_type).?.append(edge);
+        try to_neighbors.getPtr(edge.attributes.edge_type).?.append(edge);
 
         return BoundEdgeReference{
             .edge = edge,
@@ -462,7 +501,7 @@ pub const GraphView = struct {
         return g.neighbors.getPtr(node);
     }
 
-    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.Type) ?*const std.ArrayList(EdgeReference) {
+    pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
         return g.neighbor_by_type.getPtr(node).?.getPtr(T);
     }
 
@@ -488,7 +527,7 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.Type, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
         const edges = g.get_edges_of_type(node, edge_type);
         if (edges == null) {
@@ -514,11 +553,12 @@ pub const GraphView = struct {
 test "basic" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
-    const TestLink = Edge.register_type();
+    const TestLinkType = 1759269396;
+    try Edge.register_type(TestLinkType);
 
     const n1 = try Node.init(a);
     const n2 = try Node.init(a);
-    const e12 = try Edge.init(a, n1, n2, TestLink);
+    const e12 = try Edge.init(a, n1, n2, TestLinkType);
 
     _ = try g.insert_node(n1);
     _ = try g.insert_node(n2);
@@ -526,8 +566,8 @@ test "basic" {
 
     const edges = g.get_edges(n1).?;
     try std.testing.expectEqual(edges.items.len, 1);
-    try std.testing.expectEqual(edges.items[0].uuid, e12.uuid);
-    try std.testing.expectEqual(edges.items[0].target.uuid, n2.uuid);
+    try std.testing.expectEqual(edges.items[0].attributes.uuid, e12.attributes.uuid);
+    try std.testing.expectEqual(edges.items[0].target.attributes.uuid, n2.attributes.uuid);
 
     try std.testing.expectEqual(n1._ref_count.ref_count, 1);
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);

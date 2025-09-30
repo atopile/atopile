@@ -271,7 +271,7 @@ fn wrap_edge_composition_get_tid() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const tid = faebryk.composition.EdgeComposition.get_tid();
+            const tid = faebryk.composition.EdgeComposition.tid;
             return py.PyLong_FromLongLong(@intCast(tid));
         }
     };

@@ -1,6 +1,6 @@
-const graph = @import("graph.zig");
+const graph = @import("graph").graph;
 const std = @import("std");
-const visitor = @import("visitor.zig");
+const visitor = graph.visitor;
 
 pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
 
