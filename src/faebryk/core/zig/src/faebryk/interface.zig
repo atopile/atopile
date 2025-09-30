@@ -1,9 +1,10 @@
-const graph_lib = @import("graph");
+const graph_mod = @import("graph");
 const std = @import("std");
-const visitor = graph_lib.visitor;
-const graph = graph_lib.graph;
 
-pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
+const graph = graph_mod.graph;
+const visitor = graph_mod.visitor;
+
+// pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
 
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;
@@ -21,10 +22,25 @@ pub const EdgeInterfaceConnection = struct {
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, from, to, get_tid());
+        edge.directional = false;
         return edge;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
         return Edge.is_instance(E, get_tid());
     }
+
+    pub fn get_connections(E: EdgeReference) []NodeReference {
+        return .{ E.source, E.target };
+    }
+
+    // get other side of connection given a node
+
+    // create edge given 2 nodes (connect)
+
+    // visit all connected edges for a given node
+
+    // visit all paths for a given node (pathfinder)
+
+    // "shallow" links
 };
