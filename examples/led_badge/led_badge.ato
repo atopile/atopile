@@ -46,7 +46,8 @@ module LED_BADGE:
     power_3v3 = new ElectricPower
 
     # Power path: USB 5V -> Charger -> Battery / System -> BuckBoost -> 3V3 rail
-    usb_c.usb2.usb_if.buspower ~> charger ~> battery.power
+    usb_c.usb2.usb_if.buspower ~ charger.power_input
+    charger.power_battery ~ battery.power
     charger.power_system ~> buck_boost ~> power_3v3
 
     # Buck boost enable

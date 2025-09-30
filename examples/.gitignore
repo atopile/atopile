@@ -1,3 +1,7 @@
 layout
 .ato
 build
+# KiCad temporary files
+**/~*.kicad_pcb.lck
+**/~_autosave-*.kicad_pcb.lck
+**/fp-info-cache

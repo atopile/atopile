@@ -31,7 +31,6 @@
     "visible_items": [
       "vias",
       "footprint_anchors",
-      "ratsnest",
       "grid",
       "footprints_front",
       "footprints_back",
@@ -55,7 +54,7 @@
     "ssh_key": ""
   },
   "meta": {
-    "filename": "grid100x100.kicad_prl",
+    "filename": "grid10x10.kicad_prl",
     "version": 5
   },
   "net_inspector_panel": {

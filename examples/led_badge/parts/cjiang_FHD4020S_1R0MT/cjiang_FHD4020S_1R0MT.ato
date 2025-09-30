@@ -1,0 +1,18 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component cjiang_FHD4020S_1R0MT_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C602028", date="2025-09-30T17:59:47.927513+00:00", checksum="8e253f5db538df462fce4217f49460b7f2a93aa2752f1739edccdbfdd40c00e9">
+
+    trait is_atomic_part<manufacturer="cjiang", partnumber="FHD4020S-1R0MT", footprint="IND-SMD_L4.0-W4.0.kicad_mod", symbol="FHD4020S-1R0MT.kicad_sym", model="IND-SMD_L4.0-W4.0-H1.9.STEP">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C602028", manufacturer="cjiang", partno="FHD4020S-1R0MT">
+    trait has_designator_prefix<prefix="L">
+
+    # pins
+    pin 2
+    pin 1
