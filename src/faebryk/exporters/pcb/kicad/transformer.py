@@ -1176,7 +1176,7 @@ class PCB_Transformer:
                             font=self.font, hide=False, justify=None
                         ),
                         uuid=self.gen_uuid(mark=True),
-                        layer="User.5",
+                        layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
                         # TODO
                         # layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
                         hide=None,

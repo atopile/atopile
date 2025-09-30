@@ -12,25 +12,17 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeComposition = struct {
-    var tid: ?Edge.Type = null;
-
-    // pretty janky and not deterministic, for testing ok
-    pub fn get_tid() Edge.Type {
-        if (tid == null) {
-            tid = Edge.register_type();
-        }
-        return tid.?;
-    }
+    pub const tid: Edge.EdgeType = 1759269250;
 
     pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) !EdgeReference {
-        const edge = try Edge.init(allocator, parent, child, get_tid());
-        edge.directional = true;
-        edge.name = child_identifier;
+        const edge = try Edge.init(allocator, parent, child, tid);
+        edge.attributes.directional = true;
+        edge.attributes.name = child_identifier;
         return edge;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, get_tid());
+        return Edge.is_instance(E, tid);
     }
 
     pub fn get_parent_node(E: EdgeReference) NodeReference {
@@ -80,11 +72,11 @@ pub const EdgeComposition = struct {
         };
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(get_tid(), void, &visit, Visit.visit);
+        return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
     }
 
     pub fn get_parent_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, get_tid(), true);
+        return Edge.get_single_edge(bound_node, tid, true);
     }
 
     pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: str) !graph.BoundEdgeReference {
@@ -98,7 +90,7 @@ pub const EdgeComposition = struct {
             return error.InvalidEdgeType;
         }
 
-        return edge.name.?;
+        return edge.attributes.name.?;
     }
 };
 

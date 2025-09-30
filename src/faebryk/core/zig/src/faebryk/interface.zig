@@ -1,8 +1,6 @@
-const graph_mod = @import("graph");
+const graph = @import("graph").graph;
 const std = @import("std");
-
-const graph = graph_mod.graph;
-const visitor = graph_mod.visitor;
+const visitor = graph.visitor;
 
 // pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
 

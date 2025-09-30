@@ -1014,7 +1014,10 @@ class kicad:
         @staticmethod
         def apply_to_layers(obj, func: Callable[[str], str]):
             if hasattr(obj, "layer") and obj.layer is not None:
-                obj.layer = func(obj.layer)
+                if isinstance(obj.layer, str):
+                    obj.layer = func(obj.layer)
+                elif hasattr(obj.layer, "layer"):
+                    obj.layer.layer = func(obj.layer.layer)
             if hasattr(obj, "layers") and obj.layers is not None:
                 obj.layers = [func(layer) for layer in obj.layers]
 
@@ -1052,7 +1055,7 @@ class kicad:
                             name=name,
                             value=k.text,
                             at=k.at,
-                            layer=k.layer,
+                            layer=k.layer.layer,
                             uuid=k.uuid or kicad.gen_uuid(),
                             hide=k.hide,
                             effects=k.effects,

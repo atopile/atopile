@@ -1,0 +1,18 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component Murata_Electronics_GRM155R60J106ME44D_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C76991", date="2025-09-30T17:59:52.729623+00:00", checksum="c4884d747502fe09a2f1aefee4eaff18a52603a61e6063e7336046f28731602e">
+
+    trait is_atomic_part<manufacturer="Murata Electronics", partnumber="GRM155R60J106ME44D", footprint="C0402.kicad_mod", symbol="GRM155R60J106ME44D.kicad_sym", model="C0402_L1.0-W0.5-H0.5.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C76991", manufacturer="Murata Electronics", partno="GRM155R60J106ME44D">
+    trait has_designator_prefix<prefix="C">
+
+    # pins
+    pin 1
+    pin 2

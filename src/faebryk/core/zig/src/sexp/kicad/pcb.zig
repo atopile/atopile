@@ -510,7 +510,7 @@ pub const FpText = struct {
     type: E_fp_text_type,
     text: str,
     at: Xyr,
-    layer: str,
+    layer: TextLayer,
     hide: ?bool = null,
     uuid: ?str = null,
     effects: Effects,

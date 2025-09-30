@@ -483,6 +483,8 @@ class PartLifecycle:
                 # ->
                 # "${KIPRJMOD}/../../.ato/modules/<package>/<layout_dir>/
                 #   ../parts/<part>/<model>"
+                if Path(m.path).is_relative_to(Path("${KIPRJMOD}") / rel_path):
+                    continue
                 m.path = path_replace(
                     Path(m.path),
                     Path("${KIPRJMOD}") / "..",
