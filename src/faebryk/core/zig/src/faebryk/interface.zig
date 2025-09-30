@@ -28,8 +28,8 @@ pub const EdgeInterfaceConnection = struct {
         return Edge.is_instance(E, tid);
     }
 
-    pub fn list_connections(E: EdgeReference) []NodeReference {
-        return .{ E.source, E.target };
+    pub fn list_connections(E: EdgeReference) [2]NodeReference {
+        return [_]NodeReference{ E.source, E.target };
     }
 
     // get other side of connection given a node and edge
@@ -41,10 +41,10 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     // connect given edge to given 2 nodereferences
-    pub fn connect(E: EdgeReference, N1: NodeReference, N2: NodeReference) EdgeReference {
+    pub fn connect(E: EdgeReference, N1: NodeReference, N2: NodeReference) void {
         E.source = N1;
         E.target = N2;
-        return E;
+        return;
     }
 
     // visit all connected edges for a given node
@@ -62,9 +62,31 @@ pub const EdgeInterfaceConnection = struct {
 test "basic" {
     const a = std.testing.allocator;
     const n1 = try Node.init(a);
+    defer _ = n1.deinit() catch {};
     const n2 = try Node.init(a);
+    defer _ = n2.deinit() catch {};
+    const n3 = try Node.init(a);
+    defer _ = n3.deinit() catch {};
+
+    std.debug.print("n1.uuid = {}\n", .{n1.uuid});
+    std.debug.print("n2.uuid = {}\n", .{n2.uuid});
+    std.debug.print("n3.uuid = {}\n", .{n3.uuid});
 
     const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
+    defer _ = e1.deinit() catch {};
 
-    _ = e1;
+    std.debug.print("e1.uuid = {}\n", .{e1.uuid});
+    std.debug.print("e1.source.uuid = {}\n", .{e1.source.uuid});
+    std.debug.print("e1.target.uuid = {}\n", .{e1.target.uuid});
+
+    const n_list = EdgeInterfaceConnection.list_connections(e1);
+
+    std.debug.print("n_list.len = {}\n", .{n_list.len});
+    std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].uuid});
+    std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].uuid});
+
+    EdgeInterfaceConnection.connect(e1, n3, n1);
+
+    std.debug.print("e1.source.uuid = {}\n", .{e1.source.uuid});
+    std.debug.print("e1.target.uuid = {}\n", .{e1.target.uuid});
 }
