@@ -218,9 +218,31 @@ pub const EdgeAttributes = struct {
     name: ?str,
     dynamic: DynamicAttributes,
 
-    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "source", Literal{ .Int = self.source_id }, false);
-        f(ctx, "target", Literal{ .Int = self.target_id }, false);
+    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: Type) !*@This() {
+        var edge = try allocator.create(Edge);
+        edge.source = source;
+        edge.target = target;
+        edge.uuid = UUID.gen_uuid();
+        edge.edge_type = edge_type;
+        edge.dynamic = DynamicAttributes.init(allocator);
+        edge._ref_count = .{
+            .parent = edge,
+            .allocator = allocator,
+        };
+        return edge;
+    }
+
+    pub fn deinit(self: *@This()) !void {
+        if (self._ref_count.ref_count > 0) {
+            return error.InUse;
+        }
+        self.dynamic.deinit();
+        self._ref_count.allocator.destroy(self);
+    }
+
+    fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        f(ctx, "source", Literal{ .Int = self.source.uuid }, false);
+        f(ctx, "target", Literal{ .Int = self.target.uuid }, false);
         f(ctx, "type", Literal{ .Int = @intFromEnum(self.edge_type) }, false);
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
         f(ctx, "directional", Literal{ .Bool = self.directional.? }, false);
@@ -301,8 +323,8 @@ pub const Edge = struct {
         try type_set.put(edge_type, {});
     }
 
-    pub fn is_instance(E: EdgeReference, T: EdgeType) bool {
-        return E.attributes.edge_type == T;
+    pub fn is_instance(E: EdgeReference, edge_type: Type) bool {
+        return E.edge_type == edge_type;
     }
 
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
