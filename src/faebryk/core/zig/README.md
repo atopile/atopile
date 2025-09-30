@@ -83,6 +83,29 @@ Currently two ways of constructing structured sexp objects (e.g pcb).
 - generated python constructor
   - since we generate a constructor for each struct (generated_init), python will allocate the memory the pyobj wrapper, onto which we then allocate a new zig struct and store the pointer in the pyobj wrapper
 
+### Defer and cleanup ordering (critical!)
+
+**Zig's `defer` statements execute in LIFO (Last In, First Out) order** — like a stack, the last defer added runs first.
+
+This matters when you have dependencies between resources:
+
+```zig
+var graph = GraphView.init(allocator);
+const node1 = try Node.init(allocator);
+defer _ = node1.deinit() catch {};  // Runs 2nd
+const node2 = try Node.init(allocator);
+defer _ = node2.deinit() catch {};  // Runs 3rd
+defer graph.deinit();               // Runs 1st ← MUST clean up graph BEFORE nodes
+```
+
+**Why:** If nodes are inserted into the graph, the graph holds references to them. You must:
+1. Clean up the parent/container first (releases references)
+2. Then clean up the children/contained objects
+
+**Wrong order causes memory leaks** because child `.deinit()` will fail with `error.InUse` when the reference count is still > 0.
+
+**Rule of thumb:** Place `defer` for containers/parents **after** all their children are created, so cleanup happens in reverse dependency order.
+
 ## Relation to Python fileformats
 
 - `src/faebryk/libs/kicad/fileformats.py` defines Python dataclasses for KiCad JSON artifacts (e.g., DRC reports, project files). The Zig layer targets KiCad’s S‑expression text formats and is accessed from Python via `faebryk.core.zig`.
