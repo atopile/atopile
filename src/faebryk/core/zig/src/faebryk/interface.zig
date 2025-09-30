@@ -1,6 +1,7 @@
-const graph = @import("graph");
+const graph_lib = @import("graph");
 const std = @import("std");
-const visitor = graph.visitor;
+const visitor = graph_lib.visitor;
+const graph = graph_lib.graph;
 
 pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
 
@@ -12,14 +13,10 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeInterfaceConnection = struct {
-    var tid: ?Edge.Type = null;
+    const tid: Edge.Type = 1759242069;
 
-    // TODO (see graph.zig)
     pub fn get_tid() Edge.Type {
-        if (tid == null) {
-            tid = Edge.register_type();
-        }
-        return tid.?;
+        return tid;
     }
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) !EdgeReference {
