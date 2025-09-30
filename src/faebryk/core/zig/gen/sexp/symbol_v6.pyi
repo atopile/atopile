@@ -8,8 +8,8 @@
 from enum import Enum  # noqa: F401
 from typing import Any  # noqa: F401
 
-from faebryk.core.zig.pcb import Xy
-from faebryk.core.zig.schematic import (
+from faebryk.core.zig.gen.sexp.pcb import Xy
+from faebryk.core.zig.gen.sexp.schematic import (
     Arc,
     Fill,
     PinNames,
@@ -110,7 +110,11 @@ class SymbolFile:
     @staticmethod
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
-    def free(self, arg_0: Allocator) -> None: ...
+    @staticmethod
+    def loads(*, arg_0: Allocator, arg_1: Any) -> SymbolFile: ...
+    @staticmethod
+    def dumps(*, arg_0: SymbolFile, arg_1: Allocator, arg_2: Any) -> None: ...
+    def free(self, *, arg_0: Allocator) -> None: ...
 
 # Module-level functions
 def loads(data: str) -> SymbolFile: ...

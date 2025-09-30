@@ -6,6 +6,30 @@ pub const PyiGenerator = struct {
 
     const Self = @This();
 
+    const python_keywords = [_][]const u8{
+        "False",  "None",     "True",  "and",    "as",       "assert",
+        "async",  "await",    "break", "class",  "continue", "def",
+        "del",    "elif",     "else",  "except", "finally",  "for",
+        "from",   "global",   "if",    "import", "in",       "is",
+        "lambda", "nonlocal", "not",   "or",     "pass",     "raise",
+        "return", "try",      "while", "with",   "yield",    "match",
+        "case",
+    };
+
+    fn isPythonKeyword(name: []const u8) bool {
+        inline for (python_keywords) |kw| {
+            if (std.mem.eql(u8, name, kw)) return true;
+        }
+        return false;
+    }
+
+    fn writeIdentifier(writer: anytype, name: []const u8) !void {
+        try writer.writeAll(name);
+        if (isPythonKeyword(name)) {
+            try writer.writeAll("_");
+        }
+    }
+
     pub fn init(allocator: std.mem.Allocator) Self {
         return Self{
             .allocator = allocator,
@@ -17,25 +41,33 @@ pub const PyiGenerator = struct {
         self.output.deinit();
     }
 
-    fn generateFunctionParameters(self: *Self, comptime fn_info: std.builtin.Type.Fn, comptime skip_first: bool) !void {
-        var first_param = true;
+    fn generateFunctionParameters(
+        self: *Self,
+        comptime fn_info: std.builtin.Type.Fn,
+        comptime skip_first: bool,
+        comptime has_existing: bool,
+    ) !void {
+        var emitted_param = false;
 
         inline for (fn_info.params, 0..) |param, i| {
             if (param.type) |param_type| {
-                // Skip first parameter if it's self
                 if (skip_first and i == 0) continue;
 
-                if (!first_param) {
+                if (!emitted_param) {
+                    if (has_existing) {
+                        try self.output.writer().print(", *, ", .{});
+                    } else {
+                        try self.output.writer().print("*, ", .{});
+                    }
+                    emitted_param = true;
+                } else {
                     try self.output.writer().print(", ", .{});
                 }
-                first_param = false;
 
-                // Calculate the parameter index (adjusted for skipped params)
                 const param_index = if (skip_first) i - 1 else i;
-
-                // TODO: currently zig can't reflect on parameter names
                 const param_name = std.fmt.comptimePrint("arg_{d}", .{param_index});
-                try self.output.writer().print("{s}: ", .{param_name});
+                try writeIdentifier(self.output.writer(), param_name);
+                try self.output.writer().writeAll(": ");
                 try self.writeZigTypeToPython(self.output.writer(), param_type);
             }
         }
@@ -63,28 +95,60 @@ pub const PyiGenerator = struct {
                     if (ptr_info.child == u8) {
                         try writer.writeAll("str");
                     } else {
-                        // Handle slices as lists
                         try writer.writeAll("list[");
                         try self.writeZigTypeToPython(writer, ptr_info.child);
                         try writer.writeAll("]");
                     }
-                } else {
-                    try writer.writeAll("Any");
+                    return;
+                }
+
+                const child_info = @typeInfo(ptr_info.child);
+                switch (child_info) {
+                    .@"struct", .@"union", .pointer, .optional => try self.writeZigTypeToPython(writer, ptr_info.child),
+                    else => try writer.writeAll("Any"),
                 }
             },
             .@"struct" => {
                 const full_name = @typeName(T);
-                // Remove module path from type name if present
+                if (@hasField(T, "unmanaged")) {
+                    const unmanaged_type = std.meta.FieldType(T, .unmanaged);
+                    if (@hasDecl(unmanaged_type, "KV")) {
+                        const kv_type = unmanaged_type.KV;
+                        const key_type = std.meta.FieldType(kv_type, .key);
+                        const value_type = std.meta.FieldType(kv_type, .value);
+                        try writer.writeAll("dict[");
+                        try self.writeZigTypeToPython(writer, key_type);
+                        try writer.writeAll(", ");
+                        try self.writeZigTypeToPython(writer, value_type);
+                        try writer.writeAll("]");
+                        return;
+                    }
+                }
+                if (@hasField(T, "items")) {
+                    const items_type = std.meta.FieldType(T, .items);
+                    const item_info = @typeInfo(items_type);
+                    if (item_info == .pointer and item_info.pointer.size == .slice) {
+                        try writer.writeAll("list[");
+                        try self.writeZigTypeToPython(writer, item_info.pointer.child);
+                        try writer.writeAll("]");
+                        return;
+                    }
+                }
+
                 const clean_name = if (std.mem.lastIndexOf(u8, full_name, ".")) |idx|
                     full_name[idx + 1 ..]
                 else
                     full_name;
                 try writer.writeAll(clean_name);
             },
+            .@"union" => try writer.writeAll("Any"),
             .@"enum" => {
                 // Enums are handled as strings in Python bindings
                 // For now, enums are strings at runtime
                 try writer.writeAll("str");
+            },
+            .error_union => |err_union| {
+                try self.writeZigTypeToPython(writer, err_union.payload);
             },
             .optional => |opt_info| {
                 try self.writeZigTypeToPython(writer, opt_info.child);
@@ -198,11 +262,18 @@ pub const PyiGenerator = struct {
 
                         if (is_method) {
                             try self.output.writer().print("    def {s}(self", .{decl.name});
-                            // Add comma if there are additional parameters beyond self
-                            if (fn_info.params.len > 1) {
-                                try self.output.writer().print(", ", .{});
+                            try self.generateFunctionParameters(fn_info, true, true); // Skip first param (self)
+                            try self.output.writer().print(") -> ", .{});
+                            if (fn_info.return_type) |ret_type| {
+                                try self.writeZigTypeToPython(self.output.writer(), ret_type);
+                            } else {
+                                try self.output.writer().print("None", .{});
                             }
-                            try self.generateFunctionParameters(fn_info, true); // Skip first param (self)
+                            try self.output.writer().print(": ...\n", .{});
+                        } else {
+                            try self.output.writer().print("    @staticmethod\n", .{});
+                            try self.output.writer().print("    def {s}(", .{decl.name});
+                            try self.generateFunctionParameters(fn_info, false, false);
                             try self.output.writer().print(") -> ", .{});
                             if (fn_info.return_type) |ret_type| {
                                 try self.writeZigTypeToPython(self.output.writer(), ret_type);
@@ -237,12 +308,9 @@ pub const PyiGenerator = struct {
 
                                     const first_param_type_info = @typeInfo(fn_info.params[0].type.?);
                                     const is_struct_method = switch (first_param_type_info) {
-                                        .pointer => |ptr_info| {
-                                            const child_type_info = @typeInfo(ptr_info.child);
-                                            switch (child_type_info) {
-                                                .@"struct" => true,
-                                                else => false,
-                                            }
+                                        .pointer => |ptr_info| switch (@typeInfo(ptr_info.child)) {
+                                            .@"struct" => true,
+                                            else => false,
                                         },
                                         else => false,
                                     };
@@ -251,7 +319,7 @@ pub const PyiGenerator = struct {
 
                                 if (is_standalone_fn) {
                                     try self.output.writer().print("def {s}(", .{decl.name});
-                                    try self.generateFunctionParameters(fn_info, false); // Don't skip any params
+                                    try self.generateFunctionParameters(fn_info, false, false); // Don't skip any params
                                     try self.output.writer().print(") -> ", .{});
                                     if (fn_info.return_type) |ret_type| {
                                         try self.writeZigTypeToPython(self.output.writer(), ret_type);
@@ -342,5 +410,23 @@ pub const PyiGenerator = struct {
         try self.generateFunctionDefinitions(T);
 
         return self.output.toOwnedSlice();
+    }
+
+    pub fn manualModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, comptime T: type, output_dir: []const u8, source_dir: []const u8) !void {
+        _ = T;
+        const manual_dir = try std.fs.path.join(allocator, &.{ source_dir, "manual" });
+        defer allocator.free(manual_dir);
+        const manual_file_path = try std.fs.path.join(allocator, &.{ manual_dir, name ++ ".pyi" });
+        defer allocator.free(manual_file_path);
+        const manual_file = try std.fs.cwd().openFile(manual_file_path, .{});
+        defer manual_file.close();
+        const manual_content = try manual_file.readToEndAlloc(allocator, 1024 * 1024);
+        defer allocator.free(manual_content);
+        var path_buf: [256]u8 = undefined;
+        const file_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.pyi", .{ output_dir, name });
+        const file = try std.fs.cwd().createFile(file_path, .{});
+        defer file.close();
+        try file.writeAll(manual_content);
+        try file.writeAll("\n");
     }
 };
