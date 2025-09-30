@@ -12,27 +12,20 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeType = struct {
-    var tid: ?Edge.Type = null;
-
-    pub fn get_tid() Edge.Type {
-        if (tid == null) {
-            tid = Edge.register_type();
-        }
-        return tid.?;
-    }
+    var tid: Edge.EdgeType = 1759273701;
 
     pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, type_node, instance_node, get_tid());
-        edge.directional = true;
+        const edge = try Edge.init(allocator, type_node, instance_node, tid);
+        edge.attributes.directional = true;
         return edge;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, get_tid());
+        return Edge.is_instance(E, tid);
     }
 
     pub fn get_type_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, get_tid(), false);
+        return Edge.get_single_edge(bound_node, tid, false);
     }
 
     pub fn is_node_instance_of(bound_node: graph.BoundNodeReference, node_type: NodeReference) bool {

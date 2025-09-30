@@ -239,7 +239,7 @@ fn wrap_node_create() type {
                 _ = node.deinit() catch {};
             };
 
-            applyAttributes(&node.dynamic, kwargs, &.{}) catch {
+            applyAttributes(&node.attributes.dynamic, kwargs, &.{}) catch {
                 return null;
             };
 
@@ -266,7 +266,7 @@ fn wrap_node_get_attr() type {
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
 
-            if (wrapper.data.dynamic.values.get(key_slice)) |value| {
+            if (wrapper.data.attributes.dynamic.values.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -333,7 +333,7 @@ fn wrap_edge_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_value: graph.graph.Edge.Type = bind.unwrap_int(graph.graph.Edge.Type, kwarg_obj.edge_type) orelse return null;
+            const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) orelse return null;
 
             var directional_value: ?bool = null;
             if (kwarg_obj.directional) |directional_obj| {
@@ -364,11 +364,11 @@ fn wrap_edge_create() type {
                 _ = edge_ptr.deinit() catch {};
             };
 
-            edge_ptr.directional = directional_value;
-            edge_ptr.name = name_copy;
+            edge_ptr.attributes.directional = directional_value;
+            edge_ptr.attributes.name = name_copy;
 
             const skip = &.{ "source", "target", "edge_type", "directional", "name" };
-            applyAttributes(&edge_ptr.dynamic, kwargs, skip) catch {
+            applyAttributes(&edge_ptr.attributes.dynamic, kwargs, skip) catch {
                 return null;
             };
 
@@ -394,7 +394,7 @@ fn wrap_edge_get_attr() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const key_slice = bind.unwrap_str(kwarg_obj.key) orelse return null;
-            if (wrapper.data.dynamic.values.get(key_slice)) |value| {
+            if (wrapper.data.attributes.dynamic.values.get(key_slice)) |value| {
                 return literalToPyObject(value) orelse null;
             }
 
@@ -472,7 +472,7 @@ fn wrap_edge_get_edge_type() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return bind.wrap_int(wrapper.data.edge_type);
+            return bind.wrap_int(wrapper.data.attributes.edge_type);
         }
     };
 }
@@ -488,7 +488,7 @@ fn wrap_edge_get_directional() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return bind.wrap_bool(wrapper.data.directional);
+            return bind.wrap_bool(wrapper.data.attributes.directional.?);
         }
     };
 }
@@ -504,7 +504,7 @@ fn wrap_edge_get_name() type {
 
         pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper = bind.castWrapper("Edge", &edge_type, EdgeWrapper, self) orelse return null;
-            return bind.wrap_str(wrapper.data.name);
+            return bind.wrap_str(wrapper.data.attributes.name);
         }
     };
 }
@@ -573,7 +573,7 @@ fn wrap_bound_node_visit_edges_of_type() type {
             const wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_value: graph.graph.Edge.Type = bind.unwrap_int(graph.graph.Edge.Type, kwarg_obj.edge_type) orelse return null;
+            const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) orelse return null;
 
             py.Py_INCREF(kwarg_obj.ctx);
             py.Py_INCREF(kwarg_obj.f);
