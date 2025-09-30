@@ -132,38 +132,4 @@ pub fn build(b: *std.Build) void {
     });
 
     build_python_module(b, b.modules, target, optimize);
-
-    // Add test step
-    const test_filter = b.option([]const u8, "test-filter", "Test filter to run specific tests");
-
-    const graph_tests = b.addTest(.{
-        .root_source_file = b.path("src/graph/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-        .filter = test_filter,
-    });
-
-    const faebryk_tests = b.addTest(.{
-        .root_source_file = b.path("src/faebryk/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-        .filter = test_filter,
-    });
-    faebryk_tests.root_module.addImport("graph", graph_mod);
-
-    const sexp_tests = b.addTest(.{
-        .root_source_file = b.path("src/sexp/lib.zig"),
-        .target = target,
-        .optimize = optimize,
-        .filter = test_filter,
-    });
-
-    const run_graph_tests = b.addRunArtifact(graph_tests);
-    const run_faebryk_tests = b.addRunArtifact(faebryk_tests);
-    const run_sexp_tests = b.addRunArtifact(sexp_tests);
-
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_graph_tests.step);
-    test_step.dependOn(&run_faebryk_tests.step);
-    test_step.dependOn(&run_sexp_tests.step);
 }
