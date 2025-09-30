@@ -1,0 +1,20 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component Hubei_KENTO_Elec_KT_0603R_package:
+    """0603"""
+
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C2286", date="2025-09-29T23:55:55.271228+00:00", checksum="84e75f475f5decb0ead3e4b34a615ef4b45cba184cb5cf9eca8c14cd3ceff14d">
+
+    trait is_atomic_part<manufacturer="Hubei KENTO Elec", partnumber="KT-0603R", footprint="LED0603-RD.kicad_mod", symbol="KT-0603R.kicad_sym", model="LED0603-RD-YELLOW.STEP">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C2286", manufacturer="Hubei KENTO Elec", partno="KT-0603R">
+    trait has_designator_prefix<prefix="LED">
+
+    # pins
+    signal A ~ pin 2
+    signal K ~ pin 1

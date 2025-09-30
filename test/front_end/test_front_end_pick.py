@@ -142,14 +142,29 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
 
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.parametrize(
-    "package,package_str",
+    "package,package_str,inductance_str,inductance",
     [
-        (SMDSize.I0402, "L0402"),
-        (SMDSize.SMD1_1x1_8mm, "SMD1_1x1_8mm"),
+        (
+            SMDSize.I0402,
+            "L0402",
+            "100nH +/- 20%",
+            L.Range.from_center_rel(100 * P.nH, 0.2),
+        ),
+        (
+            SMDSize.SMD4x4mm,
+            "SMD4x4mm",
+            "2.2uH +/- 20%",
+            L.Range.from_center_rel(2.2 * P.uH, 0.2),
+        ),
     ],
 )
 def test_ato_pick_inductor(
-    bob: Bob, repo_root: Path, package: SMDSize, package_str: str
+    bob: Bob,
+    repo_root: Path,
+    package: SMDSize,
+    package_str: str,
+    inductance_str: str,
+    inductance: P_Set,
 ):
     text = dedent(
         f"""
@@ -158,7 +173,7 @@ def test_ato_pick_inductor(
         module A:
             inductor = new Inductor
             inductor.package = '{package_str}'
-            inductor.inductance = 100nH +/- 20%
+            inductor.inductance = {inductance_str}
         """
     )
 
@@ -178,7 +193,7 @@ def test_ato_pick_inductor(
     inductance_lit = inductor.inductance.try_get_literal()
     assert inductance_lit is not None
     assert isinstance(inductance_lit, P_Set)
-    assert inductance_lit.is_subset_of(L.Range.from_center_rel(100 * P.nH, 0.2))
+    assert inductance_lit.is_subset_of(inductance)
 
 
 @pytest.mark.usefixtures("setup_project_config")

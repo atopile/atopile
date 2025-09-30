@@ -1,0 +1,40 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component Texas_Instruments_TCA9548APWR_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C130026", date="2025-09-29T23:54:36.897268+00:00", checksum="70dfb385a14d74f21be265cfa43cc7423f44da6dc5e45f6f8df9e91e9d76d472">
+
+    trait is_atomic_part<manufacturer="Texas Instruments", partnumber="TCA9548APWR", footprint="TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL.kicad_mod", symbol="TCA9548APWR.kicad_sym", model="TSSOP-24_L7.8-W4.4-H1.0-LS6.4-P0.65.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C130026", manufacturer="Texas Instruments", partno="TCA9548APWR">
+    trait has_designator_prefix<prefix="U">
+
+    # pins
+    signal A0 ~ pin 1
+    signal A1 ~ pin 2
+    signal A2 ~ pin 21
+    signal GND ~ pin 12
+    signal SC0 ~ pin 5
+    signal SC1 ~ pin 7
+    signal SC2 ~ pin 9
+    signal SC3 ~ pin 11
+    signal SC4 ~ pin 14
+    signal SC5 ~ pin 16
+    signal SC6 ~ pin 18
+    signal SC7 ~ pin 20
+    signal SCL ~ pin 22
+    signal SD0 ~ pin 4
+    signal SD1 ~ pin 6
+    signal SD2 ~ pin 8
+    signal SD3 ~ pin 10
+    signal SD4 ~ pin 13
+    signal SD5 ~ pin 15
+    signal SD6 ~ pin 17
+    signal SD7 ~ pin 19
+    signal SDA ~ pin 23
+    signal VCC ~ pin 24
+    signal nRESET ~ pin 3

@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.schematic.kicad.transformer import SchTransformer
 from faebryk.libs.exceptions import UserException
-from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
+from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.test.fileformats import FPLIBFILE, SCHFILE
 
 
@@ -17,11 +17,11 @@ def fp_lib_path_path():
 
 @pytest.fixture
 def sch_file():
-    return C_kicad_sch_file.loads(SCHFILE)
+    return kicad.loads(kicad.schematic.SchematicFile, SCHFILE)
 
 
 @pytest.fixture
-def transformer(sch_file: C_kicad_sch_file):
+def transformer(sch_file: kicad.schematic.SchematicFile):
     app = Module()
     return SchTransformer(sch_file.kicad_sch, app.get_graph(), app)
 
@@ -61,9 +61,9 @@ def test_get_symbol_file(full_transformer: SchTransformer):
     with pytest.raises(UserException):
         full_transformer.get_symbol_file("notta-lib")
 
-    sym_flie = full_transformer.get_symbol_file("test")
+    sym_file = full_transformer.get_symbol_file("test")
     assert (
-        sym_flie.kicad_symbol_lib.symbols["AudioJack-CUI-SJ-3523-SMT"].name
+        kicad.get(sym_file.kicad_sym.symbols, "AudioJack-CUI-SJ-3523-SMT").name
         == "AudioJack-CUI-SJ-3523-SMT"
     )
 
@@ -93,4 +93,7 @@ def test_insert_symbol(full_transformer: SchTransformer):
     full_transformer.insert_symbol(audio_jack)
 
     assert len(full_transformer.sch.symbols) == start_symbol_count + 1
-    assert full_transformer.sch.symbols[-1].propertys["Reference"].value == "U1"
+    assert (
+        Property.get_property(full_transformer.sch.symbols[-1].propertys, "Reference")
+        == "U1"
+    )

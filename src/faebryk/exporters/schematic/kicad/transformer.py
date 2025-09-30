@@ -1,9 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+# FIXME: get rid of all append/remove stuff on lists, need to use kicad.insert/delete
+
 import logging
 import pprint
-from copy import deepcopy
 from functools import singledispatch
 from itertools import chain
 from os import PathLike
@@ -18,27 +19,8 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats_common import C_effects, C_pts, C_wh, C_xy, C_xyr
-from faebryk.libs.kicad.fileformats_common import (
-    gen_uuid as _gen_uuid,
-)
-from faebryk.libs.kicad.fileformats_latest import (
-    C_kicad_fp_lib_table_file,
-)
-from faebryk.libs.kicad.fileformats_sch import (
-    UUID,
-    C_arc,
-    C_circle,
-    C_kicad_sch_file,
-    C_kicad_sym_file,
-    C_polyline,
-    C_property,
-    C_rect,
-    C_stroke,
-    C_symbol,
-)
+from faebryk.libs.kicad.fileformats import UUID, Property, kicad
 from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
-from faebryk.libs.sexp.dataclass_sexp import visit_dataclass
 from faebryk.libs.util import (
     cast_assert,
     find,
@@ -51,21 +33,26 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-SCH = C_kicad_sch_file.C_kicad_sch
+SCH = kicad.schematic.KicadSch
 
-Geom = C_polyline | C_arc | C_rect | C_circle
-Font = C_effects.C_font
+Geom = (
+    kicad.schematic.Polyline
+    | kicad.schematic.Arc
+    | kicad.schematic.Rect
+    | kicad.schematic.Circle
+)
+Font = kicad.pcb.Font
+C_xy = kicad.pcb.Xy
+C_xyr = kicad.pcb.Xyr
+C_symbol = kicad.schematic.Symbol
+C_wh = kicad.pcb.Wh
 
 Point = Geometry.Point
 Point2D = Geometry.Point2D
 
-Justify = C_effects.C_justify.E_justify
-Alignment = tuple[Justify, Justify, Justify]
-Alignment_Default = (Justify.center_horizontal, Justify.center_vertical, Justify.normal)
-
 
 def gen_uuid(mark: str = "") -> UUID:
-    return _gen_uuid(mark)
+    return kicad.gen_uuid(mark)
 
 
 def is_marked(uuid: UUID, mark: str):
@@ -80,20 +67,20 @@ class _HasUUID(Protocol):
 # TODO: consider common transformer base
 class SchTransformer:
     class has_linked_sch_symbol(Module.TraitT):
-        symbol: SCH.C_symbol_instance
+        symbol: kicad.schematic.SymbolInstance
 
     class has_linked_sch_symbol_defined(has_linked_sch_symbol.impl()):
-        def __init__(self, symbol: SCH.C_symbol_instance) -> None:
+        def __init__(self, symbol: kicad.schematic.SymbolInstance) -> None:
             super().__init__()
             self.symbol = symbol
 
     class has_linked_pins(F.Symbol.Pin.TraitT):
-        pins: list[SCH.C_symbol_instance.C_pin]
+        pins: list[kicad.schematic.InstancePin]
 
     class has_linked_pins_defined(has_linked_pins.impl()):
         def __init__(
             self,
-            pins: list[SCH.C_symbol_instance.C_pin],
+            pins: list[kicad.schematic.InstancePin],
         ) -> None:
             super().__init__()
             self.pins = pins
@@ -112,8 +99,10 @@ class SchTransformer:
 
         FONT_SCALE = 8
         FONT = Font(
-            size=C_wh(1 / FONT_SCALE, 1 / FONT_SCALE),
+            size=C_wh(w=1 / FONT_SCALE, h=1 / FONT_SCALE),
             thickness=0.15 / FONT_SCALE,
+            bold=None,
+            italic=None,
         )
         self.font = FONT
 
@@ -125,7 +114,8 @@ class SchTransformer:
         """This function matches and binds symbols to their symbols"""
         # reference (eg. C3) to symbol (eg. "Capacitor_SMD:C_0402")
         symbols = {
-            (f.propertys["Reference"].value, f.lib_id): f for f in self.sch.symbols
+            (Property.get_property(f.propertys, "Reference"), f.lib_id): f
+            for f in self.sch.symbols
         }
         for node, sym_trait in GraphFunctions(self.graph).nodes_with_trait(
             F.Symbol.has_symbol
@@ -171,7 +161,7 @@ class SchTransformer:
                 ],
             )
 
-    def attach_symbol(self, node: Node, symbol: SCH.C_symbol_instance):
+    def attach_symbol(self, node: Node, symbol: kicad.schematic.SymbolInstance):
         """Bind the module and symbol together on the graph"""
         graph_sym = node.get_trait(F.Symbol.has_symbol).reference
 
@@ -183,6 +173,9 @@ class SchTransformer:
 
     def cleanup(self):
         """Delete faebryk-created objects in schematic."""
+
+        def visit_dataclass(*args):
+            raise NotImplementedError("Not implemented")
 
         # find all objects with path_len 2 (direct children of a list in pcb)
         candidates = [
@@ -213,9 +206,9 @@ class SchTransformer:
             fp_lib_table_paths += [GLOBAL_FP_LIB_PATH]
 
         for lib_path in fp_lib_table_paths:
-            for lib in C_kicad_fp_lib_table_file.loads(
-                lib_path
-            ).fp_lib_table.libs.values():
+            for lib in kicad.loads(
+                kicad.fp_lib_table.FpLibTableFile, lib_path
+            ).fp_lib_table.libs:
                 resolved_lib_dir = Path(
                     str(lib.uri)
                     .replace("${KIPRJMOD}", str(lib_path.parent))
@@ -253,18 +246,18 @@ class SchTransformer:
         ]
 
     @once
-    def get_symbol_file(self, lib_name: str) -> C_kicad_sym_file:
+    def get_symbol_file(self, lib_name: str) -> kicad.symbol.SymbolFile:
         # primary caching handled by @once
         if lib_name not in self._symbol_files_index:
             raise UserException(f"Symbol file {lib_name} not found")
 
         path = self._symbol_files_index[lib_name]
-        return C_kicad_sym_file.loads(path)
+        return kicad.loads(kicad.symbol.SymbolFile, path)
 
     @staticmethod
     def get_related_lib_sym_units(
         lib_sym: C_symbol,
-    ) -> dict[int, list[C_symbol.C_symbol]]:
+    ) -> dict[int, list[kicad.schematic.SymbolUnit]]:
         """
         Figure out units.
         This seems to be purely based on naming convention.
@@ -276,8 +269,8 @@ class SchTransformer:
 
         That is, we group them by the last number.
         """
-        groups = groupby(lib_sym.symbols.items(), key=lambda item: int(item[0][-1]))
-        return {k: [v[1] for v in vs] for k, vs in groups.items()}
+        groups = groupby(lib_sym.symbols, key=lambda item: int(item.name[-1]))
+        return {k: vs for k, vs in groups.items()}
 
     @singledispatch
     def get_lib_symbol(self, sym) -> C_symbol:
@@ -289,22 +282,22 @@ class SchTransformer:
         return self._ensure_lib_symbol(lib_id)
 
     @get_lib_symbol.register
-    def _(self, sym: SCH.C_symbol_instance) -> C_symbol:
-        return self.sch.lib_symbols.symbols[sym.lib_id]
+    def _(self, sym: kicad.schematic.SymbolInstance) -> C_symbol:
+        return kicad.get(self.sch.lib_symbols.symbols, sym.lib_id)
 
     @singledispatch
-    def get_lib_pin(self, pin) -> C_symbol.C_symbol.C_pin:
+    def get_lib_pin(self, pin) -> kicad.schematic.SymbolPin:
         raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
 
     @get_lib_pin.register
-    def _(self, pin: F.Symbol.Pin) -> C_symbol.C_symbol.C_pin:
+    def _(self, pin: F.Symbol.Pin) -> kicad.schematic.SymbolPin:
         graph_symbol, _ = not_none(pin.get_parent())
         assert isinstance(graph_symbol, Node)
         lib_sym = self.get_lib_symbol(graph_symbol)
         units = self.get_related_lib_sym_units(lib_sym)
         sym = graph_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
 
-        def _name_filter(sch_pin: C_symbol.C_symbol.C_pin):
+        def _name_filter(sch_pin: kicad.schematic.SymbolPin):
             return sch_pin.name in {
                 p.name for p in pin.get_trait(self.has_linked_pins).pins
             }
@@ -344,15 +337,26 @@ class SchTransformer:
     def insert_wire(
         self,
         coords: list[Geometry.Point2D],
-        stroke: C_stroke | None = None,
+        stroke: kicad.schematic.Stroke | None = None,
     ):
         """Insert a wire with points at all the coords"""
         for section in zip(coords[:-1], coords[1:]):
-            self.sch.wires.append(
-                SCH.C_wire(
-                    pts=C_pts(xys=[C_xy(*coord) for coord in section]),
-                    stroke=stroke or C_stroke(),
-                )
+            kicad.insert(
+                self.sch,
+                "wires",
+                self.sch.wires,
+                kicad.schematic.Wire(
+                    pts=kicad.schematic.Pts(
+                        xys=[C_xy(x=coord[0], y=coord[1]) for coord in section]
+                    ),
+                    stroke=stroke
+                    or kicad.schematic.Stroke(
+                        width=0,
+                        type=kicad.schematic.E_stroke_type.SOLID,
+                        color=kicad.schematic.Color(r=0, g=0, b=0, a=0),
+                    ),
+                    uuid=self.gen_uuid(mark=True),
+                ),
             )
 
     def insert_text(
@@ -360,20 +364,22 @@ class SchTransformer:
         text: str,
         at: C_xyr,
         font: Font,
-        alignment: Alignment | None = None,
+        alignment: kicad.pcb.Justify | None = None,
     ):
-        self.sch.texts.append(
-            SCH.C_text(
+        kicad.insert(
+            self.sch,
+            "texts",
+            self.sch.texts,
+            kicad.schematic.Text(
                 text=text,
                 at=at,
-                effects=C_effects(
+                effects=kicad.pcb.Effects(
                     font=font,
-                    justifys=[C_effects.C_justify(list(alignment))]
-                    if alignment
-                    else [],
+                    justify=alignment,
+                    hide=None,
                 ),
                 uuid=self.gen_uuid(mark=True),
-            )
+            ),
         )
 
     def _ensure_lib_symbol(
@@ -385,12 +391,13 @@ class SchTransformer:
             return self.sch.lib_symbols.symbols[lib_id]
 
         lib_name, symbol_name = lib_id.split(":")
-        lib_sym = deepcopy(
-            self.get_symbol_file(lib_name).kicad_symbol_lib.symbols[symbol_name]
+        lib_sym = kicad.copy(
+            kicad.get(self.get_symbol_file(lib_name).kicad_sym.symbols, symbol_name)
         )
         lib_sym.name = lib_id
-        self.sch.lib_symbols.symbols[lib_id] = lib_sym
-        return lib_sym
+        return kicad.set(
+            self.sch.lib_symbols, "symbols", self.sch.lib_symbols.symbols, lib_sym
+        )
 
     def insert_symbol(
         self,
@@ -419,27 +426,36 @@ class SchTransformer:
             for subunit in unit_objs:
                 for pin in subunit.pins:
                     pins.append(
-                        SCH.C_symbol_instance.C_pin(
+                        kicad.schematic.InstancePin(
                             name=pin.name.name,
                             uuid=self.gen_uuid(mark=True),
                         )
                     )
 
-            unit_instance = SCH.C_symbol_instance(
+            unit_instance = kicad.schematic.SymbolInstance(
                 lib_id=lib_id,
                 unit=unit_key + 1,  # yes, these are indexed from 1...
-                at=C_xyr(at[0], at[1], rotation),
+                at=C_xyr(x=at[0], y=at[1], r=rotation),
                 in_bom=True,
                 on_board=True,
                 pins=pins,
                 uuid=self.gen_uuid(mark=True),
+                fields_autoplaced=True,
+                propertys=[],
+                convert=None,
             )
 
             # Add a C_property for the reference based on the override name
             if reference_name := module.get_trait(F.has_overriden_name).get_name():
-                unit_instance.propertys["Reference"] = C_property(
-                    name="Reference",
-                    value=reference_name,
+                Property.set_property(
+                    unit_instance,
+                    kicad.schematic.Property(
+                        name="Reference",
+                        value=reference_name,
+                        id=None,
+                        at=C_xyr(x=0, y=0, r=0),
+                        effects=None,
+                    ),
                 )
             else:
                 # TODO: handle not having an overriden name better
@@ -447,4 +463,4 @@ class SchTransformer:
 
             self.attach_symbol(module, unit_instance)
 
-            self.sch.symbols.append(unit_instance)
+            kicad.insert(self.sch, "symbols", self.sch.symbols, unit_instance)
