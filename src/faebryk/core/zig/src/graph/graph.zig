@@ -216,12 +216,12 @@ pub const Edge = struct {
     dynamic: DynamicAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, T: Type) !*@This() {
+    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: Type) !*@This() {
         var edge = try allocator.create(Edge);
         edge.source = source;
         edge.target = target;
         edge.uuid = UUID.gen_uuid();
-        edge.edge_type = T;
+        edge.edge_type = edge_type;
         edge.dynamic = DynamicAttributes.init(allocator);
         edge._ref_count = .{
             .parent = edge,
@@ -258,8 +258,8 @@ pub const Edge = struct {
         return out;
     }
 
-    pub fn is_instance(E: EdgeReference, T: Type) bool {
-        return E.edge_type == T;
+    pub fn is_instance(E: EdgeReference, edge_type: Type) bool {
+        return E.edge_type == edge_type;
     }
 
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
