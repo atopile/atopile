@@ -19,24 +19,40 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, from, to, get_tid());
+        const edge = try Edge.init(allocator, from, to, tid);
         edge.directional = false;
         return edge;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, get_tid());
+        return Edge.is_instance(E, tid);
     }
 
-    pub fn get_connections(E: EdgeReference) []NodeReference {
+    pub fn list_connections(E: EdgeReference) []NodeReference {
         return .{ E.source, E.target };
     }
 
-    // get other side of connection given a node
+    // get other side of connection given a node and edge
+    pub fn get_connected(E: EdgeReference, N: NodeReference) NodeReference {
+        if (Node.is_same(E.source, N)) {
+            return E.target;
+        }
+        return E.source;
+    }
 
-    // create edge given 2 nodes (connect)
+    // connect given edge to given 2 nodereferences
+    pub fn connect(E: EdgeReference, N1: NodeReference, N2: NodeReference) EdgeReference {
+        E.source = N1;
+        E.target = N2;
+        return E;
+    }
 
     // visit all connected edges for a given node
+    pub fn visit_connected_edges(
+        bound_node: graph.BoundNodeReference,
+    ) visitor.VisitResult(void) {
+        return bound_node.visit_edges_of_type(tid);
+    }
 
     // visit all paths for a given node (pathfinder)
 
