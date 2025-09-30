@@ -18,8 +18,8 @@ pub const EdgeInterfaceConnection = struct {
         return tid;
     }
 
-    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, from, to, tid);
+    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
+        const edge = try Edge.init(allocator, N1, N2, tid);
         edge.directional = false;
         return edge;
     }
@@ -58,3 +58,13 @@ pub const EdgeInterfaceConnection = struct {
 
     // "shallow" links
 };
+
+test "basic" {
+    const a = std.testing.allocator;
+    const n1 = try Node.init(a);
+    const n2 = try Node.init(a);
+
+    const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
+
+    _ = e1;
+}
