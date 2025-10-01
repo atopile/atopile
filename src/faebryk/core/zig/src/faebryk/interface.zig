@@ -12,15 +12,15 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeInterfaceConnection = struct {
-    const tid: Edge.Type = 1759242069;
+    const tid: Edge.EdgeType = 1759242069;
 
-    pub fn get_tid() Edge.Type {
+    pub fn get_tid() Edge.EdgeType {
         return tid;
     }
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, N1, N2, tid);
-        edge.directional = false;
+        edge.attributes.directional = false;
         return edge;
     }
 
@@ -63,38 +63,38 @@ test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const n1 = try Node.init(a);
-    defer _ = n1.deinit() catch {};
+    defer n1.deinit();
     const n2 = try Node.init(a);
-    defer _ = n2.deinit() catch {};
+    defer n2.deinit();
     const n3 = try Node.init(a);
-    defer _ = n3.deinit() catch {};
+    defer n3.deinit();
     defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
 
-    std.debug.print("n1.uuid = {}\n", .{n1.uuid});
-    std.debug.print("n2.uuid = {}\n", .{n2.uuid});
-    std.debug.print("n3.uuid = {}\n", .{n3.uuid});
+    std.debug.print("n1.uuid = {}\n", .{n1.attributes.uuid});
+    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
+    std.debug.print("n3.uuid = {}\n", .{n3.attributes.uuid});
 
     const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
-    defer _ = e1.deinit() catch {};
+    defer e1.deinit();
 
-    std.debug.print("e1.uuid = {}\n", .{e1.uuid});
-    std.debug.print("e1.source.uuid = {}\n", .{e1.source.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{e1.target.uuid});
+    std.debug.print("e1.uuid = {}\n", .{e1.attributes.uuid});
+    std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
+    std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
 
     const n_list = EdgeInterfaceConnection.list_connections(e1);
 
     std.debug.print("n_list.len = {}\n", .{n_list.len});
-    std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].uuid});
-    std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].uuid});
+    std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].attributes.uuid});
+    std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].attributes.uuid});
 
     const n2_ref = EdgeInterfaceConnection.get_connected(e1, n1);
-    std.debug.print("n2.uuid = {}\n", .{n2.uuid});
-    std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.uuid});
+    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
+    std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.attributes.uuid});
 
     EdgeInterfaceConnection.connect(e1, n3, n1);
 
-    std.debug.print("e1.source.uuid = {}\n", .{e1.source.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{e1.target.uuid});
+    std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
+    std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
 
     const bn1 = try g.insert_node(n1);
     const bn2 = try g.insert_node(n2);
