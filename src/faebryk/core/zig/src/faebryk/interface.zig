@@ -90,9 +90,9 @@ test "basic" {
     defer n2.deinit();
     const n3 = try Node.init(a);
     defer n3.deinit();
-    defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
     const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
     defer e1.deinit();
+    defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
 
     // Expect e1 source and target to match n1 and n2
     try std.testing.expect(Node.is_same(e1.source, n1));
@@ -125,22 +125,36 @@ test "basic" {
     // Expect no connections to n2 anymore
     try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(e1, n2) == null);
 
+    // Insert n1, n2, n3 into GraphView g
     const bn1 = try g.insert_node(n1);
+    _ = try g.insert_node(n2);
+    _ = try g.insert_node(n3);
+    _ = try g.insert_edge(e1);
 
+    // define visitor that visits all edges connected to n1 in g and saves the EdgeReferences to a list (connected_edges)
     const CollectConnectedEdges = struct {
         connected_edges: std.ArrayList(graph.BoundEdgeReference),
 
         pub fn visit(self_ptr: *anyopaque, connected_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
             const self: *@This() = @ptrCast(@alignCast(self_ptr));
+
             self.connected_edges.append(connected_edge) catch |err| {
                 return visitor.VisitResult(void){ .ERROR = err };
             };
+
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
     };
 
+    // instantiate visitor
     var visit = CollectConnectedEdges{ .connected_edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
     defer visit.connected_edges.deinit();
+    // call visitor
     const result = EdgeInterfaceConnection.visit_connected_edges(bn1, &visit, CollectConnectedEdges.visit);
     _ = result;
+
+    // check the visitor is correct
+    try std.testing.expectEqual(visit.connected_edges.items.len, 1);
+    try std.testing.expect(Node.is_same(visit.connected_edges.items[0].edge.source, n1));
+    try std.testing.expect(Node.is_same(visit.connected_edges.items[0].edge.target, n3));
 }
