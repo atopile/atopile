@@ -60,7 +60,7 @@ fn wrap_edge_composition_create() type {
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
                 std.heap.c_allocator.free(identifier_const);
-                edge_ref.deinit() catch {};
+                edge_ref.deinit();
                 return null;
             }
 
