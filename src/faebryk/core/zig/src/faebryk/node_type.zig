@@ -12,7 +12,11 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeType = struct {
+<<<<<<< HEAD
     var tid: Edge.EdgeType = 1759276800;
+=======
+    pub const tid: Edge.EdgeType = 0;
+>>>>>>> bd281090 (edit type node is instance fn)
 
     pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, type_node, instance_node, tid);
@@ -87,15 +91,14 @@ test "basic typegraph" {
     // const et11 = try EdgeType.init(a, tn1, in1);
     // const et12 = try EdgeType.
 
-    // has to be deleted first
-    defer g.deinit();
-
-    // has to be deleted first
-    defer g.deinit();
-
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, tn1));
     // try std.testing.expect(EdgeType.is_node_instance_of(bn2, tn1));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn1, tn2));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn2, tn2));
 
+    try g.deinit();
+    try tn1.deinit();
+    try in1.deinit();
+    // try btn1.deinit();
+    // try bin1.deinit();
 }
