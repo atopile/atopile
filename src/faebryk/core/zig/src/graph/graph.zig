@@ -218,7 +218,7 @@ pub const EdgeAttributes = struct {
     name: ?str,
     dynamic: DynamicAttributes,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: Type) !*@This() {
+    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: Edge.EdgeType) !*@This() {
         var edge = try allocator.create(Edge);
         edge.source = source;
         edge.target = target;
@@ -323,8 +323,8 @@ pub const Edge = struct {
         try type_set.put(edge_type, {});
     }
 
-    pub fn is_instance(E: EdgeReference, edge_type: Type) bool {
-        return E.edge_type == edge_type;
+    pub fn is_instance(E: EdgeReference, edge_type: EdgeType) bool {
+        return E.attributes.edge_type == edge_type;
     }
 
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
