@@ -90,6 +90,9 @@ test "basic typegraph" {
     // has to be deleted first
     defer g.deinit();
 
+    // has to be deleted first
+    defer g.deinit();
+
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, tn1));
     // try std.testing.expect(EdgeType.is_node_instance_of(bn2, tn1));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn1, tn2));
