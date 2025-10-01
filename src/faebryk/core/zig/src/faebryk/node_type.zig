@@ -35,7 +35,7 @@ pub const EdgeType = struct {
         return E.source;
     }
 
-    pub fn get_instance_node(E: EdgeReference) NodeReference {
+    pub fn get_instance_node(E: EdgeReference) ?NodeReference {
         return E.target;
     }
 
@@ -61,9 +61,40 @@ pub const EdgeType = struct {
         return edge.attributes.name.?;
     }
 
-    // pub fn visit_instance_edges(bound_type_node: graph.BoundNodeReference, f: fn (ctx: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void)) void {
-    //     return Edge.visit_edges_of_type(bound_type_node, get_tid(), void, &visit, Visit.visit);
-    // }
+    pub fn visit_instance_edges(
+        bound_type_node: graph.BoundNodeReference,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
+    ) visitor.VisitResult(void) {
+        const Visit = struct {
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                const instance = EdgeType.get_instance_node(bound_edge.edge);
+                if (instance) |_| {
+                    const instance_result = self.cb(self.cb_ctx, bound_edge);
+                    switch (instance_result) {
+                        .CONTINUE => {},
+                        else => return instance_result,
+                    }
+                }
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var visit = Visit{ .cb_ctx = ctx, .cb = f };
+        return bound_type_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
+    }
+
+    // Visitor callback that collects instance edges into a provided ArrayList
+    // Expects ctx to be a *std.ArrayList(graph.BoundEdgeReference)
+    pub fn collect_into_list(ctx: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+        const list: *std.ArrayList(graph.BoundEdgeReference) = @ptrCast(@alignCast(ctx));
+        list.append(bound_edge) catch |e| return visitor.VisitResult(void){ .ERROR = e };
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
 };
 
 //zig test --dep graph -Mroot=src/faebryk/node_type.zig -Mgraph=src/graph/lib.zig
@@ -107,8 +138,8 @@ test "basic typegraph" {
     try std.testing.expect(Node.is_same(EdgeType.get_type_node(bet22.edge), tn2));
 
     // get_instance_node -------------------------------------------------------------------------------
-    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(et11), in1));
-    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(bet22.edge), in2));
+    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(et11).?, in1));
+    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(bet22.edge).?, in2));
 
     // get_type_edge -------------------------------------------------------------------------------
     try std.testing.expect(Edge.is_same(EdgeType.get_type_edge(bin1).?.edge, et11));
@@ -126,6 +157,29 @@ test "basic typegraph" {
     // get_name -------------------------------------------------------------------------------
     try std.testing.expect(std.mem.eql(u8, try EdgeType.get_name(et11), "instance1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeType.get_name(bet22.edge), "instance2"));
+
+    // visit_instance_edges -------------------------------------------------------------------------------
+
+    var instances = std.ArrayList(graph.BoundEdgeReference).init(a);
+    defer instances.deinit();
+    const visit_result = EdgeType.visit_instance_edges(btn2, &instances, EdgeType.collect_into_list);
+    switch (visit_result) {
+        .ERROR => |err| @panic(@errorName(err)),
+        else => {},
+    }
+    try std.testing.expect(instances.items.len == 1);
+    try std.testing.expect(Edge.is_same(instances.items[0].edge, bet22.edge));
+
+    // Also verify the collected instance edge points to the known instance node
+    try std.testing.expect(Node.is_same(EdgeType.get_instance_node(instances.items[0].edge).?, in2));
+
+    // Print collected information for visibility
+    std.debug.print("collected instances: {d}\n", .{instances.items.len});
+    for (instances.items, 0..) |be, i| {
+        const name = try EdgeType.get_name(be.edge);
+        const equals_in2 = Node.is_same(EdgeType.get_instance_node(be.edge).?, in2);
+        std.debug.print("instance[{d}]: name={s} equals_in2={}\n", .{ i, name, equals_in2 });
+    }
 
     // has to be deleted first
     defer g.deinit();
