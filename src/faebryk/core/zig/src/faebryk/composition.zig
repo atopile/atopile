@@ -98,15 +98,23 @@ test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(std.testing.allocator);
     const n1 = try Node.init(a);
+    defer n1.deinit();
     const n2 = try Node.init(a);
+    defer n2.deinit();
     const n3 = try Node.init(a);
+    defer n3.deinit();
 
     const bn1 = try g.insert_node(n1);
     const bn2 = try g.insert_node(n2);
     const bn3 = try g.insert_node(n3);
 
     const be12 = try EdgeComposition.add_child(bn1, n2, "child1");
+    defer be12.edge.deinit();
     const be13 = try EdgeComposition.add_child(bn1, n3, "child2");
+    defer be13.edge.deinit();
+
+    // has to be deleted first
+    defer g.deinit();
 
     const parent_edge_bn2 = EdgeComposition.get_parent_edge(bn2);
     const parent_edge_bn3 = EdgeComposition.get_parent_edge(bn3);
@@ -137,12 +145,4 @@ test "basic" {
     try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
-
-    // cleanup
-    g.deinit();
-    try n1.deinit();
-    try n2.deinit();
-    try n3.deinit();
-    try be12.edge.deinit();
-    try be13.edge.deinit();
 }

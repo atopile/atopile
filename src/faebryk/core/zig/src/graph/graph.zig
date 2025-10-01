@@ -193,8 +193,10 @@ pub const Node = struct {
         return node;
     }
 
-    pub fn deinit(self: *@This()) !void {
-        try self._ref_count.check_in_use();
+    pub fn deinit(self: *@This()) void {
+        self._ref_count.check_in_use() catch {
+            @panic("Node is still in use");
+        };
         self.attributes.dynamic.deinit();
         self._ref_count.allocator.destroy(self);
     }
@@ -279,8 +281,10 @@ pub const Edge = struct {
         return edge;
     }
 
-    pub fn deinit(self: *@This()) !void {
-        try self._ref_count.check_in_use();
+    pub fn deinit(self: *@This()) void {
+        self._ref_count.check_in_use() catch {
+            @panic("Edge is still in use");
+        };
         self.attributes.dynamic.deinit();
         self._ref_count.allocator.destroy(self);
     }
@@ -557,8 +561,11 @@ test "basic" {
     try Edge.register_type(TestLinkType);
 
     const n1 = try Node.init(a);
+    defer n1.deinit();
     const n2 = try Node.init(a);
+    defer n2.deinit();
     const e12 = try Edge.init(a, n1, n2, TestLinkType);
+    defer e12.deinit();
 
     _ = try g.insert_node(n1);
     _ = try g.insert_node(n2);
@@ -578,8 +585,4 @@ test "basic" {
     try std.testing.expectEqual(n1._ref_count.ref_count, 0);
     try std.testing.expectEqual(n2._ref_count.ref_count, 0);
     try std.testing.expectEqual(e12._ref_count.ref_count, 0);
-
-    try n1.deinit();
-    try n2.deinit();
-    try e12.deinit();
 }

@@ -12,7 +12,7 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeType = struct {
-    pub const tid: Edge.EdgeType = 0;
+    var tid: Edge.EdgeType = 1759276800;
 
     pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, type_node, instance_node, tid);
@@ -27,7 +27,7 @@ pub const EdgeType = struct {
     }
 
     pub fn is_instance(E: EdgeReference) bool {
-        return Edge.is_instance(E, get_tid());
+        return Edge.is_instance(E, tid);
     }
 
     pub fn get_type_node(E: EdgeReference) NodeReference {
@@ -70,7 +70,9 @@ test "basic typegraph" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const tn1 = try Node.init(a);
+    defer tn1.deinit();
     const in1 = try Node.init(a);
+    defer in1.deinit();
     // const in2 = try Node.init(a);
     // const tn2 = try Node.init(a);
 
@@ -83,16 +85,14 @@ test "basic typegraph" {
     // _ = try g.insert_node(tn2);
 
     // const et11 = try EdgeType.init(a, tn1, in1);
-    // const et12 = try EdgeType.init(a, tn1, n2);
+    // const et12 = try EdgeType.
+
+    // has to be deleted first
+    defer g.deinit();
 
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, tn1));
     // try std.testing.expect(EdgeType.is_node_instance_of(bn2, tn1));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn1, tn2));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn2, tn2));
 
-    try g.deinit();
-    try tn1.deinit();
-    try in1.deinit();
-    // try btn1.deinit();
-    // try bin1.deinit();
 }
