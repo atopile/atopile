@@ -29,7 +29,7 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     // get other side of connection given a node and edge
-    pub fn get_connected(E: EdgeReference, N: NodeReference) NodeReference {
+    pub fn get_connected(E: EdgeReference, N: NodeReference) ?NodeReference {
         if (Node.is_same(E.source, N)) {
             return E.target;
         }
@@ -46,8 +46,30 @@ pub const EdgeInterfaceConnection = struct {
     // visit all connected edges for a given node
     pub fn visit_connected_edges(
         bound_node: graph.BoundNodeReference,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
     ) visitor.VisitResult(void) {
-        return bound_node.visit_edges_of_type(tid, void, void, void);
+        const Visit = struct {
+            target: graph.BoundNodeReference,
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                const connected = EdgeInterfaceConnection.get_connected(bound_edge.edge, self.target.node);
+                if (connected) |_| {
+                    const connected_result = self.cb(self.cb_ctx, bound_edge);
+                    switch (connected_result) {
+                        .CONTINUE => {},
+                        else => return connected_result,
+                    }
+                }
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
+        return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
     }
 
     // visit all paths for a given node (pathfinder)
@@ -85,10 +107,29 @@ test "basic" {
 
     const n2_ref = EdgeInterfaceConnection.get_connected(e1, n1);
     std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.attributes.uuid});
+    std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.?.attributes.uuid});
 
     EdgeInterfaceConnection.connect(e1, n3, n1);
 
     std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
     std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
+
+    const bn1 = try g.insert_node(n1);
+
+    const CollectConnectedEdges = struct {
+        connected_edges: std.ArrayList(graph.BoundEdgeReference),
+
+        pub fn visit(self_ptr: *anyopaque, connected_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const self: *@This() = @ptrCast(@alignCast(self_ptr));
+            self.connected_edges.append(connected_edge) catch |err| {
+                return visitor.VisitResult(void){ .ERROR = err };
+            };
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var visit = CollectConnectedEdges{ .connected_edges = std.ArrayList(graph.BoundEdgeReference).init(a) };
+    defer visit.connected_edges.deinit();
+    const result = EdgeInterfaceConnection.visit_connected_edges(bn1, &visit, CollectConnectedEdges.visit);
+    _ = result;
 }
