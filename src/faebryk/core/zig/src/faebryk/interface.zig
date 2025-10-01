@@ -1,6 +1,6 @@
 const graph = @import("graph").graph;
 const std = @import("std");
-const visitor = graph.visitor;
+const visitor = @import("graph").visitor;
 
 // pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
 
@@ -13,10 +13,6 @@ const str = graph.str;
 
 pub const EdgeInterfaceConnection = struct {
     const tid: Edge.EdgeType = 1759242069;
-
-    pub fn get_tid() Edge.EdgeType {
-        return tid;
-    }
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, N1, N2, tid);
@@ -51,7 +47,7 @@ pub const EdgeInterfaceConnection = struct {
     pub fn visit_connected_edges(
         bound_node: graph.BoundNodeReference,
     ) visitor.VisitResult(void) {
-        return bound_node.visit_edges_of_type(tid);
+        return bound_node.visit_edges_of_type(tid, void, void, void);
     }
 
     // visit all paths for a given node (pathfinder)
@@ -95,12 +91,4 @@ test "basic" {
 
     std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
     std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
-
-    const bn1 = try g.insert_node(n1);
-    const bn2 = try g.insert_node(n2);
-
-    _ = bn1;
-    _ = bn2;
-
-    // EdgeInterfaceConnection.visit_connected_edges(e1);
 }
