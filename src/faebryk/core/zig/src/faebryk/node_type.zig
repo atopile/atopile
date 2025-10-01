@@ -12,7 +12,11 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeType = struct {
+<<<<<<< HEAD
     var tid: Edge.EdgeType = 1759276800;
+=======
+    pub const tid: Edge.EdgeType = 0;
+>>>>>>> bd281090 (edit type node is instance fn)
 
     pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference, instance_identifier: str) !EdgeReference {
         const edge = try Edge.init(allocator, type_node, instance_node, tid);
