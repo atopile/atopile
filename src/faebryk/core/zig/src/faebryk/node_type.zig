@@ -12,17 +12,10 @@ const GraphView = graph.GraphView;
 const str = graph.str;
 
 pub const EdgeType = struct {
-    var tid: ?Edge.Type = null;
-
-    pub fn get_tid() Edge.Type {
-        if (tid == null) {
-            tid = Edge.register_type();
-        }
-        return tid.?;
-    }
+    pub const tid: Edge.EdgeType = 0;
 
     pub fn init(allocator: std.mem.Allocator, type_node: NodeReference, instance_node: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, type_node, instance_node, get_tid());
+        const edge = try Edge.init(allocator, type_node, instance_node, tid);
         edge.directional = true;
         return edge;
     }
@@ -46,22 +39,20 @@ pub const EdgeType = struct {
     }
 
     pub fn get_type_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
-        return Edge.get_single_edge(bound_node, get_tid(), false);
+        return Edge.get_single_edge(bound_node, tid, false);
     }
 
     // pub fn visit_instance_edges(bound_node: graph.BoundNodeReference, f: fn (ctx: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void)) void {
     //     return Edge.visit_edges_of_type(bound_node, get_tid(), void, &visit, Visit.visit);
     // }
 
-    pub fn is_node_instance_of(bound_node: graph.BoundNodeReference, bound_node_type: graph.BoundNodeReference) bool {
+    pub fn is_node_instance_of(bound_node: graph.BoundNodeReference, node_type: NodeReference) bool {
         const type_edge = get_type_edge(bound_node);
-        _ = type_edge;
-        _ = bound_node_type;
-        // if (type_edge) |edge| {
-        //     if (edge.edge.get_target()) |target| {
-        //         return Node.is_same(target, bound_node_type.node);
-        //     }
-        // }
+        if (type_edge) |edge| {
+            if (edge.edge.get_target()) |target| {
+                return Node.is_same(target, node_type.node);
+            }
+        }
         return false;
     }
 
@@ -83,7 +74,7 @@ test "basic typegraph" {
     // const in2 = try Node.init(a);
     // const tn2 = try Node.init(a);
 
-    const btn1 = try g.insert_node(tn1);
+    // const btn1 = try g.insert_node(tn1);
     const bin1 = try g.insert_node(in1);
     // _ = btn1;
     // _ = bin1;
@@ -94,14 +85,14 @@ test "basic typegraph" {
     // const et11 = try EdgeType.init(a, tn1, in1);
     // const et12 = try EdgeType.init(a, tn1, n2);
 
-    try std.testing.expect(EdgeType.is_node_instance_of(bin1, btn1));
+    try std.testing.expect(EdgeType.is_node_instance_of(bin1, tn1));
     // try std.testing.expect(EdgeType.is_node_instance_of(bn2, tn1));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn1, tn2));
     // try std.testing.expect(!EdgeType.is_node_instance_of(bn2, tn2));
 
-    defer g.deinit();
-    defer tn1.deinit();
-    defer in1.deinit();
+    try g.deinit();
+    try tn1.deinit();
+    try in1.deinit();
     // try btn1.deinit();
     // try bin1.deinit();
 }
