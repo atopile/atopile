@@ -24,19 +24,22 @@ pub const EdgeInterfaceConnection = struct {
         return Edge.is_instance(E, tid);
     }
 
-    pub fn list_connections(E: EdgeReference) [2]NodeReference {
+    pub fn get_both_connected_nodes(E: EdgeReference) [2]NodeReference {
         return [_]NodeReference{ E.source, E.target };
     }
 
-    // get other side of connection given a node and edge
-    pub fn get_connected(E: EdgeReference, N: NodeReference) ?NodeReference {
+    // Get other connected node given an already connected node and edge reference
+    pub fn get_other_connected_node(E: EdgeReference, N: NodeReference) ?NodeReference {
         if (Node.is_same(E.source, N)) {
             return E.target;
+        } else if (Node.is_same(E.target, N)) {
+            return E.source;
+        } else {
+            return null; // Returns null if given node and edge were not connected in the first place
         }
-        return E.source;
     }
 
-    // connect given edge to given 2 nodereferences
+    // Connect given EdgeReference to given 2 NodeReferences
     pub fn connect(E: EdgeReference, N1: NodeReference, N2: NodeReference) void {
         E.source = N1;
         E.target = N2;
@@ -56,7 +59,7 @@ pub const EdgeInterfaceConnection = struct {
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                const connected = EdgeInterfaceConnection.get_connected(bound_edge.edge, self.target.node);
+                const connected = EdgeInterfaceConnection.get_other_connected_node(bound_edge.edge, self.target.node);
                 if (connected) |_| {
                     const connected_result = self.cb(self.cb_ctx, bound_edge);
                     switch (connected_result) {
@@ -78,6 +81,7 @@ pub const EdgeInterfaceConnection = struct {
 };
 
 test "basic" {
+    // Allocate some nodes and edges
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const n1 = try Node.init(a);
@@ -87,32 +91,39 @@ test "basic" {
     const n3 = try Node.init(a);
     defer n3.deinit();
     defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
-
-    std.debug.print("n1.uuid = {}\n", .{n1.attributes.uuid});
-    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    std.debug.print("n3.uuid = {}\n", .{n3.attributes.uuid});
-
     const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
     defer e1.deinit();
 
-    std.debug.print("e1.uuid = {}\n", .{e1.attributes.uuid});
-    std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
+    // Expect e1 source and target to match n1 and n2
+    try std.testing.expect(Node.is_same(e1.source, n1));
+    try std.testing.expect(Node.is_same(e1.target, n2));
 
-    const n_list = EdgeInterfaceConnection.list_connections(e1);
+    // Expect e1 source and target to not match n3
+    try std.testing.expect(!Node.is_same(e1.source, n3));
+    try std.testing.expect(!Node.is_same(e1.target, n3));
 
-    std.debug.print("n_list.len = {}\n", .{n_list.len});
-    std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].attributes.uuid});
-    std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].attributes.uuid});
+    // Expect list of 2 connections that reference n1 and n2
+    const n_list = EdgeInterfaceConnection.get_both_connected_nodes(e1);
+    try std.testing.expectEqual(n_list.len, 2);
+    try std.testing.expect(Node.is_same(n_list[0], n1));
+    try std.testing.expect(Node.is_same(n_list[1], n2));
 
-    const n2_ref = EdgeInterfaceConnection.get_connected(e1, n1);
-    std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.?.attributes.uuid});
+    // Expect get_connected to return n2 when given n1
+    try std.testing.expect(Node.is_same(EdgeInterfaceConnection.get_other_connected_node(e1, n1).?, n2));
 
-    EdgeInterfaceConnection.connect(e1, n3, n1);
+    // Expect get_connected to return n1 when given n2
+    try std.testing.expect(Node.is_same(EdgeInterfaceConnection.get_other_connected_node(e1, n2).?, n1));
 
-    std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
+    // Expect get_connected to return null when given n3
+    try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(e1, n3) == null);
+
+    // Take e1 and connect source to n1 and target to n3
+    EdgeInterfaceConnection.connect(e1, n1, n3);
+    try std.testing.expect(Node.is_same(e1.source, n1));
+    try std.testing.expect(Node.is_same(e1.target, n3));
+
+    // Expect no connections to n2 anymore
+    try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(e1, n2) == null);
 
     const bn1 = try g.insert_node(n1);
 
