@@ -360,13 +360,23 @@ pub const Edge = struct {
             pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
                 const self: *@This() = @ptrCast(@alignCast(ctx));
                 if (self.is_target) |d| {
-                    const target = bound_edge.edge.get_target();
-                    if (target) |t| {
-                        if (d and Node.is_same(t, self.bound_node.node)) {
-                            return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                    if (d) {
+                        const target = bound_edge.edge.get_target();
+                        if (target) |t| {
+                            if (Node.is_same(t, self.bound_node.node)) {
+                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                            }
                         }
+                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
+                    } else {
+                        const source = bound_edge.edge.get_source();
+                        if (source) |s| {
+                            if (Node.is_same(s, self.bound_node.node)) {
+                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                            }
+                        }
+                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
                     }
-                    return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
                 }
                 return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
             }
