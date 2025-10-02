@@ -387,6 +387,24 @@ pub const Edge = struct {
 
 pub const Path = struct {
     edges: std.ArrayList(EdgeReference),
+
+    pub fn init(a: std.mem.Allocator) @This() {
+        return .{
+            .edges = std.ArrayList(EdgeReference).init(a),
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.edges.deinit();
+    }
+
+    pub fn print_path(self: *const @This()) void {
+        std.debug.print("path length: {}\t", .{self.edges.items.len});
+        for (self.edges.items) |edge| {
+            std.debug.print("edge: {}\t", .{edge.attributes.uuid});
+        }
+        std.debug.print("\n", .{});
+    }
 };
 
 pub const BoundNodeReference = struct {
@@ -578,7 +596,84 @@ pub const GraphView = struct {
 
         return Result{ .EXHAUSTED = {} };
     }
+
+    pub fn visit_paths_bfs(g: *@This(), node: NodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
+        _ = ctx;
+        _ = f;
+        const Result = visitor.VisitResult(T);
+
+        // Create open path queue
+        var open_path_queue = std.ArrayList(Path).init(g.allocator);
+        defer {
+            for (open_path_queue.items) |*path| {
+                path.deinit();
+            }
+            open_path_queue.deinit();
+        }
+
+        // Get initial edges
+        const initial_edges = g.get_edges(node) orelse {
+            return Result{ .ERROR = error.NoEdges };
+        };
+        for (initial_edges.items) |edge| {
+            std.debug.print("initial_edge: {}\n", .{edge.attributes.uuid});
+            var path = Path.init(g.allocator);
+            path.edges.append(edge) catch |err| {
+                return Result{ .ERROR = err };
+            };
+            open_path_queue.append(path) catch |err| {
+                return Result{ .ERROR = err };
+            };
+        }
+
+        for (open_path_queue.items) |path| {
+            path.print_path();
+        }
+
+        // open_path_queue.append(Path.init(g.allocator)) catch unreachable;
+        // open_path_queue.items[open_path_queue.items.len - 1].edges.append(edge) catch unreachable;
+
+        return Result{ .EXHAUSTED = {} };
+    }
 };
+
+test "visit_paths_bfs" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    const n1 = try Node.init(a);
+    defer n1.deinit();
+    const n2 = try Node.init(a);
+    defer n2.deinit();
+    const n3 = try Node.init(a);
+    defer n3.deinit();
+    const e1 = try Edge.init(a, n1, n2, 1759242069);
+    defer e1.deinit();
+    const e2 = try Edge.init(a, n1, n3, 1759242069);
+    defer e2.deinit();
+    defer g.deinit();
+
+    _ = try g.insert_node(n1);
+    _ = try g.insert_node(n2);
+    _ = try g.insert_node(n3);
+    _ = try g.insert_edge(e1);
+    _ = try g.insert_edge(e2);
+
+    const Visitor = struct {
+        x: i64 = 0,
+
+        pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+            const self: *@This() = @ptrCast(@alignCast(self_ptr));
+            _ = path;
+            self.x += 1;
+            std.debug.print("visit_fn: {}\n", .{self.x});
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var visitor_ctx = Visitor{};
+
+    _ = g.visit_paths_bfs(n1, void, &visitor_ctx, Visitor.visit_fn);
+}
 
 test "basic" {
     const a = std.testing.allocator;
