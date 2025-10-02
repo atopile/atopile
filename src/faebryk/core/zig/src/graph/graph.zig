@@ -395,6 +395,10 @@ pub const Edge = struct {
     }
 };
 
+pub const Path = struct {
+    edges: std.ArrayList(EdgeReference),
+};
+
 pub const BoundNodeReference = struct {
     node: NodeReference,
     g: *GraphView,
