@@ -107,10 +107,46 @@ def test_edge_composition_add_child_and_visit():
     assert EdgeComposition.get_parent_edge(bound_node=parent_bound) is None
 
 
+def test_edge_type_create():
+    from faebryk.core.zig.gen.faebryk.node_type import EdgeType  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import Node  # type: ignore
+
+    type_node = Node.create()
+    instance_node = Node.create()
+    edge = EdgeType.create(type_node=type_node, instance_node=instance_node)
+
+    assert EdgeType.is_instance(edge=edge) is True
+    assert type_node.is_same(other=EdgeType.get_type_node(edge=edge))
+
+    get_instance_node = EdgeType.get_instance_node(edge=edge)
+    assert isinstance(get_instance_node, Node)
+    assert instance_node.is_same(other=get_instance_node)
+
+
+def test_edge_next():
+    from faebryk.core.zig.gen.faebryk.next import EdgeNext  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import GraphView, Node  # type: ignore
+
+    graph = GraphView.create()
+
+    previous_node = Node.create()
+    next_node = Node.create()
+    previous_bound = graph.insert_node(node=previous_node)
+    _ = graph.insert_node(node=next_node)
+    edge = EdgeNext.create(previous_node=previous_node, next_node=next_node)
+    _ = graph.insert_edge(edge=edge)
+    assert EdgeNext.is_instance(edge=edge) is True
+    get_next_node = EdgeNext.get_next_node_from_node(node=previous_bound)
+    assert isinstance(get_next_node, Node)
+    assert next_node.is_same(other=get_next_node)
+
+
 if __name__ == "__main__":
     test_minimal_graph()
     test_edge_composition_create()
     test_edge_composition_add_child_and_visit()
+    test_edge_type_create()
+    test_edge_next()
 
     print("-" * 80)
     print("All tests passed")
