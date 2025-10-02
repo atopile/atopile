@@ -608,8 +608,8 @@ pub const GraphView = struct {
     }
 
     pub fn visit_paths_bfs(g: *@This(), node: NodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
-        _ = ctx;
-        _ = f;
+        // _ = ctx;
+        // _ = f;
         const Result = visitor.VisitResult(T);
 
         // Create open path queue
@@ -620,11 +620,12 @@ pub const GraphView = struct {
             }
             open_path_queue.deinit();
         }
-
         // Get initial edges
         const initial_edges = g.get_edges(node) orelse {
             return Result{ .ERROR = error.NoEdges };
         };
+
+        // add initial edges to open path queue
         for (initial_edges.items) |edge| {
             std.debug.print("initial_edge: {}\n", .{edge.attributes.uuid});
             var path = Path.init(g.allocator);
@@ -634,6 +635,19 @@ pub const GraphView = struct {
             open_path_queue.append(path) catch |err| {
                 return Result{ .ERROR = err };
             };
+        }
+
+        // start doing stuff
+        while (open_path_queue.items.len > 0) {
+            const path = open_path_queue.pop() orelse unreachable;
+            const result = f(ctx, path);
+            switch (result) {
+                .CONTINUE => {},
+                .STOP => return Result{ .STOP = {} },
+                .ERROR => |err| return Result{ .ERROR = err },
+                .OK => |value| return Result{ .OK = value },
+                .EXHAUSTED => unreachable,
+            }
         }
 
         for (open_path_queue.items) |path| {
