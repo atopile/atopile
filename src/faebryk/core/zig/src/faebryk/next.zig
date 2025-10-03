@@ -68,11 +68,11 @@ test "basic chain" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const node1 = try Node.init(a);
-    defer node1.deinit();
+    // defer node1.deinit();
     const node2 = try Node.init(a);
-    defer node2.deinit();
+    // defer node2.deinit();
     const node3 = try Node.init(a);
-    defer node3.deinit();
+    // defer node3.deinit();
 
     const bn1 = try g.insert_node(node1);
     const bn2 = try g.insert_node(node2);
@@ -82,14 +82,14 @@ test "basic chain" {
     const en12 = try EdgeNext.init(g.allocator, node1, node2);
     std.debug.print("en12 source: {}\n", .{EdgeNext.get_previous_node(en12).?});
     std.debug.print("en12 target: {}\n", .{EdgeNext.get_next_node(en12).?});
-    defer en12.deinit();
+    // defer en12.deinit();
     const ben12 = try g.insert_edge(en12);
 
     // add_next -----------------------------------------------------------------------------------
     const ben23 = try EdgeNext.add_next(bn2, bn3);
     std.debug.print("en23 source: {}\n", .{EdgeNext.get_previous_node(ben23.edge).?});
     std.debug.print("en23 target: {}\n", .{EdgeNext.get_next_node(ben23.edge).?});
-    defer ben23.edge.deinit();
+    // defer ben23.edge.deinit();
 
     // is_instance -------------------------------------------------------------------------------
     try std.testing.expect(EdgeNext.is_instance(ben12.edge));
