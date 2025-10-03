@@ -228,16 +228,7 @@ term
     ;
 
 power
-    : functional (POWER functional)?
-    ;
-
-functional
-    : bound
-    | name '(' bound+ ')'
-    ;
-
-bound
-    : atom
+    : atom (POWER atom)?
     ;
 
 // Primary elements ----------------
