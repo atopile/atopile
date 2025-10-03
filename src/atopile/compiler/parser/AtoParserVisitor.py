@@ -254,16 +254,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#functional.
-    def visitFunctional(self, ctx:AtoParser.FunctionalContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#bound.
-    def visitBound(self, ctx:AtoParser.BoundContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#slice.
     def visitSlice(self, ctx:AtoParser.SliceContext):
         return self.visitChildren(ctx)
