@@ -2710,32 +2710,51 @@ class FileChangedWatcher:
         FS = auto()
         HASH = auto()
 
-    def __init__(self, path: Path, method: CheckMethod):
-        self.path = path
+    @staticmethod
+    def _get_mtime_recursive(*paths: Path) -> float:
+        return max(
+            (
+                f.stat().st_mtime
+                for path in paths
+                for f in (path.rglob("**") if path.is_dir() else [path])
+                if f.is_file()
+            ),
+        )
+
+    @staticmethod
+    def _get_hash_recursive(*paths: Path) -> str:
+        return hashlib.sha256(
+            b"".join(
+                f.read_bytes()
+                for path in paths
+                for f in (path.rglob("**") if path.is_dir() else [path])
+                if f.is_file()
+            ),
+            usedforsecurity=False,
+        ).hexdigest()
+
+    def __init__(self, *paths: Path, method: CheckMethod):
+        self.paths = paths
         self.method = method
 
         match method:
-            case FileChangedWatcher.CheckMethod.FS if path.is_file():
-                self.before = path.stat().st_mtime
-            case FileChangedWatcher.CheckMethod.HASH if path.is_file():
-                self.before = hashlib.sha256(
-                    path.read_bytes(), usedforsecurity=False
-                ).hexdigest()
+            case FileChangedWatcher.CheckMethod.FS:
+                self.before = FileChangedWatcher._get_mtime_recursive(*paths)
+            case FileChangedWatcher.CheckMethod.HASH:
+                self.before = FileChangedWatcher._get_hash_recursive(*paths)
             case _:
                 self.before = None
 
     def has_changed(self, reset: bool = False) -> bool:
         changed = True
         match self.method:
-            case FileChangedWatcher.CheckMethod.FS if self.path.is_file():
-                new_val = self.path.stat().st_mtime
+            case FileChangedWatcher.CheckMethod.FS:
+                new_val = FileChangedWatcher._get_mtime_recursive(*self.paths)
                 if self.before is not None:
                     assert isinstance(self.before, float)
                     changed = new_val > self.before
-            case FileChangedWatcher.CheckMethod.HASH if self.path.is_file():
-                new_val = hashlib.sha256(
-                    self.path.read_bytes(), usedforsecurity=False
-                ).hexdigest()
+            case FileChangedWatcher.CheckMethod.HASH:
+                new_val = FileChangedWatcher._get_hash_recursive(*self.paths)
                 if self.before is not None:
                     assert isinstance(self.before, str)
                     changed = new_val != self.before

@@ -22,11 +22,20 @@ from deprecated import deprecated
 from more_itertools import partition
 from ordered_set import OrderedSet
 
-from faebryk.core.cpp import Node as CNode
 from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.node_type import EdgeType
+from faebryk.core.zig.gen.graph.graph import (
+    BoundEdge,
+    BoundNode,
+    GraphView,
+)
+from faebryk.core.zig.gen.graph.graph import (
+    Node as ZNode,
+)
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
@@ -185,7 +194,7 @@ class InitVar(dataclass_InitVar):
 
 
 @post_init_decorator
-class Node(CNode):
+class Node(ZNode):
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
     specialized_: list["Node"]
@@ -499,8 +508,6 @@ class Node(CNode):
         return id(self)
 
     def __init__(self):
-        super().__init__()
-        CNode.transfer_ownership(self)
         assert not hasattr(self, "_called_init")
         self._called_init = True
 
@@ -524,19 +531,100 @@ class Node(CNode):
     def __init_subclass__(cls, *, init: bool = True) -> None:
         cls._init = init
         post_init_decorator(cls)
-        Node_mro = CNode.mro()
+        Node_mro = ZNode.mro()
         cls_mro = cls.mro()
         cls._mro = cls_mro[: -len(Node_mro)]
         cls._mro_ids = {id(c) for c in cls._mro}
 
-        # check if accidentally added a node instance instead of field
-        node_instances = [
-            (name, f)
-            for name, f in vars(cls).items()
-            if isinstance(f, Node) and not name.startswith("_")
-        ]
-        if node_instances:
-            raise FieldError(f"Node instances not allowed: {node_instances}")
+        # Generate typegraph -----------------------------------------------------------
+        mod = getattr(cls, "__module__", "")
+        if "faebryk.library" not in mod:
+            return
+        print(cls.__name__)
+        # Typegraph initialized here, implements_type and implements_trait generated
+        import faebryk.core.type as Types
+        from faebryk.core.zig.gen.faebryk.next import EdgeNext  # type: ignore
+        from faebryk.core.zig.gen.graph.graph import GraphView, Node  # type: ignore
+
+        typegraphview = Types.init_typegraph()
+        # Generate type node
+        type_node = Types.Class_ImplementsType.init_type_node(
+            Types._Node(), cls.__name__
+        )
+        cls.type_node = type_node
+        try:
+            from faebryk.core.trait import Trait
+
+            if issubclass(cls, Trait):  # Add ImplementsTrait node to mark trait
+                Types.compose(
+                    type_node,
+                    Types.instantiate(Types.Type_ImplementsTrait)[0],
+                    "ImplementsTrait",
+                )
+                print("TRAIT", cls.__name__)
+        except ImportError:
+            print("IMPORT ERROR", cls.__name__)
+            pass
+
+        # Generate fabll il fields and add child nodes
+        clsfields, _ = cls.__faebryk_fields__()
+
+        def setup_field(name, obj):
+            if isinstance(obj, str):
+                raise NotImplementedError()
+
+            # type annotation
+            if isinstance(obj, type):
+                if "GraphInterface" in obj.__name__:
+                    # print("SKIP", name, obj.__name__)
+                    return
+                # print(obj.__name__)
+                child_type_node = Types.get_type_by_name(obj.__name__)
+                if not child_type_node:
+                    raise ValueError(f"Child type node not found for {obj.__name__}")
+                # print(name, obj.__name__)
+                Types.make_child_rule_and_child_ref(child_type_node, name, type_node)
+
+            elif isinstance(obj, _d_field):
+                # print("D_FIELD", name, obj.meta)
+                # print(name)
+                child_type = obj.meta.get("constructor")
+                assert isinstance(child_type, type)
+                child_type_name = child_type.__name__
+                if "GraphInterface" in child_type_name:
+                    # print("SKIP", name, obj.__name__)
+                    return
+                # print(child_type_name)
+                child_type_node = Types.get_type_by_name(child_type_name)
+                if not child_type_node:
+                    raise ValueError(f"Child type node not found for {child_type_name}")
+                if obj.meta.get("kind") == "list_field":
+                    n = obj.meta.get("count", 0)
+                    if n > 0:
+                        for i in range(n):
+                            Types.make_child_rule_and_child_ref(
+                                child_type_node, f"{name}[{i}]", type_node
+                            )
+                elif obj.meta.get("kind") == "f_field":
+                    Types.make_child_rule_and_child_ref(
+                        child_type_node, name, type_node
+                    )
+                else:
+                    raise ValueError(f"Unknown field kind: {obj.meta.get('kind')}")
+
+            # print("SKIPPED", name, type(obj).__name__)
+            # raise NotImplementedError()
+
+        # Split into nonrt and rt fields
+        nonrt, rt = partition(
+            lambda x: isinstance(x[1], constructed_field), clsfields.items()
+        )
+        # for all nonrt fields, setup the field
+        for name, obj in nonrt:
+            setup_field(name, obj)
+
+        for name, obj in rt:
+            setup_field(name, obj)
 
     def _handle_add_gif(self, name: str, gif: GraphInterface):
         gif.node = self

@@ -288,3 +288,7 @@ pub fn createMutableList(comptime T: type, list_ptr: *std.DoublyLinkedList(T), e
     if (py.PyType_Ready(&L.type_object) < 0) return null;
     return L.create(list_ptr, element_type_obj);
 }
+
+pub fn isLinkedList(comptime T: type) bool {
+    return @typeInfo(T) == .@"struct" and @hasField(T, "first") and @hasField(T, "last") and @hasDecl(T, "Node");
+}

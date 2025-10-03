@@ -728,7 +728,7 @@ class Named(Protocol):
 
 # namespace
 class kicad:
-    from faebryk.core.zig import (
+    from faebryk.core.zig.gen.sexp import (
         footprint,  # noqa: E402, F401
         footprint_v5,  # noqa: E402, F401
         fp_lib_table,  # noqa: E402, F401
