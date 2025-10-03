@@ -78,19 +78,9 @@ ENSURE: 'ensure';
 /// identifier   ::=  id_start id_continue*
 NAME: ID_START ID_CONTINUE*;
 
-/// stringliteral ::= [stringprefix](shortstring | longstring) / stringprefix ::= "r" | "u" | "R" |
-// "U" | "f" | "F" / | "fr" | "Fr" | "fR" | "FR" | "rf" | "rF" | "Rf" | "RF"
-STRING_LITERAL: ([rR] | [uU] | [fF] | ( [fF] [rR]) | ( [rR] [fF]))? (
-		SHORT_STRING
-		| LONG_STRING
-	);
+STRING_LITERAL: ( SHORT_STRING | LONG_STRING);
 
-/// bytesliteral ::= bytesprefix(shortbytes | longbytes) / bytesprefix ::= "b" | "B" | "br" | "Br" |
-// "bR" | "BR" | "rb" | "rB" | "Rb" | "RB"
-BYTES_LITERAL: ([bB] | ( [bB] [rR]) | ( [rR] [bB])) (
-		SHORT_BYTES
-		| LONG_BYTES
-	);
+BYTES_LITERAL: ( SHORT_BYTES | LONG_BYTES);
 
 /// decimalinteger ::=  nonzerodigit digit* | "0"+
 DECIMAL_INTEGER: NON_ZERO_DIGIT DIGIT* | '0'+;

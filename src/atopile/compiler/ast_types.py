@@ -7,735 +7,946 @@ Rules:
 - Invalid *structure* should be impossible to represent.
 """
 
-from __future__ import annotations
-
-from collections.abc import Callable
-from dataclasses import dataclass
-from decimal import Decimal
+from collections.abc import Mapping
 from enum import StrEnum
-from pathlib import Path
-from typing import Protocol, cast, runtime_checkable
+from re import A
+from typing import Literal, NotRequired, TypedDict, cast
 
-from ordered_set import OrderedSet
-
-from faebryk.core.cpp import (
-    GraphInterface,
-    GraphInterfaceHierarchical,
-    GraphInterfaceModuleConnection,
-    LinkNamedParent,
-    LinkParent,
-    LinkSibling,
+from atopile.compiler.graph_mock import (
+    BoundNode,
+    EdgeComposition,
+    EdgeSource,
+    EdgeType,
+    GraphView,
+    LiteralArgs,
+    Node,
 )
-from faebryk.core.node import CNode
-from faebryk.libs.util import Tree
+
+# TODO: Mapping[str, BoundNode] (not supported yet)
+ChildrenT = Mapping[str, object]
 
 
-def compose(parent: _Node, child: _Node) -> _Node:
-    link = LinkParent()
-    child.parent.connect(parent.children, link)
-    return parent
+class ASTType:
+    class Attrs(LiteralArgs):
+        name: str
+
+    class Children(TypedDict): ...
+
+    @staticmethod
+    def get_name(bound_node: BoundNode) -> str:
+        return cast(str, bound_node.node.get_attr(key="name"))
 
 
-class _Node(CNode):
-    @runtime_checkable
-    class Proto_Node(Protocol):
-        is_type: GraphInterfaceHierarchical
-        connections: GraphInterfaceHierarchical
-
-    def __init__(self):
-        super().__init__()
-        # self.is_type = GraphInterfaceHierarchical(is_parent=False)
-        self.connections = GraphInterfaceModuleConnection()
-        CNode.transfer_ownership(self)
-
-    def __setattr__(self, name: str, value, /) -> None:
-        super().__setattr__(name, value)
-        if isinstance(value, GraphInterface):
-            value.node = self
-            value.name = name
-            self.self_gif.connect(value, link=LinkSibling())
-        elif isinstance(value, _Node):
-            # FIXME
-            value.parent.connect(self.children, LinkNamedParent(name))
-
-    def add(self, obj: _Node) -> _Node:
-        compose(self, obj)
-        return self
-
-    def get_children[T: _Node](
-        self,
-        direct_only: bool,
-        types: type[T] | tuple[type[T], ...],
-        include_root: bool = False,
-        f_filter: Callable[[T], bool] | None = None,
-        sort: bool = True,
-    ) -> OrderedSet[T]:
-        return cast(
-            OrderedSet[T],
-            OrderedSet(
-                super().get_children(
-                    direct_only=direct_only,
-                    types=types if isinstance(types, tuple) else (types,),
-                    include_root=include_root,
-                    f_filter=f_filter,  # type: ignore
-                    sort=sort,
-                )
-            ),
+def _compose_children(g: GraphView, bound_node: BoundNode, children: ChildrenT) -> None:
+    for child_id, child_node in children.items():
+        assert isinstance(child_node, BoundNode)
+        EdgeComposition.add_child(
+            bound_node=bound_node, child=child_node.node, child_identifier=child_id
         )
 
-    def get_tree[T: _Node](
-        self,
-        types: type[T] | tuple[type[T], ...],
-        include_root: bool = True,
-        f_filter: Callable[[T], bool] | None = None,
-        sort: bool = True,
-    ) -> Tree[T]:
-        out = self.get_children(
-            direct_only=True,
-            types=types,
-            f_filter=f_filter,
-            sort=sort,
+
+def _create_subgraph(
+    g: GraphView, children: ChildrenT, attrs: LiteralArgs, type_attrs: ASTType.Attrs
+) -> BoundNode:
+    node = g.insert_node(node=Node(**attrs))
+    t = g.insert_node(node=Node(**type_attrs))
+    EdgeType.add_type(bound_node=node, type_node=t.node)
+    if "source" in children:  # probably the right kind of source
+        EdgeSource.add_source(
+            bound_node=node, source_node=cast(BoundNode, children["source"]).node
         )
-        tree = Tree[T](
-            {
-                n: n.get_tree(
-                    types=types,
-                    include_root=False,
-                    f_filter=f_filter,
-                    sort=sort,
-                )
-                for n in out
-            }
-        )
-        if include_root:
-            if isinstance(self, types):
-                if not f_filter or f_filter(self):
-                    tree = Tree[T]({self: tree})
-        return tree
+        children.pop("source")
+    _compose_children(g, node, children)
+    return node
 
 
-@dataclass(order=True)
 class FileLocation:
-    start_line: int
-    start_col: int
-    end_line: int
-    end_col: int
+    type_attrs: ASTType.Attrs = {"name": "FileLocation"}
 
+    class Attrs(LiteralArgs):
+        start_line: int
+        start_col: int
+        end_line: int
+        end_col: int
 
-class SourceChunk(_Node):
-    """
-    A context-free chunk of source code. May not be syntactically valid.
-    TODO: Only available in leaf types
-    """
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**FileLocation.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
 
-    text: str
-    file_location: FileLocation
 
-    def __init__(self, text: str, file_location: FileLocation) -> None:
-        super().__init__()
-        self.text = text
-        self.file_location = file_location
+class SourceChunk:
+    type_attrs: ASTType.Attrs = {"name": "SourceChunk"}
 
+    class Attrs(LiteralArgs):
+        text: str
 
-class TypeRef(_Node):
-    name: str
+    class Children(TypedDict):
+        loc: BoundNode
 
-    def __init__(self, name: str) -> None:
-        super().__init__()
-        self.name = name
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**SourceChunk.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=SourceChunk.type_attrs)
 
+    @staticmethod
+    def get_name(bound_node: BoundNode) -> str:
+        return cast(str, bound_node.node.get_attr(key="name"))
 
-class ImportPath(_Node):
-    path: str
+    @staticmethod
+    def get_text(bound_node: BoundNode) -> str:
+        return cast(str, bound_node.node.get_attr(key="text"))
 
-    def __init__(self, path: str) -> None:
-        super().__init__()
-        self.path = path
 
+class TypeRef:
+    type_attrs: ASTType.Attrs = {"name": "TypeRef"}
 
-class FieldRefPart(_Node):
-    name: str
-    key: int | str | None
+    class Attrs(LiteralArgs):
+        name: str
 
-    def __init__(self, name: str, key: int | str | None = None) -> None:
-        super().__init__()
-        self.name = name
-        self.key = key
+    class Children(TypedDict):
+        source: BoundNode
 
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**TypeRef.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
 
-class FieldRef(_Node):
-    """Dotted field reference composed of parts, each with optional key."""
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=TypeRef.type_attrs)
 
-    pin: int | None
+    @staticmethod
+    def get_name(bound_node: BoundNode) -> str:
+        return cast(str, bound_node.node.get_attr(key="name"))
 
-    def __init__(self, pin: int | None = None) -> None:
-        super().__init__()
-        self.pin = pin
 
+class ImportPath:
+    type_attrs: ASTType.Attrs = {"name": "ImportPath"}
 
-class Quantity(_Node):
-    def __init__(self, value: Number, unit: str | None) -> None:
-        super().__init__()
-        self.value = value
-        self.unit = unit
+    class Attrs(LiteralArgs): ...
 
+    class Children(TypedDict):
+        source: BoundNode
+        string: BoundNode
 
-class String(_Node):
-    value: str
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**ImportPath.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
 
-    def __init__(self, value: str) -> None:
-        super().__init__()
-        self.value = value
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=ImportPath.type_attrs)
 
 
-class Number(_Node):
-    value: Decimal
+# class FieldRefPart(_Node):
+#     __tid__ = _tid("FieldRefPart")
 
-    def __init__(self, value: Decimal) -> None:
-        super().__init__()
-        self.value = value
+#     @classmethod
+#     def create(
+#         cls, graph: GraphView, name: str, key: int | str | None = None
+#     ) -> "FieldRefPart":
+#         attrs: dict[str, Literal] = {"name": name}
+#         if key is not None:
+#             attrs["key"] = key
+#         node = cast(FieldRefPart, super().create(graph, **attrs))
+#         if key is None and node.get_attr(key="key") is None:
+#             set_attr(node, key=None)
+#         return node
 
+#     @property
+#     def name(self) -> str:
+#         return cast(str, self.get_attr(key="name"))
 
-class Boolean(_Node):
-    value: bool
+#     @property
+#     def key(self) -> int | str | None:
+#         return cast(int | str | None, self.get_attr(key="key"))
 
-    def __init__(self, value: bool) -> None:
-        super().__init__()
-        self.value = value
 
+# class FieldRef(_Node):
+#     __tid__ = _tid("FieldRef")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, pin: int | None = None) -> "FieldRef":
+#         attrs: dict[str, Literal] = {}
+#         if pin is not None:
+#             attrs["pin"] = pin
+#         node = cast(FieldRef, super().create(graph, **attrs))
+#         if pin is None and node.get_attr(key="pin") is None:
+#             set_attr(node, pin=None)
+#         return node
 
-class BinaryExpression(_Node):
-    operator: str
-    left: _Node
-    right: _Node
+#     @property
+#     def pin(self) -> int | None:
+#         return cast(int | None, self.get_attr(key="pin"))
 
-    def __init__(self, operator: str, left: _Node, right: _Node) -> None:
-        super().__init__()
-        self.operator = operator
-        self.left = left
-        self.right = right
 
+# class Number(_Node):
+#     __tid__ = _tid("Number")
 
-class GroupExpression(_Node):
-    expression: _Node
+#     @classmethod
+#     def create(cls, graph: GraphView, value: Decimal) -> "Number":
+#         return cast(Number, super().create(graph, value=value))
 
-    def __init__(self, expression: _Node) -> None:
-        super().__init__()
-        self.expression = expression
+#     @property
+#     def value(self) -> Decimal:
+#         return cast(Decimal, self.get_attr(key="value"))
 
 
-class FunctionCall(_Node):
-    name: str
-    args: list[_Node]  # FIXME
+class String:
+    type_attrs: ASTType.Attrs = {"name": "String"}
 
-    def __init__(self, name: str, args: list[_Node]) -> None:
-        super().__init__()
-        self.name = name
-        self._args = args
+    class Attrs(LiteralArgs):
+        string: str
+
+    class Children(TypedDict):
+        source: BoundNode
+
+    @staticmethod
+    def create(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**String.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        for index, arg in enumerate(self._args):
-            self.add(arg, name=f"arg[{index}]")
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=String.type_attrs)
 
+    @staticmethod
+    def get_string(bound_node: BoundNode) -> str:
+        return cast(str, bound_node.node.get_attr(key="string"))
 
-class ComparisonClause(_Node):
-    operator: str
-    _right: _Node
 
-    def __init__(self, operator: str, right: _Node) -> None:
-        super().__init__()
-        self.operator = operator
-        self._right = right
+# class Boolean(_Node):
+#     __tid__ = _tid("Boolean")
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._right, name="right")
+#     @classmethod
+#     def create(cls, graph: GraphView, value: bool) -> "Boolean":
+#         return cast(Boolean, super().create(graph, value=value))
 
+#     @property
+#     def value(self) -> bool:
+#         return cast(bool, self.get_attr(key="value"))
 
-class ComparisonExpression(_Node):
-    _left: _Node
-    _clauses: list[ComparisonClause]
+
+# class Quantity(_Node):
+#     __tid__ = _tid("Quantity")
 
-    def __init__(self, left: _Node, clauses: list[ComparisonClause]) -> None:
-        super().__init__()
-        self._left = left
-        self._clauses = clauses
+#     @classmethod
+#     def create(cls, graph: GraphView, value: Number, unit: str | None) -> "Quantity":
+#         attrs: dict[str, Literal] = {}
+#         if unit is not None:
+#             attrs["unit"] = unit
+#         node = cast(Quantity, super().create(graph, **attrs))
+#         if unit is None and node.get_attr(key="unit") is None:
+#             set_attr(node, unit=None)
+#         add(graph, node, value, "value")
+#         return node
+
+#     @property
+#     def unit(self) -> str | None:
+#         return cast(str | None, self.get_attr(key="unit"))
+
+#     @property
+#     def value(self) -> Number:
+#         return cast(Number, first_child(self, "value"))
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._left, name="left")
-        for index, clause in enumerate(self._clauses):
-            self.add(clause, name=f"clause[{index}]")
 
+# class BinaryExpression(_Node):
+#     __tid__ = _tid("BinaryExpression")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         operator: str,
+#         left: Node,
+#         right: Node,
+#     ) -> "BinaryExpression":
+#         node = cast(BinaryExpression, super().create(graph, operator=operator))
+#         add(graph, node, left, "left")
+#         add(graph, node, right, "right")
+#         return node
+
+#     @property
+#     def operator(self) -> str:
+#         return cast(str, self.get_attr(key="operator"))
 
-class BilateralQuantity(_Node):
-    _quantity: Quantity
-    _tolerance: Quantity
 
-    def __init__(self, quantity: Quantity, tolerance: Quantity) -> None:
-        super().__init__()
-        self._quantity = quantity
-        self._tolerance = tolerance
+# class GroupExpression(_Node):
+#     __tid__ = _tid("GroupExpression")
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._quantity, name="quantity")
-        self.add(self._tolerance, name="tolerance")
+#     @classmethod
+#     def create(cls, graph: GraphView, expression: Node) -> "GroupExpression":
+#         node = cast(GroupExpression, super().create(graph))
+#         add(graph, node, expression, "expression")
+#         return node
+
+#     @property
+#     def expression(self) -> Node:
+#         return first_child(self, "expression")
+
 
+# class FunctionCall(_Node):
+#     __tid__ = _tid("FunctionCall")
 
-class BoundedQuantity(_Node):
-    _start: Quantity
-    _end: Quantity
+#     @classmethod
+#     def create(
+#         cls, graph: GraphView, name: str, args: Sequence[Node]
+#     ) -> "FunctionCall":
+#         node = cast(FunctionCall, super().create(graph, name=name))
+#         for index, arg in enumerate(args):
+#             add(graph, node, arg, f"arg[{index}]")
+#         return node
 
-    def __init__(self, start: Quantity, end: Quantity) -> None:
-        super().__init__()
-        self._start = start
-        self._end = end
+#     @property
+#     def name(self) -> str:
+#         return cast(str, self.get_attr(key="name"))
+
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._start, name="start")
-        self.add(self._end, name="end")
+# def args(self) -> Iterable[Node]:
+#     graph = _graph_for(self)
+#     for edge in graph.child_edges(node=self):
+#         edge_name = edge.name()
+#         if edge_name and edge_name.startswith("arg["):
+#             yield edge.target()
 
 
-class Scope(_Node): ...
+# class ComparisonClause(_Node):
+#     __tid__ = _tid("ComparisonClause")
 
+#     @classmethod
+#     def create(cls, graph: GraphView, operator: str, right: Node) -> "ComparisonClause":
+#         node = cast(ComparisonClause, super().create(graph, operator=operator))
+#         add(graph, node, right, "right")
+#         return node
+
+#     @property
+#     def operator(self) -> str:
+#         return cast(str, self.get_attr(key="operator"))
+
+#     @property
+#     def right(self) -> Node:
+#         return first_child(self, "right")
 
-class File(_Node):
-    """A single .ato file."""
 
-    path: Path | None = None
-    scope: Scope
+# class ComparisonExpression(_Node):
+#     __tid__ = _tid("ComparisonExpression")
 
+#     @classmethod
+#     def create(
+#         cls, graph: GraphView, left: Node, clauses: Sequence[ComparisonClause]
+#     ) -> "ComparisonExpression":
+#         node = cast(ComparisonExpression, super().create(graph))
+#         add(graph, node, left, "left")
+#         for index, clause in enumerate(clauses):
+#             add(graph, node, clause, f"clause[{index}]")
+#         return node
 
-class TextFragment(_Node):
-    """A context-free fragment of ato code."""
+#     @property
+#     def left(self) -> Node:
+#         return first_child(self, "left")
 
-    scope: Scope
 
+# def clauses(self) -> Iterable[ComparisonClause]:
+#     graph = _graph_for(self)
+#     for edge in graph.child_edges(node=self):
+#         edge_name = edge.name()
+#         if edge_name and edge_name.startswith("clause["):
+#             yield cast(ComparisonClause, edge.target())
 
-class Whitespace(_Node): ...
 
+# class BilateralQuantity(_Node):
+#     __tid__ = _tid("BilateralQuantity")
 
-class Comment(_Node): ...
+#     @classmethod
+#     def create(
+#         cls, graph: GraphView, quantity: Quantity, tolerance: Quantity
+#     ) -> "BilateralQuantity":
+#         node = cast(BilateralQuantity, super().create(graph))
+#         add(graph, node, quantity, "quantity")
+#         add(graph, node, tolerance, "tolerance")
+#         return node
 
 
-class BlockDefinition(_Node):
-    class BlockType(StrEnum):
-        COMPONENT = "component"
-        MODULE = "module"
-        INTERFACE = "interface"
+# class BoundedQuantity(_Node):
+#     __tid__ = _tid("BoundedQuantity")
 
-    block_type: BlockType
+#     @classmethod
+#     def create(
+#         cls, graph: GraphView, start: Quantity, end: Quantity
+#     ) -> "BoundedQuantity":
+#         node = cast(BoundedQuantity, super().create(graph))
+#         add(graph, node, start, "start")
+#         add(graph, node, end, "end")
+#         return node
 
-    def __init__(
-        self,
-        block_type: BlockType,
-        type_ref: TypeRef,
-        super_type_ref: TypeRef | None = None,
-    ) -> None:
-        super().__init__()
-        self.block_type = block_type
-        self.type_ref = type_ref
-        if super_type_ref is not None:
-            self.super_type_ref = super_type_ref
 
-        self.scope = Scope()
+# TODO: does this node still make sense?
+class Scope:
+    type_attrs: ASTType.Attrs = {"name": "Scope"}
 
+    class Attrs(LiteralArgs): ...
 
-class CompilationUnit(_Node):
-    """A compilable unit of ato code."""
+    class Children(TypedDict): ...
 
-    _context: File | TextFragment
+    @staticmethod
+    def create(g: GraphView) -> BoundNode:
+        n = g.insert_node(node=Node())
+        t = g.insert_node(node=Node(**Scope.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
 
-    def __init__(self, context: File | TextFragment) -> None:
-        super().__init__()
-        self._context = context
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT) -> BoundNode:
+        return _create_subgraph(
+            g, children, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs
+        )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.add(self._context, name="context")
 
+class File:
+    type_attrs: ASTType.Attrs = {"name": "File"}
 
-class Slice(_Node):
-    start: int | None
-    stop: int | None
-    step: int | None
+    class Attrs(LiteralArgs):
+        path: str | None
 
-    def __init__(self, start: int | None, stop: int | None, step: int | None) -> None:
-        super().__init__()
-        self.start = start
-        self.stop = stop
-        self.step = step
+    class Children(TypedDict):
+        source: BoundNode
+        scope: BoundNode
 
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**File.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=File.type_attrs)
+
+
+# class TextFragment(_Node):
+#     __tid__ = _tid("TextFragment")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, scope: Scope | None = None) -> "TextFragment":
+#         node = cast(TextFragment, super().create(graph))
+#         if scope is None:
+#             scope = Scope.create(graph)
+#         add(graph, node, scope, "scope")
+#         return node
+
+#     @property
+#     def scope(self) -> "Scope":
+#         return cast(Scope, first_child(self, "scope"))
+
+
+# class Whitespace(_Node):
+#     __tid__ = _tid("Whitespace")
+
+#     @classmethod
+#     def create(cls, graph: GraphView) -> "Whitespace":
+#         return cast(Whitespace, super().create(graph))
+
+
+# class Comment(_Node):
+#     __tid__ = _tid("Comment")
+
+#     @classmethod
+#     def create(cls, graph: GraphView) -> "Comment":
+#         return cast(Comment, super().create(graph))
+
+
+class BlockDefinition:
+    BlockTypeT = Literal["component", "module", "interface"]
+
+    type_attrs: ASTType.Attrs = {"name": "BlockDefinition"}
+
+    class Attrs(LiteralArgs):
+        block_type: "BlockDefinition.BlockTypeT"
+
+    class Children(TypedDict):
+        source: BoundNode
+        type_ref: BoundNode
+        super_type_ref: NotRequired[BoundNode]
+        scope: BoundNode
+
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**BlockDefinition.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(
+            g, children, attrs, type_attrs=BlockDefinition.type_attrs
+        )
+
+    @staticmethod
+    def get_block_type(bound_node: BoundNode) -> "BlockDefinition.BlockTypeT":
+        return cast(
+            "BlockDefinition.BlockTypeT", bound_node.node.get_attr(key="block_type")
+        )
+
+
+# class CompilationUnit(_Node):
+#     __tid__ = _tid("CompilationUnit")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, context: Node) -> "CompilationUnit":
+#         node = cast(CompilationUnit, super().create(graph))
+#         add(graph, node, context, "context")
+#         return node
+
+
+# class Slice(_Node):
+#     __tid__ = _tid("Slice")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         start: int | None,
+#         stop: int | None,
+#         step: int | None,
+#     ) -> "Slice":
+#         attrs: dict[str, Literal] = {}
+#         if start is not None:
+#             attrs["start"] = start
+#         if stop is not None:
+#             attrs["stop"] = stop
+#         if step is not None:
+#             attrs["step"] = step
+#         node = cast(Slice, super().create(graph, **attrs))
+#         if start is None and node.get_attr(key="start") is None:
+#             set_attr(node, start=None)
+#         if stop is None and node.get_attr(key="stop") is None:
+#             set_attr(node, stop=None)
+#         if step is None and node.get_attr(key="step") is None:
+#             set_attr(node, step=None)
+#         return node
+
+#     @property
+#     def start(self) -> int | None:
+#         return cast(int | None, self.get_attr(key="start"))
+
+#     @property
+#     def stop(self) -> int | None:
+#         return cast(int | None, self.get_attr(key="stop"))
+
+#     @property
+#     def step(self) -> int | None:
+#         return cast(int | None, self.get_attr(key="step"))
+
+
+# class IterableFieldRef(_Node):
+#     __tid__ = _tid("IterableFieldRef")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         field_ref: FieldRef,
+#         slice_: Slice | None = None,
+#     ) -> "IterableFieldRef":
+#         node = cast(IterableFieldRef, super().create(graph))
+#         add(graph, node, field_ref, "field")
+#         if slice_ is not None:
+#             add(graph, node, slice_, "slice")
+#         return node
+
+
+# class FieldRefList(_Node):
+#     __tid__ = _tid("FieldRefList")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, items: Sequence[FieldRef]) -> "FieldRefList":
+#         node = cast(FieldRefList, super().create(graph))
+#         for index, item in enumerate(items):
+#             add(graph, node, item, f"item[{index}]")
+#         return node
+
+
+# def items(self) -> Iterable[FieldRef]:
+#     graph = _graph_for(self)
+#     for edge in graph.child_edges(node=self):
+#         edge_name = edge.name()
+#         if edge_name and edge_name.startswith("item["):
+#             yield cast(FieldRef, edge.target())
+
+
+# class ForStmt(_Node):
+#     __tid__ = _tid("ForStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, target: str, iterable: Node) -> "ForStmt":
+#         node = cast(ForStmt, super().create(graph, target=target))
+#         add(graph, node, iterable, "iterable")
+#         add(graph, node, Scope.create(graph), "scope")
+#         return node
 
-class IterableFieldRef(_Node):
-    _field_ref: FieldRef
-    _slice: Slice | None
+#     @property
+#     def target(self) -> str:
+#         return cast(str, self.get_attr(key="target"))
+
+#     @property
+#     def scope(self) -> Scope:
+#         return cast(Scope, first_child(self, "scope"))
 
-    def __init__(self, field_ref: FieldRef, slice_: Slice | None = None) -> None:
-        super().__init__()
-        self._field_ref = field_ref
-        self._slice = slice_
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._field_ref, name="field")
-        if self._slice is not None:
-            self.add(self._slice, name="slice")
+class PragmaStmt:
+    type_attrs: ASTType.Attrs = {"name": "PragmaStmt"}
 
+    class Attrs(LiteralArgs):
+        pragma: str
 
-class FieldRefList(_Node):
-    _items: list[FieldRef]
+    class Children(TypedDict):
+        source: BoundNode
 
-    def __init__(self, items: list[FieldRef]) -> None:
-        super().__init__()
-        self._items = items
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**PragmaStmt.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=PragmaStmt.type_attrs)
+
+    @staticmethod
+    def get_pragma(bound_node: BoundNode) -> str:
+        return cast(str, bound_node.node.get_attr(key="pragma"))
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        for index, item in enumerate(self._items):
-            self.add(item, name=f"item[{index}]")
 
+class ImportStmt:
+    type_attrs: ASTType.Attrs = {"name": "ImportStmt"}
 
-class ForStmt(_Node):
-    scope: Scope
-    target: str
-    _iterable: _Node
+    class Attrs(LiteralArgs): ...
 
-    def __init__(self, target: str, iterable: _Node) -> None:
-        super().__init__()
-        self.target = target
-        self._iterable = iterable
+    class Children(TypedDict):
+        source: BoundNode
+        path: NotRequired[BoundNode]
+        type_ref: BoundNode
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._iterable, name="iterable")
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**ImportStmt.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=ImportStmt.type_attrs)
 
 
-class PragmaStmt(_Node):
-    pragma: str
+class AssignQuantityStmt:
+    type_attrs: ASTType.Attrs = {"name": "AssignQuantityStmt"}
 
-    def __init__(self, pragma: str) -> None:
-        super().__init__()
-        self.pragma = pragma
+    class Attrs(LiteralArgs): ...
 
+    class Children(TypedDict):
+        target: BoundNode
+        quantity: BoundNode
+        source: BoundNode
 
-class ImportStmt(_Node):
-    def __init__(self, path: ImportPath | None, type_ref: TypeRef) -> None:
-        super().__init__()
-        if path is not None:
-            self.path = path
-        self.type_ref = type_ref
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**AssignQuantityStmt.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
 
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(
+            g, children, attrs, type_attrs=AssignQuantityStmt.type_attrs
+        )
 
-class AssignQuantityStmt(_Node):
-    _target: FieldRef | "DeclarationStmt"
-    _quantity: Quantity | BilateralQuantity | BoundedQuantity
 
-    def __init__(
-        self,
-        target: FieldRef | "DeclarationStmt",
-        quantity: Quantity | BilateralQuantity | BoundedQuantity,
-    ) -> None:
-        super().__init__()
-        self._target = target
-        self._quantity = quantity
+# class TemplateArg(_Node):
+#     __tid__ = _tid("TemplateArg")
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._target, name="target")
-        self.add(self._quantity, name="quantity")
+#     @classmethod
+#     def create(cls, graph: GraphView, name: str, value: Node) -> "TemplateArg":
+#         node = cast(TemplateArg, super().create(graph, name=name))
+#         add(graph, node, value, "value")
+#         return node
 
+#     @property
+#     def name(self) -> str:
+#         return cast(str, self.get_attr(key="name"))
 
-class TemplateArg(_Node):
-    name: str
-    _value: _Node
 
-    def __init__(self, name: str, value: _Node) -> None:
-        super().__init__()
-        self.name = name
-        self._value = value
+# class Template(_Node):
+#     __tid__ = _tid("Template")
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._value, name="value")
+#     @classmethod
+#     def create(cls, graph: GraphView, args: Sequence[TemplateArg]) -> "Template":
+#         node = cast(Template, super().create(graph))
+#         for index, arg in enumerate(args):
+#             add(graph, node, arg, f"arg[{index}]")
+#         return node
 
+
+class AssignValueStmt:
+    type_attrs: ASTType.Attrs = {"name": "AssignValueStmt"}
+
+    class Attrs(LiteralArgs): ...
 
-class Template(_Node):
-    _args: list[TemplateArg]
+    class Children(TypedDict):
+        source: BoundNode
+        target: BoundNode
+        value: BoundNode
 
-    def __init__(self, args: list[TemplateArg] | None = None) -> None:
-        super().__init__()
-        self._args = args or []
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**AssignValueStmt.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(
+            g, children, attrs, type_attrs=AssignValueStmt.type_attrs
+        )
+
+
+class AssignNewStmt:
+    type_attrs: ASTType.Attrs = {"name": "AssignNewStmt"}
 
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        for index, arg in enumerate(self._args):
-            self.add(arg, name=f"arg[{index}]")
+    class Attrs(LiteralArgs):
+        new_count: NotRequired[int]
+
+    class Children(TypedDict):
+        target: BoundNode
+        type_ref: BoundNode
+        template: NotRequired[BoundNode]
+        source: BoundNode
+
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**AssignNewStmt.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=AssignNewStmt.type_attrs)
+
+
+# class CumAssignStmt(_Node):
+#     __tid__ = _tid("CumAssignStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView) -> "CumAssignStmt":
+#         return cast(CumAssignStmt, super().create(graph))
+
+
+# class SetAssignStmt(_Node):
+#     __tid__ = _tid("SetAssignStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView) -> "SetAssignStmt":
+#         return cast(SetAssignStmt, super().create(graph))
+
+
+# class ConnectStmt(_Node):
+#     __tid__ = _tid("ConnectStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, left: Node, right: Node) -> "ConnectStmt":
+#         node = cast(ConnectStmt, super().create(graph))
+#         add(graph, node, left, "left")
+#         add(graph, node, right, "right")
+#         return node
+
+
+# class DirectedConnectStmt(_Node):
+#     class Direction(StrEnum):
+#         RIGHT = "RIGHT"
+#         LEFT = "LEFT"
+
+#     __tid__ = _tid("DirectedConnectStmt")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         left: Node,
+#         right: Node,
+#         direction: "DirectedConnectStmt.Direction",
+#     ) -> "DirectedConnectStmt":
+#         node = cast(
+#             DirectedConnectStmt,
+#             super().create(graph, direction=direction.value),
+#         )
+#         add(graph, node, left, "left")
+#         add(graph, node, right, "right")
+#         return node
+
+#     @property
+#     def direction(self) -> "DirectedConnectStmt.Direction":
+#         value = cast(str, self.get_attr(key="direction"))
+#         return DirectedConnectStmt.Direction(value)
+
+
+# class RetypeStmt(_Node):
+#     __tid__ = _tid("RetypeStmt")
+
+#     @classmethod
+#     def create(
+#         cls, graph: GraphView, field_ref: FieldRef, type_ref: TypeRef
+#     ) -> "RetypeStmt":
+#         node = cast(RetypeStmt, super().create(graph))
+#         add(graph, node, field_ref, "field_ref")
+#         add(graph, node, type_ref, "type_ref")
+#         return node
+
+
+# class PinDeclaration(_Node):
+#     class Kind(StrEnum):
+#         NAME = "name"
+#         NUMBER = "number"
+#         STRING = "string"
 
-
-class AssignValueStmt(_Node):
-    _target: FieldRef | "DeclarationStmt"
-    _value: _Node
-
-    def __init__(self, target: FieldRef | "DeclarationStmt", value: _Node) -> None:
-        super().__init__()
-        self._target = target
-        self._value = value
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._target, name="target")
-        self.add(self._value, name="value")
-
-
-class AssignNewStmt(_Node):
-    _target: FieldRef | "DeclarationStmt"
-    _type_ref: TypeRef
-    _template: Template | None
-    new_count: int | None
-
-    def __init__(
-        self,
-        target: FieldRef | "DeclarationStmt",
-        type_ref: TypeRef,
-        template: Template | None = None,
-        count: int | None = None,
-    ) -> None:
-        super().__init__()
-        self._target = target
-        self._type_ref = type_ref
-        self._template = template
-        self.new_count = count
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._target, name="target")
-        self.add(self._type_ref, name="type_ref")
-        if self._template is not None:
-            self.add(self._template, name="template")
-
-
-class CumAssignStmt(_Node): ...
-
-
-class SetAssignStmt(_Node): ...
-
-
-class ConnectStmt(_Node):
-    _left_connectable: _Node
-    _right_connectable: _Node
-
-    def __init__(self, left_connectable: _Node, right_connectable: _Node) -> None:
-        super().__init__()
-        self._left_connectable = left_connectable
-        self._right_connectable = right_connectable
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.add(self._left_connectable, name="left")
-        self.add(self._right_connectable, name="right")
-
-
-class DirectedConnectStmt(_Node):
-    class Direction(StrEnum):
-        RIGHT = "RIGHT"
-        LEFT = "LEFT"
-
-    direction: Direction
-    _left_bridgeable: _Node
-    _right_bridgeable: "_Node | DirectedConnectStmt"
-
-    def __init__(
-        self,
-        left_bridgeable: _Node,
-        right_bridgeable: "_Node | DirectedConnectStmt",
-        direction: Direction,
-    ) -> None:
-        super().__init__()
-        self._left_bridgeable = left_bridgeable
-        self._right_bridgeable = right_bridgeable
-        self.direction = direction
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.add(self._left_bridgeable, name="left")
-        self.add(self._right_bridgeable, name="right")
-
-
-class RetypeStmt(_Node):
-    _field_ref: FieldRef
-    _type_ref: TypeRef
-
-    def __init__(self, field_ref: FieldRef, type_ref: TypeRef) -> None:
-        super().__init__()
-        self._field_ref = field_ref
-        self._type_ref = type_ref
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._field_ref, name="field_ref")
-        self.add(self._type_ref, name="type_ref")
-
-
-class PinDeclaration(_Node):
-    class Kind(StrEnum):
-        NAME = "name"
-        NUMBER = "number"
-        STRING = "string"
-
-    kind: Kind
-    value: str | int
-    _literal: _Node | None
-
-    def __init__(
-        self, kind: Kind, value: str | int, literal: _Node | None = None
-    ) -> None:
-        super().__init__()
-        self.kind = kind
-        self.value = value
-        self._literal = literal
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        if self._literal is not None:
-            self.add(self._literal, name="literal")
-
-
-class SignaldefStmt(_Node):
-    name: str
-
-    def __init__(self, name: str) -> None:
-        super().__init__()
-        self.name = name
-
-
-class AssertStmt(_Node):
-    _comparison: ComparisonExpression
-
-    def __init__(self, comparison: ComparisonExpression) -> None:
-        super().__init__()
-        self._comparison = comparison
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._comparison, name="comparison")
-
-
-class DeclarationStmt(_Node):
-    _field_ref: FieldRef
-    _type_ref: TypeRef | None
-
-    def __init__(self, field_ref: FieldRef, type_ref: TypeRef | None = None) -> None:
-        super().__init__()
-        self._field_ref = field_ref
-        self._type_ref = type_ref
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._field_ref, name="field_ref")
-        if self._type_ref is not None:
-            self.add(self._type_ref, name="type_ref")
-
-    @property
-    def field_ref(self) -> FieldRef:
-        return self._field_ref
-
-    @property
-    def type_ref(self) -> TypeRef | None:
-        return self._type_ref
-
-
-class StringStmt(_Node):
-    _string: String
-
-    def __init__(self, string: String) -> None:
-        super().__init__()
-        self._string = string
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        self.add(self._string, name="string")
-
-
-class PassStmt(_Node): ...
-
-
-class TraitStmt(_Node):
-    _target: FieldRef | None
-    _type_ref: TypeRef
-    constructor: str | None
-    _template: Template | None
-
-    def __init__(
-        self,
-        type_ref: TypeRef,
-        target: FieldRef | None = None,
-        constructor: str | None = None,
-        template: Template | None = None,
-    ) -> None:
-        super().__init__()
-        self._type_ref = type_ref
-        self._target = target
-        self.constructor = constructor
-        self._template = template
-
-    def __postinit__(self, *args, **kwargs) -> None:
-        super().__postinit__(*args, **kwargs)
-        if self._target is not None:
-            self.add(self._target, name="target")
-        self.add(self._type_ref, name="type_ref")
-        if self._template is not None:
-            self.add(self._template, name="template")
-
-
-ASTNode = (
-    AssertStmt,
-    AssignNewStmt,
-    AssignQuantityStmt,
-    AssignValueStmt,
-    BilateralQuantity,
-    BinaryExpression,
-    BlockDefinition,
-    BlockDefinition.BlockType,
-    Boolean,
-    BoundedQuantity,
-    Comment,
-    ComparisonClause,
-    ComparisonExpression,
-    CompilationUnit,
-    ConnectStmt,
-    CumAssignStmt,
-    DeclarationStmt,
-    DirectedConnectStmt,
-    FieldRef,
-    FieldRefList,
-    FieldRefPart,
-    File,
-    ForStmt,
-    FunctionCall,
-    GroupExpression,
-    ImportPath,
-    ImportStmt,
-    IterableFieldRef,
-    Number,
-    PassStmt,
-    PinDeclaration,
-    PragmaStmt,
-    Quantity,
-    RetypeStmt,
-    Scope,
-    SetAssignStmt,
-    SignaldefStmt,
-    Slice,
-    String,
-    StringStmt,
-    Template,
-    TemplateArg,
-    TextFragment,
-    TraitStmt,
-    TypeRef,
-    Whitespace,
-)
+#     __tid__ = _tid("PinDeclaration")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         kind: "PinDeclaration.Kind",
+#         value: str | int,
+#         literal: Node | None = None,
+#     ) -> "PinDeclaration":
+#         node = cast(
+#             PinDeclaration,
+#             super().create(graph, kind=kind.value, value=value),
+#         )
+#         if literal is not None:
+#             add(graph, node, literal, "literal")
+#         return node
+
+#     @property
+#     def kind(self) -> "PinDeclaration.Kind":
+#         value = cast(str, self.get_attr(key="kind"))
+#         return PinDeclaration.Kind(value)
+
+#     @property
+#     def value(self) -> str | int:
+#         return cast(str | int, self.get_attr(key="value"))
+
+
+# class SignaldefStmt(_Node):
+#     __tid__ = _tid("SignaldefStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, name: str) -> "SignaldefStmt":
+#         return cast(SignaldefStmt, super().create(graph, name=name))
+
+#     @property
+#     def name(self) -> str:
+#         return cast(str, self.get_attr(key="name"))
+
+
+# class AssertStmt(_Node):
+#     __tid__ = _tid("AssertStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView, comparison: Node) -> "AssertStmt":
+#         node = cast(AssertStmt, super().create(graph))
+#         add(graph, node, comparison, "comparison")
+#         return node
+
+
+# class DeclarationStmt(_Node):
+#     __tid__ = _tid("DeclarationStmt")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         field_ref: FieldRef,
+#         type_ref: TypeRef | None = None,
+#     ) -> "DeclarationStmt":
+#         node = cast(DeclarationStmt, super().create(graph))
+#         add(graph, node, field_ref, "field_ref")
+#         if type_ref is not None:
+#             add(graph, node, type_ref, "type_ref")
+#         return node
+
+
+class StringStmt:
+    type_attrs: ASTType.Attrs = {"name": "StringStmt"}
+
+    class Attrs(LiteralArgs): ...
+
+    class Children(TypedDict):
+        source: BoundNode
+        string: BoundNode
+
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        n = g.insert_node(node=Node(**attrs))
+        t = g.insert_node(node=Node(**StringStmt.type_attrs))
+        EdgeType.add_type(bound_node=n, type_node=t.node)
+        return n
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=StringStmt.type_attrs)
+
+
+# class PassStmt(_Node):
+#     __tid__ = _tid("PassStmt")
+
+#     @classmethod
+#     def create(cls, graph: GraphView) -> "PassStmt":
+#         return cast(PassStmt, super().create(graph))
+
+
+# class TraitStmt(_Node):
+#     __tid__ = _tid("TraitStmt")
+
+#     @classmethod
+#     def create(
+#         cls,
+#         graph: GraphView,
+#         type_ref: TypeRef,
+#         target: FieldRef | None = None,
+#         constructor: str | None = None,
+#         template: Template | None = None,
+#     ) -> "TraitStmt":
+#         attrs: dict[str, Literal] = {}
+#         if constructor is not None:
+#             attrs["constructor"] = constructor
+#         node = cast(TraitStmt, super().create(graph, **attrs))
+#         add(graph, node, type_ref, "type_ref")
+#         if target is not None:
+#             add(graph, node, target, "target")
+#         if template is not None:
+#             add(graph, node, template, "template")
+#         if constructor is None and node.get_attr(key="constructor") is None:
+#             set_attr(node, constructor=None)
+#         return node
