@@ -95,13 +95,13 @@ test "basic typegraph" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const tn1 = try Node.init(a);
-    defer tn1.deinit();
+    // defer tn1.deinit();
     const tn2 = try Node.init(a);
-    defer tn2.deinit();
+    // defer tn2.deinit();
     const in1 = try Node.init(a);
-    defer in1.deinit();
+    // defer in1.deinit();
     const in2 = try Node.init(a);
-    defer in2.deinit();
+    // defer in2.deinit();
 
     _ = try g.insert_node(tn1);
     const btn2 = try g.insert_node(tn2);
@@ -113,13 +113,11 @@ test "basic typegraph" {
 
     // init ---------------------------------------------------------------------------------------
     const et11 = try EdgeType.init(g.allocator, tn1, in1);
-    defer et11.deinit();
     _ = try g.insert_edge(et11);
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, tn1));
 
     // add_instance -------------------------------------------------------------------------------
     const bet22 = try EdgeType.add_instance(btn2, bin2);
-    defer bet22.edge.deinit();
     try std.testing.expect(EdgeType.is_node_instance_of(bin2, tn2));
 
     // is_edge_instance -------------------------------------------------------------------------------
@@ -162,11 +160,11 @@ test "basic typegraph" {
     try std.testing.expect(Node.is_same(EdgeType.get_instance_node(instances.items[0].edge).?, in2));
 
     // Print collected information for visibility
-    std.debug.print("collected instances: {d}\n", .{instances.items.len});
-    for (instances.items, 0..) |be, i| {
-        const equals_in2 = Node.is_same(EdgeType.get_instance_node(be.edge).?, in2);
-        std.debug.print("instance[{d}]: equals_in2={}\n", .{ i, equals_in2 });
-    }
+    // std.debug.print("collected instances: {d}\n", .{instances.items.len});
+    // for (instances.items, 0..) |be, i| {
+    //     const equals_in2 = Node.is_same(EdgeType.get_instance_node(be.edge).?, in2);
+    //     std.debug.print("instance[{d}]: equals_in2={}\n", .{ i, equals_in2 });
+    // }
 
     // has to be deleted first
     defer g.deinit();

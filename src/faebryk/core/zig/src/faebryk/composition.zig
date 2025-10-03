@@ -98,20 +98,15 @@ test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(std.testing.allocator);
     const n1 = try Node.init(a);
-    defer n1.deinit();
     const n2 = try Node.init(a);
-    defer n2.deinit();
     const n3 = try Node.init(a);
-    defer n3.deinit();
 
     const bn1 = try g.insert_node(n1);
     const bn2 = try g.insert_node(n2);
     const bn3 = try g.insert_node(n3);
 
-    const be12 = try EdgeComposition.add_child(bn1, n2, "child1");
-    defer be12.edge.deinit();
-    const be13 = try EdgeComposition.add_child(bn1, n3, "child2");
-    defer be13.edge.deinit();
+    _ = try EdgeComposition.add_child(bn1, n2, "child1");
+    _ = try EdgeComposition.add_child(bn1, n3, "child2");
 
     // has to be deleted first
     defer g.deinit();

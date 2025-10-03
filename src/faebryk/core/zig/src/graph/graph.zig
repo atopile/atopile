@@ -540,10 +540,18 @@ pub const GraphView = struct {
 
         for (g.edges.items) |edge| {
             edge._ref_count.dec(g);
+            edge._ref_count.check_in_use() catch {
+                continue;
+            };
+            edge.deinit();
         }
         g.edges.deinit();
         for (g.nodes.items) |node| {
             node._ref_count.dec(g);
+            node._ref_count.check_in_use() catch {
+                continue;
+            };
+            node.deinit();
         }
         g.nodes.deinit();
     }
