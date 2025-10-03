@@ -351,6 +351,16 @@ pub const Edge = struct {
         return null;
     }
 
+    pub fn get_other_node(self: *const @This(), N: NodeReference) ?NodeReference {
+        if (Node.is_same(self.source, N)) {
+            return self.target;
+        } else if (Node.is_same(self.target, N)) {
+            return self.source;
+        } else {
+            return null; // Returns null if given node and edge were not connected in the first place
+        }
+    }
+
     /// No guarantee that there is only one
     pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: EdgeType, is_target: ?bool) ?BoundEdgeReference {
         const Visit = struct {
@@ -397,6 +407,54 @@ pub const Edge = struct {
 
 pub const Path = struct {
     edges: std.ArrayList(EdgeReference),
+
+    pub fn init(a: std.mem.Allocator) @This() {
+        return .{
+            .edges = std.ArrayList(EdgeReference).init(a),
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.edges.deinit();
+    }
+
+    pub fn print_path(self: *const @This()) void {
+        std.debug.print("path length: {}\t", .{self.edges.items.len});
+        for (self.edges.items) |edge| {
+            std.debug.print("edge: {}\t", .{edge.attributes.uuid});
+        }
+        std.debug.print("\n", .{});
+    }
+
+    pub fn get_last_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
+        if (self.edges.items.len == 0) {
+            return null;
+        }
+        // const first_edge = self.edges.items[0];
+        const last_edge = self.edges.items[self.edges.items.len - 1];
+
+        // special case - path length 1
+        if (self.edges.items.len == 1) {
+            return bn.g.bind(last_edge.get_other_node(bn.node) orelse return null);
+        }
+        const second_last_edge = self.edges.items[self.edges.items.len - 2];
+
+        // this doesn't check if the start and end node are the same
+        if (Node.is_same(last_edge.target, second_last_edge.target)) {
+            return bn.g.bind(last_edge.get_other_node(last_edge.target) orelse return null);
+        }
+        if (Node.is_same(last_edge.target, second_last_edge.source)) {
+            return bn.g.bind(last_edge.get_other_node(last_edge.target) orelse return null);
+        }
+        if (Node.is_same(last_edge.source, second_last_edge.target)) {
+            return bn.g.bind(last_edge.get_other_node(last_edge.source) orelse return null);
+        }
+        if (Node.is_same(last_edge.source, second_last_edge.source)) {
+            return bn.g.bind(last_edge.get_other_node(last_edge.source) orelse return null);
+        }
+
+        return null;
+    }
 };
 
 pub const BoundNodeReference = struct {
@@ -596,7 +654,158 @@ pub const GraphView = struct {
 
         return Result{ .EXHAUSTED = {} };
     }
+
+    pub fn visit_paths_bfs(g: *@This(), bn: BoundNodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
+        // tracks status
+        const Result = visitor.VisitResult(T);
+
+        // edge visitor struct, this is a nested visitor used to help explore edges during the BFS
+        const EdgeVisitor = struct {
+            pub fn visit_fn(self_ptr: *anyopaque, edge: EdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                _ = self;
+                _ = edge;
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        const edge_visitor_instance = EdgeVisitor{};
+        _ = edge_visitor_instance;
+
+        // Create open path queue
+        var open_path_queue = std.ArrayList(Path).init(g.allocator);
+        defer {
+            for (open_path_queue.items) |*path| {
+                path.deinit();
+            }
+            open_path_queue.deinit();
+        }
+
+        // visited nodes list
+        var visited_nodes = std.ArrayList(NodeReference).init(g.allocator);
+        defer visited_nodes.deinit();
+
+        // Get initial edges
+        const initial_edges = bn.get_edges() orelse {
+            return Result{ .ERROR = error.NoEdges };
+        };
+
+        // add initial edges to open path queue
+        std.debug.print("initial_edges: ", .{});
+        for (initial_edges.items) |edge| {
+            std.debug.print("{} ", .{edge.attributes.uuid});
+            var path = Path.init(g.allocator);
+            path.edges.append(edge) catch |err| {
+                return Result{ .ERROR = err };
+            };
+            open_path_queue.append(path) catch |err| {
+                return Result{ .ERROR = err };
+            };
+        }
+        std.debug.print("\n", .{});
+
+        // start iterating through queue
+        while (open_path_queue.items.len > 0) {
+            // pop from start of queue
+            var path = open_path_queue.pop() orelse unreachable;
+            defer path.deinit();
+            path.print_path();
+
+            // run path visitor provided to BFS
+            const result = f(ctx, path);
+
+            // get node at end of path
+            const node_at_end = path.get_last_node(bn) orelse {
+                return Result{ .ERROR = error.InvalidPath };
+            };
+            std.debug.print("node_at_end: {}\n", .{node_at_end.node.attributes.uuid});
+
+            // mark node at end of path as visited
+            visited_nodes.append(node_at_end.node) catch |err| {
+                return Result{ .ERROR = err };
+            };
+
+            // use edge visitor on node_at_end to find more paths
+
+            switch (result) {
+                .CONTINUE => {},
+                .STOP => return Result{ .STOP = {} },
+                .ERROR => |err| return Result{ .ERROR = err },
+                .OK => |value| return Result{ .OK = value },
+                .EXHAUSTED => return Result{ .EXHAUSTED = {} },
+            }
+        }
+
+        if (open_path_queue.items.len > 0) {
+            for (open_path_queue.items) |path| {
+                path.print_path();
+            }
+        } else {
+            std.debug.print("path queue empty\n", .{});
+        }
+
+        // open_path_queue.append(Path.init(g.allocator)) catch unreachable;
+        // open_path_queue.items[open_path_queue.items.len - 1].edges.append(edge) catch unreachable;
+
+        return Result{ .EXHAUSTED = {} };
+    }
 };
+
+test "visit_paths_bfs" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    const n1 = try Node.init(a);
+    n1.attributes.uuid = 1001;
+    defer n1.deinit();
+    const n2 = try Node.init(a);
+    n2.attributes.uuid = 1002;
+    defer n2.deinit();
+    const n3 = try Node.init(a);
+    n3.attributes.uuid = 1003;
+    defer n3.deinit();
+    const n4 = try Node.init(a);
+    n4.attributes.uuid = 1004;
+    defer n4.deinit();
+    const e1 = try Edge.init(a, n1, n2, 1759242069);
+    e1.attributes.uuid = 2001;
+    defer e1.deinit();
+    const e2 = try Edge.init(a, n1, n3, 1759242069);
+    e2.attributes.uuid = 2002;
+    defer e2.deinit();
+    const e3 = try Edge.init(a, n2, n4, 1759242069);
+    e3.attributes.uuid = 2003;
+    defer e3.deinit();
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(n1);
+    _ = try g.insert_node(n2);
+    _ = try g.insert_node(n3);
+    _ = try g.insert_node(n4);
+    _ = try g.insert_edge(e1);
+    _ = try g.insert_edge(e2);
+    _ = try g.insert_edge(e3);
+
+    const MockPathVisitor = struct {
+        // visitor context
+        x: i64 = 0,
+
+        // visitor function
+        pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+            const self: *@This() = @ptrCast(@alignCast(self_ptr));
+            _ = path; // doing nothing with the path in this example
+
+            // just counting the number of times the visitor has ran
+            self.x += 1;
+            std.debug.print("visit_fn iterations: {}\n", .{self.x});
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+
+    var visitor_instance = MockPathVisitor{};
+    _ = g.visit_paths_bfs(bn1, void, &visitor_instance, MockPathVisitor.visit_fn);
+
+    // be1.get_nodes();
+}
 
 test "basic" {
     const a = std.testing.allocator;
