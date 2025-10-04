@@ -18,11 +18,12 @@ from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
-from atopile.compiler.graph_mock import BoundNode, GraphView
+from atopile.compiler.graph_mock import BoundNode
 from atopile.compiler.parse import parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
+from faebryk.core.zig.gen.graph.graph import GraphView
 
 
 class Visitor(AtoParserVisitor):

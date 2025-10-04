@@ -14,12 +14,13 @@ from typing import Literal, NotRequired, TypedDict, cast
 from atopile.compiler.graph_mock import (
     BoundNode,
     EdgeComposition,
-    EdgeSource,
-    EdgeType,
-    GraphView,
     LiteralArgs,
     Node,
+    NodeHelpers,
 )
+from faebryk.core.zig.gen.faebryk.node_type import EdgeType
+from faebryk.core.zig.gen.faebryk.source import EdgeSource
+from faebryk.core.zig.gen.graph.graph import GraphView
 
 # TODO: Mapping[str, BoundNode] (not supported yet)
 ChildrenT = Mapping[str, object]
@@ -33,13 +34,13 @@ class ASTType:
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="name"))
+        return cast(str, bound_node.node().get_attr(key="name"))
 
 
 def _create(g: GraphView, attrs: LiteralArgs, type_attrs: ASTType.Attrs) -> BoundNode:
-    n = g.insert_node(node=Node(**attrs))
-    t = g.insert_node(node=Node(**type_attrs))
-    EdgeType.add_type(bound_node=n, type_node=t.node)
+    n = g.insert_node(node=Node.create(**attrs))
+    t = g.insert_node(node=Node.create(**type_attrs))
+    EdgeType.add_instance(bound_type_node=n, bound_instance_node=t)
     return n
 
 
@@ -52,11 +53,11 @@ def _create_subgraph(
         assert isinstance(child_node, BoundNode)
 
         if child_id == "source":  # hopefully the right kind of source
-            EdgeSource.add_source(bound_node=n, source_node=child_node.node)
+            EdgeSource.add_source(bound_node=n, source_node=child_node.node())
             continue
 
         EdgeComposition.add_child(
-            bound_node=n, child=child_node.node, child_identifier=child_id
+            bound_node=n, child=child_node.node(), child_identifier=child_id
         )
 
     return n
@@ -95,11 +96,11 @@ class SourceChunk:
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="name"))
+        return cast(str, bound_node.node().get_attr(key="name"))
 
     @staticmethod
     def get_text(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="text"))
+        return cast(str, bound_node.node().get_attr(key="text"))
 
 
 class TypeRef:
@@ -121,7 +122,7 @@ class TypeRef:
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="name"))
+        return cast(str, bound_node.node().get_attr(key="name"))
 
 
 class ImportPath:
@@ -162,11 +163,11 @@ class FieldRefPart:
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="name"))
+        return cast(str, bound_node.node().get_attr(key="name"))
 
     @staticmethod
     def get_key(bound_node: BoundNode) -> int | str | None:
-        return cast(int | str | None, bound_node.node.get_attr(key="key"))
+        return cast(int | str | None, bound_node.node().get_attr(key="key"))
 
 
 class FieldRef:
@@ -206,7 +207,7 @@ class Number:
 
     @staticmethod
     def get_value(bound_node: BoundNode) -> float:
-        return cast(float, bound_node.node.get_attr(key="value"))
+        return cast(float, bound_node.node().get_attr(key="value"))
 
 
 class Boolean:
@@ -444,7 +445,7 @@ class BlockDefinition:
     @staticmethod
     def get_block_type(bound_node: BoundNode) -> "BlockDefinition.BlockTypeT":
         return cast(
-            "BlockDefinition.BlockTypeT", bound_node.node.get_attr(key="block_type")
+            "BlockDefinition.BlockTypeT", bound_node.node().get_attr(key="block_type")
         )
 
 
@@ -543,7 +544,7 @@ class PragmaStmt:
 
     @staticmethod
     def get_pragma(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="pragma"))
+        return cast(str, bound_node.node().get_attr(key="pragma"))
 
 
 class ImportStmt:
@@ -857,3 +858,60 @@ class TraitStmt:
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
         return _create_subgraph(g, dict(children), attrs, TraitStmt.type_attrs)
+
+
+# TODO: generic get_attrs in API
+def get_attrs(bound_node: BoundNode) -> dict[str, int | float | str | bool]:
+    attrs_class_by_type_name = {
+        "FileLocation": FileLocation.Attrs,
+        "SourceChunk": SourceChunk.Attrs,
+        "TypeRef": TypeRef.Attrs,
+        "ImportPath": ImportPath.Attrs,
+        "FieldRefPart": FieldRefPart.Attrs,
+        "FieldRef": FieldRef.Attrs,
+        "Number": Number.Attrs,
+        "Boolean": Boolean.Attrs,
+        "Unit": Unit.Attrs,
+        "Quantity": Quantity.Attrs,
+        "BinaryExpression": BinaryExpression.Attrs,
+        "GroupExpression": GroupExpression.Attrs,
+        "ComparisonClause": ComparisonClause.Attrs,
+        "ComparisonExpression": ComparisonExpression.Attrs,
+        "BilateralQuantity": BilateralQuantity.Attrs,
+        "BoundedQuantity": BoundedQuantity.Attrs,
+        "Scope": Scope.Attrs,
+        "File": File.Attrs,
+        "BlockDefinition": BlockDefinition.Attrs,
+        "Slice": Slice.Attrs,
+        "IterableFieldRef": IterableFieldRef.Attrs,
+        "FieldRefList": FieldRefList.Attrs,
+        "ForStmt": ForStmt.Attrs,
+        "PragmaStmt": PragmaStmt.Attrs,
+        "ImportStmt": ImportStmt.Attrs,
+        "TemplateArg": TemplateArg.Attrs,
+        "Template": Template.Attrs,
+        "Assignment": Assignment.Attrs,
+        "NewExpression": NewExpression.Attrs,
+        "ConnectStmt": ConnectStmt.Attrs,
+        "DirectedConnectStmt": DirectedConnectStmt.Attrs,
+        "RetypeStmt": RetypeStmt.Attrs,
+        "PinDeclaration": PinDeclaration.Attrs,
+        "SignaldefStmt": SignaldefStmt.Attrs,
+        "AssertStmt": AssertStmt.Attrs,
+        "DeclarationStmt": DeclarationStmt.Attrs,
+        "String": String.Attrs,
+        "StringStmt": StringStmt.Attrs,
+        "PassStmt": PassStmt.Attrs,
+        "TraitStmt": TraitStmt.Attrs,
+    }
+
+    attrs_class = attrs_class_by_type_name[NodeHelpers.get_type_name(bound_node)]
+    required_keys = attrs_class.__required_keys__
+    optional_keys = attrs_class.__optional_keys__
+
+    out = {k: bound_node.node().get_attr(key=k) for k in required_keys}
+    for k in optional_keys:
+        if v := bound_node.node().get_attr(key=k):
+            out[k] = v
+
+    return attrs_class(**out)
