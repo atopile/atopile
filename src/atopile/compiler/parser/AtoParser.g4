@@ -70,7 +70,7 @@ import_stmt
     ;
 
 declaration_stmt
-    : field_reference type_info
+    : field_reference COLON unit
     ;
 field_reference_or_declaration
     : field_reference
@@ -273,10 +273,10 @@ bilateral_quantity
     : quantity PLUS_OR_MINUS bilateral_tolerance
     ;
 quantity
-    : number name?
+    : number unit?
     ;
 bilateral_tolerance
-    : number_signless (PERCENT | name)?
+    : number_signless (PERCENT | unit)?
     ;
 
 key
@@ -302,9 +302,6 @@ type_reference
 // TODO better unit
 unit
     : name
-    ;
-type_info
-    : COLON unit
     ;
 name
     : NAME
