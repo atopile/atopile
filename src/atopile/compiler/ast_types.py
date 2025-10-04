@@ -131,7 +131,7 @@ class ImportPath:
 
     class Children(TypedDict):
         source: BoundNode
-        string: BoundNode
+        path: BoundNode
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
@@ -172,11 +172,11 @@ class FieldRefPart:
 class FieldRef:
     type_attrs: ASTType.Attrs = {"name": "FieldRef"}
 
-    class Attrs(LiteralArgs):
-        pin: NotRequired[int]
+    class Attrs(LiteralArgs): ...
 
     class Children(TypedDict):
         source: BoundNode
+        pin: NotRequired[BoundNode]
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
@@ -185,10 +185,6 @@ class FieldRef:
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
         return _create_subgraph(g, dict(children), attrs, FieldRef.type_attrs)
-
-    @staticmethod
-    def get_pin(bound_node: BoundNode) -> int | None:
-        return cast(int | None, bound_node.node.get_attr(key="pin"))
 
 
 class Number:
@@ -213,28 +209,6 @@ class Number:
         return cast(float, bound_node.node.get_attr(key="value"))
 
 
-class String:
-    type_attrs: ASTType.Attrs = {"name": "String"}
-
-    class Attrs(LiteralArgs):
-        string: str
-
-    class Children(TypedDict):
-        source: BoundNode
-
-    @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=String.type_attrs)
-
-    @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=String.type_attrs)
-
-    @staticmethod
-    def get_string(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="string"))
-
-
 class Boolean:
     type_attrs: ASTType.Attrs = {"name": "Boolean"}
 
@@ -253,15 +227,33 @@ class Boolean:
         return _create_subgraph(g, dict(children), attrs, Boolean.type_attrs)
 
 
+class Unit:
+    type_attrs: ASTType.Attrs = {"name": "Unit"}
+
+    class Attrs(LiteralArgs):
+        symbol: str
+
+    class Children(TypedDict):
+        source: BoundNode
+
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        return _create(g, attrs, type_attrs=Unit.type_attrs)
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, dict(children), attrs, Unit.type_attrs)
+
+
 class Quantity:
     type_attrs: ASTType.Attrs = {"name": "Quantity"}
 
-    class Attrs(LiteralArgs):
-        unit: str
+    class Attrs(LiteralArgs): ...
 
     class Children(TypedDict):
         source: BoundNode
         number: BoundNode
+        unit: NotRequired[BoundNode]
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
@@ -270,10 +262,6 @@ class Quantity:
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
         return _create_subgraph(g, dict(children), attrs, Quantity.type_attrs)
-
-    @staticmethod
-    def get_unit(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node.get_attr(key="unit"))
 
 
 class BinaryExpression:
@@ -561,7 +549,8 @@ class PragmaStmt:
 class ImportStmt:
     type_attrs: ASTType.Attrs = {"name": "ImportStmt"}
 
-    class Attrs(LiteralArgs): ...
+    class Attrs(LiteralArgs):
+        path: NotRequired[str]
 
     class Children(TypedDict):
         source: BoundNode
@@ -575,27 +564,6 @@ class ImportStmt:
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
         return _create_subgraph(g, children, attrs, type_attrs=ImportStmt.type_attrs)
-
-
-class AssignQuantityStmt:
-    type_attrs: ASTType.Attrs = {"name": "AssignQuantityStmt"}
-
-    class Attrs(LiteralArgs): ...
-
-    class Children(TypedDict):
-        target: BoundNode
-        quantity: BoundNode
-        source: BoundNode
-
-    @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=AssignQuantityStmt.type_attrs)
-
-    @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(
-            g, children, attrs, type_attrs=AssignQuantityStmt.type_attrs
-        )
 
 
 class TemplateArg:
@@ -634,8 +602,8 @@ class Template:
         return _create_subgraph(g, dict(children), attrs, Template.type_attrs)
 
 
-class AssignValueStmt:
-    type_attrs: ASTType.Attrs = {"name": "AssignValueStmt"}
+class Assignment:
+    type_attrs: ASTType.Attrs = {"name": "Assignment"}
 
     class Attrs(LiteralArgs): ...
 
@@ -646,34 +614,31 @@ class AssignValueStmt:
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=AssignValueStmt.type_attrs)
+        return _create(g, attrs, type_attrs=Assignment.type_attrs)
 
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(
-            g, children, attrs, type_attrs=AssignValueStmt.type_attrs
-        )
+        return _create_subgraph(g, dict(children), attrs, Assignment.type_attrs)
 
 
-class AssignNewStmt:
-    type_attrs: ASTType.Attrs = {"name": "AssignNewStmt"}
+class NewExpression:
+    type_attrs: ASTType.Attrs = {"name": "NewExpression"}
 
-    class Attrs(LiteralArgs):
-        new_count: NotRequired[int]
+    class Attrs(LiteralArgs): ...
 
     class Children(TypedDict):
-        target: BoundNode
         type_ref: BoundNode
         template: NotRequired[BoundNode]
+        new_count: NotRequired[BoundNode]
         source: BoundNode
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=AssignNewStmt.type_attrs)
+        return _create(g, attrs, type_attrs=NewExpression.type_attrs)
 
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=AssignNewStmt.type_attrs)
+        return _create_subgraph(g, children, attrs, type_attrs=NewExpression.type_attrs)
 
 
 class ConnectStmt:
@@ -750,11 +715,11 @@ class PinDeclaration:
 
     class Attrs(LiteralArgs):
         kind: str
-        value: str | int
+        name: NotRequired[str]
 
     class Children(TypedDict):
         source: BoundNode
-        literal: NotRequired[BoundNode]
+        label: NotRequired[BoundNode]
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
@@ -809,7 +774,7 @@ class DeclarationStmt:
     class Children(TypedDict):
         source: BoundNode
         field_ref: BoundNode
-        type_ref: NotRequired[BoundNode]
+        unit: BoundNode
 
     @staticmethod
     def create(g: GraphView, attrs: Attrs) -> BoundNode:
@@ -818,6 +783,24 @@ class DeclarationStmt:
     @staticmethod
     def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
         return _create_subgraph(g, dict(children), attrs, DeclarationStmt.type_attrs)
+
+
+class String:
+    type_attrs: ASTType.Attrs = {"name": "String"}
+
+    class Attrs(LiteralArgs):
+        value: str
+
+    class Children(TypedDict):
+        source: BoundNode
+
+    @staticmethod
+    def create(g: GraphView, attrs: Attrs) -> BoundNode:
+        return _create(g, attrs, type_attrs=String.type_attrs)
+
+    @staticmethod
+    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+        return _create_subgraph(g, children, attrs, type_attrs=String.type_attrs)
 
 
 class StringStmt:

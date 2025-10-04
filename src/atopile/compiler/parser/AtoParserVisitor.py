@@ -344,11 +344,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#type_info.
-    def visitType_info(self, ctx:AtoParser.Type_infoContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#name.
     def visitName(self, ctx:AtoParser.NameContext):
         return self.visitChildren(ctx)
