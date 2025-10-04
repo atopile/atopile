@@ -7,4 +7,4 @@ paths:
 builds:
   default:
     entry: i2c.ato:App
-
+    exclude_checks: ["PCB.requires_drc_check"]

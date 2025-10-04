@@ -39,12 +39,11 @@ def build(app: Module) -> None:
 
     pcb = F.PCB(config.build.paths.layout)
 
-    targets = {default_target.name} | set(config.build.targets) - set(
-        config.build.exclude_targets
-    )
-
     with accumulate() as accumulator:
-        for target in muster.select(targets):
+        for target in muster.select(
+            selected_targets={default_target.name} | set(config.build.targets),
+            excluded_targets=set(config.build.exclude_targets),
+        ):
             if target.name in config.build.exclude_targets:
                 logger.warning(f"Skipping excluded build step '{target.name}'")
                 continue

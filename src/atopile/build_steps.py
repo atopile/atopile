@@ -173,17 +173,24 @@ class Muster:
 
         return decorator
 
-    def select(self, selected_targets: set[str]) -> Generator[MusterTarget, None, None]:
+    def select(
+        self, selected_targets: set[str], excluded_targets: set[str] | None = None
+    ) -> Generator[MusterTarget, None, None]:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
+        excluded_targets = excluded_targets or set()
+
         with accumulate() as accumulator:
-            for target in selected_targets:
+            for target in selected_targets | excluded_targets:
                 with accumulator.collect():
                     if target not in self.targets:
                         raise UserBadParameterError(
                             f"Target `{target}` not recognized."
                         )
+
+        if excluded_targets:
+            selected_targets = selected_targets - excluded_targets
 
         subgraph = self.dependency_dag.get_subgraph(
             selector_func=lambda name: name in selected_targets
@@ -254,9 +261,7 @@ def post_design_checks(
     )
 
 
-@muster.register(
-    "load-pcb", description="Loading PCB", dependencies=[post_design_checks]
-)
+@muster.register("load-pcb", description="Loading PCB", dependencies=[prepare_build])
 def load_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -321,9 +326,7 @@ def post_solve_checks(
     )
 
 
-@muster.register(
-    "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
-)
+@muster.register("update-pcb", description="Updating PCB", dependencies=[prepare_nets])
 def update_pcb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -478,6 +481,15 @@ def post_pcb_checks(
         raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
 
+@muster.register(
+    "check-design",
+    dependencies=[post_design_checks, post_solve_checks, post_pcb_checks],
+    virtual=True,
+)
+def checks(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) -> None:
+    pass
+
+
 @muster.register("build-design", dependencies=[update_pcb], virtual=True)
 def build_design(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -621,7 +633,7 @@ def generate_2d_render(
 @muster.register(
     "mfg-data",
     tags={Tags.REQUIRES_KICAD},
-    dependencies=[generate_3d_models, post_pcb_checks],
+    dependencies=[build_design, checks],
     produces_artifact=True,
 )
 def generate_manufacturing_data(
@@ -739,6 +751,7 @@ def generate_i2c_tree(
         generate_manifest,
         generate_variable_report,
         generate_i2c_tree,
+        checks,
     ],
     virtual=True,
 )
