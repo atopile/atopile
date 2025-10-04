@@ -15,7 +15,6 @@ from typing import (
     List,
     Mapping,
     MutableMapping,
-    Optional,
     Sequence,
     TypedDict,
     TypeVar,
@@ -48,6 +47,9 @@ class Node:
 
     def get_attr(self, *, key: str) -> Literal | None:
         return self._attrs.get(key)
+
+    def get_attrs(self) -> Mapping[str, Literal]:
+        return self._attrs
 
     def is_same(self, *, other: Node) -> bool:
         return isinstance(other, Node) and self._uuid == other._uuid
@@ -211,8 +213,7 @@ class BoundNode:
             children = iter_children(node)
             return Tree(
                 OrderedDict(
-                    (child, build_tree(child, next_ancestors))
-                    for child in children
+                    (child, build_tree(child, next_ancestors)) for child in children
                 )
             )
 
