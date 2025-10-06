@@ -801,6 +801,29 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .EXHAUSTED = {} };
         }
     }
+
+    pub fn find_paths(start_node: BoundNodeReference, a: std.mem.Allocator) ![]const Path {
+        const FindPaths = struct {
+            path_list: std.ArrayList(Path),
+
+            pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+
+                self.path_list.append(path) catch |err| {
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var visit_ctx = FindPaths{ .path_list = std.ArrayList(Path).init(a) };
+        defer visit_ctx.path_list.deinit();
+
+        const result = visit_paths_bfs(start_node.g, start_node, void, &visit_ctx, FindPaths.visit_fn);
+        _ = result;
+
+        return visit_ctx.path_list.items;
+    }
 };
 
 test "visit_paths_bfs" {
@@ -863,6 +886,9 @@ test "visit_paths_bfs" {
 
     var visitor_instance = MockPathVisitor{};
     _ = g.visit_paths_bfs(bn1, void, &visitor_instance, MockPathVisitor.visit_fn);
+
+    const paths = try GraphView.find_paths(bn1, bn1.g.allocator);
+    std.debug.print("paths: {}\n", .{paths.len});
 
     // be1.get_nodes();
 }
