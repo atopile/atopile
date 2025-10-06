@@ -677,7 +677,8 @@ pub const GraphView = struct {
             visited_nodes: std.ArrayList(NodeReference),
             g: *GraphView,
 
-            fn hasVisited(self: *@This(), node: NodeReference) bool {
+            // TODO this can probably be optimized since this iterates through the whole visited_nodes list to find if the node has been visited already
+            fn node_visited(self: *@This(), node: NodeReference) bool {
                 for (self.visited_nodes.items) |visited| {
                     if (Node.is_same(visited, node)) {
                         return true;
@@ -686,42 +687,40 @@ pub const GraphView = struct {
                 return false;
             }
 
-            pub fn visit_fn(self_ptr: *anyopaque, be: BoundEdgeReference) visitor.VisitResult(void) {
+            pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                std.debug.print("Edge visitor: Visiting edge-{} from node-{}\n", .{ be.edge.attributes.uuid, self.start_node.node.attributes.uuid });
+                std.debug.print("Edge visitor: Visiting edge-{} from node-{}\n", .{ edge.edge.attributes.uuid, self.start_node.node.attributes.uuid });
 
-                const other_node = be.edge.get_other_node(self.start_node.node);
+                // Check if other node has been visited
+                const other_node = edge.edge.get_other_node(self.start_node.node);
+                const other_node_visited = other_node != null and self.node_visited(other_node.?);
 
-                const on = other_node != null and self.hasVisited(other_node.?);
-
-                if (on) {
+                // If visited, exit edge visitor and continue with BFS
+                if (other_node_visited) {
                     std.debug.print("Already visited node {}\n", .{other_node.?.attributes.uuid});
-                } else {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+                // If not visited, create a new path and append it to the open path queue
+                else {
                     var new_path = Path.init(self.g.allocator);
-                    // Note: ownership of new_path is transferred to open_path_queue
-                    // Use errdefer to cleanup if we fail before adding to queue
 
+                    // Append current path edges to new path
                     new_path.edges.appendSlice(self.current_path.edges.items) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
-                    new_path.edges.append(be.edge) catch |err| {
+
+                    // Append current edge to new path
+                    new_path.edges.append(edge.edge) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
-                    std.debug.print("Apending new path to queue!!!\n", .{});
-                    new_path.print_path();
-
+                    // Append new path to open path queue
                     self.open_path_queue.append(new_path) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
-                    for (self.open_path_queue.items) |path| {
-                        path.print_path();
-                    }
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
-
-                // basically we want to take the last edge and create a bunch of new paths for it
-                return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
