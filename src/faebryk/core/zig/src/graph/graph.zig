@@ -655,7 +655,8 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn visit_paths_bfs(g: *@This(), start_node: BoundNodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    // optional: filter for paths of specific edge type
+    pub fn visit_paths_bfs(g: *@This(), start_node: BoundNodeReference, edge_type: ?Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
 
         // Initialize variables required for BFS
         var open_path_queue = std.ArrayList(Path).init(g.allocator);
@@ -731,10 +732,18 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
+        // TODO possibly a better way to do this using an edge visitor
         // Get list of edges connected to root node
-        const initial_edges = start_node.get_edges() orelse {
-            return visitor.VisitResult(T){ .ERROR = error.NoEdges };
-        };
+        var initial_edges: *const std.ArrayList(EdgeReference) = undefined;
+        if (edge_type) |et| {
+            initial_edges = start_node.get_edges_of_type(et) orelse {
+                return visitor.VisitResult(T){ .ERROR = error.NoEdges };
+            };
+        } else {
+            initial_edges = start_node.get_edges() orelse {
+                return visitor.VisitResult(T){ .ERROR = error.NoEdges };
+            };
+        }
 
         // Add initial edges to open path queue
         for (initial_edges.items) |edge| {
@@ -785,7 +794,12 @@ pub const GraphView = struct {
             };
 
             // Check edge visitor for errors
-            const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            var edge_visitor_result = visitor.VisitResult(void){ .ERROR = error.InvalidVisitorResult };
+            if (edge_type) |et| {
+                edge_visitor_result = g.visit_edges_of_type(node_at_path_end.node, et, void, &edge_visitor, EdgeVisitor.visit_fn);
+            } else {
+                edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            }
             switch (edge_visitor_result) {
                 .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
                 else => {},
@@ -802,7 +816,7 @@ pub const GraphView = struct {
         }
     }
 
-    pub fn find_paths(start_node: BoundNodeReference, a: std.mem.Allocator) ![]const Path {
+    pub fn find_paths(start_node: BoundNodeReference, edge_type: ?Edge.EdgeType, a: std.mem.Allocator) ![]const Path {
         const FindPaths = struct {
             path_list: std.ArrayList(Path),
 
@@ -819,7 +833,7 @@ pub const GraphView = struct {
         var visit_ctx = FindPaths{ .path_list = std.ArrayList(Path).init(a) };
         defer visit_ctx.path_list.deinit();
 
-        const result = visit_paths_bfs(start_node.g, start_node, void, &visit_ctx, FindPaths.visit_fn);
+        const result = visit_paths_bfs(start_node.g, start_node, edge_type, void, &visit_ctx, FindPaths.visit_fn);
         _ = result;
 
         return visit_ctx.path_list.items;
@@ -885,10 +899,19 @@ test "visit_paths_bfs" {
     };
 
     var visitor_instance = MockPathVisitor{};
-    _ = g.visit_paths_bfs(bn1, void, &visitor_instance, MockPathVisitor.visit_fn);
+    _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
 
-    const paths = try GraphView.find_paths(bn1, bn1.g.allocator);
+    var paths = try GraphView.find_paths(bn1, 1759242069, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
+    try std.testing.expectEqual(paths.len, 6);
+
+    paths = try GraphView.find_paths(bn1, 22, bn1.g.allocator);
+    std.debug.print("paths: {}\n", .{paths.len});
+    try std.testing.expectEqual(paths.len, 0);
+
+    paths = try GraphView.find_paths(bn1, null, bn1.g.allocator);
+    std.debug.print("paths: {}\n", .{paths.len});
+    try std.testing.expectEqual(paths.len, 6);
 
     // be1.get_nodes();
 }
