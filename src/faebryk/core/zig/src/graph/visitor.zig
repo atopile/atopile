@@ -1,10 +1,10 @@
 pub fn VisitResult(comptime T: type) type {
     return union(enum) {
-        OK: T,
-        EXHAUSTED: void,
-        CONTINUE: void,
-        STOP: void,
-        ERROR: anyerror,
+        OK: T, // Visitor found a result
+        EXHAUSTED: void, // Visitor visited all elements
+        CONTINUE: void, // Visitor should continue visiting
+        STOP: void, // Visitor stopped
+        ERROR: anyerror, // Visitor encountered an error
     };
 }
 
