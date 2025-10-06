@@ -92,6 +92,29 @@ pub const EdgeComposition = struct {
 
         return edge.attributes.name.?;
     }
+
+    pub fn get_child_by_identifier(bound_parent_node: graph.BoundNodeReference, child_identifier: str) ?graph.BoundNodeReference {
+        const Finder = struct {
+            identifier: str,
+            found: ?graph.BoundNodeReference = null,
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                if (bound_edge.edge.attributes.name) |n| {
+                    if (std.mem.eql(u8, n, self.identifier)) {
+                        const target = bound_edge.edge.get_target() orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+                        self.found = bound_edge.g.bind(target);
+                        return visitor.VisitResult(void){ .STOP = {} };
+                    }
+                }
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var finder = Finder{ .identifier = child_identifier, .found = null };
+        _ = EdgeComposition.visit_children_edges(bound_parent_node, &finder, Finder.visit);
+        return finder.found;
+    }
 };
 
 test "basic" {
@@ -140,4 +163,7 @@ test "basic" {
     try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
+
+    const bchild = EdgeComposition.get_child_by_identifier(bn1, "child1");
+    try std.testing.expect(Node.is_same(bchild.?.node, n2));
 }

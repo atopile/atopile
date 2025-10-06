@@ -81,9 +81,17 @@ pub const TypeGraph = struct {
         return trait_bnode;
     }
 
-    pub fn init_make_child_node(type_graph: *TypeGraph, identifiers: []const str) !BoundNodeReference {
+    pub fn init_make_child_node(type_graph: *TypeGraph, parent_node: BoundNodeReference, identifier: str) !BoundNodeReference {
         const make_child_bnode = try TypeGraph.instantiate(&type_graph.type_graph_view, type_graph.make_child_type_bnode.node);
+        const child_reference_node = init_reference_node(parent_node, identifier);
+        _ = EdgeComposition.add_child(make_child_bnode, child_reference_node, "Child Reference");
         return make_child_bnode;
+    }
+
+    pub fn init_reference_node(type_graph: *TypeGraph, parent_node: BoundNodeReference, identifier: str) !BoundNodeReference {
+        const reference_node = try Node.init(std.testing.allocator);
+        const reference_bnode = try type_graph.type_graph_view.insert_node(reference_node);
+        return reference_bnode;
     }
 
     pub fn init_make_link_node(type_graph: *TypeGraph) !BoundNodeReference {
@@ -91,17 +99,16 @@ pub const TypeGraph = struct {
         return make_link_bnode;
     }
 
-    pub fn init_reference_node() !BoundNodeReference {
-        const reference_node = try Node.init(std.testing.allocator);
-        const reference_bnode = try type_graph.type_graph_view.insert_node(reference_node);
-        return reference_bnode;
-    }
-
     pub fn instantiate(type_graph_view: *GraphView, type_node: NodeReference) !graph.BoundNodeReference {
         const instance_node = try Node.init(std.testing.allocator);
         const instance_bnode = try type_graph_view.insert_node(instance_node);
         _ = try type_graph_view.insert_edge(try EdgeType.init(type_graph_view.allocator, type_node, instance_node));
         return instance_bnode;
+    }
+
+    pub fn resolve_reference(reference_node: BoundNodeReference, base_node: BoundNodeReference) ?graph.BoundNodeReference {
+        const child_identifier = try EdgeComposition.get_name(EdgeComposition.get_parent_edge(reference_node).?.edge);
+        return EdgeComposition.get_child_by_identifier(base_node, child_identifier);
     }
 };
 
@@ -129,6 +136,11 @@ test "basic instantiation" {
         .ERROR => |err| @panic(@errorName(err)),
         else => {},
     }
+
+    // resolve_reference -------------------------------------------------------------------------------
+    const reference_bnode = try TypeGraph.init_reference_node(&type_graph, example_type_bnode, "reference");
+    const resolved_bnode = TypeGraph.resolve_reference(reference_bnode, example_type_bnode);
+    try std.testing.expect(Node.is_same(resolved_bnode.?.node, example_type_bnode.node));
 
     // try std.testing.expect(instances.items.len == 1);
 
