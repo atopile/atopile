@@ -823,31 +823,31 @@ test "visit_paths_bfs" {
     var g = GraphView.init(a);
     const n1 = try Node.init(a);
     n1.attributes.uuid = 1001;
-    defer n1.deinit();
+    // defer n1.deinit();
     const n2 = try Node.init(a);
     n2.attributes.uuid = 1002;
-    defer n2.deinit();
+    // defer n2.deinit();
     const n3 = try Node.init(a);
     n3.attributes.uuid = 1003;
-    defer n3.deinit();
+    // defer n3.deinit();
     const n4 = try Node.init(a);
     n4.attributes.uuid = 1004;
-    defer n4.deinit();
+    // defer n4.deinit();
     const n5 = try Node.init(a);
     n5.attributes.uuid = 1005;
-    defer n5.deinit();
+    // defer n5.deinit();
     const e1 = try Edge.init(a, n1, n2, 1759242069);
     e1.attributes.uuid = 2001;
-    defer e1.deinit();
+    // defer e1.deinit();
     const e2 = try Edge.init(a, n1, n3, 1759242069);
     e2.attributes.uuid = 2002;
-    defer e2.deinit();
+    // defer e2.deinit();
     const e3 = try Edge.init(a, n2, n4, 1759242069);
     e3.attributes.uuid = 2003;
-    defer e3.deinit();
+    // defer e3.deinit();
     const e4 = try Edge.init(a, n2, n5, 1759242069);
     e4.attributes.uuid = 2004;
-    defer e4.deinit();
+    // defer e4.deinit();
     defer g.deinit();
 
     const bn1 = try g.insert_node(n1);
@@ -889,11 +889,11 @@ test "basic" {
     try Edge.register_type(TestLinkType);
 
     const n1 = try Node.init(a);
-    defer n1.deinit();
+    // defer n1.deinit();
     const n2 = try Node.init(a);
-    defer n2.deinit();
+    // defer n2.deinit();
     const e12 = try Edge.init(a, n1, n2, TestLinkType);
-    defer e12.deinit();
+    // defer e12.deinit();
 
     _ = try g.insert_node(n1);
     _ = try g.insert_node(n2);
@@ -908,9 +908,9 @@ test "basic" {
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
     try std.testing.expectEqual(e12._ref_count.ref_count, 1);
 
-    // has to be deleted first
     g.deinit();
-    try std.testing.expectEqual(n1._ref_count.ref_count, 0);
-    try std.testing.expectEqual(n2._ref_count.ref_count, 0);
-    try std.testing.expectEqual(e12._ref_count.ref_count, 0);
+    // has to be deleted first
+    // try std.testing.expectEqual(n1._ref_count.ref_count, 0); //these tests are broken now because we automtically deinit when graph view is deinited
+    // try std.testing.expectEqual(n2._ref_count.ref_count, 0);
+    // try std.testing.expectEqual(e12._ref_count.ref_count, 0);
 }
