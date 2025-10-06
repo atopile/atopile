@@ -655,19 +655,30 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn visit_paths_bfs(g: *@This(), bn: BoundNodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
-        // tracks status
-        const Result = visitor.VisitResult(T);
+    pub fn visit_paths_bfs(g: *@This(), start_node: BoundNodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
 
-        // edge visitor struct, this is a nested visitor used to help explore edges during the BFS
+        // Initialize variables required for BFS
+        var open_path_queue = std.ArrayList(Path).init(g.allocator);
+        var visited_nodes = std.ArrayList(NodeReference).init(g.allocator);
+
+        defer {
+            for (open_path_queue.items) |*path| {
+                path.deinit();
+            }
+            open_path_queue.deinit();
+        }
+        defer visited_nodes.deinit();
+
+        // Initialize edge visitor
         const EdgeVisitor = struct {
-            root_bn: BoundNodeReference,
-            visited_nodes: std.ArrayList(NodeReference),
+            start_node: BoundNodeReference,
             current_path: Path,
             open_path_queue: *std.ArrayList(Path),
+            visited_nodes: std.ArrayList(NodeReference),
             g: *GraphView,
 
-            fn hasVisited(self: *@This(), node: NodeReference) bool {
+            // TODO this can probably be optimized since this iterates through the whole visited_nodes list to find if the node has been visited already
+            fn node_visited(self: *@This(), node: NodeReference) bool {
                 for (self.visited_nodes.items) |visited| {
                     if (Node.is_same(visited, node)) {
                         return true;
@@ -676,130 +687,108 @@ pub const GraphView = struct {
                 return false;
             }
 
-            pub fn visit_fn(self_ptr: *anyopaque, be: BoundEdgeReference) visitor.VisitResult(void) {
+            pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                std.debug.print("Edge visitor: Visiting edge-{} from node-{}\n", .{ be.edge.attributes.uuid, self.root_bn.node.attributes.uuid });
+                std.debug.print("Edge visitor: Visiting edge-{} from node-{}\n", .{ edge.edge.attributes.uuid, self.start_node.node.attributes.uuid });
 
-                const other_node = be.edge.get_other_node(self.root_bn.node);
+                // Check if other node has been visited
+                const other_node = edge.edge.get_other_node(self.start_node.node);
+                const other_node_visited = other_node != null and self.node_visited(other_node.?);
 
-                const on = other_node != null and self.hasVisited(other_node.?);
-
-                if (on) {
-                    std.debug.print("We've already visited this dawg!!!\n", .{});
-                } else {
+                // If visited, exit edge visitor and continue with BFS
+                if (other_node_visited) {
+                    std.debug.print("Already visited node {}\n", .{other_node.?.attributes.uuid});
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+                // If not visited, create a new path and append it to the open path queue
+                else {
                     var new_path = Path.init(self.g.allocator);
-                    // Note: ownership of new_path is transferred to open_path_queue
-                    // Use errdefer to cleanup if we fail before adding to queue
 
+                    // Append current path edges to new path
                     new_path.edges.appendSlice(self.current_path.edges.items) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
-                    new_path.edges.append(be.edge) catch |err| {
+
+                    // Append current edge to new path
+                    new_path.edges.append(edge.edge) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
-                    std.debug.print("Apending new path to queue!!!\n", .{});
-                    new_path.print_path();
-
+                    // Append new path to open path queue
                     self.open_path_queue.append(new_path) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
-                    for (self.open_path_queue.items) |path| {
-                        path.print_path();
-                    }
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
-
-                // if ()) {
-                //     std.debug.print("We've already visited this dawg!!!\n", .{});
-                // }
-
-                // basically we want to take the last edge and create a bunch of new paths for it
-                return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
-        // Create open path queue
-        var open_path_queue = std.ArrayList(Path).init(g.allocator);
-        defer {
-            for (open_path_queue.items) |*path| {
-                path.deinit();
-            }
-            open_path_queue.deinit();
-        }
+        // BFS setup
 
-        // visited nodes list
-        var visited_nodes = std.ArrayList(NodeReference).init(g.allocator);
-        defer visited_nodes.deinit();
-
-        // assume we have already visited first node I guess
-        visited_nodes.append(bn.node) catch |err| {
-            return Result{ .ERROR = err };
+        // Assume provided root node is already visited
+        visited_nodes.append(start_node.node) catch |err| {
+            return visitor.VisitResult(T){ .ERROR = err };
         };
 
-        // Get initial edges
-        const initial_edges = bn.get_edges() orelse {
-            return Result{ .ERROR = error.NoEdges };
+        // Get list of edges connected to root node
+        const initial_edges = start_node.get_edges() orelse {
+            return visitor.VisitResult(T){ .ERROR = error.NoEdges };
         };
 
-        // add initial edges to open path queue
-        std.debug.print("initial_edges: ", .{});
+        // Add initial edges to open path queue
         for (initial_edges.items) |edge| {
-            std.debug.print("{} ", .{edge.attributes.uuid});
             var path = Path.init(g.allocator);
             path.edges.append(edge) catch |err| {
-                return Result{ .ERROR = err };
+                return visitor.VisitResult(T){ .ERROR = err };
             };
             open_path_queue.append(path) catch |err| {
-                return Result{ .ERROR = err };
+                return visitor.VisitResult(T){ .ERROR = err };
             };
         }
-        std.debug.print("\n", .{});
 
-        // start iterating through queue
+        // BFS iterations
         while (open_path_queue.items.len > 0) {
-            // pop from start of queue
+            // Pop path from start of queue
             var path = open_path_queue.pop() orelse unreachable;
             defer path.deinit();
-            path.print_path();
+            // path.print_path();
 
-            // run path visitor provided to BFS
+            // Run provided path visitor
             const bfs_visitor_result = f(ctx, path);
 
-            // get node at end of path
-            const node_at_end = path.get_last_node(bn) orelse {
-                return Result{ .ERROR = error.InvalidPath };
+            // Mark node at end of path as visited
+            const node_at_path_end = path.get_last_node(start_node) orelse {
+                return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
-            std.debug.print("node_at_end: {}\n", .{node_at_end.node.attributes.uuid});
-
-            // mark node at end of path as visited
-            visited_nodes.append(node_at_end.node) catch |err| {
-                return Result{ .ERROR = err };
+            visited_nodes.append(node_at_path_end.node) catch |err| {
+                return visitor.VisitResult(T){ .ERROR = err };
             };
+            std.debug.print("node_at_end: {}\n", .{node_at_path_end.node.attributes.uuid});
 
-            std.debug.print("visited_nodes: ", .{});
-            for (visited_nodes.items) |visited| {
-                std.debug.print("{} ", .{visited.attributes.uuid});
+            // Report BFS visitor status
+            switch (bfs_visitor_result) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(T){ .STOP = {} },
+                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
+                .OK => |value| return visitor.VisitResult(T){ .OK = value },
+                .EXHAUSTED => return visitor.VisitResult(T){ .EXHAUSTED = {} },
             }
-            std.debug.print("\n", .{});
 
-            // use edge visitor on node_at_end to find more paths
-            var edge_visitor_instance = EdgeVisitor{
-                .root_bn = node_at_end,
+            // Use edge visitor to find more paths and append to open path queue
+            var edge_visitor = EdgeVisitor{
+                .start_node = node_at_path_end,
                 .visited_nodes = visited_nodes,
                 .current_path = path,
                 .open_path_queue = &open_path_queue,
                 .g = g,
             };
-            const edge_visitor_result = g.visit_edges(node_at_end.node, void, &edge_visitor_instance, EdgeVisitor.visit_fn);
-            _ = edge_visitor_result;
 
-            switch (bfs_visitor_result) {
-                .CONTINUE => {},
-                .STOP => return Result{ .STOP = {} },
-                .ERROR => |err| return Result{ .ERROR = err },
-                .OK => |value| return Result{ .OK = value },
-                .EXHAUSTED => return Result{ .EXHAUSTED = {} },
+            // Check edge visitor for errors
+            const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            switch (edge_visitor_result) {
+                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
+                else => {},
             }
         }
 
@@ -807,14 +796,33 @@ pub const GraphView = struct {
             for (open_path_queue.items) |path| {
                 path.print_path();
             }
+            return visitor.VisitResult(T){ .ERROR = error.InvalidVisitorResult };
         } else {
-            std.debug.print("path queue empty\n", .{});
+            return visitor.VisitResult(T){ .EXHAUSTED = {} };
         }
+    }
 
-        // open_path_queue.append(Path.init(g.allocator)) catch unreachable;
-        // open_path_queue.items[open_path_queue.items.len - 1].edges.append(edge) catch unreachable;
+    pub fn find_paths(start_node: BoundNodeReference, a: std.mem.Allocator) ![]const Path {
+        const FindPaths = struct {
+            path_list: std.ArrayList(Path),
 
-        return Result{ .EXHAUSTED = {} };
+            pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+
+                self.path_list.append(path) catch |err| {
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var visit_ctx = FindPaths{ .path_list = std.ArrayList(Path).init(a) };
+        defer visit_ctx.path_list.deinit();
+
+        const result = visit_paths_bfs(start_node.g, start_node, void, &visit_ctx, FindPaths.visit_fn);
+        _ = result;
+
+        return visit_ctx.path_list.items;
     }
 };
 
@@ -822,32 +830,29 @@ test "visit_paths_bfs" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
     const n1 = try Node.init(a);
-    n1.attributes.uuid = 1001;
-    defer n1.deinit();
     const n2 = try Node.init(a);
-    n2.attributes.uuid = 1002;
-    defer n2.deinit();
     const n3 = try Node.init(a);
-    n3.attributes.uuid = 1003;
-    defer n3.deinit();
     const n4 = try Node.init(a);
-    n4.attributes.uuid = 1004;
-    defer n4.deinit();
     const n5 = try Node.init(a);
-    n5.attributes.uuid = 1005;
-    defer n5.deinit();
+    const n6 = try Node.init(a);
     const e1 = try Edge.init(a, n1, n2, 1759242069);
-    e1.attributes.uuid = 2001;
-    defer e1.deinit();
     const e2 = try Edge.init(a, n1, n3, 1759242069);
-    e2.attributes.uuid = 2002;
-    defer e2.deinit();
     const e3 = try Edge.init(a, n2, n4, 1759242069);
-    e3.attributes.uuid = 2003;
-    defer e3.deinit();
     const e4 = try Edge.init(a, n2, n5, 1759242069);
+    const e5 = try Edge.init(a, n5, n6, 1759242069);
+    const e6 = try Edge.init(a, n6, n1, 1759242069);
+    n1.attributes.uuid = 1001;
+    n2.attributes.uuid = 1002;
+    n3.attributes.uuid = 1003;
+    n4.attributes.uuid = 1004;
+    n5.attributes.uuid = 1005;
+    n6.attributes.uuid = 1006;
+    e1.attributes.uuid = 2001;
+    e2.attributes.uuid = 2002;
+    e3.attributes.uuid = 2003;
     e4.attributes.uuid = 2004;
-    defer e4.deinit();
+    e5.attributes.uuid = 2005;
+    e6.attributes.uuid = 2006;
     defer g.deinit();
 
     const bn1 = try g.insert_node(n1);
@@ -855,10 +860,13 @@ test "visit_paths_bfs" {
     _ = try g.insert_node(n3);
     _ = try g.insert_node(n4);
     _ = try g.insert_node(n5);
+    _ = try g.insert_node(n6);
     _ = try g.insert_edge(e1);
     _ = try g.insert_edge(e2);
     _ = try g.insert_edge(e3);
     _ = try g.insert_edge(e4);
+    _ = try g.insert_edge(e5);
+    _ = try g.insert_edge(e6);
 
     const MockPathVisitor = struct {
         // visitor context
@@ -879,6 +887,9 @@ test "visit_paths_bfs" {
     var visitor_instance = MockPathVisitor{};
     _ = g.visit_paths_bfs(bn1, void, &visitor_instance, MockPathVisitor.visit_fn);
 
+    const paths = try GraphView.find_paths(bn1, bn1.g.allocator);
+    std.debug.print("paths: {}\n", .{paths.len});
+
     // be1.get_nodes();
 }
 
@@ -889,11 +900,11 @@ test "basic" {
     try Edge.register_type(TestLinkType);
 
     const n1 = try Node.init(a);
-    defer n1.deinit();
+    // defer n1.deinit();
     const n2 = try Node.init(a);
-    defer n2.deinit();
+    // defer n2.deinit();
     const e12 = try Edge.init(a, n1, n2, TestLinkType);
-    defer e12.deinit();
+    // defer e12.deinit();
 
     _ = try g.insert_node(n1);
     _ = try g.insert_node(n2);
@@ -908,9 +919,9 @@ test "basic" {
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
     try std.testing.expectEqual(e12._ref_count.ref_count, 1);
 
-    // has to be deleted first
     g.deinit();
-    try std.testing.expectEqual(n1._ref_count.ref_count, 0);
-    try std.testing.expectEqual(n2._ref_count.ref_count, 0);
-    try std.testing.expectEqual(e12._ref_count.ref_count, 0);
+    // has to be deleted first
+    // try std.testing.expectEqual(n1._ref_count.ref_count, 0); //these tests are broken now because we automtically deinit when graph view is deinited
+    // try std.testing.expectEqual(n2._ref_count.ref_count, 0);
+    // try std.testing.expectEqual(e12._ref_count.ref_count, 0);
 }
