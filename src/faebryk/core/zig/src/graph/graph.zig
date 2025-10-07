@@ -421,7 +421,7 @@ pub const Path = struct {
     pub fn print_path(self: *const @This()) void {
         std.debug.print("PATH - len: {} - ", .{self.edges.items.len});
         for (self.edges.items) |edge| {
-            std.debug.print("{}->", .{edge.attributes.uuid});
+            std.debug.print("e{}->", .{edge.attributes.uuid});
         }
         std.debug.print("\n", .{});
     }
@@ -698,7 +698,7 @@ pub const GraphView = struct {
 
                 // If visited, exit edge visitor and continue with BFS
                 if (other_node_visited) {
-                    std.debug.print("Already visited node {}\n", .{other_node.?.attributes.uuid});
+                    std.debug.print("EDGE VISITOR - Already visited n-{} \n", .{other_node.?.attributes.uuid});
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
                 // If not visited, create a new path and append it to the open path queue
@@ -762,7 +762,6 @@ pub const GraphView = struct {
             // var path = open_path_queue.pop() orelse unreachable;
             var path = open_path_queue.orderedRemove(0);
             defer path.deinit();
-            path.print_path();
 
             // Run provided path visitor
             const bfs_visitor_result = f(ctx, path);
@@ -774,7 +773,13 @@ pub const GraphView = struct {
             visited_nodes.append(node_at_path_end.node) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
-            std.debug.print("node_at_end: {}\n", .{node_at_path_end.node.attributes.uuid});
+
+            std.debug.print("PATH - len: {} - ", .{path.edges.items.len});
+            std.debug.print("n{}->", .{start_node.node.attributes.uuid});
+            for (path.edges.items) |edge| {
+                std.debug.print("e{}->", .{edge.attributes.uuid});
+            }
+            std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
 
             // Report BFS visitor status
             switch (bfs_visitor_result) {
@@ -808,9 +813,6 @@ pub const GraphView = struct {
         }
 
         if (open_path_queue.items.len > 0) {
-            for (open_path_queue.items) |path| {
-                path.print_path();
-            }
             return visitor.VisitResult(T){ .ERROR = error.InvalidVisitorResult };
         } else {
             return visitor.VisitResult(T){ .EXHAUSTED = {} };
@@ -911,24 +913,28 @@ test "visit_paths_bfs" {
     const n4 = try Node.init(a);
     const n5 = try Node.init(a);
     const n6 = try Node.init(a);
+    const n7 = try Node.init(a);
     const e1 = try Edge.init(a, n1, n2, 1759242069);
     const e2 = try Edge.init(a, n1, n3, 1759242069);
     const e3 = try Edge.init(a, n2, n4, 1759242069);
     const e4 = try Edge.init(a, n2, n5, 1759242069);
     const e5 = try Edge.init(a, n5, n6, 1759242069);
     const e6 = try Edge.init(a, n6, n1, 1759242069);
+    const e7 = try Edge.init(a, n4, n7, 1759242069);
     n1.attributes.uuid = 1001;
     n2.attributes.uuid = 1002;
     n3.attributes.uuid = 1003;
     n4.attributes.uuid = 1004;
     n5.attributes.uuid = 1005;
     n6.attributes.uuid = 1006;
+    n7.attributes.uuid = 1007;
     e1.attributes.uuid = 2001;
     e2.attributes.uuid = 2002;
     e3.attributes.uuid = 2003;
     e4.attributes.uuid = 2004;
     e5.attributes.uuid = 2005;
     e6.attributes.uuid = 2006;
+    e7.attributes.uuid = 2007;
     defer g.deinit();
 
     const bn1 = try g.insert_node(n1);
@@ -937,12 +943,14 @@ test "visit_paths_bfs" {
     _ = try g.insert_node(n4);
     _ = try g.insert_node(n5);
     _ = try g.insert_node(n6);
+    _ = try g.insert_node(n7);
     _ = try g.insert_edge(e1);
     _ = try g.insert_edge(e2);
     _ = try g.insert_edge(e3);
     _ = try g.insert_edge(e4);
     _ = try g.insert_edge(e5);
     _ = try g.insert_edge(e6);
+    _ = try g.insert_edge(e7);
 
     // const MockPathVisitor = struct {
     //     // visitor context
@@ -965,7 +973,7 @@ test "visit_paths_bfs" {
 
     const paths = try PathFinder.find_paths(bn1, 1759242069, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
-    try std.testing.expectEqual(paths.len, 6);
+    try std.testing.expectEqual(paths.len, 7);
 
     // paths = try PathFinder.find_paths(bn1, 22, bn1.g.allocator);
     // std.debug.print("paths: {}\n", .{paths.len});
