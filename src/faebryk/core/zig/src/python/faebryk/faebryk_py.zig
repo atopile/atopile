@@ -888,22 +888,13 @@ fn wrap_edge_pointer_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const identifier_copy = bind.unwrap_str_copy(kwarg_obj.identifier) orelse return null;
-
-            const edge_ref = faebryk.pointer.EdgePointer.init(
-                std.heap.c_allocator,
-                kwarg_obj.from_node,
-                kwarg_obj.to_node,
-                identifier_copy,
-            ) catch {
-                std.heap.c_allocator.free(identifier_copy);
+            const edge_ref = faebryk.pointer.EdgePointer.init(std.heap.c_allocator, kwarg_obj.from_node, kwarg_obj.to_node) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to create pointer edge");
                 return null;
             };
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
-                std.heap.c_allocator.free(identifier_copy);
                 edge_ref.deinit();
                 return null;
             }
@@ -964,39 +955,6 @@ fn wrap_edge_pointer_get_referenced_node() type {
     };
 }
 
-fn wrap_edge_pointer_resolve_reference() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "resolve_reference",
-            .doc = "Resolve the pointer relative to a base node",
-            .args_def = struct {
-                reference_node: *graph.Node,
-                base_node: *graph.BoundNodeReference,
-
-                pub const fields_meta = .{
-                    .reference_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
-                    .base_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                };
-            },
-            .static = true,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-
-            if (faebryk.pointer.EdgePointer.resolve_reference(
-                kwarg_obj.reference_node,
-                kwarg_obj.base_node.*,
-            )) |node_ref| {
-                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
-            }
-
-            py.Py_INCREF(py.Py_None());
-            return py.Py_None();
-        }
-    };
-}
-
 fn wrap_module(root: *py.PyObject) void {
     _ = root;
     // TODO
@@ -1007,7 +965,6 @@ fn wrap_pointer(root: *py.PyObject) void {
         wrap_edge_pointer_create(),
         wrap_edge_pointer_is_instance(),
         wrap_edge_pointer_get_referenced_node(),
-        wrap_edge_pointer_resolve_reference(),
     };
     bind.wrap_namespace_struct(root, faebryk.pointer.EdgePointer, extra_methods);
     edge_pointer_type = type_registry.getRegisteredTypeObject("EdgePointer");
