@@ -833,14 +833,17 @@ pub const PathFinder = struct {
             pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
-                if (!PathFinder.run_filters(path)) {
+                // filter says keep!
+                if (PathFinder.run_filters(path)) {
+                    self.path_list.append(path) catch |err| {
+                        return visitor.VisitResult(void){ .ERROR = err };
+                    };
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
-
-                self.path_list.append(path) catch |err| {
-                    return visitor.VisitResult(void){ .ERROR = err };
-                };
-                return visitor.VisitResult(void){ .CONTINUE = {} };
+                // filter says yeet!
+                else {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
             }
         };
 
@@ -868,7 +871,7 @@ pub const PathFinder = struct {
         pub fn init() FilterList {
             return .{
                 .items = &[_]Filter{
-                    .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
+                    // .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
                     .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
                 },
             };
@@ -881,12 +884,13 @@ pub const PathFinder = struct {
         std.debug.print("FILTERS - ", .{});
         for (filters.items) |filter| {
             std.debug.print("{s}, ", .{filter.name});
-            if (!filter.func(path)) {
-                return false;
+            if (filter.func(path)) {
+                std.debug.print("\n", .{});
+                return true;
             }
         }
         std.debug.print("\n", .{});
-        return true;
+        return false;
     }
 
     pub fn filter_path_by_node_type(path: Path) bool {
@@ -896,7 +900,11 @@ pub const PathFinder = struct {
     }
 
     pub fn filter_path_by_edge_type(path: Path) bool {
-        _ = path;
+        for (path.edges.items) |edge| {
+            if (edge.attributes.edge_type != 1759242069) {
+                return false;
+            }
+        }
         return true;
     }
 };
@@ -968,7 +976,7 @@ test "visit_paths_bfs" {
     // var visitor_instance = MockPathVisitor{};
     // _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
 
-    const paths = try PathFinder.find_paths(bn1, 1759242069, bn1.g.allocator);
+    const paths = try PathFinder.find_paths(bn1, null, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
     try std.testing.expectEqual(paths.len, 7);
 
