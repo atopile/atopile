@@ -37,17 +37,35 @@ class ASTType:
         return cast(str, bound_node.node().get_attr(key="name"))
 
 
-def _create(g: GraphView, attrs: LiteralArgs, type_attrs: ASTType.Attrs) -> BoundNode:
+GraphTypeCache = dict[str, BoundNode]
+
+
+def _create(
+    g: GraphView,
+    type_cache: GraphTypeCache,
+    attrs: LiteralArgs,
+    type_attrs: ASTType.Attrs,
+) -> BoundNode:
     n = g.insert_node(node=Node.create(**attrs))
-    t = g.insert_node(node=Node.create(**type_attrs))
+
+    if (name := type_attrs["name"]) in type_cache:
+        t = type_cache[name]
+    else:
+        t = g.insert_node(node=Node.create(**type_attrs))
+        type_cache[name] = t
+
     EdgeType.add_instance(bound_type_node=n, bound_instance_node=t)
     return n
 
 
 def _create_subgraph(
-    g: GraphView, children: ChildrenT, attrs: LiteralArgs, type_attrs: ASTType.Attrs
+    g: GraphView,
+    type_cache: GraphTypeCache,
+    children: ChildrenT,
+    attrs: LiteralArgs,
+    type_attrs: ASTType.Attrs,
 ) -> BoundNode:
-    n = _create(g, attrs, type_attrs)
+    n = _create(g, type_cache, attrs, type_attrs)
 
     for child_id, child_node in children.items():
         assert isinstance(child_node, BoundNode)
@@ -73,8 +91,8 @@ class FileLocation:
         end_col: int
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=FileLocation.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=FileLocation.type_attrs)
 
 
 class SourceChunk:
@@ -87,12 +105,16 @@ class SourceChunk:
         loc: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=SourceChunk.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=SourceChunk.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=SourceChunk.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=SourceChunk.type_attrs
+        )
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
@@ -113,12 +135,16 @@ class TypeRef:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=TypeRef.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=TypeRef.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=TypeRef.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=TypeRef.type_attrs
+        )
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
@@ -135,12 +161,16 @@ class ImportPath:
         path: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=ImportPath.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=ImportPath.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=ImportPath.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=ImportPath.type_attrs
+        )
 
 
 class FieldRefPart:
@@ -154,12 +184,16 @@ class FieldRefPart:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=FieldRefPart.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=FieldRefPart.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, FieldRefPart.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, dict(children), attrs, FieldRefPart.type_attrs
+        )
 
     @staticmethod
     def get_name(bound_node: BoundNode) -> str:
@@ -180,12 +214,14 @@ class FieldRef:
         pin: NotRequired[BoundNode]
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=FieldRef.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=FieldRef.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, FieldRef.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, FieldRef.type_attrs)
 
 
 class Number:
@@ -198,12 +234,14 @@ class Number:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Number.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Number.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Number.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Number.type_attrs)
 
     @staticmethod
     def get_value(bound_node: BoundNode) -> float:
@@ -220,12 +258,14 @@ class Boolean:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Boolean.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Boolean.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Boolean.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Boolean.type_attrs)
 
 
 class Unit:
@@ -238,12 +278,14 @@ class Unit:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Unit.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Unit.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Unit.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Unit.type_attrs)
 
 
 class Quantity:
@@ -257,12 +299,14 @@ class Quantity:
         unit: NotRequired[BoundNode]
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Quantity.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Quantity.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Quantity.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Quantity.type_attrs)
 
 
 class BinaryExpression:
@@ -277,12 +321,16 @@ class BinaryExpression:
         right: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=BinaryExpression.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=BinaryExpression.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, BinaryExpression.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, BinaryExpression.type_attrs
+        )
 
 
 class GroupExpression:
@@ -295,12 +343,16 @@ class GroupExpression:
         expression: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=GroupExpression.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=GroupExpression.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, GroupExpression.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, GroupExpression.type_attrs
+        )
 
 
 class ComparisonClause:
@@ -314,12 +366,16 @@ class ComparisonClause:
         right: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=ComparisonClause.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=ComparisonClause.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, ComparisonClause.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, ComparisonClause.type_attrs
+        )
 
 
 class ComparisonExpression:
@@ -332,13 +388,15 @@ class ComparisonExpression:
         left: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=ComparisonExpression.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=ComparisonExpression.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
         return _create_subgraph(
-            g, dict(children), attrs, ComparisonExpression.type_attrs
+            g, type_cache, children, attrs, ComparisonExpression.type_attrs
         )
 
 
@@ -353,12 +411,16 @@ class BilateralQuantity:
         tolerance: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=BilateralQuantity.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=BilateralQuantity.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, BilateralQuantity.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, BilateralQuantity.type_attrs
+        )
 
 
 class BoundedQuantity:
@@ -372,12 +434,16 @@ class BoundedQuantity:
         end: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=BoundedQuantity.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=BoundedQuantity.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, BoundedQuantity.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, BoundedQuantity.type_attrs
+        )
 
 
 # TODO: does this node still make sense?
@@ -389,13 +455,15 @@ class Scope:
     class Children(TypedDict): ...
 
     @staticmethod
-    def create(g: GraphView) -> BoundNode:
-        return _create(g, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache) -> BoundNode:
+        return _create(g, type_cache, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT) -> BoundNode:
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT
+    ) -> BoundNode:
         return _create_subgraph(
-            g, children, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs
+            g, type_cache, children, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs
         )
 
 
@@ -410,12 +478,16 @@ class File:
         scope: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=File.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=File.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=File.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=File.type_attrs
+        )
 
 
 class BlockDefinition:
@@ -433,13 +505,15 @@ class BlockDefinition:
         scope: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=BlockDefinition.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=BlockDefinition.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
         return _create_subgraph(
-            g, children, attrs, type_attrs=BlockDefinition.type_attrs
+            g, type_cache, children, attrs, type_attrs=BlockDefinition.type_attrs
         )
 
     @staticmethod
@@ -461,12 +535,14 @@ class Slice:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Slice.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Slice.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Slice.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Slice.type_attrs)
 
 
 class IterableFieldRef:
@@ -480,12 +556,16 @@ class IterableFieldRef:
         slice: NotRequired[BoundNode]
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=IterableFieldRef.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=IterableFieldRef.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, IterableFieldRef.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, IterableFieldRef.type_attrs
+        )
 
 
 class FieldRefList:
@@ -497,11 +577,13 @@ class FieldRefList:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=FieldRefList.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=FieldRefList.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
         return _create_subgraph(g, dict(children), attrs, FieldRefList.type_attrs)
 
 
@@ -517,12 +599,14 @@ class ForStmt:
         scope: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=ForStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=ForStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, ForStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, ForStmt.type_attrs)
 
 
 class PragmaStmt:
@@ -535,12 +619,16 @@ class PragmaStmt:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=PragmaStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=PragmaStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=PragmaStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=PragmaStmt.type_attrs
+        )
 
     @staticmethod
     def get_pragma(bound_node: BoundNode) -> str:
@@ -559,12 +647,16 @@ class ImportStmt:
         type_ref: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=ImportStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=ImportStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=ImportStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=ImportStmt.type_attrs
+        )
 
 
 class TemplateArg:
@@ -578,12 +670,14 @@ class TemplateArg:
         value: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=TemplateArg.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=TemplateArg.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, TemplateArg.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, TemplateArg.type_attrs)
 
 
 class Template:
@@ -595,12 +689,14 @@ class Template:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Template.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Template.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Template.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Template.type_attrs)
 
 
 class Assignment:
@@ -614,12 +710,14 @@ class Assignment:
         value: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=Assignment.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=Assignment.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, Assignment.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, Assignment.type_attrs)
 
 
 class NewExpression:
@@ -634,12 +732,16 @@ class NewExpression:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=NewExpression.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=NewExpression.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=NewExpression.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=NewExpression.type_attrs
+        )
 
 
 class ConnectStmt:
@@ -653,12 +755,14 @@ class ConnectStmt:
         right: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=ConnectStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=ConnectStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, ConnectStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, ConnectStmt.type_attrs)
 
 
 class DirectedConnectStmt:
@@ -677,13 +781,15 @@ class DirectedConnectStmt:
         right: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=DirectedConnectStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=DirectedConnectStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
         return _create_subgraph(
-            g, dict(children), attrs, DirectedConnectStmt.type_attrs
+            g, type_cache, children, attrs, DirectedConnectStmt.type_attrs
         )
 
 
@@ -698,12 +804,14 @@ class RetypeStmt:
         type_ref: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=RetypeStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=RetypeStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, RetypeStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, RetypeStmt.type_attrs)
 
 
 class PinDeclaration:
@@ -723,12 +831,16 @@ class PinDeclaration:
         label: NotRequired[BoundNode]
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=PinDeclaration.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=PinDeclaration.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, PinDeclaration.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, PinDeclaration.type_attrs
+        )
 
 
 class SignaldefStmt:
@@ -741,12 +853,16 @@ class SignaldefStmt:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=SignaldefStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=SignaldefStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, SignaldefStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, SignaldefStmt.type_attrs
+        )
 
 
 class AssertStmt:
@@ -759,12 +875,14 @@ class AssertStmt:
         comparison: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=AssertStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=AssertStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, AssertStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, AssertStmt.type_attrs)
 
 
 class DeclarationStmt:
@@ -778,12 +896,16 @@ class DeclarationStmt:
         unit: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=DeclarationStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=DeclarationStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, DeclarationStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, DeclarationStmt.type_attrs
+        )
 
 
 class String:
@@ -796,12 +918,16 @@ class String:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=String.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=String.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=String.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=String.type_attrs
+        )
 
 
 class StringStmt:
@@ -814,12 +940,16 @@ class StringStmt:
         string: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=StringStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=StringStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, children, attrs, type_attrs=StringStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(
+            g, type_cache, children, attrs, type_attrs=StringStmt.type_attrs
+        )
 
 
 class PassStmt:
@@ -831,12 +961,14 @@ class PassStmt:
         source: BoundNode
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=PassStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=PassStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, PassStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, PassStmt.type_attrs)
 
 
 class TraitStmt:
@@ -852,12 +984,14 @@ class TraitStmt:
         template: NotRequired[BoundNode]
 
     @staticmethod
-    def create(g: GraphView, attrs: Attrs) -> BoundNode:
-        return _create(g, attrs, type_attrs=TraitStmt.type_attrs)
+    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
+        return _create(g, type_cache, attrs, type_attrs=TraitStmt.type_attrs)
 
     @staticmethod
-    def create_subgraph(g: GraphView, children: ChildrenT, attrs: Attrs) -> BoundNode:
-        return _create_subgraph(g, dict(children), attrs, TraitStmt.type_attrs)
+    def create_subgraph(
+        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
+    ) -> BoundNode:
+        return _create_subgraph(g, type_cache, children, attrs, TraitStmt.type_attrs)
 
 
 # TODO: generic get_attrs in API
