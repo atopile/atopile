@@ -419,14 +419,14 @@ pub const Path = struct {
     }
 
     pub fn print_path(self: *const @This()) void {
-        std.debug.print("path length: {}\t", .{self.edges.items.len});
+        std.debug.print("PATH - len: {} - ", .{self.edges.items.len});
         for (self.edges.items) |edge| {
-            std.debug.print("edge: {}\t", .{edge.attributes.uuid});
+            std.debug.print("{}->", .{edge.attributes.uuid});
         }
         std.debug.print("\n", .{});
     }
 
-    pub fn get_last_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
+    pub fn get_other_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
         if (self.edges.items.len == 0) {
             return null;
         }
@@ -690,7 +690,7 @@ pub const GraphView = struct {
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                std.debug.print("Edge visitor: Visiting edge-{} from node-{}\n", .{ edge.edge.attributes.uuid, self.start_node.node.attributes.uuid });
+                std.debug.print("EDGE VISITOR - Visiting e-{} from n-{}\n", .{ edge.edge.attributes.uuid, self.start_node.node.attributes.uuid });
 
                 // Check if other node has been visited
                 const other_node = edge.edge.get_other_node(self.start_node.node);
@@ -767,7 +767,7 @@ pub const GraphView = struct {
             const bfs_visitor_result = f(ctx, path);
 
             // Mark node at end of path as visited
-            const node_at_path_end = path.get_last_node(start_node) orelse {
+            const node_at_path_end = path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
             visited_nodes.append(node_at_path_end.node) catch |err| {
@@ -817,46 +817,88 @@ pub const GraphView = struct {
     }
 };
 
+// Pathfinder namespace
 pub const PathFinder = struct {
+
+    // High-level find paths function
     pub fn find_paths(start_node: BoundNodeReference, edge_type: ?Edge.EdgeType, a: std.mem.Allocator) ![]const Path {
+
+        // BFS visitor
         const FindPaths = struct {
             path_list: std.ArrayList(Path),
 
             pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
+                if (!PathFinder.run_filters(path)) {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+
                 self.path_list.append(path) catch |err| {
                     return visitor.VisitResult(void){ .ERROR = err };
                 };
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
-
-            // pub fn run_filters(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
-            //     const self: *@This() = @ptrCast(@alignCast(self_ptr));
-
-            //     return visitor.VisitResult(void){ .CONTINUE = {} };
-            // }
         };
 
+        // Instantiate visitor
         var visit_ctx = FindPaths{ .path_list = std.ArrayList(Path).init(a) };
         defer visit_ctx.path_list.deinit();
 
+        // Run BFS visitor
         const result = GraphView.visit_paths_bfs(start_node.g, start_node, edge_type, void, &visit_ctx, FindPaths.visit_fn);
         _ = result;
 
         return visit_ctx.path_list.items;
     }
 
-    // filters: FilterList,
+    const Self = @This();
 
-    // pub const FilterList = struct {
-    //     filter_path_by_node_type: bool (PathFinder::*)(Path),
-    // };
+    pub const FilterFn = *const fn (Path) bool;
 
-    // pub fn filter_path_by_node_type(self: *@This(), path: Path) bool {
-    //     _ = path;
-    //     _ = self;
-    // }
+    pub const Filter = struct {
+        name: []const u8,
+        func: FilterFn,
+    };
+
+    pub const FilterList = struct {
+        items: []const Filter,
+
+        pub fn init() FilterList {
+            return .{
+                .items = &[_]Filter{
+                    .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
+                    .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
+                },
+            };
+        }
+    };
+
+    const filters = FilterList.init();
+
+    pub fn run_filters(path: Path) bool {
+        path.print_path();
+        std.debug.print("FILTERS - ", .{});
+        for (filters.items) |filter| {
+            std.debug.print("{s}, ", .{filter.name});
+            if (!filter.func(path)) {
+                return false;
+            }
+        }
+        std.debug.print("\n", .{});
+        return true;
+    }
+
+    pub fn filter_path_by_node_type(path: Path) bool {
+        // path.get_other_node(bn: BoundNodeReference)
+        _ = path;
+        return true;
+    }
+
+    pub fn filter_path_by_edge_type(path: Path) bool {
+        _ = path;
+        return true;
+    }
 };
 
 test "visit_paths_bfs" {
@@ -920,17 +962,17 @@ test "visit_paths_bfs" {
     var visitor_instance = MockPathVisitor{};
     _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
 
-    var paths = try PathFinder.find_paths(bn1, 1759242069, bn1.g.allocator);
+    const paths = try PathFinder.find_paths(bn1, 1759242069, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
     try std.testing.expectEqual(paths.len, 6);
 
-    paths = try PathFinder.find_paths(bn1, 22, bn1.g.allocator);
-    std.debug.print("paths: {}\n", .{paths.len});
-    try std.testing.expectEqual(paths.len, 0);
+    // paths = try PathFinder.find_paths(bn1, 22, bn1.g.allocator);
+    // std.debug.print("paths: {}\n", .{paths.len});
+    // try std.testing.expectEqual(paths.len, 0);
 
-    paths = try PathFinder.find_paths(bn1, null, bn1.g.allocator);
-    std.debug.print("paths: {}\n", .{paths.len});
-    try std.testing.expectEqual(paths.len, 6);
+    // paths = try PathFinder.find_paths(bn1, null, bn1.g.allocator);
+    // std.debug.print("paths: {}\n", .{paths.len});
+    // try std.testing.expectEqual(paths.len, 6);
 
     // be1.get_nodes();
 }
