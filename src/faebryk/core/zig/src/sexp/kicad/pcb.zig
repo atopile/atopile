@@ -524,10 +524,6 @@ pub const FpText = struct {
 // Pad structures
 pub const Drill = f64;
 
-pub const PadPrimitive = union(enum) {
-    gr_poly: Polygon,
-};
-
 pub const PadPrimitives = struct {
     gr_polys: list(Polygon) = .{},
 
