@@ -35,6 +35,7 @@ class Visitor(AtoParserVisitor):
     def __init__(self, graph: GraphView, file_path: Path) -> None:
         super().__init__()
         self._graph = graph
+        self._type_cache = AST.GraphTypeCache()
         self._file_path = file_path
 
     def _extract_source(self, ctx: ParserRuleContext) -> BoundNode:
@@ -52,9 +53,11 @@ class Visitor(AtoParserVisitor):
 
         return AST.SourceChunk.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.SourceChunk.Children(
                 loc=AST.FileLocation.create(
                     g=self._graph,
+                    type_cache=self._type_cache,
                     attrs=AST.FileLocation.Attrs(
                         start_line=start_line,
                         start_col=start_col,
@@ -85,6 +88,7 @@ class Visitor(AtoParserVisitor):
     def visitType_reference(self, ctx: AtoParser.Type_referenceContext) -> BoundNode:
         type_ref = AST.TypeRef.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.TypeRef.Children(source=self._extract_source(ctx)),
             attrs=AST.TypeRef.Attrs(name=self.visitName(ctx.name())),
         )
@@ -143,6 +147,7 @@ class Visitor(AtoParserVisitor):
             type_ref=type_ref,
             scope=AST.Scope.create_subgraph(
                 g=self._graph,
+                type_cache=self._type_cache,
                 children=AST.Scope.Children(
                     **{
                         f"scope_item_{i}": node
@@ -159,6 +164,7 @@ class Visitor(AtoParserVisitor):
 
         return AST.BlockDefinition.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=children,
             attrs=AST.BlockDefinition.Attrs(block_type=block_type),
         )
@@ -169,11 +175,13 @@ class Visitor(AtoParserVisitor):
     def visitFile_input(self, ctx: AtoParser.File_inputContext) -> BoundNode:
         return AST.File.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             attrs=AST.File.Attrs(path=str(self._file_path)),
             children=AST.File.Children(
                 source=self._extract_source(ctx),
                 scope=AST.Scope.create_subgraph(
                     g=self._graph,
+                    type_cache=self._type_cache,
                     children=AST.Scope.Children(
                         **{
                             f"scope_item_{i}": node
@@ -236,6 +244,7 @@ class Visitor(AtoParserVisitor):
     def visitPragma_stmt(self, ctx: AtoParser.Pragma_stmtContext) -> BoundNode:
         return AST.PragmaStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.PragmaStmt.Children(source=self._extract_source(ctx)),
             attrs=AST.PragmaStmt.Attrs(pragma=self.visit(ctx.PRAGMA())),
         )
@@ -249,6 +258,7 @@ class Visitor(AtoParserVisitor):
         if ctx.string():
             children["path"] = AST.ImportPath.create_subgraph(
                 g=self._graph,
+                type_cache=self._type_cache,
                 children=AST.ImportPath.Children(
                     source=self._extract_source(ctx.string()),
                     path=self.visitString(ctx.string()),
@@ -257,7 +267,10 @@ class Visitor(AtoParserVisitor):
             )
 
         import_stmt = AST.ImportStmt.create_subgraph(
-            g=self._graph, children=children, attrs=AST.ImportStmt.Attrs()
+            g=self._graph,
+            type_cache=self._type_cache,
+            children=children,
+            attrs=AST.ImportStmt.Attrs(),
         )
 
         return import_stmt
@@ -265,6 +278,7 @@ class Visitor(AtoParserVisitor):
     def visitRetype_stmt(self, ctx: AtoParser.Retype_stmtContext) -> BoundNode:
         return AST.RetypeStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.RetypeStmt.Children(
                 source=self._extract_source(ctx),
                 field_ref=self.visitField_reference(ctx.field_reference()),
@@ -297,12 +311,13 @@ class Visitor(AtoParserVisitor):
                 raise ValueError(f"Unexpected pin statement: {ctx.getText()}")
 
         return AST.PinDeclaration.create_subgraph(
-            g=self._graph, children=children, attrs=attrs
+            g=self._graph, type_cache=self._type_cache, children=children, attrs=attrs
         )
 
     def visitSignaldef_stmt(self, ctx: AtoParser.Signaldef_stmtContext) -> BoundNode:
         return AST.SignaldefStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.SignaldefStmt.Children(
                 source=self._extract_source(ctx),
             ),
@@ -312,6 +327,7 @@ class Visitor(AtoParserVisitor):
     def visitString_stmt(self, ctx: AtoParser.String_stmtContext) -> BoundNode:
         return AST.StringStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.StringStmt.Children(
                 source=self._extract_source(ctx), string=self.visitString(ctx.string())
             ),
@@ -334,6 +350,7 @@ class Visitor(AtoParserVisitor):
     def visitPass_stmt(self, ctx: AtoParser.Pass_stmtContext) -> BoundNode:
         return AST.PassStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.PassStmt.Children(
                 source=self._extract_source(ctx),
             ),
@@ -343,6 +360,7 @@ class Visitor(AtoParserVisitor):
     def visitAssert_stmt(self, ctx: AtoParser.Assert_stmtContext) -> BoundNode:
         return AST.AssertStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.AssertStmt.Children(
                 source=self._extract_source(ctx),
                 comparison=self.visitComparison(ctx.comparison()),
@@ -367,7 +385,7 @@ class Visitor(AtoParserVisitor):
             attrs["constructor"] = self.visitConstructor(ctx.constructor())
 
         return AST.TraitStmt.create_subgraph(
-            g=self._graph, children=children, attrs=attrs
+            g=self._graph, type_cache=self._type_cache, children=children, attrs=attrs
         )
 
     def visitConstructor(self, ctx: AtoParser.ConstructorContext) -> str:
@@ -376,11 +394,13 @@ class Visitor(AtoParserVisitor):
     def visitFor_stmt(self, ctx: AtoParser.For_stmtContext) -> BoundNode:
         return AST.ForStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ForStmt.Children(
                 source=self._extract_source(ctx),
                 iterable=self.visitIterable_references(ctx.iterable_references()),
                 scope=AST.Scope.create_subgraph(
                     g=self._graph,
+                    type_cache=self._type_cache,
                     children=AST.Scope.Children(
                         **{
                             f"scope_item_{i}": node
@@ -408,7 +428,10 @@ class Visitor(AtoParserVisitor):
                     children["slice"] = self.visitSlice(ctx.slice_())
 
                 return AST.IterableFieldRef.create_subgraph(
-                    g=self._graph, children=children, attrs=AST.IterableFieldRef.Attrs()
+                    g=self._graph,
+                    type_cache=self._type_cache,
+                    children=children,
+                    attrs=AST.IterableFieldRef.Attrs(),
                 )
             case [None, list_literal_ctx]:
                 return self.visitList_literal_of_field_references(list_literal_ctx)
@@ -420,6 +443,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.FieldRefList.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.FieldRefList.Children(
                 source=self._extract_source(ctx),
                 **{
@@ -446,6 +470,7 @@ class Visitor(AtoParserVisitor):
 
         return AST.Slice.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Slice.Children(source=self._extract_source(ctx)),
             attrs=attrs,
         )
@@ -472,6 +497,7 @@ class Visitor(AtoParserVisitor):
 
         return AST.FieldRefPart.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.FieldRefPart.Children(source=self._extract_source(ctx)),
             attrs=attrs,
         )
@@ -494,7 +520,10 @@ class Visitor(AtoParserVisitor):
             children["pin"] = self.visitPin_reference_end(pin_ctx)
 
         return AST.FieldRef.create_subgraph(
-            g=self._graph, children=children, attrs=AST.FieldRef.Attrs()
+            g=self._graph,
+            type_cache=self._type_cache,
+            children=children,
+            attrs=AST.FieldRef.Attrs(),
         )
 
     def visitPin_reference_end(
@@ -512,6 +541,7 @@ class Visitor(AtoParserVisitor):
     def visitAssign_stmt(self, ctx: AtoParser.Assign_stmtContext) -> BoundNode:
         return AST.Assignment.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Assignment.Children(
                 target=self.visitField_reference_or_declaration(
                     ctx.field_reference_or_declaration()
@@ -556,7 +586,10 @@ class Visitor(AtoParserVisitor):
             children["new_count"] = self.visitNumber_hint_natural(ctx.new_count())
 
         return AST.NewExpression.create_subgraph(
-            g=self._graph, children=children, attrs=AST.NewExpression.Attrs()
+            g=self._graph,
+            type_cache=self._type_cache,
+            children=children,
+            attrs=AST.NewExpression.Attrs(),
         )
 
     def visitLiteral_physical(
@@ -592,6 +625,7 @@ class Visitor(AtoParserVisitor):
 
             return AST.BinaryExpression.create_subgraph(
                 g=self._graph,
+                type_cache=self._type_cache,
                 children=AST.BinaryExpression.Children(
                     source=self._extract_source(ctx),
                     left=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -616,6 +650,7 @@ class Visitor(AtoParserVisitor):
 
             return AST.BinaryExpression.create_subgraph(
                 g=self._graph,
+                type_cache=self._type_cache,
                 children=AST.BinaryExpression.Children(
                     source=self._extract_source(ctx),
                     left=self.visitSum(ctx.sum_()),
@@ -640,6 +675,7 @@ class Visitor(AtoParserVisitor):
 
             return AST.BinaryExpression.create_subgraph(
                 g=self._graph,
+                type_cache=self._type_cache,
                 children=AST.BinaryExpression.Children(
                     source=self._extract_source(ctx),
                     left=self.visitTerm(ctx.term()),
@@ -655,6 +691,7 @@ class Visitor(AtoParserVisitor):
             case [base, exponent]:
                 return AST.BinaryExpression.create_subgraph(
                     g=self._graph,
+                    type_cache=self._type_cache,
                     children=AST.BinaryExpression.Children(
                         source=self._extract_source(ctx), left=base, right=exponent
                     ),
@@ -670,6 +707,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.GroupExpression.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.GroupExpression.Children(
                 source=self._extract_source(ctx),
                 expression=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -691,6 +729,7 @@ class Visitor(AtoParserVisitor):
     def visitComparison(self, ctx: AtoParser.ComparisonContext) -> BoundNode:
         return AST.ComparisonExpression.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonExpression.Children(
                 source=self._extract_source(ctx),
                 left=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -736,6 +775,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.ComparisonClause.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonClause.Children(
                 source=self._extract_source(ctx),
                 right=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -748,6 +788,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.ComparisonClause.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonClause.Children(
                 source=self._extract_source(ctx),
                 right=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -760,6 +801,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.ComparisonClause.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonClause.Children(
                 source=self._extract_source(ctx),
                 right=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -772,6 +814,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.ComparisonClause.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonClause.Children(
                 source=self._extract_source(ctx),
                 right=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -784,6 +827,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.ComparisonClause.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonClause.Children(
                 source=self._extract_source(ctx),
                 right=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -796,6 +840,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.ComparisonClause.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ComparisonClause.Children(
                 source=self._extract_source(ctx),
                 right=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -812,7 +857,10 @@ class Visitor(AtoParserVisitor):
             children["unit"] = self.visitUnit(ctx.unit())
 
         return AST.Quantity.create_subgraph(
-            g=self._graph, children=children, attrs=AST.Quantity.Attrs()
+            g=self._graph,
+            type_cache=self._type_cache,
+            children=children,
+            attrs=AST.Quantity.Attrs(),
         )
 
     def visitDeclaration_stmt(
@@ -820,6 +868,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.DeclarationStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.DeclarationStmt.Children(
                 source=self._extract_source(ctx),
                 field_ref=self.visitField_reference(ctx.field_reference()),
@@ -831,6 +880,7 @@ class Visitor(AtoParserVisitor):
     def visitUnit(self, ctx: AtoParser.UnitContext) -> BoundNode:
         return AST.Unit.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Unit.Children(source=self._extract_source(ctx)),
             attrs=AST.Unit.Attrs(symbol=self.visitName(ctx.name())),
         )
@@ -840,6 +890,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.BilateralQuantity.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.BilateralQuantity.Children(
                 source=self._extract_source(ctx),
                 quantity=self.visitQuantity(ctx.quantity()),
@@ -862,6 +913,7 @@ class Visitor(AtoParserVisitor):
             case [None, percent_ctx]:
                 children["unit"] = AST.Unit.create_subgraph(
                     g=self._graph,
+                    type_cache=self._type_cache,
                     children=AST.Unit.Children(
                         # TODO: exclude number_signless from source
                         source=self._extract_source(ctx)
@@ -874,7 +926,10 @@ class Visitor(AtoParserVisitor):
                 )
 
         return AST.Quantity.create_subgraph(
-            g=self._graph, children=children, attrs=AST.Quantity.Attrs()
+            g=self._graph,
+            type_cache=self._type_cache,
+            children=children,
+            attrs=AST.Quantity.Attrs(),
         )
 
     def visitBound_quantity(self, ctx: AtoParser.Bound_quantityContext) -> BoundNode:
@@ -882,6 +937,7 @@ class Visitor(AtoParserVisitor):
 
         return AST.BoundedQuantity.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.BoundedQuantity.Children(
                 source=self._extract_source(ctx), start=start, end=end
             ),
@@ -891,6 +947,7 @@ class Visitor(AtoParserVisitor):
     def visitTemplate(self, ctx: AtoParser.TemplateContext) -> BoundNode:
         return AST.Template.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Template.Children(
                 source=self._extract_source(ctx),
                 **{
@@ -906,6 +963,7 @@ class Visitor(AtoParserVisitor):
     def visitTemplate_arg(self, ctx: AtoParser.Template_argContext) -> BoundNode:
         return AST.TemplateArg.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.TemplateArg.Children(
                 source=self._extract_source(ctx), value=self.visitLiteral(ctx.literal())
             ),
@@ -929,6 +987,7 @@ class Visitor(AtoParserVisitor):
     def visitString(self, ctx: AtoParser.StringContext) -> BoundNode:
         return AST.String.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.String.Children(source=self._extract_source(ctx)),
             attrs=AST.String.Attrs(value=self.visitTerminal(ctx.STRING())),
         )
@@ -947,6 +1006,7 @@ class Visitor(AtoParserVisitor):
 
         return AST.Boolean.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Boolean.Children(source=self._extract_source(ctx)),
             attrs=attrs,
         )
@@ -954,6 +1014,7 @@ class Visitor(AtoParserVisitor):
     def visitNumber_signless(self, ctx: AtoParser.Number_signlessContext) -> BoundNode:
         return AST.Number.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Number.Children(source=self._extract_source(ctx)),
             attrs=AST.Number.Attrs(value=self._parse_decimal(ctx.getText())),
         )
@@ -961,6 +1022,7 @@ class Visitor(AtoParserVisitor):
     def visitNumber(self, ctx: AtoParser.NumberContext) -> BoundNode:
         return AST.Number.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Number.Children(source=self._extract_source(ctx)),
             attrs=AST.Number.Attrs(value=self._parse_decimal(ctx.getText())),
         )
@@ -970,6 +1032,7 @@ class Visitor(AtoParserVisitor):
     ) -> BoundNode:
         return AST.Number.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.Number.Children(source=self._extract_source(ctx)),
             attrs=AST.Number.Attrs(value=self._parse_int(ctx.getText())),
         )
@@ -1000,6 +1063,7 @@ class Visitor(AtoParserVisitor):
         left, right = [self.visitMif(c) for c in ctx.mif()]
         return AST.ConnectStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.ConnectStmt.Children(
                 source=self._extract_source(ctx), left=left, right=right
             ),
@@ -1033,6 +1097,7 @@ class Visitor(AtoParserVisitor):
 
         return AST.DirectedConnectStmt.create_subgraph(
             g=self._graph,
+            type_cache=self._type_cache,
             children=AST.DirectedConnectStmt.Children(
                 source=self._extract_source(ctx), left=left, right=right
             ),
