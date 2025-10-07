@@ -815,7 +815,9 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .EXHAUSTED = {} };
         }
     }
+};
 
+pub const PathFinder = struct {
     pub fn find_paths(start_node: BoundNodeReference, edge_type: ?Edge.EdgeType, a: std.mem.Allocator) ![]const Path {
         const FindPaths = struct {
             path_list: std.ArrayList(Path),
@@ -828,16 +830,33 @@ pub const GraphView = struct {
                 };
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
+
+            // pub fn run_filters(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+            //     const self: *@This() = @ptrCast(@alignCast(self_ptr));
+
+            //     return visitor.VisitResult(void){ .CONTINUE = {} };
+            // }
         };
 
         var visit_ctx = FindPaths{ .path_list = std.ArrayList(Path).init(a) };
         defer visit_ctx.path_list.deinit();
 
-        const result = visit_paths_bfs(start_node.g, start_node, edge_type, void, &visit_ctx, FindPaths.visit_fn);
+        const result = GraphView.visit_paths_bfs(start_node.g, start_node, edge_type, void, &visit_ctx, FindPaths.visit_fn);
         _ = result;
 
         return visit_ctx.path_list.items;
     }
+
+    // filters: FilterList,
+
+    // pub const FilterList = struct {
+    //     filter_path_by_node_type: bool (PathFinder::*)(Path),
+    // };
+
+    // pub fn filter_path_by_node_type(self: *@This(), path: Path) bool {
+    //     _ = path;
+    //     _ = self;
+    // }
 };
 
 test "visit_paths_bfs" {
@@ -901,15 +920,15 @@ test "visit_paths_bfs" {
     var visitor_instance = MockPathVisitor{};
     _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
 
-    var paths = try GraphView.find_paths(bn1, 1759242069, bn1.g.allocator);
+    var paths = try PathFinder.find_paths(bn1, 1759242069, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
     try std.testing.expectEqual(paths.len, 6);
 
-    paths = try GraphView.find_paths(bn1, 22, bn1.g.allocator);
+    paths = try PathFinder.find_paths(bn1, 22, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
     try std.testing.expectEqual(paths.len, 0);
 
-    paths = try GraphView.find_paths(bn1, null, bn1.g.allocator);
+    paths = try PathFinder.find_paths(bn1, null, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
     try std.testing.expectEqual(paths.len, 6);
 
