@@ -41,7 +41,9 @@ def compile():
 
     logger.warning("Recompiling C++ code")
 
-    pyi_watcher = FileChangedWatcher(_pyi_source, FileChangedWatcher.CheckMethod.HASH)
+    pyi_watcher = FileChangedWatcher(
+        _pyi_source, method=FileChangedWatcher.CheckMethod.HASH
+    )
 
     # check for cmake binary existing
     if not shutil.which("cmake"):
