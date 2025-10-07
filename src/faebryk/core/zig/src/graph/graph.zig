@@ -759,9 +759,10 @@ pub const GraphView = struct {
         // BFS iterations
         while (open_path_queue.items.len > 0) {
             // Pop path from start of queue
-            var path = open_path_queue.pop() orelse unreachable;
+            // var path = open_path_queue.pop() orelse unreachable;
+            var path = open_path_queue.orderedRemove(0);
             defer path.deinit();
-            // path.print_path();
+            path.print_path();
 
             // Run provided path visitor
             const bfs_visitor_result = f(ctx, path);
@@ -830,9 +831,9 @@ pub const PathFinder = struct {
             pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
-                if (!PathFinder.run_filters(path)) {
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
+                // if (!PathFinder.run_filters(path)) {
+                //     return visitor.VisitResult(void){ .CONTINUE = {} };
+                // }
 
                 self.path_list.append(path) catch |err| {
                     return visitor.VisitResult(void){ .ERROR = err };
@@ -943,24 +944,24 @@ test "visit_paths_bfs" {
     _ = try g.insert_edge(e5);
     _ = try g.insert_edge(e6);
 
-    const MockPathVisitor = struct {
-        // visitor context
-        x: i64 = 0,
+    // const MockPathVisitor = struct {
+    //     // visitor context
+    //     x: i64 = 0,
 
-        // visitor function
-        pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
-            const self: *@This() = @ptrCast(@alignCast(self_ptr));
-            _ = path; // doing nothing with the path in this example
+    //     // visitor function
+    //     pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+    //         const self: *@This() = @ptrCast(@alignCast(self_ptr));
+    //         _ = path; // doing nothing with the path in this example
 
-            // just counting the number of times the visitor has ran
-            self.x += 1;
-            std.debug.print("visit_fn iterations: {}\n", .{self.x});
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-    };
+    //         // just counting the number of times the visitor has ran
+    //         self.x += 1;
+    //         std.debug.print("visit_fn iterations: {}\n", .{self.x});
+    //         return visitor.VisitResult(void){ .CONTINUE = {} };
+    //     }
+    // };
 
-    var visitor_instance = MockPathVisitor{};
-    _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
+    // var visitor_instance = MockPathVisitor{};
+    // _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
 
     const paths = try PathFinder.find_paths(bn1, 1759242069, bn1.g.allocator);
     std.debug.print("paths: {}\n", .{paths.len});
