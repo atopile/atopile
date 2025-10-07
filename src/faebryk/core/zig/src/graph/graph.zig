@@ -759,19 +759,11 @@ pub const GraphView = struct {
         // BFS iterations
         while (open_path_queue.items.len > 0) {
             // Pop path from start of queue
-            // var path = open_path_queue.pop() orelse unreachable;
             var path = open_path_queue.orderedRemove(0);
             defer path.deinit();
 
-            // Run provided path visitor
-            const bfs_visitor_result = f(ctx, path);
-
-            // Mark node at end of path as visited
             const node_at_path_end = path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
-            };
-            visited_nodes.append(node_at_path_end.node) catch |err| {
-                return visitor.VisitResult(T){ .ERROR = err };
             };
 
             std.debug.print("PATH - len: {} - ", .{path.edges.items.len});
@@ -780,6 +772,14 @@ pub const GraphView = struct {
                 std.debug.print("e{}->", .{edge.attributes.uuid});
             }
             std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
+
+            // Run provided path visitor
+            const bfs_visitor_result = f(ctx, path);
+
+            // Mark node at end of path as visited
+            visited_nodes.append(node_at_path_end.node) catch |err| {
+                return visitor.VisitResult(T){ .ERROR = err };
+            };
 
             // Report BFS visitor status
             switch (bfs_visitor_result) {
@@ -833,9 +833,9 @@ pub const PathFinder = struct {
             pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
-                // if (!PathFinder.run_filters(path)) {
-                //     return visitor.VisitResult(void){ .CONTINUE = {} };
-                // }
+                if (!PathFinder.run_filters(path)) {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
 
                 self.path_list.append(path) catch |err| {
                     return visitor.VisitResult(void){ .ERROR = err };
@@ -857,11 +857,9 @@ pub const PathFinder = struct {
 
     const Self = @This();
 
-    pub const FilterFn = *const fn (Path) bool;
-
     pub const Filter = struct {
         name: []const u8,
-        func: FilterFn,
+        func: *const fn (Path) bool,
     };
 
     pub const FilterList = struct {
@@ -880,7 +878,6 @@ pub const PathFinder = struct {
     const filters = FilterList.init();
 
     pub fn run_filters(path: Path) bool {
-        path.print_path();
         std.debug.print("FILTERS - ", .{});
         for (filters.items) |filter| {
             std.debug.print("{s}, ", .{filter.name});
