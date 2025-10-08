@@ -80,15 +80,15 @@ test "basic chain" {
 
     // init ---------------------------------------------------------------------------------------
     const en12 = try EdgeNext.init(g.allocator, node1, node2);
-    std.debug.print("en12 source: {}\n", .{EdgeNext.get_previous_node(en12).?});
-    std.debug.print("en12 target: {}\n", .{EdgeNext.get_next_node(en12).?});
+    // std.debug.print("en12 source: {}\n", .{EdgeNext.get_previous_node(en12).?});
+    // std.debug.print("en12 target: {}\n", .{EdgeNext.get_next_node(en12).?});
     // defer en12.deinit();
     const ben12 = try g.insert_edge(en12);
 
     // add_next -----------------------------------------------------------------------------------
     const ben23 = try EdgeNext.add_next(bn2, bn3);
-    std.debug.print("en23 source: {}\n", .{EdgeNext.get_previous_node(ben23.edge).?});
-    std.debug.print("en23 target: {}\n", .{EdgeNext.get_next_node(ben23.edge).?});
+    // std.debug.print("en23 source: {}\n", .{EdgeNext.get_previous_node(ben23.edge).?});
+    // std.debug.print("en23 target: {}\n", .{EdgeNext.get_next_node(ben23.edge).?});
     // defer ben23.edge.deinit();
 
     // is_instance -------------------------------------------------------------------------------

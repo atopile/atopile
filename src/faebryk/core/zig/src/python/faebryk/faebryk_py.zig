@@ -19,11 +19,13 @@ const EdgeCompositionWrapper = bind.PyObjectWrapper(faebryk.composition.EdgeComp
 const EdgeTypeWrapper = bind.PyObjectWrapper(faebryk.node_type.EdgeType);
 const EdgeNextWrapper = bind.PyObjectWrapper(faebryk.next.EdgeNext);
 const EdgePointerWrapper = bind.PyObjectWrapper(faebryk.pointer.EdgePointer);
+const TypeGraphWrapper = bind.PyObjectWrapper(faebryk.type.TypeGraph);
 
 var edge_composition_type: ?*py.PyTypeObject = null;
 var edge_type_type: ?*py.PyTypeObject = null;
 var edge_next_type: ?*py.PyTypeObject = null;
 var edge_pointer_type: ?*py.PyTypeObject = null;
+var type_graph_type: ?*py.PyTypeObject = null;
 
 pub const method_descr = bind.method_descr;
 
@@ -1013,6 +1015,265 @@ fn wrap_pointer(root: *py.PyObject) void {
     edge_pointer_type = type_registry.getRegisteredTypeObject("EdgePointer");
 }
 
+fn wrap_type_graph_create() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "create",
+            .doc = "Create a new TypeGraph",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+
+            _ = kwargs;
+
+            const tg_value = faebryk.type.TypeGraph.create_typegraph() catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "create_typegraph failed");
+                return null;
+            };
+
+            const allocator = std.heap.c_allocator;
+            const ptr = allocator.create(faebryk.type.TypeGraph) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            ptr.* = tg_value;
+
+            const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
+            if (obj == null) {
+                allocator.destroy(ptr);
+                return null;
+            }
+
+            return obj;
+        }
+    };
+}
+
+fn wrap_type_graph_init_type_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "init_type_node",
+            .doc = "Create and register a new type node",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+
+            const bnode = faebryk.type.TypeGraph.init_type_node(wrapper.data) catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "init_type_node failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_type_graph_init_trait_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "init_trait_node",
+            .doc = "Create and register a new trait node",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+
+            const bnode = faebryk.type.TypeGraph.init_trait_node(wrapper.data) catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "init_trait_node failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_type_graph_init_make_child_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "init_make_child_node",
+            .doc = "Create a MakeChild node referencing the provided type",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+                identifier: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+
+            const bnode = faebryk.type.TypeGraph.init_make_child_node(wrapper.data, kwarg_obj.type_node.*, identifier) catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "init_make_child_node failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_type_graph_init_reference_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "init_reference_node",
+            .doc = "Create a Reference node optionally pointing to a type",
+            .args_def = struct {
+                type_node: ?*graph.BoundNodeReference = null,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var maybe_bnode: ?graph.BoundNodeReference = null;
+            if (kwarg_obj.type_node) |tb|
+                maybe_bnode = tb.*;
+
+            const bnode = faebryk.type.TypeGraph.init_reference_node(wrapper.data, maybe_bnode) catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "init_reference_node failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_type_graph_init_make_link_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "init_make_link_node",
+            .doc = "Create a MakeLink node",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+
+            const bnode = faebryk.type.TypeGraph.init_make_link_node(wrapper.data) catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "init_make_link_node failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_type_graph_instantiate() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "instantiate",
+            .doc = "Instantiate the given type node into a graph",
+            .args_def = struct {
+                type_node: *graph.Node,
+                graph_view: ?*graph.GraphView = null,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                    .graph_view = bind.ARG{ .Wrapper = graph_py.GraphViewWrapper, .storage = &graph_py.graph_view_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const graph_view = if (kwarg_obj.graph_view) |gv| gv else &wrapper.data.type_graph_view;
+
+            const bnode = faebryk.type.TypeGraph.instantiate(wrapper.data, kwarg_obj.type_node, graph_view) catch {
+                py.PyErr_SetString(py.PyExc_RuntimeError, "instantiate failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_type_graph_resolve_instance_reference() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "resolve_instance_reference",
+            .doc = "Resolve a reference node within the instance graph",
+            .args_def = struct {
+                reference_node: *graph.BoundNodeReference,
+                base_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .reference_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .base_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.type.TypeGraph.resolve_instance_reference(kwarg_obj.reference_node.*, kwarg_obj.base_node.*)) |resolved| {
+                return graph_py.makeBoundNodePyObject(resolved);
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
+fn wrap_type(root: *py.PyObject) void {
+    const extra_methods = [_]type{
+        wrap_type_graph_create(),
+        wrap_type_graph_init_type_node(),
+        wrap_type_graph_init_trait_node(),
+        wrap_type_graph_init_make_child_node(),
+        wrap_type_graph_init_reference_node(),
+        wrap_type_graph_init_make_link_node(),
+        wrap_type_graph_instantiate(),
+        wrap_type_graph_resolve_instance_reference(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.type.TypeGraph, extra_methods);
+    type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
+}
+
 fn wrap_trait(root: *py.PyObject) void {
     _ = root;
     // TODO
@@ -1108,6 +1369,21 @@ fn wrap_pointer_file(root: *py.PyObject) ?*py.PyObject {
     return module;
 }
 
+fn wrap_type_file(root: *py.PyObject) ?*py.PyObject {
+    const module = py.PyModule_Create2(&main_module_def, 1013);
+    if (module == null) {
+        return null;
+    }
+
+    wrap_type(module.?);
+
+    if (py.PyModule_AddObject(root, "type", module) < 0) {
+        return null;
+    }
+
+    return module;
+}
+
 fn wrap_trait_file(root: *py.PyObject) ?*py.PyObject {
     const module = py.PyModule_Create2(&main_module_def, 1013);
     if (module == null) {
@@ -1148,6 +1424,7 @@ pub fn make_python_module() ?*py.PyObject {
     _ = wrap_interface_file(module.?);
     _ = wrap_module_file(module.?);
     _ = wrap_node_type_file(module.?);
+    _ = wrap_type_file(module.?);
     _ = wrap_next_file(module.?);
     _ = wrap_pointer_file(module.?);
     _ = wrap_trait_file(module.?);

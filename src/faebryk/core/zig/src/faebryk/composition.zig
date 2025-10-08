@@ -1,11 +1,13 @@
 const graph_mod = @import("graph");
 const std = @import("std");
+const node_type_mod = @import("node_type.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;
+const EdgeType = node_type_mod.EdgeType;
 const Edge = graph.Edge;
 const Node = graph.Node;
 const GraphView = graph.GraphView;
@@ -112,6 +114,28 @@ pub const EdgeComposition = struct {
         };
 
         var finder = Finder{ .identifier = child_identifier, .found = null };
+        _ = EdgeComposition.visit_children_edges(bound_parent_node, &finder, Finder.visit);
+        return finder.found;
+    }
+
+    pub fn get_children_by_type(bound_parent_node: graph.BoundNodeReference, child_type_node: graph.NodeReference) ?graph.BoundNodeReference {
+        const Finder = struct {
+            child_type: graph.BoundEdgeReference,
+            found: ?graph.BoundNodeReference = null,
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                if (EdgeComposition.is_instance(bound_edge.edge)) {
+                    if (EdgeType.is_node_instance_of(EdgeComposition.get_child_node(bound_edge.edge), self.child_type)) |_| {
+                        self.found = bound_edge.g.bind(bound_edge.edge.get_target() orelse return visitor.VisitResult(void){ .CONTINUE = {} });
+                        return visitor.VisitResult(void){ .STOP = {} };
+                    }
+                }
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var finder = Finder{ .child_type = child_type_node, .found = null };
         _ = EdgeComposition.visit_children_edges(bound_parent_node, &finder, Finder.visit);
         return finder.found;
     }

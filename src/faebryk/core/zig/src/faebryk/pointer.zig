@@ -29,6 +29,14 @@ pub const EdgePointer = struct {
         return edge.get_target();
     }
 
+    pub fn get_referenced_node_from_node(bound_reference_node: BoundNodeReference) ?NodeReference {
+        const edge = Edge.get_single_edge(bound_reference_node, tid, false);
+        if (edge) |e| {
+            return e.edge.get_target();
+        }
+        return null;
+    }
+
     pub fn is_instance(E: EdgeReference) bool {
         return Edge.is_instance(E, tid);
     }
