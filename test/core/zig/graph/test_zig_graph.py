@@ -141,12 +141,48 @@ def test_edge_next():
     assert next_node.is_same(other=get_next_node)
 
 
+def test_typegraph_instantiate():
+    from faebryk.core.zig.gen.faebryk.composition import EdgeComposition  # type: ignore
+    from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph  # type: ignore
+
+    type_graph = TypeGraph.create()
+
+    Type_Electrical = type_graph.init_type_node(identifier="Electrical")
+    Type_Resistor = type_graph.init_type_node(identifier="Resistor")
+    Makep1 = type_graph.init_make_child_node(type_node=Type_Electrical, identifier="p1")
+    Makep2 = type_graph.init_make_child_node(type_node=Type_Electrical, identifier="p2")
+    EdgeComposition.add_child(
+        bound_node=Type_Resistor,
+        child=Makep1.node(),
+        child_identifier="p1",
+    )
+    EdgeComposition.add_child(
+        bound_node=Type_Resistor,
+        child=Makep2.node(),
+        child_identifier="p2",
+    )
+
+    resistor_instance = type_graph.instantiate(build_target_type_identifier="Resistor")
+
+    collected = []
+    EdgeComposition.visit_children_edges(
+        bound_node=resistor_instance,
+        ctx=collected,
+        f=lambda ctx, bound_edge: ctx.append(
+            EdgeComposition.get_name(edge=bound_edge.edge())
+        ),
+    )
+
+    assert collected == ["p1", "p2"]
+
+
 if __name__ == "__main__":
     test_minimal_graph()
     test_edge_composition_create()
     test_edge_composition_add_child_and_visit()
     test_edge_type_create()
     test_edge_next()
+    test_typegraph_instantiate()
 
     print("-" * 80)
     print("All tests passed")

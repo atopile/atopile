@@ -121,10 +121,11 @@ pub const TypeGraph = struct {
     // pub fn create_instance_graph(typegraph: GraphView) !graph.GraphView {}
 
     pub fn init_type_node(type_graph: *TypeGraph, identifier: str) !BoundNodeReference {
-        const type_node = try TypeNode.create(std.testing.allocator, identifier);
+        const allocator = type_graph.type_graph_view_ptr.allocator;
+        const type_node = try TypeNode.create(allocator, identifier);
         const type_bnode = try type_graph.type_graph_view_ptr.insert_node(type_node);
         if (std.mem.eql(u8, identifier, "MakeChild")) {
-            const implements_type_instance_node = try Node.init(std.testing.allocator);
+            const implements_type_instance_node = try Node.init(allocator);
             const implements_type_instance_bnode = try type_graph.type_graph_view_ptr.insert_node(implements_type_instance_node);
             _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeType.init(type_graph.type_graph_view_ptr.allocator, type_graph.implements_type_type_bnode.node, implements_type_instance_node));
             _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, type_node, implements_type_instance_bnode.node, "implements_type"));
@@ -138,7 +139,8 @@ pub const TypeGraph = struct {
     }
 
     pub fn init_trait_node(type_graph: *TypeGraph) !BoundNodeReference {
-        const trait_node = Node.init(std.testing.allocator);
+        const allocator = type_graph.type_graph_view_ptr.allocator;
+        const trait_node = try Node.init(allocator);
         const trait_bnode = try type_graph.type_graph_view_ptr.insert_node(trait_node);
         const implements_trait_instance_node = try TypeGraph.instantiate_node(type_graph, type_graph.implements_trait_type_bnode.node, type_graph.type_graph_view_ptr);
         _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, trait_node, implements_trait_instance_node.node, "implements_trait"));
@@ -177,7 +179,7 @@ pub const TypeGraph = struct {
 
     pub fn instantiate_node(type_graph: *TypeGraph, type_node: NodeReference, graph_view: *GraphView) !graph.BoundNodeReference {
         // 1) Create instance and connect it to its type
-        const new_instance_node = try Node.init(std.testing.allocator);
+        const new_instance_node = try Node.init(graph_view.allocator);
         const new_instance_bnode = try graph_view.insert_node(new_instance_node);
         _ = try graph_view.insert_edge(try EdgeType.init(graph_view.allocator, type_node, new_instance_node));
 
@@ -238,7 +240,6 @@ pub const TypeGraph = struct {
                         };
 
                         // 5) Attach child instance to parent instance with the reference name
-                        std.debug.print("Adding child instance to parent instance with the reference name: {s}\n", .{child_name});
                         _ = EdgeComposition.add_child(self.parent_instance_bnode, child_instance_bnode.node, child_name) catch |e| {
                             return visitor.VisitResult(void){ .ERROR = e };
                         };
