@@ -106,6 +106,47 @@ defer graph.deinit();               // Runs 1st ← MUST clean up graph BEFORE n
 
 **Rule of thumb:** Place `defer` for containers/parents **after** all their children are created, so cleanup happens in reverse dependency order.
 
+### Ownership patterns and shallow copies
+
+**Zig doesn't have automatic move semantics like Rust.** When you pass a struct by value, Zig performs a shallow copy (bitwise copy of the struct fields).
+
+For structs that wrap heap allocations (like `ArrayList`), this means:
+- The struct metadata (~24 bytes: pointer + length + capacity) is copied
+- The underlying heap data is NOT copied
+- Both copies point to the same heap allocation
+
+**Key implications:**
+1. **Ownership transfer via shallow copy:** When you `append(path)` to an ArrayList or pass a struct by value, you're creating a new owner of the same heap data
+2. **Single deinit rule:** Only ONE owner should call `.deinit()` on the struct, otherwise you'll free the same memory twice
+3. **Function parameters are immutable:** Even when passed by value, you need `var mutable = param` to get a mutable binding to call `.deinit()`
+
+**Example - BFS path handling:**
+```zig
+// Queue stores Path values for cache locality
+var open_path_queue = std.ArrayList(Path).init(allocator);
+
+// Pop transfers ownership (shallow copy from queue to local variable)
+var path = open_path_queue.orderedRemove(0);
+
+// Visitor receives ownership (another shallow copy)
+visitor_fn(ctx, path);  // fn(ctx, Path)
+
+// Inside visitor:
+if (keep_path) {
+    // Move into results (shallow copy, transfers ownership)
+    self.path_list.?.append(path) catch |err| { ... };
+} else {
+    // Discard - need mutable binding to call deinit
+    var mutable_path = path;
+    mutable_path.deinit();
+}
+```
+
+**Memory locality vs pointer indirection:**
+- `ArrayList(Path)` — Paths stored contiguously → better cache performance during iteration
+- `ArrayList(*Path)` — Paths scattered in heap → pointer chasing, worse cache
+- For hot paths like BFS, prefer value storage even with shallow copy overhead (~24 byte copies)
+
 ## Relation to Python fileformats
 
 - `src/faebryk/libs/kicad/fileformats.py` defines Python dataclasses for KiCad JSON artifacts (e.g., DRC reports, project files). The Zig layer targets KiCad’s S‑expression text formats and is accessed from Python via `faebryk.core.zig`.

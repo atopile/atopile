@@ -656,6 +656,7 @@ pub const GraphView = struct {
     }
 
     // optional: filter for paths of specific edge type
+    // Visitor receives ownership of the path value and must either keep it or deinit it
     pub fn visit_paths_bfs(g: *@This(), start_node: BoundNodeReference, edge_type: ?Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, Path) visitor.VisitResult(T)) visitor.VisitResult(T) {
 
         // Initialize variables required for BFS
@@ -758,9 +759,8 @@ pub const GraphView = struct {
 
         // BFS iterations
         while (open_path_queue.items.len > 0) {
-            // Pop path from start of queue
+            // Pop path from start of queue - we own it now
             var path = open_path_queue.orderedRemove(0);
-            defer path.deinit();
 
             const node_at_path_end = path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
@@ -773,7 +773,7 @@ pub const GraphView = struct {
             }
             std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
 
-            // Run provided path visitor
+            // Transfer ownership to visitor - visitor must either keep it or deinit it
             const bfs_visitor_result = f(ctx, path);
 
             // Mark node at end of path as visited
@@ -790,7 +790,7 @@ pub const GraphView = struct {
                 .EXHAUSTED => return visitor.VisitResult(T){ .EXHAUSTED = {} },
             }
 
-            // Use edge visitor to find more paths and append to open path queue
+            // Use edge visitor to extend this path and create new paths for the queue
             var edge_visitor = EdgeVisitor{
                 .start_node = node_at_path_end,
                 .visited_nodes = visited_nodes,
@@ -799,7 +799,6 @@ pub const GraphView = struct {
                 .g = g,
             };
 
-            // Check edge visitor for errors
             var edge_visitor_result = visitor.VisitResult(void){ .ERROR = error.InvalidVisitorResult };
             if (edge_type) |et| {
                 edge_visitor_result = g.visit_edges_of_type(node_at_path_end.node, et, void, &edge_visitor, EdgeVisitor.visit_fn);
@@ -826,37 +825,57 @@ pub const PathFinder = struct {
 
     // Instance state
     path_counter: u64 = 0,
+    valid_path_counter: u64 = 0,
     path_list: ?std.ArrayList(Path) = null,
 
-    // BFS visitor callback
+    // BFS visitor callback - receives ownership of path value
+    // Must either keep it or deinit it
     pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
         // filter says keep!
         if (self.run_filters(path)) {
+            // Move the path into the list - no clone, just shallow copy
             self.path_list.?.append(path) catch |err| {
                 return visitor.VisitResult(void){ .ERROR = err };
             };
+            self.valid_path_counter += 1;
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
-        // filter says yeet!
+        // filter says don't keep - deinit since we own it
         else {
+            var mutable_path = path;
+            mutable_path.deinit();
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
     }
 
+    // Cleanup method - must be called by user when done with paths
+    pub fn deinit(self: *Self) void {
+        if (self.path_list) |*list| {
+            // Deinit each path we own
+            for (list.items) |*path| {
+                path.deinit();
+            }
+            list.deinit();
+        }
+        self.path_list = null;
+    }
+
     // High-level find paths function
+    // Returns a slice to the paths stored in the PathFinder instance
+    // User must call deinit() when done to free the paths
     pub fn find_paths(self: *Self, start_node: BoundNodeReference, end_nodes: ?[]const BoundNodeReference, edge_type: ?Edge.EdgeType, a: std.mem.Allocator) ![]const Path {
         _ = end_nodes;
 
-        // Initialize temporary path list for this search
+        // Clean up any previous results
+        self.deinit();
+
+        // Initialize path list for this search
         self.path_list = std.ArrayList(Path).init(a);
-        defer {
-            if (self.path_list) |*list| list.deinit();
-            self.path_list = null;
-        }
 
         // Run BFS visitor - pass self as the context
+        // Visitor takes ownership of paths and stores them in path_list
         const result = GraphView.visit_paths_bfs(start_node.g, start_node, edge_type, void, self, Self.visit_fn);
         _ = result;
 
@@ -976,33 +995,25 @@ test "visit_paths_bfs" {
     _ = try g.insert_edge(e6);
     _ = try g.insert_edge(e7);
 
-    // const MockPathVisitor = struct {
-    //     // visitor context
-    //     x: i64 = 0,
-
-    //     // visitor function
-    //     pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
-    //         const self: *@This() = @ptrCast(@alignCast(self_ptr));
-    //         _ = path; // doing nothing with the path in this example
-
-    //         // just counting the number of times the visitor has ran
-    //         self.x += 1;
-    //         std.debug.print("visit_fn iterations: {}\n", .{self.x});
-    //         return visitor.VisitResult(void){ .CONTINUE = {} };
-    //     }
-    // };
-
-    // var visitor_instance = MockPathVisitor{};
-    // _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
-
     var pf1 = PathFinder{};
+    defer pf1.deinit();
     var pf2 = PathFinder{};
+    defer pf2.deinit();
 
-    _ = try pf1.find_paths(bn1, null, null, bn1.g.allocator);
+    const paths1 = try pf1.find_paths(bn1, null, null, bn1.g.allocator);
     try std.testing.expectEqual(7, pf1.path_counter);
+    try std.testing.expectEqual(4, pf1.valid_path_counter);
+    std.debug.print("Found {} paths\n", .{paths1.len});
 
-    _ = try pf2.find_paths(bn1, null, null, bn1.g.allocator);
-    try std.testing.expectEqual(7, pf2.path_counter);
+    // Now you can use the paths after find_paths returns
+    for (paths1) |path| {
+        std.debug.print("path: ", .{});
+        path.print_path();
+    }
+
+    // const paths2 = try pf2.find_paths(bn1, null, null, bn1.g.allocator);
+    // try std.testing.expectEqual(7, pf2.path_counter);
+    // std.debug.print("Found {} paths\n", .{paths2.len});
 
     // paths = try PathFinder.find_paths(bn1, 22, bn1.g.allocator);
     // std.debug.print("paths: {}\n", .{paths.len});
