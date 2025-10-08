@@ -840,8 +840,10 @@ pub const PathFinder = struct {
     pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
+        const result = self.run_filters(path);
+
         // filter says keep!
-        if (self.run_filters(path)) {
+        if (result == .CONTINUE) {
             // Move the path into the list - no clone, just shallow copy
             self.path_list.?.append(path) catch |err| {
                 return visitor.VisitResult(void){ .ERROR = err };
@@ -852,6 +854,12 @@ pub const PathFinder = struct {
         else {
             var mutable_path = path;
             mutable_path.deinit();
+        }
+
+        // filter says shut it down!
+        if (result == .STOP) {
+            std.debug.print("STOP!!!!!!!!! FILTER - path stopped\n", .{});
+            return visitor.VisitResult(void){ .STOP = {} };
         }
 
         // Check if path ends in an end node
@@ -928,54 +936,62 @@ pub const PathFinder = struct {
 
     const filters = [_]struct {
         name: []const u8,
-        func: *const fn (*Self, Path) bool,
+        func: *const fn (*Self, Path) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
         // .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type }, // need type graph
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
     };
 
-    pub fn run_filters(self: *Self, path: Path) bool {
+    pub fn run_filters(self: *Self, path: Path) visitor.VisitResult(void) {
         std.debug.print("FILTERS - ", .{});
         for (filters) |filter| {
             std.debug.print("{s}, ", .{filter.name});
             // if any filter is false, yeet the path
-            if (!filter.func(self, path)) {
-                std.debug.print("yeet!\n", .{});
-                return false;
+            const result = filter.func(self, path);
+            switch (result) {
+                .CONTINUE => {},
+                .STOP => return visitor.VisitResult(void){ .STOP = {} },
+                .ERROR => |err| return visitor.VisitResult(void){ .ERROR = err },
+                .OK => |value| return visitor.VisitResult(void){ .OK = value },
+                .EXHAUSTED => return visitor.VisitResult(void){ .EXHAUSTED = {} },
             }
+            // if (!filter.func(self, path)) {
+            // //     std.debug.print("yeet!\n", .{});
+            // //     return visitor.VisitResult(void){ .CONTINUE = {} };
+            // // }
         }
         // if all filters are true, keep the path
         std.debug.print("\n", .{});
-        return true;
+        return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn count_paths(self: *Self, path: Path) bool {
+    pub fn count_paths(self: *Self, path: Path) visitor.VisitResult(void) {
         _ = path;
         self.path_counter += 1;
         std.debug.print("path_counter: {}\n", .{self.path_counter});
-        if (self.path_counter > 6) {
-            return false;
+        if (self.path_counter > 3) {
+            return visitor.VisitResult(void){ .STOP = {} }; // this stops the BFS
         }
-        return true;
+        return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
     // TODO need type graph
-    pub fn filter_path_by_node_type(self: *Self, path: Path) bool {
+    pub fn filter_path_by_node_type(self: *Self, path: Path) visitor.VisitResult(void) {
         // path.get_other_node(bn: BoundNodeReference)
         _ = self;
         _ = path;
-        return true;
+        return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn filter_path_by_edge_type(self: *Self, path: Path) bool {
+    pub fn filter_path_by_edge_type(self: *Self, path: Path) visitor.VisitResult(void) {
         _ = self;
         for (path.edges.items) |edge| {
             if (edge.attributes.edge_type != 1759242069) {
-                return false;
+                return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         }
-        return true;
+        return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 };
 
