@@ -666,12 +666,14 @@ pub const GraphView = struct {
         f: fn (*anyopaque, Path) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
         // Initialize variables required for BFS
-        var open_path_queue = std.ArrayList(Path).init(g.allocator);
-        var visited_nodes = std.ArrayList(NodeReference).init(g.allocator);
+        var open_path_queue = std.fifo.LinearFifo(Path, .Dynamic).init(g.allocator);
+        // Use HashMap for O(1) visited node checks
+        var visited_nodes = NodeRefMap.T(void).init(g.allocator);
 
         defer {
-            for (open_path_queue.items) |*path| {
-                path.deinit();
+            while (open_path_queue.readItem()) |path| {
+                var mutable_path = path;
+                mutable_path.deinit();
             }
             open_path_queue.deinit();
         }
@@ -681,18 +683,13 @@ pub const GraphView = struct {
         const EdgeVisitor = struct {
             start_node: BoundNodeReference,
             current_path: Path,
-            open_path_queue: *std.ArrayList(Path),
-            visited_nodes: std.ArrayList(NodeReference),
+            open_path_queue: *std.fifo.LinearFifo(Path, .Dynamic),
+            visited_nodes: *NodeRefMap.T(void),
             g: *GraphView,
 
-            // TODO this can probably be optimized since this iterates through the whole visited_nodes list to find if the node has been visited already
+            // O(1) lookup using HashMap
             fn node_visited(self: *@This(), node: NodeReference) bool {
-                for (self.visited_nodes.items) |visited| {
-                    if (Node.is_same(visited, node)) {
-                        return true;
-                    }
-                }
-                return false;
+                return self.visited_nodes.contains(node);
             }
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
@@ -722,8 +719,8 @@ pub const GraphView = struct {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
-                    // Append new path to open path queue
-                    self.open_path_queue.append(new_path) catch |err| {
+                    // Enqueue new path
+                    self.open_path_queue.writeItem(new_path) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
@@ -735,7 +732,7 @@ pub const GraphView = struct {
         // BFS setup
 
         // Assume provided root node is already visited
-        visited_nodes.append(start_node.node) catch |err| {
+        visited_nodes.put(start_node.node, {}) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
@@ -758,16 +755,13 @@ pub const GraphView = struct {
             path.edges.append(edge) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
-            open_path_queue.append(path) catch |err| {
+            open_path_queue.writeItem(path) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
         }
 
         // BFS iterations
-        while (open_path_queue.items.len > 0) {
-            // Pop path from start of queue - we own it now
-            var path = open_path_queue.orderedRemove(0);
-
+        while (open_path_queue.readItem()) |path| {
             const node_at_path_end = path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
@@ -782,8 +776,8 @@ pub const GraphView = struct {
             // Transfer ownership to visitor - visitor must either keep it or deinit it
             const bfs_visitor_result = f(ctx, path);
 
-            // Mark node at end of path as visited
-            visited_nodes.append(node_at_path_end.node) catch |err| {
+            // Mark node at end of path as visited (O(1) with HashMap)
+            visited_nodes.put(node_at_path_end.node, {}) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
 
@@ -799,7 +793,7 @@ pub const GraphView = struct {
             // Use edge visitor to extend this path and create new paths for the queue
             var edge_visitor = EdgeVisitor{
                 .start_node = node_at_path_end,
-                .visited_nodes = visited_nodes,
+                .visited_nodes = &visited_nodes,
                 .current_path = path,
                 .open_path_queue = &open_path_queue,
                 .g = g,
@@ -817,11 +811,7 @@ pub const GraphView = struct {
             }
         }
 
-        if (open_path_queue.items.len > 0) {
-            return visitor.VisitResult(T){ .ERROR = error.InvalidVisitorResult };
-        } else {
-            return visitor.VisitResult(T){ .EXHAUSTED = {} };
-        }
+        return visitor.VisitResult(T){ .EXHAUSTED = {} };
     }
 };
 
