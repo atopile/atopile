@@ -10,6 +10,7 @@ const Path = graph.Path;
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;
 const BoundNodeReference = graph.BoundNodeReference;
+const BoundEdgeReference = graph.BoundEdgeReference;
 const GraphView = graph.GraphView;
 const NodeRefMap = graph.NodeRefMap;
 const EdgeComposition = composition_mod.EdgeComposition;
@@ -342,66 +343,185 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // TODO: Split-related methods below are stubs for future hierarchical pathfinding
-    // They will be needed when integrating composition edges into path resolution
+    // Split detection methods for hierarchical pathfinding
 
-    /// TODO: Process a path with split detection
-    fn process_path_with_splits(self: *@This(), path: Path) !visitor.VisitResult(void) {
+    /// Count number of composition children for a parent node
+    fn count_children(self: *@This(), bound_parent: BoundNodeReference) !usize {
         _ = self;
-        _ = path;
-        return visitor.VisitResult(void){ .CONTINUE = {} };
+
+        var count: usize = 0;
+        const edges = bound_parent.g.get_edges(bound_parent.node) orelse return 0;
+
+        for (edges.items) |edge| {
+            if (EdgeComposition.is_instance(edge)) {
+                const edge_parent = EdgeComposition.get_parent_node(edge);
+                if (Node.is_same(edge_parent, bound_parent.node)) {
+                    count += 1;
+                }
+            }
+        }
+
+        return count;
     }
 
-    /// TODO: Handle traversal through a composition (hierarchy) edge
-    fn handle_hierarchy_edge(
-        self: *@This(),
-        path: *PathWithSplits,
-        edge: EdgeReference,
-    ) !void {
-        _ = self;
-        _ = path;
-        _ = edge;
-    }
-
-    /// TODO: Determine if we're going UP or DOWN through a composition edge
-    fn determine_direction(
-        self: *@This(),
-        path: *PathWithSplits,
-        edge: EdgeReference,
-    ) TraversalDirection {
-        _ = self;
-        _ = path;
-        _ = edge;
-        return .down;
-    }
-
-    /// TODO: Detect if parent has multiple children (split) and handle it
-    fn detect_and_handle_split(
-        self: *@This(),
-        path: *PathWithSplits,
-        parent: NodeReference,
-    ) !void {
-        _ = self;
-        _ = path;
-        _ = parent;
-    }
-
-    /// TODO: Count number of children for a parent node
-    fn count_children(self: *@This(), parent: NodeReference) !usize {
-        _ = self;
-        _ = parent;
-        return 0;
-    }
-
-    /// TODO: Get list of all children for a parent
+    /// Get list of all composition children for a parent
     fn get_children_list(
         self: *@This(),
-        parent: NodeReference,
+        bound_parent: BoundNodeReference,
         children: *std.ArrayList(NodeReference),
     ) !void {
         _ = self;
-        _ = parent;
-        _ = children;
+
+        const edges = bound_parent.g.get_edges(bound_parent.node) orelse return;
+
+        for (edges.items) |edge| {
+            if (EdgeComposition.is_instance(edge)) {
+                const edge_parent = EdgeComposition.get_parent_node(edge);
+                if (Node.is_same(edge_parent, bound_parent.node)) {
+                    const child = EdgeComposition.get_child_node(edge);
+                    try children.append(child);
+                }
+            }
+        }
+    }
+
+    /// Handle traversal through a composition (hierarchy) edge
+    /// Composition edges: source=parent, target=child
+    /// Direction is determined once and stored in TraversalStep
+    fn handle_hierarchy_edge(
+        self: *@This(),
+        path: *PathWithSplits,
+        bound_edge: BoundEdgeReference,
+    ) !void {
+        const edge = bound_edge.edge;
+        // For composition edges: source is always parent, target is always child
+        const parent = edge.source;
+        const child = edge.target;
+
+        // Determine direction by checking which node we're coming from
+        // Similar to C++'s is_uplink/is_downlink but based on edge structure
+        const direction: TraversalDirection = blk: {
+            // If this is the first edge in the path, assume DOWN (parent->child)
+            if (path.path.edges.items.len == 0) {
+                break :blk .down;
+            }
+
+            // Look at the previous edge to determine which node we're coming from
+            const prev_edge = path.path.edges.items[path.path.edges.items.len - 1];
+
+            // Check if we're coming from the parent (source) or child (target) node
+            // If coming from parent -> going DOWN (parent to child)
+            // If coming from child -> going UP (child to parent)
+            if (Node.is_same(prev_edge.target, parent) or Node.is_same(prev_edge.source, parent)) {
+                break :blk .down; // Coming from parent (source)
+            } else if (Node.is_same(prev_edge.target, child) or Node.is_same(prev_edge.source, child)) {
+                break :blk .up; // Coming from child (target)
+            }
+
+            break :blk .down; // Default
+        };
+
+        const step = TraversalStep{
+            .edge = edge,
+            .direction = direction,
+            .parent = parent,
+            .child = child,
+        };
+
+        // Check if this step balances with the last unresolved step (like matching parentheses)
+        if (path.unresolved_up_down.items.len > 0) {
+            const last_unresolved = path.unresolved_up_down.items[path.unresolved_up_down.items.len - 1];
+            if (step.matches_reverse(last_unresolved)) {
+                // Balanced! Pop the stack
+                _ = path.unresolved_up_down.pop();
+                return;
+            }
+        }
+
+        // Add to unresolved stack
+        try path.unresolved_up_down.append(step);
+
+        // If going DOWN, check for split
+        if (direction == .down) {
+            const bound_parent = bound_edge.g.bind(parent);
+            try self.detect_and_handle_split(bound_parent, path);
+        }
+    }
+
+    /// Detect if parent has multiple children (split) and handle it
+    fn detect_and_handle_split(
+        self: *@This(),
+        bound_parent: BoundNodeReference,
+        path: *PathWithSplits,
+    ) !void {
+        const child_count = try self.count_children(bound_parent);
+
+        if (child_count > 1) {
+            // SPLIT DETECTED!
+            std.debug.print("SPLIT detected at parent node with {} children\n", .{child_count});
+
+            path.not_complete = true;
+            path.confidence *= 0.5; // Reduce confidence for each split
+
+            // Get or create split state for this parent
+            const split_entry = try self.splits.getOrPut(bound_parent.node);
+            if (!split_entry.found_existing) {
+                // Create new split state
+                var new_state = SplitState.init(self.allocator, bound_parent.node);
+                try self.get_children_list(bound_parent, &new_state.children);
+
+                // Initialize path lists for each child
+                for (new_state.children.items) |child| {
+                    try new_state.complete_paths_per_child.put(child, std.ArrayList(*PathWithSplits).init(self.allocator));
+                    try new_state.hibernated_paths_per_child.put(child, std.ArrayList(*PathWithSplits).init(self.allocator));
+                }
+
+                split_entry.value_ptr.* = new_state;
+            }
+
+            // Mark path as hibernated
+            // In a full implementation, we would track this path and wake it up later
+            // when all branches of the split are resolved
+            path.hibernated = true;
+        }
+    }
+
+    /// Process a path with split detection (advanced version)
+    /// This is for future use when integrating split resolution into the BFS
+    fn process_path_with_splits(self: *@This(), g: *GraphView, path: Path) !visitor.VisitResult(void) {
+        // Create PathWithSplits wrapper
+        const path_with_splits = try self.allocator.create(PathWithSplits);
+        path_with_splits.* = PathWithSplits{
+            .path = path,
+            .split_stack = std.ArrayList(SplitPoint).init(self.allocator),
+            .unresolved_up_down = std.ArrayList(TraversalStep).init(self.allocator),
+            .confidence = 1.0,
+            .not_complete = false,
+            .hibernated = false,
+        };
+        try self.all_paths.append(path_with_splits);
+
+        // Process each edge in the path
+        for (path.edges.items) |edge| {
+            if (EdgeComposition.is_instance(edge)) {
+                const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
+                try self.handle_hierarchy_edge(path_with_splits, bound_edge);
+            }
+        }
+
+        // Check if path is valid and complete
+        if (!path_with_splits.hibernated and !path_with_splits.not_complete) {
+            if (path_with_splits.unresolved_up_down.items.len == 0) {
+                // Path is balanced and complete - add to results
+                var complete_path = Path.init(self.allocator);
+                try complete_path.edges.appendSlice(path_with_splits.path.edges.items);
+                if (self.path_list) |*list| {
+                    try list.append(complete_path);
+                }
+            }
+        }
+
+        return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 };
 
@@ -493,4 +613,87 @@ test "pathfinder composition edges" {
     // Find paths through composition edges
     const end_nodes = [_]BoundNodeReference{bn2};
     _ = try pf.find_paths(bn1, &end_nodes, null);
+}
+
+test "pathfinder split detection" {
+    const a = std.testing.allocator;
+
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // Create a graph with a split:
+    // parent (n1) -> child1 (n2), child2 (n3)
+    const parent = try Node.init(a);
+    const child1 = try Node.init(a);
+    const child2 = try Node.init(a);
+
+    parent.attributes.uuid = 1001;
+    child1.attributes.uuid = 1002;
+    child2.attributes.uuid = 1003;
+
+    const bn_parent = try g.insert_node(parent);
+    _ = try g.insert_node(child1);
+    _ = try g.insert_node(child2);
+
+    // Create parent-child composition edges
+    _ = try EdgeComposition.add_child(bn_parent, child1, "child1");
+    _ = try EdgeComposition.add_child(bn_parent, child2, "child2");
+
+    var pf = PathFinder.init(a);
+    defer pf.deinit();
+
+    // Test count_children using BoundNodeReference
+    const child_count = try pf.count_children(bn_parent);
+    try std.testing.expectEqual(@as(usize, 2), child_count);
+
+    // Test get_children_list using BoundNodeReference
+    var children_list = std.ArrayList(NodeReference).init(a);
+    defer children_list.deinit();
+    try pf.get_children_list(bn_parent, &children_list);
+    try std.testing.expectEqual(@as(usize, 2), children_list.items.len);
+
+    std.debug.print("Split detection test passed! Found {} children\n", .{child_count});
+}
+
+test "pathfinder hierarchy traversal" {
+    const a = std.testing.allocator;
+
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    // Create a simple hierarchy: parent -> child
+    const parent = try Node.init(a);
+    const child = try Node.init(a);
+
+    parent.attributes.uuid = 2001;
+    child.attributes.uuid = 2002;
+
+    const bn_parent = try g.insert_node(parent);
+    _ = try g.insert_node(child);
+
+    // Create composition edge
+    const bound_comp_edge = try EdgeComposition.add_child(bn_parent, child, "child");
+
+    var pf = PathFinder.init(a);
+    defer pf.deinit();
+
+    // Create a PathWithSplits to test hierarchy edge handling
+    var path_with_splits = PathWithSplits.init(a, parent);
+    defer path_with_splits.deinit();
+
+    // Add the composition edge to the path
+    try path_with_splits.path.edges.append(bound_comp_edge.edge);
+
+    // Test handle_hierarchy_edge - it determines direction inline and stores it
+    try pf.handle_hierarchy_edge(&path_with_splits, bound_comp_edge);
+
+    // Check that unresolved stack has one entry
+    try std.testing.expectEqual(@as(usize, 1), path_with_splits.unresolved_up_down.items.len);
+
+    // Verify the direction was correctly determined (should be DOWN for first edge)
+    const traversal_step = path_with_splits.unresolved_up_down.items[0];
+    try std.testing.expectEqual(TraversalDirection.down, traversal_step.direction);
+    std.debug.print("Direction correctly determined: {s}\n", .{@tagName(traversal_step.direction)});
+
+    std.debug.print("Hierarchy traversal test passed!\n", .{});
 }
