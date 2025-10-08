@@ -822,49 +822,50 @@ pub const GraphView = struct {
 
 // Pathfinder namespace
 pub const PathFinder = struct {
+    const Self = @This();
 
-    // High-level find paths function
-    pub fn find_paths(start_node: BoundNodeReference, end_nodes: ?[]const BoundNodeReference, edge_type: ?Edge.EdgeType, a: std.mem.Allocator) ![]const Path {
-        _ = end_nodes;
+    // Instance state
+    path_counter: u64 = 0,
+    path_list: ?std.ArrayList(Path) = null,
 
-        // BFS visitor
-        const FindPaths = struct {
-            path_list: std.ArrayList(Path),
-            path_counter: u64 = 0,
+    // BFS visitor callback
+    pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+        const self: *Self = @ptrCast(@alignCast(self_ptr));
 
-            pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
-                const self: *@This() = @ptrCast(@alignCast(self_ptr));
-
-                // filter says keep!
-                if (PathFinder.run_filters(path)) {
-                    self.path_list.append(path) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
-                // filter says yeet!
-                else {
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
-            }
-        };
-
-        // Instantiate visitor
-        var visit_ctx = FindPaths{ .path_list = std.ArrayList(Path).init(a) };
-        defer visit_ctx.path_list.deinit();
-
-        // Run BFS visitor
-        const result = GraphView.visit_paths_bfs(start_node.g, start_node, edge_type, void, &visit_ctx, FindPaths.visit_fn);
-        _ = result;
-
-        return visit_ctx.path_list.items;
+        // filter says keep!
+        if (self.run_filters(path)) {
+            self.path_list.?.append(path) catch |err| {
+                return visitor.VisitResult(void){ .ERROR = err };
+            };
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+        // filter says yeet!
+        else {
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
     }
 
-    const Self = @This();
+    // High-level find paths function
+    pub fn find_paths(self: *Self, start_node: BoundNodeReference, end_nodes: ?[]const BoundNodeReference, edge_type: ?Edge.EdgeType, a: std.mem.Allocator) ![]const Path {
+        _ = end_nodes;
+
+        // Initialize temporary path list for this search
+        self.path_list = std.ArrayList(Path).init(a);
+        defer {
+            if (self.path_list) |*list| list.deinit();
+            self.path_list = null;
+        }
+
+        // Run BFS visitor - pass self as the context
+        const result = GraphView.visit_paths_bfs(start_node.g, start_node, edge_type, void, self, Self.visit_fn);
+        _ = result;
+
+        return self.path_list.?.items;
+    }
 
     pub const Filter = struct {
         name: []const u8,
-        func: *const fn (Path) bool,
+        func: *const fn (*Self, Path) bool,
     };
 
     pub const FilterList = struct {
@@ -883,12 +884,12 @@ pub const PathFinder = struct {
 
     const filters = FilterList.init();
 
-    pub fn run_filters(path: Path) bool {
+    pub fn run_filters(self: *Self, path: Path) bool {
         std.debug.print("FILTERS - ", .{});
         for (filters.items) |filter| {
             std.debug.print("{s}, ", .{filter.name});
             // if any filter is false, yeet the path
-            if (!filter.func(path)) {
+            if (!filter.func(self, path)) {
                 std.debug.print("yeet!\n", .{});
                 return false;
             }
@@ -898,24 +899,26 @@ pub const PathFinder = struct {
         return true;
     }
 
-    pub fn count_paths(path: Path) bool {
+    pub fn count_paths(self: *Self, path: Path) bool {
         _ = path;
-        Self.path_counter += 1;
-        std.debug.print("path_counter: {}\n", .{Self.path_counter});
-        if (Self.path_counter > 4) {
+        self.path_counter += 1;
+        std.debug.print("path_counter: {}\n", .{self.path_counter});
+        if (self.path_counter > 4) {
             return false;
         }
         return true;
     }
 
     // TODO need type graph
-    pub fn filter_path_by_node_type(path: Path) bool {
+    pub fn filter_path_by_node_type(self: *Self, path: Path) bool {
         // path.get_other_node(bn: BoundNodeReference)
+        _ = self;
         _ = path;
         return true;
     }
 
-    pub fn filter_path_by_edge_type(path: Path) bool {
+    pub fn filter_path_by_edge_type(self: *Self, path: Path) bool {
+        _ = self;
         for (path.edges.items) |edge| {
             if (edge.attributes.edge_type != 1759242069) {
                 return false;
@@ -992,14 +995,14 @@ test "visit_paths_bfs" {
     // var visitor_instance = MockPathVisitor{};
     // _ = g.visit_paths_bfs(bn1, 1759242069, void, &visitor_instance, MockPathVisitor.visit_fn);
 
-    const pf1 = PathFinder{};
+    var pf1 = PathFinder{};
+    var pf2 = PathFinder{};
 
-    const pf2 = PathFinder{};
     _ = try pf1.find_paths(bn1, null, null, bn1.g.allocator);
-    // try std.testing.expectEqual(7, pf1.pa);
+    try std.testing.expectEqual(7, pf1.path_counter);
 
     _ = try pf2.find_paths(bn1, null, null, bn1.g.allocator);
-    // try std.testing.expectEqual(7, pf2.path_counter);
+    try std.testing.expectEqual(7, pf2.path_counter);
 
     // paths = try PathFinder.find_paths(bn1, 22, bn1.g.allocator);
     // std.debug.print("paths: {}\n", .{paths.len});
