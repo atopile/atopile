@@ -7,3 +7,7 @@ paths:
 builds:
   default:
     entry: pick_parts.ato:App
+# dependencies:
+#   - type: registry
+#     identifier: atopile/buttons
+#     release: 0.2.4

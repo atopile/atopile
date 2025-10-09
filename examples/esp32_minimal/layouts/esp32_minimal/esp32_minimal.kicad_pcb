@@ -783,7 +783,7 @@
 			)
 		)
 	)
-	(footprint "Samsung_Electro_Mechanics_CL05A105KA5NQNC:C0402"
+	(footprint "Samsung_Electro_Mechanics_CL05A105KP5NNNC:C0402"
 		(layer "F.Cu")
 		(uuid "214d76e4-601a-4860-8904-94c94642524b")
 		(at 141.68 128.46 -90)
@@ -799,7 +799,7 @@
 				)
 			)
 		)
-		(property "Value" "1µF ±10% 25V X5R"
+		(property "Value" "1µF ±10% 10V X5R"
 			(at 0 4 270)
 			(layer "F.Fab")
 			(uuid "46438010-e7f7-4254-a78a-7c05f9ec4c5a")
@@ -810,7 +810,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL05A105KA5NQNC_C52923.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL05A105KP5NNNC_C14445.pdf"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -846,7 +846,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C52923"
+		(property "LCSC" "C14445"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -870,7 +870,7 @@
 				)
 			)
 		)
-		(property "Partnumber" "CL05A105KA5NQNC"
+		(property "Partnumber" "CL05A105KP5NNNC"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -906,7 +906,7 @@
 				)
 			)
 		)
-		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 25.0, \"max\": 25.0}}]}}, \"unit\": \"volt\"}}"
+		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 10.0, \"max\": 10.0}}]}}, \"unit\": \"volt\"}}"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -1088,7 +1088,7 @@
 			(uuid "9465e54f-d43f-4830-a4a4-38296e90f43c")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KA5NQNC/C0402_L1.0-W0.5-H0.5.step"
+		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KP5NNNC/C0402_L1.0-W0.5-H0.5.step"
 			(offset
 				(xyz 0 0 -0)
 			)
@@ -1355,7 +1355,7 @@
 			)
 		)
 	)
-	(footprint "UNI_ROYAL_0402WGF4702TCE:R0402"
+	(footprint "UNI_ROYAL_0402WGF1002TCE:R0402"
 		(layer "F.Cu")
 		(uuid "491628a2-7f24-4767-a8ff-68814642524b")
 		(at 132.92 119.47 -90)
@@ -1371,7 +1371,7 @@
 				)
 			)
 		)
-		(property "Value" "47kΩ ±1% 62.5mW"
+		(property "Value" "10kΩ ±1% 62.5mW"
 			(at 0 4 270)
 			(layer "F.Fab")
 			(uuid "24b70a8e-2c8a-4eb3-87b9-8755c3e16232")
@@ -1382,7 +1382,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2206010100_UNI-ROYAL-Uniroyal-Elec-0402WGF4702TCE_C25792.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2411221126_UNI-ROYAL-Uniroyal-Elec-0402WGF1002TCE_C25744.pdf"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -1418,7 +1418,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C25792"
+		(property "LCSC" "C25744"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -1442,7 +1442,7 @@
 				)
 			)
 		)
-		(property "Partnumber" "0402WGF4702TCE"
+		(property "Partnumber" "0402WGF1002TCE"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -1478,7 +1478,7 @@
 				)
 			)
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 46530.00001050532, \"max\": 47469.99998949468}}]}}, \"unit\": \"ohm\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 9900.000002235174, \"max\": 10099.999997764826}}]}}, \"unit\": \"ohm\"}}"
 			(at 0 0 270)
 			(layer "User.9")
 			(hide yes)
@@ -1624,7 +1624,7 @@
 			(uuid "89cb6eef-9d83-4fc2-85e2-dfdf767f72ec")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF4702TCE/R0402_L1.0-W0.5-H0.4.step"
+		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1002TCE/R0402_L1.0-W0.5-H0.4.step"
 			(offset
 				(xyz 0 0 -0)
 			)
@@ -1893,7 +1893,7 @@
 			(net 35 "output-output")
 			(uuid "69178c06-7681-400f-a719-1ad569f8793d")
 		)
-		(model "${KIPRJMOD}/../../.ato/modules/atopile/buttons/layouts/../.ato/modules/atopile/buttons/layouts/../parts/ALPSALPINE_SKRPACE010/KEY-SMD_4P-L4.2-W3.2-H2.5-LS4.6-P2.2.step"
+		(model "${KIPRJMOD}/../../.ato/modules/atopile/buttons/layouts/../parts/ALPSALPINE_SKRPACE010/KEY-SMD_4P-L4.2-W3.2-H2.5-LS4.6-P2.2.step"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -3510,7 +3510,7 @@
 			)
 		)
 	)
-	(footprint "Samsung_Electro_Mechanics_CL05A105KA5NQNC:C0402"
+	(footprint "Samsung_Electro_Mechanics_CL05A105KP5NNNC:C0402"
 		(layer "F.Cu")
 		(uuid "c2075455-ec6c-4b03-a3e8-495c4642524b")
 		(at 136.79 121.22 180)
@@ -3526,7 +3526,7 @@
 				)
 			)
 		)
-		(property "Value" "1µF ±10% 25V X5R"
+		(property "Value" "1µF ±10% 10V X5R"
 			(at 0 4 180)
 			(layer "F.Fab")
 			(uuid "5466e210-20ba-4054-b9c0-d6cfe528470b")
@@ -3537,7 +3537,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL05A105KA5NQNC_C52923.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL05A105KP5NNNC_C14445.pdf"
 			(at 0 0 180)
 			(layer "User.9")
 			(hide yes)
@@ -3573,7 +3573,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C52923"
+		(property "LCSC" "C14445"
 			(at 0 0 180)
 			(layer "User.9")
 			(hide yes)
@@ -3597,7 +3597,7 @@
 				)
 			)
 		)
-		(property "Partnumber" "CL05A105KA5NQNC"
+		(property "Partnumber" "CL05A105KP5NNNC"
 			(at 0 0 180)
 			(layer "User.9")
 			(hide yes)
@@ -3621,7 +3621,7 @@
 				)
 			)
 		)
-		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 25.0, \"max\": 25.0}}]}}, \"unit\": \"volt\"}}"
+		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 10.0, \"max\": 10.0}}]}}, \"unit\": \"volt\"}}"
 			(at 0 0 180)
 			(layer "User.9")
 			(hide yes)
@@ -3827,7 +3827,7 @@
 			(uuid "11a378cb-b662-463b-971a-685be5f2b17a")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KA5NQNC/C0402_L1.0-W0.5-H0.5.step"
+		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KP5NNNC/C0402_L1.0-W0.5-H0.5.step"
 			(offset
 				(xyz 0 0 -0)
 			)
@@ -4781,7 +4781,7 @@
 			)
 		)
 	)
-	(footprint "Samsung_Electro_Mechanics_CL21A226MQQNNNE:C0805"
+	(footprint "Samsung_Electro_Mechanics_CL21A226MAQNNNE:C0805"
 		(layer "F.Cu")
 		(uuid "e7e43041-2f98-4e82-a8ec-ce1a4642524b")
 		(at 139.09 119.62 90)
@@ -4797,7 +4797,7 @@
 				)
 			)
 		)
-		(property "Value" "22µF ±20% 6.3V X5R"
+		(property "Value" "22µF ±20% 25V X5R"
 			(at 0 4 90)
 			(layer "F.Fab")
 			(uuid "355f682c-4f78-47c8-9e9d-2c6d80a09b64")
@@ -4808,7 +4808,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL21A226MQQNNNE_C5674.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL21A226MAQNNNE_C45783.pdf"
 			(at 0 0 90)
 			(layer "User.9")
 			(hide yes)
@@ -4844,7 +4844,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C5674"
+		(property "LCSC" "C45783"
 			(at 0 0 90)
 			(layer "User.9")
 			(hide yes)
@@ -4868,7 +4868,7 @@
 				)
 			)
 		)
-		(property "Partnumber" "CL21A226MQQNNNE"
+		(property "Partnumber" "CL21A226MAQNNNE"
 			(at 0 0 90)
 			(layer "User.9")
 			(hide yes)
@@ -4892,7 +4892,7 @@
 				)
 			)
 		)
-		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 6.3, \"max\": 6.3}}]}}, \"unit\": \"volt\"}}"
+		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 25.0, \"max\": 25.0}}]}}, \"unit\": \"volt\"}}"
 			(at 0 0 90)
 			(layer "User.9")
 			(hide yes)
@@ -5086,7 +5086,7 @@
 			(uuid "e80556df-2f7e-4bfc-b38a-d4a9fb41d39e")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MQQNNNE/C0805_L2.0-W1.3-H1.3.step"
+		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MAQNNNE/C0805_L2.0-W1.3-H1.3.step"
 			(offset
 				(xyz 0 0 -0)
 			)
@@ -5098,7 +5098,7 @@
 			)
 		)
 	)
-	(footprint "Samsung_Electro_Mechanics_CL05A105KA5NQNC:C0402"
+	(footprint "Samsung_Electro_Mechanics_CL05A105KP5NNNC:C0402"
 		(layer "F.Cu")
 		(uuid "f241f30b-420a-41f1-8f82-21464642524b")
 		(at 133.584604 117.731861 0)
@@ -5114,7 +5114,7 @@
 				)
 			)
 		)
-		(property "Value" "1µF ±10% 25V X5R"
+		(property "Value" "1µF ±10% 10V X5R"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "7a769854-31e4-47a4-92be-188f02a3d3e2")
@@ -5125,7 +5125,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL05A105KA5NQNC_C52923.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2304140030_Samsung-Electro-Mechanics-CL05A105KP5NNNC_C14445.pdf"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5161,7 +5161,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C52923"
+		(property "LCSC" "C14445"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5185,7 +5185,7 @@
 				)
 			)
 		)
-		(property "Partnumber" "CL05A105KA5NQNC"
+		(property "Partnumber" "CL05A105KP5NNNC"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5209,7 +5209,7 @@
 				)
 			)
 		)
-		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 25.0, \"max\": 25.0}}]}}, \"unit\": \"volt\"}}"
+		(property "PARAM_max_voltage" "{\"type\": \"Quantity_Set_Discrete\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 10.0, \"max\": 10.0}}]}}, \"unit\": \"volt\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5415,7 +5415,7 @@
 			(uuid "074ae42e-27ca-4374-8a2f-5d0f101d3be8")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KA5NQNC/C0402_L1.0-W0.5-H0.5.step"
+		(model "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KP5NNNC/C0402_L1.0-W0.5-H0.5.step"
 			(offset
 				(xyz 0 0 -0)
 			)
@@ -5427,7 +5427,7 @@
 			)
 		)
 	)
-	(footprint "UNI_ROYAL_0402WGF1002TCE:R0402"
+	(footprint "UNI_ROYAL_0402WGF2001TCE:R0402"
 		(layer "F.Cu")
 		(uuid "f70dcef2-8d3d-448b-9582-56a24642524b")
 		(at 133.35 121.22 0)
@@ -5443,7 +5443,7 @@
 				)
 			)
 		)
-		(property "Value" "10kΩ ±1% 62.5mW"
+		(property "Value" "2kΩ ±1% 62.5mW"
 			(at 0 4)
 			(layer "F.Fab")
 			(uuid "0cdbc831-6916-4fe2-a976-d2c78332f83f")
@@ -5454,7 +5454,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2411221126_UNI-ROYAL-Uniroyal-Elec-0402WGF1002TCE_C25744.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/lcsc_datasheet_2206010230_UNI-ROYAL-Uniroyal-Elec-0402WGF2001TCE_C4109.pdf"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5490,7 +5490,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C25744"
+		(property "LCSC" "C4109"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5514,7 +5514,7 @@
 				)
 			)
 		)
-		(property "Partnumber" "0402WGF1002TCE"
+		(property "Partnumber" "0402WGF2001TCE"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5550,7 +5550,7 @@
 				)
 			)
 		)
-		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 9900.000002235174, \"max\": 10099.999997764826}}]}}, \"unit\": \"ohm\"}}"
+		(property "PARAM_resistance" "{\"type\": \"Quantity_Interval_Disjoint\", \"data\": {\"intervals\": {\"type\": \"Numeric_Interval_Disjoint\", \"data\": {\"intervals\": [{\"type\": \"Numeric_Interval\", \"data\": {\"min\": 1980.0000004470348, \"max\": 2019.9999995529652}}]}}, \"unit\": \"ohm\"}}"
 			(at 0 0 0)
 			(layer "User.9")
 			(hide yes)
@@ -5696,7 +5696,7 @@
 			(uuid "12d3515c-6307-4e46-9391-d8693fec7e77")
 		)
 		(embedded_fonts no)
-		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1002TCE/R0402_L1.0-W0.5-H0.4.step"
+		(model "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF2001TCE/R0402_L1.0-W0.5-H0.4.step"
 			(offset
 				(xyz 0 0 -0)
 			)
