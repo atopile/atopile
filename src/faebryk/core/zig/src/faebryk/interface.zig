@@ -72,9 +72,8 @@ pub const EdgeInterfaceConnection = struct {
         return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
     }
 
-    // visit all paths for a given node (pathfinder)
-
-    // "shallow" links
+    // TODO: visit all paths for a given node (pathfinder)
+    // TODO: "shallow" links
 };
 
 test "basic" {

@@ -22,7 +22,6 @@ const EdgeNext = next_mod.EdgeNext;
 
 pub const TypeGraph = struct {
     // Global nodes, not parent to anything, only used to mark type and trait. Bootstrap typegraph
-    // parent_node: NodeReference,
     implements_type_type_bnode: BoundNodeReference,
     implements_trait_type_bnode: BoundNodeReference,
     make_child_type_bnode: BoundNodeReference,
@@ -38,7 +37,6 @@ pub const TypeGraph = struct {
             try implements_type_type_node.attributes.dynamic.values.put("name", .{ .String = identifier });
             return implements_type_type_node;
         }
-        // std.debug.print("implements_type_type_node: {s}\n", .{implements_type_type_node.attributes.dynamic.values.get("name").?.String});
     };
 
     pub const ImplementsTraitType = struct {
@@ -108,17 +106,9 @@ pub const TypeGraph = struct {
         type_graph.make_link_type_bnode = make_link_type_bnode;
         const reference_type_bnode = try TypeGraph.init_type_node(&type_graph, "Reference");
         type_graph.reference_type_bnode = reference_type_bnode;
-        // const make_child_type_bnode = try type_graph_view.insert_node(make_child_type_node);
-        // _ = try type_graph_view.insert_edge(try EdgeType.init(type_graph_view.allocator, make_child_type_node, make_child_type_bnode));
-        // const make_link_type_bnode = try type_graph_view.insert_node(make_link_type_node);
-        // _ = try type_graph_view.insert_edge(try EdgeType.init(type_graph_view.allocator, make_link_type_node, make_link_type_bnode));
-        // const reference_type_bnode = try type_graph_view.insert_node(reference_type_node);
-        // _ = try type_graph_view.insert_edge(try EdgeType.init(type_graph_view.allocator, reference_type_bnode.?.node, reference_type_bnode.node));
 
         return type_graph;
     }
-
-    // pub fn create_instance_graph(typegraph: GraphView) !graph.GraphView {}
 
     pub fn init_type_node(type_graph: *TypeGraph, identifier: str) !BoundNodeReference {
         const allocator = type_graph.type_graph_view_ptr.allocator;
@@ -132,9 +122,7 @@ pub const TypeGraph = struct {
             return type_bnode;
         }
         const implements_type_instance_bnode = try TypeGraph.instantiate_node(type_graph, type_graph.implements_type_type_bnode.node, type_graph.type_graph_view_ptr);
-        // const implements_trait_instance_node = try TypeGraph.instantiate(type_graph_view, TypeGraph.implements_trait_type_node);
         _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, type_node, implements_type_instance_bnode.node, "implements_type"));
-        // _ = try type_graph_view.insert_edge(try EdgeComposition.init(type_graph_view.allocator, implements_trait_instance_node, type_node, "implements_trait"));
         return type_bnode;
     }
 
@@ -164,7 +152,6 @@ pub const TypeGraph = struct {
 
     pub fn init_make_link_node(type_graph: *TypeGraph, lhs_target_node: NodeReference, rhs_target_node: NodeReference, connection_identifier: str) !BoundNodeReference {
         const make_link_bnode = try TypeGraph.instantiate_node(type_graph, type_graph.make_link_type_bnode.node, type_graph.type_graph_view_ptr);
-        // make_link_bnode.node.attributes.connection_identifier = connection_identifier;
         std.debug.print("Making connection of type: {s}\n", .{connection_identifier});
         const lhs_node = try Node.init(type_graph.type_graph_view_ptr.allocator);
         const rhs_node = try Node.init(type_graph.type_graph_view_ptr.allocator);
@@ -298,7 +285,7 @@ pub const TypeGraph = struct {
     }
 };
 
-//zig test --dep graph -Mroot=src/faebryk/type.zig -Mgraph=src/graph/lib.zig
+//zig test --dep graph -Mroot=src/faebryk/typegraph.zig -Mgraph=src/graph/lib.zig
 test "basic instantiation" {
     var type_graph = try TypeGraph.create_typegraph(std.testing.allocator);
 
@@ -316,7 +303,6 @@ test "basic instantiation" {
     // visit_children_edges of base types ---------------------------------------------------------
     var children = std.ArrayList(graph.BoundEdgeReference).init(type_graph.type_graph_view_ptr.allocator);
     defer children.deinit();
-    // const visit_result = EdgeComposition.visit_children_edges(type_graph.implements_type_type_bnode, &children, collect.collect_into_list);
     const visit_result = EdgeComposition.visit_children_edges(example_type_bnode, &children, collect.collect_into_list);
     switch (visit_result) {
         .ERROR => |err| @panic(@errorName(err)),
@@ -364,7 +350,6 @@ test "basic instantiation" {
     // visit_children_edges of base types ---------------------------------------------------------
     var resistor_children = std.ArrayList(graph.BoundEdgeReference).init(type_graph.type_graph_view_ptr.allocator);
     defer resistor_children.deinit();
-    // const visit_result = EdgeComposition.visit_children_edges(type_graph.implements_type_type_bnode, &children, collect.collect_into_list);
     const resistor_visit_result = EdgeComposition.visit_children_edges(resistor_instance_bnode, &resistor_children, collect.collect_into_list);
     switch (resistor_visit_result) {
         .ERROR => |err| @panic(@errorName(err)),
@@ -390,10 +375,6 @@ test "basic instantiation" {
     const link1_rhs_instance_bnode = EdgeComposition.get_child_by_identifier(link1_instance_bnode, "rhs").?;
     try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node_from_node(link1_lhs_instance_bnode).?, cap1p1_instance_bnode.node));
     try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node_from_node(link1_rhs_instance_bnode).?, cap1p2_instance_bnode.node));
-
-    // _ = type_graph.implements_type_type_bnode.get_edges();
-    // defer link1_children.deinit();
-    // link1_children = type_graph.implements_type_type_bnode.get_edges().?;
 
     const instantiated_resistor_bnode = try TypeGraph.instantiate(&type_graph, "Resistor");
     const instantiated_p1_bnode = EdgeComposition.get_child_by_identifier(instantiated_resistor_bnode, "p1").?;
