@@ -15,7 +15,7 @@ const GraphView = graph.GraphView;
 const NodeRefMap = graph.NodeRefMap;
 const EdgeComposition = composition_mod.EdgeComposition;
 
-/// Extended path with split tracking metadata
+// Heirarchy / path resolution
 pub const PathWithSplits = struct {
     path: Path,
     split_stack: std.ArrayList(SplitPoint),
@@ -61,7 +61,7 @@ pub const PathWithSplits = struct {
     }
 };
 
-/// Represents a point where a path splits into multiple branches
+// Heirarchy / path resolution
 pub const SplitPoint = struct {
     parent_node: NodeReference,
     children: std.ArrayList(NodeReference),
@@ -78,13 +78,13 @@ pub const SplitPoint = struct {
     }
 };
 
-/// Direction of hierarchy traversal
+// Heirarchy / path resolution
 pub const TraversalDirection = enum {
     up, // child -> parent
     down, // parent -> child
 };
 
-/// Tracks hierarchy traversal: UP (child->parent) or DOWN (parent->child)
+// Heirarchy / path resolution
 pub const TraversalStep = struct {
     edge: EdgeReference,
     direction: TraversalDirection,
@@ -98,7 +98,7 @@ pub const TraversalStep = struct {
     }
 };
 
-/// Tracks state of a split point during path exploration
+// Heirarchy / path resolution
 pub const SplitState = struct {
     split_point: NodeReference,
     children: std.ArrayList(NodeReference),
@@ -148,17 +148,12 @@ pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    /// Track splits by parent node
-    splits: NodeRefMap.T(SplitState),
-    /// All paths being explored (with split metadata)
-    all_paths: std.ArrayList(*PathWithSplits),
-    /// Valid complete paths (plain paths without metadata)
-    path_list: ?std.ArrayList(Path) = null,
-    /// End nodes to search for (optional)
-    end_nodes: ?std.ArrayList(BoundNodeReference) = null,
-    /// Counters for statistics
-    path_counter: u64 = 0,
-    valid_path_counter: u64 = 0,
+    splits: NodeRefMap.T(SplitState), // Track splits by parent node
+    all_paths: std.ArrayList(*PathWithSplits), // All paths being explored (with split metadata)
+    path_list: ?std.ArrayList(Path) = null, // Valid complete paths (plain paths without metadata)
+    end_nodes: ?std.ArrayList(BoundNodeReference) = null, // End nodes to search for (optional)
+    path_counter: u64 = 0, // Counters for statistics
+    valid_path_counter: u64 = 0, // Count of valid complete paths
 
     pub fn init(allocator: std.mem.Allocator) PathFinder {
         return .{
@@ -203,8 +198,7 @@ pub const PathFinder = struct {
         self.splits.deinit();
     }
 
-    /// Main entry point: find all valid paths between start and end nodes
-    /// Compatible with the old simple API
+    // Find all valid paths between start and end nodes
     pub fn find_paths(
         self: *Self,
         start_node: BoundNodeReference,
@@ -250,8 +244,7 @@ pub const PathFinder = struct {
         return self.path_list.?.items;
     }
 
-    /// BFS visitor callback - receives ownership of path
-    /// Must either keep it or deinit it
+    // BFS visitor callback
     pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
@@ -266,7 +259,7 @@ pub const PathFinder = struct {
             };
             self.valid_path_counter += 1;
         }
-        // Filter says don't keep - deinit since we own it
+        // Filter says yeet!
         else {
             var mutable_path = path;
             mutable_path.deinit();
@@ -283,6 +276,8 @@ pub const PathFinder = struct {
             for (end_nodes.items, 0..) |end_node, i| {
                 if (path.get_other_node(end_node)) |_| {
                     _ = end_nodes.swapRemove(i);
+
+                    // If all end nodes found, stop the search
                     if (end_nodes.items.len == 0) {
                         std.debug.print("STOP!!!!!!!!! END NODES - all end nodes found\n", .{});
                         return visitor.VisitResult(void){ .STOP = {} };
@@ -291,11 +286,10 @@ pub const PathFinder = struct {
                 }
             }
         }
-
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    /// Filter pipeline
+    // Filters
     const filters = [_]struct {
         name: []const u8,
         func: *const fn (*Self, Path) visitor.VisitResult(void),
@@ -321,7 +315,6 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    /// Filter: count paths and stop after limit
     pub fn count_paths(self: *Self, path: Path) visitor.VisitResult(void) {
         _ = path;
         self.path_counter += 1;
@@ -332,7 +325,6 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    /// Filter: only keep paths with specific edge type
     pub fn filter_path_by_edge_type(self: *Self, path: Path) visitor.VisitResult(void) {
         _ = self;
         for (path.edges.items) |edge| {
@@ -343,9 +335,7 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // Split detection methods for hierarchical pathfinding
-
-    /// Count number of composition children for a parent node
+    // Heirarchy / path resolution
     fn count_children(self: *@This(), bound_parent: BoundNodeReference) !usize {
         _ = self;
 
@@ -364,7 +354,7 @@ pub const PathFinder = struct {
         return count;
     }
 
-    /// Get list of all composition children for a parent
+    // Heirarchy / path resolution
     fn get_children_list(
         self: *@This(),
         bound_parent: BoundNodeReference,
@@ -385,9 +375,7 @@ pub const PathFinder = struct {
         }
     }
 
-    /// Handle traversal through a composition (hierarchy) edge
-    /// Composition edges: source=parent, target=child
-    /// Direction is determined once and stored in TraversalStep
+    // Heirarchy / path resolution
     fn handle_hierarchy_edge(
         self: *@This(),
         path: *PathWithSplits,
@@ -448,7 +436,7 @@ pub const PathFinder = struct {
         }
     }
 
-    /// Detect if parent has multiple children (split) and handle it
+    // Heirarchy / path resolution
     fn detect_and_handle_split(
         self: *@This(),
         bound_parent: BoundNodeReference,
@@ -486,8 +474,7 @@ pub const PathFinder = struct {
         }
     }
 
-    /// Process a path with split detection (advanced version)
-    /// This is for future use when integrating split resolution into the BFS
+    // Heirarchy / path resolution
     fn process_path_with_splits(self: *@This(), g: *GraphView, path: Path) !visitor.VisitResult(void) {
         // Create PathWithSplits wrapper
         const path_with_splits = try self.allocator.create(PathWithSplits);
