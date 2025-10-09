@@ -26,10 +26,7 @@ class _ModuleInterfaceEdgeStub:
         self._kind = kind
 
     def _fail(self, operation: str) -> None:
-        raise NotImplementedError(
-            f"TODO: Zig core migration – ModuleInterface.{self._kind}.{operation} "
-            "is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def connect(self, *args, **kwargs):
         self._fail("connect")
@@ -57,10 +54,7 @@ class ModuleInterface(Node):
 
     @classmethod
     def LinkDirectShallow(cls):
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.LinkDirectShallow is not "
-            "available"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     @property
     def specializes(self) -> _ModuleInterfaceEdgeStub:
@@ -83,9 +77,7 @@ class ModuleInterface(Node):
     def connect(
         self: Self, *other: Self, link: type["Link"] | "Link" | None = None
     ) -> Self:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.connect is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def connect_via(
         self,
@@ -93,47 +85,30 @@ class ModuleInterface(Node):
         *other: Self,
         link=None,
     ):
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.connect_via is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def connect_shallow(self, *other: Self) -> Self:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.connect_shallow is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def get_connected(self, include_self: bool = False) -> dict[Self, object]:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.get_connected is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def is_connected_to(self, other: "ModuleInterface") -> list[object]:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.is_connected_to is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def specialize[T: ModuleInterface](self, special: T) -> T:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface.specialize is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     @staticmethod
     def _path_with_least_conditionals(paths: list[object]) -> object:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface path resolution is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     def _connect_via_implied_paths(self, other: Self, paths: list[object]):
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface implied path hookup is not "
-            "implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     @staticmethod
     def _group_into_buses[T: ModuleInterface](mifs: Iterable[T]) -> dict[T, set[T]]:
-        raise NotImplementedError(
-            "TODO: Zig core migration – ModuleInterface bus grouping is not implemented"
-        )
+        raise NotImplementedError("TODO: Zig core migration")
 
     # TODO get rid of this abomination
     @property

@@ -287,10 +287,9 @@ class InstanceGraphFunctions:
                 is_last = idx == total - 1
                 connector = "└──" if is_last else "├──"
                 child_bound = bound_edge.g().bind(node=bound_edge.edge().target())
-                print(
-                    f"{prefix}{connector} [EdgeComposition:{edge_name}] {get_node_label(child_bound)}",
-                    file=stream,
-                )
+                edge_label = f"{EdgeComposition.__name__}:{edge_name}"
+                node_label = get_node_label(child_bound)
+                print(f"{prefix}{connector} [{edge_label}] {node_label}", file=stream)
                 child_prefix = prefix + ("    " if is_last else "│   ")
                 render(child_bound, child_prefix)
 
