@@ -46,9 +46,21 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     // Connect given EdgeReference to given 2 NodeReferences
+    // TODO might be a good idea to have some type checking here, make sure nodes of same type are being connected?
     pub fn connect(E: EdgeReference, N1: NodeReference, N2: NodeReference) void {
+        if (E.attributes.edge_type != tid) {
+            @panic("Edge type mismatch");
+        }
         E.source = N1;
         E.target = N2;
+        return;
+    }
+
+    pub fn connect_shallow(E: EdgeReference, N1: NodeReference, N2: NodeReference) void {
+        EdgeInterfaceConnection.connect(E, N1, N2);
+        E.attributes.dynamic.values.put(shallow_link, graph.Literal{ .Bool = true }) catch {
+            @panic("Failed to put shallow link value");
+        };
         return;
     }
 
@@ -95,6 +107,10 @@ test "basic" {
     const n3 = try Node.init(a);
     const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
     defer g.deinit(); // Graph owns all inserted nodes/edges and handles their cleanup
+
+    // Expect shallow flag to be present and false by default
+    const shallow_default = e1.attributes.dynamic.values.get(shallow_link).?;
+    try std.testing.expect(shallow_default.Bool == false);
 
     // Expect e1 source and target to match n1 and n2
     try std.testing.expect(Node.is_same(e1.source, n1));
@@ -159,4 +175,42 @@ test "basic" {
     try std.testing.expectEqual(visit.connected_edges.items.len, 1);
     try std.testing.expect(Node.is_same(visit.connected_edges.items[0].edge.source, n1));
     try std.testing.expect(Node.is_same(visit.connected_edges.items[0].edge.target, n3));
+}
+
+test "connect vs connect_shallow" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    // Nodes
+    const n1 = try Node.init(a);
+    const n2 = try Node.init(a);
+    const n3 = try Node.init(a);
+    const n4 = try Node.init(a);
+
+    // Insert nodes (graph owns them)
+    _ = try g.insert_node(n1);
+    _ = try g.insert_node(n2);
+    _ = try g.insert_node(n3);
+    _ = try g.insert_node(n4);
+
+    // Edge using regular connect (should not be shallow)
+    const e_connect = try EdgeInterfaceConnection.init(a, n1, n2);
+    EdgeInterfaceConnection.connect(e_connect, n1, n2);
+    _ = try g.insert_edge(e_connect);
+    const shallow_val_connect = e_connect.attributes.dynamic.values.get(shallow_link).?;
+    try std.testing.expect(shallow_val_connect.Bool == false);
+
+    // Edge using connect_shallow (should be shallow)
+    const e_shallow = try EdgeInterfaceConnection.init(a, n3, n4);
+    EdgeInterfaceConnection.connect_shallow(e_shallow, n3, n4);
+    _ = try g.insert_edge(e_shallow);
+    const shallow_val_shallow = e_shallow.attributes.dynamic.values.get(shallow_link).?;
+    try std.testing.expect(shallow_val_shallow.Bool == true);
+
+    // Sanity: endpoints remained as set
+    try std.testing.expect(Node.is_same(e_connect.source, n1));
+    try std.testing.expect(Node.is_same(e_connect.target, n2));
+    try std.testing.expect(Node.is_same(e_shallow.source, n3));
+    try std.testing.expect(Node.is_same(e_shallow.target, n4));
 }
