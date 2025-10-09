@@ -226,11 +226,12 @@ class ModuleInterface(Node):
     #        return out[0]
     #    return None
 
-    def __init_subclass__(cls, *, init: bool = True) -> None:
-        if hasattr(cls, "_on_connect"):
-            raise TypeError("Overriding _on_connect is deprecated")
+    # FIXME
+    # def __init_subclass__(cls, *, init: bool = True) -> None:
+    #     if hasattr(cls, "_on_connect"):
+    #         raise TypeError("Overriding _on_connect is deprecated")
 
-        return super().__init_subclass__(init=init)
+    #     return super().__init_subclass__(init=init)
 
     @staticmethod
     def _path_with_least_conditionals(paths: list["Path"]) -> "Path":

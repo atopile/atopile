@@ -1,5 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+from __future__ import annotations
+
 import logging
 from abc import abstractmethod
 from collections.abc import Iterator
@@ -22,20 +24,6 @@ from deprecated import deprecated
 from more_itertools import partition
 from ordered_set import OrderedSet
 
-from faebryk.core.graphinterface import (
-    GraphInterface,
-)
-from faebryk.core.link import LinkNamedParent, LinkSibling
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.node_type import EdgeType
-from faebryk.core.zig.gen.graph.graph import (
-    BoundEdge,
-    BoundNode,
-    GraphView,
-)
-from faebryk.core.zig.gen.graph.graph import (
-    Node as ZNode,
-)
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
@@ -56,6 +44,10 @@ if TYPE_CHECKING:
     from faebryk.core.trait import Trait, TraitImpl
 
 logger = logging.getLogger(__name__)
+
+
+# FIXME
+CNode = None
 
 
 # TODO: should this be a FaebrykException?
@@ -194,19 +186,27 @@ class InitVar(dataclass_InitVar):
 
 
 @post_init_decorator
-class Node(ZNode):
+class Node:
     runtime_anon: list["Node"]
     runtime: dict[str, "Node"]
     specialized_: list["Node"]
 
-    _init: bool = False
     _mro: list[type] = []
     _mro_ids: set[int] = set()
 
     class _Skipped(Exception):
         pass
 
-    def add[T: Node | GraphInterface](
+    def __init_subclass__(cls, *, init: bool = True, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls._init = init
+        post_init_decorator(cls)
+
+    @classmethod
+    def _type_identifier(cls) -> str:
+        return cls.__qualname__
+
+    def add[T: Node](
         self,
         obj: T,
         name: str | None = None,
@@ -239,11 +239,11 @@ class Node(ZNode):
                 raise FieldContainerError(f"Expected list got {type(container)}")
             name = f"{container_name}[{len(container)}]"
 
+        if not isinstance(obj, Node):
+            raise TypeError(f"Expected Node, got {type(obj)}")
+
         try:
-            if isinstance(obj, GraphInterface):
-                self._handle_add_gif(name, obj)
-            else:
-                self._handle_add_node(name, obj)
+            self._handle_add_node(name, obj)
         except Node._Skipped:
             return obj
 
@@ -283,7 +283,7 @@ class Node(ZNode):
                 for k, v in c.__annotations__.items()
             }
 
-        LL_Types = (Node, GraphInterface)
+        LL_Types = (Node,)
 
         vars_ = {
             name: obj
@@ -384,7 +384,7 @@ class Node(ZNode):
 
     def _setup_fields(self):
         clsfields, _ = self.__faebryk_fields__()
-        LL_Types = (Node, GraphInterface)
+        LL_Types = (Node,)
 
         # for name, obj in clsfields_unf.items():
         #    if isinstance(obj, _d_field):
@@ -396,15 +396,13 @@ class Node(ZNode):
         # "| {type(obj)}"
         #    )
 
-        added_objects: dict[str, Node | GraphInterface] = {}
-        objects: dict[str, Node | GraphInterface] = {}
+        added_objects: dict[str, Node] = {}
+        objects: dict[str, Node] = {}
 
         def handle_add(name, obj):
             del objects[name]
             try:
-                if isinstance(obj, GraphInterface):
-                    self._handle_add_gif(name, obj)
-                elif isinstance(obj, Node):
+                if isinstance(obj, Node):
                     self._handle_add_node(name, obj)
                 else:
                     raise TypeError(
@@ -508,12 +506,17 @@ class Node(ZNode):
         return id(self)
 
     def __init__(self):
-        assert not hasattr(self, "_called_init")
         self._called_init = True
-
-        # Preserved for later inspection of signature, which is otherwise clobbered
-        # by nanobind, so we only get (self, *args, **kwargs)
-        self.__original_init__ = self.__init__
+        self._local_insert_order: list[str] = []
+        self._named_children: dict[str, Node] = {}
+        self._parent: tuple[Node, str] | None = None
+        self._unique_id = f"{id(self):x}"
+        self._root_id = self._unique_id
+        self._cached_parent: tuple[Node, str] | None = None
+        self._no_include_parents_in_full_name = False
+        self.runtime: dict[str, Node] = {}
+        self.runtime_anon: list[Node] = []
+        self.specialized_: list[Node] = []
 
     def __preinit__(self, *args, **kwargs) -> None: ...
 
@@ -528,110 +531,10 @@ class Node(ZNode):
             )
         self._setup(*args, **kwargs)
 
-    def __init_subclass__(cls, *, init: bool = True) -> None:
-        cls._init = init
-        post_init_decorator(cls)
-        Node_mro = ZNode.mro()
-        cls_mro = cls.mro()
-        cls._mro = cls_mro[: -len(Node_mro)]
-        cls._mro_ids = {id(c) for c in cls._mro}
-
-        # Generate typegraph -----------------------------------------------------------
-        mod = getattr(cls, "__module__", "")
-        if "faebryk.library" not in mod:
-            return
-        print(cls.__name__)
-        # Typegraph initialized here, implements_type and implements_trait generated
-        import faebryk.core.type as Types
-        from faebryk.core.zig.gen.faebryk.next import EdgeNext  # type: ignore
-        from faebryk.core.zig.gen.graph.graph import GraphView, Node  # type: ignore
-
-        typegraphview = Types.init_typegraph()
-        # Generate type node
-        type_node = Types.Class_ImplementsType.init_type_node(
-            Types._Node(), cls.__name__
-        )
-        cls.type_node = type_node
-        try:
-            from faebryk.core.trait import Trait
-
-            if issubclass(cls, Trait):  # Add ImplementsTrait node to mark trait
-                Types.compose(
-                    type_node,
-                    Types.instantiate(Types.Type_ImplementsTrait)[0],
-                    "ImplementsTrait",
-                )
-                print("TRAIT", cls.__name__)
-        except ImportError:
-            print("IMPORT ERROR", cls.__name__)
-            pass
-
-        # Generate fabll il fields and add child nodes
-        clsfields, _ = cls.__faebryk_fields__()
-
-        def setup_field(name, obj):
-            if isinstance(obj, str):
-                raise NotImplementedError()
-
-            # type annotation
-            if isinstance(obj, type):
-                if "GraphInterface" in obj.__name__:
-                    # print("SKIP", name, obj.__name__)
-                    return
-                # print(obj.__name__)
-                child_type_node = Types.get_type_by_name(obj.__name__)
-                if not child_type_node:
-                    raise ValueError(f"Child type node not found for {obj.__name__}")
-                # print(name, obj.__name__)
-                Types.make_child_rule_and_child_ref(child_type_node, name, type_node)
-
-            elif isinstance(obj, _d_field):
-                # print("D_FIELD", name, obj.meta)
-                # print(name)
-                child_type = obj.meta.get("constructor")
-                assert isinstance(child_type, type)
-                child_type_name = child_type.__name__
-                if "GraphInterface" in child_type_name:
-                    # print("SKIP", name, obj.__name__)
-                    return
-                # print(child_type_name)
-                child_type_node = Types.get_type_by_name(child_type_name)
-                if not child_type_node:
-                    raise ValueError(f"Child type node not found for {child_type_name}")
-                if obj.meta.get("kind") == "list_field":
-                    n = obj.meta.get("count", 0)
-                    if n > 0:
-                        for i in range(n):
-                            Types.make_child_rule_and_child_ref(
-                                child_type_node, f"{name}[{i}]", type_node
-                            )
-                elif obj.meta.get("kind") == "f_field":
-                    Types.make_child_rule_and_child_ref(
-                        child_type_node, name, type_node
-                    )
-                else:
-                    raise ValueError(f"Unknown field kind: {obj.meta.get('kind')}")
-
-            # print("SKIPPED", name, type(obj).__name__)
-            # raise NotImplementedError()
-
-        # Split into nonrt and rt fields
-        nonrt, rt = partition(
-            lambda x: isinstance(x[1], constructed_field), clsfields.items()
-        )
-        # for all nonrt fields, setup the field
-        for name, obj in nonrt:
-            setup_field(name, obj)
-
-        for name, obj in rt:
-            setup_field(name, obj)
-
-    def _handle_add_gif(self, name: str, gif: GraphInterface):
-        gif.node = self
-        gif.name = name
-        gif.connect(self.self_gif, LinkSibling())
-
     def _handle_add_node(self, name: str, node: "Node"):
+        if node is self:
+            raise ValueError("Cannot add a node as a child of itself")
+
         if node.get_parent():
             raise NodeAlreadyBound(self, node)
 
@@ -644,13 +547,97 @@ class Node(ZNode):
                 ):
                     raise Node._Skipped()
 
-        node.parent.connect(self.children, LinkNamedParent(name))
+        if name not in self._local_insert_order:
+            self._local_insert_order.append(name)
+        self._named_children[name] = node
+
+        node._parent = (self, name)
+        node._cached_parent = (self, name)
+        node._root_id = self._root_id
         node._handle_added_to_parent()
 
     def _remove_child(self, node: "Node"):
-        node.parent.disconnect_parent()
+        # TODO: remove
+        parent = node._parent
+        if not parent or parent[0] is not self:
+            return
+        name = parent[1]
+        node._parent = None
+        node._cached_parent = None
+        self._named_children.pop(name, None)
+        if name in self._local_insert_order:
+            self._local_insert_order.remove(name)
 
     def _handle_added_to_parent(self): ...
+
+    def _iter_direct_children(self) -> list[tuple[str, "Node"]]:
+        return [
+            (name, child)
+            for name in self._local_insert_order
+            if (child := self._named_children.get(name)) is not None
+        ]
+
+    def get_parent(self) -> tuple["Node", str] | None:
+        return self._parent
+
+    def get_parent_force(self) -> tuple["Node", str]:
+        parent = self.get_parent()
+        if parent is None:
+            raise NodeNoParent(self)
+        return parent
+
+    def get_name(self, accept_no_parent: bool = False) -> str:
+        parent = self.get_parent()
+        if parent is None:
+            if accept_no_parent:
+                return self.get_root_id()
+            raise NodeNoParent(self)
+        return parent[1]
+
+    # TODO: remove (this class is now a Node prototype, so does not have an associated
+    # graph)
+    get_graph = None
+
+    def get_root_id(self) -> str:
+        return self._root_id
+
+    def get_hierarchy(self) -> list[tuple["Node", str]]:
+        hierarchy: list[tuple["Node", str]] = []
+        current: Node = self
+        while True:
+            if (parent_entry := current.get_parent()) is None:
+                hierarchy.append((current, current.get_root_id()))
+                break
+            hierarchy.append((current, parent_entry[1]))
+            current = parent_entry[0]
+
+        hierarchy.reverse()
+        return hierarchy
+
+    def get_full_name(self, types: bool = False) -> str:
+        parts: list[str] = []
+        if (parent := self.get_parent()) is not None:
+            parent_node, name = parent
+            if not parent_node.no_include_parents_in_full_name:
+                if (parent_full := parent_node.get_full_name(types=False)) is not None:
+                    parts.append(parent_full)
+            parts.append(name)
+        elif not self.no_include_parents_in_full_name:
+            parts.append(self.get_root_id())
+
+        base = ".".join(filter(None, parts))
+        if types:
+            type_name = self.__class__.__qualname__
+            return f"{base}|{type_name}" if base else type_name
+        return base
+
+    @property
+    def no_include_parents_in_full_name(self) -> bool:
+        return self._no_include_parents_in_full_name
+
+    @no_include_parents_in_full_name.setter
+    def no_include_parents_in_full_name(self, value: bool) -> None:
+        self._no_include_parents_in_full_name = value
 
     def builder(self, op: Callable[[Self], Any]) -> Self:
         op(self)
@@ -750,6 +737,8 @@ class Node(ZNode):
         return cast_assert(trait, impl)
 
     # Graph stuff ----------------------------------------------------------------------
+
+    # TODO: rethink in NodePrototype context
     def get_children[T: Node](
         self,
         direct_only: bool,
@@ -758,19 +747,31 @@ class Node(ZNode):
         f_filter: Callable[[T], bool] | None = None,
         sort: bool = True,
     ) -> OrderedSet[T]:
-        return cast(
-            OrderedSet[T],
-            OrderedSet(
-                super().get_children(
-                    direct_only=direct_only,
-                    types=types if isinstance(types, tuple) else (types,),
-                    include_root=include_root,
-                    f_filter=f_filter,  # type: ignore
-                    sort=sort,
-                )
-            ),
-        )
+        type_tuple = types if isinstance(types, tuple) else (types,)
 
+        result: list[T] = []
+
+        if include_root and isinstance(self, type_tuple):
+            if not f_filter or f_filter(self):
+                result.append(cast(T, self))
+
+        def _visit(node: "Node") -> None:
+            for _name, child in node._iter_direct_children():
+                if isinstance(child, type_tuple):
+                    candidate = cast(T, child)
+                    if not f_filter or f_filter(candidate):
+                        result.append(candidate)
+                if not direct_only:
+                    _visit(child)
+
+        _visit(self)
+
+        if sort:
+            result.sort(key=lambda n: n.get_name(accept_no_parent=True))
+
+        return OrderedSet(result)
+
+    @deprecated("refactor callers and remove")
     def get_tree[T: Node](
         self,
         types: type[T] | tuple[type[T], ...],
@@ -804,29 +805,9 @@ class Node(ZNode):
 
         return tree
 
-    @staticmethod
-    def get_nodes_from_gifs(gifs: Iterable[GraphInterface]):
-        # TODO move this to gif?
-        return {gif.node for gif in gifs}
-        # TODO what is faster
-        # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
-
-    def get_child_by_name(self, name: str) -> "Node":
-        if hasattr(self, name):
-            return cast(Node, getattr(self, name))
-        for p in self.get_children(direct_only=True, types=Node):
-            if p.get_name() == name:
-                return p
-        raise KeyErrorNotFound(f"No child with name {name} found")
-
-    def __getitem__(self, name: str) -> "Node":
-        return self.get_child_by_name(name)
-
     # Hierarchy queries ----------------------------------------------------------------
 
-    def get_hierarchy(self) -> list[tuple["Node", str]]:
-        return [(cast_assert(Node, n), name) for n, name in super().get_hierarchy()]
-
+    # TODO: rethink in NodePrototype context
     def get_parent_f(
         self,
         filter_expr: Callable[["Node"], bool],

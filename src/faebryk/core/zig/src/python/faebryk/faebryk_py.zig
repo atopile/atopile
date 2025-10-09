@@ -957,6 +957,22 @@ fn wrap_edge_pointer_get_referenced_node() type {
     };
 }
 
+fn wrap_edge_pointer_get_tid() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_tid",
+            .doc = "Return the tid of the pointer edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            return py.PyLong_FromLongLong(@intCast(faebryk.pointer.EdgePointer.tid));
+        }
+    };
+}
+
 fn wrap_module(root: *py.PyObject) void {
     _ = root;
     // TODO
@@ -967,6 +983,7 @@ fn wrap_pointer(root: *py.PyObject) void {
         wrap_edge_pointer_create(),
         wrap_edge_pointer_is_instance(),
         wrap_edge_pointer_get_referenced_node(),
+        wrap_edge_pointer_get_tid(),
     };
     bind.wrap_namespace_struct(root, faebryk.pointer.EdgePointer, extra_methods);
     edge_pointer_type = type_registry.getRegisteredTypeObject("EdgePointer");
