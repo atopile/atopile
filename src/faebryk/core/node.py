@@ -24,6 +24,9 @@ from deprecated import deprecated
 from more_itertools import partition
 from ordered_set import OrderedSet
 
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import BoundNode
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
@@ -913,3 +916,58 @@ class Node:
             last_match = (ref_node, ref_name)
 
         return last_match
+
+    def create_typegraph(self) -> tuple["TypeGraph", "BoundNode"]:
+        from faebryk.core.trait import Trait
+
+        root = self
+        typegraph = TypeGraph.create()
+        type_nodes: dict[type[Node], BoundNode] = {}
+        make_child_nodes: dict[tuple[type[Node], str], BoundNode] = {}
+
+        def ensure_type_node(cls: type[Node]) -> BoundNode:
+            if cls in type_nodes:
+                return type_nodes[cls]
+
+            type_node = typegraph.init_type_node(identifier=cls._type_identifier())
+            type_nodes[cls] = type_node
+
+            if issubclass(cls, Trait):
+                trait_marker = typegraph.init_trait_node()
+                EdgeComposition.add_child(
+                    bound_node=type_node,
+                    child=trait_marker.node(),
+                    child_identifier="implements_trait",
+                )
+
+            return type_node
+
+        def ensure_make_child(
+            parent_cls: type[Node], identifier: str, child_cls: type[Node]
+        ) -> None:
+            if (key := (parent_cls, identifier)) in make_child_nodes:
+                return
+
+            parent_type = ensure_type_node(parent_cls)
+            child_type = ensure_type_node(child_cls)
+            make_child = typegraph.init_make_child_node(
+                type_node=child_type,
+                identifier=identifier,
+            )
+            EdgeComposition.add_child(
+                bound_node=parent_type,
+                child=make_child.node(),
+                child_identifier=identifier,
+            )
+
+            make_child_nodes[key] = make_child
+
+        def walk(node: Node) -> None:
+            ensure_type_node(type(node))
+            for name, child in node._iter_direct_children():
+                ensure_make_child(type(node), name, type(child))
+                walk(child)
+
+        walk(root)
+        root_bound = ensure_type_node(type(root))
+        return typegraph, root_bound

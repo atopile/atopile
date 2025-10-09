@@ -63,61 +63,6 @@ class GraphFunctions:
 
 class TypeGraphFunctions:
     @staticmethod
-    def create(root: "Node") -> tuple["TypeGraph", "BoundNode"]:
-        from faebryk.core.trait import Trait
-
-        typegraph = TypeGraph.create()
-        type_nodes: dict[type[Node], BoundNode] = {}
-        make_child_nodes: dict[tuple[type[Node], str], BoundNode] = {}
-
-        def ensure_type_node(cls: type[Node]) -> BoundNode:
-            if cls in type_nodes:
-                return type_nodes[cls]
-
-            type_node = typegraph.init_type_node(identifier=cls._type_identifier())
-            type_nodes[cls] = type_node
-
-            if issubclass(cls, Trait):
-                trait_marker = typegraph.init_trait_node()
-                EdgeComposition.add_child(
-                    bound_node=type_node,
-                    child=trait_marker.node(),
-                    child_identifier="implements_trait",
-                )
-
-            return type_node
-
-        def ensure_make_child(
-            parent_cls: type[Node], identifier: str, child_cls: type[Node]
-        ) -> None:
-            if (key := (parent_cls, identifier)) in make_child_nodes:
-                return
-
-            parent_type = ensure_type_node(parent_cls)
-            child_type = ensure_type_node(child_cls)
-            make_child = typegraph.init_make_child_node(
-                type_node=child_type,
-                identifier=identifier,
-            )
-            EdgeComposition.add_child(
-                bound_node=parent_type,
-                child=make_child.node(),
-                child_identifier=identifier,
-            )
-
-            make_child_nodes[key] = make_child
-
-        def walk(node: Node) -> None:
-            ensure_type_node(type(node))
-            for name, child in node._iter_direct_children():
-                ensure_make_child(type(node), name, type(child))
-                walk(child)
-
-        walk(root)
-        root_bound = ensure_type_node(type(root))
-        return typegraph, root_bound
-
-    @staticmethod
     def render(root: BoundNode) -> str:
         stream = io.StringIO()
 
@@ -227,9 +172,13 @@ class TypeGraphFunctions:
 class InstanceGraphFunctions:
     @staticmethod
     def create(typegraph: TypeGraph, root: BoundNode) -> "BoundNode":
-        return typegraph.instantiate(
-            build_target_type_identifier=root.node().get_attr(key="name")
-        )
+        if (name := root.node().get_attr(key="name")) is None:
+            raise ValueError("Root node has no name")
+
+        if not isinstance(name, str):
+            raise ValueError("Root node name is not a string")
+
+        return typegraph.instantiate(build_target_type_identifier=name)
 
     @staticmethod
     def render(root: BoundNode) -> str:
