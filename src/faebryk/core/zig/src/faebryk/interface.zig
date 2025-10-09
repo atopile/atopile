@@ -11,12 +11,18 @@ const Node = graph.Node;
 const GraphView = graph.GraphView;
 const str = graph.str;
 
+const shallow_link = "shallow_link";
+
 pub const EdgeInterfaceConnection = struct {
     const tid: Edge.EdgeType = 1759242069;
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, N1, N2, tid);
-        edge.attributes.directional = false;
+        edge.attributes.directional = false; // interface connections are not directional
+        edge.attributes.dynamic.values.put(shallow_link, graph.Literal{ .Bool = false }) // interfaces connections can be shallow but are not by default
+        catch |err| {
+            return err;
+        };
         return edge;
     }
 
@@ -85,14 +91,10 @@ test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const n1 = try Node.init(a);
-    defer n1.deinit();
     const n2 = try Node.init(a);
-    defer n2.deinit();
     const n3 = try Node.init(a);
-    defer n3.deinit();
     const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
-    defer e1.deinit();
-    defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
+    defer g.deinit(); // Graph owns all inserted nodes/edges and handles their cleanup
 
     // Expect e1 source and target to match n1 and n2
     try std.testing.expect(Node.is_same(e1.source, n1));
