@@ -34,21 +34,19 @@ pub const PathFinder = struct {
         };
     }
 
-    pub fn deinit(self: *@This()) void {
-        // Clean up path list
+    pub fn deinit(self: *Self) void {
         if (self.path_list) |*list| {
             for (list.items) |*path| {
                 path.deinit();
             }
             list.deinit();
+            self.path_list = null;
         }
-        self.path_list = null;
 
-        // Clean up end nodes
         if (self.end_nodes) |*list| {
             list.deinit();
+            self.end_nodes = null;
         }
-        self.end_nodes = null;
     }
 
     // Find all valid paths between start and end nodes
@@ -57,18 +55,7 @@ pub const PathFinder = struct {
         start_node: BoundNodeReference,
         end_nodes: ?[]const BoundNodeReference,
     ) ![]const Path {
-        // Clean up any previous path list
-        if (self.path_list) |*list| {
-            for (list.items) |*path| {
-                path.deinit();
-            }
-            list.deinit();
-        }
-
-        // Clean up previous end nodes
-        if (self.end_nodes) |*list| {
-            list.deinit();
-        }
+        self.deinit();
 
         // Re-initialize lists
         self.path_list = std.ArrayList(Path).init(self.allocator);
