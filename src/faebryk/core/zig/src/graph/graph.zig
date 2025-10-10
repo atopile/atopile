@@ -660,7 +660,6 @@ pub const GraphView = struct {
     pub fn visit_paths_bfs(
         g: *@This(),
         start_node: BoundNodeReference,
-        edge_type: ?Edge.EdgeType,
         comptime T: type,
         ctx: *anyopaque,
         f: fn (*anyopaque, Path) visitor.VisitResult(T),
@@ -736,18 +735,9 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
-        // TODO possibly a better way to do this using an edge visitor
-        // Get list of edges connected to root node
-        var initial_edges: *const std.ArrayList(EdgeReference) = undefined;
-        if (edge_type) |et| {
-            initial_edges = start_node.get_edges_of_type(et) orelse {
-                return visitor.VisitResult(T){ .ERROR = error.NoEdges };
-            };
-        } else {
-            initial_edges = start_node.get_edges() orelse {
-                return visitor.VisitResult(T){ .ERROR = error.NoEdges };
-            };
-        }
+        const initial_edges = start_node.get_edges() orelse {
+            return visitor.VisitResult(T){ .ERROR = error.NoEdges };
+        };
 
         // Add initial edges to open path queue
         for (initial_edges.items) |edge| {
@@ -799,12 +789,8 @@ pub const GraphView = struct {
                 .g = g,
             };
 
-            var edge_visitor_result = visitor.VisitResult(void){ .ERROR = error.InvalidVisitorResult };
-            if (edge_type) |et| {
-                edge_visitor_result = g.visit_edges_of_type(node_at_path_end.node, et, void, &edge_visitor, EdgeVisitor.visit_fn);
-            } else {
-                edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
-            }
+            const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+
             switch (edge_visitor_result) {
                 .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
                 else => {},

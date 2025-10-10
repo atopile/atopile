@@ -56,7 +56,6 @@ pub const PathFinder = struct {
         self: *Self,
         start_node: BoundNodeReference,
         end_nodes: ?[]const BoundNodeReference,
-        edge_type: ?Edge.EdgeType,
     ) ![]const Path {
         // Clean up any previous path list
         if (self.path_list) |*list| {
@@ -87,7 +86,6 @@ pub const PathFinder = struct {
         // Run BFS with our visitor callback
         const result = start_node.g.visit_paths_bfs(
             start_node,
-            edge_type,
             void,
             self,
             Self.visit_fn,
@@ -243,7 +241,7 @@ test "visit_paths_bfs" {
 
     const end_nodes = [_]BoundNodeReference{ bn2, bn4 };
 
-    const paths1 = try pf1.find_paths(bn1, &end_nodes, null);
+    const paths1 = try pf1.find_paths(bn1, &end_nodes);
     std.debug.print("Found {} paths\n", .{paths1.len});
 
     // Print paths for debugging
