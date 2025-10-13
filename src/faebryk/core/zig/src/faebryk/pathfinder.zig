@@ -84,25 +84,30 @@ pub const PathFinder = struct {
     }
 
     // BFS visitor callback
-    pub fn visit_fn(self_ptr: *anyopaque, path: BFSPath) visitor.VisitResult(void) {
+    pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
         // Run filters on path
         const result = self.run_filters(path);
 
         // Filter says keep!
-        if (result == .CONTINUE) {
-            // Move path into the list
-            self.path_list.?.append(path) catch |err| {
+        if (!path.filtered) {
+            // Deep copy the path
+            var copied_path = BFSPath.init(self.allocator);
+            copied_path.path.edges.appendSlice(path.path.edges.items) catch |err| {
+                copied_path.deinit();
+                return visitor.VisitResult(void){ .ERROR = err };
+            };
+            copied_path.filtered = path.filtered;
+            copied_path.stop = path.stop;
+
+            self.path_list.?.append(copied_path) catch |err| {
+                copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
             };
             self.valid_path_counter += 1;
         }
-        // Filter says yeet!
-        else {
-            var mutable_path = path;
-            mutable_path.deinit();
-        }
+        // Filter says don't keep - BFS will deinitialize
 
         // Filter says shut it down!
         if (result == .STOP) {
@@ -131,14 +136,14 @@ pub const PathFinder = struct {
     // Filters
     const filters = [_]struct {
         name: []const u8,
-        func: *const fn (*Self, BFSPath) visitor.VisitResult(void),
+        func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
     };
 
-    pub fn run_filters(self: *Self, path: BFSPath) visitor.VisitResult(void) {
-        std.debug.print("FILTERS - ", .{});
+    pub fn run_filters(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        std.debug.print("FILTERS\n", .{});
         for (filters) |filter| {
             std.debug.print("{s}, ", .{filter.name});
             const result = filter.func(self, path);
@@ -150,25 +155,29 @@ pub const PathFinder = struct {
                 .EXHAUSTED => return visitor.VisitResult(void){ .EXHAUSTED = {} },
             }
         }
-        std.debug.print("\n", .{});
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn count_paths(self: *Self, path: BFSPath) visitor.VisitResult(void) {
+    pub fn count_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = path;
         self.path_counter += 1;
         std.debug.print("path_counter: {}\n", .{self.path_counter});
-        if (self.path_counter > 3) {
+        if (self.path_counter > 10) {
             return visitor.VisitResult(void){ .STOP = {} };
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn filter_path_by_edge_type(self: *Self, path: BFSPath) visitor.VisitResult(void) {
+    pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type != 1759242069) {
+                std.debug.print("edge type not 1759242069\n", .{});
+                path.stop = true;
+                path.filtered = true;
                 return visitor.VisitResult(void){ .CONTINUE = {} };
+            } else {
+                std.debug.print(" \n", .{});
             }
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -188,7 +197,7 @@ test "visit_paths_bfs" {
     const n7 = try Node.init(a);
     const e1 = try Edge.init(a, n1, n2, 1759242069);
     const e2 = try Edge.init(a, n1, n3, 1759242069);
-    const e3 = try Edge.init(a, n2, n4, 1759242069);
+    const e3 = try Edge.init(a, n2, n4, 1759242068);
     const e4 = try Edge.init(a, n2, n5, 1759242069);
     const e5 = try Edge.init(a, n5, n6, 1759242069);
     const e6 = try Edge.init(a, n6, n1, 1759242069);
@@ -227,7 +236,10 @@ test "visit_paths_bfs" {
     var pf1 = PathFinder.init(a);
     defer pf1.deinit();
 
-    const end_nodes = [_]BoundNodeReference{ bn2, bn4 };
+    _ = bn2;
+    _ = bn4;
+
+    const end_nodes = [_]BoundNodeReference{};
 
     const paths1 = try pf1.find_paths(bn1, &end_nodes);
     std.debug.print("Found {} paths\n", .{paths1.len});

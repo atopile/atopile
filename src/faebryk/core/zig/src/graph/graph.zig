@@ -473,6 +473,11 @@ pub const BFSPath = struct {
     pub fn deinit(self: *@This()) void {
         self.path.deinit();
     }
+
+    pub fn destroy(self: *@This(), allocator: std.mem.Allocator) void {
+        self.deinit();
+        allocator.destroy(self);
+    }
 };
 
 pub const BoundNodeReference = struct {
@@ -680,17 +685,16 @@ pub const GraphView = struct {
         start_node: BoundNodeReference,
         comptime T: type,
         ctx: *anyopaque,
-        f: fn (*anyopaque, BFSPath) visitor.VisitResult(T),
+        f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
         // Initialize variables required for BFS
-        var open_path_queue = std.fifo.LinearFifo(BFSPath, .Dynamic).init(g.allocator);
+        var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(g.allocator);
         // Use HashMap for O(1) visited node checks
         var visited_nodes = NodeRefMap.T(void).init(g.allocator);
 
         defer {
             while (open_path_queue.readItem()) |bfspath| {
-                var mutable_path = bfspath;
-                mutable_path.deinit();
+                bfspath.destroy(g.allocator);
             }
             open_path_queue.deinit();
         }
@@ -699,8 +703,8 @@ pub const GraphView = struct {
         // Initialize edge visitor
         const EdgeVisitor = struct {
             start_node: BoundNodeReference,
-            current_path: BFSPath,
-            open_path_queue: *std.fifo.LinearFifo(BFSPath, .Dynamic),
+            current_path: *BFSPath,
+            open_path_queue: *std.fifo.LinearFifo(*BFSPath, .Dynamic),
             visited_nodes: *NodeRefMap.T(void),
             g: *GraphView,
 
@@ -724,7 +728,10 @@ pub const GraphView = struct {
                 }
                 // If not visited, create a new path and append it to the open path queue
                 else {
-                    var new_path = BFSPath.init(self.g.allocator);
+                    var new_path = self.g.allocator.create(BFSPath) catch |err| {
+                        return visitor.VisitResult(void){ .ERROR = err };
+                    };
+                    new_path.* = BFSPath.init(self.g.allocator);
 
                     // Append current path edges to new path
                     new_path.path.edges.appendSlice(self.current_path.path.edges.items) catch |err| {
@@ -759,7 +766,10 @@ pub const GraphView = struct {
 
         // Add initial edges to open path queue
         for (initial_edges.items) |edge| {
-            var path = BFSPath.init(g.allocator);
+            var path = g.allocator.create(BFSPath) catch |err| {
+                return visitor.VisitResult(T){ .ERROR = err };
+            };
+            path.* = BFSPath.init(g.allocator);
             path.path.edges.append(edge) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
@@ -781,7 +791,7 @@ pub const GraphView = struct {
             }
             std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
 
-            // Transfer ownership to visitor - visitor must either keep it or deinit it
+            // Call visitor - visitor can modify the path
             const bfs_visitor_result = f(ctx, path);
 
             // Mark node at end of path as visited (O(1) with HashMap)
@@ -791,28 +801,47 @@ pub const GraphView = struct {
 
             // Report BFS visitor status
             switch (bfs_visitor_result) {
+                .STOP => {
+                    // Deinitialize current path before returning
+                    path.destroy(g.allocator);
+                    return visitor.VisitResult(T){ .STOP = {} };
+                },
+                .ERROR => |err| {
+                    // Deinitialize current path before returning
+                    path.destroy(g.allocator);
+                    return visitor.VisitResult(T){ .ERROR = err };
+                },
+                .EXHAUSTED => {
+                    // Deinitialize current path before returning
+                    path.destroy(g.allocator);
+                    return visitor.VisitResult(T){ .EXHAUSTED = {} };
+                },
                 .CONTINUE => {},
-                .STOP => return visitor.VisitResult(T){ .STOP = {} },
-                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
-                .OK => |value| return visitor.VisitResult(T){ .OK = value },
-                .EXHAUSTED => return visitor.VisitResult(T){ .EXHAUSTED = {} },
+                .OK => {},
             }
 
-            // Use edge visitor to extend this path and create new paths for the queue
-            var edge_visitor = EdgeVisitor{
-                .start_node = node_at_path_end,
-                .visited_nodes = &visited_nodes,
-                .current_path = path,
-                .open_path_queue = &open_path_queue,
-                .g = g,
-            };
+            if (!path.stop) {
+                // Use edge visitor to extend this path and create new paths for the queue
+                var edge_visitor = EdgeVisitor{
+                    .start_node = node_at_path_end,
+                    .visited_nodes = &visited_nodes,
+                    .current_path = path,
+                    .open_path_queue = &open_path_queue,
+                    .g = g,
+                };
 
-            const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+                const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
 
-            switch (edge_visitor_result) {
-                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
-                else => {},
+                switch (edge_visitor_result) {
+                    .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
+                    else => {},
+                }
+            } else {
+                std.debug.print("PATH - stopped\n", .{});
             }
+
+            // Deinitialize the processed path
+            path.destroy(g.allocator);
         }
 
         return visitor.VisitResult(T){ .EXHAUSTED = {} };
