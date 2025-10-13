@@ -715,7 +715,7 @@ pub const GraphView = struct {
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                std.debug.print("EDGE VISITOR - Visiting e-{} from n-{}\n", .{ edge.edge.attributes.uuid, self.start_node.node.attributes.uuid });
+                std.debug.print("e-{} ", .{edge.edge.attributes.uuid});
 
                 // Check if other node has been visited
                 const other_node = edge.edge.get_other_node(self.start_node.node);
@@ -723,11 +723,12 @@ pub const GraphView = struct {
 
                 // If visited, exit edge visitor and continue with BFS
                 if (other_node_visited) {
-                    std.debug.print("EDGE VISITOR - Already visited n-{} \n", .{other_node.?.attributes.uuid});
+                    std.debug.print("ignored, already visited n-{}\n", .{other_node.?.attributes.uuid});
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
                 // If not visited, create a new path and append it to the open path queue
                 else {
+                    std.debug.print("added\n", .{});
                     var new_path = self.g.allocator.create(BFSPath) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
@@ -822,6 +823,7 @@ pub const GraphView = struct {
 
             if (!path.stop) {
                 // Use edge visitor to extend this path and create new paths for the queue
+                std.debug.print("EDGE VISITOR - Visiting edges from n-{}\n", .{node_at_path_end.node.attributes.uuid});
                 var edge_visitor = EdgeVisitor{
                     .start_node = node_at_path_end,
                     .visited_nodes = &visited_nodes,
@@ -844,6 +846,7 @@ pub const GraphView = struct {
             path.destroy(g.allocator);
         }
 
+        std.debug.print("STOP BFS!!! - Exhausted\n", .{});
         return visitor.VisitResult(T){ .EXHAUSTED = {} };
     }
 };

@@ -111,7 +111,7 @@ pub const PathFinder = struct {
 
         // Filter says shut it down!
         if (result == .STOP) {
-            std.debug.print("STOP!!!!!!!!! FILTER - path stopped\n", .{});
+            std.debug.print("STOP BFS!!! - Filter stopped\n", .{});
             return visitor.VisitResult(void){ .STOP = {} };
         }
 
@@ -123,7 +123,7 @@ pub const PathFinder = struct {
 
                     // If all end nodes found, stop the search
                     if (end_nodes.items.len == 0) {
-                        std.debug.print("STOP!!!!!!!!! END NODES - all end nodes found\n", .{});
+                        std.debug.print("STOP BFS!!! - All end nodes found\n", .{});
                         return visitor.VisitResult(void){ .STOP = {} };
                     }
                     break;
@@ -132,15 +132,6 @@ pub const PathFinder = struct {
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
-
-    // Filters
-    const filters = [_]struct {
-        name: []const u8,
-        func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
-    }{
-        .{ .name = "count_paths", .func = Self.count_paths },
-        .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
-    };
 
     pub fn run_filters(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         std.debug.print("FILTERS\n", .{});
@@ -158,6 +149,16 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
+    // Filters
+    const filters = [_]struct {
+        name: []const u8,
+        func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
+    }{
+        .{ .name = "count_paths", .func = Self.count_paths },
+        .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
+        .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
+    };
+
     pub fn count_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = path;
         self.path_counter += 1;
@@ -172,14 +173,19 @@ pub const PathFinder = struct {
         _ = self;
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type != 1759242069) {
-                std.debug.print("edge type not 1759242069\n", .{});
+                std.debug.print("{} != 1759242069\n", .{edge.attributes.uuid});
                 path.stop = true;
                 path.filtered = true;
                 return visitor.VisitResult(void){ .CONTINUE = {} };
-            } else {
-                std.debug.print(" \n", .{});
             }
         }
+        std.debug.print(" \n", .{});
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
+
+    pub fn filter_path_by_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        _ = self;
+        _ = path;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 };
@@ -242,11 +248,10 @@ test "visit_paths_bfs" {
     const end_nodes = [_]BoundNodeReference{};
 
     const paths1 = try pf1.find_paths(bn1, &end_nodes);
-    std.debug.print("Found {} paths\n", .{paths1.len});
+    std.debug.print("\nTEST\nFound {} paths:\n", .{paths1.len});
 
     // Print paths for debugging
     for (paths1) |path| {
-        std.debug.print("path: ", .{});
         path.path.print_path();
     }
 }
