@@ -7,6 +7,7 @@ const visitor = graph_mod.visitor;
 const Node = graph.Node;
 const Edge = graph.Edge;
 const Path = graph.Path;
+const BFSPath = graph.BFSPath;
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;
 const BoundNodeReference = graph.BoundNodeReference;
@@ -19,7 +20,7 @@ pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    path_list: ?std.ArrayList(Path) = null, // Valid complete paths (plain paths without metadata)
+    path_list: ?std.ArrayList(BFSPath) = null, // Valid complete paths (plain paths without metadata)
     end_nodes: ?std.ArrayList(BoundNodeReference) = null, // End nodes to search for (optional)
     path_counter: u64 = 0, // Counters for statistics
     valid_path_counter: u64 = 0, // Count of valid complete paths
@@ -54,11 +55,11 @@ pub const PathFinder = struct {
         self: *Self,
         start_node: BoundNodeReference,
         end_nodes: ?[]const BoundNodeReference,
-    ) ![]const Path {
+    ) ![]const BFSPath {
         self.deinit();
 
         // Re-initialize lists
-        self.path_list = std.ArrayList(Path).init(self.allocator);
+        self.path_list = std.ArrayList(BFSPath).init(self.allocator);
         self.end_nodes = std.ArrayList(BoundNodeReference).init(self.allocator);
 
         if (end_nodes) |nodes| {
@@ -83,7 +84,7 @@ pub const PathFinder = struct {
     }
 
     // BFS visitor callback
-    pub fn visit_fn(self_ptr: *anyopaque, path: Path) visitor.VisitResult(void) {
+    pub fn visit_fn(self_ptr: *anyopaque, path: BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
         // Run filters on path
@@ -112,7 +113,7 @@ pub const PathFinder = struct {
         // Check if path ends in an end node
         if (self.end_nodes) |*end_nodes| {
             for (end_nodes.items, 0..) |end_node, i| {
-                if (path.get_other_node(end_node)) |_| {
+                if (path.path.get_other_node(end_node)) |_| {
                     _ = end_nodes.swapRemove(i);
 
                     // If all end nodes found, stop the search
@@ -130,13 +131,13 @@ pub const PathFinder = struct {
     // Filters
     const filters = [_]struct {
         name: []const u8,
-        func: *const fn (*Self, Path) visitor.VisitResult(void),
+        func: *const fn (*Self, BFSPath) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
     };
 
-    pub fn run_filters(self: *Self, path: Path) visitor.VisitResult(void) {
+    pub fn run_filters(self: *Self, path: BFSPath) visitor.VisitResult(void) {
         std.debug.print("FILTERS - ", .{});
         for (filters) |filter| {
             std.debug.print("{s}, ", .{filter.name});
@@ -153,7 +154,7 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn count_paths(self: *Self, path: Path) visitor.VisitResult(void) {
+    pub fn count_paths(self: *Self, path: BFSPath) visitor.VisitResult(void) {
         _ = path;
         self.path_counter += 1;
         std.debug.print("path_counter: {}\n", .{self.path_counter});
@@ -163,9 +164,9 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn filter_path_by_edge_type(self: *Self, path: Path) visitor.VisitResult(void) {
+    pub fn filter_path_by_edge_type(self: *Self, path: BFSPath) visitor.VisitResult(void) {
         _ = self;
-        for (path.edges.items) |edge| {
+        for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type != 1759242069) {
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -234,6 +235,6 @@ test "visit_paths_bfs" {
     // Print paths for debugging
     for (paths1) |path| {
         std.debug.print("path: ", .{});
-        path.print_path();
+        path.path.print_path();
     }
 }

@@ -457,6 +457,24 @@ pub const Path = struct {
     }
 };
 
+pub const BFSPath = struct {
+    path: Path,
+    filtered: bool = false, // filter this path out
+    stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
+
+    pub fn init(a: std.mem.Allocator) @This() {
+        return .{
+            .path = Path.init(a),
+            .filtered = false,
+            .stop = false,
+        };
+    }
+
+    pub fn deinit(self: *@This()) void {
+        self.path.deinit();
+    }
+};
+
 pub const BoundNodeReference = struct {
     node: NodeReference,
     g: *GraphView,
@@ -662,16 +680,16 @@ pub const GraphView = struct {
         start_node: BoundNodeReference,
         comptime T: type,
         ctx: *anyopaque,
-        f: fn (*anyopaque, Path) visitor.VisitResult(T),
+        f: fn (*anyopaque, BFSPath) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
         // Initialize variables required for BFS
-        var open_path_queue = std.fifo.LinearFifo(Path, .Dynamic).init(g.allocator);
+        var open_path_queue = std.fifo.LinearFifo(BFSPath, .Dynamic).init(g.allocator);
         // Use HashMap for O(1) visited node checks
         var visited_nodes = NodeRefMap.T(void).init(g.allocator);
 
         defer {
-            while (open_path_queue.readItem()) |path| {
-                var mutable_path = path;
+            while (open_path_queue.readItem()) |bfspath| {
+                var mutable_path = bfspath;
                 mutable_path.deinit();
             }
             open_path_queue.deinit();
@@ -681,8 +699,8 @@ pub const GraphView = struct {
         // Initialize edge visitor
         const EdgeVisitor = struct {
             start_node: BoundNodeReference,
-            current_path: Path,
-            open_path_queue: *std.fifo.LinearFifo(Path, .Dynamic),
+            current_path: BFSPath,
+            open_path_queue: *std.fifo.LinearFifo(BFSPath, .Dynamic),
             visited_nodes: *NodeRefMap.T(void),
             g: *GraphView,
 
@@ -706,15 +724,15 @@ pub const GraphView = struct {
                 }
                 // If not visited, create a new path and append it to the open path queue
                 else {
-                    var new_path = Path.init(self.g.allocator);
+                    var new_path = BFSPath.init(self.g.allocator);
 
                     // Append current path edges to new path
-                    new_path.edges.appendSlice(self.current_path.edges.items) catch |err| {
+                    new_path.path.edges.appendSlice(self.current_path.path.edges.items) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
                     // Append current edge to new path
-                    new_path.edges.append(edge.edge) catch |err| {
+                    new_path.path.edges.append(edge.edge) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
@@ -741,8 +759,8 @@ pub const GraphView = struct {
 
         // Add initial edges to open path queue
         for (initial_edges.items) |edge| {
-            var path = Path.init(g.allocator);
-            path.edges.append(edge) catch |err| {
+            var path = BFSPath.init(g.allocator);
+            path.path.edges.append(edge) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
             open_path_queue.writeItem(path) catch |err| {
@@ -752,13 +770,13 @@ pub const GraphView = struct {
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
-            const node_at_path_end = path.get_other_node(start_node) orelse {
+            const node_at_path_end = path.path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
 
-            std.debug.print("PATH - len: {} - ", .{path.edges.items.len});
+            std.debug.print("PATH - len: {} - ", .{path.path.edges.items.len});
             std.debug.print("n{}->", .{start_node.node.attributes.uuid});
-            for (path.edges.items) |edge| {
+            for (path.path.edges.items) |edge| {
                 std.debug.print("e{}->", .{edge.attributes.uuid});
             }
             std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
