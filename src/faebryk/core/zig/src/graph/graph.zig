@@ -501,8 +501,12 @@ pub const BFSPath = struct {
     filtered: bool = false, // filter this path out
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
+    fn is_consistent(self: *const @This()) bool {
+        return self.start.g == self.path.g;
+    }
+
     fn assert_consistent(self: *const @This()) void {
-        std.debug.assert(self.start.g == self.path.g);
+        std.debug.assert(self.is_consistent());
     }
 
     pub fn init(start: BoundNodeReference) @This() {
@@ -926,4 +930,68 @@ test "basic" {
     // try std.testing.expectEqual(n1._ref_count.ref_count, 0); //these tests are broken now because we automtically deinit when graph view is deinited
     // try std.testing.expectEqual(n2._ref_count.ref_count, 0);
     // try std.testing.expectEqual(e12._ref_count.ref_count, 0);
+}
+
+test "BFSPath cloneAndExtend preserves start metadata" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const TestEdgeType = 0xFBAF_0001;
+    Edge.register_type(TestEdgeType) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    const n1 = try Node.init(a);
+    const n2 = try Node.init(a);
+    const n3 = try Node.init(a);
+
+    const bn1 = try g.insert_node(n1);
+    _ = try g.insert_node(n2);
+    _ = try g.insert_node(n3);
+
+    const e12 = try Edge.init(a, n1, n2, TestEdgeType);
+    const e23 = try Edge.init(a, n2, n3, TestEdgeType);
+    _ = try g.insert_edge(e12);
+    _ = try g.insert_edge(e23);
+
+    var base = BFSPath.init(bn1);
+    defer base.deinit();
+    try base.path.edges.append(e12);
+
+    const cloned = try BFSPath.cloneAndExtend(&base, e23);
+    defer cloned.destroy(g.allocator);
+
+    try std.testing.expect(cloned.start.node == bn1.node);
+    try std.testing.expect(cloned.start.g == bn1.g);
+    try std.testing.expect(cloned.path.g == bn1.g);
+    try std.testing.expectEqual(@as(usize, 2), cloned.path.edges.items.len);
+    try std.testing.expect(cloned.path.edges.items[0] == e12);
+    try std.testing.expect(cloned.path.edges.items[1] == e23);
+}
+
+test "BFSPath detects inconsistent graph view" {
+    const a = std.testing.allocator;
+    var g1 = GraphView.init(a);
+    defer g1.deinit();
+    var g2 = GraphView.init(a);
+    defer g2.deinit();
+
+    const n1 = try Node.init(a);
+    const bn1 = try g1.insert_node(n1);
+
+    var path = BFSPath.init(bn1);
+    defer {
+        path.path.g = path.start.g;
+        path.deinit();
+    }
+
+    try std.testing.expect(path.is_consistent());
+    path.path.g = &g2;
+    try std.testing.expect(!path.is_consistent());
+
+    // Restoring the original graph view before cleanup prevents the assertion from firing.
+    path.path.g = path.start.g;
+    try std.testing.expect(path.is_consistent());
 }
