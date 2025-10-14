@@ -18,6 +18,8 @@ pub const EdgeComposition = struct {
 
     pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) !EdgeReference {
         const edge = try Edge.init(allocator, parent, child, tid);
+        errdefer edge.deinit();
+
         edge.attributes.directional = true;
         edge.attributes.name = child_identifier;
         return edge;
@@ -81,8 +83,9 @@ pub const EdgeComposition = struct {
         return Edge.get_single_edge(bound_node, tid, true);
     }
 
-    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: str) !graph.BoundEdgeReference {
-        const link = try EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier);
+    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) !graph.BoundEdgeReference {
+        // if child identifier is null, then generate a unique identifier
+        const link = try EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
         const bound_edge = try bound_node.g.insert_edge(link);
         return bound_edge;
     }

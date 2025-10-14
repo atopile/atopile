@@ -218,20 +218,6 @@ pub const EdgeAttributes = struct {
     name: ?str,
     dynamic: DynamicAttributes,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: Edge.EdgeType) !*@This() {
-        var edge = try allocator.create(Edge);
-        edge.source = source;
-        edge.target = target;
-        edge.uuid = UUID.gen_uuid();
-        edge.edge_type = edge_type;
-        edge.dynamic = DynamicAttributes.init(allocator);
-        edge._ref_count = .{
-            .parent = edge,
-            .allocator = allocator,
-        };
-        return edge;
-    }
-
     pub fn deinit(self: *@This()) !void {
         if (self._ref_count.ref_count > 0) {
             return error.InUse;
@@ -298,6 +284,8 @@ pub const Edge = struct {
         edge.attributes.source_id = source.attributes.uuid;
         edge.attributes.target_id = target.attributes.uuid;
         edge.attributes.dynamic = DynamicAttributes.init(allocator);
+        edge.attributes.directional = null;
+        edge.attributes.name = null;
 
         edge._ref_count = GraphReferenceCounter.init(allocator, edge);
         return edge;

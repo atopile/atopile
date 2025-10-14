@@ -20,155 +20,226 @@ const EdgeComposition = composition_mod.EdgeComposition;
 const EdgePointer = pointer_mod.EdgePointer;
 const EdgeNext = next_mod.EdgeNext;
 
+// TODO: BoundNodeReference and NodeReference used mixed all over the place
+// TODO: move add/create functions into respective structs
+
 pub const TypeGraph = struct {
     // Global nodes, not parent to anything, only used to mark type and trait. Bootstrap typegraph
-    implements_type_type_bnode: BoundNodeReference,
-    implements_trait_type_bnode: BoundNodeReference,
-    make_child_type_bnode: BoundNodeReference,
-    make_link_type_bnode: BoundNodeReference,
-    reference_type_bnode: BoundNodeReference,
-    type_graph_view_ptr: *GraphView,
+    implements_type_type: BoundNodeReference,
+    implements_trait_type: BoundNodeReference,
+    make_child_type: BoundNodeReference,
+    make_link_type: BoundNodeReference,
+    reference_type: BoundNodeReference,
+    g: *GraphView,
 
-    pub const ImplementsTypeType = struct {
-        pub const identifier = "ImplementsType";
+    const TypeNodeAttributes = struct {
+        node: NodeReference,
 
-        pub fn create(allocator: std.mem.Allocator) !NodeReference {
-            const implements_type_type_node = try Node.init(allocator);
-            try implements_type_type_node.attributes.dynamic.values.put("name", .{ .String = identifier });
-            return implements_type_type_node;
+        pub fn of(node: NodeReference) @This() {
+            return .{ .node = node };
+        }
+
+        pub const type_identifier = "type_identifier";
+
+        pub fn set_type_name(self: @This(), name: str) void {
+            self.node.attributes.dynamic.values.put(type_identifier, .{ .String = name }) catch unreachable;
+        }
+        pub fn get_type_name(self: @This()) str {
+            return self.node.attributes.dynamic.values.get(type_identifier).?.String;
         }
     };
 
-    pub const ImplementsTraitType = struct {
-        pub const identifier = "ImplementsTrait";
-
-        pub fn create(allocator: std.mem.Allocator) !NodeReference {
-            const implements_type_type_node = try Node.init(allocator);
-            try implements_type_type_node.attributes.dynamic.values.put("name", .{ .String = identifier });
-            return implements_type_type_node;
-        }
-    };
-
-    // Only exists to group init and set name together
+    // Bootstrap helpers
     pub const TypeNode = struct {
-        pub fn create(allocator: std.mem.Allocator, identifier: str) !NodeReference {
+        pub fn create_and_insert(g: *GraphView, type_identifier: str) !BoundNodeReference {
+            const allocator = g.allocator;
             const implements_type_type_node = try Node.init(allocator);
-            try implements_type_type_node.attributes.dynamic.values.put("name", .{ .String = identifier });
-            return implements_type_type_node;
+            TypeNodeAttributes.of(implements_type_type_node).set_type_name(type_identifier);
+            const implements_type_type_bnode = try g.insert_node(implements_type_type_node);
+            return implements_type_type_bnode;
+        }
+
+        pub fn spawn_instance(bound_type_node: BoundNodeReference) !BoundNodeReference {
+            const allocator = bound_type_node.g.allocator;
+            const instance_node = try Node.init(allocator);
+            const instance_bnode = try bound_type_node.g.insert_node(instance_node);
+            _ = try bound_type_node.g.insert_edge(try EdgeType.init(bound_type_node.g.allocator, bound_type_node.node, instance_node));
+            return instance_bnode;
         }
     };
 
-    pub fn create_typegraph(allocator: std.mem.Allocator) !TypeGraph {
-        // Bootstrap first type and trait type-nodes and instance-nodes
-        const implements_type_type_node = try ImplementsTypeType.create(allocator);
-        const implements_trait_type_node = try ImplementsTraitType.create(allocator);
+    pub const TraitNode = struct {
+        pub fn add_trait_to(target: BoundNodeReference, trait_type: BoundNodeReference) !BoundNodeReference {
+            const trait_instance = try TypeNode.spawn_instance(trait_type);
+            _ = try EdgeComposition.add_child(target, trait_instance.node, null);
+            return trait_instance;
+        }
+    };
 
-        const type_graph_view_ptr = try allocator.create(GraphView); // Allocate on heap for later use after return
-        type_graph_view_ptr.* = GraphView.init(allocator);
+    pub const MakeChildNode = struct {
+        pub const Attributes = struct {
+            node: NodeReference,
 
-        var type_graph = TypeGraph{
-            .implements_type_type_bnode = undefined,
-            .implements_trait_type_bnode = undefined,
-            .make_child_type_bnode = undefined,
-            .make_link_type_bnode = undefined,
-            .reference_type_bnode = undefined,
-            .type_graph_view_ptr = type_graph_view_ptr,
+            pub fn of(node: NodeReference) @This() {
+                return .{ .node = node };
+            }
+
+            pub const child_identifier = "child_identifier";
+
+            pub fn set_child_identifier(self: @This(), identifier: str) void {
+                self.node.attributes.dynamic.values.put(child_identifier, .{ .String = identifier }) catch unreachable;
+            }
+
+            pub fn get_child_identifier(self: @This()) str {
+                return self.node.attributes.dynamic.values.get(child_identifier).?.String;
+            }
+        };
+    };
+
+    pub const ChildReferenceNode = struct {
+        pub const Attributes = struct {
+            node: NodeReference,
+
+            pub fn of(node: NodeReference) @This() {
+                return .{ .node = node };
+            }
+
+            pub const child_identifier = "child_identifier";
+
+            pub fn set_child_identifier(self: @This(), identifier: str) void {
+                self.node.attributes.dynamic.values.put(child_identifier, .{ .String = identifier }) catch unreachable;
+            }
+
+            pub fn get_child_identifier(self: @This()) str {
+                return self.node.attributes.dynamic.values.get(child_identifier).?.String;
+            }
         };
 
-        const type_implements_type_instance = try Node.init(allocator);
-        const type_implements_trait_instance = try Node.init(allocator);
-        const trait_implements_type_instance = try Node.init(allocator);
-        const trait_implements_trait_instance = try Node.init(allocator);
+        pub fn create_and_insert(tg: *TypeGraph, path: []const str) !BoundNodeReference {
+            var root: ?BoundNodeReference = null;
+            var current_node: ?BoundNodeReference = null;
+            for (path) |segment| {
+                const reference = try tg.instantiate_node(tg.reference_type);
+                if (current_node) |_current_node| {
+                    _ = try EdgeNext.add_next(_current_node, reference);
+                } else {
+                    root = reference;
+                }
+                ChildReferenceNode.Attributes.of(reference.node).set_child_identifier(segment);
+                current_node = reference;
+            }
 
-        // Insert type and trait type-nodes and instance-nodes into type graph view
-        const implements_type_type_bnode = try type_graph.type_graph_view_ptr.insert_node(implements_type_type_node);
-        type_graph.implements_type_type_bnode = implements_type_type_bnode;
-        const implements_trait_type_bnode = try type_graph.type_graph_view_ptr.insert_node(implements_trait_type_node);
-        type_graph.implements_trait_type_bnode = implements_trait_type_bnode;
-        _ = try type_graph.type_graph_view_ptr.insert_node(type_implements_type_instance);
-        _ = try type_graph.type_graph_view_ptr.insert_node(type_implements_trait_instance);
-        _ = try type_graph.type_graph_view_ptr.insert_node(trait_implements_type_instance);
-        _ = try type_graph.type_graph_view_ptr.insert_node(trait_implements_trait_instance);
+            return root.?;
+        }
 
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeType.init(type_graph.type_graph_view_ptr.allocator, implements_type_type_node, type_implements_type_instance));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeType.init(type_graph.type_graph_view_ptr.allocator, implements_trait_type_node, type_implements_trait_instance));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeType.init(type_graph.type_graph_view_ptr.allocator, implements_type_type_node, trait_implements_type_instance));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeType.init(type_graph.type_graph_view_ptr.allocator, implements_trait_type_node, trait_implements_trait_instance));
+        pub fn resolve(reference: BoundNodeReference, instance: BoundNodeReference) !graph.BoundNodeReference {
+            // TODO iterate instead of recursion
+            var target = instance;
+            const child_identifier = ChildReferenceNode.Attributes.of(reference.node).get_child_identifier();
 
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, implements_type_type_node, type_implements_type_instance, "implements_type"));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, implements_type_type_node, type_implements_trait_instance, "implements_trait"));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, implements_trait_type_node, trait_implements_type_instance, "implements_type"));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, implements_trait_type_node, trait_implements_trait_instance, "implements_trait"));
+            const child = EdgeComposition.get_child_by_identifier(instance, child_identifier);
+            if (child) |_child| {
+                target = _child;
+            }
 
-        const make_child_type_bnode = try TypeGraph.init_type_node(&type_graph, "MakeChild");
-        type_graph.make_child_type_bnode = make_child_type_bnode;
-        const make_link_type_bnode = try TypeGraph.init_type_node(&type_graph, "MakeLink");
-        type_graph.make_link_type_bnode = make_link_type_bnode;
-        const reference_type_bnode = try TypeGraph.init_type_node(&type_graph, "Reference");
-        type_graph.reference_type_bnode = reference_type_bnode;
+            const next_reference = EdgeNext.get_next_node_from_node(reference);
+            if (next_reference) |_next_reference| {
+                const next_ref = reference.g.bind(_next_reference);
+                target = try ChildReferenceNode.resolve(next_ref, target);
+            }
+            return target;
+        }
+    };
+
+    pub const MakeLinkNode = struct {
+        pub const Attributes = struct {
+            node: NodeReference,
+
+            pub fn of(node: NodeReference) @This() {
+                return .{ .node = node };
+            }
+
+            pub const link_type_identifier = "link_type";
+
+            pub fn set_link_type(self: @This(), link_type: Edge.EdgeType) void {
+                self.node.attributes.dynamic.values.put(link_type_identifier, .{ .Int = link_type }) catch unreachable;
+            }
+
+            pub fn get_link_type(self: @This()) Edge.EdgeType {
+                return self.node.attributes.dynamic.values.get(link_type_identifier).?.Int;
+            }
+        };
+    };
+
+    pub fn init(g: *GraphView) !TypeGraph {
+        // Bootstrap first type and trait type-nodes and instance-nodes
+        const implements_type_type = try TypeNode.create_and_insert(g, "ImplementsType");
+        const implements_trait_type = try TypeNode.create_and_insert(g, "ImplementsTrait");
+
+        // Assign the traits to the type-nodes
+        _ = try TraitNode.add_trait_to(implements_type_type, implements_type_type);
+        _ = try TraitNode.add_trait_to(implements_type_type, implements_trait_type);
+        _ = try TraitNode.add_trait_to(implements_trait_type, implements_type_type);
+        _ = try TraitNode.add_trait_to(implements_trait_type, implements_trait_type);
+
+        var type_graph = TypeGraph{
+            .implements_type_type = implements_type_type,
+            .implements_trait_type = implements_trait_type,
+            .make_child_type = undefined,
+            .make_link_type = undefined,
+            .reference_type = undefined,
+            .g = g,
+        };
+
+        type_graph.make_child_type = try TypeNode.create_and_insert(type_graph.g, "MakeChild");
+        _ = try TraitNode.add_trait_to(type_graph.make_child_type, type_graph.implements_type_type);
+
+        type_graph.make_link_type = try TypeGraph.add_type(&type_graph, "MakeLink");
+        type_graph.reference_type = try TypeGraph.add_type(&type_graph, "Reference");
 
         return type_graph;
     }
 
-    pub fn init_type_node(type_graph: *TypeGraph, identifier: str) !BoundNodeReference {
-        const allocator = type_graph.type_graph_view_ptr.allocator;
-        const type_node = try TypeNode.create(allocator, identifier);
-        const type_bnode = try type_graph.type_graph_view_ptr.insert_node(type_node);
-        if (std.mem.eql(u8, identifier, "MakeChild")) {
-            const implements_type_instance_node = try Node.init(allocator);
-            const implements_type_instance_bnode = try type_graph.type_graph_view_ptr.insert_node(implements_type_instance_node);
-            _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeType.init(type_graph.type_graph_view_ptr.allocator, type_graph.implements_type_type_bnode.node, implements_type_instance_node));
-            _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, type_node, implements_type_instance_bnode.node, "implements_type"));
-            return type_bnode;
-        }
-        const implements_type_instance_bnode = try TypeGraph.instantiate_node(type_graph, type_graph.implements_type_type_bnode.node, type_graph.type_graph_view_ptr);
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, type_node, implements_type_instance_bnode.node, "implements_type"));
-        return type_bnode;
+    pub fn add_type(self: *@This(), identifier: str) !BoundNodeReference {
+        const type_node = try TypeNode.create_and_insert(self.g, identifier);
+        const implements_type_instance_bnode = try self.instantiate_node(self.implements_type_type);
+        _ = try EdgeComposition.add_child(type_node, implements_type_instance_bnode.node, null);
+        return type_node;
     }
 
-    pub fn init_trait_node(type_graph: *TypeGraph) !BoundNodeReference {
-        const allocator = type_graph.type_graph_view_ptr.allocator;
+    pub fn add_trait(self: *@This()) !BoundNodeReference {
+        const allocator = self.g.allocator;
         const trait_node = try Node.init(allocator);
-        const trait_bnode = try type_graph.type_graph_view_ptr.insert_node(trait_node);
-        const implements_trait_instance_node = try TypeGraph.instantiate_node(type_graph, type_graph.implements_trait_type_bnode.node, type_graph.type_graph_view_ptr);
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, trait_node, implements_trait_instance_node.node, "implements_trait"));
+        const trait_bnode = try self.g.insert_node(trait_node);
+        const implements_trait_instance_node = try self.instantiate_node(self.implements_trait_type);
+        _ = try EdgeType.add_instance(trait_bnode, implements_trait_instance_node);
         return trait_bnode;
     }
 
-    pub fn init_make_child_node(type_graph: *TypeGraph, type_bnode: BoundNodeReference, identifier: str) !BoundNodeReference {
-        const make_child_bnode = try TypeGraph.instantiate_node(type_graph, type_graph.make_child_type_bnode.node, type_graph.type_graph_view_ptr);
-        const child_reference_bnode = try TypeGraph.init_reference_node(type_graph, type_bnode);
-        _ = try EdgeComposition.add_child(make_child_bnode, child_reference_bnode.node, identifier);
-        return make_child_bnode;
+    pub fn add_make_child(self: *@This(), target_type: BoundNodeReference, child_type: BoundNodeReference, identifier: str) !BoundNodeReference {
+        const make_child = try self.instantiate_node(self.make_child_type);
+        MakeChildNode.Attributes.of(make_child.node).set_child_identifier(identifier);
+        const child_reference = try self.instantiate_node(self.reference_type);
+        ChildReferenceNode.Attributes.of(child_reference.node).set_child_identifier(identifier);
+        _ = try EdgePointer.point_to(child_reference, child_type.node);
+        _ = try EdgeComposition.add_child(make_child, child_reference.node, identifier);
+        _ = try EdgeComposition.add_child(target_type, make_child.node, null);
+        return make_child;
     }
 
-    pub fn init_reference_node(type_graph: *TypeGraph, type_bnode: ?BoundNodeReference) !BoundNodeReference {
-        const reference_bnode = try TypeGraph.instantiate_node(type_graph, type_graph.reference_type_bnode.node, type_graph.type_graph_view_ptr);
-        if (type_bnode) |bnode| {
-            _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgePointer.init(type_graph.type_graph_view_ptr.allocator, reference_bnode.node, bnode.node));
-        }
-        return reference_bnode;
+    pub fn add_make_link(self: *@This(), target_type: BoundNodeReference, lhs_reference: NodeReference, rhs_reference: NodeReference, link_type: Edge.EdgeType) !BoundNodeReference {
+        const make_link = try self.instantiate_node(self.make_link_type);
+        MakeLinkNode.Attributes.of(make_link.node).set_link_type(link_type);
+        _ = try EdgeComposition.add_child(make_link, lhs_reference, "lhs");
+        _ = try EdgeComposition.add_child(make_link, rhs_reference, "rhs");
+        _ = try EdgeComposition.add_child(target_type, make_link.node, null);
+        return make_link;
     }
 
-    pub fn init_make_link_node(type_graph: *TypeGraph, lhs_target_node: NodeReference, rhs_target_node: NodeReference, connection_identifier: str) !BoundNodeReference {
-        const make_link_bnode = try TypeGraph.instantiate_node(type_graph, type_graph.make_link_type_bnode.node, type_graph.type_graph_view_ptr);
-        std.debug.print("Making connection of type: {s}\n", .{connection_identifier});
-        const lhs_node = try Node.init(type_graph.type_graph_view_ptr.allocator);
-        const rhs_node = try Node.init(type_graph.type_graph_view_ptr.allocator);
-        _ = try type_graph.type_graph_view_ptr.insert_node(lhs_node);
-        _ = try type_graph.type_graph_view_ptr.insert_node(rhs_node);
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, make_link_bnode.node, lhs_node, "lhs"));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgeComposition.init(type_graph.type_graph_view_ptr.allocator, make_link_bnode.node, rhs_node, "rhs"));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgePointer.init(type_graph.type_graph_view_ptr.allocator, lhs_node, lhs_target_node));
-        _ = try type_graph.type_graph_view_ptr.insert_edge(try EdgePointer.init(type_graph.type_graph_view_ptr.allocator, rhs_node, rhs_target_node));
-        return make_link_bnode;
-    }
-
-    pub fn instantiate_node(type_graph: *TypeGraph, type_node: NodeReference, graph_view: *GraphView) !graph.BoundNodeReference {
+    pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
         // 1) Create instance and connect it to its type
-        const new_instance_node = try Node.init(graph_view.allocator);
-        const new_instance_bnode = try graph_view.insert_node(new_instance_node);
-        _ = try graph_view.insert_edge(try EdgeType.init(graph_view.allocator, type_node, new_instance_node));
+        const new_instance = try type_node.g.insert_node(try Node.init(type_node.g.allocator));
+        _ = try EdgeType.add_instance(type_node, new_instance);
 
         // Make child implementation
         // 2) Visit composition children of the type_node and handle MakeChild
@@ -184,7 +255,7 @@ pub const TypeGraph = struct {
                 const child_type_bnode = bound_edge.g.bind(child_type_node);
 
                 // Only process MakeChild instances
-                if (!EdgeType.is_node_instance_of(child_type_bnode, self.type_graph.make_child_type_bnode.node)) {
+                if (!EdgeType.is_node_instance_of(child_type_bnode, self.type_graph.make_child_type.node)) {
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
 
@@ -198,7 +269,7 @@ pub const TypeGraph = struct {
                         const mc_child_node = EdgeComposition.get_child_node(mc_child_edge.edge);
                         const mc_child_bnode = mc_child_edge.g.bind(mc_child_node);
 
-                        if (node_type_mod.EdgeType.is_node_instance_of(mc_child_bnode, s.type_graph.reference_type_bnode.node)) {
+                        if (node_type_mod.EdgeType.is_node_instance_of(mc_child_bnode, s.type_graph.reference_type.node)) {
                             s.found_ref_bnode = mc_child_bnode;
                             return visitor.VisitResult(void){ .STOP = {} };
                         }
@@ -218,10 +289,8 @@ pub const TypeGraph = struct {
                     // 4) Resolve referenced type and instantiate it into the instance graph
                     const referenced_type_node_ref = EdgePointer.get_referenced_node_from_node(ref_bnode);
                     if (referenced_type_node_ref) |ref_type_nr| {
-                        const child_instance_bnode = TypeGraph.instantiate_node(
-                            self.type_graph,
-                            ref_type_nr,
-                            self.type_graph.type_graph_view_ptr,
+                        const child_instance_bnode = self.type_graph.instantiate_node(
+                            self.type_graph.g.bind(ref_type_nr),
                         ) catch |e| {
                             return visitor.VisitResult(void){ .ERROR = e };
                         };
@@ -237,150 +306,165 @@ pub const TypeGraph = struct {
         };
 
         var visit = Visit{
-            .type_graph = type_graph,
-            .parent_instance_bnode = new_instance_bnode,
+            .type_graph = tg,
+            .parent_instance_bnode = new_instance,
         };
-        const type_bnode = GraphView.bind(type_graph.type_graph_view_ptr, type_node);
-        _ = EdgeComposition.visit_children_edges(type_bnode, &visit, Visit.visit);
+        _ = EdgeComposition.visit_children_edges(type_node, &visit, Visit.visit);
 
         // TODO: Make link implementation
 
-        return new_instance_bnode;
+        return new_instance;
     }
 
-    pub fn resolve_instance_reference(reference_bnode: BoundNodeReference, base_bnode: BoundNodeReference) !graph.BoundNodeReference {
-        var target_bnode = base_bnode;
-        const child_identifier = try EdgeComposition.get_name(EdgeComposition.get_parent_edge(reference_bnode).?.edge);
+    pub fn instantiate(self: *@This(), type_identifier: str) !BoundNodeReference {
+        std.debug.print("Instantiating type: {s}\n", .{type_identifier});
+        // TODO make trait.zig
 
-        const child_bnode = EdgeComposition.get_child_by_identifier(base_bnode, child_identifier);
-        if (child_bnode) |bnode| {
-            target_bnode = bnode;
-        }
+        // search for type of name
+        const Finder = struct {
+            self: *TypeGraph,
+            type_identifier: str,
 
-        const next_ref_node = EdgeNext.get_next_node_from_node(reference_bnode);
-        if (next_ref_node) |next_ref| {
-            const next_ref_bnode = reference_bnode.g.bind(next_ref);
-            target_bnode = try TypeGraph.resolve_instance_reference(next_ref_bnode, target_bnode);
-        }
-        return target_bnode;
-    }
+            pub fn visit(ctx_ptr: *anyopaque, bedge: graph.BoundEdgeReference) visitor.VisitResult(NodeReference) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                const edge = bedge.edge;
 
-    pub fn instantiate(type_graph: *TypeGraph, build_target_type_identifier: str) !BoundNodeReference {
-        std.debug.print("Instantiating type: {s}\n", .{build_target_type_identifier});
-        const implements_type_instance_edges = type_graph.implements_type_type_bnode.get_edges_of_type(EdgeType.tid).?;
-        for (implements_type_instance_edges.items) |edge| {
-            const implements_type_instance_node = EdgeType.get_instance_node(edge).?;
-            const implements_type_instance_bnode = type_graph.type_graph_view_ptr.bind(implements_type_instance_node);
-            const parent_type_edge = EdgeComposition.get_parent_edge(implements_type_instance_bnode);
-            const parent_type_node = EdgeComposition.get_parent_node(parent_type_edge.?.edge);
-            const type_node_name = parent_type_node.attributes.dynamic.values.get("name").?.String;
-            if (std.mem.eql(u8, type_node_name, build_target_type_identifier)) {
-                const instance_bnode = try TypeGraph.instantiate_node(type_graph, parent_type_node, type_graph.type_graph_view_ptr);
-                return instance_bnode;
+                // Map the rest of the logic to the original selection, using BoundEdgeReference now.
+                const implements_type_instance = ctx.self.g.bind(EdgeType.get_instance_node(edge).?);
+                const parent_type_edge = EdgeComposition.get_parent_edge(implements_type_instance);
+                const parent_type_node = EdgeComposition.get_parent_node(parent_type_edge.?.edge);
+                const type_node_name = TypeNodeAttributes.of(parent_type_node).get_type_name();
+                if (std.mem.eql(u8, type_node_name, ctx.type_identifier)) {
+                    return visitor.VisitResult(NodeReference){ .OK = parent_type_node };
+                }
+                return visitor.VisitResult(NodeReference){ .CONTINUE = {} };
             }
-        }
+        };
 
-        std.debug.print("Type node not found for build target: {s}\n", .{build_target_type_identifier});
-        return error.InvalidArgument;
+        var finder = Finder{ .self = self, .type_identifier = type_identifier };
+        const result = self.implements_type_type.visit_edges_of_type(
+            EdgeType.tid,
+            NodeReference,
+            &finder,
+            Finder.visit,
+        );
+
+        switch (result) {
+            .OK => |parent_type_node| {
+                return try self.instantiate_node(self.g.bind(parent_type_node));
+            },
+            .ERROR => return error.InvalidArgument,
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+            .EXHAUSTED => return error.InvalidArgument,
+        }
     }
 };
 
-//zig test --dep graph -Mroot=src/faebryk/typegraph.zig -Mgraph=src/graph/lib.zig
-test "basic instantiation" {
-    var type_graph = try TypeGraph.create_typegraph(std.testing.allocator);
+test "basic typegraph" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    var tg = try TypeGraph.init(&g);
 
-    const collect = struct {
-        pub fn collect_into_list(ctx: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-            const list: *std.ArrayList(graph.BoundEdgeReference) = @ptrCast(@alignCast(ctx));
-            list.append(bound_edge) catch |e| return visitor.VisitResult(void){ .ERROR = e };
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-    };
-    // init_type_node -------------------------------------------------------------------------------
-    const example_type_bnode = try TypeGraph.init_type_node(&type_graph, "Example");
+    defer g.deinit();
 
-    // init ---------------------------------------------------------------------------------------
-    // visit_children_edges of base types ---------------------------------------------------------
-    var children = std.ArrayList(graph.BoundEdgeReference).init(type_graph.type_graph_view_ptr.allocator);
+    const Example = try tg.add_type("Example");
+    var children = std.ArrayList(graph.BoundEdgeReference).init(a);
     defer children.deinit();
-    const visit_result = EdgeComposition.visit_children_edges(example_type_bnode, &children, collect.collect_into_list);
+    const visit_result = EdgeComposition.visit_children_edges(Example, &children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
     switch (visit_result) {
         .ERROR => |err| @panic(@errorName(err)),
         else => {},
     }
     std.debug.print("TYPE collected children: {d}\n", .{children.items.len});
+}
 
-    // Electrical and Capacitor types
-    const Type_Electrical = try TypeGraph.init_type_node(&type_graph, "Electrical");
-    const Type_Capacitor = try TypeGraph.init_type_node(&type_graph, "Capacitor");
-    const make_child_bnode_cp1 = try TypeGraph.init_make_child_node(&type_graph, Type_Electrical, "cp1");
-    _ = try EdgeComposition.add_child(Type_Capacitor, make_child_bnode_cp1.node, "cp1_make_child");
-    const make_child_bnode_cp2 = try TypeGraph.init_make_child_node(&type_graph, Type_Electrical, "cp2");
-    _ = try EdgeComposition.add_child(Type_Capacitor, make_child_bnode_cp2.node, "cp2_make_child");
+//zig test --dep graph -Mroot=src/faebryk/typegraph.zig -Mgraph=src/graph/lib.zig
+test "basic instantiation" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    var tg = try TypeGraph.init(&g);
 
-    const Type_Resistor = try TypeGraph.init_type_node(&type_graph, "Resistor");
-    // MAKE CHILD
-    const make_child_bnode_p1 = try TypeGraph.init_make_child_node(&type_graph, Type_Electrical, "p1");
-    _ = try EdgeComposition.add_child(Type_Resistor, make_child_bnode_p1.node, "p1_make_child");
-    const make_child_bnode_p2 = try TypeGraph.init_make_child_node(&type_graph, Type_Electrical, "p2");
-    _ = try EdgeComposition.add_child(Type_Resistor, make_child_bnode_p2.node, "p2_make_child");
-    const make_child_bnode_cap = try TypeGraph.init_make_child_node(&type_graph, Type_Capacitor, "cap1");
-    _ = try EdgeComposition.add_child(Type_Resistor, make_child_bnode_cap.node, "cap1_make_child");
+    // Build type graph
+    const Electrical = try tg.add_type("Electrical");
+    const Capacitor = try tg.add_type("Capacitor");
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1");
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2");
+    const Resistor = try tg.add_type("Resistor");
+    const _make_child_p1 = try tg.add_make_child(Resistor, Electrical, "p1");
+    _ = try tg.add_make_child(Resistor, Electrical, "p2");
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1");
 
-    const p1_ref_bnode = EdgeComposition.get_child_by_identifier(make_child_bnode_p1, "p1").?;
-    try std.testing.expect(EdgeType.is_node_instance_of(p1_ref_bnode, type_graph.reference_type_bnode.node));
-    // resolve_reference -------------------------------------------------------------------------------
-    const resolved_type_node = EdgePointer.get_referenced_node_from_node(p1_ref_bnode);
-    try std.testing.expect(Node.is_same(resolved_type_node.?, Type_Electrical.node));
+    // test: resolve_reference
+    const _p1_ref_bnode = EdgeComposition.get_child_by_identifier(_make_child_p1, "p1").?;
+    try std.testing.expect(EdgeType.is_node_instance_of(_p1_ref_bnode, tg.reference_type.node));
+    const resolved_type_node = EdgePointer.get_referenced_node_from_node(_p1_ref_bnode);
+    try std.testing.expect(Node.is_same(resolved_type_node.?, Electrical.node));
 
-    // INSTANTIATE
-    const resistor_instance_bnode = try TypeGraph.instantiate_node(&type_graph, Type_Resistor.node, type_graph.type_graph_view_ptr);
-    std.debug.print("Resistor Instance: {d}\n", .{resistor_instance_bnode.node.attributes.uuid});
-    const p1_instance_bnode = EdgeComposition.get_child_by_identifier(resistor_instance_bnode, "p1").?;
-    const p2_instance_bnode = EdgeComposition.get_child_by_identifier(resistor_instance_bnode, "p2").?;
-    const cap1_instance_bnode = EdgeComposition.get_child_by_identifier(resistor_instance_bnode, "cap1").?;
-    const cap1p1_instance_bnode = EdgeComposition.get_child_by_identifier(cap1_instance_bnode, "cp1").?;
-    const cap1p2_instance_bnode = EdgeComposition.get_child_by_identifier(cap1_instance_bnode, "cp2").?;
-    try std.testing.expect(EdgeType.is_node_instance_of(p1_instance_bnode, Type_Electrical.node));
-    try std.testing.expect(EdgeType.is_node_instance_of(p2_instance_bnode, Type_Electrical.node));
-    try std.testing.expect(EdgeType.is_node_instance_of(cap1_instance_bnode, Type_Capacitor.node));
-    try std.testing.expect(EdgeType.is_node_instance_of(cap1p1_instance_bnode, Type_Electrical.node));
-    try std.testing.expect(EdgeType.is_node_instance_of(cap1p2_instance_bnode, Type_Electrical.node));
+    // Build instance graph
+    const resistor = try tg.instantiate_node(Resistor);
 
-    // visit_children_edges of base types ---------------------------------------------------------
-    var resistor_children = std.ArrayList(graph.BoundEdgeReference).init(type_graph.type_graph_view_ptr.allocator);
+    // test: instance graph
+    std.debug.print("Resistor Instance: {d}\n", .{resistor.node.attributes.uuid});
+    const p1 = EdgeComposition.get_child_by_identifier(resistor, "p1").?;
+    const p2 = EdgeComposition.get_child_by_identifier(resistor, "p2").?;
+    const cap1 = EdgeComposition.get_child_by_identifier(resistor, "cap1").?;
+    const cap1p1 = EdgeComposition.get_child_by_identifier(cap1, "p1").?;
+    const cap1p2 = EdgeComposition.get_child_by_identifier(cap1, "p2").?;
+    try std.testing.expect(EdgeType.is_node_instance_of(p1, Electrical.node));
+    try std.testing.expect(EdgeType.is_node_instance_of(p2, Electrical.node));
+    try std.testing.expect(EdgeType.is_node_instance_of(cap1, Capacitor.node));
+    try std.testing.expect(EdgeType.is_node_instance_of(cap1p1, Electrical.node));
+    try std.testing.expect(EdgeType.is_node_instance_of(cap1p2, Electrical.node));
+
+    // print children of resistor
+    var resistor_children = std.ArrayList(graph.BoundEdgeReference).init(a);
     defer resistor_children.deinit();
-    const resistor_visit_result = EdgeComposition.visit_children_edges(resistor_instance_bnode, &resistor_children, collect.collect_into_list);
+    const resistor_visit_result = EdgeComposition.visit_children_edges(resistor, &resistor_children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
     switch (resistor_visit_result) {
         .ERROR => |err| @panic(@errorName(err)),
         else => {},
     }
     std.debug.print("TYPE collected children: {d}\n", .{resistor_children.items.len});
 
-    // Nested Reference
-    const cap1_reference_bnode = try TypeGraph.init_reference_node(&type_graph, null);
-    _ = try EdgeComposition.add_child(Type_Resistor, cap1_reference_bnode.node, "cap1");
-    const cap1p1_reference_bnode = try TypeGraph.init_reference_node(&type_graph, Type_Electrical);
-    _ = try EdgeComposition.add_child(cap1_reference_bnode, cap1p1_reference_bnode.node, "cp1");
-    _ = try EdgeNext.add_next(cap1_reference_bnode, cap1p1_reference_bnode);
+    // Build nested reference
+    const cap1p1_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ "cap1", "p1" });
+    const cap1p2_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ "cap1", "p2" });
 
-    const cap1p1_instance_search_bnode = try TypeGraph.resolve_instance_reference(cap1_reference_bnode, resistor_instance_bnode);
-    try std.testing.expect(Node.is_same(cap1p1_instance_search_bnode.node, cap1p1_instance_bnode.node));
+    // test: resolve_instance_reference
+    const cap1p1_reference_resolved = try TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor);
+    try std.testing.expect(Node.is_same(cap1p1_reference_resolved.node, cap1p1.node));
 
-    // MAKE LINK
-    const make_link_bnode = try TypeGraph.init_make_link_node(&type_graph, cap1p1_instance_bnode.node, cap1p2_instance_bnode.node, "connection");
-    _ = try EdgeComposition.add_child(Type_Resistor, make_link_bnode.node, "caplinks");
-    const link1_instance_bnode = EdgeComposition.get_child_by_identifier(Type_Resistor, "caplinks").?;
-    const link1_lhs_instance_bnode = EdgeComposition.get_child_by_identifier(link1_instance_bnode, "lhs").?;
-    const link1_rhs_instance_bnode = EdgeComposition.get_child_by_identifier(link1_instance_bnode, "rhs").?;
-    try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node_from_node(link1_lhs_instance_bnode).?, cap1p1_instance_bnode.node));
-    try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node_from_node(link1_rhs_instance_bnode).?, cap1p2_instance_bnode.node));
+    // Build make link
+    // TODO: use interface link
+    _ = try tg.add_make_link(Resistor, cap1p1_reference.node, cap1p2_reference.node, EdgePointer.tid);
 
-    const instantiated_resistor_bnode = try TypeGraph.instantiate(&type_graph, "Resistor");
-    const instantiated_p1_bnode = EdgeComposition.get_child_by_identifier(instantiated_resistor_bnode, "p1").?;
-    std.debug.print("Instantiated Resistor Instance: {d}\n", .{instantiated_resistor_bnode.node.attributes.uuid});
-    std.debug.print("Instantiated P1 Instance: {d}\n", .{instantiated_p1_bnode.node.attributes.uuid});
+    const instantiated_resistor = try tg.instantiate("Resistor");
+    const instantiated_p1 = EdgeComposition.get_child_by_identifier(instantiated_resistor, "p1").?;
+    const instantiated_cap = EdgeComposition.get_child_by_identifier(instantiated_resistor, "cap1").?;
+    const instantiated_cap_p1 = EdgeComposition.get_child_by_identifier(instantiated_cap, "p1").?;
+    const instantiated_cap_p2 = EdgeComposition.get_child_by_identifier(instantiated_cap, "p2").?;
+    std.debug.print("Instantiated Resistor Instance: {d}\n", .{instantiated_resistor.node.attributes.uuid});
+    std.debug.print("Instantiated P1 Instance: {d}\n", .{instantiated_p1.node.attributes.uuid});
+    // TODO test link
 
-    defer std.testing.allocator.destroy(type_graph.type_graph_view_ptr);
-    defer type_graph.type_graph_view_ptr.*.deinit();
+    defer g.deinit();
+
+    const _Visit = struct {
+        seek: BoundNodeReference,
+
+        pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            const self: *@This() = @ptrCast(@alignCast(self_ptr));
+            std.testing.expect(EdgePointer.is_instance(bound_edge.edge)) catch return visitor.VisitResult(void){ .ERROR = error.InvalidArgument };
+            if (EdgePointer.get_referenced_node(bound_edge.edge)) |referenced_node| {
+                if (Node.is_same(referenced_node, self.seek.node)) {
+                    return visitor.VisitResult(void){ .OK = {} };
+                }
+            }
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+    var _visit = _Visit{ .seek = instantiated_cap_p2 };
+    const result = instantiated_cap_p1.visit_edges_of_type(EdgePointer.tid, void, &_visit, _Visit.visit);
+    try std.testing.expect(result == .OK);
 }

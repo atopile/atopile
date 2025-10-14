@@ -40,6 +40,12 @@ pub const EdgePointer = struct {
     pub fn is_instance(E: EdgeReference) bool {
         return Edge.is_instance(E, tid);
     }
+
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference) !BoundEdgeReference {
+        const edge = try EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node);
+        const bound_edge = try bound_node.g.insert_edge(edge);
+        return bound_edge;
+    }
 };
 
 //zig test --dep graph -Mroot=src/faebryk/pointer.zig -Mgraph=src/graph/lib.zig
