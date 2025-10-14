@@ -497,17 +497,32 @@ pub const Path = struct {
 
 pub const BFSPath = struct {
     path: Path,
+    start: BoundNodeReference,
     filtered: bool = false, // filter this path out
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
-    pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
-        const g = base.path.g;
-        var new_path = try g.allocator.create(BFSPath);
-        new_path.* = BFSPath{
-            .path = Path.init(g),
+    fn assert_consistent(self: *const @This()) void {
+        std.debug.assert(self.start.g == self.path.g);
+    }
+
+    pub fn init(start: BoundNodeReference) @This() {
+        var path = BFSPath{
+            .path = Path.init(start.g),
+            .start = start,
             .filtered = false,
             .stop = false,
         };
+        path.assert_consistent();
+        return path;
+    }
+
+    pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
+        base.assert_consistent();
+        const g = base.path.g;
+        std.debug.assert(base.start.g == g);
+
+        var new_path = try g.allocator.create(BFSPath);
+        new_path.* = BFSPath.init(base.start);
         errdefer new_path.destroy(g.allocator);
 
         // Extend with prior edges before adding the new edge.
@@ -518,10 +533,12 @@ pub const BFSPath = struct {
     }
 
     pub fn deinit(self: *@This()) void {
+        self.assert_consistent();
         self.path.deinit();
     }
 
     pub fn destroy(self: *@This(), allocator: std.mem.Allocator) void {
+        self.assert_consistent();
         self.deinit();
         allocator.destroy(self);
     }
@@ -802,11 +819,7 @@ pub const GraphView = struct {
         };
 
         // Add initial edges to open path queue
-        var empty_base = BFSPath{
-            .path = Path.init(g),
-            .filtered = false,
-            .stop = false,
-        };
+        var empty_base = BFSPath.init(start_node);
         defer empty_base.deinit();
 
         for (initial_edges.items) |edge| {

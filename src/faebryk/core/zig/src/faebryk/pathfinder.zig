@@ -93,11 +93,7 @@ pub const PathFinder = struct {
         // Filter says keep!
         if (!path.filtered) {
             // Deep copy the path
-            var copied_path = BFSPath{
-                .path = Path.init(path.path.g),
-                .filtered = false,
-                .stop = false,
-            };
+            var copied_path = BFSPath.init(path.start);
             copied_path.path.edges.appendSlice(path.path.edges.items) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
