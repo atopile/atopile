@@ -14,6 +14,10 @@ const str = graph.str;
 pub const EdgeInterfaceConnection = struct {
     const tid: Edge.EdgeType = 1759242069;
 
+    pub fn get_tid() Edge.EdgeType {
+        return tid;
+    }
+
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, N1, N2, tid);
         edge.attributes.directional = false;

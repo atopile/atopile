@@ -229,6 +229,42 @@ fn wrap_edge_composition_add_child() type {
     };
 }
 
+fn wrap_edge_composition_get_child_by_identifier() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_child_by_identifier",
+            .doc = "Get child node by identifier",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                child_identifier: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.child_identifier) orelse return null;
+
+            const child_bnode = faebryk.composition.EdgeComposition.get_child_by_identifier(
+                kwarg_obj.bound_node.*,
+                identifier,
+            );
+
+            if (child_bnode) |bnode| {
+                return graph_py.makeBoundNodePyObject(bnode);
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
 fn wrap_edge_composition_get_name() type {
     return struct {
         pub const descr = method_descr{
@@ -323,6 +359,7 @@ fn wrap_edge_composition(root: *py.PyObject) void {
         wrap_edge_composition_visit_children_edges(),
         wrap_edge_composition_get_parent_edge(),
         wrap_edge_composition_add_child(),
+        wrap_edge_composition_get_child_by_identifier(),
         wrap_edge_composition_get_name(),
         wrap_edge_composition_get_tid(),
         wrap_edge_composition_get_child_by_identifier(),
@@ -331,9 +368,28 @@ fn wrap_edge_composition(root: *py.PyObject) void {
     edge_composition_type = type_registry.getRegisteredTypeObject("EdgeComposition");
 }
 
+fn wrap_edge_interface_connection_get_tid() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_tid",
+            .doc = "Return the edge type identifier used for interface connection edges",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const tid = faebryk.interface.EdgeInterfaceConnection.get_tid();
+            return py.PyLong_FromLongLong(@intCast(tid));
+        }
+    };
+}
+
 fn wrap_interface(root: *py.PyObject) void {
-    _ = root;
-    // TODO
+    const extra_methods = [_]type{
+        wrap_edge_interface_connection_get_tid(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.interface.EdgeInterfaceConnection, extra_methods);
 }
 
 fn wrap_edge_type_create() type {
@@ -1025,32 +1081,26 @@ fn wrap_typegraph_init() type {
     return struct {
         pub const descr = method_descr{
             .name = "create",
-            .doc = "Create a new TypeGraph",
-            .args_def = struct {},
+            .doc = "Create a new TypeGraph from a GraphView",
+            .args_def = struct {
+                g: *graph.GraphView,
+
+                pub const fields_meta = .{
+                    .g = bind.ARG{ .Wrapper = graph_py.GraphViewWrapper, .storage = &graph_py.graph_view_type },
+                };
+            },
             .static = true,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            if (!bind.check_no_positional_args(self, args)) return null;
-
-            _ = kwargs;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const graph_ptr = allocator.create(graph.GraphView) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            };
-            graph_ptr.* = graph.GraphView.init(allocator);
-
             const ptr = allocator.create(faebryk.typegraph.TypeGraph) catch {
-                graph_ptr.deinit();
-                allocator.destroy(graph_ptr);
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
                 return null;
             };
-            ptr.* = faebryk.typegraph.TypeGraph.init(graph_ptr) catch {
-                graph_ptr.deinit();
-                allocator.destroy(graph_ptr);
+            ptr.* = faebryk.typegraph.TypeGraph.init(kwarg_obj.g) catch {
                 allocator.destroy(ptr);
                 py.PyErr_SetString(py.PyExc_ValueError, "init failed");
                 return null;
@@ -1058,8 +1108,6 @@ fn wrap_typegraph_init() type {
 
             const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
             if (obj == null) {
-                graph_ptr.deinit();
-                allocator.destroy(graph_ptr);
                 allocator.destroy(ptr);
                 return null;
             }
@@ -1431,14 +1479,12 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
     const wrapper = @as(*TypeGraphWrapper, @ptrCast(@alignCast(self)));
     const tg_ptr = wrapper.data;
 
-    const graph_ptr = tg_ptr.g;
-    graph_ptr.deinit();
-    allocator.destroy(graph_ptr);
+    // Don't destroy GraphView - it's managed by Python caller
     allocator.destroy(tg_ptr);
 
     if (py.Py_TYPE(self)) |type_obj| {
         if (type_obj.tp_free) |free_fn_any| {
-            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(free_fn_any));
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
             free_fn(self);
             return;
         }
