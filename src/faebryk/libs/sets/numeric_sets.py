@@ -405,6 +405,7 @@ class Numeric_Interval(Numeric_Set):
             return f"{center} ± {rel * 100}%"
         return f"[{self._min}, {self._max}]"
 
+    # Not needed in zig
     def __add__(self, other: "Numeric_Interval"):
         return self.op_add_interval(other)
 
@@ -429,6 +430,7 @@ class Numeric_Interval(Numeric_Set):
     def __pow__(self, other: "Numeric_Interval"):
         return self.op_pow_interval(other)
 
+    # maybe needed:
     def is_single_element(self) -> bool:
         return eq(self._min, self._max)
 
