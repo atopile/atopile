@@ -528,7 +528,7 @@ class FpText:
     type: str
     text: str
     at: Xyr
-    layer: TextLayer
+    layer: str
     hide: bool | None
     uuid: str | None
     effects: Effects
@@ -539,7 +539,7 @@ class FpText:
         type: str,
         text: str,
         at: Xyr,
-        layer: TextLayer,
+        layer: str,
         hide: bool | None,
         uuid: str | None,
         effects: Effects,

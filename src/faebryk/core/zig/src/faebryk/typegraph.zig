@@ -243,11 +243,11 @@ pub const TypeGraph = struct {
 
         // Make child implementation
         // 2) Visit composition children of the type_node and handle MakeChild
-        const Visit = struct {
+        const VisitChildren = struct {
             type_graph: *TypeGraph,
             parent_instance_bnode: graph.BoundNodeReference,
 
-            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            pub fn visitChildren(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
                 // Child under the type (could be MakeChild)
@@ -262,54 +262,57 @@ pub const TypeGraph = struct {
                 // Find the child reference node (of 'Reference' type) under this MakeChild
                 const RefFinder = struct {
                     type_graph: *TypeGraph,
-                    found_ref_bnode: ?graph.BoundNodeReference = null,
 
-                    pub fn visit(self_ptr2: *anyopaque, mc_child_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+                    pub fn visit(self_ptr2: *anyopaque, mc_child_edge: graph.BoundEdgeReference) visitor.VisitResult(BoundNodeReference) {
                         const s: *@This() = @ptrCast(@alignCast(self_ptr2));
                         const mc_child_node = EdgeComposition.get_child_node(mc_child_edge.edge);
                         const mc_child_bnode = mc_child_edge.g.bind(mc_child_node);
 
                         if (node_type_mod.EdgeType.is_node_instance_of(mc_child_bnode, s.type_graph.reference_type.node)) {
-                            s.found_ref_bnode = mc_child_bnode;
-                            return visitor.VisitResult(void){ .STOP = {} };
+                            return visitor.VisitResult(BoundNodeReference){ .OK = mc_child_bnode };
                         }
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
+                        return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
                     }
                 };
 
-                var rf = RefFinder{ .type_graph = self.type_graph, .found_ref_bnode = null };
-                _ = EdgeComposition.visit_children_edges(child_type_bnode, &rf, RefFinder.visit);
-                if (rf.found_ref_bnode) |ref_bnode| {
-                    // 3) Use the child reference edge name as the instance child name
-                    const parent_edge = EdgeComposition.get_parent_edge(ref_bnode).?;
-                    const child_name = EdgeComposition.get_name(parent_edge.edge) catch |e| {
+                var rf = RefFinder{ .type_graph = self.type_graph };
+                const result = EdgeComposition.visit_children_edges(child_type_bnode, BoundNodeReference, &rf, RefFinder.visit);
+                if (result != .OK) {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+
+                const ref_bnode = result.OK;
+
+                // 3) Use the child reference edge name as the instance child name
+                const parent_edge = EdgeComposition.get_parent_edge(ref_bnode).?;
+                const child_name = EdgeComposition.get_name(parent_edge.edge) catch |e| {
+                    return visitor.VisitResult(void){ .ERROR = e };
+                };
+
+                // 4) Resolve referenced type and instantiate it into the instance graph
+                const referenced_type_node_ref = EdgePointer.get_referenced_node_from_node(ref_bnode);
+                if (referenced_type_node_ref) |ref_type_nr| {
+                    const child_instance_bnode = self.type_graph.instantiate_node(
+                        self.type_graph.g.bind(ref_type_nr),
+                    ) catch |e| {
                         return visitor.VisitResult(void){ .ERROR = e };
                     };
 
-                    // 4) Resolve referenced type and instantiate it into the instance graph
-                    const referenced_type_node_ref = EdgePointer.get_referenced_node_from_node(ref_bnode);
-                    if (referenced_type_node_ref) |ref_type_nr| {
-                        const child_instance_bnode = self.type_graph.instantiate_node(
-                            self.type_graph.g.bind(ref_type_nr),
-                        ) catch |e| {
-                            return visitor.VisitResult(void){ .ERROR = e };
-                        };
-
-                        // 5) Attach child instance to parent instance with the reference name
-                        _ = EdgeComposition.add_child(self.parent_instance_bnode, child_instance_bnode.node, child_name) catch |e| {
-                            return visitor.VisitResult(void){ .ERROR = e };
-                        };
-                    }
+                    // 5) Attach child instance to parent instance with the reference name
+                    _ = EdgeComposition.add_child(self.parent_instance_bnode, child_instance_bnode.node, child_name) catch |e| {
+                        return visitor.VisitResult(void){ .ERROR = e };
+                    };
                 }
+
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
-        var visit = Visit{
+        var visit = VisitChildren{
             .type_graph = tg,
             .parent_instance_bnode = new_instance,
         };
-        _ = EdgeComposition.visit_children_edges(type_node, &visit, Visit.visit);
+        _ = EdgeComposition.visit_children_edges(type_node, void, &visit, VisitChildren.visitChildren);
 
         // TODO: Make link implementation
 
@@ -371,7 +374,7 @@ test "basic typegraph" {
     const Example = try tg.add_type("Example");
     var children = std.ArrayList(graph.BoundEdgeReference).init(a);
     defer children.deinit();
-    const visit_result = EdgeComposition.visit_children_edges(Example, &children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
+    const visit_result = EdgeComposition.visit_children_edges(Example, void, &children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
     switch (visit_result) {
         .ERROR => |err| @panic(@errorName(err)),
         else => {},
@@ -420,7 +423,7 @@ test "basic instantiation" {
     // print children of resistor
     var resistor_children = std.ArrayList(graph.BoundEdgeReference).init(a);
     defer resistor_children.deinit();
-    const resistor_visit_result = EdgeComposition.visit_children_edges(resistor, &resistor_children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
+    const resistor_visit_result = EdgeComposition.visit_children_edges(resistor, void, &resistor_children, visitor.collect(graph.BoundEdgeReference).collect_into_list);
     switch (resistor_visit_result) {
         .ERROR => |err| @panic(@errorName(err)),
         else => {},

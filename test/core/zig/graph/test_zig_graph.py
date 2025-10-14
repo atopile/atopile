@@ -147,22 +147,16 @@ def test_typegraph_instantiate():
 
     type_graph = TypeGraph.create()
 
-    Type_Electrical = type_graph.init_type_node(identifier="Electrical")
-    Type_Resistor = type_graph.init_type_node(identifier="Resistor")
-    Makep1 = type_graph.init_make_child_node(type_node=Type_Electrical, identifier="p1")
-    Makep2 = type_graph.init_make_child_node(type_node=Type_Electrical, identifier="p2")
-    EdgeComposition.add_child(
-        bound_node=Type_Resistor,
-        child=Makep1.node(),
-        child_identifier="p1",
+    Electrical = type_graph.add_type(identifier="Electrical")
+    Resistor = type_graph.add_type(identifier="Resistor")
+    type_graph.add_make_child(
+        type_node=Resistor, child_type_node=Electrical, identifier="p1"
     )
-    EdgeComposition.add_child(
-        bound_node=Type_Resistor,
-        child=Makep2.node(),
-        child_identifier="p2",
+    type_graph.add_make_child(
+        type_node=Resistor, child_type_node=Electrical, identifier="p2"
     )
 
-    resistor_instance = type_graph.instantiate(build_target_type_identifier="Resistor")
+    resistor_instance = type_graph.instantiate(type_identifier="Resistor")
 
     collected = []
     EdgeComposition.visit_children_edges(
