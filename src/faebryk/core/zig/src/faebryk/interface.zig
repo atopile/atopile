@@ -14,7 +14,7 @@ const str = graph.str;
 const shallow_link = "shallow_link";
 
 pub const EdgeInterfaceConnection = struct {
-    const tid: Edge.EdgeType = 1759242069;
+    pub const tid: Edge.EdgeType = 1759242069;
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, N1, N2, tid);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const graph_mod = @import("graph");
 const composition_mod = @import("composition.zig");
+const interface_mod = @import("interface.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -15,6 +16,17 @@ const BoundEdgeReference = graph.BoundEdgeReference;
 const GraphView = graph.GraphView;
 const NodeRefMap = graph.NodeRefMap;
 const EdgeComposition = composition_mod.EdgeComposition;
+const EdgeInterfaceConnection = interface_mod.EdgeInterfaceConnection;
+
+const HeirarchyElement = struct {
+    parent_type: u64,
+    child_type: u64,
+    name: []const u8,
+    direction: enum {
+        up,
+        down,
+    },
+};
 
 pub const PathFinder = struct {
     const Self = @This();
@@ -89,6 +101,10 @@ pub const PathFinder = struct {
 
         // Run filters on path
         const result = self.run_filters(path);
+
+        if (result == .ERROR) {
+            return result;
+        }
 
         // Filter says keep!
         if (!path.filtered) {
@@ -231,14 +247,31 @@ pub const PathFinder = struct {
     pub fn filter_heirarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
-        var hierarchy_stack = std.ArrayList(u64).init(path.path.g.allocator);
+        var hierarchy_stack = std.ArrayList(HeirarchyElement).init(path.path.g.allocator);
+        defer hierarchy_stack.deinit(); // Clean up the ArrayList
+
+        var current_node = path.start;
 
         for (path.path.edges.items) |edge| {
-            if (edge.attributes.edge_type == EdgeComposition.tid) {
-                hierarchy_stack.append(edge.attributes.uuid) catch |err| {
-                    return visitor.VisitResult(void){ .ERROR = err };
-                };
+            if (edge.attributes.edge_type == EdgeComposition.tid) { // this is a heirarchy connection
+                if (Node.is_same(EdgeComposition.get_child_node(edge), current_node.node)) {
+                    std.debug.print("going up\n", .{});
+                } else if (Node.is_same(EdgeComposition.get_parent_node(edge), current_node.node)) {
+                    std.debug.print("going down\n", .{});
+                } else {
+                    return visitor.VisitResult(void){ .ERROR = error.InvalidEdge };
+                }
+            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
+                std.debug.print("going horizontal\n", .{});
+            } else {
+                return visitor.VisitResult(void){ .ERROR = error.InvalidEdgeType };
             }
+
+            current_node = current_node.g.bind(edge.get_other_node(current_node.node) orelse return visitor.VisitResult(void){ .ERROR = error.InvalidNode });
+        }
+
+        for (hierarchy_stack.items) |heirarchy_element| {
+            std.debug.print("item: {}\n", .{heirarchy_element.parent_type});
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -308,4 +341,36 @@ test "visit_paths_bfs" {
     for (paths1) |path| {
         path.path.print_path();
     }
+    std.debug.print("\n", .{});
+}
+
+test "filter_heirarchy_stack" {
+    std.debug.print("test filter_heirarchy_stack\n", .{});
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = try g.insert_node(try Node.init(g.allocator));
+    const bn3 = try g.insert_node(try Node.init(g.allocator));
+    const bn4 = try g.insert_node(try Node.init(g.allocator));
+    const be1 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
+    const be2 = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
+    const be3 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
+
+    var path = Path.init(&g);
+    defer path.deinit(); // Clean up path second
+
+    path.edges.append(be1.edge) catch @panic("OOM");
+    path.edges.append(be3.edge) catch @panic("OOM");
+    path.edges.append(be2.edge) catch @panic("OOM");
+
+    var bfs_path = BFSPath{
+        .path = path,
+        .start = bn1,
+        .filtered = false,
+        .stop = false,
+    };
+    var pf = PathFinder.init(g.allocator);
+    defer pf.deinit();
+    _ = pf.filter_heirarchy_stack(&bfs_path);
 }
