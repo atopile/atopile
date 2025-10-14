@@ -102,26 +102,73 @@ class TypeGraphFunctions:
             return None
 
         def get_node_label(bound_node: BoundNode) -> str:
+            # Build label from attributes
+            parts = []
+
             try:
                 type_edge = EdgeType.get_type_edge(bound_node=bound_node)
             except Exception:
                 type_edge = None
 
+            # Get the type this node is an instance of
+            instance_type_name = None
             if type_edge is not None:
                 type_node = EdgeType.get_type_node(edge=type_edge.edge())
                 type_bound = type_edge.g().bind(node=type_node)
-                type_name = type_bound.node().get_attr(key="name")
+                type_name = type_bound.node().get_attr(key="type_identifier")
 
                 if isinstance(type_name, str):
-                    return type_name
+                    instance_type_name = type_name
+                    # For ImplementsType nodes, show what they implement
+                    if type_name == "ImplementsType":
+                        # Get parent to find the type being implemented
+                        parent_edge = EdgeComposition.get_parent_edge(
+                            bound_node=bound_node
+                        )
+                        if parent_edge:
+                            parent_node = parent_edge.edge().source()
+                            parent_bound = parent_edge.g().bind(node=parent_node)
+                            if isinstance(
+                                parent_type := parent_bound.node().get_attr(
+                                    key="type_identifier"
+                                ),
+                                str,
+                            ):
+                                parts.append(f"ImplementsType → {parent_type}")
+                            else:
+                                parts.append("ImplementsType")
+                    else:
+                        parts.append(f"type={type_name}")
 
+            # Get type_identifier attribute (for type nodes themselves)
+            if isinstance(
+                attr := bound_node.node().get_attr(key="type_identifier"), str
+            ):
+                if not parts or instance_type_name != "ImplementsType":
+                    parts.insert(0, attr)
+
+            # Get name attribute (fallback)
             if isinstance(attr := bound_node.node().get_attr(key="name"), str):
-                return attr
+                if not parts:
+                    parts.append(attr)
 
-            if isinstance(uuid := bound_node.node().get_attr(key="uuid"), int):
-                return f"node@{uuid}"
+            # Get other relevant attributes
+            if isinstance(
+                attr := bound_node.node().get_attr(key="child_identifier"), str
+            ):
+                parts.append(f"child={attr}")
 
-            return repr(bound_node.node())
+            if isinstance(attr := bound_node.node().get_attr(key="link_type"), int):
+                parts.append(f"link_type={attr}")
+
+            if parts:
+                label = " ".join(parts)
+            elif isinstance(uuid := bound_node.node().get_attr(key="uuid"), int):
+                label = f"node@{uuid}"
+            else:
+                label = repr(bound_node.node())
+
+            return label
 
         def render(bound_node: BoundNode, prefix: str) -> None:
             child_edges: list[Any] = []
@@ -133,17 +180,37 @@ class TypeGraphFunctions:
                 bound_node=bound_node, ctx=child_edges, f=collect
             )
 
-            filtered_edges = [
-                (EdgeComposition.get_name(edge=edge.edge()), edge)
-                for edge in child_edges
-                if not EdgeComposition.get_name(edge=edge.edge()).startswith(
-                    "implements_"
-                )
-            ]
-            filtered_edges.sort(key=lambda item: item[0])
+            # Build list of (display_name, edge) tuples
+            edges_to_render = []
+            for edge in child_edges:
+                edge_name = EdgeComposition.get_name(edge=edge.edge())
 
-            count = len(filtered_edges)
-            for idx, (edge_name, bound_edge) in enumerate(filtered_edges):
+                # Skip implements_ edges
+                if edge_name.startswith("implements_"):
+                    continue
+
+                # Get child node to check for special attributes
+                child_node = edge.edge().target()
+                child_bound = edge.g().bind(node=child_node)
+
+                # For MakeChild nodes, use child_identifier attribute as name
+                if isinstance(
+                    child_id := child_bound.node().get_attr(key="child_identifier"), str
+                ):
+                    display_name = child_id
+                # For Reference chains, use the identifier
+                elif edge_name:  # lhs/rhs etc
+                    display_name = edge_name
+                else:
+                    # Use "_" for unnamed children
+                    display_name = "_"
+
+                edges_to_render.append((display_name, edge))
+
+            edges_to_render.sort(key=lambda item: item[0])
+
+            count = len(edges_to_render)
+            for idx, (display_name, bound_edge) in enumerate(edges_to_render):
                 is_last = idx == count - 1
                 connector = "└──" if is_last else "├──"
                 make_child_bound = bind_target(bound_edge)
@@ -154,7 +221,7 @@ class TypeGraphFunctions:
                     else get_node_label(make_child_bound)
                 )
                 print(
-                    f"{prefix}{connector} [EdgeComposition:{edge_name}] {child_label}",
+                    f"{prefix}{connector} [{display_name}] {child_label}",
                     file=stream,
                 )
                 next_bound = (
@@ -236,7 +303,9 @@ class InstanceGraphFunctions:
                 is_last = idx == total - 1
                 connector = "└──" if is_last else "├──"
                 child_bound = bound_edge.g().bind(node=bound_edge.edge().target())
-                edge_label = f"{EdgeComposition.__name__}:{edge_name}"
+                # Use "_" for unnamed children
+                display_name = edge_name if edge_name else "_"
+                edge_label = f"{EdgeComposition.__name__}:{display_name}"
                 node_label = get_node_label(child_bound)
                 print(f"{prefix}{connector} [{edge_label}] {node_label}", file=stream)
                 child_prefix = prefix + ("    " if is_last else "│   ")
