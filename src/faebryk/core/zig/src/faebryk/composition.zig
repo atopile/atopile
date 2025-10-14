@@ -126,30 +126,31 @@ pub const EdgeComposition = struct {
         }
     }
 
-    pub fn get_children_by_type(bound_parent_node: graph.BoundNodeReference, child_type_node: graph.NodeReference) ?graph.BoundNodeReference {
-        const Finder = struct {
+    pub fn visit_children_of_type(
+        parent: graph.BoundNodeReference,
+        child_type: graph.NodeReference,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            parent: graph.BoundNodeReference,
             child_type: graph.NodeReference,
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
 
-            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundNodeReference) {
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                if (EdgeComposition.is_instance(bound_edge.edge)) {
-                    if (EdgeType.is_node_instance_of(EdgeComposition.get_child_node(bound_edge.edge), self.child_type)) |_| {
-                        return visitor.VisitResult(graph.BoundNodeReference){ .OK = bound_edge.g.bind(bound_edge.edge.get_target() orelse return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} }) };
-                    }
+                const child = bound_edge.g.bind(EdgeComposition.get_child_node(bound_edge.edge));
+                if (!EdgeType.is_node_instance_of(child, self.child_type)) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
                 }
-                return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };
+                return self.cb(self.cb_ctx, bound_edge);
             }
         };
 
-        var finder = Finder{ .child_type = child_type_node };
-        const result = EdgeComposition.visit_children_edges(bound_parent_node, graph.BoundNodeReference, &finder, Finder.visit);
-        switch (result) {
-            .OK => |found| return found,
-            .CONTINUE => unreachable,
-            .STOP => unreachable,
-            .ERROR => return null, // Convert error to null since function returns optional
-            .EXHAUSTED => return null,
-        }
+        var visit = Visit{ .parent = parent, .child_type = child_type, .cb_ctx = ctx, .cb = f };
+        return parent.visit_edges_of_type(tid, T, &visit, Visit.visit);
     }
 };
 
