@@ -140,8 +140,9 @@ pub const PathFinder = struct {
     pub fn run_filters(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         std.debug.print("FILTERS\n", .{});
         for (filters) |filter| {
-            std.debug.print("{s}, ", .{filter.name});
+            std.debug.print("{s:<32}", .{filter.name});
             const result = filter.func(self, path);
+            std.debug.print("filtered:{} stop:{}\n", .{ path.filtered, path.stop });
             switch (result) {
                 .CONTINUE => {},
                 .STOP => return visitor.VisitResult(void){ .STOP = {} },
@@ -161,29 +162,29 @@ pub const PathFinder = struct {
         .{ .name = "count_paths", .func = Self.count_paths },
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
         .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
+        .{ .name = "filter_siblings", .func = Self.filter_siblings },
     };
 
     pub fn count_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = path;
         self.path_counter += 1;
-        std.debug.print("path_counter: {}\n", .{self.path_counter});
+        std.debug.print("path_counter: {}", .{self.path_counter});
         if (self.path_counter > 10) {
             return visitor.VisitResult(void){ .STOP = {} };
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
+    // TODO this can be optimized, we don't really need to iterate through the entire edge list, just the first and last
     pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type != 1759242069) {
-                std.debug.print("{} != 1759242069\n", .{edge.attributes.uuid});
+                std.debug.print("{} != 1759242069", .{edge.attributes.uuid});
                 path.stop = true;
                 path.filtered = true;
-                return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         }
-        std.debug.print(" \n", .{});
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
@@ -196,8 +197,34 @@ pub const PathFinder = struct {
 
         // if (last_node.?.node.attributes.dynamic.values.get("node type") != first_node.?.node.attributes.dynamic.values.get("node type")) {
         //     path.filtered = true;
-        //     return visitor.VisitResult(void){ .CONTINUE = {} };
         // }
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
+
+    // formerly known as filter_path_by_dead_end_split
+    // filters out paths where the last 2 edges represent a child -> parent -> child path
+    pub fn filter_siblings(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        _ = self;
+
+        const edges = path.path.edges.items;
+        if (edges.len < 2) {
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+        const last_edges = [_]EdgeReference{
+            edges[edges.len - 1],
+            edges[edges.len - 2],
+        };
+        // check that all edges are heirarchy edges
+        for (last_edges) |edge| {
+            if (edge.attributes.edge_type != EdgeComposition.tid) {
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        }
+        // check that the connections are child -> parent -> child
+        const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
+        if (edge_1_and_edge_2_share_parent) {
+            path.filtered = true;
+        }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 };
