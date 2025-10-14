@@ -163,6 +163,7 @@ pub const PathFinder = struct {
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
         .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
         .{ .name = "filter_siblings", .func = Self.filter_siblings },
+        .{ .name = "filter_heirarchy_stack", .func = Self.filter_heirarchy_stack },
     };
 
     pub fn count_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
@@ -224,6 +225,24 @@ pub const PathFinder = struct {
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
             path.filtered = true;
+        }
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
+
+    // the goal here is everytime we cross a composition edge, we track what type of heirarchy it is and add it to a stack.
+    // then as we start going the oppisite hiearchy direction, we decrement the heiarchy stack
+    // the idea is to ensure start and end node are at the same level of heirarchy
+    pub fn filter_heirarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        _ = self;
+
+        var hierarchy_stack = std.ArrayList(u64).init(path.path.g.allocator);
+
+        for (path.path.edges.items) |edge| {
+            if (edge.attributes.edge_type == EdgeComposition.tid) {
+                hierarchy_stack.append(edge.attributes.uuid) catch |err| {
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
+            }
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
