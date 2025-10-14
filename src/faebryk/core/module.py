@@ -60,7 +60,38 @@ class Module(Node):
         matrix: list[tuple["ModuleInterface", "ModuleInterface"]] | None = None,
         attach_to: Node | None = None,
     ) -> T:
-        raise NotImplementedError("zig core - specialization is not implemented")
+        if not isinstance(special, Module):
+            raise TypeError(
+                f"Expected Module specialization target, got {type(special).__qualname__}"
+            )
+
+        root = self._get_root()
+        if getattr(root, "_typegraph_built", False):
+            raise RuntimeError(
+                "TypeGraph has already been built for this module; specialization"
+                " changes must be applied before calling create_typegraph()."
+            )
+
+        pending = getattr(self, "_pending_specializations", None)
+        if pending is None:
+            pending = []
+            setattr(self, "_pending_specializations", pending)
+
+        matrix_copy: list[tuple["ModuleInterface", "ModuleInterface"]] | None = None
+        if matrix is not None:
+            matrix_copy = [tuple(pair) for pair in matrix]
+
+        pending.append(
+            {
+                "special": special,
+                "matrix": matrix_copy,
+                "attach_to": attach_to,
+            }
+        )
+        if special not in self.specialized_:
+            self.specialized_.append(special)
+        # TODO: emit Zig-backed specialization edges when TypeGraph supports them.
+        return special
 
     @deprecated("TODO: static helper function")
     def get_parameters(self) -> list["Parameter"]:
