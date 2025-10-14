@@ -171,6 +171,8 @@ pub const UUID = struct {
 pub const NodeAttributes = struct {
     uuid: UUID.T,
     dynamic: DynamicAttributes,
+    name: ?str,
+    fake_type: ?u64,
 
     pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
@@ -188,6 +190,8 @@ pub const Node = struct {
         // Attributes
         node.attributes.uuid = UUID.gen_uuid(node);
         node.attributes.dynamic = DynamicAttributes.init(allocator);
+        node.attributes.name = null;
+        node.attributes.fake_type = null;
 
         node._ref_count = GraphReferenceCounter.init(allocator, node);
         return node;

@@ -18,14 +18,17 @@ const NodeRefMap = graph.NodeRefMap;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeInterfaceConnection = interface_mod.EdgeInterfaceConnection;
 
+const HeirarchyTraverseDirection = enum {
+    up,
+    down,
+    horizontal,
+};
+
 const HeirarchyElement = struct {
     parent_type: u64,
     child_type: u64,
-    name: []const u8,
-    direction: enum {
-        up,
-        down,
-    },
+    child_name: []const u8,
+    traverse_direction: HeirarchyTraverseDirection,
 };
 
 pub const PathFinder = struct {
@@ -249,20 +252,32 @@ pub const PathFinder = struct {
 
         var hierarchy_stack = std.ArrayList(HeirarchyElement).init(path.path.g.allocator);
         defer hierarchy_stack.deinit(); // Clean up the ArrayList
-
         var current_node = path.start;
+
+        // generate stack
 
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type == EdgeComposition.tid) { // this is a heirarchy connection
+                var current_direction = HeirarchyTraverseDirection.horizontal;
+
                 if (Node.is_same(EdgeComposition.get_child_node(edge), current_node.node)) {
-                    std.debug.print("going up\n", .{});
+                    current_direction = HeirarchyTraverseDirection.up;
                 } else if (Node.is_same(EdgeComposition.get_parent_node(edge), current_node.node)) {
-                    std.debug.print("going down\n", .{});
+                    current_direction = HeirarchyTraverseDirection.down;
                 } else {
                     return visitor.VisitResult(void){ .ERROR = error.InvalidEdge };
                 }
+
+                hierarchy_stack.append(HeirarchyElement{
+                    .parent_type = EdgeComposition.get_parent_node(edge).attributes.fake_type orelse 0,
+                    .child_type = EdgeComposition.get_child_node(edge).attributes.fake_type orelse 0,
+                    .child_name = EdgeComposition.get_child_node(edge).attributes.name orelse "",
+                    .traverse_direction = current_direction,
+                }) catch |err| {
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
             } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
-                std.debug.print("going horizontal\n", .{});
+                // Interface edge - do nothing, just update current_node at line 294
             } else {
                 return visitor.VisitResult(void){ .ERROR = error.InvalidEdgeType };
             }
@@ -271,8 +286,13 @@ pub const PathFinder = struct {
         }
 
         for (hierarchy_stack.items) |heirarchy_element| {
-            std.debug.print("item: {}\n", .{heirarchy_element.parent_type});
+            std.debug.print("direction: {} child_name: {s} parent_type: {} child_type: {}\n", .{ heirarchy_element.traverse_direction, heirarchy_element.child_name, heirarchy_element.parent_type, heirarchy_element.child_type });
         }
+
+        // process stack
+        // while (hierarchy_stack.items.len > 0) {
+        // }
+
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 };
@@ -350,9 +370,13 @@ test "filter_heirarchy_stack" {
     defer g.deinit();
 
     const bn1 = try g.insert_node(try Node.init(g.allocator));
+    bn1.node.attributes.name = "node1";
     const bn2 = try g.insert_node(try Node.init(g.allocator));
+    bn2.node.attributes.name = "node2";
     const bn3 = try g.insert_node(try Node.init(g.allocator));
+    bn3.node.attributes.name = "node3";
     const bn4 = try g.insert_node(try Node.init(g.allocator));
+    bn4.node.attributes.name = "node4";
     const be1 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
     const be2 = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
     const be3 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
