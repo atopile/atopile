@@ -527,6 +527,25 @@ class Node:
 
     def __postinit__(self, *args, **kwargs) -> None: ...
 
+    def __runtime__(self) -> None:
+        """
+        Called after instance graph is bound to tree.
+
+        Override this to execute runtime functionality that depends on
+        the instance graph (e.g., graph queries, pathfinding).
+
+        By the time this is called:
+        - TypeGraph has been built
+        - Instance graph has been instantiated
+        - Tree nodes are bound to instance nodes via _instance_bound
+
+        Safe to call:
+        - get_connected()
+        - Any graph traversal operations
+        - Instance graph queries
+        """
+        ...
+
     def __post_init__(self, *args, **kwargs):
         if not getattr(self, "_called_init", False):
             raise Exception(
@@ -606,6 +625,133 @@ class Node:
     def get_root_id(self) -> str:
         return self._root_id
 
+    def _ensure_typegraph_built(self) -> None:
+        """Verify that create_typegraph() has been called on this module tree."""
+        root = self._get_root()
+        if not getattr(root, "_typegraph_built", False):
+            raise RuntimeError(
+                f"TypeGraph has not been built for `{type(root).__qualname__}`. "
+                "Call root.create_typegraph() before using graph-dependent operations."
+            )
+
+    def _ensure_instance_bound(self) -> BoundNode:
+        """Get this node's bound instance node."""
+        self._ensure_typegraph_built()
+        instance = getattr(self, "_instance_bound", None)
+        if instance is None:
+            raise RuntimeError(
+                f"No instance bound for {self.get_full_name()}. Must be instantiated "
+                "before querying runtime graph state."
+            )
+        return instance
+
+    def _ensure_typegraph_bound(self) -> BoundNode:
+        """Deprecated: Use _ensure_instance_bound() instead."""
+        return self._ensure_instance_bound()
+
+    def _bind_instance_hierarchy(self, instance_node: BoundNode) -> None:
+        """
+        Recursively bind instance nodes to Python objects.
+
+        Walks the instance graph (via EdgeComposition) and the Python tree in parallel,
+        setting _instance_bound on each Python node.
+
+        Also builds instance→Python mapping on root for reverse lookup.
+
+        Args:
+            instance_node: The instance node corresponding to this Python object
+
+        Raises:
+            RuntimeError: If instance already bound, or structure mismatch
+        """
+        from faebryk.core.moduleinterface import ModuleInterface
+
+        # Guard: check on root only for performance
+        if self.get_parent() is None:
+            if getattr(self, "_instance_bound", None) is not None:
+                raise RuntimeError(
+                    f"Instance already bound to {self.get_full_name()}. "
+                    "Cannot bind multiple instances to the same Python tree."
+                )
+            # Initialize reverse mapping on root
+            setattr(self, "_typegraph_instance_to_python", {})
+
+        # Bind self to instance_node
+        setattr(self, "_instance_bound", instance_node)
+
+        # Build reverse mapping (instance UUID → Python object)
+        root = self._get_root()
+        instance_map = getattr(root, "_typegraph_instance_to_python", {})
+        if isinstance(self, ModuleInterface):
+            instance_uuid = id(instance_node.node())
+            instance_map[instance_uuid] = self
+
+        # Recursively bind children
+        for name, py_child in self._iter_direct_children():
+            instance_child = EdgeComposition.get_child_by_identifier(
+                bound_node=instance_node, child_identifier=name
+            )
+            if instance_child is None:
+                full_name = self.get_full_name()
+                raise RuntimeError(
+                    f"Instance graph missing child '{name}' for {full_name}. "
+                    "Instance structure does not match fabll structure. "
+                )
+
+            py_child._bind_instance_hierarchy(instance_child)
+
+    def _execute_runtime_functions(self) -> None:
+        """
+        Execute __runtime__() hooks across the tree after instance binding.
+
+        Traverses the Python tree and calls __runtime__() on each node.
+        This allows nodes to perform graph-dependent initialization after
+        the instance graph is bound.
+
+        Must be called after _bind_instance_hierarchy().
+
+        Raises:
+            RuntimeError: If instance not bound
+        """
+        # Ensure instance is bound
+        _ = self._ensure_instance_bound()
+
+        # Call __runtime__() on self
+        # Iterate through MRO to call all base class __runtime__ implementations
+        for base in reversed(type(self).mro()):
+            if "__runtime__" in base.__dict__:
+                f = getattr(base, "__runtime__")
+                f(self)
+
+        # Recursively execute on children
+        for _name, child in self._iter_direct_children():
+            child._execute_runtime_functions()
+
+    @staticmethod
+    def instantiate(root: "Node") -> "BoundNode":
+        """
+        Complete instantiation workflow: build type graph, instantiate, bind, execute
+        runtime.
+
+        Args:
+            root: The root Node object in the fabll tree
+
+        Returns:
+            The instance root BoundNode
+
+        Raises:
+            RuntimeError: If TypeGraph already built or instance already bound
+        """
+        from faebryk.core.graph import InstanceGraphFunctions
+
+        typegraph, _ = root.create_typegraph()
+        instance_root = InstanceGraphFunctions.create(
+            typegraph, type(root).__qualname__
+        )
+        root._bind_instance_hierarchy(instance_root)
+        root._execute_runtime_functions()
+        return instance_root
+
     def get_hierarchy(self) -> list[tuple["Node", str]]:
         hierarchy: list[tuple["Node", str]] = []
         current: Node = self
@@ -618,6 +764,65 @@ class Node:
 
         hierarchy.reverse()
         return hierarchy
+
+    def _get_root(self) -> "Node":
+        """
+        Get the root node of this module tree.
+
+        Reuses existing get_hierarchy() which already handles edge cases.
+
+        Returns:
+            The root node (node with no parent)
+        """
+        hierarchy = self.get_hierarchy()
+        return hierarchy[0][0]
+
+    @staticmethod
+    def _compute_relative_path(ancestor: "Node", descendant: "Node") -> list[str]:
+        """
+        Compute path from ancestor to descendant.
+
+        Example:
+            ancestor = app (root)
+            descendant = app.module1.mif1
+            → ["module1", "mif1"]
+
+        Args:
+            ancestor: The ancestor node
+            descendant: The descendant node
+
+        Returns:
+            List of field names forming the path from ancestor to descendant
+
+        Raises:
+            RuntimeError: If descendant is not actually a descendant of ancestor,
+                         or if path computation encounters a cycle
+        """
+        path: list[str] = []
+        current = descendant
+        max_depth = 1000
+
+        while current is not ancestor:
+            if len(path) > max_depth:
+                raise RuntimeError(
+                    f"Path computation exceeded max depth ({max_depth}) from "
+                    f"{ancestor.get_full_name()} to {descendant.get_full_name()}. "
+                    "This likely indicates a cycle in the parent chain."
+                )
+
+            parent_entry = current.get_parent()
+            if parent_entry is None:
+                raise RuntimeError(
+                    f"Cannot compute path: {descendant.get_full_name()} is not a "
+                    f"descendant of {ancestor.get_full_name()}. Reached root without "
+                    "finding ancestor."
+                )
+
+            path.append(parent_entry[1])
+            current = parent_entry[0]
+
+        path.reverse()
+        return path
 
     def get_full_name(self, types: bool = False) -> str:
         parts: list[str] = []
@@ -919,57 +1124,150 @@ class Node:
 
         return last_match
 
-    def create_typegraph(self) -> tuple["TypeGraph", "BoundNode"]:
-        from faebryk.core.trait import Trait
+    class _TypeGraphBuilder:
+        def __init__(
+            self,
+            root: "Node",
+            trait_cls: type["Trait"],
+            module_interface_cls: type["ModuleInterface"],
+        ) -> None:
+            self.root = root
+            self._trait_cls = trait_cls
+            self._module_interface_cls = module_interface_cls
+            self.graph_view = GraphView.create()
+            self.typegraph = TypeGraph.create(g=self.graph_view)
+            self._type_nodes: dict[type[Node], BoundNode] = {}
+            self._seen_make_children: set[tuple[type[Node], str, type[Node]]] = set()
+            self._seen_connections: set[frozenset[int]] = set()
+            self._all_nodes: list[Node] = []
 
-        root = self
-        typegraph = TypeGraph.create()
-        type_nodes: dict[type[Node], BoundNode] = {}
-        make_child_nodes: dict[tuple[type[Node], str], BoundNode] = {}
+        def build(self) -> tuple["TypeGraph", "BoundNode"]:
+            self._ensure_not_built()
+            self._collect_nodes()
+            self._register_types()
+            self._register_children()
+            module_interfaces = self._find_module_interfaces()
+            self._validate_interface_closure(module_interfaces)
+            self._register_links(module_interfaces)
+            self._finalize(module_interfaces)
+            root_type = self._ensure_type_node(type(self.root))
+            return self.typegraph, root_type
 
-        def ensure_type_node(cls: type[Node]) -> BoundNode:
-            if cls in type_nodes:
-                return type_nodes[cls]
-
-            type_node = typegraph.init_type_node(identifier=cls._type_identifier())
-            type_nodes[cls] = type_node
-
-            if issubclass(cls, Trait):
-                trait_marker = typegraph.init_trait_node()
-                EdgeComposition.add_child(
-                    bound_node=type_node,
-                    child=trait_marker.node(),
-                    child_identifier="implements_trait",
+        def _ensure_not_built(self) -> None:
+            if getattr(self.root, "_typegraph_built", False):
+                raise RuntimeError(
+                    "TypeGraph has already been built for this module tree; "
+                    "rebuilding is not supported."
                 )
+
+        def _collect_nodes(self) -> None:
+            def visit(node: "Node") -> None:
+                self._all_nodes.append(node)
+                for _name, child in node._iter_direct_children():
+                    visit(child)
+
+            visit(self.root)
+
+        def _register_types(self) -> None:
+            for node in self._all_nodes:
+                self._ensure_type_node(type(node))
+
+        def _register_children(self) -> None:
+            for node in self._all_nodes:
+                parent_cls = type(node)
+                for identifier, child in node._iter_direct_children():
+                    self._ensure_make_child(parent_cls, identifier, type(child))
+
+        def _find_module_interfaces(self) -> list["ModuleInterface"]:
+            cls = self._module_interface_cls
+            return [node for node in self._all_nodes if isinstance(node, cls)]
+
+        def _validate_interface_closure(
+            self, module_interfaces: Iterable["ModuleInterface"]
+        ) -> None:
+            all_nodes_set = set(self._all_nodes)
+            for iface in module_interfaces:
+                for neighbor in getattr(iface, "_connections", ()):
+                    if neighbor not in all_nodes_set:
+                        neighbor_name = neighbor.get_full_name()
+                        iface_name = iface.get_full_name()
+                        raise RuntimeError(
+                            f"Interface {neighbor_name} is connected to {iface_name}"
+                            "but is not part of the module tree. All connected "
+                            "interfaces must be descendants of the root before "
+                            "calling create_typegraph()."
+                        )
+
+        def _register_links(
+            self, module_interfaces: Iterable["ModuleInterface"]
+        ) -> None:
+            for iface in module_interfaces:
+                for neighbor in getattr(iface, "_connections", ()):
+                    key = frozenset({id(iface), id(neighbor)})
+                    if len(key) != 2 or key in self._seen_connections:
+                        continue
+                    self._seen_connections.add(key)
+
+                    common_ancestor_result = iface.nearest_common_ancestor(neighbor)
+                    if common_ancestor_result is None:
+                        raise RuntimeError(
+                            f"No common ancestor between {iface.get_full_name()} "
+                            f"and {neighbor.get_full_name()}"
+                        )
+                    common_ancestor_node, _ = common_ancestor_result
+                    common_ancestor_type = self._type_nodes[type(common_ancestor_node)]
+
+                    lhs_path = Node._compute_relative_path(common_ancestor_node, iface)
+                    rhs_path = Node._compute_relative_path(
+                        common_ancestor_node, neighbor
+                    )
+                    lhs_ref = self.typegraph.add_reference(path=lhs_path)
+                    rhs_ref = self.typegraph.add_reference(path=rhs_path)
+
+                    self.typegraph.add_make_link(
+                        type_node=common_ancestor_type,
+                        lhs_reference_node=lhs_ref.node(),
+                        rhs_reference_node=rhs_ref.node(),
+                        link_type=EdgeInterfaceConnection.get_tid(),
+                    )
+
+        def _finalize(self, module_interfaces: Iterable["ModuleInterface"]) -> None:
+            setattr(self.root, "_typegraph_built", True)
+            interface_lookup = {id(iface): iface for iface in module_interfaces}
+            setattr(self.root, "_typegraph_interface_lookup", interface_lookup)
+
+        def _ensure_type_node(self, cls: type[Node]) -> BoundNode:
+            if cls in self._type_nodes:
+                return self._type_nodes[cls]
+
+            type_node = self.typegraph.add_type(identifier=cls._type_identifier())
+            self._type_nodes[cls] = type_node
+
+            if issubclass(cls, self._trait_cls):
+                # TODO: once the Zig API finalises trait wiring we may need to capture
+                # the returned node or set up additional metadata here.
+                self.typegraph.add_trait()
 
             return type_node
 
-        def ensure_make_child(
-            parent_cls: type[Node], identifier: str, child_cls: type[Node]
+        def _ensure_make_child(
+            self, parent_cls: type[Node], identifier: str, child_cls: type[Node]
         ) -> None:
-            if (key := (parent_cls, identifier)) in make_child_nodes:
+            if (key := (parent_cls, identifier, child_cls)) in self._seen_make_children:
                 return
 
-            parent_type = ensure_type_node(parent_cls)
-            child_type = ensure_type_node(child_cls)
-            make_child = typegraph.init_make_child_node(
-                type_node=child_type,
-                identifier=identifier,
-            )
-            EdgeComposition.add_child(
-                bound_node=parent_type,
-                child=make_child.node(),
-                child_identifier=identifier,
+            self._seen_make_children.add(key)
+            parent_type = self._ensure_type_node(parent_cls)
+            child_type = self._ensure_type_node(child_cls)
+            self.typegraph.add_make_child(
+                type_node=parent_type, child_type_node=child_type, identifier=identifier
             )
 
-            make_child_nodes[key] = make_child
+    def create_typegraph(self) -> tuple["TypeGraph", "BoundNode"]:
+        from faebryk.core.moduleinterface import ModuleInterface
+        from faebryk.core.trait import Trait
 
-        def walk(node: Node) -> None:
-            ensure_type_node(type(node))
-            for name, child in node._iter_direct_children():
-                ensure_make_child(type(node), name, type(child))
-                walk(child)
-
-        walk(root)
-        root_bound = ensure_type_node(type(root))
-        return typegraph, root_bound
+        builder = Node._TypeGraphBuilder(
+            root=self, trait_cls=Trait, module_interface_cls=ModuleInterface
+        )
+        return builder.build()
