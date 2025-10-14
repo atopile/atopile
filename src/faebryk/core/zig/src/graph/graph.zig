@@ -407,11 +407,12 @@ pub const Edge = struct {
 
 pub const Path = struct {
     edges: std.ArrayList(EdgeReference),
-    // g: *GraphView,
+    g: *GraphView,
 
-    pub fn init(a: std.mem.Allocator) @This() {
+    pub fn init(g: *GraphView) @This() {
         return .{
-            .edges = std.ArrayList(EdgeReference).init(a),
+            .edges = std.ArrayList(EdgeReference).init(g.allocator),
+            .g = g,
         };
     }
 
@@ -454,7 +455,7 @@ pub const Path = struct {
         return bn.g.bind(end);
     }
 
-    pub fn get_last_node(self: *const @This(), g: *GraphView) ?BoundNodeReference {
+    pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
         if (self.edges.items.len == 0) {
             return null;
         }
@@ -470,13 +471,13 @@ pub const Path = struct {
                 if (Node.is_same(last_edge.target, second_last_edge.target)) break :blk last_edge.target;
                 return null; // invalid path: last two edges do not connect
             };
-            return g.bind(last_edge.get_other_node(shared_node) orelse return null);
+            return self.g.bind(last_edge.get_other_node(shared_node) orelse return null);
         }
 
         // If the last edge is directional, we can use its target.
         if (last_edge.attributes.directional) |d| {
             if (d) {
-                return last_edge.target;
+                return self.g.bind(last_edge.target);
             }
             return null;
         }
@@ -485,11 +486,12 @@ pub const Path = struct {
         return null;
     }
 
-    pub fn get_first_node(self: *const @This(), g: *GraphView) ?BoundNodeReference {
+    pub fn get_first_node(self: *const @This()) ?BoundNodeReference {
         if (self.edges.items.len == 0) {
             return null;
         }
-        return g.bind(self.get_other_node(self.get_last_node(g) orelse return null));
+        const last_node = self.get_last_node() orelse return null;
+        return self.get_other_node(last_node);
     }
 };
 
@@ -497,14 +499,6 @@ pub const BFSPath = struct {
     path: Path,
     filtered: bool = false, // filter this path out
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
-
-    pub fn init(a: std.mem.Allocator) @This() {
-        return .{
-            .path = Path.init(a),
-            .filtered = false,
-            .stop = false,
-        };
-    }
 
     pub fn deinit(self: *@This()) void {
         self.path.deinit();
@@ -768,7 +762,11 @@ pub const GraphView = struct {
                     var new_path = self.g.allocator.create(BFSPath) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
-                    new_path.* = BFSPath.init(self.g.allocator);
+                    new_path.* = BFSPath{
+                        .path = Path.init(self.g),
+                        .filtered = false,
+                        .stop = false,
+                    };
 
                     // Append current path edges to new path
                     new_path.path.edges.appendSlice(self.current_path.path.edges.items) catch |err| {
@@ -806,7 +804,11 @@ pub const GraphView = struct {
             var path = g.allocator.create(BFSPath) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
-            path.* = BFSPath.init(g.allocator);
+            path.* = BFSPath{
+                .path = Path.init(g),
+                .filtered = false,
+                .stop = false,
+            };
             path.path.edges.append(edge) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };

@@ -93,7 +93,11 @@ pub const PathFinder = struct {
         // Filter says keep!
         if (!path.filtered) {
             // Deep copy the path
-            var copied_path = BFSPath.init(self.allocator);
+            var copied_path = BFSPath{
+                .path = Path.init(path.path.g),
+                .filtered = false,
+                .stop = false,
+            };
             copied_path.path.edges.appendSlice(path.path.edges.items) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
@@ -186,9 +190,11 @@ pub const PathFinder = struct {
     pub fn filter_path_by_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         _ = path;
-        // const last_node = path.path.get_last_node();
-        // const first_node = path.path.get_first_node();
-        // if (last_node.?.node.attributes.node_type != first_node.?.node.attributes.node_type) {
+        // waiting on type graph implementation for node types
+        // var first_node = path.path.get_first_node();
+        // var last_node = path.path.get_last_node();
+
+        // if (last_node.?.node.attributes.dynamic.values.get("node type") != first_node.?.node.attributes.dynamic.values.get("node type")) {
         //     path.filtered = true;
         //     return visitor.VisitResult(void){ .CONTINUE = {} };
         // }
