@@ -500,6 +500,23 @@ pub const BFSPath = struct {
     filtered: bool = false, // filter this path out
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
+    pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
+        const g = base.path.g;
+        var new_path = try g.allocator.create(BFSPath);
+        new_path.* = BFSPath{
+            .path = Path.init(g),
+            .filtered = false,
+            .stop = false,
+        };
+        errdefer new_path.destroy(g.allocator);
+
+        // Extend with prior edges before adding the new edge.
+        try new_path.path.edges.appendSlice(base.path.edges.items);
+        try new_path.path.edges.append(edge);
+
+        return new_path;
+    }
+
     pub fn deinit(self: *@This()) void {
         self.path.deinit();
     }
@@ -759,22 +776,7 @@ pub const GraphView = struct {
                 // If not visited, create a new path and append it to the open path queue
                 else {
                     std.debug.print("added\n", .{});
-                    var new_path = self.g.allocator.create(BFSPath) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
-                    new_path.* = BFSPath{
-                        .path = Path.init(self.g),
-                        .filtered = false,
-                        .stop = false,
-                    };
-
-                    // Append current path edges to new path
-                    new_path.path.edges.appendSlice(self.current_path.path.edges.items) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
-
-                    // Append current edge to new path
-                    new_path.path.edges.append(edge.edge) catch |err| {
+                    const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
 
@@ -800,16 +802,15 @@ pub const GraphView = struct {
         };
 
         // Add initial edges to open path queue
+        var empty_base = BFSPath{
+            .path = Path.init(g),
+            .filtered = false,
+            .stop = false,
+        };
+        defer empty_base.deinit();
+
         for (initial_edges.items) |edge| {
-            var path = g.allocator.create(BFSPath) catch |err| {
-                return visitor.VisitResult(T){ .ERROR = err };
-            };
-            path.* = BFSPath{
-                .path = Path.init(g),
-                .filtered = false,
-                .stop = false,
-            };
-            path.path.edges.append(edge) catch |err| {
+            const path = BFSPath.cloneAndExtend(&empty_base, edge) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
             open_path_queue.writeItem(path) catch |err| {
@@ -819,6 +820,7 @@ pub const GraphView = struct {
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
+            defer path.destroy(g.allocator);
             const node_at_path_end = path.path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
@@ -841,18 +843,12 @@ pub const GraphView = struct {
             // Report BFS visitor status
             switch (bfs_visitor_result) {
                 .STOP => {
-                    // Deinitialize current path before returning
-                    path.destroy(g.allocator);
                     return visitor.VisitResult(T){ .STOP = {} };
                 },
                 .ERROR => |err| {
-                    // Deinitialize current path before returning
-                    path.destroy(g.allocator);
                     return visitor.VisitResult(T){ .ERROR = err };
                 },
                 .EXHAUSTED => {
-                    // Deinitialize current path before returning
-                    path.destroy(g.allocator);
                     return visitor.VisitResult(T){ .EXHAUSTED = {} };
                 },
                 .CONTINUE => {},
@@ -879,9 +875,6 @@ pub const GraphView = struct {
             } else {
                 std.debug.print("PATH - stopped\n", .{});
             }
-
-            // Deinitialize the processed path
-            path.destroy(g.allocator);
         }
 
         std.debug.print("STOP BFS!!! - Exhausted\n", .{});
