@@ -238,14 +238,8 @@ class TypeGraphFunctions:
 
 class InstanceGraphFunctions:
     @staticmethod
-    def create(typegraph: TypeGraph, root: BoundNode) -> "BoundNode":
-        if (name := root.node().get_attr(key="name")) is None:
-            raise ValueError("Root node has no name")
-
-        if not isinstance(name, str):
-            raise ValueError("Root node name is not a string")
-
-        return typegraph.instantiate(build_target_type_identifier=name)
+    def create(typegraph: TypeGraph, type_identifier: str) -> "BoundNode":
+        return typegraph.instantiate(type_identifier=type_identifier)
 
     @staticmethod
     def render(root: BoundNode) -> str:

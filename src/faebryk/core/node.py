@@ -25,8 +25,9 @@ from more_itertools import partition
 from ordered_set import OrderedSet
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundNode
+from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
@@ -43,6 +44,7 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
+    from faebryk.core.moduleinterface import ModuleInterface
     from faebryk.core.solver.solver import Solver
     from faebryk.core.trait import Trait, TraitImpl
 
