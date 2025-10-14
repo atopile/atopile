@@ -407,6 +407,7 @@ pub const Edge = struct {
 
 pub const Path = struct {
     edges: std.ArrayList(EdgeReference),
+    // g: *GraphView,
 
     pub fn init(a: std.mem.Allocator) @This() {
         return .{
@@ -430,30 +431,65 @@ pub const Path = struct {
         if (self.edges.items.len == 0) {
             return null;
         }
-        // const first_edge = self.edges.items[0];
         const last_edge = self.edges.items[self.edges.items.len - 1];
 
-        // special case - path length 1
+        // special case - path length 1: need the starting node to disambiguate
         if (self.edges.items.len == 1) {
             return bn.g.bind(last_edge.get_other_node(bn.node) orelse return null);
         }
+
+        // For length >= 2, infer the junction node shared by the last two edges,
+        // then return the opposite node on the last edge.
         const second_last_edge = self.edges.items[self.edges.items.len - 2];
+        const shared_node = blk: {
+            if (Node.is_same(last_edge.source, second_last_edge.source)) break :blk last_edge.source;
+            if (Node.is_same(last_edge.source, second_last_edge.target)) break :blk last_edge.source;
+            if (Node.is_same(last_edge.target, second_last_edge.source)) break :blk last_edge.target;
+            if (Node.is_same(last_edge.target, second_last_edge.target)) break :blk last_edge.target;
+            // If no shared node, path is invalid
+            return null;
+        };
 
-        // this doesn't check if the start and end node are the same
-        if (Node.is_same(last_edge.target, second_last_edge.target)) {
-            return bn.g.bind(last_edge.get_other_node(last_edge.target) orelse return null);
+        const end = last_edge.get_other_node(shared_node) orelse return null;
+        return bn.g.bind(end);
+    }
+
+    pub fn get_last_node(self: *const @This(), g: *GraphView) ?BoundNodeReference {
+        if (self.edges.items.len == 0) {
+            return null;
         }
-        if (Node.is_same(last_edge.target, second_last_edge.source)) {
-            return bn.g.bind(last_edge.get_other_node(last_edge.target) orelse return null);
-        }
-        if (Node.is_same(last_edge.source, second_last_edge.target)) {
-            return bn.g.bind(last_edge.get_other_node(last_edge.source) orelse return null);
-        }
-        if (Node.is_same(last_edge.source, second_last_edge.source)) {
-            return bn.g.bind(last_edge.get_other_node(last_edge.source) orelse return null);
+        const last_edge = self.edges.items[self.edges.items.len - 1];
+
+        // For undirected edges, try to infer the end node using the previous edge.
+        if (self.edges.items.len >= 2) {
+            const second_last_edge = self.edges.items[self.edges.items.len - 2];
+            const shared_node = blk: {
+                if (Node.is_same(last_edge.source, second_last_edge.source)) break :blk last_edge.source;
+                if (Node.is_same(last_edge.source, second_last_edge.target)) break :blk last_edge.source;
+                if (Node.is_same(last_edge.target, second_last_edge.source)) break :blk last_edge.target;
+                if (Node.is_same(last_edge.target, second_last_edge.target)) break :blk last_edge.target;
+                return null; // invalid path: last two edges do not connect
+            };
+            return g.bind(last_edge.get_other_node(shared_node) orelse return null);
         }
 
+        // If the last edge is directional, we can use its target.
+        if (last_edge.attributes.directional) |d| {
+            if (d) {
+                return last_edge.target;
+            }
+            return null;
+        }
+
+        // Single undirected edge with no context: ambiguous
         return null;
+    }
+
+    pub fn get_first_node(self: *const @This(), g: *GraphView) ?BoundNodeReference {
+        if (self.edges.items.len == 0) {
+            return null;
+        }
+        return g.bind(self.get_other_node(self.get_last_node(g) orelse return null));
     }
 };
 

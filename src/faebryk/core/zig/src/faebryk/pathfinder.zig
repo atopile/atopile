@@ -186,6 +186,12 @@ pub const PathFinder = struct {
     pub fn filter_path_by_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         _ = path;
+        // const last_node = path.path.get_last_node();
+        // const first_node = path.path.get_first_node();
+        // if (last_node.?.node.attributes.node_type != first_node.?.node.attributes.node_type) {
+        //     path.filtered = true;
+        //     return visitor.VisitResult(void){ .CONTINUE = {} };
+        // }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 };
