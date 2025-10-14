@@ -296,20 +296,16 @@ pub const TypeGraph = struct {
         return new_instance;
     }
 
-    pub fn instantiate(self: *@This(), type_identifier: str) !BoundNodeReference {
-        std.debug.print("Instantiating type: {s}\n", .{type_identifier});
+    fn get_type_by_name(self: *@This(), type_identifier: str) !?BoundNodeReference {
         // TODO make trait.zig
-
-        // search for type of name
-        const Finder = struct {
+        const FindTypeByName = struct {
             self: *TypeGraph,
             type_identifier: str,
 
-            pub fn visit(ctx_ptr: *anyopaque, bedge: graph.BoundEdgeReference) visitor.VisitResult(NodeReference) {
+            pub fn visitTypeEdge(ctx_ptr: *anyopaque, type_edge: graph.BoundEdgeReference) visitor.VisitResult(NodeReference) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                const edge = bedge.edge;
+                const edge = type_edge.edge;
 
-                // Map the rest of the logic to the original selection, using BoundEdgeReference now.
                 const implements_type_instance = ctx.self.g.bind(EdgeType.get_instance_node(edge).?);
                 const parent_type_edge = EdgeComposition.get_parent_edge(implements_type_instance);
                 const parent_type_node = EdgeComposition.get_parent_node(parent_type_edge.?.edge);
@@ -321,23 +317,30 @@ pub const TypeGraph = struct {
             }
         };
 
-        var finder = Finder{ .self = self, .type_identifier = type_identifier };
+        var finder = FindTypeByName{ .self = self, .type_identifier = type_identifier };
         const result = self.implements_type_type.visit_edges_of_type(
             EdgeType.tid,
             NodeReference,
             &finder,
-            Finder.visit,
+            FindTypeByName.visitTypeEdge,
         );
-
         switch (result) {
             .OK => |parent_type_node| {
-                return try self.instantiate_node(self.g.bind(parent_type_node));
+                return self.g.bind(parent_type_node);
             },
-            .ERROR => return error.InvalidArgument,
+            .ERROR => |err| return err,
             .CONTINUE => unreachable,
             .STOP => unreachable,
-            .EXHAUSTED => return error.InvalidArgument,
+            .EXHAUSTED => return null,
         }
+    }
+
+    pub fn instantiate(self: *@This(), type_identifier: str) !BoundNodeReference {
+        const parent_type_node = try self.get_type_by_name(type_identifier);
+        if (parent_type_node) |_parent_type_node| {
+            return try self.instantiate_node(_parent_type_node);
+        }
+        return error.InvalidArgument;
     }
 };
 
