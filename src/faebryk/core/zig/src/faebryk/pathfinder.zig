@@ -29,6 +29,17 @@ const HeirarchyElement = struct {
     child_type: u64,
     child_name: []const u8,
     traverse_direction: HeirarchyTraverseDirection,
+
+    pub fn match(self: *const @This(), other: *const @This()) bool {
+        // Match if same parent/child/name but opposite directions (up vs down)
+        const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
+            (self.traverse_direction == .down and other.traverse_direction == .up);
+
+        return self.parent_type == other.parent_type and
+            self.child_type == other.child_type and
+            std.mem.eql(u8, self.child_name, other.child_name) and
+            opposite_directions;
+    }
 };
 
 pub const PathFinder = struct {
@@ -255,7 +266,6 @@ pub const PathFinder = struct {
         var current_node = path.start;
 
         // generate stack
-
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type == EdgeComposition.tid) { // this is a heirarchy connection
                 var current_direction = HeirarchyTraverseDirection.horizontal;
@@ -268,20 +278,30 @@ pub const PathFinder = struct {
                     return visitor.VisitResult(void){ .ERROR = error.InvalidEdge };
                 }
 
-                hierarchy_stack.append(HeirarchyElement{
+                const elem = HeirarchyElement{
                     .parent_type = EdgeComposition.get_parent_node(edge).attributes.fake_type orelse 0,
                     .child_type = EdgeComposition.get_child_node(edge).attributes.fake_type orelse 0,
                     .child_name = EdgeComposition.get_child_node(edge).attributes.name orelse "",
                     .traverse_direction = current_direction,
-                }) catch |err| {
-                    return visitor.VisitResult(void){ .ERROR = err };
                 };
-            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
-                // Interface edge - do nothing, just update current_node at line 294
-            } else {
+
+                if (hierarchy_stack.items.len > 0) {
+                    const top = &hierarchy_stack.items[hierarchy_stack.items.len - 1];
+                    if (top.match(&elem)) {
+                        _ = hierarchy_stack.pop();
+                    } else {
+                        hierarchy_stack.append(elem) catch |err| {
+                            return visitor.VisitResult(void){ .ERROR = err };
+                        };
+                    }
+                } else {
+                    hierarchy_stack.append(elem) catch |err| {
+                        return visitor.VisitResult(void){ .ERROR = err };
+                    };
+                }
+            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {} else {
                 return visitor.VisitResult(void){ .ERROR = error.InvalidEdgeType };
             }
-
             current_node = current_node.g.bind(edge.get_other_node(current_node.node) orelse return visitor.VisitResult(void){ .ERROR = error.InvalidNode });
         }
 
@@ -289,9 +309,15 @@ pub const PathFinder = struct {
             std.debug.print("direction: {} child_name: {s} parent_type: {} child_type: {}\n", .{ heirarchy_element.traverse_direction, heirarchy_element.child_name, heirarchy_element.parent_type, heirarchy_element.child_type });
         }
 
-        // process stack
-        // while (hierarchy_stack.items.len > 0) {
-        // }
+        // if stack is empty then path is valid
+        if (hierarchy_stack.items.len > 0) {
+            path.filtered = true;
+        } else {
+            path.filtered = false;
+        }
+
+        std.debug.print("hierarchy_stack.items.len: {}\n", .{hierarchy_stack.items.len});
+        std.debug.print("path.filtered: {}\n", .{path.filtered});
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -376,7 +402,7 @@ test "filter_heirarchy_stack" {
     const bn3 = try g.insert_node(try Node.init(g.allocator));
     bn3.node.attributes.name = "node3";
     const bn4 = try g.insert_node(try Node.init(g.allocator));
-    bn4.node.attributes.name = "node4";
+    bn4.node.attributes.name = "node1";
     const be1 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
     const be2 = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
     const be3 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
