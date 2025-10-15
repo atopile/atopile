@@ -19,27 +19,19 @@ const EdgeCompositionWrapper = bind.PyObjectWrapper(faebryk.composition.EdgeComp
 const EdgeOperandWrapper = bind.PyObjectWrapper(faebryk.operand.EdgeOperand);
 const EdgeTypeWrapper = bind.PyObjectWrapper(faebryk.node_type.EdgeType);
 const EdgeNextWrapper = bind.PyObjectWrapper(faebryk.next.EdgeNext);
-<<<<<<< HEAD
 const EdgePointerWrapper = bind.PyObjectWrapper(faebryk.pointer.EdgePointer);
 const EdgeCreationAttributesWrapper = bind.PyObjectWrapper(faebryk.edgebuilder.EdgeCreationAttributes);
 const TypeGraphWrapper = bind.PyObjectWrapper(faebryk.typegraph.TypeGraph);
-||||||| parent of 8f3b302f (mock graph -> real graph)
-=======
 const EdgeSourceWrapper = bind.PyObjectWrapper(faebryk.source.EdgeSource);
->>>>>>> 8f3b302f (mock graph -> real graph)
 
 var edge_composition_type: ?*py.PyTypeObject = null;
 var edge_operand_type: ?*py.PyTypeObject = null;
 var edge_type_type: ?*py.PyTypeObject = null;
 var edge_next_type: ?*py.PyTypeObject = null;
-<<<<<<< HEAD
 var edge_pointer_type: ?*py.PyTypeObject = null;
 var edge_creation_attributes_type: ?*py.PyTypeObject = null;
 var type_graph_type: ?*py.PyTypeObject = null;
-||||||| parent of 8f3b302f (mock graph -> real graph)
-=======
 var edge_source_type: ?*py.PyTypeObject = null;
->>>>>>> 8f3b302f (mock graph -> real graph)
 
 pub const method_descr = bind.method_descr;
 
