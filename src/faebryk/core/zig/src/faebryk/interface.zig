@@ -362,6 +362,32 @@ test "down_connect" {
     try std.testing.expect(paths_lv_hv.len == 0);
 }
 
+test "no_connect_cases" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = try g.insert_node(try Node.init(g.allocator));
+    const bn3 = try g.insert_node(try Node.init(g.allocator));
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn2.node, EdgeComposition.tid));
+
+    const parent_child = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn2);
+    defer {
+        for (parent_child) |*path| path.deinit();
+        std.testing.allocator.free(parent_child);
+    }
+    try std.testing.expect(parent_child.len == 0);
+
+    const parent_child_parent = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn3);
+    defer {
+        for (parent_child_parent) |*path| path.deinit();
+        std.testing.allocator.free(parent_child_parent);
+    }
+    try std.testing.expect(parent_child_parent.len == 0);
+}
+
 test "chains_direct" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();

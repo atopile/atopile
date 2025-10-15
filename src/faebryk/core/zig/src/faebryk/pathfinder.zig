@@ -321,6 +321,7 @@ pub const PathFinder = struct {
     // the goal here is everytime we cross a composition edge, we track what type of heirarchy it is and add it to a stack.
     // then as we start going the oppisite hiearchy direction, we decrement the heiarchy stack
     // the idea is to ensure start and end node are at the same level of heirarchy
+    // Additionally, reject paths that descend into children before ascending from the starting point
     pub fn filter_heirarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
@@ -362,6 +363,13 @@ pub const PathFinder = struct {
                         };
                     }
                 } else {
+                    // Stack is empty - we're at the starting hierarchy level
+                    // Reject paths that descend (go DOWN) from the starting point without first ascending
+                    if (current_direction == HeirarchyTraverseDirection.down) {
+                        path.filtered = true;
+                        return visitor.VisitResult(void){ .CONTINUE = {} };
+                    }
+
                     hierarchy_stack.append(elem) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
