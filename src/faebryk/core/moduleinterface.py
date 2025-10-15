@@ -119,11 +119,11 @@ class ModuleInterface(Node):
     def connect_shallow(self, *other: Self) -> Self:
         raise NotImplementedError("TODO: Zig core migration")
 
+    @Node._runtime_only
     def get_connected(
         self,
         include_self: bool = False,
     ) -> dict[Self, object]:
-        self._require_runtime()
         # TODO: Zig pathfinder for transitive connections
         # Currently returns direct connections only
         reachable = self._find_connected()
@@ -131,11 +131,11 @@ class ModuleInterface(Node):
             reachable.discard(self)
         return {iface: None for iface in reachable}
 
+    @Node._runtime_only
     def get_connected_nodes(
         self,
         include_self: bool = False,
     ) -> dict["ModuleInterface", object]:
-        self._require_runtime()
         return self.get_connected(include_self=include_self)
 
     @Node._runtime_only

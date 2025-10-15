@@ -204,6 +204,9 @@ class Node:
         COLLECTION = "collection"
         RUNTIME = "runtime"
 
+    class _LifecycleException(RuntimeError):
+        pass
+
     _mro: list[type] = []
     _mro_ids: set[int] = set()
 
@@ -234,25 +237,10 @@ class Node:
             stage is self._LifecycleStage.COLLECTION
             and current is self._LifecycleStage.RUNTIME
         ):
-            raise RuntimeError(
+            raise self._LifecycleException(
                 f"Cannot rewind lifecycle from {current.value} to {stage.value}"
             )
         setattr(root, "_lifecycle_stage", stage)
-
-    def _ensure_lifecycle_at_least(self, stage: "_LifecycleStage") -> None:
-        current = self._get_root_lifecycle_stage()
-        if stage is self._LifecycleStage.RUNTIME:
-            if current is not self._LifecycleStage.RUNTIME:
-                raise RuntimeError(
-                    f"Lifecycle stage '{stage.value}' required, "
-                    f"current stage is '{current.value}'."
-                )
-        else:  # collection
-            if current is not self._LifecycleStage.COLLECTION:
-                raise RuntimeError(
-                    f"Lifecycle stage '{stage.value}' required, "
-                    f"current stage is '{current.value}'."
-                )
 
     def get_lifecycle_stage(self) -> str:
         """
@@ -267,19 +255,17 @@ class Node:
     def _require_collection(self) -> None:
         """Ensure we are still in the collection phase (no bindings yet)."""
         if self._get_root_lifecycle_stage() is not self._LifecycleStage.COLLECTION:
-            raise RuntimeError(
+            raise self._LifecycleException(
                 "Operation only permitted before instance binding; "
-                f"current lifecycle is '{self.get_lifecycle_stage()}'."
+                f"current lifecycle stage is '{self.get_lifecycle_stage()}'."
             )
 
     def _require_runtime(self) -> None:
         """Ensure the instance graph has been bound and runtime hooks executed."""
         if self._get_root_lifecycle_stage() is not self._LifecycleStage.RUNTIME:
-            raise RuntimeError(
+            raise self._LifecycleException(
                 "Operation requires runtime graph access; "
-                f"current lifecycle is '{self.get_lifecycle_stage()}'. "
-                "Call create_typegraph(), instantiate(), "
-                "then _bind_instance_hierarchy()/_execute_runtime_functions()."
+                f"current lifecycle stage is '{self.get_lifecycle_stage()}'. "
             )
 
     @staticmethod
@@ -716,15 +702,6 @@ class Node:
     def get_root_id(self) -> str:
         return self._root_id
 
-    def _ensure_typegraph_built(self) -> None:
-        """Verify that create_typegraph() has been called on this module tree."""
-        if self._get_root_lifecycle_stage() is self._LifecycleStage.COLLECTION:
-            root = self._get_root()
-            raise RuntimeError(
-                f"TypeGraph has not been built for `{type(root).__qualname__}`. "
-                "Call root.create_typegraph() before using graph-dependent operations."
-            )
-
     @_runtime_only
     def _ensure_instance_bound(self) -> BoundNode:
         """Get this node's bound instance node."""
@@ -759,7 +736,6 @@ class Node:
 
         is_root = self.get_parent() is None
         if is_root:
-            self._ensure_typegraph_built()
             # Initialize reverse mapping on root
             setattr(self, "_typegraph_instance_to_python", {})
 
