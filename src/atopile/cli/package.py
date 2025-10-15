@@ -1,5 +1,8 @@
 import logging
 import os
+import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Iterator
 
 import typer
@@ -578,3 +581,84 @@ def verify(
                     validator(config)
 
     logger.info("Package verification successful! 🎉")
+
+
+@package_app.command()
+@capture("cli:package_report_status_start", "cli:package_report_status_end")
+def report_status(
+    success: Annotated[
+        bool,
+        typer.Argument(
+            help="Report the build status as successful.",
+        ),
+    ],
+    package_address: Annotated[
+        str | None,
+        typer.Argument(
+            help="Path/to/project or address (file.ato:Module) of the package "
+            "you want to report status for.",
+        ),
+    ] = None,
+    skip_auth: Annotated[
+        bool,
+        typer.Option("--skip-auth", "-s", help="Skip authentication."),
+    ] = False,
+):
+    """
+    Report the build status of a package to the package registry.
+    """
+    from atopile.config import config
+
+    config.apply_options(entry=package_address)
+
+    if config.project.package is None:
+        raise UserException(
+            "Project has no package configuration. "
+            "Please add a `package` section to your `ato.yaml` file."
+        )
+    if config.project.package.version is None:
+        raise UserException(
+            "Project has no package version. "
+            "Please add a `version` section to your `ato.yaml` file."
+        )
+
+    try:
+        git_hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=Path(os.path.dirname(__file__)).parent.parent.parent,
+            )
+            .decode("ascii")
+            .strip()
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.warning("Could not get git hash, using 'unknown'")
+        git_hash = "unknown"
+
+    import platform
+
+    builder_metadata = {
+        "System": platform.system(),
+        "Node": platform.node(),
+        "Release": platform.release(),
+        "Version": platform.version(),
+        "Machine": platform.machine(),
+        "Processor": platform.processor(),
+        "Python version": platform.python_version(),
+    }
+
+    from atopile.version import get_installed_atopile_version
+    from faebryk.libs.backend.packages.api import PackagesAPIClient
+
+    api = PackagesAPIClient()
+    api.report_build_status(
+        identifier=config.project.package.identifier,
+        version=config.project.package.version,
+        atopile_release=str(get_installed_atopile_version()),
+        atopile_githash=git_hash,
+        builder_metadata=builder_metadata,
+        is_building=success,
+        skip_auth=skip_auth,
+        built_at=datetime.now(),
+    )
+    print(f"Reported build status as {success}")
