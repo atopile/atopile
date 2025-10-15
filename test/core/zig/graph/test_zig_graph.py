@@ -145,9 +145,10 @@ def test_typegraph_instantiate():
     from faebryk.core.zig.gen.faebryk.composition import EdgeComposition  # type: ignore
     from faebryk.core.zig.gen.faebryk.pointer import EdgePointer  # type: ignore
     from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import BoundEdge  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView  # type: ignore
 
-    type_graph = TypeGraph.create()
+    g = GraphView.create()
+    type_graph = TypeGraph.create(g=g)
 
     Electrical = type_graph.add_type(identifier="Electrical")
     Resistor = type_graph.add_type(identifier="Resistor")
