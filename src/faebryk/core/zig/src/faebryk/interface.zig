@@ -1,13 +1,16 @@
 const graph = @import("graph").graph;
 const std = @import("std");
 const visitor = @import("graph").visitor;
+const PathFinder = @import("pathfinder.zig").PathFinder;
 
-// pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
-
-const NodeReference = graph.NodeReference;
-const EdgeReference = graph.EdgeReference;
-const Edge = graph.Edge;
 const Node = graph.Node;
+const NodeReference = graph.NodeReference;
+const BoundNodeReference = graph.BoundNodeReference;
+
+const Edge = graph.Edge;
+const EdgeReference = graph.EdgeReference;
+const BoundEdgeReference = graph.BoundEdgeReference;
+
 const GraphView = graph.GraphView;
 const str = graph.str;
 
@@ -93,6 +96,19 @@ pub const EdgeInterfaceConnection = struct {
         return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
     }
 
+    pub fn is_connected_to(source: BoundNodeReference, target: BoundNodeReference) !bool {
+        var pf = PathFinder.init(source.g.allocator);
+        defer pf.deinit();
+        const paths = try pf.find_paths(source, &[_]graph.BoundNodeReference{target});
+        for (paths) |path| {
+            if (Node.is_same(path.get_last_node().?.node, target.node)) {
+                std.debug.print("true\n", .{});
+                return true;
+            }
+        }
+        std.debug.print("false\n", .{});
+        return false;
+    }
     // visit all paths for a given node (pathfinder)
 
     // "shallow" links
@@ -213,4 +229,20 @@ test "connect vs connect_shallow" {
     try std.testing.expect(Node.is_same(e_connect.target, n2));
     try std.testing.expect(Node.is_same(e_shallow.source, n3));
     try std.testing.expect(Node.is_same(e_shallow.target, n4));
+}
+
+test "self_connect" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = try g.insert_node(try Node.init(g.allocator));
+
+    // expect not connected
+    const result1 = try EdgeInterfaceConnection.is_connected_to(bn1, bn2);
+    try std.testing.expect(result1 == false);
+
+    // expect connected
+    const result2 = try EdgeInterfaceConnection.is_connected_to(bn1, bn1);
+    try std.testing.expect(result2 == true);
 }

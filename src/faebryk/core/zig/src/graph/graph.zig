@@ -434,7 +434,7 @@ pub const Path = struct {
 
     pub fn get_other_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
         if (self.edges.items.len == 0) {
-            return null;
+            return bn;
         }
         const last_edge = self.edges.items[self.edges.items.len - 1];
 
@@ -549,6 +549,10 @@ pub const BFSPath = struct {
         self.assert_consistent();
         self.deinit();
         allocator.destroy(self);
+    }
+
+    pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
+        return self.path.get_other_node(self.start);
     }
 };
 
@@ -826,9 +830,22 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .ERROR = error.NoEdges };
         };
 
-        // Add initial edges to open path queue
+        // Add initial empty path to queue (manually create a copy)
         var empty_base = BFSPath.init(start_node);
-        defer empty_base.deinit();
+
+        const empty_path_copy = start_node.g.allocator.create(BFSPath) catch |err| {
+            return visitor.VisitResult(T){ .ERROR = err };
+        };
+        empty_path_copy.* = BFSPath{
+            .path = Path.init(start_node.g),
+            .start = start_node,
+            .filtered = false,
+            .stop = false,
+        };
+
+        open_path_queue.writeItem(empty_path_copy) catch |err| {
+            return visitor.VisitResult(T){ .ERROR = err };
+        };
 
         for (initial_edges.items) |edge| {
             const path = BFSPath.cloneAndExtend(&empty_base, edge) catch |err| {
@@ -838,6 +855,8 @@ pub const GraphView = struct {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
         }
+
+        std.debug.print("OPEN PATH QUEUE - len: {}\n", .{open_path_queue.count});
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
