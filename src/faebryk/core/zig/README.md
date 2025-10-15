@@ -147,9 +147,79 @@ if (keep_path) {
 - `ArrayList(*Path)` — Paths scattered in heap → pointer chasing, worse cache
 - For hot paths like BFS, prefer value storage even with shallow copy overhead (~24 byte copies)
 
+## Graph Pathfinder
+
+The pathfinder (`src/faebryk/core/zig/src/faebryk/pathfinder.zig`) implements a filtered BFS algorithm to find valid connection paths through the component hierarchy graph.
+
+### Graph Structure
+
+The graph consists of two edge types:
+- **`EdgeComposition`** — Parent/child hierarchy relationships (e.g., a Module contains Interfaces)
+- **`EdgeInterfaceConnection`** — Actual electrical/logical connections between interfaces
+
+Each composition edge has a direction:
+- **UP** — Traversing from child to parent
+- **DOWN** — Traversing from parent to child
+- **HORIZONTAL** — Interface connections (same hierarchy level)
+
+### Path Filters
+
+The pathfinder runs a series of filters on each path during BFS traversal:
+
+1. **`count_paths`** — Statistics and safety limits (stops at 1M paths)
+2. **`filter_only_end_nodes`** — If target nodes specified, only keep paths ending at targets
+3. **`filter_path_by_edge_type`** — Only allow `EdgeComposition` and `EdgeInterfaceConnection` edges
+4. **`filter_path_by_node_type`** — (Future) type compatibility checking
+5. **`filter_siblings`** — Reject paths with child→parent→child through same parent (sibling jumps)
+6. **`filter_heirarchy_stack`** — **The critical filter** ensuring valid hierarchy traversal
+
+### Hierarchy Stack Filter (Key Logic)
+
+This filter maintains a stack of hierarchy elements to enforce two rules:
+
+#### Rule 1: Balanced hierarchy traversal
+Paths must return to the same hierarchy level as the start node. The stack tracks each UP/DOWN traversal:
+- **DOWN movement** (parent→child): Push element onto stack
+- **UP movement** (child→parent) that matches the top: Pop from stack
+- **Valid path**: Stack is empty at the end (returned to start level)
+
+#### Rule 2: No descent before ascent
+**Paths cannot descend into children from the starting hierarchy level.**
+
+When the stack is empty (we're at the starting level) and we encounter a DOWN edge:
+→ **Reject the path immediately**
+
+**Why this matters:**
+
+```
+Parent (EP_1)
+  ├─ Child (LV_1)  
+  └─ Child (HV_1)
+
+AnotherParent (EP_2)
+  ├─ Child (LV_2)
+  └─ Child (HV_2)
+```
+
+Without Rule 2:
+- ❌ `EP_1 → LV_1` would be valid (direct parent-to-child)
+- ❌ `LV_1 → EP_1 → LV_2` would have balanced stack but wrong semantics
+
+With Rule 2:
+- ✅ `EP_1 → EP_1` (self-connection, empty path)
+- ✅ `EP_1 → EP_2` (horizontal connection)
+- ✅ `LV_1 → EP_1 → EP_2 → LV_2` (UP then DOWN, valid connection through hierarchy)
+- ✅ `HV_1 → EP_1 → EP_2 → HV_2` (children connect via their parents)
+- ❌ `EP_1 → LV_1` (DOWN from start, rejected)
+- ❌ `LV_1 → LV_2` if only connected via `EP_1 → EP_2` (requires UP first)
+
+**The insight:** Valid connections must go "up-then-across-then-down" through the hierarchy. Starting with a descent means you're trying to connect to your own children without an actual interface connection, which should be rejected.
+
+This elegantly prevents direct connections through composition edges while allowing legitimate hierarchical connections where children connect via their parents.
+
 ## Relation to Python fileformats
 
-- `src/faebryk/libs/kicad/fileformats.py` defines Python dataclasses for KiCad JSON artifacts (e.g., DRC reports, project files). The Zig layer targets KiCad’s S‑expression text formats and is accessed from Python via `faebryk.core.zig`.
+- `src/faebryk/libs/kicad/fileformats.py` defines Python dataclasses for KiCad JSON artifacts (e.g., DRC reports, project files). The Zig layer targets KiCad's S‑expression text formats and is accessed from Python via `faebryk.core.zig`.
 
 ## Developing and tests
 
