@@ -33,9 +33,11 @@ def renderer(n: BoundNode) -> str:
     type_name = get_type_name(n) or type(n.node).__name__
 
     text = truncate_text(get_source_text(n) or "")
-    attrs = [f"{k}={truncate_text(str(v))}" for k, v in n.node().get_attrs().items()]
+    attrs = n.node().get_attrs()
+    attrs.pop("uuid")
+    attrs_text = [f"{k}={truncate_text(str(v))}" for k, v in attrs.items()]
 
-    return f"{type_name}({', '.join(attrs)}): `{text}`"
+    return f"{type_name}({', '.join(attrs_text)}): `{text}`"
 
 
 if __name__ == "__main__":
