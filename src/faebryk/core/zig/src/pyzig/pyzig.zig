@@ -272,18 +272,39 @@ pub fn parse_kwargs(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObj
             if (comptime is_pyobject(field.type)) {
                 @field(data, field.name) = v;
             } else {
-                const meta = @field(T, "fields_meta");
-                const inner_type = @typeInfo(field.type).pointer.child;
-                const meta_name = comptime util.shortTypeName(inner_type);
-                const arg: ARG = @field(meta, field.name);
-                const wrapper_type = arg.Wrapper;
-                const storage = arg.storage;
-                const obj = castWrapper(meta_name, storage, wrapper_type, v);
-                if (obj == null) {
-                    py.PyErr_SetString(py.PyExc_TypeError, "Invalid object");
-                    return null;
+                const field_type_info = @typeInfo(field.type);
+                if (field_type_info == .optional and @typeInfo(field_type_info.optional.child) == .pointer) {
+                    if (v == py.Py_None()) {
+                        @field(data, field.name) = null;
+                    } else {
+                        const meta = @field(T, "fields_meta");
+                        const ptr_type = field_type_info.optional.child;
+                        const inner_type = @typeInfo(ptr_type).pointer.child;
+                        const meta_name = comptime util.shortTypeName(inner_type);
+                        const arg: ARG = @field(meta, field.name);
+                        const wrapper_type = arg.Wrapper;
+                        const storage = arg.storage;
+                        const obj = castWrapper(meta_name, storage, wrapper_type, v);
+                        if (obj == null) {
+                            py.PyErr_SetString(py.PyExc_TypeError, "Invalid object");
+                            return null;
+                        }
+                        @field(data, field.name) = obj.?.data;
+                    }
+                } else {
+                    const meta = @field(T, "fields_meta");
+                    const inner_type = @typeInfo(field.type).pointer.child;
+                    const meta_name = comptime util.shortTypeName(inner_type);
+                    const arg: ARG = @field(meta, field.name);
+                    const wrapper_type = arg.Wrapper;
+                    const storage = arg.storage;
+                    const obj = castWrapper(meta_name, storage, wrapper_type, v);
+                    if (obj == null) {
+                        py.PyErr_SetString(py.PyExc_TypeError, "Invalid object");
+                        return null;
+                    }
+                    @field(data, field.name) = obj.?.data;
                 }
-                @field(data, field.name) = obj.?.data;
             }
         } else {
             if (@typeInfo(field.type) == .optional) {
@@ -307,6 +328,10 @@ pub fn wrap_bool(value: ?bool) ?*py.PyObject {
     const out = if (value == null) py.Py_None() else if (value.?) py.Py_True() else py.Py_False();
     py.Py_INCREF(out);
     return out;
+}
+
+pub fn unwrap_bool(obj: ?*py.PyObject) bool {
+    return py.PyObject_IsTrue(obj) == 1;
 }
 
 pub fn wrap_str(value: ?[]const u8) ?*py.PyObject {

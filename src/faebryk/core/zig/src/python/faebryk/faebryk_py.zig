@@ -286,6 +286,36 @@ fn wrap_edge_composition_get_tid() type {
     };
 }
 
+fn wrap_edge_composition_get_child_by_identifier() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_child_by_identifier",
+            .doc = "Get the child of the EdgeComposition by identifier",
+            .args_def = struct {
+                node: *graph.BoundNodeReference,
+                child_identifier: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.child_identifier) orelse return null;
+
+            const child = faebryk.composition.EdgeComposition.get_child_by_identifier(kwarg_obj.node.*, identifier);
+            if (child) |_child| {
+                return graph_py.makeBoundNodePyObject(_child);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
 fn wrap_edge_composition(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_composition_create(),
@@ -295,6 +325,7 @@ fn wrap_edge_composition(root: *py.PyObject) void {
         wrap_edge_composition_add_child(),
         wrap_edge_composition_get_name(),
         wrap_edge_composition_get_tid(),
+        wrap_edge_composition_get_child_by_identifier(),
     };
     bind.wrap_namespace_struct(root, faebryk.composition.EdgeComposition, extra_methods);
     edge_composition_type = type_registry.getRegisteredTypeObject("EdgeComposition");
@@ -1098,7 +1129,7 @@ fn wrap_typegraph_add_make_child() type {
             .doc = "Create a MakeChild node referencing the provided type",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
-                child_type_node: *graph.BoundNodeReference,
+                child_type_node: ?*graph.BoundNodeReference = null,
                 identifier: *py.PyObject,
 
                 pub const fields_meta = .{
@@ -1114,12 +1145,12 @@ fn wrap_typegraph_add_make_child() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
-            const child_type = kwarg_obj.child_type_node;
+            const resolved_child_type = kwarg_obj.child_type_node orelse kwarg_obj.type_node;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
                 kwarg_obj.type_node.*,
-                child_type.*,
+                resolved_child_type.*,
                 identifier,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
@@ -1131,6 +1162,83 @@ fn wrap_typegraph_add_make_child() type {
     };
 }
 
+fn _unwrap_literal(value_obj: *py.PyObject) !graph.Literal {
+    if (value_obj == py.Py_None()) {
+        return error.UnsupportedValue;
+    }
+
+    if (value_obj == py.Py_True()) {
+        return graph.Literal{ .Bool = true };
+    }
+    if (value_obj == py.Py_False()) {
+        return graph.Literal{ .Bool = false };
+    }
+    py.PyErr_Clear();
+
+    if (py.PyUnicode_AsUTF8(value_obj) != null) {
+        const str = bind.unwrap_str_copy(value_obj) orelse return error.UnsupportedValue;
+        return graph.Literal{ .String = str };
+    }
+    py.PyErr_Clear();
+
+    const float_value = py.PyFloat_AsDouble(value_obj);
+    if (py.PyErr_Occurred() == null) {
+        return graph.Literal{ .Float = float_value };
+    }
+    py.PyErr_Clear();
+
+    const int_value = py.PyLong_AsLongLong(value_obj);
+    if (py.PyErr_Occurred() == null) {
+        return graph.Literal{ .Int = int_value };
+    }
+    py.PyErr_Clear();
+
+    return error.UnsupportedValue;
+}
+
+fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator) !?graph.DynamicAttributes {
+    if (dict_obj == py.Py_None()) {
+        return null;
+    }
+
+    //if (py.PyDict_Check(dict_obj) != 1) {
+    //    return error.UnsupportedValue;
+    //}
+
+    var attrs = graph.DynamicAttributes.init(allocator);
+    var success = false;
+    defer if (!success) attrs.deinit();
+
+    var pos: isize = 0;
+    var key_obj: ?*py.PyObject = null;
+    var value_obj: ?*py.PyObject = null;
+
+    while (py.PyDict_Next(dict_obj, &pos, &key_obj, &value_obj) == 1) {
+        if (key_obj == null or value_obj == null) {
+            continue;
+        }
+        const key = bind.unwrap_str_copy(key_obj) orelse return null;
+
+        const literal = _unwrap_literal(value_obj.?) catch {
+            allocator.free(key);
+            py.PyErr_SetString(py.PyExc_TypeError, "edge_attributes values must be bool, int, float, or str");
+            return null;
+        };
+        attrs.values.put(key, literal) catch {
+            allocator.free(key);
+            py.PyErr_SetString(py.PyExc_MemoryError, "failed to store edge attribute");
+            return null;
+        };
+    }
+
+    if (py.PyErr_Occurred() != null) {
+        return null;
+    }
+
+    success = true;
+    return attrs;
+}
+
 fn wrap_typegraph_add_make_link() type {
     return struct {
         pub const descr = method_descr{
@@ -1140,7 +1248,10 @@ fn wrap_typegraph_add_make_link() type {
                 type_node: *graph.BoundNodeReference,
                 lhs_reference_node: *graph.Node,
                 rhs_reference_node: *graph.Node,
-                link_type: *py.PyObject,
+                edge_type: *py.PyObject,
+                edge_directional: *py.PyObject,
+                edge_name: *py.PyObject,
+                edge_attributes: *py.PyObject,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -1155,25 +1266,41 @@ fn wrap_typegraph_add_make_link() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const link_type_raw = py.PyLong_AsLongLong(kwarg_obj.link_type);
+            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
             if (py.PyErr_Occurred() != null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "link_type must be an integer");
+                py.PyErr_SetString(py.PyExc_TypeError, "edge_type must be an integer");
                 return null;
             }
-            const link_type: graph.Edge.EdgeType = @intCast(link_type_raw);
 
-            const bnode = faebryk.typegraph.TypeGraph.add_make_link(
+            const type_node = kwarg_obj.type_node.*;
+            const edge_type: graph.Edge.EdgeType = @intCast(edge_type_raw);
+            const edge_directional: ?bool = if (kwarg_obj.edge_directional == py.Py_None()) null else bind.unwrap_bool(kwarg_obj.edge_directional);
+            const edge_name: ?[]u8 = if (kwarg_obj.edge_name == py.Py_None()) null else bind.unwrap_str_copy(kwarg_obj.edge_name) orelse return null;
+
+            const allocator = type_node.g.allocator;
+
+            var dynamic = _unwrap_literal_str_dict(kwarg_obj.edge_attributes, allocator) catch return null;
+            defer if (dynamic != null) dynamic.?.deinit();
+
+            const edge_attributes = faebryk.typegraph.TypeGraph.MakeLinkNode.Attributes.EdgeCreationAttributes{
+                .edge_type = edge_type,
+                .directional = edge_directional,
+                .name = edge_name,
+                .dynamic = dynamic,
+            };
+
+            const make_link = faebryk.typegraph.TypeGraph.add_make_link(
                 wrapper.data,
-                kwarg_obj.type_node.*,
+                type_node,
                 kwarg_obj.lhs_reference_node,
                 kwarg_obj.rhs_reference_node,
-                link_type,
+                edge_attributes,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_link failed");
                 return null;
             };
 
-            return graph_py.makeBoundNodePyObject(bnode);
+            return graph_py.makeBoundNodePyObject(make_link);
         }
     };
 }
@@ -1211,7 +1338,12 @@ fn wrap_typegraph_reference_create() type {
             .name = "add_reference",
             .doc = "Create a Reference node chain from a sequence of child identifiers",
             .args_def = struct {
+                type_node: *graph.BoundNodeReference,
                 path: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
             },
             .static = false,
         };

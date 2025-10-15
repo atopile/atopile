@@ -107,19 +107,27 @@ pub const Attribute = struct {
 pub const DynamicAttributes = struct {
     values: std.StringHashMap(Literal),
 
-    fn init(allocator: std.mem.Allocator) @This() {
+    pub fn init(allocator: std.mem.Allocator) @This() {
         return .{
             .values = std.StringHashMap(Literal).init(allocator),
         };
     }
 
-    fn deinit(self: *@This()) void {
+    pub fn deinit(self: *@This()) void {
         self.values.deinit();
     }
 
-    fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        for (self.values.keys()) |key| {
-            f(ctx, key, self.values.get(key).?, true);
+    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        var it = self.values.iterator();
+        while (it.next()) |e| {
+            f(ctx, e.key_ptr.*, e.value_ptr.*, true);
+        }
+    }
+
+    pub fn copy_into(self: *const @This(), other: *@This()) void {
+        var it = self.values.iterator();
+        while (it.next()) |e| {
+            other.values.put(e.key_ptr.*, e.value_ptr.*) catch unreachable;
         }
     }
 };
