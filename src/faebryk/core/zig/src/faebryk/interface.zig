@@ -97,19 +97,81 @@ pub const EdgeInterfaceConnection = struct {
         return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
     }
 
-    pub fn is_connected_to(source: BoundNodeReference, target: BoundNodeReference) !bool {
-        var pf = PathFinder.init(source.g.allocator);
-        defer pf.deinit();
+    // Find paths from source to target. Returns empty slice if not connected.
+    // Note: Caller is responsible for freeing the returned paths
+    pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) ![]graph.BFSPath {
+        var pf = PathFinder.init(allocator);
+        // Don't defer pf.deinit() - we're transferring ownership of the paths
+        errdefer pf.deinit();
+
         const paths = try pf.find_paths(source, &[_]graph.BoundNodeReference{target});
-        for (paths) |path| {
-            if (Node.is_same(path.get_last_node().?.node, target.node)) {
-                std.debug.print("true\n", .{});
-                return true;
-            }
+
+        // Transfer ownership by cloning the paths into a new array
+        var result = std.ArrayList(graph.BFSPath).init(allocator);
+        errdefer {
+            for (result.items) |*path| path.deinit();
+            result.deinit();
         }
-        std.debug.print("false\n", .{});
-        return false;
+
+        try result.ensureTotalCapacity(paths.len);
+        for (paths) |path| {
+            result.appendAssumeCapacity(path);
+        }
+
+        // Clear the pathfinder's list without freeing the paths (we transferred them)
+        if (pf.path_list) |*list| {
+            list.clearRetainingCapacity();
+            list.deinit();
+            pf.path_list = null;
+        }
+
+        // Clean up other pathfinder resources
+        if (pf.end_nodes) |*list| {
+            list.deinit();
+            pf.end_nodes = null;
+        }
+
+        return result.toOwnedSlice();
     }
+
+    // Get all nodes connected to the source node (without filtering by end nodes)
+    // Note: Caller is responsible for freeing the returned paths
+    pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference) ![]graph.BFSPath {
+        var pf = PathFinder.init(allocator);
+        // Don't defer pf.deinit() - we're transferring ownership of the paths
+        errdefer pf.deinit();
+
+        // Pass null for end_nodes to get all reachable paths
+        const paths = try pf.find_paths(source, null);
+
+        // Transfer ownership by cloning the paths into a new array
+        var result = std.ArrayList(graph.BFSPath).init(allocator);
+        errdefer {
+            for (result.items) |*path| path.deinit();
+            result.deinit();
+        }
+
+        try result.ensureTotalCapacity(paths.len);
+        for (paths) |path| {
+            result.appendAssumeCapacity(path);
+        }
+
+        // Clear the pathfinder's list without freeing the paths (we transferred them)
+        if (pf.path_list) |*list| {
+            list.clearRetainingCapacity();
+            list.deinit();
+            pf.path_list = null;
+        }
+
+        // Clean up other pathfinder resources
+        if (pf.end_nodes) |*list| {
+            list.deinit();
+            pf.end_nodes = null;
+        }
+
+        return result.toOwnedSlice();
+    }
+
     // visit all paths for a given node (pathfinder)
 
     // "shallow" links
@@ -240,12 +302,20 @@ test "self_connect" {
     const bn2 = try g.insert_node(try Node.init(g.allocator));
 
     // expect not connected
-    const result1 = try EdgeInterfaceConnection.is_connected_to(bn1, bn2);
-    try std.testing.expect(result1 == false);
+    const paths1 = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn2);
+    defer {
+        for (paths1) |*path| path.deinit();
+        std.testing.allocator.free(paths1);
+    }
+    try std.testing.expect(paths1.len == 0);
 
     // expect connected
-    const result2 = try EdgeInterfaceConnection.is_connected_to(bn1, bn1);
-    try std.testing.expect(result2 == true);
+    const paths2 = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn1);
+    defer {
+        for (paths2) |*path| path.deinit();
+        std.testing.allocator.free(paths2);
+    }
+    try std.testing.expect(paths2.len == 1);
 }
 
 test "is_connected_to" {
@@ -257,8 +327,12 @@ test "is_connected_to" {
     const be1 = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeInterfaceConnection.tid));
     _ = be1;
 
-    const result = try EdgeInterfaceConnection.is_connected_to(bn1, bn2);
-    try std.testing.expect(result == true);
+    const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn2);
+    defer {
+        for (paths) |*path| path.deinit();
+        std.testing.allocator.free(paths);
+    }
+    try std.testing.expect(paths.len == 1);
 }
 
 test "down_connect" {
@@ -289,20 +363,40 @@ test "down_connect" {
 
     _ = try g.insert_edge(try Edge.init(g.allocator, EP_1.node, EP_2.node, EdgeInterfaceConnection.tid));
 
-    const result = try EdgeInterfaceConnection.is_connected_to(EP_1, EP_2);
-    try std.testing.expect(result == true);
+    const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, EP_1, EP_2);
+    defer {
+        for (paths) |*path| path.deinit();
+        std.testing.allocator.free(paths);
+    }
+    try std.testing.expect(paths.len == 1);
 
-    const result_hv = try EdgeInterfaceConnection.is_connected_to(HV_1, HV_2);
-    try std.testing.expect(result_hv == true);
+    const paths_hv = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, HV_1, HV_2);
+    defer {
+        for (paths_hv) |*path| path.deinit();
+        std.testing.allocator.free(paths_hv);
+    }
+    try std.testing.expect(paths_hv.len == 1);
 
-    const result_lv = try EdgeInterfaceConnection.is_connected_to(LV_1, LV_2);
-    try std.testing.expect(result_lv == true);
+    const paths_lv = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, LV_1, LV_2);
+    defer {
+        for (paths_lv) |*path| path.deinit();
+        std.testing.allocator.free(paths_lv);
+    }
+    try std.testing.expect(paths_lv.len == 1);
 
-    const result_hv_lv = try EdgeInterfaceConnection.is_connected_to(HV_1, LV_2);
-    try std.testing.expect(result_hv_lv == false);
+    const paths_hv_lv = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, HV_1, LV_2);
+    defer {
+        for (paths_hv_lv) |*path| path.deinit();
+        std.testing.allocator.free(paths_hv_lv);
+    }
+    try std.testing.expect(paths_hv_lv.len == 0);
 
-    const result_lv_hv = try EdgeInterfaceConnection.is_connected_to(LV_1, HV_2);
-    try std.testing.expect(result_lv_hv == false);
+    const paths_lv_hv = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, LV_1, HV_2);
+    defer {
+        for (paths_lv_hv) |*path| path.deinit();
+        std.testing.allocator.free(paths_lv_hv);
+    }
+    try std.testing.expect(paths_lv_hv.len == 0);
 }
 
 test "chains_direct" {
@@ -316,8 +410,12 @@ test "chains_direct" {
     _ = try g.insert_edge(try Edge.init(g.allocator, M1.node, M2.node, EdgeInterfaceConnection.tid));
     _ = try g.insert_edge(try Edge.init(g.allocator, M2.node, M3.node, EdgeInterfaceConnection.tid));
 
-    const result = try EdgeInterfaceConnection.is_connected_to(M1, M3);
-    try std.testing.expect(result == true);
+    const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, M1, M3);
+    defer {
+        for (paths) |*path| path.deinit();
+        std.testing.allocator.free(paths);
+    }
+    try std.testing.expect(paths.len == 1);
 }
 
 test "loooooong_chain" {
@@ -389,5 +487,5 @@ test "loooooong_chain" {
         }
     }
 
-    try std.testing.expect(result == true);
+    try std.testing.expect(paths.len == 1);
 }

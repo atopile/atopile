@@ -537,9 +537,13 @@ pub const BFSPath = struct {
         new_path.* = BFSPath.init(base.start);
         errdefer new_path.destroy(g.allocator);
 
+        // Pre-allocate exact capacity needed to avoid reallocation
+        const new_len = base.path.edges.items.len + 1;
+        try new_path.path.edges.ensureTotalCapacity(new_len);
+
         // Extend with prior edges before adding the new edge.
-        try new_path.path.edges.appendSlice(base.path.edges.items);
-        try new_path.path.edges.append(edge);
+        new_path.path.edges.appendSliceAssumeCapacity(base.path.edges.items);
+        new_path.path.edges.appendAssumeCapacity(edge);
 
         return new_path;
     }
@@ -767,10 +771,12 @@ pub const GraphView = struct {
         ctx: *anyopaque,
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
-        // Initialize variables required for BFS
+        // Initialize variables required for BFS with reasonable initial capacity
         var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(g.allocator);
+        open_path_queue.ensureTotalCapacity(1024) catch {}; // Pre-allocate for 1024 paths in queue
         // Use HashMap for O(1) visited node checks
         var visited_nodes = NodeRefMap.T(void).init(g.allocator);
+        visited_nodes.ensureTotalCapacity(1024) catch {}; // Pre-allocate for 1024 visited nodes
 
         defer {
             while (open_path_queue.readItem()) |bfspath| {

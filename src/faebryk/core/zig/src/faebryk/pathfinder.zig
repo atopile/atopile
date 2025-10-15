@@ -86,8 +86,9 @@ pub const PathFinder = struct {
     ) ![]const BFSPath {
         self.deinit();
 
-        // Re-initialize lists
+        // Re-initialize lists with reasonable initial capacity
         self.path_list = std.ArrayList(BFSPath).init(self.allocator);
+        try self.path_list.?.ensureTotalCapacity(256); // Start with room for 256 paths
         self.end_nodes = std.ArrayList(BoundNodeReference).init(self.allocator);
 
         if (end_nodes) |nodes| {
@@ -141,12 +142,13 @@ pub const PathFinder = struct {
 
         // Filter says keep!
         if (!path.filtered) {
-            // Deep copy the path
+            // Deep copy the path - pre-allocate capacity to avoid reallocations
             var copied_path = BFSPath.init(path.start);
-            copied_path.path.edges.appendSlice(path.path.edges.items) catch |err| {
+            copied_path.path.edges.ensureTotalCapacity(path.path.edges.items.len) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
             };
+            copied_path.path.edges.appendSliceAssumeCapacity(path.path.edges.items);
             copied_path.filtered = path.filtered;
             copied_path.stop = path.stop;
 
@@ -207,6 +209,7 @@ pub const PathFinder = struct {
         func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
+        .{ .name = "filter_only_end_nodes", .func = Self.filter_only_end_nodes },
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
         .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
         .{ .name = "filter_siblings", .func = Self.filter_siblings },
@@ -223,7 +226,7 @@ pub const PathFinder = struct {
         }
 
         if (DEBUG) std.debug.print("path_counter: {}", .{self.path_counter});
-        if (self.path_counter > 1e6) {
+        if (self.path_counter > 1_000_000) {
             return visitor.VisitResult(void){ .STOP = {} };
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -259,6 +262,32 @@ pub const PathFinder = struct {
         // if (last_node.?.node.attributes.dynamic.values.get("node type") != first_node.?.node.attributes.dynamic.values.get("node type")) {
         //     path.filtered = true;
         // }
+        return visitor.VisitResult(void){ .CONTINUE = {} };
+    }
+
+    // Filter out paths that don't end at any of the target end nodes
+    pub fn filter_only_end_nodes(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+        // Only filter if end nodes are specified and the list is not empty
+        const end_nodes = self.end_nodes orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+        if (end_nodes.items.len == 0) {
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+
+        const path_end = path.path.get_other_node(path.start) orelse {
+            // Empty path or invalid - keep it
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        };
+
+        // Check if path ends at one of the target nodes
+        for (end_nodes.items) |end_node| {
+            if (Node.is_same(path_end.node, end_node.node)) {
+                // Path ends at target - keep it
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        }
+
+        // Path doesn't end at any target node - filter it out
+        path.filtered = true;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
