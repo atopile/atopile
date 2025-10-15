@@ -1129,7 +1129,7 @@ fn wrap_typegraph_add_make_child() type {
             .doc = "Create a MakeChild node referencing the provided type",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
-                child_type_node: ?*graph.BoundNodeReference = null,
+                child_type_node: *graph.BoundNodeReference,
                 identifier: *py.PyObject,
 
                 pub const fields_meta = .{
@@ -1145,7 +1145,7 @@ fn wrap_typegraph_add_make_child() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
-            const resolved_child_type = kwarg_obj.child_type_node orelse kwarg_obj.type_node;
+            const resolved_child_type = kwarg_obj.child_type_node;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
