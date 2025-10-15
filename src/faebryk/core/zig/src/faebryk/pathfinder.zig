@@ -222,12 +222,19 @@ pub const PathFinder = struct {
     // TODO this can be optimized, we don't really need to iterate through the entire edge list, just the first and last
     pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
-        for (path.path.edges.items) |edge| {
-            if (edge.attributes.edge_type != 1759242069) {
-                std.debug.print("{} != 1759242069", .{edge.attributes.uuid});
-                path.stop = true;
-                path.filtered = true;
+
+        const allowed_edge_types = comptime [_]Edge.EdgeType{
+            EdgeComposition.tid,
+            EdgeInterfaceConnection.tid,
+        };
+
+        edge_loop: for (path.path.edges.items) |edge| {
+            inline for (allowed_edge_types) |allowed| {
+                if (edge.attributes.edge_type == allowed) continue :edge_loop;
             }
+            path.stop = true;
+            path.filtered = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }

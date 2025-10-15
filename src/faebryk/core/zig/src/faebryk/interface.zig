@@ -2,6 +2,7 @@ const graph = @import("graph").graph;
 const std = @import("std");
 const visitor = @import("graph").visitor;
 const PathFinder = @import("pathfinder.zig").PathFinder;
+const EdgeComposition = @import("composition.zig").EdgeComposition;
 
 const Node = graph.Node;
 const NodeReference = graph.NodeReference;
@@ -258,4 +259,48 @@ test "is_connected_to" {
 
     const result = try EdgeInterfaceConnection.is_connected_to(bn1, bn2);
     try std.testing.expect(result == true);
+}
+
+test "down_connect" {
+    // P1 -->  P2
+    //  HV      HV
+    //  LV      LV
+
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const EP_1 = try g.insert_node(try Node.init(g.allocator));
+    const LV_1 = try g.insert_node(try Node.init(g.allocator));
+    LV_1.node.attributes.name = "LV";
+    const HV_1 = try g.insert_node(try Node.init(g.allocator));
+    HV_1.node.attributes.name = "HV";
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, EP_1.node, LV_1.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, EP_1.node, HV_1.node, EdgeComposition.tid));
+
+    const EP_2 = try g.insert_node(try Node.init(g.allocator));
+    const LV_2 = try g.insert_node(try Node.init(g.allocator));
+    LV_2.node.attributes.name = "LV";
+    const HV_2 = try g.insert_node(try Node.init(g.allocator));
+    HV_2.node.attributes.name = "HV";
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, EP_2.node, LV_2.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, EP_2.node, HV_2.node, EdgeComposition.tid));
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, EP_1.node, EP_2.node, EdgeInterfaceConnection.tid));
+
+    const result = try EdgeInterfaceConnection.is_connected_to(EP_1, EP_2);
+    try std.testing.expect(result == true);
+
+    const result_hv = try EdgeInterfaceConnection.is_connected_to(HV_1, HV_2);
+    try std.testing.expect(result_hv == true);
+
+    const result_lv = try EdgeInterfaceConnection.is_connected_to(LV_1, LV_2);
+    try std.testing.expect(result_lv == true);
+
+    const result_hv_lv = try EdgeInterfaceConnection.is_connected_to(HV_1, LV_2);
+    try std.testing.expect(result_hv_lv == false);
+
+    const result_lv_hv = try EdgeInterfaceConnection.is_connected_to(LV_1, HV_2);
+    try std.testing.expect(result_lv_hv == false);
 }
