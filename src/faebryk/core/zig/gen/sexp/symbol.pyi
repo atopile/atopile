@@ -15,11 +15,11 @@ type Allocator = Any
 
 class SymbolLib:
     version: int
-    generator: list[str]
+    generator: str
     symbols: list[Symbol]
 
     def __init__(
-        self, *, version: int, generator: list[str], symbols: list[Symbol]
+        self, *, version: int, generator: str, symbols: list[Symbol]
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
