@@ -186,7 +186,7 @@ class TypeGraphFunctions:
                 edge_name = EdgeComposition.get_name(edge=edge.edge())
 
                 # Skip implements_ edges
-                if edge_name.startswith("implements_"):
+                if isinstance(edge_name, str) and edge_name.startswith("implements_"):
                     continue
 
                 # Get child node to check for special attributes

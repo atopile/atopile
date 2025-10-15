@@ -163,9 +163,7 @@ class ModuleInterface(Node):
         raise NotImplementedError("TODO: Zig core migration")
 
     @staticmethod
-    def _group_into_buses[T: ModuleInterface](
-        mifs: Iterable[T],
-    ) -> dict[T, set[T]]:
+    def _group_into_buses[T: ModuleInterface](mifs: Iterable[T]) -> dict[T, set[T]]:
         items = list(mifs)
         to_check = set(items)
         buses: dict[T, set[T]] = {}
