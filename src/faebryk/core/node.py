@@ -1221,6 +1221,8 @@ class Node:
         return last_match
 
     class _TypeGraphBuilder:
+        """Collects Python tree structure and emits the corresponding TypeGraph."""
+
         def __init__(
             self,
             root: "Node",
@@ -1230,8 +1232,7 @@ class Node:
             self.root = root
             self._trait_cls = trait_cls
             self._module_interface_cls = module_interface_cls
-            self.graph_view = GraphView.create()
-            self.typegraph = TypeGraph.create(g=self.graph_view)
+            self.typegraph = TypeGraph.create(g=GraphView.create())
             self._type_nodes: dict[type[Node], BoundNode] = {}
             self._seen_make_children: set[tuple[type[Node], str, type[Node]]] = set()
             self._seen_connections: set[frozenset[int]] = set()
@@ -1239,10 +1240,7 @@ class Node:
 
         def build(self) -> tuple["TypeGraph", "BoundNode"]:
             self._ensure_not_built()
-            self._collect_nodes()
-            self._register_types()
-            self._register_children()
-            module_interfaces = self._find_module_interfaces()
+            module_interfaces = self._traverse_and_collect()
             self._validate_interface_closure(module_interfaces)
             self._register_links(module_interfaces)
             self._finalize(module_interfaces)
@@ -1250,33 +1248,29 @@ class Node:
             return self.typegraph, root_type
 
         def _ensure_not_built(self) -> None:
-            if getattr(self.root, "_typegraph_built", False):
+            if (
+                self.root._get_root_lifecycle_stage()
+                is not Node._LifecycleStage.COLLECTION
+            ):
                 raise RuntimeError(
                     "TypeGraph has already been built for this module tree; "
                     "rebuilding is not supported."
                 )
 
-        def _collect_nodes(self) -> None:
+        def _traverse_and_collect(self) -> list["ModuleInterface"]:
+            module_interfaces: list["ModuleInterface"] = []
+
             def visit(node: "Node") -> None:
                 self._all_nodes.append(node)
-                for _name, child in node._iter_direct_children():
+                self._ensure_type_node(type(node))
+                if isinstance(node, self._module_interface_cls):
+                    module_interfaces.append(node)
+                for identifier, child in node._iter_direct_children():
+                    self._ensure_make_child(type(node), identifier, type(child))
                     visit(child)
 
             visit(self.root)
-
-        def _register_types(self) -> None:
-            for node in self._all_nodes:
-                self._ensure_type_node(type(node))
-
-        def _register_children(self) -> None:
-            for node in self._all_nodes:
-                parent_cls = type(node)
-                for identifier, child in node._iter_direct_children():
-                    self._ensure_make_child(parent_cls, identifier, type(child))
-
-        def _find_module_interfaces(self) -> list["ModuleInterface"]:
-            cls = self._module_interface_cls
-            return [node for node in self._all_nodes if isinstance(node, cls)]
+            return module_interfaces
 
         def _validate_interface_closure(
             self, module_interfaces: Iterable["ModuleInterface"]
@@ -1337,12 +1331,6 @@ class Node:
 
             type_node = self.typegraph.add_type(identifier=cls._type_identifier())
             self._type_nodes[cls] = type_node
-
-            if issubclass(cls, self._trait_cls):
-                # TODO: once the Zig API finalises trait wiring we may need to capture
-                # the returned node or set up additional metadata here.
-                self.typegraph.add_trait()
-
             return type_node
 
         def _ensure_make_child(
