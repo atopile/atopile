@@ -369,9 +369,16 @@ test "no_connect_cases" {
     const bn1 = try g.insert_node(try Node.init(g.allocator));
     const bn2 = try g.insert_node(try Node.init(g.allocator));
     const bn3 = try g.insert_node(try Node.init(g.allocator));
+    const bn4 = try g.insert_node(try Node.init(g.allocator));
+    const bn5 = try g.insert_node(try Node.init(g.allocator));
+    const bn6 = try g.insert_node(try Node.init(g.allocator));
 
     _ = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeComposition.tid));
     _ = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn2.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn4.node, EdgeInterfaceConnection.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn5.node, bn4.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn6.node, bn1.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn6.node, bn3.node, EdgeComposition.tid));
 
     const parent_child = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn2);
     defer {
@@ -386,6 +393,13 @@ test "no_connect_cases" {
         std.testing.allocator.free(parent_child_parent);
     }
     try std.testing.expect(parent_child_parent.len == 0);
+
+    const p_c_p_s_p = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn5);
+    defer {
+        for (p_c_p_s_p) |*path| path.deinit();
+        std.testing.allocator.free(p_c_p_s_p);
+    }
+    try std.testing.expect(p_c_p_s_p.len == 0);
 }
 
 test "chains_direct" {

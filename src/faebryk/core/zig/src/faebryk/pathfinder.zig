@@ -20,29 +20,9 @@ const EdgeInterfaceConnection = interface_mod.EdgeInterfaceConnection;
 
 const DEBUG = false;
 
-const HeirarchyTraverseDirection = enum {
-    up,
-    down,
-    horizontal,
-};
-
-const HeirarchyElement = struct {
-    parent_type: u64,
-    child_type: u64,
-    child_name: []const u8,
-    traverse_direction: HeirarchyTraverseDirection,
-
-    pub fn match(self: *const @This(), other: *const @This()) bool {
-        // Match if same parent/child/name but opposite directions (up vs down)
-        const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
-            (self.traverse_direction == .down and other.traverse_direction == .up);
-
-        return self.parent_type == other.parent_type and
-            self.child_type == other.child_type and
-            std.mem.eql(u8, self.child_name, other.child_name) and
-            opposite_directions;
-    }
-};
+// Import hierarchy types from graph module
+const HeirarchyTraverseDirection = graph.HeirarchyTraverseDirection;
+const HeirarchyElement = graph.HeirarchyElement;
 
 pub const PathFinder = struct {
     const Self = @This();
@@ -318,10 +298,101 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // the goal here is everytime we cross a composition edge, we track what type of heirarchy it is and add it to a stack.
-    // then as we start going the oppisite hiearchy direction, we decrement the heiarchy stack
-    // the idea is to ensure start and end node are at the same level of heirarchy
-    // Additionally, reject paths that descend into children before ascending from the starting point
+    // Build the raw hierarchy element sequence from a path's composition edges
+    // Returns a list of hierarchy elements representing each UP/DOWN traversal
+    fn build_hierarchy_elements(
+        allocator: std.mem.Allocator,
+        path: *const BFSPath,
+    ) !std.ArrayList(HeirarchyElement) {
+        var elements = std.ArrayList(HeirarchyElement).init(allocator);
+        errdefer elements.deinit();
+
+        var current_node = path.start;
+
+        for (path.path.edges.items) |edge| {
+            if (edge.attributes.edge_type == EdgeComposition.tid) {
+                // Determine traversal direction based on current node position
+                const direction: HeirarchyTraverseDirection = if (Node.is_same(EdgeComposition.get_child_node(edge), current_node.node))
+                    HeirarchyTraverseDirection.up
+                else if (Node.is_same(EdgeComposition.get_parent_node(edge), current_node.node))
+                    HeirarchyTraverseDirection.down
+                else
+                    return error.InvalidEdge;
+
+                // Create and append hierarchy element
+                const elem = HeirarchyElement{
+                    .parent_type = EdgeComposition.get_parent_node(edge).attributes.fake_type orelse 0,
+                    .child_type = EdgeComposition.get_child_node(edge).attributes.fake_type orelse 0,
+                    .child_name = EdgeComposition.get_child_node(edge).attributes.name orelse "",
+                    .traverse_direction = direction,
+                };
+                try elements.append(elem);
+            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
+                // Interface connections don't create hierarchy elements
+            } else {
+                return error.InvalidEdgeType;
+            }
+
+            // Move to next node in path
+            current_node = current_node.g.bind(
+                edge.get_other_node(current_node.node) orelse return error.InvalidNode,
+            );
+        }
+
+        return elements;
+    }
+
+    // Fold and validate hierarchy elements using stack-based matching
+    // Returns true if path is valid (empty folded stack), false otherwise
+    // Also returns true (invalid) if Rule 2 violated (DOWN from starting level)
+    fn fold_and_validate_hierarchy(
+        allocator: std.mem.Allocator,
+        raw_elements: []const HeirarchyElement,
+    ) !struct { valid: bool, folded_stack: std.ArrayList(HeirarchyElement) } {
+        var folded_stack = std.ArrayList(HeirarchyElement).init(allocator);
+        errdefer folded_stack.deinit();
+
+        for (raw_elements) |elem| {
+            if (folded_stack.items.len > 0) {
+                // Stack has elements - check for matching pair to fold
+                const top = &folded_stack.items[folded_stack.items.len - 1];
+                if (top.match(&elem)) {
+                    // Matching UP/DOWN pair - fold by popping
+                    _ = folded_stack.pop();
+                } else {
+                    // No match - push to stack
+                    try folded_stack.append(elem);
+                }
+            } else {
+                // Stack is empty - we're at the starting hierarchy level
+                // Rule 2: Reject paths that descend (DOWN) from starting level
+                if (elem.traverse_direction == HeirarchyTraverseDirection.down) {
+                    // Invalid - descending without first ascending
+                    return .{ .valid = false, .folded_stack = folded_stack };
+                }
+                try folded_stack.append(elem);
+            }
+        }
+
+        if (DEBUG) {
+            for (folded_stack.items) |elem| {
+                std.debug.print("Folded stack - direction: {} child_name: {s} parent_type: {} child_type: {}\n", .{
+                    elem.traverse_direction,
+                    elem.child_name,
+                    elem.parent_type,
+                    elem.child_type,
+                });
+            }
+        }
+
+        // Rule 1: Valid paths must have empty folded stack (balanced hierarchy)
+        const valid = folded_stack.items.len == 0;
+        return .{ .valid = valid, .folded_stack = folded_stack };
+    }
+
+    // Main filter: validates that paths follow proper hierarchy traversal rules
+    // Rule 1: Paths must return to the same hierarchy level (balanced stack)
+    // Rule 2: Paths cannot descend into children from the starting level
     pub fn filter_heirarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
@@ -329,68 +400,22 @@ pub const PathFinder = struct {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        var hierarchy_stack = std.ArrayList(HeirarchyElement).init(path.path.g.allocator);
-        defer hierarchy_stack.deinit(); // Clean up the ArrayList
-        var current_node = path.start;
+        const allocator = path.path.g.allocator;
 
-        // generate stack
-        for (path.path.edges.items) |edge| {
-            if (edge.attributes.edge_type == EdgeComposition.tid) { // this is a heirarchy connection
-                var current_direction = HeirarchyTraverseDirection.horizontal;
+        // Step 1: Build raw hierarchy elements from path and store in BFSPath
+        path.hierarchy_elements_raw = build_hierarchy_elements(allocator, path) catch |err| {
+            return visitor.VisitResult(void){ .ERROR = err };
+        };
 
-                if (Node.is_same(EdgeComposition.get_child_node(edge), current_node.node)) {
-                    current_direction = HeirarchyTraverseDirection.up;
-                } else if (Node.is_same(EdgeComposition.get_parent_node(edge), current_node.node)) {
-                    current_direction = HeirarchyTraverseDirection.down;
-                } else {
-                    return visitor.VisitResult(void){ .ERROR = error.InvalidEdge };
-                }
+        // Step 2: Fold and validate the hierarchy, store folded stack in BFSPath
+        const result = fold_and_validate_hierarchy(allocator, path.hierarchy_elements_raw.?.items) catch |err| {
+            return visitor.VisitResult(void){ .ERROR = err };
+        };
+        path.hierarchy_stack_folded = result.folded_stack;
 
-                const elem = HeirarchyElement{
-                    .parent_type = EdgeComposition.get_parent_node(edge).attributes.fake_type orelse 0,
-                    .child_type = EdgeComposition.get_child_node(edge).attributes.fake_type orelse 0,
-                    .child_name = EdgeComposition.get_child_node(edge).attributes.name orelse "",
-                    .traverse_direction = current_direction,
-                };
-
-                if (hierarchy_stack.items.len > 0) {
-                    const top = &hierarchy_stack.items[hierarchy_stack.items.len - 1];
-                    if (top.match(&elem)) {
-                        _ = hierarchy_stack.pop();
-                    } else {
-                        hierarchy_stack.append(elem) catch |err| {
-                            return visitor.VisitResult(void){ .ERROR = err };
-                        };
-                    }
-                } else {
-                    // Stack is empty - we're at the starting hierarchy level
-                    // Reject paths that descend (go DOWN) from the starting point without first ascending
-                    if (current_direction == HeirarchyTraverseDirection.down) {
-                        path.filtered = true;
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
-                    }
-
-                    hierarchy_stack.append(elem) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
-                }
-            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {} else {
-                return visitor.VisitResult(void){ .ERROR = error.InvalidEdgeType };
-            }
-            current_node = current_node.g.bind(edge.get_other_node(current_node.node) orelse return visitor.VisitResult(void){ .ERROR = error.InvalidNode });
-        }
-
-        if (DEBUG) {
-            for (hierarchy_stack.items) |heirarchy_element| {
-                std.debug.print("direction: {} child_name: {s} parent_type: {} child_type: {}\n", .{ heirarchy_element.traverse_direction, heirarchy_element.child_name, heirarchy_element.parent_type, heirarchy_element.child_type });
-            }
-        }
-
-        // if stack is empty then path is valid
-        if (hierarchy_stack.items.len > 0) {
+        // Mark path as filtered if hierarchy validation failed
+        if (!result.valid) {
             path.filtered = true;
-        } else {
-            path.filtered = false;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -484,7 +509,6 @@ test "filter_heirarchy_stack" {
     const be3 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
     var path = Path.init(&g);
-    defer path.deinit(); // Clean up path second
 
     path.edges.append(be1.edge) catch @panic("OOM");
     path.edges.append(be3.edge) catch @panic("OOM");
@@ -496,6 +520,8 @@ test "filter_heirarchy_stack" {
         .filtered = false,
         .stop = false,
     };
+    defer bfs_path.deinit(); // This will clean up path and hierarchy stacks
+
     var pf = PathFinder.init(g.allocator);
     defer pf.deinit();
     _ = pf.filter_heirarchy_stack(&bfs_path);

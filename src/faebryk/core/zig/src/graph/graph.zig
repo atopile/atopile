@@ -503,11 +503,41 @@ pub const Path = struct {
     }
 };
 
+// Hierarchy traversal direction for composition edges
+pub const HeirarchyTraverseDirection = enum {
+    up, // Child to parent
+    down, // Parent to child
+    horizontal, // Same level (interface connections)
+};
+
+// Element representing a single hierarchy traversal step
+pub const HeirarchyElement = struct {
+    parent_type: u64,
+    child_type: u64,
+    child_name: []const u8,
+    traverse_direction: HeirarchyTraverseDirection,
+
+    pub fn match(self: *const @This(), other: *const @This()) bool {
+        // Match if same parent/child/name but opposite directions (up vs down)
+        const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
+            (self.traverse_direction == .down and other.traverse_direction == .up);
+
+        return self.parent_type == other.parent_type and
+            self.child_type == other.child_type and
+            std.mem.eql(u8, self.child_name, other.child_name) and
+            opposite_directions;
+    }
+};
+
 pub const BFSPath = struct {
     path: Path,
     start: BoundNodeReference,
     filtered: bool = false, // filter this path out
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
+
+    // Hierarchy analysis data (computed by pathfinder filters)
+    hierarchy_elements_raw: ?std.ArrayList(HeirarchyElement) = null, // Raw sequence before folding
+    hierarchy_stack_folded: ?std.ArrayList(HeirarchyElement) = null, // After folding matching pairs
 
     fn is_consistent(self: *const @This()) bool {
         return self.start.g == self.path.g;
@@ -551,6 +581,16 @@ pub const BFSPath = struct {
     pub fn deinit(self: *@This()) void {
         self.assert_consistent();
         self.path.deinit();
+
+        // Clean up hierarchy analysis data if present
+        if (self.hierarchy_elements_raw) |*raw| {
+            raw.deinit();
+            self.hierarchy_elements_raw = null;
+        }
+        if (self.hierarchy_stack_folded) |*folded| {
+            folded.deinit();
+            self.hierarchy_stack_folded = null;
+        }
     }
 
     pub fn destroy(self: *@This(), allocator: std.mem.Allocator) void {
