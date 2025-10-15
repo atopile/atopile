@@ -285,6 +285,7 @@ pub extern fn PyTuple_SetItem(tuple: ?*PyObject, pos: isize, item: ?*PyObject) c
 pub extern fn PyTuple_GetItem(tuple: ?*PyObject, pos: isize) ?*PyObject;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
 pub extern fn PyDict_New() ?*PyObject;
+pub extern fn PyDict_SetItem(dict: ?*PyObject, key: ?*PyObject, value: ?*PyObject) c_int;
 pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyDict_Next(dict: ?*PyObject, pos: *isize, key: *?*PyObject, value: *?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;

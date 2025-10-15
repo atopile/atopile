@@ -11,13 +11,7 @@ from collections.abc import Mapping
 from enum import StrEnum
 from typing import Literal, NotRequired, TypedDict, cast
 
-from atopile.compiler.graph_mock import (
-    BoundNode,
-    EdgeComposition,
-    LiteralArgs,
-    Node,
-    NodeHelpers,
-)
+from atopile.compiler.graph_mock import BoundNode, EdgeComposition, LiteralArgs, Node
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.source import EdgeSource
 from faebryk.core.zig.gen.graph.graph import GraphView
@@ -992,60 +986,3 @@ class TraitStmt:
         g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
     ) -> BoundNode:
         return _create_subgraph(g, type_cache, children, attrs, TraitStmt.type_attrs)
-
-
-# TODO: generic get_attrs in API
-def get_attrs(bound_node: BoundNode) -> dict[str, int | float | str | bool]:
-    attrs_class_by_type_name = {
-        "FileLocation": FileLocation.Attrs,
-        "SourceChunk": SourceChunk.Attrs,
-        "TypeRef": TypeRef.Attrs,
-        "ImportPath": ImportPath.Attrs,
-        "FieldRefPart": FieldRefPart.Attrs,
-        "FieldRef": FieldRef.Attrs,
-        "Number": Number.Attrs,
-        "Boolean": Boolean.Attrs,
-        "Unit": Unit.Attrs,
-        "Quantity": Quantity.Attrs,
-        "BinaryExpression": BinaryExpression.Attrs,
-        "GroupExpression": GroupExpression.Attrs,
-        "ComparisonClause": ComparisonClause.Attrs,
-        "ComparisonExpression": ComparisonExpression.Attrs,
-        "BilateralQuantity": BilateralQuantity.Attrs,
-        "BoundedQuantity": BoundedQuantity.Attrs,
-        "Scope": Scope.Attrs,
-        "File": File.Attrs,
-        "BlockDefinition": BlockDefinition.Attrs,
-        "Slice": Slice.Attrs,
-        "IterableFieldRef": IterableFieldRef.Attrs,
-        "FieldRefList": FieldRefList.Attrs,
-        "ForStmt": ForStmt.Attrs,
-        "PragmaStmt": PragmaStmt.Attrs,
-        "ImportStmt": ImportStmt.Attrs,
-        "TemplateArg": TemplateArg.Attrs,
-        "Template": Template.Attrs,
-        "Assignment": Assignment.Attrs,
-        "NewExpression": NewExpression.Attrs,
-        "ConnectStmt": ConnectStmt.Attrs,
-        "DirectedConnectStmt": DirectedConnectStmt.Attrs,
-        "RetypeStmt": RetypeStmt.Attrs,
-        "PinDeclaration": PinDeclaration.Attrs,
-        "SignaldefStmt": SignaldefStmt.Attrs,
-        "AssertStmt": AssertStmt.Attrs,
-        "DeclarationStmt": DeclarationStmt.Attrs,
-        "String": String.Attrs,
-        "StringStmt": StringStmt.Attrs,
-        "PassStmt": PassStmt.Attrs,
-        "TraitStmt": TraitStmt.Attrs,
-    }
-
-    attrs_class = attrs_class_by_type_name[NodeHelpers.get_type_name(bound_node)]
-    required_keys = attrs_class.__required_keys__
-    optional_keys = attrs_class.__optional_keys__
-
-    out = {k: bound_node.node().get_attr(key=k) for k in required_keys}
-    for k in optional_keys:
-        if v := bound_node.node().get_attr(key=k):
-            out[k] = v
-
-    return attrs_class(**out)

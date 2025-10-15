@@ -2,7 +2,6 @@ from pathlib import Path
 
 import atopile.compiler.ast_types as AST
 from atopile.compiler.ast_graph import build_file
-from atopile.compiler.ast_types import get_attrs
 from atopile.compiler.graph_mock import BoundNode, NodeHelpers
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.source import EdgeSource
@@ -34,7 +33,7 @@ def renderer(n: BoundNode) -> str:
     type_name = get_type_name(n) or type(n.node).__name__
 
     text = truncate_text(get_source_text(n) or "")
-    attrs = [f"{k}={truncate_text(str(v))}" for k, v in get_attrs(n).items()]
+    attrs = [f"{k}={truncate_text(str(v))}" for k, v in n.node().get_attrs().items()]
 
     return f"{type_name}({', '.join(attrs)}): `{text}`"
 
