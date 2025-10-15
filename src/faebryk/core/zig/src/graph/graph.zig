@@ -2,6 +2,8 @@ const std = @import("std");
 pub const str = []const u8;
 const visitor = @import("visitor.zig");
 
+const DEBUG = false;
+
 pub const NodeRefMap = struct {
     pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
         return Node.is_same(a, b);
@@ -425,11 +427,13 @@ pub const Path = struct {
     }
 
     pub fn print_path(self: *const @This()) void {
-        std.debug.print("PATH - len: {} - ", .{self.edges.items.len});
-        for (self.edges.items) |edge| {
-            std.debug.print("e{}->", .{edge.attributes.uuid});
+        if (DEBUG) {
+            std.debug.print("PATH - len: {} - ", .{self.edges.items.len});
+            for (self.edges.items) |edge| {
+                std.debug.print("e{}->", .{edge.attributes.uuid});
+            }
+            std.debug.print("\n", .{});
         }
-        std.debug.print("\n", .{});
     }
 
     pub fn get_other_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
@@ -791,7 +795,7 @@ pub const GraphView = struct {
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                std.debug.print("e-{} ", .{edge.edge.attributes.uuid});
+                if (DEBUG) std.debug.print("e-{} ", .{edge.edge.attributes.uuid});
 
                 // Check if other node has been visited
                 const other_node = edge.edge.get_other_node(self.start_node.node);
@@ -799,12 +803,12 @@ pub const GraphView = struct {
 
                 // If visited, exit edge visitor and continue with BFS
                 if (other_node_visited) {
-                    std.debug.print("ignored, already visited n-{}\n", .{other_node.?.attributes.uuid});
+                    if (DEBUG) std.debug.print("ignored, already visited n-{}\n", .{other_node.?.attributes.uuid});
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
                 // If not visited, create a new path and append it to the open path queue
                 else {
-                    std.debug.print("added\n", .{});
+                    if (DEBUG) std.debug.print("added\n", .{});
                     const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
@@ -855,12 +859,14 @@ pub const GraphView = struct {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
 
-            std.debug.print("PATH - len: {} - ", .{path.path.edges.items.len});
-            std.debug.print("n{}->", .{start_node.node.attributes.uuid});
-            for (path.path.edges.items) |edge| {
-                std.debug.print("e{}->", .{edge.attributes.uuid});
+            if (DEBUG) {
+                std.debug.print("PATH - len: {} - ", .{path.path.edges.items.len});
+                std.debug.print("n{}->", .{start_node.node.attributes.uuid});
+                for (path.path.edges.items) |edge| {
+                    std.debug.print("e{}->", .{edge.attributes.uuid});
+                }
+                std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
             }
-            std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
 
             // Call visitor - visitor can modify the path
             const bfs_visitor_result = f(ctx, path);
@@ -887,7 +893,7 @@ pub const GraphView = struct {
 
             if (!path.stop) {
                 // Use edge visitor to extend this path and create new paths for the queue
-                std.debug.print("EDGE VISITOR - Visiting edges from n-{}\n", .{node_at_path_end.node.attributes.uuid});
+                if (DEBUG) std.debug.print("EDGE VISITOR - Visiting edges from n-{}\n", .{node_at_path_end.node.attributes.uuid});
                 var edge_visitor = EdgeVisitor{
                     .start_node = node_at_path_end,
                     .visited_nodes = &visited_nodes,
@@ -903,11 +909,11 @@ pub const GraphView = struct {
                     else => {},
                 }
             } else {
-                std.debug.print("PATH - stopped\n", .{});
+                if (DEBUG) std.debug.print("PATH - stopped\n", .{});
             }
         }
 
-        std.debug.print("STOP BFS!!! - Exhausted\n", .{});
+        if (DEBUG) std.debug.print("STOP BFS!!! - Exhausted\n", .{});
         return visitor.VisitResult(T){ .EXHAUSTED = {} };
     }
 };

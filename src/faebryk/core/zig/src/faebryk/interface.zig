@@ -304,3 +304,90 @@ test "down_connect" {
     const result_lv_hv = try EdgeInterfaceConnection.is_connected_to(LV_1, HV_2);
     try std.testing.expect(result_lv_hv == false);
 }
+
+test "chains_direct" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const M1 = try g.insert_node(try Node.init(g.allocator));
+    const M2 = try g.insert_node(try Node.init(g.allocator));
+    const M3 = try g.insert_node(try Node.init(g.allocator));
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, M1.node, M2.node, EdgeInterfaceConnection.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, M2.node, M3.node, EdgeInterfaceConnection.tid));
+
+    const result = try EdgeInterfaceConnection.is_connected_to(M1, M3);
+    try std.testing.expect(result == true);
+}
+
+test "loooooong_chain" {
+    // Let's make it hard - create a long chain of nodes
+    // Use a more efficient allocator for this stress test instead of testing allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var g = graph.GraphView.init(allocator);
+    defer g.deinit();
+
+    const chain_length = 10000; // Large enough to be interesting, small enough to not consume 44GB RAM
+    var nodes = std.ArrayList(graph.BoundNodeReference).init(allocator);
+    defer nodes.deinit();
+
+    // Pre-allocate capacity to avoid repeated reallocations
+    try nodes.ensureTotalCapacity(chain_length);
+
+    std.debug.print("\nBuilding chain of {} nodes...\n", .{chain_length});
+
+    // Create nodes
+    var i: usize = 0;
+    while (i < chain_length) : (i += 1) {
+        if (i % 10000 == 0 and i > 0) {
+            std.debug.print("  Created {} nodes...\n", .{i});
+        }
+        const node = try g.insert_node(try Node.init(g.allocator));
+        nodes.appendAssumeCapacity(node);
+    }
+    std.debug.print("  All {} nodes created.\n", .{chain_length});
+
+    // Connect consecutive nodes
+    std.debug.print("  Connecting nodes...\n", .{});
+    i = 0;
+    while (i < chain_length - 1) : (i += 1) {
+        if (i % 10000 == 0 and i > 0) {
+            std.debug.print("  Connected {} edges...\n", .{i});
+        }
+        _ = try g.insert_edge(try EdgeInterfaceConnection.init(g.allocator, nodes.items[i].node, nodes.items[i + 1].node));
+    }
+
+    std.debug.print("Chain built. Starting pathfinding...\n", .{});
+
+    // Start timer
+    var timer = try std.time.Timer.start();
+
+    // Create pathfinder to access counters
+    var pf = PathFinder.init(g.allocator);
+    defer pf.deinit();
+    const paths = try pf.find_paths(nodes.items[0], &[_]graph.BoundNodeReference{nodes.items[chain_length - 1]});
+
+    // Stop timer
+    const elapsed = timer.read();
+    const elapsed_ms = elapsed / std.time.ns_per_ms;
+    const elapsed_s = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(std.time.ns_per_s));
+
+    std.debug.print("\nPathfinding completed!\n", .{});
+    std.debug.print("  Total paths explored: {}\n", .{pf.path_counter});
+    std.debug.print("  Valid paths found: {}\n", .{paths.len});
+    std.debug.print("  Time: {d:.3}s ({} ms)\n", .{ elapsed_s, elapsed_ms });
+
+    // Verify we found a path
+    var result = false;
+    for (paths) |path| {
+        if (Node.is_same(path.get_last_node().?.node, nodes.items[chain_length - 1].node)) {
+            result = true;
+            break;
+        }
+    }
+
+    try std.testing.expect(result == true);
+}
