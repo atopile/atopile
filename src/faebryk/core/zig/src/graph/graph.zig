@@ -132,12 +132,17 @@ pub const DynamicAttributes = struct {
     }
 };
 
+const GraphObjectReference = union(enum) {
+    Node: NodeReference,
+    Edge: EdgeReference,
+};
+
 pub const GraphReferenceCounter = struct {
     ref_count: usize = 0,
-    parent: *anyopaque,
+    parent: GraphObjectReference,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, parent: *anyopaque) @This() {
+    pub fn init(allocator: std.mem.Allocator, parent: GraphObjectReference) @This() {
         return .{
             .ref_count = 0,
             .parent = parent,
@@ -159,6 +164,12 @@ pub const GraphReferenceCounter = struct {
     pub fn dec(self: *@This(), g: *GraphView) void {
         _ = g;
         self.ref_count -= 1;
+        if (self.ref_count == 0) {
+            switch (self.parent) {
+                .Node => |node| node.deinit(),
+                .Edge => |edge| edge.deinit(),
+            }
+        }
     }
 };
 
@@ -197,7 +208,7 @@ pub const Node = struct {
         node.attributes.uuid = UUID.gen_uuid(node);
         node.attributes.dynamic = DynamicAttributes.init(allocator);
 
-        node._ref_count = GraphReferenceCounter.init(allocator, node);
+        node._ref_count = GraphReferenceCounter.init(allocator, .{ .Node = node });
         return node;
     }
 
@@ -295,7 +306,7 @@ pub const Edge = struct {
         edge.attributes.directional = null;
         edge.attributes.name = null;
 
-        edge._ref_count = GraphReferenceCounter.init(allocator, edge);
+        edge._ref_count = GraphReferenceCounter.init(allocator, .{ .Edge = edge });
         return edge;
     }
 
@@ -474,18 +485,10 @@ pub const GraphView = struct {
 
         for (g.edges.items) |edge| {
             edge._ref_count.dec(g);
-            edge._ref_count.check_in_use() catch {
-                continue;
-            };
-            edge.deinit();
         }
         g.edges.deinit();
         for (g.nodes.items) |node| {
             node._ref_count.dec(g);
-            node._ref_count.check_in_use() catch {
-                continue;
-            };
-            node.deinit();
         }
         g.nodes.deinit();
     }
