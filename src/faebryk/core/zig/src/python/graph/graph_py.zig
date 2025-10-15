@@ -8,7 +8,7 @@ const bind = pyzig.pyzig;
 const type_registry = pyzig.type_registry;
 const method_descr = bind.method_descr;
 
-fn makeBoundNodePyObject(value: graph.graph.BoundNodeReference) ?*py.PyObject {
+pub fn makeBoundNodePyObject(value: graph.graph.BoundNodeReference) ?*py.PyObject {
     const allocator = std.heap.c_allocator;
     const ptr = allocator.create(graph.graph.BoundNodeReference) catch {
         py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
@@ -236,7 +236,7 @@ fn wrap_node_create() type {
 
             var success = false;
             defer if (!success) {
-                _ = node.deinit() catch {};
+                node.deinit();
             };
 
             applyAttributes(&node.attributes.dynamic, kwargs, &.{}) catch {
@@ -361,7 +361,7 @@ fn wrap_edge_create() type {
             var success = false;
             defer if (!success) {
                 if (name_copy) |n| std.heap.c_allocator.free(@constCast(n));
-                _ = edge_ptr.deinit() catch {};
+                edge_ptr.deinit();
             };
 
             edge_ptr.attributes.directional = directional_value;

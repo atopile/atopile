@@ -8,6 +8,7 @@ import pytest
 import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 from test.common.resources.fabll_modules.RP2040 import RP2040
@@ -17,6 +18,29 @@ from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
 from test.common.resources.fabll_modules.USB2514B import USB2514B
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_typegraph(node: Node) -> None:
+    """Build TypeGraph, instantiate, and bind for the node's tree."""
+    from faebryk.core.graph import InstanceGraphFunctions
+
+    root = node._get_root()
+
+    # Assert not already built
+    assert not root.get_lifecycle_stage() == "runtime", "TypeGraph already built"
+    assert not getattr(root, "_instance_bound", None), "Instance already bound"
+
+    # Build type graph
+    typegraph, _ = root.create_typegraph()
+
+    # Instantiate instance graph (independent of Node)
+    instance_root = InstanceGraphFunctions.create(typegraph, type(root).__qualname__)
+
+    # Bind instance to tree
+    root._bind_instance_hierarchy(instance_root)
+
+    # Execute runtime hooks
+    root._execute_runtime_functions()
 
 
 @pytest.mark.parametrize(
@@ -84,6 +108,7 @@ def test_performance_mifs_connect_hull(mif_type):
     timings.add(name, "is_connected")
 
     if issubclass(mif_type, ModuleInterface):
+        ensure_typegraph(instances[0])
         list(instances[0].get_connected())
     else:
         instances[0].edges
@@ -122,6 +147,8 @@ def test_performance_mifs_no_connect():
 
     app = RP2040_ReferenceDesign()
     timings.add("construct")
+
+    ensure_typegraph(app)
 
     for i in range(CNT):
         list(app.rp2040.power_core.get_connected())

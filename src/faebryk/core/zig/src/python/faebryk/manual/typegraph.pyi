@@ -1,0 +1,26 @@
+from faebryk.core.zig.gen.graph.graph import BoundNode, Edge, GraphView, Literal, Node
+
+class TypeGraph:
+    @staticmethod
+    def create(*, g: GraphView) -> "TypeGraph": ...
+    def add_type(self, *, identifier: str) -> BoundNode: ...
+    def add_trait(self) -> BoundNode: ...
+    def add_make_child(
+        self, *, type_node: BoundNode, child_type_node: BoundNode, identifier: str
+    ) -> BoundNode: ...
+    def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
+    def add_make_link(
+        self,
+        *,
+        type_node: BoundNode,
+        lhs_reference_node: Node,
+        rhs_reference_node: Node,
+        edge_type: Edge.Type,
+        edge_directional: bool | None,
+        edge_name: str | None,
+        edge_attributes: dict[str, Literal],
+    ) -> BoundNode: ...
+    def instantiate(self, *, type_identifier: str) -> BoundNode: ...
+    def reference_resolve(
+        self, *, reference_node: BoundNode, base_node: BoundNode
+    ) -> BoundNode: ...

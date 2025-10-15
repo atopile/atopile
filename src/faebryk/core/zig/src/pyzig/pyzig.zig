@@ -309,6 +309,10 @@ pub fn wrap_bool(value: ?bool) ?*py.PyObject {
     return out;
 }
 
+pub fn unwrap_bool(obj: ?*py.PyObject) bool {
+    return py.PyObject_IsTrue(obj) == 1;
+}
+
 pub fn wrap_str(value: ?[]const u8) ?*py.PyObject {
     if (value == null) {
         const out = py.Py_None();

@@ -107,29 +107,42 @@ pub const Attribute = struct {
 pub const DynamicAttributes = struct {
     values: std.StringHashMap(Literal),
 
-    fn init(allocator: std.mem.Allocator) @This() {
+    pub fn init(allocator: std.mem.Allocator) @This() {
         return .{
             .values = std.StringHashMap(Literal).init(allocator),
         };
     }
 
-    fn deinit(self: *@This()) void {
+    pub fn deinit(self: *@This()) void {
         self.values.deinit();
     }
 
-    fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        for (self.values.keys()) |key| {
-            f(ctx, key, self.values.get(key).?, true);
+    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        var it = self.values.iterator();
+        while (it.next()) |e| {
+            f(ctx, e.key_ptr.*, e.value_ptr.*, true);
+        }
+    }
+
+    pub fn copy_into(self: *const @This(), other: *@This()) void {
+        var it = self.values.iterator();
+        while (it.next()) |e| {
+            other.values.put(e.key_ptr.*, e.value_ptr.*) catch unreachable;
         }
     }
 };
 
+const GraphObjectReference = union(enum) {
+    Node: NodeReference,
+    Edge: EdgeReference,
+};
+
 pub const GraphReferenceCounter = struct {
     ref_count: usize = 0,
-    parent: *anyopaque,
+    parent: GraphObjectReference,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, parent: *anyopaque) @This() {
+    pub fn init(allocator: std.mem.Allocator, parent: GraphObjectReference) @This() {
         return .{
             .ref_count = 0,
             .parent = parent,
@@ -151,6 +164,12 @@ pub const GraphReferenceCounter = struct {
     pub fn dec(self: *@This(), g: *GraphView) void {
         _ = g;
         self.ref_count -= 1;
+        if (self.ref_count == 0) {
+            switch (self.parent) {
+                .Node => |node| node.deinit(),
+                .Edge => |edge| edge.deinit(),
+            }
+        }
     }
 };
 
@@ -189,12 +208,14 @@ pub const Node = struct {
         node.attributes.uuid = UUID.gen_uuid(node);
         node.attributes.dynamic = DynamicAttributes.init(allocator);
 
-        node._ref_count = GraphReferenceCounter.init(allocator, node);
+        node._ref_count = GraphReferenceCounter.init(allocator, .{ .Node = node });
         return node;
     }
 
-    pub fn deinit(self: *@This()) !void {
-        try self._ref_count.check_in_use();
+    pub fn deinit(self: *@This()) void {
+        self._ref_count.check_in_use() catch {
+            @panic("Node is still in use");
+        };
         self.attributes.dynamic.deinit();
         self._ref_count.allocator.destroy(self);
     }
@@ -216,9 +237,17 @@ pub const EdgeAttributes = struct {
     name: ?str,
     dynamic: DynamicAttributes,
 
-    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "source", Literal{ .Int = self.source_id }, false);
-        f(ctx, "target", Literal{ .Int = self.target_id }, false);
+    pub fn deinit(self: *@This()) !void {
+        if (self._ref_count.ref_count > 0) {
+            return error.InUse;
+        }
+        self.dynamic.deinit();
+        self._ref_count.allocator.destroy(self);
+    }
+
+    fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        f(ctx, "source", Literal{ .Int = self.source.uuid }, false);
+        f(ctx, "target", Literal{ .Int = self.target.uuid }, false);
         f(ctx, "type", Literal{ .Int = @intFromEnum(self.edge_type) }, false);
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
         f(ctx, "directional", Literal{ .Bool = self.directional.? }, false);
@@ -274,13 +303,17 @@ pub const Edge = struct {
         edge.attributes.source_id = source.attributes.uuid;
         edge.attributes.target_id = target.attributes.uuid;
         edge.attributes.dynamic = DynamicAttributes.init(allocator);
+        edge.attributes.directional = null;
+        edge.attributes.name = null;
 
-        edge._ref_count = GraphReferenceCounter.init(allocator, edge);
+        edge._ref_count = GraphReferenceCounter.init(allocator, .{ .Edge = edge });
         return edge;
     }
 
-    pub fn deinit(self: *@This()) !void {
-        try self._ref_count.check_in_use();
+    pub fn deinit(self: *@This()) void {
+        self._ref_count.check_in_use() catch {
+            @panic("Edge is still in use");
+        };
         self.attributes.dynamic.deinit();
         self._ref_count.allocator.destroy(self);
     }
@@ -297,8 +330,8 @@ pub const Edge = struct {
         try type_set.put(edge_type, {});
     }
 
-    pub fn is_instance(E: EdgeReference, T: EdgeType) bool {
-        return E.attributes.edge_type == T;
+    pub fn is_instance(E: EdgeReference, edge_type: EdgeType) bool {
+        return E.attributes.edge_type == edge_type;
     }
 
     pub fn is_same(E1: EdgeReference, E2: EdgeReference) bool {
@@ -334,13 +367,23 @@ pub const Edge = struct {
             pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
                 const self: *@This() = @ptrCast(@alignCast(ctx));
                 if (self.is_target) |d| {
-                    const target = bound_edge.edge.get_target();
-                    if (target) |t| {
-                        if (d and Node.is_same(t, self.bound_node.node)) {
-                            return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                    if (d) {
+                        const target = bound_edge.edge.get_target();
+                        if (target) |t| {
+                            if (Node.is_same(t, self.bound_node.node)) {
+                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                            }
                         }
+                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
+                    } else {
+                        const source = bound_edge.edge.get_source();
+                        if (source) |s| {
+                            if (Node.is_same(s, self.bound_node.node)) {
+                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
+                            }
+                        }
+                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
                     }
-                    return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
                 }
                 return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
             }
@@ -557,8 +600,11 @@ test "basic" {
     try Edge.register_type(TestLinkType);
 
     const n1 = try Node.init(a);
+    defer n1.deinit();
     const n2 = try Node.init(a);
+    defer n2.deinit();
     const e12 = try Edge.init(a, n1, n2, TestLinkType);
+    defer e12.deinit();
 
     _ = try g.insert_node(n1);
     _ = try g.insert_node(n2);
@@ -578,8 +624,4 @@ test "basic" {
     try std.testing.expectEqual(n1._ref_count.ref_count, 0);
     try std.testing.expectEqual(n2._ref_count.ref_count, 0);
     try std.testing.expectEqual(e12._ref_count.ref_count, 0);
-
-    try n1.deinit();
-    try n2.deinit();
-    try e12.deinit();
 }

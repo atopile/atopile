@@ -1,141 +1,197 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-import logging
-from itertools import pairwise
-from typing import (
-    Iterable,
-    Self,
-    Sequence,
-    cast,
-)
+from __future__ import annotations
 
-from faebryk.core.cpp import (
-    GraphInterfaceModuleConnection,
-    Path,
-)
-from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.link import (
-    Link,
-    LinkDirect,
-    LinkDirectConditional,
-    LinkDirectConditionalFilterResult,
-    LinkDirectDerived,
-)
-from faebryk.core.node import CNode, Node, NodeException
-from faebryk.core.pathfinder import find_paths
+from typing import TYPE_CHECKING, Iterable, Self, Sequence
+
+from faebryk.core.node import Node
 from faebryk.core.trait import Trait
-from faebryk.library.can_specialize import can_specialize
-from faebryk.libs.util import ConfigFlag, cast_assert, groupby, once
+from faebryk.libs.util import ConfigFlag
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from faebryk.core.link import Link
 
 
 IMPLIED_PATHS = ConfigFlag("IMPLIED_PATHS", default=False, descr="Use implied paths")
 
 type Bridgable[T: "ModuleInterface"] = Node | T
+LiteralValue = int | float | str | bool
 
 
 class ModuleInterface(Node):
     class TraitT(Trait): ...
 
-    specializes: GraphInterface
-    specialized: GraphInterface
-    connected: GraphInterfaceModuleConnection
-
-    # TODO: move to cpp
-    class _LinkDirectShallow(LinkDirectConditional):
-        """
-        Make link that only connects up but not down
-        """
-
-        def is_childtype_of_test_type(self, node: CNode):
-            return isinstance(node, self.children_types)
-            # return type(node) in self.children_types
-
-        def check_path(self, path: Path) -> LinkDirectConditionalFilterResult:
-            out = (
-                LinkDirectConditionalFilterResult.FILTER_PASS
-                if not self.is_childtype_of_test_type(path[0].node)
-                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE
-            )
-            return out
-
-        def __init__(self, test_type: type["ModuleInterface"]):
-            self.test_type = test_type
-            # TODO this is a bit of a hack to get the children types
-            #  better to do on set_connections
-            self.children_types = tuple(
-                type(c)
-                for c in test_type().get_children(
-                    direct_only=False, types=ModuleInterface, include_root=False
-                )
-            )
-            super().__init__(
-                self.check_path,
-                needs_only_first_in_path=True,
-            )
-
-    @classmethod
-    @once
-    def LinkDirectShallow(cls):
-        class _LinkDirectShallowMif(ModuleInterface._LinkDirectShallow):
-            def __init__(self):
-                super().__init__(test_type=cls)
-
-        return _LinkDirectShallowMif
-
     def __preinit__(self) -> None: ...
 
-    def connect(
-        self: Self, *other: Self, link: type[Link] | Link | None = None
-    ) -> Self:
-        mismatched = [o for o in other if type(o) is not type(self)]
-        if mismatched:
-            if len(mismatched) == 1:
-                raise NodeException(
-                    self,
-                    (
-                        f"Cannot connect module `{self}` "
-                        f"(type `{type(self).__name__}`) "
-                        f"with module `{mismatched[0]}` "
-                        f"(type `{type(mismatched[0]).__name__}`). "
-                        "Modules must be of the same type."
-                    ),
-                )
-            else:
-                mismatches_str = ", ".join(
-                    f"{m} (type {type(m).__name__})" for m in mismatched
-                )
-                raise NodeException(
-                    self,
-                    (
-                        f"Cannot connect module {self} (type {type(self).__name__}) "
-                        f"with modules: {mismatches_str}. "
-                        "Modules must be of the same type."
-                    ),
-                )
+    def __init__(self) -> None:
+        super().__init__()
+        self._connections: set["ModuleInterface"] = set()
+        # TODO: Zig-backed specialization wiring to be implemented in typegraph build
+        self._pending_specializations: list["ModuleInterface"] = []
+        self._connection_link_types: dict["ModuleInterface", set[type["Link"]]] = {}
+        self._connection_directional: dict["ModuleInterface", bool] = {}
 
-        # TODO: consider returning self always
-        # - con: if construcing anonymous stuff in connection no ref
-        # - pro: more intuitive
-        ret = other[-1] if other else self
+    @staticmethod
+    def _format_link_type_name(link_type: type["Link"]) -> str:
+        module = getattr(link_type, "__module__", "")
+        qualname = getattr(
+            link_type, "__qualname__", getattr(link_type, "__name__", str(link_type))
+        )
+        if module and module not in {"__main__", "builtins"}:
+            return f"{module}.{qualname}"
+        return qualname
 
+    # Internal helpers ----------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_link_type(link: type["Link"] | "Link" | None) -> type["Link"] | None:
         if link is None:
-            link = LinkDirect
+            return None
         if isinstance(link, type):
-            link = link()
+            return link
+        return type(link)
 
-        # resolve duplicate links
-        new_links = [
-            o.connected
-            for o in other
-            if not (existing_link := self.connected.is_connected_to(o.connected))
-            or existing_link != link
-        ]
+    def _record_link_type(
+        self, other: "ModuleInterface", link_type: type["Link"] | None
+    ) -> None:
+        if link_type is None:
+            return
+        buckets = self._connection_link_types.get(other)
+        if buckets is None:
+            buckets = set()
+            self._connection_link_types[other] = buckets
+        buckets.add(link_type)
+        if self._is_directional_link_type(link_type):
+            self._connection_directional[other] = True
 
-        self.connected.connect(new_links, link=link)
+    def _get_recorded_link_types(self) -> dict["ModuleInterface", set[type["Link"]]]:
+        return {
+            neighbour: set(types)
+            for neighbour, types in self._connection_link_types.items()
+        }
 
-        return ret
+    @Node._collection_only
+    def _get_connection_attributes(
+        self, other: "ModuleInterface"
+    ) -> dict[str, LiteralValue]:
+        """
+        Aggregate link metadata recorded between this interface and `other`.
+
+        Returns a mapping suitable for Zig edge dynamic attributes,
+        using only Literal-compatible value types.
+        """
+
+        def collect(
+            source: "ModuleInterface", target: "ModuleInterface"
+        ) -> set[type["Link"]]:
+            return source._connection_link_types.get(target, set())
+
+        link_types = set(collect(self, other))
+        link_types.update(collect(other, self))
+
+        if not link_types:
+            return {}
+
+        formatted = sorted(
+            self._format_link_type_name(link_type) for link_type in link_types
+        )
+
+        return {
+            "link_type_count": len(formatted),
+            "link_types": ", ".join(formatted),
+        }
+
+    @Node._collection_only
+    def _is_connection_directional(self, other: "ModuleInterface") -> bool:
+        if self._connection_directional.get(other):
+            return True
+        reciprocal = getattr(other, "_connection_directional", {}).get(self)
+        return bool(reciprocal)
+
+    @staticmethod
+    def _is_directional_link_type(link_type: type["Link"]) -> bool:
+        if getattr(link_type, "DIRECTIONAL", False):
+            return True
+
+        name = getattr(link_type, "__qualname__", link_type.__name__)
+        # TODO: the link should specify
+        known_directional = {
+            "LinkPointer",
+            "LinkSibling",
+            "LinkParent",
+            "LinkNamedParent",
+        }
+        if name in known_directional or name.split(".")[-1] in known_directional:
+            return True
+
+        try:
+            from faebryk.core.link import (
+                LinkNamedParent,
+                LinkParent,
+                LinkPointer,
+                LinkSibling,
+            )
+        except Exception:
+            return False
+
+        try:
+            return issubclass(
+                link_type, (LinkPointer, LinkSibling, LinkParent, LinkNamedParent)
+            )
+        except TypeError:
+            return False
+
+    @Node._runtime_only
+    def _find_connected(self) -> set["ModuleInterface"]:
+        # TODO: Implement in Zig pathfinder module
+        # This requires porting the pathfinding logic to Zig core
+        # Cannot query connections without instance graph
+
+        # Always require instance binding for graph queries
+        _ = self._ensure_instance_bound()
+
+        # TODO: Replace with Zig pathfinder traversal
+        # For now, return empty set as mock
+        return set()
+
+    @classmethod
+    def LinkDirectShallow(cls):
+        raise NotImplementedError("TODO: Zig core migration")
+
+    @property
+    def specializes(self):
+        raise NotImplementedError("TODO: Zig core migration")
+
+    @property
+    def specialized(self):
+        raise NotImplementedError("TODO: Zig core migration")
+
+    @property
+    def connected(self) -> "ModuleInterface":
+        return self
+
+    @Node._collection_only
+    def connect(
+        self: Self, *other: Self, link: type["Link"] | "Link" | None = None
+    ) -> Self:
+        if not other:
+            return self
+
+        link_type = self._normalize_link_type(link)
+
+        for candidate in other:
+            if not isinstance(candidate, ModuleInterface):
+                raise TypeError(
+                    f"Expected ModuleInterface, got {type(candidate).__name__}"
+                )
+            if candidate is self:
+                continue
+            self._connections.add(candidate)
+            candidate._connections.add(self)
+            self._record_link_type(candidate, link_type)
+            candidate._record_link_type(self, link_type)
+
+        return other[-1]
 
     def connect_via(
         self,
@@ -143,148 +199,65 @@ class ModuleInterface(Node):
         *other: Self,
         link=None,
     ):
-        from faebryk.library.can_bridge import can_bridge
-
-        bridges = [bridge] if isinstance(bridge, Node | ModuleInterface) else bridge
-        intf = self
-        for sub_bridge in bridges:
-            if isinstance(sub_bridge, type(self)):
-                intf.connect(sub_bridge, link=link)
-            else:
-                t = sub_bridge.get_trait(can_bridge)
-                intf.connect(t.get_in(), link=link)
-                intf = t.get_out()
-
-        intf.connect(*other, link=link)
+        raise NotImplementedError("TODO: Zig core migration")
 
     def connect_shallow(self, *other: Self) -> Self:
-        # TODO: clone limitation, waiting for c++ LinkShallow
-        if len(other) > 1:
-            for o in other:
-                self.connect_shallow(o)
-            return self
+        raise NotImplementedError("TODO: Zig core migration")
 
-        return self.connect(*other, link=type(self).LinkDirectShallow())
+    @Node._runtime_only
+    def get_connected(
+        self,
+        include_self: bool = False,
+    ) -> dict[Self, object]:
+        # TODO: Zig pathfinder for transitive connections
+        # Currently returns direct connections only
+        reachable = self._find_connected()
+        if not include_self:
+            reachable.discard(self)
+        return {iface: None for iface in reachable}
 
-    def get_connected(self, include_self: bool = False) -> dict[Self, Path]:
-        paths = find_paths(self, [])
-        # TODO theoretically we could get multiple paths for the same MIF
-        # practically this won't happen in the current implementation
-        paths_per_mif = groupby(paths, lambda p: cast_assert(type(self), p[-1].node))
+    @Node._runtime_only
+    def get_connected_nodes(
+        self,
+        include_self: bool = False,
+    ) -> dict["ModuleInterface", object]:
+        return self.get_connected(include_self=include_self)
 
-        def choose_path(_paths: list[Path]) -> Path:
-            return self._path_with_least_conditionals(_paths)
+    @Node._runtime_only
+    def is_connected_to(self, other: "ModuleInterface") -> list[object]:
+        # TODO: Implement path-based checking in Zig pathfinder module
+        # Requires instance graph to query connections
+        _ = other  # Unused until pathfinder is implemented
 
-        path_per_mif = {
-            mif: choose_path(paths)
-            for mif, paths in paths_per_mif.items()
-            if mif is not self or include_self
-        }
-        if include_self:
-            assert self in path_per_mif
-        for mif, paths in paths_per_mif.items():
-            self._connect_via_implied_paths(mif, paths)
-        return path_per_mif
+        # Ensure instance bound
+        _ = self._ensure_instance_bound()
 
-    def is_connected_to(self, other: "ModuleInterface") -> list[Path]:
-        return [
-            path for path in find_paths(self, [other]) if path[-1] is other.self_gif
-        ]
+        # TODO: Replace with Zig pathfinder path checking
+        # For now, return empty list (no paths found)
+        return []
 
+    @Node._collection_only
     def specialize[T: ModuleInterface](self, special: T) -> T:
-        logger.debug(f"Specializing MIF {self} with {special}")
-
-        extra = set()
-        # allow non-base specialization if explicitly allowed
-        if special.has_trait(can_specialize):
-            extra = set(special.get_trait(can_specialize).get_specializable_types())
-
-        if not (
-            isinstance(special, type(self))
-            or any(issubclass(t, type(self)) for t in extra)
-            # TODO: remove, this is a hack for ato
-            or type(special).__name__ == type(self).__name__
-        ):
-            type_self_id = f"{type(self).__name__}|{id(type(self)):02X}"
-            type_special_id = f"{type(special).__name__}|{id(type(special)):02X}"
-            raise TypeError(
-                f"Cannot specialize {self}(type={type_self_id}) with "
-                f"{special}(type={type_special_id}). Specializable types: {extra}"
-            )
-
-        # This is doing the heavy lifting
-        self.connected.connect(special.connected)
-
-        # Establish sibling relationship
-        self.specialized.connect(special.specializes)
-
-        return cast(T, special)
-
-    # def get_general(self):
-    #    out = self.specializes.get_parent()
-    #    if out:
-    #        return out[0]
-    #    return None
-
-    def __init_subclass__(cls, *, init: bool = True) -> None:
-        if hasattr(cls, "_on_connect"):
-            raise TypeError("Overriding _on_connect is deprecated")
-
-        return super().__init_subclass__(init=init)
+        raise NotImplementedError("TODO: Zig core migration")
 
     @staticmethod
-    def _path_with_least_conditionals(paths: list["Path"]) -> "Path":
-        if len(paths) == 1:
-            return paths[0]
+    def _path_with_least_conditionals(paths: list[object]) -> object:
+        raise NotImplementedError("TODO: Zig core migration")
 
-        paths_links = [
-            (
-                path,
-                [
-                    e1.is_connected_to(e2)
-                    for e1, e2 in pairwise(cast(Iterable[GraphInterface], path))
-                ],
-            )
-            for path in paths
-        ]
-        paths_conditionals = [
-            (
-                path,
-                [link for link in links if isinstance(link, LinkDirectConditional)],
-            )
-            for path, links in paths_links
-        ]
-        path = min(paths_conditionals, key=lambda x: len(x[1]))[0]
-        return path
-
-    def _connect_via_implied_paths(self, other: Self, paths: list["Path"]):
-        if not IMPLIED_PATHS:
-            return
-
-        if self is other:
-            return
-
-        if self.connected.is_connected_to(other.connected):
-            # TODO link resolution
-            return
-
-        # heuristic: choose path with fewest conditionals
-        path = self._path_with_least_conditionals(paths)
-
-        self.connect(other, link=LinkDirectDerived(path))
+    def _connect_via_implied_paths(self, other: Self, paths: list[object]):
+        raise NotImplementedError("TODO: Zig core migration")
 
     @staticmethod
     def _group_into_buses[T: ModuleInterface](mifs: Iterable[T]) -> dict[T, set[T]]:
-        """
-        returns dict[BusRepresentative, set[MIFs in Bus]]
-        """
-        to_check = set(mifs)
-        buses = {}
+        items = list(mifs)
+        to_check = set(items)
+        buses: dict[T, set[T]] = {}
+
         while to_check:
             interface = to_check.pop()
-            ifs = interface.get_connected(include_self=True)
-            buses[interface] = ifs
-            to_check.difference_update(ifs.keys())
+            reachable = interface._find_connected()
+            buses[interface] = reachable
+            to_check.difference_update(reachable)
 
         return buses
 
