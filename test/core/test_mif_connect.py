@@ -15,7 +15,7 @@ from faebryk.core.link import (
 )
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
-from faebryk.core.node import NodeException
+from faebryk.core.node import Node, NodeException
 from faebryk.libs.app.erc import (
     ERCFaultShortedModuleInterfaces,
     ERCPowerSourcesShortedError,
@@ -30,6 +30,29 @@ from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def ensure_typegraph(node: Node) -> Node:
+    """Build TypeGraph, instantiate, and bind for the node's tree."""
+    root = node._get_root()
+
+    # Assert not already built
+    assert not root.get_lifecycle_stage() == "runtime", "TypeGraph already built"
+    assert not getattr(root, "_instance_bound", None), "Instance already bound"
+
+    # Instantiate graph and execute runtime hooks
+    Node.instantiate(root)
+    return root
+
+
+def bind_to_module(*nodes: Node) -> Module:
+    class _Harness(Module):
+        pass
+
+    harness = _Harness()
+    for idx, node in enumerate(nodes):
+        harness.add(node, name=f"node_{idx}")
+    return harness
 
 
 def test_self():
@@ -961,6 +984,12 @@ def test_specialize_link():
     mifs[0].connect(mifs[1], link=_Link)
     mifs[1].connect(mifs[2])
 
+    recorded_0 = mifs[0]._get_recorded_link_types()
+    assert recorded_0[mifs[1]] == {_Link}
+    recorded_1 = mifs[1]._get_recorded_link_types()
+    assert recorded_1[mifs[0]] == {_Link}
+    assert mifs[1]._get_recorded_link_types().get(mifs[2]) is None
+
     mifs[0].specialize(mifs_special[0])
     mifs[2].specialize(mifs_special[2])
 
@@ -1069,8 +1098,11 @@ def test_simple_erc_ElectricPower_short():
 def test_direct_implied_paths():
     powers = times(2, F.ElectricPower)
 
+    harness = bind_to_module(*powers)
+
     # direct implied
     powers[0].connect(powers[1])
+    ensure_typegraph(harness)
 
     assert powers[1].hv in powers[0].hv.get_connected()
 
@@ -1085,10 +1117,13 @@ def test_direct_implied_paths():
 def test_children_implied_paths():
     powers = times(3, F.ElectricPower)
 
+    harness = bind_to_module(*powers)
+
     # children implied
     powers[0].connect(powers[1])
     powers[1].hv.connect(powers[2].hv)
     powers[1].lv.connect(powers[2].lv)
+    ensure_typegraph(harness)
 
     assert powers[2] in powers[0].get_connected()
 
@@ -1102,11 +1137,14 @@ def test_children_implied_paths():
 def test_shallow_implied_paths():
     powers = times(4, F.ElectricPower)
 
+    harness = bind_to_module(*powers)
+
     # shallow implied
     powers[0].connect(powers[1])
     powers[1].hv.connect(powers[2].hv)
     powers[1].lv.connect(powers[2].lv)
     powers[2].connect_shallow(powers[3])
+    ensure_typegraph(harness)
 
     assert powers[3] in powers[0].get_connected()
 
@@ -1154,6 +1192,8 @@ def test_regression_rp2040_usb_diffpair_minimal():
     )
     assert usb.connected.is_connected_to(other_usb.connected) is None
 
+    ensure_typegraph(usb)
+
     connected_per_mif = {ref: ref.get_connected(include_self=True) for ref in refs}
 
     assert not {n_ref, p_ref} & connected_per_mif[t_n_ref].keys()
@@ -1176,12 +1216,29 @@ def test_regression_rp2040_usb_diffpair_minimal():
         o_p_ref,
     }
 
-    # close references
-    p_ref.connect(other_usb.p.reference)
+    # close references – rebuild the scenario to respect the post-build immutability
+    usb_post = F.USB2_0_IF.Data()
+    terminated_usb_post = usb_post.terminated()
+    other_usb_post = F.USB2_0_IF.Data()
+    terminated_usb_post.connect(other_usb_post)
+    usb_post.p.reference.connect(other_usb_post.p.reference)
 
-    connected_per_mif_post = {ref: ref.get_connected(include_self=True) for ref in refs}
+    refs_post = {
+        usb_post.n.reference,
+        usb_post.p.reference,
+        terminated_usb_post.n.reference,
+        terminated_usb_post.p.reference,
+        other_usb_post.n.reference,
+        other_usb_post.p.reference,
+    }
+
+    ensure_typegraph(usb_post)
+
+    connected_per_mif_post = {
+        ref: ref.get_connected(include_self=True) for ref in refs_post
+    }
     for _, connected in connected_per_mif_post.items():
-        assert set(connected.keys()).issuperset(refs)
+        assert set(connected.keys()).issuperset(refs_post)
 
 
 def test_regression_rp2040_usb_diffpair():
