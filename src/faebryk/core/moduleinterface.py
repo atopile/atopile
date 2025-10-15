@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 IMPLIED_PATHS = ConfigFlag("IMPLIED_PATHS", default=False, descr="Use implied paths")
 
 type Bridgable[T: "ModuleInterface"] = Node | T
+LiteralValue = int | float | str | bool
 
 
 class ModuleInterface(Node):
@@ -28,6 +29,17 @@ class ModuleInterface(Node):
         # TODO: Zig-backed specialization wiring to be implemented in typegraph build
         self._pending_specializations: list["ModuleInterface"] = []
         self._connection_link_types: dict["ModuleInterface", set[type["Link"]]] = {}
+        self._connection_directional: dict["ModuleInterface", bool] = {}
+
+    @staticmethod
+    def _format_link_type_name(link_type: type["Link"]) -> str:
+        module = getattr(link_type, "__module__", "")
+        qualname = getattr(
+            link_type, "__qualname__", getattr(link_type, "__name__", str(link_type))
+        )
+        if module and module not in {"__main__", "builtins"}:
+            return f"{module}.{qualname}"
+        return qualname
 
     # Internal helpers ----------------------------------------------------------------
 
@@ -49,12 +61,85 @@ class ModuleInterface(Node):
             buckets = set()
             self._connection_link_types[other] = buckets
         buckets.add(link_type)
+        if self._is_directional_link_type(link_type):
+            self._connection_directional[other] = True
 
     def _get_recorded_link_types(self) -> dict["ModuleInterface", set[type["Link"]]]:
         return {
             neighbour: set(types)
             for neighbour, types in self._connection_link_types.items()
         }
+
+    @Node._collection_only
+    def _get_connection_attributes(
+        self, other: "ModuleInterface"
+    ) -> dict[str, LiteralValue]:
+        """
+        Aggregate link metadata recorded between this interface and `other`.
+
+        Returns a mapping suitable for Zig edge dynamic attributes,
+        using only Literal-compatible value types.
+        """
+
+        def collect(
+            source: "ModuleInterface", target: "ModuleInterface"
+        ) -> set[type["Link"]]:
+            return source._connection_link_types.get(target, set())
+
+        link_types = set(collect(self, other))
+        link_types.update(collect(other, self))
+
+        if not link_types:
+            return {}
+
+        formatted = sorted(
+            self._format_link_type_name(link_type) for link_type in link_types
+        )
+
+        return {
+            "link_type_count": len(formatted),
+            "link_types": ", ".join(formatted),
+        }
+
+    @Node._collection_only
+    def _is_connection_directional(self, other: "ModuleInterface") -> bool:
+        if self._connection_directional.get(other):
+            return True
+        reciprocal = getattr(other, "_connection_directional", {}).get(self)
+        return bool(reciprocal)
+
+    @staticmethod
+    def _is_directional_link_type(link_type: type["Link"]) -> bool:
+        if getattr(link_type, "DIRECTIONAL", False):
+            return True
+
+        name = getattr(link_type, "__qualname__", link_type.__name__)
+        # TODO: the link should specify
+        known_directional = {
+            "LinkPointer",
+            "LinkSibling",
+            "LinkParent",
+            "LinkNamedParent",
+        }
+        if name in known_directional or name.split(".")[-1] in known_directional:
+            return True
+
+        try:
+            from faebryk.core.link import (
+                LinkNamedParent,
+                LinkParent,
+                LinkPointer,
+                LinkSibling,
+            )
+        except Exception:
+            return False
+
+        try:
+            return issubclass(
+                link_type, (LinkPointer, LinkSibling, LinkParent, LinkNamedParent)
+            )
+        except TypeError:
+            return False
 
     @Node._runtime_only
     def _find_connected(self) -> set["ModuleInterface"]:

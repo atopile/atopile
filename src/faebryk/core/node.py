@@ -1287,14 +1287,24 @@ class Node:
                     rhs_path = Node._compute_relative_path(
                         common_ancestor_node, neighbor
                     )
-                    lhs_ref = self.typegraph.add_reference(path=lhs_path)
-                    rhs_ref = self.typegraph.add_reference(path=rhs_path)
+                    edge_attributes = iface._get_connection_attributes(neighbor)
+                    lhs_ref = self.typegraph.add_reference(
+                        type_node=common_ancestor_type, path=lhs_path
+                    )
+                    rhs_ref = self.typegraph.add_reference(
+                        type_node=common_ancestor_type, path=rhs_path
+                    )
 
+                    edge_name = edge_attributes.get("link_types")
+                    edge_directional = iface._is_connection_directional(neighbor)
                     self.typegraph.add_make_link(
                         type_node=common_ancestor_type,
                         lhs_reference_node=lhs_ref.node(),
                         rhs_reference_node=rhs_ref.node(),
-                        link_type=EdgeInterfaceConnection.get_tid(),
+                        edge_type=EdgeInterfaceConnection.get_tid(),
+                        edge_directional=edge_directional,
+                        edge_name=edge_name,
+                        edge_attributes=edge_attributes,
                     )
 
         def _finalize(self, module_interfaces: Iterable["ModuleInterface"]) -> None:

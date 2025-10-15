@@ -158,8 +158,23 @@ class TypeGraphFunctions:
             ):
                 parts.append(f"child={attr}")
 
-            if isinstance(attr := bound_node.node().get_attr(key="link_type"), int):
-                parts.append(f"link_type={attr}")
+            if isinstance(attr := bound_node.node().get_attr(key="edge_type"), int):
+                parts.append(f"edge_type={attr}")
+
+            if isinstance(attr := bound_node.node().get_attr(key="directional"), bool):
+                parts.append(f"directional={attr}")
+
+            if isinstance(edge_name := bound_node.node().get_attr(key="name"), str):
+                if not parts or parts[0] != edge_name:
+                    parts.append(f"edge_name={edge_name}")
+
+            if isinstance(attr := bound_node.node().get_attr(key="link_types"), str):
+                parts.append(f"link_types={attr}")
+
+            if isinstance(
+                attr := bound_node.node().get_attr(key="link_type_count"), int
+            ):
+                parts.append(f"link_type_count={attr}")
 
             if parts:
                 label = " ".join(parts)
