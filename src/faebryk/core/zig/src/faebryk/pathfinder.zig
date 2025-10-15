@@ -104,7 +104,22 @@ pub const PathFinder = struct {
             self,
             Self.visit_fn,
         );
-        _ = result;
+
+        switch (result) {
+            .ERROR => |err| {
+                std.debug.print("!!!ERROR!!!: {}\n", .{err});
+                return err;
+            },
+            .CONTINUE => {},
+            .EXHAUSTED => {},
+            .OK => {},
+            .STOP => {},
+        }
+
+        for (self.path_list.?.items) |path| {
+            std.debug.print("path: ", .{});
+            path.path.print_path();
+        }
 
         return self.path_list.?.items;
     }
@@ -147,8 +162,10 @@ pub const PathFinder = struct {
 
         // Check if path ends in an end node
         if (self.end_nodes) |*end_nodes| {
+            const path_end = path.path.get_other_node(path.start) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+
             for (end_nodes.items, 0..) |end_node, i| {
-                if (path.path.get_other_node(end_node)) |_| {
+                if (Node.is_same(path_end.node, end_node.node)) {
                     _ = end_nodes.swapRemove(i);
 
                     // If all end nodes found, stop the search
@@ -261,6 +278,10 @@ pub const PathFinder = struct {
     pub fn filter_heirarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
+        if (path.filtered) {
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+
         var hierarchy_stack = std.ArrayList(HeirarchyElement).init(path.path.g.allocator);
         defer hierarchy_stack.deinit(); // Clean up the ArrayList
         var current_node = path.start;
@@ -315,9 +336,6 @@ pub const PathFinder = struct {
         } else {
             path.filtered = false;
         }
-
-        std.debug.print("hierarchy_stack.items.len: {}\n", .{hierarchy_stack.items.len});
-        std.debug.print("path.filtered: {}\n", .{path.filtered});
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }

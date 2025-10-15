@@ -246,3 +246,16 @@ test "self_connect" {
     const result2 = try EdgeInterfaceConnection.is_connected_to(bn1, bn1);
     try std.testing.expect(result2 == true);
 }
+
+test "is_connected_to" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = try g.insert_node(try Node.init(g.allocator));
+    const be1 = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeInterfaceConnection.tid));
+    _ = be1;
+
+    const result = try EdgeInterfaceConnection.is_connected_to(bn1, bn2);
+    try std.testing.expect(result == true);
+}

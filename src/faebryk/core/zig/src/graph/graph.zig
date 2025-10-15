@@ -826,13 +826,15 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
-        const initial_edges = start_node.get_edges() orelse {
+        _ = start_node.get_edges() orelse {
             return visitor.VisitResult(T){ .ERROR = error.NoEdges };
         };
 
-        // Add initial empty path to queue (manually create a copy)
+        // Create empty base path for extending with edges
         var empty_base = BFSPath.init(start_node);
+        defer empty_base.deinit();
 
+        // Always add empty path (node is connected to itself)
         const empty_path_copy = start_node.g.allocator.create(BFSPath) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
@@ -842,21 +844,9 @@ pub const GraphView = struct {
             .filtered = false,
             .stop = false,
         };
-
         open_path_queue.writeItem(empty_path_copy) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
-
-        for (initial_edges.items) |edge| {
-            const path = BFSPath.cloneAndExtend(&empty_base, edge) catch |err| {
-                return visitor.VisitResult(T){ .ERROR = err };
-            };
-            open_path_queue.writeItem(path) catch |err| {
-                return visitor.VisitResult(T){ .ERROR = err };
-            };
-        }
-
-        std.debug.print("OPEN PATH QUEUE - len: {}\n", .{open_path_queue.count});
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
