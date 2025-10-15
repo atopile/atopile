@@ -33,6 +33,7 @@ class Module(Node):
         f_filter: Callable[[T], bool] | None = None,
         sort: bool = True,
     ) -> set[T]:
+        # TODO: handle specialization
         return set(
             self.get_children(
                 direct_only=direct_only,
@@ -54,6 +55,9 @@ class Module(Node):
             self.special = special
             super().__init__(message, *args, **kwargs)
 
+    # TOOD: get_most_special?
+
+    # TODO: deprecate?
     @Node._collection_only
     def specialize[T: Module](
         self,
