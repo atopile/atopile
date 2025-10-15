@@ -324,8 +324,9 @@ test "is_connected_to" {
 
     const bn1 = try g.insert_node(try Node.init(g.allocator));
     const bn2 = try g.insert_node(try Node.init(g.allocator));
-    const be1 = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeInterfaceConnection.tid));
-    _ = be1;
+    const bn3 = try g.insert_node(try Node.init(g.allocator));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeInterfaceConnection.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn3.node, EdgeInterfaceConnection.tid));
 
     const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn2);
     defer {
