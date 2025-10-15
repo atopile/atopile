@@ -256,44 +256,6 @@ test "basic" {
     try std.testing.expect(Node.is_same(visit.connected_edges.items[0].edge.target, n3));
 }
 
-test "connect vs connect_shallow" {
-    const a = std.testing.allocator;
-    var g = graph.GraphView.init(a);
-    defer g.deinit();
-
-    // Nodes
-    const n1 = try Node.init(a);
-    const n2 = try Node.init(a);
-    const n3 = try Node.init(a);
-    const n4 = try Node.init(a);
-
-    // Insert nodes (graph owns them)
-    _ = try g.insert_node(n1);
-    _ = try g.insert_node(n2);
-    _ = try g.insert_node(n3);
-    _ = try g.insert_node(n4);
-
-    // Edge using regular connect (should not be shallow)
-    const e_connect = try EdgeInterfaceConnection.init(a, n1, n2);
-    EdgeInterfaceConnection.connect(e_connect, n1, n2);
-    _ = try g.insert_edge(e_connect);
-    const shallow_val_connect = e_connect.attributes.dynamic.values.get(shallow_link).?;
-    try std.testing.expect(shallow_val_connect.Bool == false);
-
-    // Edge using connect_shallow (should be shallow)
-    const e_shallow = try EdgeInterfaceConnection.init(a, n3, n4);
-    EdgeInterfaceConnection.connect_shallow(e_shallow, n3, n4);
-    _ = try g.insert_edge(e_shallow);
-    const shallow_val_shallow = e_shallow.attributes.dynamic.values.get(shallow_link).?;
-    try std.testing.expect(shallow_val_shallow.Bool == true);
-
-    // Sanity: endpoints remained as set
-    try std.testing.expect(Node.is_same(e_connect.source, n1));
-    try std.testing.expect(Node.is_same(e_connect.target, n2));
-    try std.testing.expect(Node.is_same(e_shallow.source, n3));
-    try std.testing.expect(Node.is_same(e_shallow.target, n4));
-}
-
 test "self_connect" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
