@@ -54,6 +54,7 @@ class Module(Node):
             self.special = special
             super().__init__(message, *args, **kwargs)
 
+    @Node._collection_only
     def specialize[T: Module](
         self,
         special: T,
@@ -62,16 +63,9 @@ class Module(Node):
     ) -> T:
         if not isinstance(special, Module):
             raise TypeError(
-                f"Expected Module specialization target, got {type(special).__qualname__}"
+                "Expected Module specialization target, got "
+                f"{type(special).__qualname__}"
             )
-
-        root = self._get_root()
-        if getattr(root, "_typegraph_built", False):
-            raise RuntimeError(
-                "TypeGraph has already been built for this module; specialization"
-                " changes must be applied before calling create_typegraph()."
-            )
-
         pending = getattr(self, "_pending_specializations", None)
         if pending is None:
             pending = []

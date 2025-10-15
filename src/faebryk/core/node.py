@@ -6,6 +6,8 @@ import logging
 from abc import abstractmethod
 from collections.abc import Iterator
 from dataclasses import InitVar as dataclass_InitVar
+from enum import Enum
+from functools import wraps
 from itertools import chain
 from typing import (
     TYPE_CHECKING,
@@ -196,6 +198,12 @@ class Node:
     runtime: dict[str, "Node"]
     specialized_: list["Node"]
 
+    class _LifecycleStage(Enum):
+        """Lifecycle phases for a Node tree."""
+
+        COLLECTION = "collection"
+        RUNTIME = "runtime"
+
     _mro: list[type] = []
     _mro_ids: set[int] = set()
 
@@ -211,6 +219,88 @@ class Node:
     def _type_identifier(cls) -> str:
         return cls.__qualname__
 
+    # ------------------------------------------------------------------
+    # Lifecycle helpers
+    # ------------------------------------------------------------------
+
+    def _get_root_lifecycle_stage(self) -> "_LifecycleStage":
+        root = self._get_root()
+        return getattr(root, "_lifecycle_stage", self._LifecycleStage.COLLECTION)
+
+    def _set_root_lifecycle_stage(self, stage: "_LifecycleStage") -> None:
+        root = self._get_root()
+        current = self._get_root_lifecycle_stage()
+        if (
+            stage is self._LifecycleStage.COLLECTION
+            and current is self._LifecycleStage.RUNTIME
+        ):
+            raise RuntimeError(
+                f"Cannot rewind lifecycle from {current.value} to {stage.value}"
+            )
+        setattr(root, "_lifecycle_stage", stage)
+
+    def _ensure_lifecycle_at_least(self, stage: "_LifecycleStage") -> None:
+        current = self._get_root_lifecycle_stage()
+        if stage is self._LifecycleStage.RUNTIME:
+            if current is not self._LifecycleStage.RUNTIME:
+                raise RuntimeError(
+                    f"Lifecycle stage '{stage.value}' required, "
+                    f"current stage is '{current.value}'."
+                )
+        else:  # collection
+            if current is not self._LifecycleStage.COLLECTION:
+                raise RuntimeError(
+                    f"Lifecycle stage '{stage.value}' required, "
+                    f"current stage is '{current.value}'."
+                )
+
+    def get_lifecycle_stage(self) -> str:
+        """
+        Return the current lifecycle stage for the module tree containing this node.
+
+        Stages progress monotonically through:
+            - collection : standalone Python objects only
+            - runtime : Zig instance graph bound and runtime hooks executed
+        """
+        return self._get_root_lifecycle_stage().value
+
+    def _require_collection(self) -> None:
+        """Ensure we are still in the collection phase (no bindings yet)."""
+        if self._get_root_lifecycle_stage() is not self._LifecycleStage.COLLECTION:
+            raise RuntimeError(
+                "Operation only permitted before instance binding; "
+                f"current lifecycle is '{self.get_lifecycle_stage()}'."
+            )
+
+    def _require_runtime(self) -> None:
+        """Ensure the instance graph has been bound and runtime hooks executed."""
+        if self._get_root_lifecycle_stage() is not self._LifecycleStage.RUNTIME:
+            raise RuntimeError(
+                "Operation requires runtime graph access; "
+                f"current lifecycle is '{self.get_lifecycle_stage()}'. "
+                "Call create_typegraph(), instantiate(), "
+                "then _bind_instance_hierarchy()/_execute_runtime_functions()."
+            )
+
+    @staticmethod
+    def _collection_only(func: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(func)
+        def wrapper(self: "Node", *args: Any, **kwargs: Any) -> Any:
+            self._require_collection()
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    @staticmethod
+    def _runtime_only(func: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(func)
+        def wrapper(self: "Node", *args: Any, **kwargs: Any) -> Any:
+            self._require_runtime()
+            return func(self, *args, **kwargs)
+
+        return wrapper
+
+    @_collection_only
     def add[T: Node](
         self,
         obj: T,
@@ -260,6 +350,7 @@ class Node:
 
         return obj
 
+    @_collection_only
     def add_to_container[T: Node](
         self,
         n: int,
@@ -627,16 +718,16 @@ class Node:
 
     def _ensure_typegraph_built(self) -> None:
         """Verify that create_typegraph() has been called on this module tree."""
-        root = self._get_root()
-        if not getattr(root, "_typegraph_built", False):
+        if self._get_root_lifecycle_stage() is self._LifecycleStage.COLLECTION:
+            root = self._get_root()
             raise RuntimeError(
                 f"TypeGraph has not been built for `{type(root).__qualname__}`. "
                 "Call root.create_typegraph() before using graph-dependent operations."
             )
 
+    @_runtime_only
     def _ensure_instance_bound(self) -> BoundNode:
         """Get this node's bound instance node."""
-        self._ensure_typegraph_built()
         instance = getattr(self, "_instance_bound", None)
         if instance is None:
             raise RuntimeError(
@@ -645,10 +736,7 @@ class Node:
             )
         return instance
 
-    def _ensure_typegraph_bound(self) -> BoundNode:
-        """Deprecated: Use _ensure_instance_bound() instead."""
-        return self._ensure_instance_bound()
-
+    @_collection_only
     def _bind_instance_hierarchy(self, instance_node: BoundNode) -> None:
         """
         Recursively bind instance nodes to Python objects.
@@ -656,23 +744,22 @@ class Node:
         Walks the instance graph (via EdgeComposition) and the Python tree in parallel,
         setting _instance_bound on each Python node.
 
+        Only valid while the module tree is still in the `collection` lifecycle stage.
+        On success the root transitions to `runtime`.
+
         Also builds instance→Python mapping on root for reverse lookup.
 
         Args:
             instance_node: The instance node corresponding to this Python object
 
         Raises:
-            RuntimeError: If instance already bound, or structure mismatch
+            RuntimeError: If lifecycle ordering is violated or structure mismatch
         """
         from faebryk.core.moduleinterface import ModuleInterface
 
-        # Guard: check on root only for performance
-        if self.get_parent() is None:
-            if getattr(self, "_instance_bound", None) is not None:
-                raise RuntimeError(
-                    f"Instance already bound to {self.get_full_name()}. "
-                    "Cannot bind multiple instances to the same Python tree."
-                )
+        is_root = self.get_parent() is None
+        if is_root:
+            self._ensure_typegraph_built()
             # Initialize reverse mapping on root
             setattr(self, "_typegraph_instance_to_python", {})
 
@@ -700,6 +787,10 @@ class Node:
 
             py_child._bind_instance_hierarchy(instance_child)
 
+        if is_root:
+            self._set_root_lifecycle_stage(self._LifecycleStage.RUNTIME)
+
+    @_runtime_only
     def _execute_runtime_functions(self) -> None:
         """
         Execute __runtime__() hooks across the tree after instance binding.
@@ -708,13 +799,15 @@ class Node:
         This allows nodes to perform graph-dependent initialization after
         the instance graph is bound.
 
-        Must be called after _bind_instance_hierarchy().
+        Must be called after _bind_instance_hierarchy() while the root remains in the
+        `collection` stage. On completion the lifecycle advances to `runtime`.
 
         Raises:
             RuntimeError: If instance not bound
         """
         # Ensure instance is bound
         _ = self._ensure_instance_bound()
+        is_root = self.get_parent() is None
 
         # Call __runtime__() on self
         # Iterate through MRO to call all base class __runtime__ implementations
@@ -726,6 +819,9 @@ class Node:
         # Recursively execute on children
         for _name, child in self._iter_direct_children():
             child._execute_runtime_functions()
+
+        if is_root:
+            self._set_root_lifecycle_stage(self._LifecycleStage.RUNTIME)
 
     @staticmethod
     def instantiate(root: "Node") -> "BoundNode":
@@ -1232,7 +1328,6 @@ class Node:
                     )
 
         def _finalize(self, module_interfaces: Iterable["ModuleInterface"]) -> None:
-            setattr(self.root, "_typegraph_built", True)
             interface_lookup = {id(iface): iface for iface in module_interfaces}
             setattr(self.root, "_typegraph_interface_lookup", interface_lookup)
 
@@ -1263,6 +1358,7 @@ class Node:
                 type_node=parent_type, child_type_node=child_type, identifier=identifier
             )
 
+    @_collection_only
     def create_typegraph(self) -> tuple["TypeGraph", "BoundNode"]:
         from faebryk.core.moduleinterface import ModuleInterface
         from faebryk.core.trait import Trait

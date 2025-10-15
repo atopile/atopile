@@ -10,7 +10,6 @@ from faebryk.libs.util import ConfigFlag
 
 if TYPE_CHECKING:
     from faebryk.core.link import Link
-    from faebryk.core.zig.gen.graph.graph import BoundNode
 
 
 IMPLIED_PATHS = ConfigFlag("IMPLIED_PATHS", default=False, descr="Use implied paths")
@@ -57,17 +56,7 @@ class ModuleInterface(Node):
             for neighbour, types in self._connection_link_types.items()
         }
 
-    def _ensure_bound(self) -> tuple["BoundNode", dict[int, "ModuleInterface"]]:
-        bound = self._ensure_instance_bound()
-        root = self._get_root()
-        instance_map = getattr(root, "_typegraph_instance_to_python", None)
-        if instance_map is None:
-            raise RuntimeError(
-                "Instance has not been bound. "
-                "Call create_typegraph(), instantiate(), then _bind_instance_hierarchy() before querying connections."
-            )
-        return bound, instance_map
-
+    @Node._runtime_only
     def _find_connected(self) -> set["ModuleInterface"]:
         # TODO: Implement in Zig pathfinder module
         # This requires porting the pathfinding logic to Zig core
@@ -96,6 +85,7 @@ class ModuleInterface(Node):
     def connected(self) -> "ModuleInterface":
         return self
 
+    @Node._collection_only
     def connect(
         self: Self, *other: Self, link: type["Link"] | "Link" | None = None
     ) -> Self:
@@ -133,6 +123,7 @@ class ModuleInterface(Node):
         self,
         include_self: bool = False,
     ) -> dict[Self, object]:
+        self._require_runtime()
         # TODO: Zig pathfinder for transitive connections
         # Currently returns direct connections only
         reachable = self._find_connected()
@@ -144,8 +135,10 @@ class ModuleInterface(Node):
         self,
         include_self: bool = False,
     ) -> dict["ModuleInterface", object]:
+        self._require_runtime()
         return self.get_connected(include_self=include_self)
 
+    @Node._runtime_only
     def is_connected_to(self, other: "ModuleInterface") -> list[object]:
         # TODO: Implement path-based checking in Zig pathfinder module
         # Requires instance graph to query connections
@@ -158,6 +151,7 @@ class ModuleInterface(Node):
         # For now, return empty list (no paths found)
         return []
 
+    @Node._collection_only
     def specialize[T: ModuleInterface](self, special: T) -> T:
         raise NotImplementedError("TODO: Zig core migration")
 
