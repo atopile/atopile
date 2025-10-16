@@ -400,7 +400,7 @@ pub const TypeGraph = struct {
         return new_instance;
     }
 
-    fn get_type_by_name(self: *@This(), type_identifier: str) !?BoundNodeReference {
+    pub fn get_type_by_name(self: *@This(), type_identifier: str) !?BoundNodeReference {
         // TODO make trait.zig
         const FindTypeByName = struct {
             self: *TypeGraph,
@@ -445,6 +445,14 @@ pub const TypeGraph = struct {
             return try self.instantiate_node(_parent_type_node);
         }
         return error.InvalidArgument;
+    }
+
+    pub fn get_or_create_type(self: *@This(), type_identifier: str) !BoundNodeReference {
+        const type_node = try self.get_type_by_name(type_identifier);
+        if (type_node) |_type_node| {
+            return _type_node;
+        }
+        return try self.add_type(type_identifier);
     }
 };
 

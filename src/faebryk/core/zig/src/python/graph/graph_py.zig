@@ -166,6 +166,24 @@ fn literalToPyObject(literal: Literal) ?*py.PyObject {
     };
 }
 
+fn literalMapToPyDict(map: std.StringHashMap(Literal)) ?*py.PyObject {
+    const py_map = py.PyDict_New();
+    if (py_map == null) {
+        return null;
+    }
+    var it = map.iterator();
+    while (it.next()) |e| {
+        // Ensure the key is 0-terminated before passing to Python C API
+        const key_slice = e.key_ptr.*;
+        const key_str = pyzig.util.terminateString(std.heap.c_allocator, key_slice) catch return null;
+        if (py.PyDict_SetItemString(py_map.?, key_str, literalToPyObject(e.value_ptr.*)) < 0) {
+            return null;
+        }
+    }
+    py.Py_INCREF(py_map.?);
+    return py_map.?;
+}
+
 fn shouldSkip(key: []const u8, skip: []const []const u8) bool {
     for (skip) |k| {
         if (std.mem.eql(u8, key, k)) return true;
@@ -275,6 +293,25 @@ fn wrap_node_get_attr() type {
     };
 }
 
+fn wrap_node_get_dynamic_attrs() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_dynamic_attrs",
+            .doc = "Return a dictionary of dynamic attributes",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
+
+            const zig_map = wrapper.data.attributes.dynamic.values;
+
+            const py_map = literalMapToPyDict(zig_map) orelse return null;
+            return py_map;
+        }
+    };
+}
 fn wrap_node_is_same() type {
     return struct {
         pub const descr = method_descr{
@@ -304,6 +341,7 @@ fn wrap_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_node_create(),
         wrap_node_get_attr(),
+        wrap_node_get_dynamic_attrs(),
         wrap_node_is_same(),
     };
     bind.wrap_namespace_struct(root, graph.graph.Node, extra_methods);

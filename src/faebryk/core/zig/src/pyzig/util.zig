@@ -271,3 +271,10 @@ fn printHashMap(writer: anytype, map_value: anytype, indent: usize) anyerror!voi
     }
     try writer.writeAll("}");
 }
+
+pub fn terminateString(allocator: std.mem.Allocator, str: []const u8) ![:0]const u8 {
+    var buf = try allocator.alloc(u8, str.len + 1);
+    @memcpy(buf[0..str.len], str);
+    buf[str.len] = 0;
+    return @ptrCast(buf);
+}
