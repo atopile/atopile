@@ -1,10 +1,13 @@
 from typing import Callable
 
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
 class EdgeComposition:
     @staticmethod
     def create(*, parent: Node, child: Node, child_identifier: str) -> Edge: ...
+    @staticmethod
+    def build(*, child_identifier: str) -> EdgeCreationAttributes: ...
     @staticmethod
     def is_instance(*, edge: Edge) -> bool: ...
     @staticmethod

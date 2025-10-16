@@ -79,6 +79,34 @@ fn wrap_edge_composition_create() type {
     };
 }
 
+fn wrap_edge_composition_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for an EdgeComposition",
+            .args_def = struct {
+                child_identifier: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const identifier_copy = bind.unwrap_str_copy(kwarg_obj.child_identifier) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                allocator.free(identifier_copy);
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+
+            attributes.* = faebryk.composition.EdgeComposition.build(identifier_copy);
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
+        }
+    };
+}
+
 fn wrap_edge_composition_is_instance() type {
     return struct {
         pub const descr = method_descr{
@@ -321,6 +349,7 @@ fn wrap_edge_composition_get_child_by_identifier() type {
 fn wrap_edge_composition(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_composition_create(),
+        wrap_edge_composition_build(),
         wrap_edge_composition_is_instance(),
         wrap_edge_composition_visit_children_edges(),
         wrap_edge_composition_get_parent_edge(),
@@ -331,6 +360,27 @@ fn wrap_edge_composition(root: *py.PyObject) void {
     };
     bind.wrap_namespace_struct(root, faebryk.composition.EdgeComposition, extra_methods);
     edge_composition_type = type_registry.getRegisteredTypeObject("EdgeComposition");
+}
+
+fn wrap_edge_interface_connection_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for an interface connection edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.interface.EdgeInterfaceConnection.build();
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
+        }
+    };
 }
 
 fn wrap_edge_interface_connection_get_tid() type {
@@ -352,6 +402,7 @@ fn wrap_edge_interface_connection_get_tid() type {
 
 fn wrap_interface(root: *py.PyObject) void {
     const extra_methods = [_]type{
+        wrap_edge_interface_connection_build(),
         wrap_edge_interface_connection_get_tid(),
     };
     bind.wrap_namespace_struct(root, faebryk.interface.EdgeInterfaceConnection, extra_methods);
@@ -393,6 +444,27 @@ fn wrap_edge_type_create() type {
             }
 
             return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_type_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for a type edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.node_type.EdgeType.build();
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
 }
@@ -629,6 +701,7 @@ fn wrap_edge_type_is_node_instance_of() type {
 fn wrap_node_type(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_type_create(),
+        wrap_edge_type_build(),
         wrap_edge_type_is_instance(),
         wrap_edge_type_visit_instance_edges(),
         wrap_edge_type_get_type_node(),
@@ -678,6 +751,27 @@ fn wrap_edge_next_create() type {
             }
 
             return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_next_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for a next edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.next.EdgeNext.build();
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
 }
@@ -909,6 +1003,7 @@ fn wrap_edge_next_get_next_node_from_node() type {
 fn wrap_edge_next(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_next_create(),
+        wrap_edge_next_build(),
         wrap_edge_next_add_next(),
         wrap_edge_next_is_instance(),
         wrap_edge_next_get_previous_node(),

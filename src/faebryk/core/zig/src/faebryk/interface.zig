@@ -1,6 +1,8 @@
-const graph = @import("graph").graph;
+const graph_import = @import("graph");
+const graph = graph_import.graph;
+const visitor = graph_import.visitor;
 const std = @import("std");
-const visitor = @import("graph").visitor;
+const edgebuilder_mod = @import("edgebuilder.zig");
 
 // pub const pathfinder = @import("interface_pathfinder/pathfinder.zig");
 
@@ -10,6 +12,7 @@ const Edge = graph.Edge;
 const Node = graph.Node;
 const GraphView = graph.GraphView;
 const str = graph.str;
+const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeInterfaceConnection = struct {
     const tid: Edge.EdgeType = 1759242069;
@@ -20,8 +23,17 @@ pub const EdgeInterfaceConnection = struct {
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, N1, N2, tid);
-        edge.attributes.directional = false;
+        build().apply_to(edge);
         return edge;
+    }
+
+    pub fn build() EdgeCreationAttributes {
+        return .{
+            .edge_type = tid,
+            .directional = false,
+            .name = null,
+            .dynamic = null,
+        };
     }
 
     pub fn is_instance(E: EdgeReference) bool {

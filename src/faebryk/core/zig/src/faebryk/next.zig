@@ -1,5 +1,6 @@
 const graph_mod = @import("graph");
 const std = @import("std");
+const edgebuilder_mod = @import("edgebuilder.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -10,14 +11,24 @@ const Edge = graph.Edge;
 const Node = graph.Node;
 const GraphView = graph.GraphView;
 const str = graph.str;
+const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeNext = struct {
     pub const tid: Edge.EdgeType = 1759356969;
 
     pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, previous_node, next_node, tid);
-        edge.attributes.directional = true;
+        build().apply_to(edge);
         return edge;
+    }
+
+    pub fn build() EdgeCreationAttributes {
+        return .{
+            .edge_type = tid,
+            .directional = true,
+            .name = null,
+            .dynamic = null,
+        };
     }
 
     pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) !graph.BoundEdgeReference {
