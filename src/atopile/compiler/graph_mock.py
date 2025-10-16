@@ -42,6 +42,28 @@ class NodeHelpers:
         yield from neighbours
 
     @staticmethod
+    def get_children(bound_node: BoundNode) -> dict[str, BoundNode]:
+        children: dict[str, BoundNode] = {}
+
+        def collect(acc: dict[str, BoundNode], bound_edge: BoundEdge) -> None:
+            edge = bound_edge.edge()
+            if edge.source().is_same(other=bound_node.node()):
+                # TODO: handle unnamed children
+                acc[EdgeComposition.get_name(edge=edge)] = bound_edge.g().bind(
+                    node=edge.target()
+                )
+
+        bound_node.visit_edges_of_type(
+            edge_type=EdgeComposition.get_tid(), ctx=children, f=collect
+        )
+
+        return children
+
+    @staticmethod
+    def get_child(bound_node: BoundNode, identifier: str) -> BoundNode | None:
+        return NodeHelpers.get_children(bound_node).get(identifier)
+
+    @staticmethod
     def get_type_name(bound_node: BoundNode) -> str:
         types = []
 

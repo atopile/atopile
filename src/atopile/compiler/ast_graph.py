@@ -7,7 +7,7 @@ Exists as a stop-gap until we move away from the ANTLR4 compiler front-end.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
@@ -18,17 +18,18 @@ from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
-from atopile.compiler.graph_mock import BoundNode
+from atopile.compiler.graph_mock import BoundNode, NodeHelpers
 from atopile.compiler.parse import parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 
 
-class Visitor(AtoParserVisitor):
+class ANTLRVisitor(AtoParserVisitor):
     """
-    Generates a native compiler graph from the ANTLR4-generated AST, with attached
+    Generates a native AST graph from the ANTLR4-generated AST, with attached
     source context.
     """
 
@@ -1105,7 +1106,140 @@ class Visitor(AtoParserVisitor):
         )
 
 
-def build_file(source_file: Path) -> BoundNode:
+class DslException(Exception): ...
+
+
+class ASTVisitor:
+    """
+    Generates a TypeGraph from the AST.
+    """
+
+    class _ScopeState: ...
+
+    class _Pragma(StrEnum):
+        EXPERIMENT = "experiment"
+
+    class _Experiments(StrEnum):
+        BRIDGE_CONNECT = "BRIDGE_CONNECT"
+        FOR_LOOP = "FOR_LOOP"
+        TRAITS = "TRAITS"
+        MODULE_TEMPLATING = "MODULE_TEMPLATING"
+        INSTANCE_TRAITS = "INSTANCE_TRAITS"
+
+    def __init__(self, ast_root: BoundNode) -> None:
+        self._ast_root = ast_root
+        self._type_graph = TypeGraph.create(g=ast_root.g())
+        self._type_nodes: dict[str, BoundNode] = {}
+        self._scope_stack: list[ASTVisitor._ScopeState] = []
+        self._experiments: set[ASTVisitor._Experiments] = set()
+
+        self._dispatch: dict[str, Callable[[BoundNode], BoundNode]] = {
+            AST.File.type_attrs["name"]: self.visit_File,
+            AST.Scope.type_attrs["name"]: self.visit_Scope,
+            AST.PragmaStmt.type_attrs["name"]: self.visit_PragmaStmt,
+        }
+
+    def _enter_scope(self) -> ASTVisitor._ScopeState:
+        new_scope = ASTVisitor._ScopeState()
+        self._scope_stack.append(new_scope)
+        return new_scope
+
+    def _exit_scope(self) -> ASTVisitor._ScopeState:
+        return self._scope_stack.pop()
+
+    @staticmethod
+    def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
+        """
+        pragma_stmt: '#pragma' function_call
+        function_call: NAME '(' argument (',' argument)* ')'
+        argument: literal
+        literal: STRING | NUMBER | BOOLEAN
+
+        returns (name, [arg1, arg2, ...])
+        """
+        import re
+
+        _pragma = "#pragma"
+        _function_name = r"(?P<function_name>\w+)"
+        _string = r'"([^"]*)"'
+        _int = r"(\d+)"
+        _args_str = r"(?P<args_str>.*?)"
+
+        pragma_syntax = re.compile(
+            rf"^{_pragma}\s+{_function_name}\(\s*{_args_str}\s*\)$"
+        )
+        _individual_arg_pattern = re.compile(rf"{_string}|{_int}")
+        match = pragma_syntax.match(pragma_text)
+
+        if match is None:
+            raise DslException(f"Malformed pragma: '{pragma_text}'")
+
+        data = match.groupdict()
+        name = data["function_name"]
+        args_str = data["args_str"]
+        found_args = _individual_arg_pattern.findall(args_str)
+        arguments = [
+            string_arg if string_arg is not None else int(int_arg)
+            for string_arg, int_arg in found_args
+        ]
+        return name, arguments
+
+    def _enable_experiment(self, experiment: ASTVisitor._Experiments) -> None:
+        print(f"Enabling experiment: {experiment}")
+        self._experiments.add(experiment)
+
+    def build(self) -> tuple[TypeGraph, dict[str, BoundNode]]:
+        # must start with a File (for now)
+        assert NodeHelpers.get_type_name(self._ast_root) == AST.File.type_attrs["name"]
+
+        self.visit(self._ast_root)
+        return self._type_graph, self._type_nodes
+
+    def visit(self, node: BoundNode):
+        node_type = NodeHelpers.get_type_name(node)
+        print(f"Visiting a {node_type} node")
+
+        if (handler := self._dispatch.get(node_type)) is None:
+            raise NotImplementedError(f"No handler for node type: {node_type}")
+
+        return handler(node)
+
+    def visit_File(self, node: BoundNode) -> BoundNode:
+        scope_node = NodeHelpers.get_child(node, "scope")
+        assert scope_node is not None
+        return self.visit(scope_node)
+
+    def visit_Scope(self, node: BoundNode) -> BoundNode:
+        self._enter_scope()
+
+        for scope_child in NodeHelpers.get_children(node).values():
+            self.visit(scope_child)
+
+        self._exit_scope()
+        return node
+
+    def visit_PragmaStmt(self, node: BoundNode) -> BoundNode:
+        pragma = AST.PragmaStmt.get_pragma(node)
+        name, args = ASTVisitor._parse_pragma(pragma)
+
+        if name == ASTVisitor._Pragma.EXPERIMENT.value:
+            if len(args) != 1:
+                raise DslException("Experiment pragma takes exactly one argument")
+            if not isinstance(args[0], str):
+                raise DslException("Experiment pragma takes a single string argument")
+            if args[0] not in ASTVisitor._Experiments:
+                raise DslException(f"Unknown experiment: {args[0]}")
+            self._enable_experiment(ASTVisitor._Experiments(args[0]))
+        else:
+            raise DslException(f"Unknown pragma: {name}")
+
+        return node
+
+
+def build_file(source_file: Path) -> tuple[BoundNode, TypeGraph, dict[str, BoundNode]]:
     graph = GraphView.create()
     tree = parse_text_as_file(source_file.read_text(), source_file)
-    return Visitor(graph, source_file).visit(tree)
+    ast_root = ANTLRVisitor(graph, source_file).visit(tree)
+    type_graph, type_nodes = ASTVisitor(ast_root).build()
+
+    return ast_root, type_graph, type_nodes
