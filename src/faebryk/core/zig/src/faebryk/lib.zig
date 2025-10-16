@@ -6,3 +6,4 @@ pub const typegraph = @import("typegraph.zig");
 //pub const parameter = @import("parameter.zig");
 pub const pointer = @import("pointer.zig");
 //pub const trait = @import("trait.zig");
+pub const edgebuilder = @import("edgebuilder.zig");

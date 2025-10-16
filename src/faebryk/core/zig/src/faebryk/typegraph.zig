@@ -4,6 +4,7 @@ const node_type_mod = @import("node_type.zig");
 const composition_mod = @import("composition.zig");
 const next_mod = @import("next.zig");
 const pointer_mod = @import("pointer.zig");
+const edgebuilder_mod = @import("edgebuilder.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -19,6 +20,7 @@ const EdgeType = node_type_mod.EdgeType;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgePointer = pointer_mod.EdgePointer;
 const EdgeNext = next_mod.EdgeNext;
+const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 // TODO: BoundNodeReference and NodeReference used mixed all over the place
 // TODO: move add/create functions into respective structs
@@ -87,16 +89,21 @@ pub const TypeGraph = struct {
 
             pub const child_identifier = "child_identifier";
 
-            pub fn set_child_identifier(self: @This(), identifier: str) void {
-                self.node.attributes.dynamic.values.put(child_identifier, .{ .String = identifier }) catch unreachable;
+            pub fn set_child_identifier(self: @This(), identifier: ?str) void {
+                if (identifier) |_identifier| {
+                    self.node.attributes.dynamic.values.put(child_identifier, .{ .String = _identifier }) catch unreachable;
+                }
             }
 
-            pub fn get_child_identifier(self: @This()) str {
-                return self.node.attributes.dynamic.values.get(child_identifier).?.String;
+            pub fn get_child_identifier(self: @This()) ?str {
+                if (self.node.attributes.dynamic.values.get(child_identifier)) |value| {
+                    return value.String;
+                }
+                return null;
             }
         };
 
-        pub fn get_child_type(node: BoundNodeReference) ?NodeReference {
+        pub fn get_child_type(node: BoundNodeReference) ?BoundNodeReference {
             return EdgePointer.get_referenced_node_from_node(node);
         }
     };
@@ -163,13 +170,6 @@ pub const TypeGraph = struct {
             pub fn of(node: BoundNodeReference) @This() {
                 return .{ .node = node };
             }
-
-            pub const EdgeCreationAttributes = struct {
-                edge_type: Edge.EdgeType,
-                directional: ?bool,
-                name: ?str,
-                dynamic: ?graph.DynamicAttributes,
-            };
 
             pub fn set_edge_attributes(self: @This(), attributes: EdgeCreationAttributes) void {
                 self.node.node.attributes.dynamic.values.put("edge_type", .{ .Int = attributes.edge_type }) catch unreachable;
@@ -263,7 +263,7 @@ pub const TypeGraph = struct {
         return trait;
     }
 
-    pub fn add_make_child(self: *@This(), target_type: BoundNodeReference, child_type: BoundNodeReference, identifier: str) !BoundNodeReference {
+    pub fn add_make_child(self: *@This(), target_type: BoundNodeReference, child_type: BoundNodeReference, identifier: ?str) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.make_child_type);
         MakeChildNode.Attributes.of(make_child.node).set_child_identifier(identifier);
 
@@ -278,7 +278,7 @@ pub const TypeGraph = struct {
         target_type: BoundNodeReference,
         lhs_reference: NodeReference,
         rhs_reference: NodeReference,
-        edge_attributes: MakeLinkNode.Attributes.EdgeCreationAttributes,
+        edge_attributes: EdgeCreationAttributes,
     ) !BoundNodeReference {
         const make_link = try self.instantiate_node(self.make_link_type);
         MakeLinkNode.Attributes.of(make_link).set_edge_attributes(edge_attributes);
@@ -315,7 +315,7 @@ pub const TypeGraph = struct {
 
                 // 2.2) Instantiate child
                 const child = self.type_graph.instantiate_node(
-                    self.type_graph.g.bind(referenced_type.?),
+                    referenced_type.?,
                 ) catch |e| {
                     return visitor.VisitResult(void){ .ERROR = e };
                 };

@@ -2,9 +2,11 @@ from dataclasses import dataclass
 from typing import Any, Self, cast, override
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
-from faebryk.libs.util import cast_assert, dataclass_as_kwargs, not_none
+from faebryk.libs.util import dataclass_as_kwargs, not_none
 
 
 class FaebrykApiException(Exception):
@@ -59,7 +61,7 @@ class NodeTypeMeta(type):
     def __setattr__(cls, name: str, value: Any, /) -> None:
         if isinstance(value, Child) and issubclass(cls, NodeType):
             value.identifier = name
-            cls.add_child(name, value.nodetype, tg=value.tg)
+            cls._add_child(value)
         return super().__setattr__(name, value)
 
 
@@ -119,22 +121,50 @@ class NodeType[T: NodeTypeAttributes = NodeTypeAttributes](metaclass=NodeTypeMet
         return typenode
 
     @classmethod
-    def add_child(
+    def _add_child(
         cls,
-        identifier: str,
-        child: "BoundNode | type[NodeType]",
-        *,
-        tg: TypeGraph,
+        child: Child,
     ) -> BoundNode:
-        child_type_node = (
-            cast(type[NodeType], child).get_or_create_type(tg=tg)
-            if issubclass(type(child), type) and issubclass(cast(type, child), NodeType)
-            else cast_assert(BoundNode, child)
-        )
+        tg = child.tg
+        identifier = child.identifier
+        nodetype = child.nodetype
+
+        child_type_node = nodetype.get_or_create_type(tg=tg)
         return tg.add_make_child(
             type_node=cls.get_or_create_type(tg=tg),
             child_type_node=child_type_node,
             identifier=identifier,
+        )
+
+    @classmethod
+    def add_anon_child(
+        cls,
+        child: Child[Any],
+    ):
+        cls._add_child(child)
+
+    @classmethod
+    def _add_link(
+        cls,
+        *,
+        tg: TypeGraph,
+        lhs_reference_path: list[str],
+        rhs_reference_path: list[str],
+        edge: EdgeCreationAttributes,
+    ) -> None:
+        type_node = cls.get_or_create_type(tg=tg)
+
+        tg.add_make_link(
+            type_node=type_node,
+            lhs_reference_node=tg.add_reference(
+                type_node=type_node,
+                path=lhs_reference_path,
+            ).node(),
+            rhs_reference_node=tg.add_reference(
+                type_node=type_node,
+                path=rhs_reference_path,
+            ).node(),
+            edge_attributes=edge,
         )
 
     @classmethod
@@ -196,7 +226,15 @@ def test_fabll_basic():
     class TestNodeWithChildren(NodeType):
         @classmethod
         def create_type(cls, tg: TypeGraph) -> None:
-            cls.tnwa = Child(TestNodeWithoutAttr, tg=tg)
+            cls.tnwa1 = Child(TestNodeWithoutAttr, tg=tg)
+            cls.tnwa2 = Child(TestNodeWithoutAttr, tg=tg)
+
+            cls._add_link(
+                tg=tg,
+                lhs_reference_path=["tnwa1"],
+                rhs_reference_path=["tnwa2"],
+                edge=EdgePointer.build(),
+            )
 
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
@@ -222,3 +260,16 @@ def test_fabll_basic():
     )
     print("Slice:", slice.attributes())
     print("Slice.tnwa:", slice.tnwa.get().attributes())
+
+    tnwc = TestNodeWithChildren.create_instance(tg=tg, g=g)
+    assert (
+        not_none(
+            EdgePointer.get_referenced_node_from_node(node=tnwc.tnwa1.get().instance)
+        )
+        .node()
+        .is_same(other=tnwc.tnwa2.get().instance.node())
+    )
+
+
+if __name__ == "__main__":
+    test_fabll_basic()

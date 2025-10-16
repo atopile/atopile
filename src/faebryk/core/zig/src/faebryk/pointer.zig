@@ -1,6 +1,7 @@
 const graph_mod = @import("graph");
 const std = @import("std");
 const composition_mod = @import("composition.zig");
+const edgebuilder_mod = @import("edgebuilder.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -14,25 +15,36 @@ const Node = graph.Node;
 const GraphView = graph.GraphView;
 const str = graph.str;
 const EdgeComposition = composition_mod.EdgeComposition;
+const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgePointer = struct {
     pub const tid: Edge.EdgeType = 1759771470;
 
     pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) !EdgeReference {
         const edge = try Edge.init(allocator, from, to, tid);
-        edge.attributes.directional = true;
-        // edge.attributes.name = identifier;
+        build().apply_to(edge);
         return edge;
+    }
+
+    pub fn build() EdgeCreationAttributes {
+        return .{
+            .edge_type = tid,
+            .directional = true,
+            .name = null,
+            .dynamic = null,
+        };
     }
 
     pub fn get_referenced_node(edge: EdgeReference) ?NodeReference {
         return edge.get_target();
     }
 
-    pub fn get_referenced_node_from_node(bound_reference_node: BoundNodeReference) ?NodeReference {
+    pub fn get_referenced_node_from_node(bound_reference_node: BoundNodeReference) ?BoundNodeReference {
         const edge = Edge.get_single_edge(bound_reference_node, tid, false);
         if (edge) |e| {
-            return e.edge.get_target();
+            if (e.edge.get_target()) |target| {
+                return bound_reference_node.g.bind(target);
+            }
         }
         return null;
     }
