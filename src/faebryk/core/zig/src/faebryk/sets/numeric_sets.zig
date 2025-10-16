@@ -141,8 +141,9 @@ pub const Numeric_Interval = struct {
 
     pub fn op_power(
         self: Numeric_Interval,
+        allocator: std.mem.Allocator,
         exponent: Numeric_Interval,
-    ) OperationError!Numeric_Interval {
+    ) !Numeric_Interval_Disjoint {
         if (exponent.max < 0.0) {
             return OperationError.NegativeExponentUnsupported;
         }
@@ -174,58 +175,53 @@ pub const Numeric_Interval = struct {
         max_val = @max(max_val, pow_c);
         max_val = @max(max_val, pow_d);
 
-        return Numeric_Interval{
-            .min = min_val,
-            .max = max_val,
-        };
+        return try Numeric_Interval_Disjoint.init_from_single(allocator, try Numeric_Interval.init(min_val, max_val));
     }
 
-    pub fn op_inverse(self: Numeric_Interval) Error!Numeric_Interval {
+    pub fn op_invert(self: Numeric_Interval, allocator: std.mem.Allocator) !Numeric_Interval_Disjoint {
         const neg_inf = -std.math.inf(f64);
         const pos_inf = std.math.inf(f64);
 
         if (self.min == 0.0 and self.max == 0.0) {
-            return Error.Empty;
+            return try Numeric_Interval_Disjoint.init_empty(allocator);
         }
 
         if (self.min < 0.0 and self.max > 0.0) {
-            return Error.Empty;
+            return Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+                Numeric_Interval{ .min = neg_inf, .max = 1.0 / self.min },
+                Numeric_Interval{ .min = 1.0 / self.max, .max = pos_inf },
+            }, &[_]Numeric_Interval_Disjoint{});
         }
 
         if (self.min < 0.0 and self.max == 0.0) {
-            return Numeric_Interval{
-                .min = neg_inf,
-                .max = 1.0 / self.min,
-            };
+            return Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+                Numeric_Interval{ .min = neg_inf, .max = 1.0 / self.min },
+            }, &[_]Numeric_Interval_Disjoint{});
         }
 
         if (self.min == 0.0 and self.max > 0.0) {
-            return Numeric_Interval{
-                .min = 1.0 / self.max,
-                .max = pos_inf,
-            };
+            return Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+                Numeric_Interval{ .min = 1.0 / self.max, .max = pos_inf },
+            }, &[_]Numeric_Interval_Disjoint{});
         }
 
-        const inv_min = 1.0 / self.max;
-        const inv_max = 1.0 / self.min;
-
-        var lower = inv_min;
-        var upper = inv_max;
-        if (lower > upper) {
-            const tmp = lower;
-            lower = upper;
-            upper = tmp;
-        }
-
-        return Numeric_Interval{
-            .min = lower,
-            .max = upper,
-        };
+        return Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+            Numeric_Interval{ .min = 1.0 / self.max, .max = 1.0 / self.min },
+        }, &[_]Numeric_Interval_Disjoint{});
     }
 
-    pub fn op_divide(self: Numeric_Interval, other: Numeric_Interval) Error!Numeric_Interval {
-        const inverse_other = try other.op_inverse();
-        return self.op_multiply(inverse_other);
+    pub fn op_divide(self: Numeric_Interval, allocator: std.mem.Allocator, other: Numeric_Interval) !Numeric_Interval_Disjoint {
+        var inverse_other = try other.op_invert(allocator);
+        defer inverse_other.deinit();
+
+        var products = std.ArrayList(Numeric_Interval).init(allocator);
+        defer products.deinit();
+
+        for (inverse_other.intervals.items) |r| {
+            try products.append(self.op_multiply(r));
+        }
+
+        return try Numeric_Interval_Disjoint.init(allocator, products.items, &[_]Numeric_Interval_Disjoint{});
     }
 
     pub fn op_intersect(self: Numeric_Interval, other: Numeric_Interval) Error!Numeric_Interval {
@@ -339,6 +335,10 @@ fn intervalLess(_: void, a: Numeric_Interval, b: Numeric_Interval) bool {
 pub const Numeric_Interval_Disjoint = struct {
     intervals: std.ArrayList(Numeric_Interval),
 
+    pub const Error = error{
+        Empty,
+    };
+
     pub fn init_empty(allocator: std.mem.Allocator) !Numeric_Interval_Disjoint {
         return try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{}, &[_]Numeric_Interval_Disjoint{});
     }
@@ -404,10 +404,258 @@ pub const Numeric_Interval_Disjoint = struct {
         self.intervals.deinit();
     }
 
-    pub fn slice(self: *const Numeric_Interval_Disjoint) ![]Numeric_Interval {
-        return self.intervals[0..self.len];
+    pub fn is_empty(self: *const Numeric_Interval_Disjoint) bool {
+        return self.intervals.items.len == 0;
     }
-};
+
+    pub fn is_unbounded(self: *const Numeric_Interval_Disjoint) bool {
+        if (self.is_empty()) {
+            return false;
+        }
+        return self.intervals.items[0].is_unbounded();
+    }
+
+    pub fn is_finite(self: *const Numeric_Interval_Disjoint) bool {
+        if (self.is_empty()) {
+            return true;
+        }
+        return self.intervals.items[0].is_finite() and self.intervals.items[self.intervals.items.len - 1].is_finite();
+    }
+
+    pub fn closest_elem(self: *const Numeric_Interval_Disjoint, target: f64) Error!f64 {
+        if (self.is_empty()) {
+            return Error.Empty;
+        }
+
+        const intervals = self.intervals.items;
+
+        // Locate the first interval whose minimum exceeds the target. This mirrors
+        // bisect() in the Python implementation to find the insertion point.
+        var left: usize = 0;
+        var right: usize = intervals.len;
+        while (left < right) {
+            const mid = left + (right - left) / 2;
+            if (intervals[mid].min <= target) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        const index = left;
+
+        var left_bound: ?f64 = null;
+        if (index > 0) {
+            const candidate = intervals[index - 1];
+            if (target >= candidate.min and target <= candidate.max) {
+                return target;
+            }
+            left_bound = candidate.max;
+        }
+
+        const right_bound: ?f64 = if (index < intervals.len) intervals[index].min else null;
+
+        // Exactly one neighbor exists (before the first interval or after the last).
+        if (left_bound) |lb| {
+            if (right_bound) |rb| {
+                if (target - lb < rb - target) {
+                    return lb;
+                }
+                return rb;
+            }
+            return lb;
+        }
+
+        if (right_bound) |rb| {
+            return rb;
+        }
+
+        // The set is non-empty, so at least one boundary must exist.
+        unreachable;
+    }
+
+    pub fn is_superset_of(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) bool {
+        const intersection = self.op_intersect_intervals(allocator, other) catch return false;
+        defer intersection.deinit();
+
+        const a = intersection.intervals.items;
+        const b = other.intervals.items;
+
+        if (a.len != b.len) {
+            return false;
+        }
+
+        for (a, b) |lhs, rhs| {
+            if (lhs.min != rhs.min or lhs.max != rhs.max) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    pub fn is_subset_of(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) bool {
+        return other.is_superset_of(allocator, self);
+    }
+
+    pub fn op_intersect_interval(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: Numeric_Interval) !Numeric_Interval_Disjoint {
+        var intersections = std.ArrayList(Numeric_Interval).init(allocator);
+        defer intersections.deinit();
+
+        for (self.intervals.items) |candidate| {
+            const overlap = candidate.op_intersect(other) catch |err| {
+                if (err == error.Empty) continue;
+                return err;
+            };
+
+            try intersections.append(overlap);
+        }
+
+        return Numeric_Interval_Disjoint.init(allocator, intersections.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_intersect_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var result = std.ArrayList(Numeric_Interval).init(allocator);
+        defer result.deinit();
+
+        var s: usize = 0;
+        var o: usize = 0;
+        while (s < self.intervals.items.len and o < other.intervals.items.len) {
+            const rs = self.intervals.items[s];
+            const ro = other.intervals.items[o];
+
+            if (rs.op_intersect(ro)) |overlap| {
+                try result.append(overlap);
+            } else |err| switch (err) {
+                error.Empty => {},
+                else => return err,
+            }
+
+            if (rs.max <= ro.min) {
+                s += 1;
+            } else if (ro.max < rs.min) {
+                o += 1;
+            } else if (rs.max < ro.max) {
+                s += 1;
+            } else if (ro.max < rs.max) {
+                o += 1;
+            } else {
+                s += 1;
+                o += 1;
+            }
+        }
+        return try Numeric_Interval_Disjoint.init(allocator, result.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_union_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var combined = std.ArrayList(Numeric_Interval).init(allocator);
+        defer combined.deinit();
+
+        try combined.appendSlice(self.intervals.items);
+        try combined.appendSlice(other.intervals.items);
+
+        return Numeric_Interval_Disjoint.init(allocator, combined.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_difference_interval(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: Numeric_Interval) !Numeric_Interval_Disjoint {
+        var pieces = std.ArrayList(Numeric_Interval).init(allocator);
+        defer pieces.deinit();
+
+        for (self.intervals.items) |candidate| {
+            var diff = try candidate.op_difference(allocator, other);
+            defer diff.deinit();
+
+            try pieces.appendSlice(diff.intervals.items);
+        }
+
+        return Numeric_Interval_Disjoint.init(allocator, pieces.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_difference_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var result = try Numeric_Interval_Disjoint.init(allocator, self.intervals.items, &[_]Numeric_Interval_Disjoint{});
+        errdefer result.deinit();
+
+        for (other.intervals.items) |interval| {
+            const next = try result.op_difference_interval(allocator, interval);
+            result.deinit();
+            result = next;
+        }
+
+        return result;
+    }
+
+    pub fn op_symmetric_difference_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var union_result = try self.op_union_intervals(allocator, other);
+        defer union_result.deinit();
+
+        var intersection_result = try self.op_intersect_intervals(allocator, other);
+        defer intersection_result.deinit();
+
+        return union_result.op_difference_intervals(allocator, &intersection_result);
+    }
+
+    pub fn op_add_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var result = std.ArrayList(Numeric_Interval).init(allocator);
+        defer result.deinit();
+
+        for (self.intervals.items) |r| {
+            for (other.intervals.items) |o| {
+                try result.append(r.op_add(o));
+            }
+        }
+
+        return Numeric_Interval_Disjoint.init(allocator, result.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_negate(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator) !Numeric_Interval_Disjoint {
+        var result = std.ArrayList(Numeric_Interval).init(allocator);
+        defer result.deinit();
+
+        for (self.intervals.items) |interval| {
+            try result.append(interval.op_negate());
+        }
+
+        return Numeric_Interval_Disjoint.init(allocator, result.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_subtract_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var negated = try other.op_negate(allocator);
+        defer negated.deinit();
+
+        return self.op_add_intervals(allocator, &negated);
+    }
+
+    pub fn op_multiply_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+        var result = std.ArrayList(Numeric_Interval).init(allocator);
+        defer result.deinit();
+
+        for (self.intervals.items) |r| {
+            for (other.intervals.items) |o| {
+                try result.append(r.op_multiply(o));
+            }
+        }
+
+        return Numeric_Interval_Disjoint.init(allocator, result.items, &[_]Numeric_Interval_Disjoint{});
+    }
+
+    pub fn op_invert(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator) !Numeric_Interval_Disjoint {
+        var components = std.ArrayList(Numeric_Interval_Disjoint).init(allocator);
+        defer components.deinit();
+
+        for (self.intervals.items) |interval| {
+            const inverted = try interval.op_invert(allocator);
+            try components.append(inverted);
+        }
+
+        return Numeric_Interval_Disjoint.init(
+            allocator,
+            &[_]Numeric_Interval{},
+            components.items,
+        );
+    }
+
+    pub fn op_divide_intervals(self: *const Numeric_Interval_Disjoint, allocator: std.mem.Allocator, other: *const Numeric_Interval_Disjoint) !Numeric_Interval_Disjoint {
+
+    }
 
 test "Numeric_Interval.init rejects inverted bounds" {
     try std.testing.expectError(
@@ -454,19 +702,21 @@ test "Numeric_Interval.multiply handles mixed signs" {
 test "Numeric_Interval.op_power raises interval to positive exponent" {
     const base = try Numeric_Interval.init(1.0, 3.0);
     const exponent = try Numeric_Interval.init(2.0, 3.0);
-    const result = try base.op_power(exponent);
+    const result = try base.op_power(std.testing.allocator, exponent);
+    defer result.deinit();
 
-    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.min, 1e-12);
-    try std.testing.expectApproxEqRel(@as(f64, 27.0), result.max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 27.0), result.intervals.items[0].max, 1e-12);
 }
 
 test "Numeric_Interval.op_power rejects negative exponent intervals" {
     const base = try Numeric_Interval.init(1.0, 2.0);
     const exponent = try Numeric_Interval.init(-2.0, -1.0);
+    const allocator = std.testing.allocator;
 
     try std.testing.expectError(
         Numeric_Interval.OperationError.NegativeExponentUnsupported,
-        base.op_power(exponent),
+        base.op_power(allocator, exponent),
     );
 }
 
@@ -476,7 +726,7 @@ test "Numeric_Interval.op_power rejects exponent crossing zero" {
 
     try std.testing.expectError(
         Numeric_Interval.OperationError.ExponentCrossesZero,
-        base.op_power(exponent),
+        base.op_power(std.testing.allocator, exponent),
     );
 }
 
@@ -486,7 +736,7 @@ test "Numeric_Interval.op_power rejects fractional exponent on negative base int
 
     try std.testing.expectError(
         Numeric_Interval.OperationError.FractionalExponentRequiresIntegerExponent,
-        base.op_power(exponent),
+        base.op_power(std.testing.allocator, exponent),
     );
 }
 
@@ -506,6 +756,29 @@ test "Numeric_Interval.op_sin returns full range for wide intervals" {
     try std.testing.expectApproxEqRel(@as(f64, 1.0), result.max, 1e-12);
 }
 
+test "Numeric_Interval_Disjoint.closest_elem handles relative positions" {
+    const interval_a = try Numeric_Interval.init(1.0, 3.0);
+    const interval_b = try Numeric_Interval.init(5.0, 7.0);
+    var disjoint = try Numeric_Interval_Disjoint.init(
+        std.testing.allocator,
+        &[_]Numeric_Interval{ interval_a, interval_b },
+        &[_]Numeric_Interval_Disjoint{},
+    );
+    defer disjoint.deinit();
+
+    const below = try disjoint.closest_elem(0.2);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), below, 1e-12);
+
+    const inside = try disjoint.closest_elem(2.4);
+    try std.testing.expectApproxEqRel(@as(f64, 2.4), inside, 1e-12);
+
+    const between = try disjoint.closest_elem(4.2);
+    try std.testing.expectApproxEqRel(@as(f64, 5.0), between, 1e-12);
+
+    const above = try disjoint.closest_elem(9.5);
+    try std.testing.expectApproxEqRel(@as(f64, 7.0), above, 1e-12);
+}
+
 test "Numeric_Interval.op_sin captures local extrema inside interval" {
     const interval = try Numeric_Interval.init(-std.math.pi / 2.0, std.math.pi / 2.0);
     const result = try interval.op_sin();
@@ -516,22 +789,103 @@ test "Numeric_Interval.op_sin captures local extrema inside interval" {
 
 test "Numeric_Interval.op_inverse returns empty for zero interval" {
     const zero_interval = try Numeric_Interval.init(0.0, 0.0);
-    try std.testing.expectError(Numeric_Interval.Error.Empty, zero_interval.op_inverse());
+    var result = try zero_interval.op_invert(std.testing.allocator);
+    defer result.deinit();
+    try std.testing.expect(result.is_empty());
 }
 
+test "Numeric_Interval.op_invert returns empty disjoint for zero interval" {
+    const allocator = std.testing.allocator;
+    const interval = try Numeric_Interval.init(0.0, 0.0);
+    const result = try interval.op_invert(allocator);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), result.intervals.items.len);
+}
+
+test "Numeric_Interval.op_invert splits interval crossing zero" {
+    const allocator = std.testing.allocator;
+    const interval = try Numeric_Interval.init(-2.0, 4.0);
+    const result = try interval.op_invert(allocator);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), result.intervals.items.len);
+    try std.testing.expect(result.intervals.items[0].min == -std.math.inf(f64));
+    try std.testing.expectApproxEqRel(@as(f64, -0.5), result.intervals.items[0].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 0.25), result.intervals.items[1].min, 1e-12);
+    try std.testing.expect(result.intervals.items[1].max == std.math.inf(f64));
+}
+
+test "Numeric_Interval.op_invert handles negative-only intervals" {
+    const allocator = std.testing.allocator;
+    const interval = try Numeric_Interval.init(-5.0, -1.0);
+    const result = try interval.op_invert(allocator);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), result.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, -1.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, -0.2), result.intervals.items[0].max, 1e-12);
+}
+
+test "Numeric_Interval.op_invert handles positive-only intervals" {
+    const allocator = std.testing.allocator;
+    const interval = try Numeric_Interval.init(2.0, 5.0);
+    const result = try interval.op_invert(allocator);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), result.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, 0.2), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 0.5), result.intervals.items[0].max, 1e-12);
+}
+
+test "Numeric_Interval.op_invert handles negative-to-zero interval" {
+    const allocator = std.testing.allocator;
+    const interval = try Numeric_Interval.init(-4.0, 0.0);
+    const result = try interval.op_invert(allocator);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), result.intervals.items.len);
+    try std.testing.expect(result.intervals.items[0].min == -std.math.inf(f64));
+    try std.testing.expectApproxEqRel(@as(f64, -0.25), result.intervals.items[0].max, 1e-12);
+}
+
+test "Numeric_Interval.op_invert handles zero-to-positive interval" {
+    const allocator = std.testing.allocator;
+    const interval = try Numeric_Interval.init(0.0, 4.0);
+    const result = try interval.op_invert(allocator);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 1), result.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, 0.25), result.intervals.items[0].min, 1e-12);
+    try std.testing.expect(result.intervals.items[0].max == std.math.inf(f64));
+}
 test "Numeric_Interval.op_divide divides interval by positive interval" {
     const lhs = try Numeric_Interval.init(2.0, 4.0);
     const rhs = try Numeric_Interval.init(1.0, 2.0);
-    const result = try lhs.op_divide(rhs);
+    const result = try lhs.op_divide(std.testing.allocator, rhs);
+    defer result.deinit();
 
-    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.min, 1e-12);
-    try std.testing.expectApproxEqRel(@as(f64, 4.0), result.max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 4.0), result.intervals.items[0].max, 1e-12);
 }
 
-test "Numeric_Interval.op_divide returns empty when denominator spans zero" {
+test "Numeric_Interval.op_divide splits when denominator spans zero" {
     const lhs = try Numeric_Interval.init(1.0, 2.0);
     const rhs = try Numeric_Interval.init(-1.0, 1.0);
-    try std.testing.expectError(Numeric_Interval.Error.Empty, lhs.op_divide(rhs));
+    var result = try lhs.op_divide(std.testing.allocator, rhs);
+    defer result.deinit();
+
+    // Python implementation returns two semi-infinite ranges; mirror that shape here.
+    try std.testing.expect(!result.is_empty());
+    try std.testing.expectEqual(@as(usize, 2), result.intervals.items.len);
+
+    const neg_branch = result.intervals.items[0];
+    const pos_branch = result.intervals.items[1];
+
+    try std.testing.expect(std.math.isInf(neg_branch.min));
+    try std.testing.expectApproxEqRel(@as(f64, -1.0), neg_branch.max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), pos_branch.min, 1e-12);
+    try std.testing.expect(std.math.isInf(pos_branch.max));
 }
 
 test "Numeric_Interval.init rejects NaN bounds" {
@@ -664,4 +1018,255 @@ test "Numeric_Interval_Disjoint.init merges and sorts intervals" {
     try std.testing.expectApproxEqRel(@as(f64, 8.0), disjoint.intervals.items[1].max, 1e-12);
     try std.testing.expectApproxEqRel(@as(f64, 9.0), disjoint.intervals.items[2].min, 1e-12);
     try std.testing.expectApproxEqRel(@as(f64, 12.0), disjoint.intervals.items[2].max, 1e-12);
+}
+
+test "Numeric_Interval_Disjoint.is_superset_of handles various cases" {
+    const outer_intervals = [_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 3.5),
+        try Numeric_Interval.init(5.0, 7.5),
+    };
+    const inner_intervals = [_]Numeric_Interval{
+        try Numeric_Interval.init(1.5, 2.0),
+        try Numeric_Interval.init(6.0, 6.8),
+    };
+    const partial_intervals = [_]Numeric_Interval{
+        try Numeric_Interval.init(0.5, 2.0),
+    };
+
+    var outer = try Numeric_Interval_Disjoint.init(std.testing.allocator, &outer_intervals, &[_]Numeric_Interval_Disjoint{});
+    defer outer.deinit();
+
+    var inner = try Numeric_Interval_Disjoint.init(std.testing.allocator, &inner_intervals, &[_]Numeric_Interval_Disjoint{});
+    defer inner.deinit();
+
+    var partial = try Numeric_Interval_Disjoint.init(std.testing.allocator, &partial_intervals, &[_]Numeric_Interval_Disjoint{});
+    defer partial.deinit();
+
+    var empty = try Numeric_Interval_Disjoint.init_empty(std.testing.allocator);
+    defer empty.deinit();
+
+    const allocator = std.testing.allocator;
+
+    try std.testing.expect(outer.is_superset_of(allocator, &inner));
+    try std.testing.expect(outer.is_superset_of(allocator, &empty));
+    try std.testing.expect(outer.is_superset_of(allocator, &outer));
+
+    try std.testing.expect(!inner.is_superset_of(allocator, &outer));
+    try std.testing.expect(!partial.is_superset_of(allocator, &outer));
+}
+
+test "Numeric_Interval_Disjoint.is_subset_of handles various cases" {
+    const outer_intervals = [_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 3.5),
+        try Numeric_Interval.init(5.0, 7.5),
+    };
+    const inner_intervals = [_]Numeric_Interval{
+        try Numeric_Interval.init(1.5, 2.0),
+        try Numeric_Interval.init(6.0, 6.8),
+    };
+    const partial_intervals = [_]Numeric_Interval{
+        try Numeric_Interval.init(0.5, 2.0),
+    };
+
+    var outer = try Numeric_Interval_Disjoint.init(std.testing.allocator, &outer_intervals, &[_]Numeric_Interval_Disjoint{});
+    defer outer.deinit();
+
+    var inner = try Numeric_Interval_Disjoint.init(std.testing.allocator, &inner_intervals, &[_]Numeric_Interval_Disjoint{});
+    defer inner.deinit();
+
+    var partial = try Numeric_Interval_Disjoint.init(std.testing.allocator, &partial_intervals, &[_]Numeric_Interval_Disjoint{});
+    defer partial.deinit();
+
+    var empty = try Numeric_Interval_Disjoint.init_empty(std.testing.allocator);
+    defer empty.deinit();
+
+    const allocator = std.testing.allocator;
+
+    try std.testing.expect(inner.is_subset_of(allocator, &outer));
+    try std.testing.expect(empty.is_subset_of(allocator, &outer));
+    try std.testing.expect(outer.is_subset_of(allocator, &outer));
+
+    try std.testing.expect(!outer.is_subset_of(allocator, &inner));
+    try std.testing.expect(!partial.is_subset_of(allocator, &outer));
+}
+
+test "Numeric_Interval_Disjoint.op_union_intervals handles various cases" {
+    const lhs = try Numeric_Interval_Disjoint.init(std.testing.allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 3.0),
+        try Numeric_Interval.init(5.0, 7.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer lhs.deinit();
+
+    const rhs = try Numeric_Interval_Disjoint.init(std.testing.allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(2.0, 4.0),
+        try Numeric_Interval.init(6.0, 8.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer rhs.deinit();
+
+    const result = try lhs.op_union_intervals(std.testing.allocator, &rhs);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), result.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 4.0), result.intervals.items[0].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 5.0), result.intervals.items[1].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 8.0), result.intervals.items[1].max, 1e-12);
+}
+
+test "Numeric_Interval_Disjoint.op_difference_interval handles overlap" {
+    const allocator = std.testing.allocator;
+
+    var base = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 4.0),
+        try Numeric_Interval.init(6.0, 8.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer base.deinit();
+
+    const subtract = try Numeric_Interval.init(2.0, 7.0);
+
+    var result = try base.op_difference_interval(allocator, subtract);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), result.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 2.0), result.intervals.items[0].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 7.0), result.intervals.items[1].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 8.0), result.intervals.items[1].max, 1e-12);
+}
+
+test "Numeric_Interval_Disjoint.op_difference_intervals handles multiple subtractions" {
+    const allocator = std.testing.allocator;
+
+    var base = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(0.0, 5.0),
+        try Numeric_Interval.init(6.0, 10.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer base.deinit();
+
+    var subtract = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 2.0),
+        try Numeric_Interval.init(7.0, 9.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer subtract.deinit();
+
+    var result = try base.op_difference_intervals(allocator, &subtract);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 4), result.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, 0.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), result.intervals.items[0].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 2.0), result.intervals.items[1].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 5.0), result.intervals.items[1].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 6.0), result.intervals.items[2].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 7.0), result.intervals.items[2].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 9.0), result.intervals.items[3].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 10.0), result.intervals.items[3].max, 1e-12);
+}
+
+test "Numeric_Interval_Disjoint.op_add_intervals sums pairwise intervals" {
+    const allocator = std.testing.allocator;
+
+    var lhs = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 2.0),
+        try Numeric_Interval.init(4.0, 5.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer lhs.deinit();
+
+    var rhs = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(10.0, 11.0),
+        try Numeric_Interval.init(20.0, 22.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer rhs.deinit();
+
+    var result = try lhs.op_add_intervals(allocator, &rhs);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 3), result.intervals.items.len);
+
+    try std.testing.expectApproxEqRel(@as(f64, 11.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 13.0), result.intervals.items[0].max, 1e-12);
+
+    try std.testing.expectApproxEqRel(@as(f64, 14.0), result.intervals.items[1].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 16.0), result.intervals.items[1].max, 1e-12);
+
+    try std.testing.expectApproxEqRel(@as(f64, 21.0), result.intervals.items[2].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 27.0), result.intervals.items[2].max, 1e-12);
+}
+
+test "Numeric_Interval_Disjoint.op_negate flips all intervals" {
+    const allocator = std.testing.allocator;
+
+    var original = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(1.0, 3.0),
+        try Numeric_Interval.init(5.0, 6.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer original.deinit();
+
+    var negated = try original.op_negate(allocator);
+    defer negated.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), negated.intervals.items.len);
+    try std.testing.expectApproxEqRel(@as(f64, -6.0), negated.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, -5.0), negated.intervals.items[0].max, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, -3.0), negated.intervals.items[1].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, -1.0), negated.intervals.items[1].max, 1e-12);
+}
+
+test "Numeric_Interval_Disjoint.op_subtract_intervals subtracts via negation and add" {
+    const allocator = std.testing.allocator;
+
+    var lhs = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(5.0, 7.0),
+        try Numeric_Interval.init(10.0, 12.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer lhs.deinit();
+
+    var rhs = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(2.0, 3.0),
+        try Numeric_Interval.init(1.0, 1.5),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer rhs.deinit();
+
+    var negated_rhs = try rhs.op_negate(allocator);
+    defer negated_rhs.deinit();
+
+    var difference = try lhs.op_subtract_intervals(allocator, &rhs);
+    defer difference.deinit();
+
+    var manual = try lhs.op_add_intervals(allocator, &negated_rhs);
+    defer manual.deinit();
+
+    try std.testing.expectEqual(@as(usize, manual.intervals.items.len), difference.intervals.items.len);
+
+    for (manual.intervals.items, difference.intervals.items) |expected, actual| {
+        try std.testing.expectApproxEqRel(expected.min, actual.min, 1e-12);
+        try std.testing.expectApproxEqRel(expected.max, actual.max, 1e-12);
+    }
+}
+
+test "Numeric_Interval_Disjoint.op_multiply_intervals multiplies pairwise intervals" {
+    const allocator = std.testing.allocator;
+
+    var lhs = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(-2.0, -1.0),
+        try Numeric_Interval.init(3.0, 4.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer lhs.deinit();
+
+    var rhs = try Numeric_Interval_Disjoint.init(allocator, &[_]Numeric_Interval{
+        try Numeric_Interval.init(0.5, 1.5),
+        try Numeric_Interval.init(2.0, 3.0),
+    }, &[_]Numeric_Interval_Disjoint{});
+    defer rhs.deinit();
+
+    var result = try lhs.op_multiply_intervals(allocator, &rhs);
+    defer result.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), result.intervals.items.len);
+
+    try std.testing.expectApproxEqRel(@as(f64, -6.0), result.intervals.items[0].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, -0.5), result.intervals.items[0].max, 1e-12);
+
+    try std.testing.expectApproxEqRel(@as(f64, 1.5), result.intervals.items[1].min, 1e-12);
+    try std.testing.expectApproxEqRel(@as(f64, 12.0), result.intervals.items[1].max, 1e-12);
 }
