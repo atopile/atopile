@@ -27,7 +27,7 @@ const HeirarchyTraverseDirection = graph.HeirarchyTraverseDirection;
 const HeirarchyElement = graph.HeirarchyElement;
 
 // Shallow link attribute key
-const shallow_link = "shallow_link";
+const shallow = EdgeInterfaceConnection.shallow_attribute;
 
 pub const PathFinder = struct {
     const Self = @This();
@@ -410,7 +410,7 @@ pub const PathFinder = struct {
     // Shallow links can only be crossed if the starting node is at the same level or higher
     // than where the shallow link is located
     // Returns false if path violates shallow link rules
-    fn validate_shallow_links(path: *const BFSPath) bool {
+    fn validate_shallow_edges(path: *const BFSPath) bool {
         var current_node = path.start_node;
         var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
 
@@ -429,7 +429,7 @@ pub const PathFinder = struct {
                 }
             } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
                 // Check if this is a shallow link
-                if (edge.attributes.dynamic.values.get(shallow_link)) |shallow_value| {
+                if (edge.attributes.dynamic.values.get(shallow)) |shallow_value| {
                     if (shallow_value.Bool) {
                         // This is a shallow link
                         // Can only cross if starting node is at same level or higher than the link
@@ -486,7 +486,7 @@ pub const PathFinder = struct {
         }
 
         // Step 3: Validate shallow links
-        if (!validate_shallow_links(path)) {
+        if (!validate_shallow_edges(path)) {
             path.filtered = true;
         }
 
