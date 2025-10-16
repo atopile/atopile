@@ -538,7 +538,7 @@ pub const HeirarchyElement = struct {
 
 pub const BFSPath = struct {
     path: Path,
-    start: BoundNodeReference,
+    start_node: BoundNodeReference,
     filtered: bool = false, // filter this path out
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
@@ -547,7 +547,7 @@ pub const BFSPath = struct {
     hierarchy_stack_folded: ?std.ArrayList(HeirarchyElement) = null, // After folding matching pairs
 
     fn is_consistent(self: *const @This()) bool {
-        return self.start.g == self.path.g;
+        return self.start_node.g == self.path.g;
     }
 
     fn assert_consistent(self: *const @This()) void {
@@ -557,7 +557,7 @@ pub const BFSPath = struct {
     pub fn init(start: BoundNodeReference) @This() {
         var path = BFSPath{
             .path = Path.init(start.g),
-            .start = start,
+            .start_node = start,
             .filtered = false,
             .stop = false,
         };
@@ -568,10 +568,10 @@ pub const BFSPath = struct {
     pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
         base.assert_consistent();
         const g = base.path.g;
-        std.debug.assert(base.start.g == g);
+        std.debug.assert(base.start_node.g == g);
 
         var new_path = try g.allocator.create(BFSPath);
-        new_path.* = BFSPath.init(base.start);
+        new_path.* = BFSPath.init(base.start_node);
         errdefer new_path.destroy(g.allocator);
 
         // Pre-allocate exact capacity needed to avoid reallocation
@@ -607,7 +607,7 @@ pub const BFSPath = struct {
     }
 
     pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
-        return self.path.get_other_node(self.start);
+        return self.path.get_other_node(self.start_node);
     }
 };
 
@@ -889,7 +889,7 @@ pub const GraphView = struct {
         };
         empty_path_copy.* = BFSPath{
             .path = Path.init(start_node.g),
-            .start = start_node,
+            .start_node = start_node,
             .filtered = false,
             .stop = false,
         };
@@ -1027,8 +1027,8 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     const cloned = try BFSPath.cloneAndExtend(&base, e23);
     defer cloned.destroy(g.allocator);
 
-    try std.testing.expect(cloned.start.node == bn1.node);
-    try std.testing.expect(cloned.start.g == bn1.g);
+    try std.testing.expect(cloned.start_node.node == bn1.node);
+    try std.testing.expect(cloned.start_node.g == bn1.g);
     try std.testing.expect(cloned.path.g == bn1.g);
     try std.testing.expectEqual(@as(usize, 2), cloned.path.edges.items.len);
     try std.testing.expect(cloned.path.edges.items[0] == e12);
@@ -1047,7 +1047,7 @@ test "BFSPath detects inconsistent graph view" {
 
     var path = BFSPath.init(bn1);
     defer {
-        path.path.g = path.start.g;
+        path.path.g = path.start_node.g;
         path.deinit();
     }
 
@@ -1056,6 +1056,6 @@ test "BFSPath detects inconsistent graph view" {
     try std.testing.expect(!path.is_consistent());
 
     // Restoring the original graph view before cleanup prevents the assertion from firing.
-    path.path.g = path.start.g;
+    path.path.g = path.start_node.g;
     try std.testing.expect(path.is_consistent());
 }

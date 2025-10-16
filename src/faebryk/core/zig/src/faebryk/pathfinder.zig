@@ -2,6 +2,7 @@ const std = @import("std");
 const graph_mod = @import("graph");
 const composition_mod = @import("composition.zig");
 const interface_mod = @import("interface.zig");
+const type_mod = @import("node_type.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -17,6 +18,7 @@ const GraphView = graph.GraphView;
 const NodeRefMap = graph.NodeRefMap;
 const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeInterfaceConnection = interface_mod.EdgeInterfaceConnection;
+const EdgeType = type_mod.EdgeType;
 
 const DEBUG = false;
 
@@ -126,7 +128,7 @@ pub const PathFinder = struct {
         // Filter says keep!
         if (!path.filtered) {
             // Deep copy the path - pre-allocate capacity to avoid reallocations
-            var copied_path = BFSPath.init(path.start);
+            var copied_path = BFSPath.init(path.start_node);
             copied_path.path.edges.ensureTotalCapacity(path.path.edges.items.len) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
@@ -151,7 +153,7 @@ pub const PathFinder = struct {
 
         // Check if path ends in an end node
         if (self.end_nodes) |*end_nodes| {
-            const path_end = path.path.get_other_node(path.start) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+            const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
             for (end_nodes.items, 0..) |end_node, i| {
                 if (Node.is_same(path_end.node, end_node.node)) {
@@ -203,11 +205,6 @@ pub const PathFinder = struct {
         _ = path;
         self.path_counter += 1;
 
-        // Print progress every 1000 paths
-        if (self.path_counter % 1000 == 0) {
-            std.debug.print("Progress: {} paths explored\n", .{self.path_counter});
-        }
-
         if (DEBUG) std.debug.print("path_counter: {}", .{self.path_counter});
         if (self.path_counter > 1_000_000) {
             return visitor.VisitResult(void){ .STOP = {} };
@@ -215,29 +212,45 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // TODO this can be optimized, we don't really need to iterate through the entire edge list, just the first and last
     pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
+        const edges = path.path.edges.items;
+        if (edges.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
 
-        const allowed_edge_types = comptime [_]Edge.EdgeType{
-            EdgeComposition.tid,
-            EdgeInterfaceConnection.tid,
+        const first = edges[0].attributes.edge_type;
+        const last = edges[edges.len - 1].attributes.edge_type;
+
+        const first_allowed = switch (first) {
+            EdgeComposition.tid, EdgeInterfaceConnection.tid => true,
+            else => false,
+        };
+        const last_allowed = switch (last) {
+            EdgeComposition.tid, EdgeInterfaceConnection.tid => true,
+            else => false,
         };
 
-        edge_loop: for (path.path.edges.items) |edge| {
-            inline for (allowed_edge_types) |allowed| {
-                if (edge.attributes.edge_type == allowed) continue :edge_loop;
-            }
+        if (!first_allowed or !last_allowed) {
             path.stop = true;
             path.filtered = true;
-            return visitor.VisitResult(void){ .CONTINUE = {} };
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
     pub fn filter_path_by_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
-        _ = path;
+        const start_node = path.start_node;
+        const end_node = path.path.get_other_node(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+
+        const start_type_edge = EdgeType.get_type_edge(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+        const end_type_edge = EdgeType.get_type_edge(end_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+
+        const start_node_type = EdgeType.get_type_node(start_type_edge.edge);
+        const end_node_type = EdgeType.get_type_node(end_type_edge.edge);
+
+        if (!Node.is_same(start_node_type, end_node_type)) {
+            path.filtered = true;
+        }
+
         // waiting on type graph implementation for node types
         // var first_node = path.path.get_first_node();
         // var last_node = path.path.get_last_node();
@@ -256,7 +269,7 @@ pub const PathFinder = struct {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        const path_end = path.path.get_other_node(path.start) orelse {
+        const path_end = path.path.get_other_node(path.start_node) orelse {
             // Empty path or invalid - keep it
             return visitor.VisitResult(void){ .CONTINUE = {} };
         };
@@ -310,7 +323,7 @@ pub const PathFinder = struct {
         var elements = std.ArrayList(HeirarchyElement).init(allocator);
         errdefer elements.deinit();
 
-        var current_node = path.start;
+        var current_node = path.start_node;
 
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type == EdgeComposition.tid) {
@@ -398,7 +411,7 @@ pub const PathFinder = struct {
     // than where the shallow link is located
     // Returns false if path violates shallow link rules
     fn validate_shallow_links(path: *const BFSPath) bool {
-        var current_node = path.start;
+        var current_node = path.start_node;
         var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
 
         for (path.path.edges.items) |edge| {
@@ -575,7 +588,7 @@ test "filter_heirarchy_stack" {
 
     var bfs_path = BFSPath{
         .path = path,
-        .start = bn1,
+        .start_node = bn1,
         .filtered = false,
         .stop = false,
     };
