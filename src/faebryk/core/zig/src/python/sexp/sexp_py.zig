@@ -392,15 +392,14 @@ fn generateModule(
 }
 
 // Generate modules using the generic function
-//const PcbModule = generateModule("pcb", sexp.kicad.pcb, sexp.kicad.pcb.PcbFile);
-//const FootprintModule = generateModule("footprint", sexp.kicad.footprint, sexp.kicad.footprint.FootprintFile);
+const PcbModule = generateModule("pcb", sexp.kicad.pcb, sexp.kicad.pcb.PcbFile);
+const FootprintModule = generateModule("footprint", sexp.kicad.footprint, sexp.kicad.footprint.FootprintFile);
 const NetlistModule = generateModule("netlist", sexp.kicad.netlist, sexp.kicad.netlist.NetlistFile);
-//const FpLibTableModule = generateModule("fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile);
-//const SymbolModule = generateModule("symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile);
-//const SchematicModule = generateModule("schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile);
-//
-//const FootprintV5Module = generateModule("footprint_v5", sexp.kicad.v5.footprint, sexp.kicad.v5.footprint.FootprintFile);
-//const SymbolV6Module = generateModule("symbol_v6", sexp.kicad.v6.symbol, sexp.kicad.v6.symbol.SymbolFile);
+const FpLibTableModule = generateModule("fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile);
+const SymbolModule = generateModule("symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile);
+const SchematicModule = generateModule("schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile);
+const FootprintV5Module = generateModule("footprint_v5", sexp.kicad.v5.footprint, sexp.kicad.v5.footprint.FootprintFile);
+const SymbolV6Module = generateModule("symbol_v6", sexp.kicad.v6.symbol, sexp.kicad.v6.symbol.SymbolFile);
 
 // Add more modules as needed
 
@@ -427,15 +426,14 @@ pub fn make_python_module() ?*py.PyObject {
         return null;
     }
 
-    //_ = PcbModule.addToModule(module.?);
-    //_ = FootprintModule.addToModule(module.?);
+    _ = PcbModule.addToModule(module.?);
+    _ = FootprintModule.addToModule(module.?);
     _ = NetlistModule.addToModule(module.?);
-    //_ = FpLibTableModule.addToModule(module.?);
-    //_ = SymbolModule.addToModule(module.?);
-    //_ = SchematicModule.addToModule(module.?);
-
-    //_ = FootprintV5Module.addToModule(module.?);
-    //_ = SymbolV6Module.addToModule(module.?);
+    _ = FpLibTableModule.addToModule(module.?);
+    _ = SymbolModule.addToModule(module.?);
+    _ = SchematicModule.addToModule(module.?);
+    _ = FootprintV5Module.addToModule(module.?);
+    _ = SymbolV6Module.addToModule(module.?);
 
     return module;
 }

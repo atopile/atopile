@@ -109,29 +109,42 @@ pub const Attribute = struct {
 pub const DynamicAttributes = struct {
     values: std.StringHashMap(Literal),
 
-    fn init(allocator: std.mem.Allocator) @This() {
+    pub fn init(allocator: std.mem.Allocator) @This() {
         return .{
             .values = std.StringHashMap(Literal).init(allocator),
         };
     }
 
-    fn deinit(self: *@This()) void {
+    pub fn deinit(self: *@This()) void {
         self.values.deinit();
     }
 
-    fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        for (self.values.keys()) |key| {
-            f(ctx, key, self.values.get(key).?, true);
+    pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
+        var it = self.values.iterator();
+        while (it.next()) |e| {
+            f(ctx, e.key_ptr.*, e.value_ptr.*, true);
+        }
+    }
+
+    pub fn copy_into(self: *const @This(), other: *@This()) void {
+        var it = self.values.iterator();
+        while (it.next()) |e| {
+            other.values.put(e.key_ptr.*, e.value_ptr.*) catch unreachable;
         }
     }
 };
 
+const GraphObjectReference = union(enum) {
+    Node: NodeReference,
+    Edge: EdgeReference,
+};
+
 pub const GraphReferenceCounter = struct {
     ref_count: usize = 0,
-    parent: *anyopaque,
+    parent: GraphObjectReference,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, parent: *anyopaque) @This() {
+    pub fn init(allocator: std.mem.Allocator, parent: GraphObjectReference) @This() {
         return .{
             .ref_count = 0,
             .parent = parent,
@@ -153,6 +166,12 @@ pub const GraphReferenceCounter = struct {
     pub fn dec(self: *@This(), g: *GraphView) void {
         _ = g;
         self.ref_count -= 1;
+        if (self.ref_count == 0) {
+            switch (self.parent) {
+                .Node => |node| node.deinit(),
+                .Edge => |edge| edge.deinit(),
+            }
+        }
     }
 };
 
@@ -173,8 +192,8 @@ pub const UUID = struct {
 pub const NodeAttributes = struct {
     uuid: UUID.T,
     dynamic: DynamicAttributes,
-    name: ?str,
-    fake_type: ?u64,
+    name: ?str, // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
+    fake_type: ?u64, // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
 
     pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
@@ -192,10 +211,10 @@ pub const Node = struct {
         // Attributes
         node.attributes.uuid = UUID.gen_uuid(node);
         node.attributes.dynamic = DynamicAttributes.init(allocator);
-        node.attributes.name = null;
-        node.attributes.fake_type = null;
+        node.attributes.name = null; // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
+        node.attributes.fake_type = null; // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
 
-        node._ref_count = GraphReferenceCounter.init(allocator, node);
+        node._ref_count = GraphReferenceCounter.init(allocator, .{ .Node = node });
         return node;
     }
 
@@ -223,20 +242,6 @@ pub const EdgeAttributes = struct {
     directional: ?bool,
     name: ?str,
     dynamic: DynamicAttributes,
-
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: Edge.EdgeType) !*@This() {
-        var edge = try allocator.create(Edge);
-        edge.source = source;
-        edge.target = target;
-        edge.uuid = UUID.gen_uuid();
-        edge.edge_type = edge_type;
-        edge.dynamic = DynamicAttributes.init(allocator);
-        edge._ref_count = .{
-            .parent = edge,
-            .allocator = allocator,
-        };
-        return edge;
-    }
 
     pub fn deinit(self: *@This()) !void {
         if (self._ref_count.ref_count > 0) {
@@ -304,8 +309,10 @@ pub const Edge = struct {
         edge.attributes.source_id = source.attributes.uuid;
         edge.attributes.target_id = target.attributes.uuid;
         edge.attributes.dynamic = DynamicAttributes.init(allocator);
+        edge.attributes.directional = null;
+        edge.attributes.name = null;
 
-        edge._ref_count = GraphReferenceCounter.init(allocator, edge);
+        edge._ref_count = GraphReferenceCounter.init(allocator, .{ .Edge = edge });
         return edge;
     }
 
@@ -687,18 +694,10 @@ pub const GraphView = struct {
 
         for (g.edges.items) |edge| {
             edge._ref_count.dec(g);
-            edge._ref_count.check_in_use() catch {
-                continue;
-            };
-            edge.deinit();
         }
         g.edges.deinit();
         for (g.nodes.items) |node| {
             node._ref_count.dec(g);
-            node._ref_count.check_in_use() catch {
-                continue;
-            };
-            node.deinit();
         }
         g.nodes.deinit();
     }
@@ -971,11 +970,11 @@ test "basic" {
     try Edge.register_type(TestLinkType);
 
     const n1 = try Node.init(a);
-    // defer n1.deinit();
+    defer n1.deinit();
     const n2 = try Node.init(a);
-    // defer n2.deinit();
+    defer n2.deinit();
     const e12 = try Edge.init(a, n1, n2, TestLinkType);
-    // defer e12.deinit();
+    defer e12.deinit();
 
     _ = try g.insert_node(n1);
     _ = try g.insert_node(n2);
@@ -990,11 +989,11 @@ test "basic" {
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
     try std.testing.expectEqual(e12._ref_count.ref_count, 1);
 
-    g.deinit();
     // has to be deleted first
-    // try std.testing.expectEqual(n1._ref_count.ref_count, 0); //these tests are broken now because we automtically deinit when graph view is deinited
-    // try std.testing.expectEqual(n2._ref_count.ref_count, 0);
-    // try std.testing.expectEqual(e12._ref_count.ref_count, 0);
+    g.deinit();
+    try std.testing.expectEqual(n1._ref_count.ref_count, 0);
+    try std.testing.expectEqual(n2._ref_count.ref_count, 0);
+    try std.testing.expectEqual(e12._ref_count.ref_count, 0);
 }
 
 test "BFSPath cloneAndExtend preserves start metadata" {

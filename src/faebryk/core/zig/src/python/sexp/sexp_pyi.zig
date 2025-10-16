@@ -57,14 +57,14 @@ pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir
     };
 
     // Generate stub for each module - comptime unrolled
-    //try generateModuleStub(allocator, "pcb", sexp.kicad.pcb, "PcbFile", output_dir);
-    //try generateModuleStub(allocator, "footprint", sexp.kicad.footprint, "FootprintFile", output_dir);
+    try generateModuleStub(allocator, "pcb", sexp.kicad.pcb, "PcbFile", output_dir);
+    try generateModuleStub(allocator, "footprint", sexp.kicad.footprint, "FootprintFile", output_dir);
     try generateModuleStub(allocator, "netlist", sexp.kicad.netlist, "NetlistFile", output_dir);
-    //try generateModuleStub(allocator, "fp_lib_table", sexp.kicad.fp_lib_table, "FpLibTableFile", output_dir);
-    //try generateModuleStub(allocator, "symbol", sexp.kicad.symbol, "SymbolFile", output_dir);
-    //try generateModuleStub(allocator, "schematic", sexp.kicad.schematic, "SchematicFile", output_dir);
+    try generateModuleStub(allocator, "fp_lib_table", sexp.kicad.fp_lib_table, "FpLibTableFile", output_dir);
+    try generateModuleStub(allocator, "symbol", sexp.kicad.symbol, "SymbolFile", output_dir);
+    try generateModuleStub(allocator, "schematic", sexp.kicad.schematic, "SchematicFile", output_dir);
 
-    //try generateModuleStub(allocator, "footprint_v5", sexp.kicad.v5.footprint, "FootprintFile", output_dir);
-    //try generateModuleStub(allocator, "symbol_v6", sexp.kicad.v6.symbol, "SymbolFile", output_dir);
+    try generateModuleStub(allocator, "footprint_v5", sexp.kicad.v5.footprint, "FootprintFile", output_dir);
+    try generateModuleStub(allocator, "symbol_v6", sexp.kicad.v6.symbol, "SymbolFile", output_dir);
     // Add more modules as needed
 }

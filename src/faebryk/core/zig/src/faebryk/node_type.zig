@@ -95,21 +95,14 @@ test "basic typegraph" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
     const tn1 = try Node.init(a);
-    // defer tn1.deinit();
     const tn2 = try Node.init(a);
-    // defer tn2.deinit();
     const in1 = try Node.init(a);
-    // defer in1.deinit();
     const in2 = try Node.init(a);
-    // defer in2.deinit();
 
     _ = try g.insert_node(tn1);
     const btn2 = try g.insert_node(tn2);
     const bin1 = try g.insert_node(in1);
     const bin2 = try g.insert_node(in2);
-    // const bn2 = try g.insert_node(n2);
-    // _ = try g.insert_node(tn1);
-    // _ = try g.insert_node(tn2);
 
     // init ---------------------------------------------------------------------------------------
     const et11 = try EdgeType.init(g.allocator, tn1, in1);
@@ -136,10 +129,6 @@ test "basic typegraph" {
     try std.testing.expect(Edge.is_same(EdgeType.get_type_edge(bin1).?.edge, et11));
     try std.testing.expect(Edge.is_same(EdgeType.get_type_edge(bin2).?.edge, bet22.edge));
 
-    // get_name -------------------------------------------------------------------------------
-    // try std.testing.expect(EdgeType.get_name(et11) == "instance1");
-    // try std.testing.expect(EdgeType.get_name(bet22.edge) == "instance2");
-
     // is_node_instance_of -------------------------------------------------------------------------------
     try std.testing.expect(EdgeType.is_node_instance_of(bin1, tn1));
     try std.testing.expect(EdgeType.is_node_instance_of(bin2, tn2));
@@ -158,13 +147,6 @@ test "basic typegraph" {
 
     // Also verify the collected instance edge points to the known instance node
     try std.testing.expect(Node.is_same(EdgeType.get_instance_node(instances.items[0].edge).?, in2));
-
-    // Print collected information for visibility
-    // std.debug.print("collected instances: {d}\n", .{instances.items.len});
-    // for (instances.items, 0..) |be, i| {
-    //     const equals_in2 = Node.is_same(EdgeType.get_instance_node(be.edge).?, in2);
-    //     std.debug.print("instance[{d}]: equals_in2={}\n", .{ i, equals_in2 });
-    // }
 
     // has to be deleted first
     defer g.deinit();
