@@ -7,7 +7,9 @@ Exists as a stop-gap until we move away from the ANTLR4 compiler front-end.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Callable, Iterable
+from collections.abc import Generator, Iterable
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
@@ -1114,7 +1116,35 @@ class ASTVisitor:
     Generates a TypeGraph from the AST.
     """
 
-    class _ScopeState: ...
+    @dataclass
+    class _ScopeState:
+        symbols: set[str] = field(default_factory=set)
+
+    class _ScopeStack:
+        stack: list[ASTVisitor._ScopeState]
+
+        def __init__(self) -> None:
+            self.stack = []
+
+        @contextmanager
+        def enter(self) -> Generator[ASTVisitor._ScopeState, None, None]:
+            state = ASTVisitor._ScopeState()
+            self.stack.append(state)
+            try:
+                yield state
+            finally:
+                self.stack.pop()
+
+        def add_symbol(self, symbol: str) -> None:
+            # TODO: think about this
+
+            current_state = self.stack[-1]
+            if symbol in current_state.symbols:
+                raise DslException(f"Symbol {symbol} already defined in scope")
+
+            current_state.symbols.add(symbol)
+
+            print(f"Added symbol {symbol} to scope")
 
     class _Pragma(StrEnum):
         EXPERIMENT = "experiment"
@@ -1130,22 +1160,8 @@ class ASTVisitor:
         self._ast_root = ast_root
         self._type_graph = TypeGraph.create(g=ast_root.g())
         self._type_nodes: dict[str, BoundNode] = {}
-        self._scope_stack: list[ASTVisitor._ScopeState] = []
+        self._scope_stack = ASTVisitor._ScopeStack()
         self._experiments: set[ASTVisitor._Experiments] = set()
-
-        self._dispatch: dict[str, Callable[[BoundNode], BoundNode]] = {
-            AST.File.type_attrs["name"]: self.visit_File,
-            AST.Scope.type_attrs["name"]: self.visit_Scope,
-            AST.PragmaStmt.type_attrs["name"]: self.visit_PragmaStmt,
-        }
-
-    def _enter_scope(self) -> ASTVisitor._ScopeState:
-        new_scope = ASTVisitor._ScopeState()
-        self._scope_stack.append(new_scope)
-        return new_scope
-
-    def _exit_scope(self) -> ASTVisitor._ScopeState:
-        return self._scope_stack.pop()
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -1197,9 +1213,11 @@ class ASTVisitor:
 
     def visit(self, node: BoundNode):
         node_type = NodeHelpers.get_type_name(node)
-        print(f"Visiting a {node_type} node")
+        print(f"Visiting node of type {node_type}")
 
-        if (handler := self._dispatch.get(node_type)) is None:
+        try:
+            handler = getattr(self, f"visit_{node_type}")
+        except AttributeError:
             raise NotImplementedError(f"No handler for node type: {node_type}")
 
         return handler(node)
@@ -1210,12 +1228,10 @@ class ASTVisitor:
         return self.visit(scope_node)
 
     def visit_Scope(self, node: BoundNode) -> BoundNode:
-        self._enter_scope()
+        with self._scope_stack.enter():
+            for scope_child in NodeHelpers.get_children(node).values():
+                self.visit(scope_child)
 
-        for scope_child in NodeHelpers.get_children(node).values():
-            self.visit(scope_child)
-
-        self._exit_scope()
         return node
 
     def visit_PragmaStmt(self, node: BoundNode) -> BoundNode:
