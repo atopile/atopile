@@ -492,3 +492,39 @@ test "loooooong_chain" {
 
     try std.testing.expect(paths.len == 1);
 }
+
+test "shallow_links" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = try g.insert_node(try Node.init(g.allocator));
+    const bn3 = try g.insert_node(try Node.init(g.allocator));
+    const bn4 = try g.insert_node(try Node.init(g.allocator));
+    const bn5 = try g.insert_node(try Node.init(g.allocator));
+    const bn6 = try g.insert_node(try Node.init(g.allocator));
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn1.node, bn2.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn3.node, EdgeComposition.tid));
+
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn4.node, bn5.node, EdgeComposition.tid));
+    _ = try g.insert_edge(try Edge.init(g.allocator, bn5.node, bn6.node, EdgeComposition.tid));
+
+    const e1 = try Edge.init(g.allocator, bn2.node, bn5.node, EdgeInterfaceConnection.tid);
+    const be1 = try g.insert_edge(e1);
+    EdgeInterfaceConnection.connect_shallow(be1.edge, bn2.node, bn5.node);
+
+    const shallow_path = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn2, bn5);
+    defer {
+        for (shallow_path) |*path| path.deinit();
+        std.testing.allocator.free(shallow_path);
+    }
+    try std.testing.expect(shallow_path.len == 1);
+
+    const dont_cross_shallow_path = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn3, bn6);
+    defer {
+        for (dont_cross_shallow_path) |*path| path.deinit();
+        std.testing.allocator.free(dont_cross_shallow_path);
+    }
+    try std.testing.expect(dont_cross_shallow_path.len == 0);
+}

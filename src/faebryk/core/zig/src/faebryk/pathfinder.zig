@@ -24,6 +24,9 @@ const DEBUG = false;
 const HeirarchyTraverseDirection = graph.HeirarchyTraverseDirection;
 const HeirarchyElement = graph.HeirarchyElement;
 
+// Shallow link attribute key
+const shallow_link = "shallow_link";
+
 pub const PathFinder = struct {
     const Self = @This();
 
@@ -390,9 +393,59 @@ pub const PathFinder = struct {
         return .{ .valid = valid, .folded_stack = folded_stack };
     }
 
+    // Validate shallow links in the path
+    // Shallow links can only be crossed if the starting node is at the same level or higher
+    // than where the shallow link is located
+    // Returns false if path violates shallow link rules
+    fn validate_shallow_links(path: *const BFSPath) bool {
+        var current_node = path.start;
+        var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
+
+        for (path.path.edges.items) |edge| {
+            if (edge.attributes.edge_type == EdgeComposition.tid) {
+                // Update hierarchy depth based on traversal direction
+                const child_node = EdgeComposition.get_child_node(edge);
+                const parent_node = EdgeComposition.get_parent_node(edge);
+
+                if (Node.is_same(child_node, current_node.node)) {
+                    // Going UP (child to parent) - moving toward root
+                    hierarchy_depth += 1;
+                } else if (Node.is_same(parent_node, current_node.node)) {
+                    // Going DOWN (parent to child) - moving away from root
+                    hierarchy_depth -= 1;
+                }
+            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
+                // Check if this is a shallow link
+                if (edge.attributes.dynamic.values.get(shallow_link)) |shallow_value| {
+                    if (shallow_value.Bool) {
+                        // This is a shallow link
+                        // Can only cross if starting node is at same level or higher than the link
+                        // depth > 0: we've ascended, meaning start is LOWER than link → reject
+                        // depth <= 0: we're at or below start, meaning start is at same/higher than link → allow
+                        if (hierarchy_depth > 0) {
+                            // We've ascended above the starting level - start is lower than link
+                            if (DEBUG) {
+                                std.debug.print("Shallow link crossed at depth {}, starting node is lower than link level, rejecting path\n", .{hierarchy_depth});
+                            }
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            // Move to next node
+            current_node = current_node.g.bind(
+                edge.get_other_node(current_node.node) orelse return false,
+            );
+        }
+
+        return true;
+    }
+
     // Main filter: validates that paths follow proper hierarchy traversal rules
     // Rule 1: Paths must return to the same hierarchy level (balanced stack)
     // Rule 2: Paths cannot descend into children from the starting level
+    // Rule 3: Shallow links can only be crossed if starting node is at same level or higher than the link
     pub fn filter_heirarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
@@ -415,6 +468,12 @@ pub const PathFinder = struct {
 
         // Mark path as filtered if hierarchy validation failed
         if (!result.valid) {
+            path.filtered = true;
+            return visitor.VisitResult(void){ .CONTINUE = {} };
+        }
+
+        // Step 3: Validate shallow links
+        if (!validate_shallow_links(path)) {
             path.filtered = true;
         }
 

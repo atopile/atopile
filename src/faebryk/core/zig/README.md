@@ -175,7 +175,7 @@ The pathfinder runs a series of filters on each path during BFS traversal:
 
 ### Hierarchy Stack Filter (Key Logic)
 
-This filter maintains a stack of hierarchy elements to enforce two rules:
+This filter maintains a stack of hierarchy elements to enforce three rules:
 
 #### Rule 1: Balanced hierarchy traversal
 Paths must return to the same hierarchy level as the start node. The stack tracks each UP/DOWN traversal:
@@ -188,6 +188,15 @@ Paths must return to the same hierarchy level as the start node. The stack track
 
 When the stack is empty (we're at the starting level) and we encounter a DOWN edge:
 → **Reject the path immediately**
+
+#### Rule 3: Shallow link restrictions
+**Shallow links can only be crossed if the starting node is at the same hierarchical level or higher than where the shallow link is located.**
+
+Shallow links are special `EdgeInterfaceConnection` edges marked with `shallow_link = true`. These represent connections that should only be accessible if you start from the same level or above (closer to root):
+- Track hierarchy depth as we traverse: starts at 0, UP increments (+1), DOWN decrements (-1)
+- When encountering a shallow link, check if `depth <= 0`
+- If `depth > 0` (we've ascended above start), the starting node is **lower** than the link → reject
+- If `depth <= 0` (at or below start), the starting node is at same/higher level than the link → allow
 
 **Why this matters:**
 
@@ -213,9 +222,28 @@ With Rule 2:
 - ❌ `EP_1 → LV_1` (DOWN from start, rejected)
 - ❌ `LV_1 → LV_2` if only connected via `EP_1 → EP_2` (requires UP first)
 
-**The insight:** Valid connections must go "up-then-across-then-down" through the hierarchy. Starting with a descent means you're trying to connect to your own children without an actual interface connection, which should be rejected.
+With Rule 3 (Shallow Links):
+```
+Root
+  ├─ Module (M1)
+  │    ├─ SubModule (S1)
+  │    │    └─ Interface (I1)
+  │    └─ Interface (Shallow_I)  ← shallow link defined here
+  └─ Module (M2)
+       └─ Interface (I2)
+```
 
-This elegantly prevents direct connections through composition edges while allowing legitimate hierarchical connections where children connect via their parents.
+If `Shallow_I ←→ I2` (shallow interface connection):
+- ✅ Starting from **M1**: `M1 → Shallow_I → I2` (depth = 0 at shallow link, M1 is same level as link)
+- ✅ Starting from **Root**: `Root → M1 → Shallow_I → I2` (depth = -1 at shallow link, Root is higher than link)
+- ❌ Starting from **S1**: `S1 → M1 → Shallow_I → I2` (depth = +1 at shallow link, S1 is lower than link)
+- ❌ Starting from **I1**: `I1 → S1 → M1 → Shallow_I → I2` (depth = +2 at shallow link, I1 is lower than link)
+
+The rule prevents child components from using shallow links defined at parent levels. Shallow links are "shallow" because they're only visible from the same level or above where they're defined, not from deeper child components.
+
+**The insight:** Valid connections must go "up-then-across-then-down" through the hierarchy. Starting with a descent means you're trying to connect to your own children without an actual interface connection. Shallow links enforce an additional constraint: they can only be used if you start from the same hierarchical level or higher (closer to root) than where the link is defined. This prevents child components from reaching "up and across" to use parent-level connections they shouldn't have access to.
+
+This elegantly prevents direct connections through composition edges while allowing legitimate hierarchical connections where children connect via their parents, with shallow links providing fine-grained control over connection visibility.
 
 ## Relation to Python fileformats
 
