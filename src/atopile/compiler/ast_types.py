@@ -8,13 +8,17 @@ Rules:
 """
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal, NotRequired, TypedDict, cast
 
 from atopile.compiler.graph_mock import BoundNode, EdgeComposition, LiteralArgs, Node
+from faebryk.core.fabll import Child, NodeType, NodeTypeAttributes
+from faebryk.core.zig.gen.faebryk.composition import EdgeOperand
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.source import EdgeSource
-from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView
 
 # TODO: Mapping[str, BoundNode] (not supported yet)
 ChildrenT = Mapping[str, object]
@@ -75,74 +79,116 @@ def _create_subgraph(
     return n
 
 
-class FileLocation:
-    type_attrs: ASTType.Attrs = {"name": "FileLocation"}
-
-    class Attrs(LiteralArgs):
-        start_line: int
-        start_col: int
-        end_line: int
-        end_col: int
-
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=FileLocation.type_attrs)
+LiteralT = float | int | str | bool
 
 
-class SourceChunk:
-    type_attrs: ASTType.Attrs = {"name": "SourceChunk"}
+def constrain_to_literal(
+    g: GraphView, tg: TypeGraph, node: Node, value: LiteralT
+) -> None:
+    text_value = LiteralValue.create_instance(
+        tg=tg, g=g, attributes=LiteralValueAttributes(value=value)
+    )
 
-    class Attrs(LiteralArgs):
-        text: str
+    expr = ExpressionAliasIs.create_instance(
+        tg=tg, g=g, attributes=ExpressionAliasIsAttributes(constrained=True)
+    )
 
-    class Children(TypedDict):
-        loc: BoundNode
+    EdgeOperand.add_operand(
+        bound_node=expr.instance, operand=node, operand_identifier="lhs"
+    )
 
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=SourceChunk.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=SourceChunk.type_attrs
-        )
-
-    @staticmethod
-    def get_name(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node().get_attr(key="name"))
-
-    @staticmethod
-    def get_text(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node().get_attr(key="text"))
+    EdgeOperand.add_operand(
+        bound_node=expr.instance,
+        operand=text_value.instance.node(),
+        operand_identifier="rhs",
+    )
 
 
-class TypeRef:
-    type_attrs: ASTType.Attrs = {"name": "TypeRef"}
+def try_extract_constrained_literal(node: BoundNode) -> LiteralT | None:
+    # TODO: solver? `only_proven=True` parameter?
 
-    class Attrs(LiteralArgs):
-        name: str
+    if (inbound_expr_edge := EdgeOperand.get_expression_edge(bound_node=node)) is None:
+        return None
 
-    class Children(TypedDict):
-        source: BoundNode
+    expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
 
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=TypeRef.type_attrs)
+    operands: list[BoundNode] = []
 
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=TypeRef.type_attrs
-        )
+    def visit(ctx: None, edge: BoundEdge) -> None:
+        operands.append(edge.g().bind(node=edge.edge().target()))
 
-    @staticmethod
-    def get_name(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node().get_attr(key="name"))
+    EdgeOperand.visit_operand_edges(bound_node=expr, ctx=None, f=visit)
+
+    assert len(operands) == 2
+    (lit_operand,) = [op for op in operands if not node.node().is_same(other=op.node())]
+
+    return LiteralValue.Attributes.of(node=lit_operand).value
+
+
+class Parameter(NodeType):
+    pass
+
+
+@dataclass(frozen=True)
+class LiteralValueAttributes(NodeTypeAttributes):
+    value: float | int | str | bool | None
+
+
+class LiteralValue(NodeType[LiteralValueAttributes]):
+    Attributes = LiteralValueAttributes
+
+
+@dataclass(frozen=True)
+class ExpressionAliasIsAttributes(NodeTypeAttributes):
+    constrained: bool  # TODO: principled reason for this not being a Parameter
+
+
+class ExpressionAliasIs(NodeType[ExpressionAliasIsAttributes]):
+    # TODO: constrain operand cardinality?
+
+    Attributes = ExpressionAliasIsAttributes
+
+
+# @dataclass(frozen=True)
+# class FileLocationAttributes(NodeTypeAttributes):
+#     start_line: int
+#     start_col: int
+#     end_line: int
+#     end_col: int
+
+
+class FileLocation(NodeType):
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.start_line = Child(Parameter, tg=tg)
+        cls.start_col = Child(Parameter, tg=tg)
+        cls.end_line = Child(Parameter, tg=tg)
+        cls.end_col = Child(Parameter, tg=tg)
+
+
+# @dataclass(frozen=True)
+# class SourceChunkAttributes(NodeTypeAttributes):
+#     text:
+
+
+class SourceChunk(NodeType):
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.text = Child(Parameter, tg=tg)
+        cls.loc = Child(FileLocation, tg=tg)
+
+
+@dataclass(frozen=True)
+class TypeRefAttributes(NodeTypeAttributes):
+    name: str
+
+
+class TypeRef(NodeType[TypeRefAttributes]):
+    Attributes = TypeRefAttributes
+
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.source = Child(SourceChunk, tg=tg)
 
 
 class ImportPath:

@@ -3060,6 +3060,7 @@ fn wrap_composition_file(root: *py.PyObject) ?*py.PyObject {
     }
 
     wrap_edge_composition(module.?);
+    wrap_edge_operand(module.?);
 
     if (py.PyModule_AddObject(root, "composition", module) < 0) {
         return null;

@@ -35,10 +35,13 @@ class ANTLRVisitor(AtoParserVisitor):
     source context.
     """
 
-    def __init__(self, graph: GraphView, file_path: Path) -> None:
+    def __init__(
+        self, graph: GraphView, type_graph: TypeGraph, file_path: Path
+    ) -> None:
         super().__init__()
         self._graph = graph
-        self._type_cache = AST.GraphTypeCache()
+        self._type_graph = type_graph
+        self._type_cache: AST.GraphTypeCache = {}
         self._file_path = file_path
 
     def _extract_source(self, ctx: ParserRuleContext) -> BoundNode:
@@ -89,13 +92,13 @@ class ANTLRVisitor(AtoParserVisitor):
         return ctx.getText()
 
     def visitType_reference(self, ctx: AtoParser.Type_referenceContext) -> BoundNode:
-        type_ref = AST.TypeRef.create_subgraph(
+        type_ref = AST.TypeRef.create_instance(
+            tg=self._type_graph,
             g=self._graph,
-            type_cache=self._type_cache,
-            children=AST.TypeRef.Children(source=self._extract_source(ctx)),
-            attrs=AST.TypeRef.Attrs(name=self.visitName(ctx.name())),
+            attributes=AST.TypeRefAttributes(name=self.visitName(ctx.name())),
         )
-        return type_ref
+        # FIXME: set text parameter of source chunk child
+        return type_ref.instance
 
     def visitArray_index(self, ctx: AtoParser.Array_indexContext) -> str | int | None:
         if key := ctx.key():
@@ -1252,10 +1255,12 @@ class ASTVisitor:
         return node
 
 
-def build_file(source_file: Path) -> tuple[BoundNode, TypeGraph, dict[str, BoundNode]]:
+def build_file(source_file: Path) -> tuple[BoundNode, TypeGraph]:
     graph = GraphView.create()
-    tree = parse_text_as_file(source_file.read_text(), source_file)
-    ast_root = ANTLRVisitor(graph, source_file).visit(tree)
-    type_graph, type_nodes = ASTVisitor(ast_root).build()
+    type_graph = TypeGraph.create(g=graph)
 
-    return ast_root, type_graph, type_nodes
+    tree = parse_text_as_file(source_file.read_text(), source_file)
+    ast_root = ANTLRVisitor(graph, type_graph, source_file).visit(tree)
+    # type_graph, type_nodes = ASTVisitor(ast_root).build()
+
+    return ast_root, type_graph

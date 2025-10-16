@@ -12,7 +12,13 @@ def get_source_text(n: BoundNode) -> str | None:
         (source_chunk,) = NodeHelpers.get_neighbours(n, EdgeSource.get_tid())
     except ValueError:
         return None
-    return AST.SourceChunk.get_text(source_chunk)
+
+    text = NodeHelpers.get_child(source_chunk, "text")
+    assert text is not None
+
+    value = AST.try_extract_constrained_literal(text)
+    assert isinstance(value, str)
+    return value
 
 
 def get_type_name(n: BoundNode) -> str | None:
@@ -49,10 +55,8 @@ def typegraph_renderer(n: BoundNode) -> str:
 
 
 if __name__ == "__main__":
-    ast_root, type_graph, type_nodes = build_file(
-        Path("examples/esp32_minimal/esp32_minimal.ato")
-    )
+    ast_root, type_graph = build_file(Path("examples/esp32_minimal/esp32_minimal.ato"))
 
-    # NodeHelpers.print_tree(ast_root, renderer=ast_renderer)
+    NodeHelpers.print_tree(ast_root, renderer=ast_renderer)
 
-    NodeHelpers.print_tree(type_nodes["File"], renderer=typegraph_renderer)
+    # NodeHelpers.print_tree(type_nodes["File"], renderer=typegraph_renderer)
