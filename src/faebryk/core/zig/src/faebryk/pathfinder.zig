@@ -337,9 +337,9 @@ pub const PathFinder = struct {
 
                 // Create and append hierarchy element
                 const elem = HeirarchyElement{
-                    .parent_type = EdgeComposition.get_parent_node(edge).attributes.fake_type orelse 0,
-                    .child_type = EdgeComposition.get_child_node(edge).attributes.fake_type orelse 0,
-                    .child_name = EdgeComposition.get_child_node(edge).attributes.name orelse "",
+                    .parent_type = edge.source.attributes.fake_type orelse 0,
+                    .child_type = edge.target.attributes.fake_type orelse 0,
+                    .child_name = edge.attributes.name orelse "",
                     .traverse_direction = direction,
                 };
                 try elements.append(elem);

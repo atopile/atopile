@@ -299,21 +299,17 @@ test "down_connect" {
 
     const EP_1 = try g.insert_node(try Node.init(g.allocator));
     const LV_1 = try g.insert_node(try Node.init(g.allocator));
-    LV_1.node.attributes.name = "LV";
     const HV_1 = try g.insert_node(try Node.init(g.allocator));
-    HV_1.node.attributes.name = "HV";
 
-    _ = try EdgeComposition.add_child(EP_1, LV_1.node, null);
-    _ = try EdgeComposition.add_child(EP_1, HV_1.node, null);
+    _ = try EdgeComposition.add_child(EP_1, LV_1.node, "LV");
+    _ = try EdgeComposition.add_child(EP_1, HV_1.node, "HV");
 
     const EP_2 = try g.insert_node(try Node.init(g.allocator));
     const LV_2 = try g.insert_node(try Node.init(g.allocator));
-    LV_2.node.attributes.name = "LV";
     const HV_2 = try g.insert_node(try Node.init(g.allocator));
-    HV_2.node.attributes.name = "HV";
 
-    _ = try EdgeComposition.add_child(EP_2, LV_2.node, null);
-    _ = try EdgeComposition.add_child(EP_2, HV_2.node, null);
+    _ = try EdgeComposition.add_child(EP_2, LV_2.node, "LV");
+    _ = try EdgeComposition.add_child(EP_2, HV_2.node, "HV");
 
     _ = try EdgeInterfaceConnection.connect(EP_1, EP_2);
 
@@ -557,14 +553,6 @@ test "type_graph_pathfinder" {
     const sensor3_scl = EdgeComposition.get_child_by_identifier(sensor3_i2c, "scl").?;
     const sensor3_sda = EdgeComposition.get_child_by_identifier(sensor3_i2c, "sda").?;
 
-    // Set names on nodes for hierarchy matching (critical for path filtering!)
-    sensor1_scl.node.attributes.name = "scl";
-    sensor1_sda.node.attributes.name = "sda";
-    sensor2_scl.node.attributes.name = "scl";
-    sensor2_sda.node.attributes.name = "sda";
-    sensor3_scl.node.attributes.name = "scl";
-    sensor3_sda.node.attributes.name = "sda";
-
     // Verify types
     try std.testing.expect(EdgeType.is_node_instance_of(sensor1_i2c, I2C.node));
     try std.testing.expect(EdgeType.is_node_instance_of(sensor1_scl, ElectricLogic.node));
@@ -642,10 +630,6 @@ test "type_graph_pathfinder" {
     const sensor4_i2c = EdgeComposition.get_child_by_identifier(sensor4, "i2c").?;
     const sensor4_scl = EdgeComposition.get_child_by_identifier(sensor4_i2c, "scl").?;
     const sensor4_sda = EdgeComposition.get_child_by_identifier(sensor4_i2c, "sda").?;
-
-    // Set names on sensor4's nodes
-    sensor4_scl.node.attributes.name = "scl";
-    sensor4_sda.node.attributes.name = "sda";
 
     // Connect sensor1.i2c to sensor4.i2c with NORMAL (non-shallow) connection
     _ = try EdgeInterfaceConnection.connect(sensor1_i2c, sensor4_i2c);
