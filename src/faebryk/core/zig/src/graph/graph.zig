@@ -519,20 +519,21 @@ pub const HeirarchyTraverseDirection = enum {
 
 // Element representing a single hierarchy traversal step
 pub const HeirarchyElement = struct {
-    parent_type: u64,
-    child_type: u64,
-    child_name: []const u8,
+    edge: EdgeReference,
     traverse_direction: HeirarchyTraverseDirection,
 
     pub fn match(self: *const @This(), other: *const @This()) bool {
         // Match if same parent/child/name but opposite directions (up vs down)
+        // This matches edges with the same STRUCTURAL relationship, not the same edge instance
         const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
             (self.traverse_direction == .down and other.traverse_direction == .up);
 
-        return self.parent_type == other.parent_type and
-            self.child_type == other.child_type and
-            std.mem.eql(u8, self.child_name, other.child_name) and
-            opposite_directions;
+        // Compare structural properties from the edges
+        const parent_type_match = (self.edge.source.attributes.fake_type orelse 0) == (other.edge.source.attributes.fake_type orelse 0);
+        const child_type_match = (self.edge.target.attributes.fake_type orelse 0) == (other.edge.target.attributes.fake_type orelse 0);
+        const child_name_match = std.mem.eql(u8, self.edge.attributes.name orelse "", other.edge.attributes.name orelse "");
+
+        return parent_type_match and child_type_match and child_name_match and opposite_directions;
     }
 };
 
