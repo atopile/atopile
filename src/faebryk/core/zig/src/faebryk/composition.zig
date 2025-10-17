@@ -167,24 +167,21 @@ pub const EdgeComposition = struct {
 test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(std.testing.allocator);
-    const n1 = try Node.init(a);
-    const n2 = try Node.init(a);
-    const n3 = try Node.init(a);
 
-    const bn1 = try g.insert_node(n1);
-    const bn2 = try g.insert_node(n2);
-    const bn3 = try g.insert_node(n3);
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
 
-    _ = try EdgeComposition.add_child(bn1, n2, "child1");
-    _ = try EdgeComposition.add_child(bn1, n3, "child2");
+    _ = try EdgeComposition.add_child(bn1, bn2.node, "child1");
+    _ = try EdgeComposition.add_child(bn1, bn3.node, "child2");
 
     // has to be deleted first
     defer g.deinit();
 
     const parent_edge_bn2 = EdgeComposition.get_parent_edge(bn2);
     const parent_edge_bn3 = EdgeComposition.get_parent_edge(bn3);
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), n1));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), n1));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), bn1.node));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), bn1.node));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn2.?.edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn3.?.edge), "child2"));
 
@@ -206,11 +203,11 @@ test "basic" {
 
     try std.testing.expectEqual(result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(visit.child_edges.items.len, 2);
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), n2));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), bn2.node));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), bn3.node));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
 
     const bchild = EdgeComposition.get_child_by_identifier(bn1, "child1");
-    try std.testing.expect(Node.is_same(bchild.?.node, n2));
+    try std.testing.expect(Node.is_same(bchild.?.node, bn2.node));
 }

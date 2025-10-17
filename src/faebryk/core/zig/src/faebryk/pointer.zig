@@ -65,16 +65,14 @@ test "basic" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
 
-    const n1 = try Node.init(a);
-    const n2 = try Node.init(a);
-    const e12 = try EdgePointer.init(a, n1, n2);
+    const n1 = g.create_and_insert_node();
+    const n2 = g.create_and_insert_node();
+    const e12 = try EdgePointer.init(a, n1.node, n2.node);
 
-    _ = try g.insert_node(n1);
-    _ = try g.insert_node(n2);
     _ = try g.insert_edge(e12);
 
     try std.testing.expect(EdgePointer.is_instance(e12));
-    try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node(e12).?, n2));
+    try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node(e12).?, n2.node));
 
     g.deinit();
 }

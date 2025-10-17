@@ -195,14 +195,18 @@ pub const NodeAttributes = struct {
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
         self.dynamic.visit(ctx, f);
     }
+
+    pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        self.dynamic.values.put(identifier, value) catch @panic("OOM dynamic attributes put");
+    }
 };
 
 pub const Node = struct {
     attributes: NodeAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator) !NodeReference {
-        const node = try allocator.create(Node);
+    pub fn init(allocator: std.mem.Allocator) NodeReference {
+        const node = allocator.create(Node) catch @panic("Failed to allocate Node");
 
         // Attributes
         node.attributes.uuid = UUID.gen_uuid(node);
@@ -433,6 +437,7 @@ pub const GraphView = struct {
     allocator: std.mem.Allocator,
     nodes: std.ArrayList(NodeReference),
     edges: std.ArrayList(EdgeReference),
+    self_node: NodeReference,
 
     // caches for fast lookups ---
     // fast Node->Edges lookup
@@ -450,14 +455,17 @@ pub const GraphView = struct {
     // => operations all through graph, no graph reference in Nodes or Edges
 
     pub fn init(allocator: std.mem.Allocator) @This() {
-        return .{
+        var out = GraphView{
             .base = null,
             .allocator = allocator,
             .nodes = std.ArrayList(NodeReference).init(allocator),
             .edges = std.ArrayList(EdgeReference).init(allocator),
             .neighbors = NodeRefMap.T(std.ArrayList(EdgeReference)).init(allocator),
             .neighbor_by_type = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
+            .self_node = Node.init(allocator),
         };
+        _ = out.insert_node(out.self_node);
+        return out;
     }
 
     pub fn deinit(g: *@This()) void {
@@ -493,18 +501,28 @@ pub const GraphView = struct {
         g.nodes.deinit();
     }
 
-    pub fn insert_node(g: *@This(), node: NodeReference) !BoundNodeReference {
-        try g.nodes.append(node);
+    pub fn insert_node(g: *@This(), node: NodeReference) BoundNodeReference {
+        g.nodes.append(node) catch {
+            @panic("Failed to append node");
+        };
         node._ref_count.inc(g);
 
         // handle caches
-        try g.neighbors.put(node, std.ArrayList(EdgeReference).init(g.allocator));
-        try g.neighbor_by_type.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator));
+        g.neighbors.put(node, std.ArrayList(EdgeReference).init(g.allocator)) catch {
+            @panic("Failed to allocate ArrayList");
+        };
+        g.neighbor_by_type.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator)) catch {
+            @panic("Failed to allocate EdgeTypeMap");
+        };
 
         return BoundNodeReference{
             .node = node,
             .g = g,
         };
+    }
+
+    pub fn create_and_insert_node(g: *@This()) BoundNodeReference {
+        return g.insert_node(Node.init(g.allocator));
     }
 
     pub fn bind(g: *@This(), node: NodeReference) BoundNodeReference {

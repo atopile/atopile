@@ -247,10 +247,7 @@ fn wrap_node_create() type {
             if (!bind.check_no_positional_args(self, args)) return null;
 
             const allocator = std.heap.c_allocator;
-            const node = graph.graph.Node.init(allocator) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate Node");
-                return null;
-            };
+            const node = graph.graph.Node.init(allocator);
 
             var success = false;
             defer if (!success) {
@@ -755,10 +752,7 @@ fn wrap_graphview_insert_node() type {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const bound = wrapper.data.insert_node(kwarg_obj.node) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to insert node");
-                return null;
-            };
+            const bound = wrapper.data.insert_node(kwarg_obj.node);
 
             return makeBoundNodePyObject(bound);
         }
