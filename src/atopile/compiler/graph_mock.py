@@ -8,7 +8,7 @@ current Python code are implemented.
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Sequence
 from typing import TypedDict, TypeVar
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
@@ -64,40 +64,57 @@ class NodeHelpers:
         return NodeHelpers.get_children(bound_node).get(identifier)
 
     @staticmethod
-    def get_type_name(bound_node: BoundNode) -> str:
-        types = []
-
-        def collect(acc: list[str], bound_edge: BoundEdge) -> None:
-            edge = bound_edge.edge()
-            if name := edge.target().get_attr(key="name"):
-                acc.append(cast_assert(str, name))
-
-        bound_node.visit_edges_of_type(
-            edge_type=EdgeType.get_tid(), ctx=types, f=collect
-        )
-
-        assert len(types) == 1
-        (t,) = types
-        return t
+    def get_type_name(n: BoundNode) -> str | None:
+        try:
+            (type_node,) = NodeHelpers.get_neighbours(n, EdgeType.get_tid())
+            return cast_assert(str, type_node.node().get_attr(key="type_identifier"))
+        except ValueError:
+            return None
 
     @staticmethod
     def print_tree(
-        bound_node: BoundNode, renderer: Callable[[BoundNode], str] = repr
+        bound_node: BoundNode,
+        renderer: Callable[[BoundEdge | None, BoundNode], str] | None = None,
+        *,
+        edge_types: Sequence[type] | None = None,
     ) -> None:
-        edge_type = EdgeComposition.get_tid()
+        edge_type_classes: Sequence[type] = edge_types or (EdgeComposition,)
+        edge_type_ids: list[int] = []
+        for edge_type_cls in edge_type_classes:
+            get_tid = getattr(edge_type_cls, "get_tid", None)
+            if not callable(get_tid):
+                raise AttributeError(
+                    f"{edge_type_cls!r} must expose a callable get_tid() returning an edge type id"
+                )
+            edge_type_ids.append(cast_assert(int, get_tid()))
 
-        def iter_children(node: BoundNode) -> list[BoundNode]:
-            children: list[BoundNode] = []
+        if renderer is None:
+            def default_renderer(edge: BoundEdge | None, node: BoundNode) -> str:
+                if edge is None:
+                    return repr(node)
+                edge_obj = edge.edge()
+                label = edge_obj.name() or repr(edge_obj)
+                return f"{label} -> {node!r}"
+
+            renderer = default_renderer
+
+        def iter_children(node: BoundNode) -> list[tuple[BoundEdge, BoundNode]]:
+            children: list[tuple[BoundEdge, BoundNode]] = []
             graph_view = node.g()
             source_node = node.node()
 
-            def add_child(acc: list[BoundNode], bound_edge: BoundEdge) -> None:
+            def add_child(
+                acc: list[tuple[BoundEdge, BoundNode]], bound_edge: BoundEdge
+            ) -> None:
                 edge = bound_edge.edge()
                 if edge.source().is_same(other=source_node):
-                    acc.append(graph_view.bind(node=edge.target()))
+                    acc.append((bound_edge, graph_view.bind(node=edge.target())))
 
-            node.visit_edges_of_type(edge_type=edge_type, ctx=children, f=add_child)
+            for edge_type_id in edge_type_ids:
+                node.visit_edges_of_type(edge_type=edge_type_id, ctx=children, f=add_child)
             return children
+
+        edge_lookup: dict[BoundNode, BoundEdge | None] = {bound_node: None}
 
         def build_tree(node: BoundNode, ancestors: list[Node]) -> Tree[BoundNode]:
             current_node = node.node()
@@ -105,15 +122,21 @@ class NodeHelpers:
                 return Tree()
             next_ancestors = [*ancestors, current_node]
             children = iter_children(node)
-            return Tree(
-                OrderedDict(
-                    (child, build_tree(child, next_ancestors)) for child in children
-                )
-            )
+            items: list[tuple[BoundNode, Tree[BoundNode]]] = []
+            for edge, child in children:
+                edge_lookup.setdefault(child, edge)
+                items.append((child, build_tree(child, next_ancestors)))
+            return Tree(OrderedDict(items))
 
         root = bound_node
         tree = Tree(OrderedDict([(root, build_tree(root, []))]))
 
-        pretty = tree.pretty_print(node_renderer=renderer)
+        assert renderer is not None
+
+        def render_node(node: BoundNode) -> str:
+            inbound_edge = edge_lookup.get(node)
+            return renderer(inbound_edge, node)
+
+        pretty = tree.pretty_print(node_renderer=render_node)
         if pretty:
             print(pretty, end="")

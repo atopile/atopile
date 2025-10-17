@@ -149,14 +149,6 @@ class ExpressionAliasIs(NodeType[ExpressionAliasIsAttributes]):
     Attributes = ExpressionAliasIsAttributes
 
 
-# @dataclass(frozen=True)
-# class FileLocationAttributes(NodeTypeAttributes):
-#     start_line: int
-#     start_col: int
-#     end_line: int
-#     end_col: int
-
-
 class FileLocation(NodeType):
     @classmethod
     def create_type(cls, tg: TypeGraph) -> None:
@@ -166,11 +158,6 @@ class FileLocation(NodeType):
         cls.end_col = Child(Parameter, tg=tg)
 
 
-# @dataclass(frozen=True)
-# class SourceChunkAttributes(NodeTypeAttributes):
-#     text:
-
-
 class SourceChunk(NodeType):
     @classmethod
     def create_type(cls, tg: TypeGraph) -> None:
@@ -178,39 +165,18 @@ class SourceChunk(NodeType):
         cls.loc = Child(FileLocation, tg=tg)
 
 
-@dataclass(frozen=True)
-class TypeRefAttributes(NodeTypeAttributes):
-    name: str
-
-
-class TypeRef(NodeType[TypeRefAttributes]):
-    Attributes = TypeRefAttributes
-
+class TypeRef(NodeType):
     @classmethod
     def create_type(cls, tg: TypeGraph) -> None:
+        cls.name = Child(Parameter, tg=tg)
         cls.source = Child(SourceChunk, tg=tg)
 
 
-class ImportPath:
-    type_attrs: ASTType.Attrs = {"name": "ImportPath"}
-
-    class Attrs(LiteralArgs): ...
-
-    class Children(TypedDict):
-        source: BoundNode
-        path: BoundNode
-
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=ImportPath.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=ImportPath.type_attrs
-        )
+class ImportPath(NodeType):
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.source = Child(SourceChunk, tg=tg)
+        cls.path = Child(Parameter, tg=tg)
 
 
 class FieldRefPart:
@@ -486,81 +452,33 @@ class BoundedQuantity:
         )
 
 
-# TODO: does this node still make sense?
-class Scope:
-    type_attrs: ASTType.Attrs = {"name": "Scope"}
-
-    class Attrs(LiteralArgs): ...
-
-    class Children(TypedDict): ...
-
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache) -> BoundNode:
-        return _create(g, type_cache, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs=Scope.Attrs(), type_attrs=Scope.type_attrs
-        )
+class Scope(NodeType): ...
 
 
-class File:
-    type_attrs: ASTType.Attrs = {"name": "File"}
-
-    class Attrs(LiteralArgs):
-        path: str | None
-
-    class Children(TypedDict):
-        source: BoundNode
-        scope: BoundNode
-
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=File.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=File.type_attrs
-        )
+class File(NodeType):
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.source = Child(SourceChunk, tg=tg)
+        cls.scope = Child(Scope, tg=tg)
+        cls.path = Child(Parameter, tg=tg)
 
 
-class BlockDefinition:
+@dataclass(frozen=True)
+class BlockDefinitionAttributes(NodeTypeAttributes):
     BlockTypeT = Literal["component", "module", "interface"]
 
-    type_attrs: ASTType.Attrs = {"name": "BlockDefinition"}
+    block_type: BlockTypeT
 
-    class Attrs(LiteralArgs):
-        block_type: "BlockDefinition.BlockTypeT"
 
-    class Children(TypedDict):
-        source: BoundNode
-        type_ref: BoundNode
-        super_type_ref: NotRequired[BoundNode]
-        scope: BoundNode
+class BlockDefinition(NodeType):
+    Attributes = BlockDefinitionAttributes
 
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=BlockDefinition.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=BlockDefinition.type_attrs
-        )
-
-    @staticmethod
-    def get_block_type(bound_node: BoundNode) -> "BlockDefinition.BlockTypeT":
-        return cast(
-            "BlockDefinition.BlockTypeT", bound_node.node().get_attr(key="block_type")
-        )
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.source = Child(SourceChunk, tg=tg)
+        cls.type_ref = Child(TypeRef, tg=tg)
+        cls.super_type_ref = Child(TypeRef, tg=tg)
+        cls.scope = Child(Scope, tg=tg)
 
 
 class Slice:
@@ -649,54 +567,19 @@ class ForStmt:
         return _create_subgraph(g, type_cache, children, attrs, ForStmt.type_attrs)
 
 
-class PragmaStmt:
-    type_attrs: ASTType.Attrs = {"name": "PragmaStmt"}
-
-    class Attrs(LiteralArgs):
-        pragma: str
-
-    class Children(TypedDict):
-        source: BoundNode
-
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=PragmaStmt.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=PragmaStmt.type_attrs
-        )
-
-    @staticmethod
-    def get_pragma(bound_node: BoundNode) -> str:
-        return cast(str, bound_node.node().get_attr(key="pragma"))
+class PragmaStmt(NodeType):
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.source = Child(SourceChunk, tg=tg)
+        cls.pragma = Child(Parameter, tg=tg)
 
 
-class ImportStmt:
-    type_attrs: ASTType.Attrs = {"name": "ImportStmt"}
-
-    class Attrs(LiteralArgs):
-        path: NotRequired[str]
-
-    class Children(TypedDict):
-        source: BoundNode
-        path: NotRequired[BoundNode]
-        type_ref: BoundNode
-
-    @staticmethod
-    def create(g: GraphView, type_cache: GraphTypeCache, attrs: Attrs) -> BoundNode:
-        return _create(g, type_cache, attrs, type_attrs=ImportStmt.type_attrs)
-
-    @staticmethod
-    def create_subgraph(
-        g: GraphView, type_cache: GraphTypeCache, children: ChildrenT, attrs: Attrs
-    ) -> BoundNode:
-        return _create_subgraph(
-            g, type_cache, children, attrs, type_attrs=ImportStmt.type_attrs
-        )
+class ImportStmt(NodeType):
+    @classmethod
+    def create_type(cls, tg: TypeGraph) -> None:
+        cls.source = Child(SourceChunk, tg=tg)
+        cls.path = Child(ImportPath, tg=tg)
+        cls.type_ref = Child(TypeRef, tg=tg)
 
 
 class TemplateArg:
