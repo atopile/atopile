@@ -1,15 +1,5 @@
 const std = @import("std");
-
-// TODO parity tracker for Numeric_Interval vs Python implementation
-// | Operation                        | Function stubbed? | Tests? |
-// |----------------------------------|--------------------|--------|
-// | intersection                     | implemented        | yes    |
-// | difference                       | pending            | pending|
-// | rounding                         | pending            | pending|
-// | absolute value                   | pending            | pending|
-// | logarithm                        | pending            | pending|
-// | sine                             | pending            | pending|
-// | interval merge (maybe_merge)     | pending            | pending|
+const Bool_Set = @import("./bool_sets.zig").Bool_Set;
 
 pub const _Continious = struct {
     min: f64,
@@ -711,6 +701,66 @@ pub const Numeric_Set = struct {
         }
 
         return result;
+    }
+
+    pub fn min_elem(self: *const Numeric_Set) f64 {
+        return self.intervals.items[0].min;
+    }
+
+    pub fn max_elem(self: *const Numeric_Set) f64 {
+        return self.intervals.items[self.intervals.items.len - 1].max;
+    }
+
+    pub fn op_ge_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        if (self.is_empty() or other.is_empty()) {
+            return Bool_Set.init(allocator, &[_]bool{});
+        }
+        if (self.min_elem() >= other.max_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{true});
+        }
+        if (self.max_elem() < other.min_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{false});
+        }
+        return Bool_Set.init(allocator, &[_]bool{ true, false });
+    }
+
+    pub fn op_gt_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        if (self.is_empty() or other.is_empty()) {
+            return Bool_Set.init(allocator, &[_]bool{});
+        }
+        if (self.min_elem() > other.max_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{true});
+        }
+        if (self.max_elem() <= other.min_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{false});
+        }
+        return Bool_Set.init(allocator, &[_]bool{ true, false });
+    }
+
+    pub fn op_le_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        if (self.is_empty() or other.is_empty()) {
+            return Bool_Set.init(allocator, &[_]bool{});
+        }
+        if (self.max_elem() <= other.min_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{true});
+        }
+        if (self.min_elem() > other.max_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{false});
+        }
+        return Bool_Set.init(allocator, &[_]bool{ true, false });
+    }
+
+    pub fn op_lt_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        if (self.is_empty() or other.is_empty()) {
+            return Bool_Set.init(allocator, &[_]bool{});
+        }
+        if (self.max_elem() < other.min_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{true});
+        }
+        if (self.min_elem() >= other.max_elem()) {
+            return Bool_Set.init(allocator, &[_]bool{false});
+        }
+        return Bool_Set.init(allocator, &[_]bool{ true, false });
     }
 
     pub fn op_round_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, ndigits: i32) !Numeric_Set {
@@ -1518,4 +1568,190 @@ test "Numeric_Set.op_sin_intervals applies sine envelope" {
     const combined = sinus.intervals.items[0];
     try std.testing.expectApproxEqRel(@as(f64, -1.0), combined.min, 1e-12);
     try std.testing.expectApproxEqRel(@as(f64, 1.0), combined.max, 1e-12);
+}
+
+test "Numeric_Set.op_ge_intervals returns false when lhs is less than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+
+    const result = try lhs.op_ge_intervals(allocator, &rhs);
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 1), result.elements.items.len);
+    try std.testing.expect(!result.elements.items[0]);
+}
+
+test "Numeric_Set.op_ge_intervals returns true when lhs is greater than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+    const result = try lhs.op_ge_intervals(allocator, &rhs);
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 1), result.elements.items.len);
+    try std.testing.expect(result.elements.items[0]);
+}
+test "Numeric_Set.op_ge_intervals returns true and false when lhs is both greater and less than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 5.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+    const result = try lhs.op_ge_intervals(allocator, &rhs);
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 2), result.elements.items.len);
+    try std.testing.expect(result.elements.items[0]);
+    try std.testing.expect(!result.elements.items[1]);
+}
+
+test "Numeric_Set.op_gt_intervals returns false when lhs is less than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_gt_intervals returns false when lhs is equal to rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_gt_intervals returns true when lhs is greater than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_gt_intervals returns true and false when lhs is both greater and less than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 5.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_le_intervals returns false when lhs is greater than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_le_intervals returns false when lhs is equal to rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_le_intervals returns true and false when lhs is both less and greater than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 3.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(2.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+    const result = try lhs.op_le_intervals(allocator, &rhs);
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 2), result.elements.items.len);
+    try std.testing.expect(result.elements.items[0]);
+    try std.testing.expect(!result.elements.items[1]);
+}
+
+test "Numeric_Set.op_lt_intervals returns false when lhs is greater than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_lt_intervals returns false when lhs is equal to rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_lt_intervals returns true when lhs is less than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
+}
+
+test "Numeric_Set.op_lt_intervals returns true and false when lhs is both less and greater than rhs" {
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(1.0, 3.0),
+    }, &[_]Numeric_Set{});
+    defer lhs.deinit();
+    const rhs = try Numeric_Set.init(allocator, &[_]_Continious{
+        try _Continious.init(2.0, 4.0),
+    }, &[_]Numeric_Set{});
+    defer rhs.deinit();
 }
