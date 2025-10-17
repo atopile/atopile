@@ -408,6 +408,41 @@ test "chains_direct" {
     try std.testing.expect(paths.len == 1);
 }
 
+test "multiple_paths" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = try g.insert_node(try Node.init(g.allocator));
+    const bn3 = try g.insert_node(try Node.init(g.allocator));
+    const bn4 = try g.insert_node(try Node.init(g.allocator));
+    const bn5 = try g.insert_node(try Node.init(g.allocator));
+    const bn6 = try g.insert_node(try Node.init(g.allocator));
+    const bn7 = try g.insert_node(try Node.init(g.allocator));
+
+    _ = try EdgeInterfaceConnection.connect(bn1, bn2);
+    _ = try EdgeInterfaceConnection.connect(bn2, bn4);
+    _ = try EdgeInterfaceConnection.connect(bn1, bn3);
+    _ = try EdgeInterfaceConnection.connect(bn3, bn6);
+    _ = try EdgeInterfaceConnection.connect(bn6, bn4);
+    _ = try EdgeInterfaceConnection.connect(bn1, bn5);
+    _ = try EdgeInterfaceConnection.connect(bn4, bn7);
+
+    const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn4);
+    defer {
+        for (paths) |*path| path.deinit();
+        std.testing.allocator.free(paths);
+    }
+    try std.testing.expect(paths.len == 1);
+
+    const all_paths = try EdgeInterfaceConnection.get_connected(std.testing.allocator, bn1);
+    defer {
+        for (all_paths) |*path| path.deinit();
+        std.testing.allocator.free(all_paths);
+    }
+    try std.testing.expect(all_paths.len == 8);
+}
+
 test "loooooong_chain" {
     // Let's make it hard - create a long chain of nodes
     // Use a more efficient allocator for this stress test instead of testing allocator

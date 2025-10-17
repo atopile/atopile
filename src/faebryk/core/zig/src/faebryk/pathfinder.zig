@@ -392,9 +392,9 @@ pub const PathFinder = struct {
             for (folded_stack.items) |elem| {
                 std.debug.print("Folded stack - direction: {} child_name: {s} parent_type: {} child_type: {}\n", .{
                     elem.traverse_direction,
-                    elem.child_name,
-                    elem.parent_type,
-                    elem.child_type,
+                    elem.edge.attributes.name orelse "",
+                    elem.edge.source.attributes.fake_type orelse 0,
+                    elem.edge.target.attributes.fake_type orelse 0,
                 });
             }
         }
