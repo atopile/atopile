@@ -918,9 +918,14 @@ pub const GraphView = struct {
             const bfs_visitor_result = f(ctx, path);
 
             // Mark node at end of path as visited (O(1) with HashMap)
-            visited_nodes.put(node_at_path_end.node, {}) catch |err| {
-                return visitor.VisitResult(T){ .ERROR = err };
-            };
+            // Skip marking if path was filtered AND stopped - this allows finding alternative paths
+            // to the same node (e.g., prefer direct paths over sibling paths)
+            const skip_visit_mark = path.filtered and path.stop;
+            if (!skip_visit_mark) {
+                visited_nodes.put(node_at_path_end.node, {}) catch |err| {
+                    return visitor.VisitResult(T){ .ERROR = err };
+                };
+            }
 
             // Report BFS visitor status
             switch (bfs_visitor_result) {

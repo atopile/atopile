@@ -142,6 +142,29 @@ pub const PathFinder = struct {
                 return visitor.VisitResult(void){ .ERROR = err };
             };
             self.valid_path_counter += 1;
+
+            // Only remove end node from search list if we found a VALID path to it
+            // Filtered OR stopped paths don't count as "found" - keep searching for better paths
+            if (self.end_nodes) |*end_nodes| {
+                const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+
+                // Only mark end node as found if path is valid and not a dead-end
+                // This allows BFS to continue searching for better paths (e.g., direct over sibling)
+                if (!path.stop) {
+                    for (end_nodes.items, 0..) |end_node, i| {
+                        if (Node.is_same(path_end.node, end_node.node)) {
+                            _ = end_nodes.swapRemove(i);
+
+                            // If all end nodes found, stop the search
+                            if (end_nodes.items.len == 0) {
+                                if (DEBUG) std.debug.print("STOP BFS!!! - All end nodes found\n", .{});
+                                return visitor.VisitResult(void){ .STOP = {} };
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         }
         // Filter says don't keep - BFS will deinitialize
 
@@ -151,23 +174,6 @@ pub const PathFinder = struct {
             return visitor.VisitResult(void){ .STOP = {} };
         }
 
-        // Check if path ends in an end node
-        if (self.end_nodes) |*end_nodes| {
-            const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
-
-            for (end_nodes.items, 0..) |end_node, i| {
-                if (Node.is_same(path_end.node, end_node.node)) {
-                    _ = end_nodes.swapRemove(i);
-
-                    // If all end nodes found, stop the search
-                    if (end_nodes.items.len == 0) {
-                        if (DEBUG) std.debug.print("STOP BFS!!! - All end nodes found\n", .{});
-                        return visitor.VisitResult(void){ .STOP = {} };
-                    }
-                    break;
-                }
-            }
-        }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
@@ -309,7 +315,12 @@ pub const PathFinder = struct {
         // check that the connections are child -> parent -> child
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
+            // Filter sibling connections AND stop exploration from this dead-end
             path.filtered = true;
+            path.stop = true;
+            if (DEBUG) {
+                std.debug.print("SIBLING PATH FILTERED! Path length: {}, last 2 edges are composition edges sharing parent\n", .{edges.len});
+            }
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
