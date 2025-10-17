@@ -16,4 +16,5 @@ pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir
     //try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "parameter", faebryk.parameter, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "pointer", faebryk.pointer, output_dir, source_dir);
     //try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "trait", faebryk.trait, output_dir, source_dir);
+    try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "operand", faebryk.operand, output_dir, source_dir);
 }
