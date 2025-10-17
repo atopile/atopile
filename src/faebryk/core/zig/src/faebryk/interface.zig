@@ -38,13 +38,19 @@ pub const EdgeInterfaceConnection = struct {
         }
     }
 
-    pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference, shallow: ?bool) !BoundEdgeReference {
+    pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
         const e = try Edge.init(bn1.g.allocator, bn1.node, bn2.node, tid);
         e.attributes.directional = false;
-        e.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = shallow orelse false }) catch {
+        e.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = false }) catch {
             @panic("Failed to put shallow link value");
         };
         return try bn1.g.insert_edge(e);
+    }
+
+    pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
+        var e = try EdgeInterfaceConnection.connect(bn1, bn2);
+        try e.edge.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = true });
+        return e;
     }
 
     // visit all connected edges for a given node
@@ -172,7 +178,7 @@ test "basic" {
     const bn3 = try g.insert_node(n3);
 
     // Create connection between n1 and n2
-    const be1 = try EdgeInterfaceConnection.connect(bn1, bn2, null);
+    const be1 = try EdgeInterfaceConnection.connect(bn1, bn2);
 
     // Expect shallow flag to be present and false by default
     const shallow_default = be1.edge.attributes.dynamic.values.get(EdgeInterfaceConnection.shallow_attribute).?;
@@ -196,7 +202,7 @@ test "basic" {
     try std.testing.expect(EdgeInterfaceConnection.get_other_connected_node(be1.edge, n3) == null);
 
     // Create another connection between n1 and n3 to test multiple connections
-    const be2 = try EdgeInterfaceConnection.connect(bn1, bn3, null);
+    const be2 = try EdgeInterfaceConnection.connect(bn1, bn3);
     try std.testing.expect(Node.is_same(be2.edge.source, n1));
     try std.testing.expect(Node.is_same(be2.edge.target, n3));
 
@@ -272,8 +278,8 @@ test "is_connected_to" {
     const bn1 = try g.insert_node(try Node.init(g.allocator));
     const bn2 = try g.insert_node(try Node.init(g.allocator));
     const bn3 = try g.insert_node(try Node.init(g.allocator));
-    _ = try EdgeInterfaceConnection.connect(bn1, bn2, null);
-    _ = try EdgeInterfaceConnection.connect(bn1, bn3, null);
+    _ = try EdgeInterfaceConnection.connect(bn1, bn2);
+    _ = try EdgeInterfaceConnection.connect(bn1, bn3);
 
     const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn1, bn2);
     defer {
@@ -309,7 +315,7 @@ test "down_connect" {
     _ = try EdgeComposition.add_child(EP_2, LV_2.node, null);
     _ = try EdgeComposition.add_child(EP_2, HV_2.node, null);
 
-    _ = try EdgeInterfaceConnection.connect(EP_1, EP_2, null);
+    _ = try EdgeInterfaceConnection.connect(EP_1, EP_2);
 
     const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, EP_1, EP_2);
     defer {
@@ -360,7 +366,7 @@ test "no_connect_cases" {
 
     _ = try EdgeComposition.add_child(bn1, bn2.node, null);
     _ = try EdgeComposition.add_child(bn3, bn2.node, null);
-    _ = try EdgeInterfaceConnection.connect(bn3, bn4, null);
+    _ = try EdgeInterfaceConnection.connect(bn3, bn4);
     _ = try EdgeComposition.add_child(bn5, bn4.node, null);
     _ = try EdgeComposition.add_child(bn6, bn1.node, null);
     _ = try EdgeComposition.add_child(bn6, bn3.node, null);
@@ -395,8 +401,8 @@ test "chains_direct" {
     const M2 = try g.insert_node(try Node.init(g.allocator));
     const M3 = try g.insert_node(try Node.init(g.allocator));
 
-    _ = try EdgeInterfaceConnection.connect(M1, M2, null);
-    _ = try EdgeInterfaceConnection.connect(M2, M3, null);
+    _ = try EdgeInterfaceConnection.connect(M1, M2);
+    _ = try EdgeInterfaceConnection.connect(M2, M3);
 
     const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, M1, M3);
     defer {
@@ -443,7 +449,7 @@ test "loooooong_chain" {
         if (i % 10000 == 0 and i > 0) {
             std.debug.print("  Connected {} edges...\n", .{i});
         }
-        _ = try EdgeInterfaceConnection.connect(nodes.items[i], nodes.items[i + 1], null);
+        _ = try EdgeInterfaceConnection.connect(nodes.items[i], nodes.items[i + 1]);
     }
 
     std.debug.print("Chain built. Starting pathfinding...\n", .{});
@@ -495,7 +501,7 @@ test "shallow_edges" {
     _ = try EdgeComposition.add_child(bn4, bn5.node, null);
     _ = try EdgeComposition.add_child(bn5, bn6.node, null);
 
-    _ = try EdgeInterfaceConnection.connect(bn2, bn5, true);
+    _ = try EdgeInterfaceConnection.connect_shallow(bn2, bn5);
 
     const shallow_path = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, bn2, bn5);
     defer {
@@ -565,7 +571,7 @@ test "type_graph_pathfinder" {
     try std.testing.expect(EdgeType.is_node_instance_of(sensor1_sda, ElectricLogic.node));
 
     // Test 1: Connect I2C bus normally (sensor1.scl <-> sensor2.scl)
-    _ = try EdgeInterfaceConnection.connect(sensor1_scl, sensor2_scl, null);
+    _ = try EdgeInterfaceConnection.connect(sensor1_scl, sensor2_scl);
     const paths_scl = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, sensor1_scl, sensor2_scl);
     defer {
         for (paths_scl) |*path| path.deinit();
@@ -585,7 +591,7 @@ test "type_graph_pathfinder" {
 
     // Test 3: Shallow link behavior
     // Create a shallow link at I2C level between sensor2 and sensor3
-    _ = try EdgeInterfaceConnection.connect(sensor2_i2c, sensor3_i2c, true);
+    _ = try EdgeInterfaceConnection.connect_shallow(sensor2_i2c, sensor3_i2c);
 
     // Test 3a: Direct connection through shallow link works at I2C level
     const paths_i2c_shallow = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, sensor2_i2c, sensor3_i2c);
@@ -618,7 +624,7 @@ test "type_graph_pathfinder" {
 
     // Test 5: Multi-hop on same bus (sensor1.scl -> sensor2.scl, sensor2.sda -> sensor3.sda via shallow)
     // First connect SDA lines normally
-    _ = try EdgeInterfaceConnection.connect(sensor1_sda, sensor2_sda, null);
+    _ = try EdgeInterfaceConnection.connect(sensor1_sda, sensor2_sda);
 
     // Since there's a shallow link at I2C level, we can't reach sensor3.sda from sensor1.sda
     // because the path would be: sensor1.sda -> sensor2.sda -> (up to sensor2.i2c) -> (shallow to sensor3.i2c) -> sensor3.sda
@@ -642,7 +648,7 @@ test "type_graph_pathfinder" {
     sensor4_sda.node.attributes.name = "sda";
 
     // Connect sensor1.i2c to sensor4.i2c with NORMAL (non-shallow) connection
-    _ = try EdgeInterfaceConnection.connect(sensor1_i2c, sensor4_i2c, null);
+    _ = try EdgeInterfaceConnection.connect(sensor1_i2c, sensor4_i2c);
 
     // Test 6a: SCL should be connected through I2C hierarchy
     // Path: sensor1.scl -> (up to sensor1.i2c) -> (normal edge to sensor4.i2c) -> (down to sensor4.scl)
