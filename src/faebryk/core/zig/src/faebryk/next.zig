@@ -16,8 +16,8 @@ const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 pub const EdgeNext = struct {
     pub const tid: Edge.EdgeType = 1759356969;
 
-    pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, previous_node, next_node, tid);
+    pub fn init(allocator: std.mem.Allocator, previous_node: NodeReference, next_node: NodeReference) EdgeReference {
+        const edge = Edge.init(allocator, previous_node, next_node, tid);
         build().apply_to(edge);
         return edge;
     }
@@ -31,9 +31,9 @@ pub const EdgeNext = struct {
         };
     }
 
-    pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) !graph.BoundEdgeReference {
-        const link = try EdgeNext.init(bound_previous_node.g.allocator, bound_previous_node.node, bound_next_node.node);
-        const bound_edge = try bound_previous_node.g.insert_edge(link);
+    pub fn add_next(bound_previous_node: graph.BoundNodeReference, bound_next_node: graph.BoundNodeReference) graph.BoundEdgeReference {
+        const link = EdgeNext.init(bound_previous_node.g.allocator, bound_previous_node.node, bound_next_node.node);
+        const bound_edge = bound_previous_node.g.insert_edge(link);
         return bound_edge;
     }
 
@@ -84,12 +84,12 @@ test "basic chain" {
     const bn3 = g.create_and_insert_node();
 
     // init ---------------------------------------------------------------------------------------
-    const en12 = try EdgeNext.init(g.allocator, bn1.node, bn2.node);
+    const en12 = EdgeNext.init(g.allocator, bn1.node, bn2.node);
 
-    const ben12 = try g.insert_edge(en12);
+    const ben12 = g.insert_edge(en12);
 
     // add_next -----------------------------------------------------------------------------------
-    const ben23 = try EdgeNext.add_next(bn2, bn3);
+    const ben23 = EdgeNext.add_next(bn2, bn3);
 
     // is_instance -------------------------------------------------------------------------------
     try std.testing.expect(EdgeNext.is_instance(ben12.edge));

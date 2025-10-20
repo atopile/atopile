@@ -387,11 +387,7 @@ fn wrap_edge_create() type {
             }
 
             const allocator = std.heap.c_allocator;
-            const edge_ptr = graph.graph.Edge.init(allocator, kwarg_obj.source, kwarg_obj.target, edge_type_value) catch {
-                if (name_copy) |n| std.heap.c_allocator.free(@constCast(n));
-                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate Edge");
-                return null;
-            };
+            const edge_ptr = graph.graph.Edge.init(allocator, kwarg_obj.source, kwarg_obj.target, edge_type_value);
 
             var success = false;
             defer if (!success) {
@@ -778,10 +774,7 @@ fn wrap_graphview_insert_edge() type {
             const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const bound = wrapper.data.insert_edge(kwarg_obj.edge) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to insert edge");
-                return null;
-            };
+            const bound = wrapper.data.insert_edge(kwarg_obj.edge);
 
             return makeBoundEdgePyObject(bound);
         }

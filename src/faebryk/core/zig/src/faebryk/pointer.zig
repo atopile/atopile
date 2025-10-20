@@ -20,8 +20,8 @@ const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 pub const EdgePointer = struct {
     pub const tid: Edge.EdgeType = 1759771470;
 
-    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, from, to, tid);
+    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference) EdgeReference {
+        const edge = Edge.init(allocator, from, to, tid);
         build().apply_to(edge);
         return edge;
     }
@@ -53,9 +53,9 @@ pub const EdgePointer = struct {
         return Edge.is_instance(E, tid);
     }
 
-    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference) !BoundEdgeReference {
-        const edge = try EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node);
-        const bound_edge = try bound_node.g.insert_edge(edge);
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference) BoundEdgeReference {
+        const edge = EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node);
+        const bound_edge = bound_node.g.insert_edge(edge);
         return bound_edge;
     }
 };
@@ -67,9 +67,9 @@ test "basic" {
 
     const n1 = g.create_and_insert_node();
     const n2 = g.create_and_insert_node();
-    const e12 = try EdgePointer.init(a, n1.node, n2.node);
+    const e12 = EdgePointer.init(a, n1.node, n2.node);
 
-    _ = try g.insert_edge(e12);
+    _ = g.insert_edge(e12);
 
     try std.testing.expect(EdgePointer.is_instance(e12));
     try std.testing.expect(Node.is_same(EdgePointer.get_referenced_node(e12).?, n2.node));

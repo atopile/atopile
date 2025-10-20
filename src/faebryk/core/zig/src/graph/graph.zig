@@ -296,8 +296,8 @@ pub const Edge = struct {
     attributes: EdgeAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: EdgeType) !*@This() {
-        var edge = try allocator.create(Edge);
+    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: EdgeType) *@This() {
+        var edge = allocator.create(Edge) catch @panic("OOM creating Edge");
         edge.source = source;
         edge.target = target;
 
@@ -331,7 +331,7 @@ pub const Edge = struct {
         if (type_set.get(edge_type)) |_| {
             return error.DuplicateType;
         }
-        try type_set.put(edge_type, {});
+        type_set.put(edge_type, {}) catch @panic("OOM registering edge type");
     }
 
     pub fn is_instance(E: EdgeReference, edge_type: EdgeType) bool {
@@ -533,24 +533,24 @@ pub const GraphView = struct {
         };
     }
 
-    pub fn insert_edge(g: *@This(), edge: EdgeReference) !BoundEdgeReference {
-        try g.edges.append(edge);
+    pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
+        g.edges.append(edge) catch @panic("OOM appending edge");
         edge._ref_count.inc(g);
 
         // handle caches
         const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
         if (!from_neighbors.contains(edge.attributes.edge_type)) {
-            try from_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
+            from_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type");
         }
-        try g.neighbors.getPtr(edge.source).?.append(edge);
-        try from_neighbors.getPtr(edge.attributes.edge_type).?.append(edge);
+        g.neighbors.getPtr(edge.source).?.append(edge) catch @panic("OOM appending neighbor edge");
+        from_neighbors.getPtr(edge.attributes.edge_type).?.append(edge) catch @panic("OOM appending neighbor type edge");
 
         const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
         if (!to_neighbors.contains(edge.attributes.edge_type)) {
-            try to_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
+            to_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM inserting reverse neighbor type");
         }
-        try g.neighbors.getPtr(edge.target).?.append(edge);
-        try to_neighbors.getPtr(edge.attributes.edge_type).?.append(edge);
+        g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM appending reverse neighbor edge");
+        to_neighbors.getPtr(edge.attributes.edge_type).?.append(edge) catch @panic("OOM appending reverse neighbor type edge");
 
         return BoundEdgeReference{
             .edge = edge,
@@ -617,16 +617,16 @@ test "basic" {
     const TestLinkType = 1759269396;
     try Edge.register_type(TestLinkType);
 
-    const n1 = try Node.init(a);
+    const n1 = Node.init(a);
     defer n1.deinit();
-    const n2 = try Node.init(a);
+    const n2 = Node.init(a);
     defer n2.deinit();
-    const e12 = try Edge.init(a, n1, n2, TestLinkType);
+    const e12 = Edge.init(a, n1, n2, TestLinkType);
     defer e12.deinit();
 
-    _ = try g.insert_node(n1);
-    _ = try g.insert_node(n2);
-    _ = try g.insert_edge(e12);
+    _ = g.insert_node(n1);
+    _ = g.insert_node(n2);
+    _ = g.insert_edge(e12);
 
     const edges = g.get_edges(n1).?;
     try std.testing.expectEqual(edges.items.len, 1);

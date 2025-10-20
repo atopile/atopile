@@ -63,11 +63,7 @@ fn wrap_edge_composition_create() type {
                 kwarg_obj.parent,
                 kwarg_obj.child,
                 identifier_const,
-            ) catch {
-                std.heap.c_allocator.free(identifier_const);
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create EdgeComposition edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -250,11 +246,7 @@ fn wrap_edge_composition_add_child() type {
                 kwarg_obj.bound_node.*,
                 kwarg_obj.child,
                 identifier_copy,
-            ) catch {
-                allocator.free(identifier_copy);
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add child edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -398,13 +390,7 @@ fn wrap_edge_operand_create() type {
                 kwarg_obj.expression,
                 kwarg_obj.operand,
                 identifier_const,
-            ) catch {
-                if (identifier_const) |identifier| {
-                    std.heap.c_allocator.free(identifier);
-                }
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create EdgeOperand edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -601,13 +587,7 @@ fn wrap_edge_operand_add_operand() type {
                 kwarg_obj.bound_node.*,
                 kwarg_obj.operand,
                 identifier_copy,
-            ) catch {
-                if (identifier_copy) |identifier| {
-                    allocator.free(identifier);
-                }
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add operand edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -793,10 +773,7 @@ fn wrap_edge_type_create() type {
                 std.heap.c_allocator,
                 kwarg_obj.type_node,
                 kwarg_obj.instance_node,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -1004,10 +981,7 @@ fn wrap_edge_type_add_instance() type {
             const bound_edge = faebryk.node_type.EdgeType.add_instance(
                 kwarg_obj.bound_type_node.*,
                 kwarg_obj.bound_instance_node.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add instance edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -1100,10 +1074,7 @@ fn wrap_edge_next_create() type {
                 std.heap.c_allocator,
                 kwarg_obj.previous_node,
                 kwarg_obj.next_node,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -1160,10 +1131,7 @@ fn wrap_edge_next_add_next() type {
             const bound_edge = faebryk.next.EdgeNext.add_next(
                 kwarg_obj.previous_node.*,
                 kwarg_obj.next_node.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add next edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -1399,10 +1367,7 @@ fn wrap_edge_pointer_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_ref = faebryk.pointer.EdgePointer.init(std.heap.c_allocator, kwarg_obj.from_node, kwarg_obj.to_node) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create pointer edge");
-                return null;
-            };
+            const edge_ref = faebryk.pointer.EdgePointer.init(std.heap.c_allocator, kwarg_obj.from_node, kwarg_obj.to_node);
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -1650,11 +1615,7 @@ fn wrap_typegraph_init() type {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
                 return null;
             };
-            ptr.* = faebryk.typegraph.TypeGraph.init(kwarg_obj.g) catch {
-                allocator.destroy(ptr);
-                py.PyErr_SetString(py.PyExc_ValueError, "init failed");
-                return null;
-            };
+            ptr.* = faebryk.typegraph.TypeGraph.init(kwarg_obj.g);
 
             const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
             if (obj == null) {
@@ -2029,10 +1990,7 @@ fn wrap_typegraph_reference_resolve() type {
             const resolved = faebryk.typegraph.TypeGraph.ChildReferenceNode.resolve(
                 kwarg_obj.reference_node.*,
                 kwarg_obj.base_node.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "reference_resolve failed");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundNodePyObject(resolved);
         }

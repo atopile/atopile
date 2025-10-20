@@ -50,21 +50,21 @@ pub const TypeGraph = struct {
         pub fn create_and_insert(tg: *TypeGraph, type_identifier: str) BoundNodeReference {
             const implements_type_type_node = tg.self_node.g.create_and_insert_node();
             TypeNodeAttributes.of(implements_type_type_node.node).set_type_name(type_identifier);
-            _ = EdgeComposition.add_child(tg.self_node, implements_type_type_node.node, type_identifier) catch @panic("");
+            _ = EdgeComposition.add_child(tg.self_node, implements_type_type_node.node, type_identifier);
             return implements_type_type_node;
         }
 
-        pub fn spawn_instance(bound_type_node: BoundNodeReference) !BoundNodeReference {
+        pub fn spawn_instance(bound_type_node: BoundNodeReference) BoundNodeReference {
             const instance_node = bound_type_node.g.create_and_insert_node();
-            _ = try EdgeType.add_instance(bound_type_node, instance_node);
+            _ = EdgeType.add_instance(bound_type_node, instance_node);
             return instance_node;
         }
     };
 
     pub const TraitNode = struct {
-        pub fn add_trait_to(target: BoundNodeReference, trait_type: BoundNodeReference) !BoundNodeReference {
-            const trait_instance = try TypeNode.spawn_instance(trait_type);
-            _ = try EdgeComposition.add_child(target, trait_instance.node, null);
+        pub fn add_trait_to(target: BoundNodeReference, trait_type: BoundNodeReference) BoundNodeReference {
+            const trait_instance = TypeNode.spawn_instance(trait_type);
+            _ = EdgeComposition.add_child(target, trait_instance.node, null);
             return trait_instance;
         }
     };
@@ -123,7 +123,7 @@ pub const TypeGraph = struct {
             for (path) |segment| {
                 const reference = try tg.instantiate_node(tg.get_Reference());
                 if (current_node) |_current_node| {
-                    _ = try EdgeNext.add_next(_current_node, reference);
+                    _ = EdgeNext.add_next(_current_node, reference);
                 } else {
                     root = reference;
                 }
@@ -134,7 +134,7 @@ pub const TypeGraph = struct {
             return root.?;
         }
 
-        pub fn resolve(reference: BoundNodeReference, instance: BoundNodeReference) !graph.BoundNodeReference {
+        pub fn resolve(reference: BoundNodeReference, instance: BoundNodeReference) graph.BoundNodeReference {
             // TODO iterate instead of recursion
             var target = instance;
             const child_identifier = ChildReferenceNode.Attributes.of(reference.node).get_child_identifier();
@@ -147,7 +147,7 @@ pub const TypeGraph = struct {
             const next_reference = EdgeNext.get_next_node_from_node(reference);
             if (next_reference) |_next_reference| {
                 const next_ref = reference.g.bind(_next_reference);
-                target = try ChildReferenceNode.resolve(next_ref, target);
+                target = ChildReferenceNode.resolve(next_ref, target);
             }
             return target;
         }
@@ -258,7 +258,7 @@ pub const TypeGraph = struct {
         return TypeGraph.of(typegraph_node);
     }
 
-    pub fn init(g: *GraphView) !TypeGraph {
+    pub fn init(g: *GraphView) TypeGraph {
         const self_node = g.create_and_insert_node();
         var self = TypeGraph.of(self_node);
         self.set_initialized(false);
@@ -268,14 +268,14 @@ pub const TypeGraph = struct {
         const implements_trait_type = TypeNode.create_and_insert(&self, "ImplementsTrait");
 
         // Assign the traits to the type-nodes
-        _ = try TraitNode.add_trait_to(implements_type_type, implements_type_type);
-        _ = try TraitNode.add_trait_to(implements_type_type, implements_trait_type);
-        _ = try TraitNode.add_trait_to(implements_trait_type, implements_type_type);
-        _ = try TraitNode.add_trait_to(implements_trait_type, implements_trait_type);
+        _ = TraitNode.add_trait_to(implements_type_type, implements_type_type);
+        _ = TraitNode.add_trait_to(implements_type_type, implements_trait_type);
+        _ = TraitNode.add_trait_to(implements_trait_type, implements_type_type);
+        _ = TraitNode.add_trait_to(implements_trait_type, implements_trait_type);
 
         const make_child_type = TypeNode.create_and_insert(&self, "MakeChild");
 
-        _ = try TraitNode.add_trait_to(make_child_type, implements_type_type);
+        _ = TraitNode.add_trait_to(make_child_type, implements_type_type);
 
         _ = TypeNode.create_and_insert(&self, "MakeLink");
         _ = TypeNode.create_and_insert(&self, "Reference");
@@ -291,7 +291,7 @@ pub const TypeGraph = struct {
 
         // Add type trait
         const trait_implements_type_instance = try self.instantiate_node(self.get_ImplementsType());
-        _ = try EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
+        _ = EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
 
         return type_node;
     }
@@ -301,7 +301,7 @@ pub const TypeGraph = struct {
 
         // Add trait trait
         const implements_trait_instance_node = try self.instantiate_node(self.get_ImplementsTrait());
-        _ = try EdgeType.add_instance(trait, implements_trait_instance_node);
+        _ = EdgeType.add_instance(trait, implements_trait_instance_node);
 
         return trait;
     }
@@ -310,8 +310,8 @@ pub const TypeGraph = struct {
         const make_child = try self.instantiate_node(self.get_MakeChild());
         MakeChildNode.Attributes.of(make_child.node).set_child_identifier(identifier);
 
-        _ = try EdgePointer.point_to(make_child, child_type.node);
-        _ = try EdgeComposition.add_child(target_type, make_child.node, null);
+        _ = EdgePointer.point_to(make_child, child_type.node);
+        _ = EdgeComposition.add_child(target_type, make_child.node, null);
 
         return make_child;
     }
@@ -326,9 +326,9 @@ pub const TypeGraph = struct {
         const make_link = try self.instantiate_node(self.get_MakeLink());
         MakeLinkNode.Attributes.of(make_link).set_edge_attributes(edge_attributes);
 
-        _ = try EdgeComposition.add_child(make_link, lhs_reference, "lhs");
-        _ = try EdgeComposition.add_child(make_link, rhs_reference, "rhs");
-        _ = try EdgeComposition.add_child(target_type, make_link.node, null);
+        _ = EdgeComposition.add_child(make_link, lhs_reference, "lhs");
+        _ = EdgeComposition.add_child(make_link, rhs_reference, "rhs");
+        _ = EdgeComposition.add_child(target_type, make_link.node, null);
 
         return make_link;
     }
@@ -336,7 +336,7 @@ pub const TypeGraph = struct {
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
         // 1) Create instance and connect it to its type
         const new_instance = type_node.g.insert_node(Node.init(type_node.g.allocator));
-        _ = try EdgeType.add_instance(type_node, new_instance);
+        _ = EdgeType.add_instance(type_node, new_instance);
 
         // 2) Visit MakeChild nodes of type_node
         const VisitMakeChildren = struct {
@@ -364,9 +364,7 @@ pub const TypeGraph = struct {
                 };
 
                 // 2.3) Attach child instance to parent instance with the reference name
-                _ = EdgeComposition.add_child(self.parent_instance, child.node, child_identifier) catch |e| {
-                    return visitor.VisitResult(void){ .ERROR = e };
-                };
+                _ = EdgeComposition.add_child(self.parent_instance, child.node, child_identifier);
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -398,29 +396,21 @@ pub const TypeGraph = struct {
                 }
 
                 // 3.2) Resolve operand references to actual instance nodes
-                const lhs_resolved = ChildReferenceNode.resolve(lhs_reference_node.?, self.parent_instance) catch |e| {
-                    return visitor.VisitResult(void){ .ERROR = e };
-                };
-                const rhs_resolved = ChildReferenceNode.resolve(rhs_reference_node.?, self.parent_instance) catch |e| {
-                    return visitor.VisitResult(void){ .ERROR = e };
-                };
+                const lhs_resolved = ChildReferenceNode.resolve(lhs_reference_node.?, self.parent_instance);
+                const rhs_resolved = ChildReferenceNode.resolve(rhs_reference_node.?, self.parent_instance);
 
                 // 3.3) Create link between resolved nodes
                 const edge_attributes = MakeLinkNode.Attributes.of(make_link).get_edge_attributes();
 
                 // Use the appropriate edge creation function based on link_type
-                const link_edge = Edge.init(self.parent_instance.g.allocator, lhs_resolved.node, rhs_resolved.node, edge_attributes.edge_type) catch |e| {
-                    return visitor.VisitResult(void){ .ERROR = e };
-                };
+                const link_edge = Edge.init(self.parent_instance.g.allocator, lhs_resolved.node, rhs_resolved.node, edge_attributes.edge_type);
                 link_edge.attributes.directional = edge_attributes.directional;
                 link_edge.attributes.name = edge_attributes.name;
                 if (edge_attributes.dynamic) |d| {
                     d.copy_into(&link_edge.attributes.dynamic);
                 }
 
-                _ = self.parent_instance.g.insert_edge(link_edge) catch |e| {
-                    return visitor.VisitResult(void){ .ERROR = e };
-                };
+                _ = self.parent_instance.g.insert_edge(link_edge);
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -502,7 +492,7 @@ pub const TypeGraph = struct {
 test "basic typegraph" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
-    var tg = try TypeGraph.init(&g);
+    var tg = TypeGraph.init(&g);
 
     defer g.deinit();
 
@@ -521,7 +511,7 @@ test "basic typegraph" {
 test "basic instantiation" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
-    var tg = try TypeGraph.init(&g);
+    var tg = TypeGraph.init(&g);
 
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
@@ -564,7 +554,7 @@ test "basic instantiation" {
     const cap1p2_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{ "cap1", "p2" });
 
     // test: resolve_instance_reference
-    const cap1p1_reference_resolved = try TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor);
+    const cap1p1_reference_resolved = TypeGraph.ChildReferenceNode.resolve(cap1p1_reference, resistor);
     try std.testing.expect(Node.is_same(cap1p1_reference_resolved.node, cap1p1.node));
 
     // Build make link

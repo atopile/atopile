@@ -20,9 +20,8 @@ pub const EdgeOperand = struct {
         expression: NodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
-    ) !EdgeReference {
-        const edge = try Edge.init(allocator, expression, operand, tid);
-        errdefer edge.deinit();
+    ) EdgeReference {
+        const edge = Edge.init(allocator, expression, operand, tid);
 
         build(operand_identifier).apply_to(edge);
         return edge;
@@ -100,14 +99,14 @@ pub const EdgeOperand = struct {
         bound_node: graph.BoundNodeReference,
         operand: NodeReference,
         operand_identifier: ?str,
-    ) !graph.BoundEdgeReference {
-        const link = try EdgeOperand.init(
+    ) graph.BoundEdgeReference {
+        const link = EdgeOperand.init(
             bound_node.g.allocator,
             bound_node.node,
             operand,
             operand_identifier,
         );
-        const bound_edge = try bound_node.g.insert_edge(link);
+        const bound_edge = bound_node.g.insert_edge(link);
         return bound_edge;
     }
 
@@ -196,19 +195,19 @@ test "edge operand basic" {
     var g = graph.GraphView.init(std.testing.allocator);
     defer g.deinit();
 
-    const expression = try Node.init(a);
-    const operand_a = try Node.init(a);
-    const operand_b = try Node.init(a);
-    const operand_c = try Node.init(a);
+    const expression = Node.init(a);
+    const operand_a = Node.init(a);
+    const operand_b = Node.init(a);
+    const operand_c = Node.init(a);
 
-    const b_expr = try g.insert_node(expression);
-    const b_operand_a = try g.insert_node(operand_a);
-    const b_operand_b = try g.insert_node(operand_b);
-    const b_operand_c = try g.insert_node(operand_c);
+    const b_expr = g.insert_node(expression);
+    const b_operand_a = g.insert_node(operand_a);
+    const b_operand_b = g.insert_node(operand_b);
+    const b_operand_c = g.insert_node(operand_c);
 
-    _ = try EdgeOperand.add_operand(b_expr, operand_a, "lhs");
-    _ = try EdgeOperand.add_operand(b_expr, operand_b, "rhs");
-    _ = try EdgeOperand.add_operand(b_expr, operand_c, null);
+    _ = EdgeOperand.add_operand(b_expr, operand_a, "lhs");
+    _ = EdgeOperand.add_operand(b_expr, operand_b, "rhs");
+    _ = EdgeOperand.add_operand(b_expr, operand_c, null);
 
     const expression_edge_a = EdgeOperand.get_expression_edge(b_operand_a);
     const expression_edge_b = EdgeOperand.get_expression_edge(b_operand_b);

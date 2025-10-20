@@ -21,8 +21,8 @@ pub const EdgeInterfaceConnection = struct {
         return tid;
     }
 
-    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) !EdgeReference {
-        const edge = try Edge.init(allocator, N1, N2, tid);
+    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) EdgeReference {
+        const edge = Edge.init(allocator, N1, N2, tid);
         build().apply_to(edge);
         return edge;
     }
@@ -95,11 +95,11 @@ pub const EdgeInterfaceConnection = struct {
 test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);
-    const n1 = try Node.init(a);
+    const n1 = Node.init(a);
     defer n1.deinit();
-    const n2 = try Node.init(a);
+    const n2 = Node.init(a);
     defer n2.deinit();
-    const n3 = try Node.init(a);
+    const n3 = Node.init(a);
     defer n3.deinit();
     defer g.deinit(); // Defer AFTER nodes so it runs BEFORE node cleanup
 
@@ -107,7 +107,7 @@ test "basic" {
     std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
     std.debug.print("n3.uuid = {}\n", .{n3.attributes.uuid});
 
-    const e1 = try EdgeInterfaceConnection.init(a, n1, n2);
+    const e1 = EdgeInterfaceConnection.init(a, n1, n2);
     defer e1.deinit();
 
     std.debug.print("e1.uuid = {}\n", .{e1.attributes.uuid});
@@ -129,7 +129,7 @@ test "basic" {
     std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
     std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
 
-    const bn1 = try g.insert_node(n1);
+    const bn1 = g.insert_node(n1);
 
     const CollectConnectedEdges = struct {
         connected_edges: std.ArrayList(graph.BoundEdgeReference),

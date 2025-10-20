@@ -18,9 +18,8 @@ const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 pub const EdgeComposition = struct {
     pub const tid: Edge.EdgeType = 1759269250;
 
-    pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) !EdgeReference {
-        const edge = try Edge.init(allocator, parent, child, tid);
-        errdefer edge.deinit();
+    pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
+        const edge = Edge.init(allocator, parent, child, tid);
 
         build(child_identifier).apply_to(edge);
         return edge;
@@ -94,10 +93,10 @@ pub const EdgeComposition = struct {
         return Edge.get_single_edge(bound_node, tid, true);
     }
 
-    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) !graph.BoundEdgeReference {
+    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) graph.BoundEdgeReference {
         // if child identifier is null, then generate a unique identifier
-        const link = try EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
-        const bound_edge = try bound_node.g.insert_edge(link);
+        const link = EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
+        const bound_edge = bound_node.g.insert_edge(link);
         return bound_edge;
     }
 
@@ -172,8 +171,8 @@ test "basic" {
     const bn2 = g.create_and_insert_node();
     const bn3 = g.create_and_insert_node();
 
-    _ = try EdgeComposition.add_child(bn1, bn2.node, "child1");
-    _ = try EdgeComposition.add_child(bn1, bn3.node, "child2");
+    _ = EdgeComposition.add_child(bn1, bn2.node, "child1");
+    _ = EdgeComposition.add_child(bn1, bn3.node, "child2");
 
     // has to be deleted first
     defer g.deinit();
