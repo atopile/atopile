@@ -50,13 +50,8 @@ pub const TypeGraph = struct {
         pub fn create_and_insert(tg: *TypeGraph, type_identifier: str) BoundNodeReference {
             const implements_type_type_node = tg.self_node.g.create_and_insert_node();
             TypeNodeAttributes.of(implements_type_type_node.node).set_type_name(type_identifier);
+            _ = EdgeComposition.add_child(tg.self_node, implements_type_type_node.node, type_identifier) catch @panic("");
             return implements_type_type_node;
-        }
-
-        pub fn bootstrap(tg: *TypeGraph, type_identifier: str) BoundNodeReference {
-            const type_node = TypeNode.create_and_insert(tg, type_identifier);
-            _ = EdgeComposition.add_child(tg.self_node, type_node.node, type_identifier) catch @panic("");
-            return type_node;
         }
 
         pub fn spawn_instance(bound_type_node: BoundNodeReference) !BoundNodeReference {
@@ -243,14 +238,34 @@ pub const TypeGraph = struct {
         return .{ .self_node = self_node };
     }
 
+    pub fn of_instance(instance: BoundNodeReference) ?@This() {
+        const g = instance.g;
+
+        // 1. Get Type (nodetype)
+        const type_edge = EdgeType.get_type_edge(instance);
+        if (type_edge == null) {
+            return null;
+        }
+        const type_node = g.bind(EdgeType.get_type_node(type_edge.?.edge));
+
+        // 2. Get TypeGraph (parent)
+        const typegraph_edge = EdgeComposition.get_parent_edge(type_node);
+        if (typegraph_edge == null) {
+            return null;
+        }
+        const typegraph_node = g.bind(EdgeComposition.get_parent_node(typegraph_edge.?.edge));
+
+        return TypeGraph.of(typegraph_node);
+    }
+
     pub fn init(g: *GraphView) !TypeGraph {
         const self_node = g.create_and_insert_node();
         var self = TypeGraph.of(self_node);
         self.set_initialized(false);
 
         // Bootstrap first type and trait type-nodes and instance-nodes
-        const implements_type_type = TypeNode.bootstrap(&self, "ImplementsType");
-        const implements_trait_type = TypeNode.bootstrap(&self, "ImplementsTrait");
+        const implements_type_type = TypeNode.create_and_insert(&self, "ImplementsType");
+        const implements_trait_type = TypeNode.create_and_insert(&self, "ImplementsTrait");
 
         // Assign the traits to the type-nodes
         _ = try TraitNode.add_trait_to(implements_type_type, implements_type_type);
@@ -258,12 +273,12 @@ pub const TypeGraph = struct {
         _ = try TraitNode.add_trait_to(implements_trait_type, implements_type_type);
         _ = try TraitNode.add_trait_to(implements_trait_type, implements_trait_type);
 
-        const make_child_type = TypeNode.bootstrap(&self, "MakeChild");
+        const make_child_type = TypeNode.create_and_insert(&self, "MakeChild");
 
         _ = try TraitNode.add_trait_to(make_child_type, implements_type_type);
 
-        _ = TypeNode.bootstrap(&self, "MakeLink");
-        _ = TypeNode.bootstrap(&self, "Reference");
+        _ = TypeNode.create_and_insert(&self, "MakeLink");
+        _ = TypeNode.create_and_insert(&self, "Reference");
 
         // Mark as fully initialized
         self.set_initialized(true);

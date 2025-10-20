@@ -3,9 +3,11 @@ from typing import Any, Self, cast, override
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+from faebryk.core.zig.gen.faebryk.node_type import EdgeType
+from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
+from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
 from faebryk.libs.util import dataclass_as_kwargs, not_none
 
 
@@ -13,13 +15,13 @@ class FaebrykApiException(Exception):
     pass
 
 
-class Child[T: NodeType[Any]]:
+class Child[T: Node[Any]]:
     def __init__(self, nodetype: type[T], tg: TypeGraph) -> None:
         self.nodetype = nodetype
         self.tg = tg
         self.identifier: str = None  # type: ignore
 
-        if nodetype.Attributes is not NodeTypeAttributes:
+        if nodetype.Attributes is not NodeAttributes:
             raise FaebrykApiException(
                 f"Can't have Child with custom Attributes: {nodetype.__name__}"
             )
@@ -44,7 +46,7 @@ class Child[T: NodeType[Any]]:
         return BoundChild(child=self, instance=node)
 
 
-class BoundChild[T: NodeType](Child[T]):
+class BoundChild[T: Node](Child[T]):
     def __init__(self, child: Child, instance: BoundNode) -> None:
         self.nodetype = child.nodetype
         self.node = child.nodetype
@@ -56,25 +58,25 @@ class BoundChild[T: NodeType](Child[T]):
         return self.get_unbound(instance=self._instance)
 
 
-class NodeTypeMeta(type):
+class NodeMeta(type):
     @override
     def __setattr__(cls, name: str, value: Any, /) -> None:
-        if isinstance(value, Child) and issubclass(cls, NodeType):
+        if isinstance(value, Child) and issubclass(cls, Node):
             value.identifier = name
             cls._add_child(value)
         return super().__setattr__(name, value)
 
 
 @dataclass(frozen=True)
-class NodeTypeAttributes:
+class NodeAttributes:
     def __init_subclass__(cls) -> None:
         # TODO collect all fields (like dataclasses)
         # TODO check Attributes is dataclass and frozen
         pass
 
     @classmethod
-    def of(cls: type[Self], node: "BoundNode | NodeType[Any]") -> Self:
-        if isinstance(node, NodeType):
+    def of(cls: type[Self], node: "BoundNode | Node[Any]") -> Self:
+        if isinstance(node, Node):
             node = node.instance
         return cls(**node.node().get_dynamic_attrs())
 
@@ -82,8 +84,8 @@ class NodeTypeAttributes:
         return dataclass_as_kwargs(self)
 
 
-class NodeType[T: NodeTypeAttributes = NodeTypeAttributes](metaclass=NodeTypeMeta):
-    Attributes = NodeTypeAttributes
+class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
+    Attributes = NodeAttributes
 
     def __init__(self, instance: BoundNode) -> None:
         self.instance = instance
@@ -95,7 +97,7 @@ class NodeType[T: NodeTypeAttributes = NodeTypeAttributes](metaclass=NodeTypeMet
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
         # be subclassed further.
-        if len(cls.__mro__) > len(NodeType.__mro__) + 1:
+        if len(cls.__mro__) > len(Node.__mro__) + 1:
             # mro(): [Leaf, NodeType, object] is allowed (len==3),
             # deeper (len>3) is forbidden
             raise FaebrykApiException(
@@ -184,6 +186,13 @@ class NodeType[T: NodeTypeAttributes = NodeTypeAttributes](metaclass=NodeTypeMet
         Attributes = cast(type[T], type(self).Attributes)
         return Attributes.of(self.instance)
 
+    @classmethod
+    def isinstance(cls, tg: TypeGraph, instance: BoundNode) -> bool:
+        return EdgeType.is_node_instance_of(
+            bound_node=instance,
+            node_type=cls.get_or_create_type(tg=tg).node(),
+        )
+
     # OVERRIDES ------------------------------------------------------------------------
     @classmethod
     def create_type(cls, tg: TypeGraph) -> None:
@@ -194,36 +203,115 @@ class NodeType[T: NodeTypeAttributes = NodeTypeAttributes](metaclass=NodeTypeMet
 
 
 # ------------------------------------------------------------
+# TODO move parameter stuff into own file (better into zig)
+
+
+LiteralT = float | int | str | bool
+Literal = LiteralT  # Type alias for compatibility with generated types
+
+
+class Parameter(Node):
+    def constrain_to_literal(self, g: GraphView, value: LiteralT) -> None:
+        node = self.instance
+        lit = LiteralNode.create_instance(
+            tg=tg, g=g, attributes=LiteralNodeAttributes(value=value)
+        )
+
+        ExpressionAliasIs.alias_is(tg=tg, g=g, operands=[node, lit.instance])
+
+    def try_extract_constrained_literal(self) -> LiteralT | None:
+        # TODO: solver? `only_proven=True` parameter?
+        node = self.instance
+
+        if (
+            inbound_expr_edge := EdgeOperand.get_expression_edge(bound_node=node)
+        ) is None:
+            return None
+
+        expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
+
+        lit: LiteralNode | None = None
+
+        # TODO need better python visitor api
+        def visit(ctx: None, edge: BoundEdge) -> None:
+            nonlocal lit
+            operand = edge.g().bind(node=edge.edge().target())
+            if LiteralNode.isinstance(tg=tg, instance=operand):
+                lit = LiteralNode(operand)
+
+        EdgeOperand.visit_operand_edges(bound_node=expr, ctx=None, f=visit)
+
+        if lit is None:
+            return None
+        return LiteralNode.Attributes.of(node=lit.instance).value
+
+
+@dataclass(frozen=True)
+class LiteralNodeAttributes(NodeAttributes):
+    value: Literal
+
+
+class LiteralNode(Node[LiteralNodeAttributes]):
+    Attributes = LiteralNodeAttributes
+
+
+@dataclass(frozen=True)
+class ExpressionAliasIsAttributes(NodeAttributes):
+    constrained: bool  # TODO: principled reason for this not being a Parameter
+
+
+class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
+    # TODO: constrain operand cardinality?
+
+    Attributes = ExpressionAliasIsAttributes
+
+    @classmethod
+    def alias_is(
+        cls, tg: TypeGraph, g: GraphView, operands: list[BoundNode]
+    ) -> BoundNode:
+        expr = cls.create_instance(
+            tg=tg, g=g, attributes=cls.Attributes(constrained=True)
+        )
+        for operand in operands:
+            EdgeOperand.add_operand(
+                bound_node=expr.instance,
+                operand=operand.node(),
+                operand_identifier=None,
+            )
+        return expr.instance
+
+
+# ------------------------------------------------------------
 
 
 def test_fabll_basic():
     @dataclass(frozen=True)
-    class FileLocationAttributes(NodeTypeAttributes):
+    class FileLocationAttributes(NodeAttributes):
         start_line: int
         start_column: int
         end_line: int
         end_column: int
 
-    class FileLocation(NodeType[FileLocationAttributes]):
+    class FileLocation(Node[FileLocationAttributes]):
         Attributes = FileLocationAttributes
 
     @dataclass(frozen=True)
-    class SliceAttributes(NodeTypeAttributes):
+    class SliceAttributes(NodeAttributes):
         start: int
         end: int
         step: int
 
-    class Slice(NodeType[SliceAttributes]):
+    class Slice(Node[SliceAttributes]):
         Attributes = SliceAttributes
 
         @classmethod
         def create_type(cls, tg: TypeGraph) -> None:
             cls.tnwa = Child(TestNodeWithoutAttr, tg=tg)
 
-    class TestNodeWithoutAttr(NodeType):
+    class TestNodeWithoutAttr(Node):
         pass
 
-    class TestNodeWithChildren(NodeType):
+    class TestNodeWithChildren(Node):
         @classmethod
         def create_type(cls, tg: TypeGraph) -> None:
             cls.tnwa1 = Child(TestNodeWithoutAttr, tg=tg)
