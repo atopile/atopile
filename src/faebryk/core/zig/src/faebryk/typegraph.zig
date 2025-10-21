@@ -238,24 +238,34 @@ pub const TypeGraph = struct {
         return .{ .self_node = self_node };
     }
 
+    pub fn of_type(type_node: BoundNodeReference) ?@This() {
+        const g = type_node.g;
+        const typegraph_edge = EdgeComposition.get_parent_edge(type_node);
+        if (typegraph_edge == null) {
+            return null;
+        }
+        const typegraph_node = g.bind(EdgeComposition.get_parent_node(typegraph_edge.?.edge));
+        return TypeGraph.of(typegraph_node);
+    }
+
     pub fn of_instance(instance: BoundNodeReference) ?@This() {
         const g = instance.g;
 
-        // 1. Get Type (nodetype)
         const type_edge = EdgeType.get_type_edge(instance);
         if (type_edge == null) {
             return null;
         }
         const type_node = g.bind(EdgeType.get_type_node(type_edge.?.edge));
 
-        // 2. Get TypeGraph (parent)
-        const typegraph_edge = EdgeComposition.get_parent_edge(type_node);
-        if (typegraph_edge == null) {
-            return null;
-        }
-        const typegraph_node = g.bind(EdgeComposition.get_parent_node(typegraph_edge.?.edge));
+        return TypeGraph.of_type(type_node);
+    }
 
-        return TypeGraph.of(typegraph_node);
+    pub fn of_type_or_instance(node: BoundNodeReference) ?@This() {
+        if (TypeGraph.of_instance(node)) |tg| {
+            return tg;
+        }
+        // TODO: check it's actually a type node
+        return TypeGraph.of_type(node);
     }
 
     pub fn init(g: *GraphView) TypeGraph {

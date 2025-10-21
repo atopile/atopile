@@ -14,6 +14,7 @@ const Node = graph.Node;
 const GraphView = graph.GraphView;
 const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
+const return_first = visitor.return_first;
 
 pub const EdgeComposition = struct {
     pub const tid: Edge.EdgeType = 1759269250;
@@ -93,6 +94,11 @@ pub const EdgeComposition = struct {
         return Edge.get_single_edge(bound_node, tid, true);
     }
 
+    pub fn get_parent_node_of(bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
+        const parent_edge = EdgeComposition.get_parent_edge(bound_node) orelse return null;
+        return parent_edge.g.bind(EdgeComposition.get_parent_node(parent_edge.edge));
+    }
+
     pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) graph.BoundEdgeReference {
         // if child identifier is null, then generate a unique identifier
         const link = EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
@@ -160,6 +166,19 @@ pub const EdgeComposition = struct {
 
         var visit = Visit{ .parent = parent, .child_type = child_type, .cb_ctx = ctx, .cb = f };
         return parent.visit_edges_of_type(tid, T, &visit, Visit.visit);
+    }
+
+    pub fn try_get_single_child_of_type(bound_node: graph.BoundNodeReference, child_type: graph.NodeReference) ?graph.BoundNodeReference {
+        const Ctx = struct {};
+        var ctx = Ctx{};
+        const result = EdgeComposition.visit_children_of_type(bound_node, child_type, graph.BoundEdgeReference, &ctx, return_first(graph.BoundEdgeReference).visit);
+        switch (result) {
+            .OK => |found| return found.g.bind(EdgeComposition.get_child_node(found.edge)),
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+            .ERROR => return null, // Convert error to null since function returns optional
+            .EXHAUSTED => return null,
+        }
     }
 };
 

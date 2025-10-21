@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Self, cast, override
 
+from typing_extensions import deprecated
+
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
@@ -16,9 +18,9 @@ class FaebrykApiException(Exception):
 
 
 class Child[T: Node[Any]]:
-    def __init__(self, nodetype: type[T], tg: TypeGraph) -> None:
+    def __init__[N: Node](self, nodetype: type[T], t: "BoundNodeType[N, Any]") -> None:
         self.nodetype = nodetype
-        self.tg = tg
+        self.t = t
         self.identifier: str = None  # type: ignore
 
         if nodetype.Attributes is not NodeAttributes:
@@ -51,7 +53,7 @@ class BoundChild[T: Node](Child[T]):
         self.nodetype = child.nodetype
         self.node = child.nodetype
         self.identifier = child.identifier
-        self.tg = child.tg
+        self.t = child.t
         self._instance = instance
 
     def get(self) -> T:
@@ -110,30 +112,19 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _type_identifier(cls) -> str:
         return cls.__name__
 
-    @classmethod
-    def get_or_create_type(cls, tg: TypeGraph) -> BoundNode:
-        """
-        Builds Type node and returns it
-        """
-        typenode = tg.get_type_by_name(type_identifier=cls._type_identifier())
-        if typenode is not None:
-            return typenode
-        typenode = tg.add_type(identifier=cls._type_identifier())
-        cls.create_type(tg=tg)
-        return typenode
-
+    # type construction ----------------------------------------------------------------
     @classmethod
     def _add_child(
         cls,
         child: Child,
     ) -> BoundNode:
-        tg = child.tg
+        tg = child.t.tg
         identifier = child.identifier
         nodetype = child.nodetype
 
-        child_type_node = nodetype.get_or_create_type(tg=tg)
+        child_type_node = nodetype.bind_typegraph(tg).get_or_create_type()
         return tg.add_make_child(
-            type_node=cls.get_or_create_type(tg=tg),
+            type_node=cls.bind_typegraph(tg).get_or_create_type(),
             child_type_node=child_type_node,
             identifier=identifier,
         )
@@ -145,16 +136,135 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     ):
         cls._add_child(child)
 
+    # bindings -------------------------------------------------------------------------
     @classmethod
+    def bind_typegraph[N: Node[Any]](
+        cls: type[N], tg: TypeGraph
+    ) -> "BoundNodeType[N, T]":
+        return BoundNodeType[N, T](tg=tg, t=cls)
+
+    @classmethod
+    def bind_typegraph_from_instance[N: Node[Any]](
+        cls: type[N], instance: BoundNode
+    ) -> "BoundNodeType[N, T]":
+        tg = TypeGraph.of_instance(instance_node=instance)
+        if tg is None:
+            raise FaebrykApiException(
+                f"Failed to bind typegraph from instance: {instance}"
+            )
+        return cls.bind_typegraph(tg=tg)
+
+    @classmethod
+    def bind_instance(cls, instance: BoundNode) -> Self:
+        return cls(instance=instance)
+
+    # instance methods -----------------------------------------------------------------
+    def attributes(self) -> T:
+        Attributes = cast(type[T], type(self).Attributes)
+        return Attributes.of(self.instance)
+
+    def get_parent(self) -> "Node":
+        parent_edge = EdgeComposition.get_parent_edge(bound_node=self.instance)
+        if parent_edge is None:
+            raise FaebrykApiException("Node has no parent")
+        parent_node = parent_edge.g().bind(node=parent_edge.edge().target())
+        return Node(instance=parent_node)
+
+    # overrides ------------------------------------------------------------------------
+    @classmethod
+    def __create_type__[N: Node[Any]](cls: type[N], t: "BoundNodeType[N, T]") -> None:
+        """
+        Override this to add children to the type.
+        """
+        pass
+
+    @classmethod
+    def __create_instance__(cls, tg: TypeGraph, g: GraphView) -> Self:
+        return cls.bind_typegraph(tg=tg).create_instance(g=g)
+
+
+class BoundNodeType[N: Node[Any], A: NodeAttributes]:
+    """
+    (type[Node], TypeGraph)
+    """
+
+    def __init__(self, tg: TypeGraph, t: type[N]) -> None:
+        self.tg = tg
+        self.t = t
+
+    # node type methods ----------------------------------------------------------------
+    def get_or_create_type(self) -> BoundNode:
+        """
+        Builds Type node and returns it
+        """
+        tg = self.tg
+        typenode = tg.get_type_by_name(type_identifier=self.t._type_identifier())
+        if typenode is not None:
+            return typenode
+        typenode = tg.add_type(identifier=self.t._type_identifier())
+        bound_type = self.t.bind_typegraph(tg=tg)
+        self.t.__create_type__(bound_type)
+        return typenode
+
+    def create_instance(self, g: GraphView, attributes: A | None = None) -> N:
+        """
+        Create a node instance for the given type node
+        """
+        # TODO spawn instance in specified graph g
+        # TODO if attributes is not empty enforce not None
+
+        typenode = self.get_or_create_type()
+        attrs = attributes.to_dict() if attributes else {}
+        instance = self.tg.instantiate_node(type_node=typenode, attributes=attrs)
+        return self.t.bind_instance(instance=instance)
+
+    def isinstance(self, instance: BoundNode) -> bool:
+        return EdgeType.is_node_instance_of(
+            bound_node=instance,
+            node_type=self.get_or_create_type().node(),
+        )
+
+    def get_instances(self) -> list[N]:
+        type_node = self.get_or_create_type()
+        instances: list[BoundNode] = []
+        EdgeType.visit_instance_edges(
+            bound_node=type_node,
+            ctx=instances,
+            f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+        )
+        return [self.t(instance=instance) for instance in instances]
+
+    # node type agnostic ---------------------------------------------------------------
+    def nodes_with_trait[T: Node](self, trait: type[T]) -> list[tuple["Node", T]]:
+        impls = trait.bind_typegraph(self.tg).get_instances()
+        return [(impl.get_parent(), impl) for impl in impls]
+
+    # TODO: Waiting for python to add support for type mapping
+    def nodes_with_traits[*Ts](
+        self, traits: tuple[*Ts]
+    ):  # -> list[tuple[Node, tuple[*Ts]]]:
+        pass
+
+    @deprecated("Use get_instances instead")
+    def nodes_of_type[N2: Node](self, t: type[N2]) -> set[N2]:
+        return set(t.bind_typegraph(self.tg).get_instances())
+
+    def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]:
+        return {n for tn in t for n in tn.bind_typegraph(self.tg).get_instances()}
+
+    # construction ---------------------------------------------------------------------
+    def Child[C: Node[Any]](self, nodetype: type[C]) -> Child[C]:
+        return Child(nodetype=nodetype, t=self)
+
     def _add_link(
-        cls,
+        self,
         *,
-        tg: TypeGraph,
         lhs_reference_path: list[str],
         rhs_reference_path: list[str],
         edge: EdgeCreationAttributes,
     ) -> None:
-        type_node = cls.get_or_create_type(tg=tg)
+        tg = self.tg
+        type_node = self.get_or_create_type()
 
         tg.add_make_link(
             type_node=type_node,
@@ -169,38 +279,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             edge_attributes=edge,
         )
 
-    @classmethod
-    def create_instance(
-        cls, tg: TypeGraph, g: GraphView, attributes: T | None = None
-    ) -> Self:
-        """
-        Create a node instance for the given type node
-        """
-        # TODO if attributes is not empty enforce not None
-        typenode = cls.get_or_create_type(tg=tg)
-        attrs = attributes.to_dict() if attributes else {}
-        instance = tg.instantiate_node(type_node=typenode, attributes=attrs)
-        return cls(instance=instance)
-
-    def attributes(self) -> T:
-        Attributes = cast(type[T], type(self).Attributes)
-        return Attributes.of(self.instance)
-
-    @classmethod
-    def isinstance(cls, tg: TypeGraph, instance: BoundNode) -> bool:
-        return EdgeType.is_node_instance_of(
-            bound_node=instance,
-            node_type=cls.get_or_create_type(tg=tg).node(),
-        )
-
-    # OVERRIDES ------------------------------------------------------------------------
-    @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        """
-        Override this to add children to the type.
-        """
-        pass
-
 
 # ------------------------------------------------------------
 # TODO move parameter stuff into own file (better into zig)
@@ -213,8 +291,9 @@ Literal = LiteralT  # Type alias for compatibility with generated types
 class Parameter(Node):
     def constrain_to_literal(self, g: GraphView, value: LiteralT) -> None:
         node = self.instance
-        lit = LiteralNode.create_instance(
-            tg=tg, g=g, attributes=LiteralNodeAttributes(value=value)
+        tg = not_none(TypeGraph.of_instance(instance_node=node))
+        lit = LiteralNode.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=LiteralNodeAttributes(value=value)
         )
 
         ExpressionAliasIs.alias_is(tg=tg, g=g, operands=[node, lit.instance])
@@ -236,7 +315,8 @@ class Parameter(Node):
         def visit(ctx: None, edge: BoundEdge) -> None:
             nonlocal lit
             operand = edge.g().bind(node=edge.edge().target())
-            if LiteralNode.isinstance(tg=tg, instance=operand):
+            tg = not_none(TypeGraph.of_instance(instance_node=operand))
+            if LiteralNode.bind_typegraph(tg=tg).isinstance(instance=operand):
                 lit = LiteralNode(operand)
 
         EdgeOperand.visit_operand_edges(bound_node=expr, ctx=None, f=visit)
@@ -269,8 +349,8 @@ class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
     def alias_is(
         cls, tg: TypeGraph, g: GraphView, operands: list[BoundNode]
     ) -> BoundNode:
-        expr = cls.create_instance(
-            tg=tg, g=g, attributes=cls.Attributes(constrained=True)
+        expr = cls.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=cls.Attributes(constrained=True)
         )
         for operand in operands:
             EdgeOperand.add_operand(
@@ -305,20 +385,19 @@ def test_fabll_basic():
         Attributes = SliceAttributes
 
         @classmethod
-        def create_type(cls, tg: TypeGraph) -> None:
-            cls.tnwa = Child(TestNodeWithoutAttr, tg=tg)
+        def __create_type__(cls, t: "BoundNodeType[Slice, Any]") -> None:
+            cls.tnwa = t.Child(TestNodeWithoutAttr)
 
     class TestNodeWithoutAttr(Node):
         pass
 
     class TestNodeWithChildren(Node):
         @classmethod
-        def create_type(cls, tg: TypeGraph) -> None:
-            cls.tnwa1 = Child(TestNodeWithoutAttr, tg=tg)
-            cls.tnwa2 = Child(TestNodeWithoutAttr, tg=tg)
+        def __create_type__(cls, t: "BoundNodeType[TestNodeWithoutAttr, Any]") -> None:
+            cls.tnwa1 = t.Child(TestNodeWithoutAttr)
+            cls.tnwa2 = t.Child(TestNodeWithoutAttr)
 
-            cls._add_link(
-                tg=tg,
+            t._add_link(
                 lhs_reference_path=["tnwa1"],
                 rhs_reference_path=["tnwa2"],
                 edge=EdgePointer.build(),
@@ -326,8 +405,7 @@ def test_fabll_basic():
 
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
-    fileloc = FileLocation.create_instance(
-        tg=tg,
+    fileloc = FileLocation.bind_typegraph(tg).create_instance(
         g=g,
         attributes=FileLocationAttributes(
             start_line=1,
@@ -340,16 +418,16 @@ def test_fabll_basic():
     print("fileloc.start_column:", fileloc.attributes().start_column)
     print("fileloc:", fileloc.attributes())
 
-    tnwa = TestNodeWithoutAttr.create_instance(tg=tg, g=g)
+    tnwa = TestNodeWithoutAttr.bind_typegraph(tg).create_instance(g=g)
     print("tnwa:", tnwa.instance.node().get_dynamic_attrs())
 
-    slice = Slice.create_instance(
-        tg=tg, g=g, attributes=SliceAttributes(start=1, end=1, step=1)
+    slice = Slice.bind_typegraph(tg).create_instance(
+        g=g, attributes=SliceAttributes(start=1, end=1, step=1)
     )
     print("Slice:", slice.attributes())
     print("Slice.tnwa:", slice.tnwa.get().attributes())
 
-    tnwc = TestNodeWithChildren.create_instance(tg=tg, g=g)
+    tnwc = TestNodeWithChildren.bind_typegraph(tg).create_instance(g=g)
     assert (
         not_none(
             EdgePointer.get_referenced_node_from_node(node=tnwc.tnwa1.get().instance)
@@ -360,4 +438,6 @@ def test_fabll_basic():
 
 
 if __name__ == "__main__":
-    test_fabll_basic()
+    import typer
+
+    typer.run(test_fabll_basic)

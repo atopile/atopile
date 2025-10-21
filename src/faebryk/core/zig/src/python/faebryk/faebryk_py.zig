@@ -1592,6 +1592,23 @@ fn wrap_edgebuilder(root: *py.PyObject) void {
     edge_creation_attributes_type = type_registry.getRegisteredTypeObject("EdgeCreationAttributes");
 }
 
+fn make_typegraph_pyobject(value: faebryk.typegraph.TypeGraph) ?*py.PyObject {
+    const allocator = std.heap.c_allocator;
+    const ptr = allocator.create(faebryk.typegraph.TypeGraph) catch {
+        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+        return null;
+    };
+    ptr.* = value;
+
+    const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
+    if (obj == null) {
+        allocator.destroy(ptr);
+        return null;
+    }
+
+    return obj;
+}
+
 fn wrap_typegraph_init() type {
     return struct {
         pub const descr = method_descr{
@@ -1610,20 +1627,62 @@ fn wrap_typegraph_init() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = std.heap.c_allocator;
-            const ptr = allocator.create(faebryk.typegraph.TypeGraph) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            };
-            ptr.* = faebryk.typegraph.TypeGraph.init(kwarg_obj.g);
+            const typegraph = faebryk.typegraph.TypeGraph.init(kwarg_obj.g);
+            return make_typegraph_pyobject(typegraph);
+        }
+    };
+}
 
-            const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
-            if (obj == null) {
-                allocator.destroy(ptr);
-                return null;
+fn wrap_typegraph_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "of_type",
+            .doc = "Return the TypeGraph that owns the provided type node",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.typegraph.TypeGraph.of_type(kwarg_obj.type_node.*)) |tg| {
+                return make_typegraph_pyobject(tg);
             }
 
-            return obj;
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_typegraph_of_instance() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "of_instance",
+            .doc = "Return the TypeGraph that owns the provided instance node",
+            .args_def = struct {
+                instance_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .instance_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.typegraph.TypeGraph.of_instance(kwarg_obj.instance_node.*)) |tg| {
+                return make_typegraph_pyobject(tg);
+            }
+
+            return bind.wrap_none();
         }
     };
 }
@@ -2073,6 +2132,8 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
 fn wrap_typegraph(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_init(),
+        wrap_typegraph_of_type(),
+        wrap_typegraph_of_instance(),
         wrap_typegraph_add_type(),
         wrap_typegraph_add_trait(),
         wrap_typegraph_add_make_child(),
@@ -2091,9 +2152,165 @@ fn wrap_typegraph(root: *py.PyObject) void {
     }
 }
 
+fn wrap_trait_add_trait_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_trait_to",
+            .doc = "Instantiate the trait on the target node and attach it as a child instance",
+            .args_def = struct {
+                target: *graph.BoundNodeReference,
+                trait_type: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const trait_instance = faebryk.trait.Trait.add_trait_to(kwarg_obj.target.*, kwarg_obj.trait_type.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "add_trait_to failed");
+                return null;
+            };
+            return graph_py.makeBoundNodePyObject(trait_instance);
+        }
+    };
+}
+
+fn wrap_trait_try_get_trait() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "try_get_trait",
+            .doc = "Return the trait instance attached to the target node if it exists",
+            .args_def = struct {
+                target: *graph.BoundNodeReference,
+                trait_type: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            if (faebryk.trait.Trait.try_get_trait(kwarg_obj.target.*, kwarg_obj.trait_type.*)) |trait_instance| {
+                return graph_py.makeBoundNodePyObject(trait_instance);
+            }
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_trait_visit_implementers() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_implementers",
+            .doc = "Invoke a callback for every node implementing the given trait",
+            .args_def = struct {
+                trait_type: *graph.BoundNodeReference,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const VisitCtx = struct {
+                py_ctx: ?*py.PyObject,
+                callable: ?*py.PyObject,
+                had_error: bool = false,
+
+                pub fn call(ctx_ptr: *anyopaque, bound_node: graph.BoundNodeReference) visitor.VisitResult(void) {
+                    const inner_self: *@This() = @ptrCast(@alignCast(ctx_ptr));
+
+                    const node_obj = graph_py.makeBoundNodePyObject(bound_node) orelse {
+                        inner_self.had_error = true;
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    };
+
+                    const args_tuple = py.PyTuple_New(2) orelse {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(node_obj);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    };
+
+                    const ctx_obj: *py.PyObject = if (inner_self.py_ctx) |c| c else py.Py_None();
+                    py.Py_INCREF(ctx_obj);
+                    if (py.PyTuple_SetItem(args_tuple, 0, ctx_obj) < 0) {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(node_obj);
+                        py.Py_DECREF(args_tuple);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    }
+
+                    if (py.PyTuple_SetItem(args_tuple, 1, node_obj) < 0) {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(args_tuple);
+                        py.Py_DECREF(node_obj);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    }
+
+                    const result = py.PyObject_Call(inner_self.callable, args_tuple, null);
+                    if (result == null) {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(args_tuple);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    }
+
+                    py.Py_DECREF(result.?);
+                    py.Py_DECREF(args_tuple);
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+
+            var visit_ctx = VisitCtx{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.trait.Trait.visit_implementers(
+                kwarg_obj.trait_type.*,
+                void,
+                @ptrCast(&visit_ctx),
+                VisitCtx.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_implementers failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_trait(root: *py.PyObject) void {
-    _ = root;
-    // TODO
+    const extra_methods = [_]type{
+        wrap_trait_add_trait_to(),
+        wrap_trait_try_get_trait(),
+        wrap_trait_visit_implementers(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.trait.Trait, extra_methods);
 }
 
 fn wrap_composition_file(root: *py.PyObject) ?*py.PyObject {
