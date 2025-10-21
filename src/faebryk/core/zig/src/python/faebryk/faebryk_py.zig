@@ -292,11 +292,11 @@ fn wrap_edge_composition_get_child_by_identifier() type {
             .name = "get_child_by_identifier",
             .doc = "Get the child of the EdgeComposition by identifier",
             .args_def = struct {
-                node: *graph.BoundNodeReference,
+                bound_node: *graph.BoundNodeReference,
                 child_identifier: *py.PyObject,
 
                 pub const fields_meta = .{
-                    .node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                 };
             },
             .static = true,
@@ -307,7 +307,7 @@ fn wrap_edge_composition_get_child_by_identifier() type {
 
             const identifier = bind.unwrap_str(kwarg_obj.child_identifier) orelse return null;
 
-            const child = faebryk.composition.EdgeComposition.get_child_by_identifier(kwarg_obj.node.*, identifier);
+            const child = faebryk.composition.EdgeComposition.get_child_by_identifier(kwarg_obj.bound_node.*, identifier);
             if (child) |_child| {
                 return graph_py.makeBoundNodePyObject(_child);
             }
