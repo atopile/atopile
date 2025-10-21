@@ -77,6 +77,7 @@ class NodeHelpers:
         renderer: Callable[[BoundEdge | None, BoundNode], str] | None = None,
         *,
         edge_types: Sequence[type] | None = None,
+        exclude_node_types: Sequence[str] | None = None,
     ) -> None:
         edge_type_classes: Sequence[type] = edge_types or (EdgeComposition,)
         edge_type_ids: list[int] = []
@@ -88,7 +89,15 @@ class NodeHelpers:
                 )
             edge_type_ids.append(cast_assert(int, get_tid()))
 
+        exclude_types = frozenset(exclude_node_types or ())
+
+        if exclude_types:
+            root_type = NodeHelpers.get_type_name(bound_node)
+            if root_type is not None and root_type in exclude_types:
+                return
+
         if renderer is None:
+
             def default_renderer(edge: BoundEdge | None, node: BoundNode) -> str:
                 if edge is None:
                     return repr(node)
@@ -108,10 +117,17 @@ class NodeHelpers:
             ) -> None:
                 edge = bound_edge.edge()
                 if edge.source().is_same(other=source_node):
-                    acc.append((bound_edge, graph_view.bind(node=edge.target())))
+                    child_node = graph_view.bind(node=edge.target())
+                    if exclude_types:
+                        child_type = NodeHelpers.get_type_name(child_node)
+                        if child_type is not None and child_type in exclude_types:
+                            return
+                    acc.append((bound_edge, child_node))
 
             for edge_type_id in edge_type_ids:
-                node.visit_edges_of_type(edge_type=edge_type_id, ctx=children, f=add_child)
+                node.visit_edges_of_type(
+                    edge_type=edge_type_id, ctx=children, f=add_child
+                )
             return children
 
         edge_lookup: dict[BoundNode, BoundEdge | None] = {bound_node: None}
