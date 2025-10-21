@@ -14,6 +14,22 @@ from faebryk.libs.util import robustly_rm_dir
 posthog.disabled = True
 
 
+def pytest_addoption(parser):
+    """Add command-line options."""
+    parser.addoption(
+        "--only-cpp",
+        action="store_true",
+        default=False,
+        help="Run only C++ benchmarks (skip Zig)",
+    )
+    parser.addoption(
+        "--only-zig",
+        action="store_true",
+        default=False,
+        help="Run only Zig benchmarks (skip C++)",
+    )
+
+
 def pytest_configure(config):
     worker_id = os.environ.get("PYTEST_XDIST_WORKER")
     if worker_id is not None:
