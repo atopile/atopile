@@ -147,12 +147,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def bind_typegraph_from_instance[N: Node[Any]](
         cls: type[N], instance: BoundNode
     ) -> "BoundNodeType[N, T]":
-        tg = TypeGraph.of_instance(instance_node=instance)
-        if tg is None:
-            raise FaebrykApiException(
-                f"Failed to bind typegraph from instance: {instance}"
-            )
-        return cls.bind_typegraph(tg=tg)
+        return cls.bind_instance(instance=instance).bind_typegraph_from_self()
 
     @classmethod
     def bind_instance(cls, instance: BoundNode) -> Self:
@@ -169,6 +164,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             raise FaebrykApiException("Node has no parent")
         parent_node = parent_edge.g().bind(node=parent_edge.edge().target())
         return Node(instance=parent_node)
+
+    @property
+    def tg(self) -> TypeGraph:
+        tg = TypeGraph.of_instance(instance_node=self.instance)
+        if tg is None:
+            raise FaebrykApiException(
+                f"Failed to bind typegraph from instance: {self.instance}"
+            )
+        return tg
+
+    def bind_typegraph_from_self(self) -> "BoundNodeType[Self, Any]":
+        return self.bind_typegraph(tg=self.tg)
 
     # overrides ------------------------------------------------------------------------
     @classmethod
