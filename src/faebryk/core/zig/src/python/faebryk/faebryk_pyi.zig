@@ -8,7 +8,7 @@ pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir
     };
 
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "composition", faebryk.composition, output_dir, source_dir);
-    //try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "interface ", faebryk.interface, output_dir, source_dir);
+    try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "interface", faebryk.interface, output_dir, source_dir);
     //try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "module", faebryk.module, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "node_type", faebryk.node_type, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "next", faebryk.next, output_dir, source_dir);

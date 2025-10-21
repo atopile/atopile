@@ -348,9 +348,291 @@ fn wrap_edge_interface_connection_get_tid() type {
     };
 }
 
+fn wrap_edge_interface_connection_is_instance() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "is_instance",
+            .doc = "Check if an edge is an interface connection edge",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const is_match = faebryk.interface.EdgeInterfaceConnection.is_instance(kwarg_obj.edge);
+            return bind.wrap_bool(is_match);
+        }
+    };
+}
+
+fn wrap_edge_interface_connection_get_other_connected_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_other_connected_node",
+            .doc = "Get the other node connected by this edge",
+            .args_def = struct {
+                edge: *graph.Edge,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.interface.EdgeInterfaceConnection.get_other_connected_node(kwarg_obj.edge, kwarg_obj.node)) |other| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, other);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_interface_connection_connect() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "connect",
+            .doc = "Connect two interface nodes",
+            .args_def = struct {
+                bn1: *graph.BoundNodeReference,
+                bn2: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .bn1 = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .bn2 = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const bound_edge = faebryk.interface.EdgeInterfaceConnection.connect(kwarg_obj.bn1.*, kwarg_obj.bn2.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to connect interface nodes");
+                return null;
+            };
+
+            return graph_py.makeBoundEdgePyObject(bound_edge);
+        }
+    };
+}
+
+fn wrap_edge_interface_connection_connect_shallow() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "connect_shallow",
+            .doc = "Connect two interface nodes with a shallow edge",
+            .args_def = struct {
+                bn1: *graph.BoundNodeReference,
+                bn2: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .bn1 = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .bn2 = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const bound_edge = faebryk.interface.EdgeInterfaceConnection.connect_shallow(kwarg_obj.bn1.*, kwarg_obj.bn2.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create shallow connection");
+                return null;
+            };
+
+            return graph_py.makeBoundEdgePyObject(bound_edge);
+        }
+    };
+}
+
+fn wrap_edge_interface_connection_visit_connected_edges() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_connected_edges",
+            .doc = "Visit all interface connection edges for a node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.interface.EdgeInterfaceConnection.visit_connected_edges(
+                kwarg_obj.bound_node.*,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_connected_edges failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_interface_connection_is_connected_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "is_connected_to",
+            .doc = "Find all paths connecting source to target nodes",
+            .args_def = struct {
+                source: *graph.BoundNodeReference,
+                target: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .source = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = kwarg_obj.source.g.allocator;
+            const paths = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
+                allocator,
+                kwarg_obj.source.*,
+                kwarg_obj.target.*,
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to find paths");
+                return null;
+            };
+
+            // Convert paths to Python list
+            const list = py.PyList_New(@intCast(paths.len));
+            if (list == null) {
+                for (paths) |*path| path.path.deinit();
+                allocator.free(paths);
+                return null;
+            }
+
+            for (paths, 0..) |path, i| {
+                // For now, just return path length as an int
+                // TODO: wrap BFSPath properly
+                const path_len = py.PyLong_FromLongLong(@intCast(path.path.edges.items.len));
+                if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
+                    for (paths) |*p| p.path.deinit();
+                    allocator.free(paths);
+                    py.Py_DECREF(list.?);
+                    return null;
+                }
+            }
+
+            // Clean up paths after converting to Python
+            for (paths) |*path| path.path.deinit();
+            allocator.free(paths);
+
+            return list;
+        }
+    };
+}
+
+fn wrap_edge_interface_connection_get_connected() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_connected",
+            .doc = "Get all nodes connected to the source node",
+            .args_def = struct {
+                source: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .source = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = kwarg_obj.source.g.allocator;
+            const paths = faebryk.interface.EdgeInterfaceConnection.get_connected(
+                allocator,
+                kwarg_obj.source.*,
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to get connected nodes");
+                return null;
+            };
+
+            // Convert paths to Python list
+            const list = py.PyList_New(@intCast(paths.len));
+            if (list == null) {
+                for (paths) |*path| path.path.deinit();
+                allocator.free(paths);
+                return null;
+            }
+
+            for (paths, 0..) |path, i| {
+                // For now, just return path length as an int
+                // TODO: wrap BFSPath properly
+                const path_len = py.PyLong_FromLongLong(@intCast(path.path.edges.items.len));
+                if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
+                    for (paths) |*p| p.path.deinit();
+                    allocator.free(paths);
+                    py.Py_DECREF(list.?);
+                    return null;
+                }
+            }
+
+            // Clean up paths after converting to Python
+            for (paths) |*path| path.path.deinit();
+            allocator.free(paths);
+
+            return list;
+        }
+    };
+}
+
 fn wrap_interface(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_interface_connection_get_tid(),
+        wrap_edge_interface_connection_is_instance(),
+        wrap_edge_interface_connection_get_other_connected_node(),
+        wrap_edge_interface_connection_connect(),
+        wrap_edge_interface_connection_connect_shallow(),
+        wrap_edge_interface_connection_visit_connected_edges(),
+        wrap_edge_interface_connection_is_connected_to(),
+        wrap_edge_interface_connection_get_connected(),
     };
     bind.wrap_namespace_struct(root, faebryk.interface.EdgeInterfaceConnection, extra_methods);
 }
