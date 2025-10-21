@@ -591,9 +591,9 @@ test "filter_heirarchy_stack" {
 
     var path = Path.init(&g);
 
-    path.edges.append(be1.edge) catch @panic("OOM");
-    path.edges.append(be3.edge) catch @panic("OOM");
-    path.edges.append(be2.edge) catch @panic("OOM");
+    try path.edges.append(be1.edge);
+    try path.edges.append(be3.edge);
+    try path.edges.append(be2.edge);
 
     var bfs_path = BFSPath{
         .path = path,

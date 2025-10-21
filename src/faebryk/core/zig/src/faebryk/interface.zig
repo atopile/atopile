@@ -41,9 +41,7 @@ pub const EdgeInterfaceConnection = struct {
     pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
         const e = try Edge.init(bn1.g.allocator, bn1.node, bn2.node, tid);
         e.attributes.directional = false;
-        e.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = false }) catch {
-            @panic("Failed to put shallow link value");
-        };
+        try e.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = false });
         return try bn1.g.insert_edge(e);
     }
 
