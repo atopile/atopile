@@ -24,7 +24,7 @@ from atopile.compiler.parse import parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.fabll import NodeType
+from faebryk.core.node import Node
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 
@@ -86,7 +86,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitKey(self, ctx: AtoParser.KeyContext) -> int:
         return self.visitNumber_hint_integer(ctx.number_hint_integer())
 
-    def visitStmt(self, ctx: AtoParser.StmtContext) -> Iterable[NodeType]:
+    def visitStmt(self, ctx: AtoParser.StmtContext) -> Iterable[Node]:
         match (ctx.pragma_stmt(), ctx.simple_stmts(), ctx.compound_stmt()):
             case (pragma_stmt, None, None):
                 return [self.visitPragma_stmt(pragma_stmt)]
@@ -97,13 +97,14 @@ class ANTLRVisitor(AtoParserVisitor):
             case _:
                 assert False, f"Unexpected statement: {ctx.getText()}"
 
-    def visitStmts(self, ctx: AtoParser.StmtsContext) -> Iterable[NodeType]:
+    def visitStmts(self, ctx: AtoParser.StmtsContext) -> Iterable[Node]:
         return itertools.chain.from_iterable(
             (child for child in self.visitStmt(child) if child is not None)
             for child in ctx
         )
 
-    def visitBlock(self, ctx: AtoParser.BlockContext) -> Iterable[NodeType]:
+    def visitBlock(self, ctx: AtoParser.BlockContext) -> Iterable[Node]:
+        # FIXME: add_anon_child mutating type?
         stmts = []
 
         if ctx.stmt() is not None:
@@ -134,8 +135,8 @@ class ANTLRVisitor(AtoParserVisitor):
         # print("block", stnts)
         return stmts
 
-    def visitBlockdef(self, ctx: AtoParser.BlockdefContext) -> NodeType:
-        return AST.BlockDefinition.create_instance(
+    def visitBlockdef(self, ctx: AtoParser.BlockdefContext) -> Node:
+        return AST.BlockDefinition.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -156,7 +157,7 @@ class ANTLRVisitor(AtoParserVisitor):
         )
 
     def visitFile_input(self, ctx: AtoParser.File_inputContext) -> AST.File:
-        return AST.File.create_instance(
+        return AST.File.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -164,9 +165,7 @@ class ANTLRVisitor(AtoParserVisitor):
             child_stmts=self.visitStmts(ctx.stmt()),
         )
 
-    def visitSimple_stmts(
-        self, ctx: AtoParser.Simple_stmtsContext
-    ) -> Iterable[NodeType]:
+    def visitSimple_stmts(self, ctx: AtoParser.Simple_stmtsContext) -> Iterable[Node]:
         return itertools.chain.from_iterable(
             (
                 child
@@ -176,7 +175,7 @@ class ANTLRVisitor(AtoParserVisitor):
             )
         )
 
-    def visitSimple_stmt(self, ctx: AtoParser.Simple_stmtContext) -> NodeType:
+    def visitSimple_stmt(self, ctx: AtoParser.Simple_stmtContext) -> Node:
         (stmt_ctx,) = [
             stmt_ctx
             for stmt_ctx in [
@@ -198,7 +197,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
         return self.visit(stmt_ctx)
 
-    def visitCompound_stmt(self, ctx: AtoParser.Compound_stmtContext) -> NodeType:
+    def visitCompound_stmt(self, ctx: AtoParser.Compound_stmtContext) -> Node:
         match (ctx.blockdef(), ctx.for_stmt()):
             case (blockdef_ctx, None):
                 return self.visitBlockdef(blockdef_ctx)
@@ -208,7 +207,7 @@ class ANTLRVisitor(AtoParserVisitor):
                 raise ValueError(f"Unexpected compound statement: {ctx.getText()}")
 
     def visitPragma_stmt(self, ctx: AtoParser.Pragma_stmtContext) -> AST.PragmaStmt:
-        return AST.PragmaStmt.create_instance(
+        return AST.PragmaStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -216,7 +215,7 @@ class ANTLRVisitor(AtoParserVisitor):
         )
 
     def visitImport_stmt(self, ctx: AtoParser.Import_stmtContext) -> AST.ImportStmt:
-        return AST.ImportStmt.create_instance(
+        return AST.ImportStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -233,7 +232,7 @@ class ANTLRVisitor(AtoParserVisitor):
             ctx.field_reference()
         )
         type_ref_ctx = ctx.type_reference()
-        return AST.RetypeStmt.create_instance(
+        return AST.RetypeStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -265,7 +264,7 @@ class ANTLRVisitor(AtoParserVisitor):
             case _:
                 raise ValueError(f"Unexpected pin statement: {ctx.getText()}")
 
-        return AST.PinDeclaration.create_instance(
+        return AST.PinDeclaration.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -276,7 +275,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitSignaldef_stmt(
         self, ctx: AtoParser.Signaldef_stmtContext
     ) -> AST.SignaldefStmt:
-        return AST.SignaldefStmt.create_instance(
+        return AST.SignaldefStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -284,7 +283,7 @@ class ANTLRVisitor(AtoParserVisitor):
         )
 
     def visitString_stmt(self, ctx: AtoParser.String_stmtContext) -> AST.StringStmt:
-        return AST.StringStmt.create_instance(
+        return AST.StringStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -294,7 +293,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def visitField_reference_or_declaration(
         self, ctx: AtoParser.Field_reference_or_declarationContext
-    ) -> NodeType:
+    ) -> Node:
         if (field_ref_ctx := ctx.field_reference()) is not None:
             return self._build_field_ref(field_ref_ctx)
         if (decl_stmt_ctx := ctx.declaration_stmt()) is not None:
@@ -302,14 +301,14 @@ class ANTLRVisitor(AtoParserVisitor):
         raise ValueError(f"Unexpected field reference or declaration: {ctx.getText()}")
 
     def visitPass_stmt(self, ctx: AtoParser.Pass_stmtContext) -> AST.PassStmt:
-        return AST.PassStmt.create_instance(
+        return AST.PassStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
         )
 
     def visitAssert_stmt(self, ctx: AtoParser.Assert_stmtContext) -> AST.AssertStmt:
-        return AST.AssertStmt.create_instance(
+        return AST.AssertStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -336,7 +335,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
         type_ref_ctx = ctx.type_reference()
 
-        return AST.TraitStmt.create_instance(
+        return AST.TraitStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -354,7 +353,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitFor_stmt(self, ctx: AtoParser.For_stmtContext) -> AST.ForStmt:
         iterable = self.visitIterable_references(ctx.iterable_references())
         body_nodes = list(self.visitBlock(ctx.block()))
-        return AST.ForStmt.create_instance(
+        return AST.ForStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -365,7 +364,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def visitIterable_references(
         self, ctx: AtoParser.Iterable_referencesContext
-    ) -> NodeType:
+    ) -> Node:
         match [ctx.field_reference(), ctx.list_literal_of_field_references()]:
             case [field_ref_ctx, None]:
                 field_parts, field_source_info = self._field_ref_parts_from_ctx(
@@ -374,7 +373,7 @@ class ANTLRVisitor(AtoParserVisitor):
                 slice_config = (
                     self.visitSlice(ctx.slice_()) if ctx.slice_() is not None else None
                 )
-                return AST.IterableFieldRef.create_instance(
+                return AST.IterableFieldRef.__create_instance__(
                     tg=self._type_graph,
                     g=self._graph,
                     source_info=self._extract_source_info(ctx),
@@ -391,7 +390,7 @@ class ANTLRVisitor(AtoParserVisitor):
         self, ctx: AtoParser.List_literal_of_field_referencesContext
     ) -> AST.FieldRefList:
         items = [self._build_field_ref(fr) for fr in ctx.field_reference()]
-        return AST.FieldRefList.create_instance(
+        return AST.FieldRefList.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -469,7 +468,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def _build_field_ref(self, ctx: AtoParser.Field_referenceContext) -> AST.FieldRef:
         parts, source_info = self._field_ref_parts_from_ctx(ctx)
-        return AST.FieldRef.create_instance(
+        return AST.FieldRef.__create_instance__(
             tg=self._type_graph, g=self._graph, source_info=source_info, parts=parts
         )
 
@@ -509,7 +508,7 @@ class ANTLRVisitor(AtoParserVisitor):
                     f"Unexpected field reference or declaration: {ctx.getText()}"
                 )
 
-        return AST.Assignment.create_instance(
+        return AST.Assignment.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -519,7 +518,7 @@ class ANTLRVisitor(AtoParserVisitor):
             assignable_source_info=self._extract_source_info(ctx.assignable()),
         )
 
-    def visitAssignable(self, ctx: AtoParser.AssignableContext) -> NodeType:
+    def visitAssignable(self, ctx: AtoParser.AssignableContext) -> AST.AssignableT:
         match (
             ctx.new_stmt(),
             ctx.literal_physical(),
@@ -534,7 +533,7 @@ class ANTLRVisitor(AtoParserVisitor):
             case (None, None, arithmetic_expression_ctx, None, None):
                 value = self.visitArithmetic_expression(arithmetic_expression_ctx)
             case (None, None, None, string_ctx, None):
-                value = AST.String.create_instance(
+                value = AST.String.__create_instance__(
                     tg=self._type_graph,
                     g=self._graph,
                     source_info=self._extract_source_info(string_ctx),
@@ -544,7 +543,8 @@ class ANTLRVisitor(AtoParserVisitor):
                 value = self.visitBoolean_(boolean_ctx)
             case _:
                 raise ValueError(f"Unexpected assignable: {ctx.getText()}")
-        return value
+
+        return value  # FIXME: typing
 
     def visitNew_stmt(self, ctx: AtoParser.New_stmtContext) -> AST.NewExpression:
         template_data = (
@@ -556,7 +556,7 @@ class ANTLRVisitor(AtoParserVisitor):
                 self.visitNumber_hint_natural(ctx.new_count().number_hint_natural()),
                 self._extract_source_info(ctx.new_count()),
             )
-        return AST.NewExpression.create_instance(
+        return AST.NewExpression.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -566,7 +566,7 @@ class ANTLRVisitor(AtoParserVisitor):
             new_count=new_count_data,
         )
 
-    def visitLiteral_physical(self, ctx: AtoParser.Literal_physicalContext) -> NodeType:
+    def visitLiteral_physical(self, ctx: AtoParser.Literal_physicalContext) -> Node:
         match ctx.quantity(), ctx.bilateral_quantity(), ctx.bound_quantity():
             case (quantity_ctx, None, None):
                 return self._build_quantity(quantity_ctx)
@@ -581,7 +581,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def visitArithmetic_expression(
         self, ctx: AtoParser.Arithmetic_expressionContext
-    ) -> NodeType:
+    ) -> Node:
         right = self.visitSum(ctx.sum_())
 
         if ctx.arithmetic_expression() is not None:
@@ -596,7 +596,7 @@ class ANTLRVisitor(AtoParserVisitor):
                     )
 
             left = self.visitArithmetic_expression(ctx.arithmetic_expression())
-            return AST.BinaryExpression.create_instance(
+            return AST.BinaryExpression.__create_instance__(
                 tg=self._type_graph,
                 g=self._graph,
                 source_info=self._extract_source_info(ctx),
@@ -607,7 +607,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
         return right
 
-    def visitSum(self, ctx: AtoParser.SumContext) -> NodeType:
+    def visitSum(self, ctx: AtoParser.SumContext) -> Node:
         right = self.visitTerm(ctx.term())
 
         if ctx.sum_() is not None:
@@ -620,7 +620,7 @@ class ANTLRVisitor(AtoParserVisitor):
                     raise ValueError(f"Unexpected sum operator: {ctx.getText()}")
 
             left = self.visitSum(ctx.sum_())
-            return AST.BinaryExpression.create_instance(
+            return AST.BinaryExpression.__create_instance__(
                 tg=self._type_graph,
                 g=self._graph,
                 source_info=self._extract_source_info(ctx),
@@ -631,7 +631,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
         return right
 
-    def visitTerm(self, ctx: AtoParser.TermContext) -> NodeType:
+    def visitTerm(self, ctx: AtoParser.TermContext) -> Node:
         right = self.visitPower(ctx.power())
 
         if ctx.term() is not None:
@@ -644,7 +644,7 @@ class ANTLRVisitor(AtoParserVisitor):
                     raise ValueError(f"Unexpected term operator: {ctx.getText()}")
 
             left = self.visitTerm(ctx.term())
-            return AST.BinaryExpression.create_instance(
+            return AST.BinaryExpression.__create_instance__(
                 tg=self._type_graph,
                 g=self._graph,
                 source_info=self._extract_source_info(ctx),
@@ -655,11 +655,11 @@ class ANTLRVisitor(AtoParserVisitor):
 
         return right
 
-    def visitPower(self, ctx: AtoParser.PowerContext) -> NodeType:
+    def visitPower(self, ctx: AtoParser.PowerContext) -> Node:
         atoms = [self.visitAtom(atom_ctx) for atom_ctx in ctx.atom()]
         match atoms:
             case [base, exponent]:
-                return AST.BinaryExpression.create_instance(
+                return AST.BinaryExpression.__create_instance__(
                     tg=self._type_graph,
                     g=self._graph,
                     source_info=self._extract_source_info(ctx),
@@ -675,14 +675,14 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitArithmetic_group(
         self, ctx: AtoParser.Arithmetic_groupContext
     ) -> AST.GroupExpression:
-        return AST.GroupExpression.create_instance(
+        return AST.GroupExpression.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             expression=self.visitArithmetic_expression(ctx.arithmetic_expression()),
         )
 
-    def visitAtom(self, ctx: AtoParser.AtomContext) -> NodeType:
+    def visitAtom(self, ctx: AtoParser.AtomContext) -> Node:
         if (field_ref_ctx := ctx.field_reference()) is not None:
             return self._build_field_ref(field_ref_ctx)
         if (literal_ctx := ctx.literal_physical()) is not None:
@@ -697,8 +697,7 @@ class ANTLRVisitor(AtoParserVisitor):
         clauses = [
             self.visitCompare_op_pair(pair_ctx) for pair_ctx in ctx.compare_op_pair()
         ]
-        return AST.ComparisonExpression.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonExpression.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             left=self.visitArithmetic_expression(ctx.arithmetic_expression()),
@@ -725,8 +724,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitLt_arithmetic_or(
         self, ctx: AtoParser.Lt_arithmetic_orContext
     ) -> AST.ComparisonClause:
-        return AST.ComparisonClause.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonClause.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             operator=ctx.LESS_THAN().getText(),
@@ -736,8 +734,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitGt_arithmetic_or(
         self, ctx: AtoParser.Gt_arithmetic_orContext
     ) -> AST.ComparisonClause:
-        return AST.ComparisonClause.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonClause.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             operator=ctx.GREATER_THAN().getText(),
@@ -747,8 +744,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitLt_eq_arithmetic_or(
         self, ctx: AtoParser.Lt_eq_arithmetic_orContext
     ) -> AST.ComparisonClause:
-        return AST.ComparisonClause.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonClause.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             operator=ctx.LT_EQ().getText(),
@@ -758,8 +754,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitGt_eq_arithmetic_or(
         self, ctx: AtoParser.Gt_eq_arithmetic_orContext
     ) -> AST.ComparisonClause:
-        return AST.ComparisonClause.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonClause.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             operator=ctx.GT_EQ().getText(),
@@ -769,8 +764,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitIn_arithmetic_or(
         self, ctx: AtoParser.In_arithmetic_orContext
     ) -> AST.ComparisonClause:
-        return AST.ComparisonClause.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonClause.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             operator=ctx.WITHIN().getText(),
@@ -780,8 +774,7 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitIs_arithmetic_or(
         self, ctx: AtoParser.Is_arithmetic_orContext
     ) -> AST.ComparisonClause:
-        return AST.ComparisonClause.create_instance(
-            tg=self._type_graph,
+        return AST.ComparisonClause.__create_instance__(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
             operator=ctx.IS().getText(),
@@ -800,7 +793,7 @@ class ANTLRVisitor(AtoParserVisitor):
         unit_data: tuple[str, AST.SourceInfo] | None = None
         if unit_symbol is not None and ctx.unit() is not None:
             unit_data = (unit_symbol, self._extract_source_info(ctx.unit()))
-        return AST.Quantity.create_instance(
+        return AST.Quantity.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -836,7 +829,7 @@ class ANTLRVisitor(AtoParserVisitor):
         )
         unit_symbol = self.visitUnit(ctx.unit())
         unit_source = self._extract_source_info(ctx.unit())
-        return AST.DeclarationStmt.create_instance(
+        return AST.DeclarationStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -865,7 +858,7 @@ class ANTLRVisitor(AtoParserVisitor):
             tolerance_unit_source,
         ) = self.visitBilateral_tolerance(ctx.bilateral_tolerance())
 
-        return AST.BilateralQuantity.create_instance(
+        return AST.BilateralQuantity.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -919,7 +912,7 @@ class ANTLRVisitor(AtoParserVisitor):
             if end_ctx.unit() is not None
             else None
         )
-        return AST.BoundedQuantity.create_instance(
+        return AST.BoundedQuantity.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -942,7 +935,7 @@ class ANTLRVisitor(AtoParserVisitor):
         return self._extract_source_info(ctx), args
 
     def visitTemplate_arg(self, ctx: AtoParser.Template_argContext) -> AST.TemplateArg:
-        return AST.TemplateArg.create_instance(
+        return AST.TemplateArg.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -970,7 +963,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def visitBoolean_(self, ctx: AtoParser.Boolean_Context) -> AST.Boolean:
         value = self._parse_boolean_literal(ctx)
-        return AST.Boolean.create_instance(
+        return AST.Boolean.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -995,13 +988,13 @@ class ANTLRVisitor(AtoParserVisitor):
     ) -> int:
         return self._parse_int(ctx.getText())
 
-    def visitMif(self, ctx: AtoParser.MifContext) -> NodeType:
+    def visitMif(self, ctx: AtoParser.MifContext) -> Node:
         return self.visitConnectable(ctx.connectable())
 
-    def visitBridgeable(self, ctx: AtoParser.BridgeableContext) -> NodeType:
+    def visitBridgeable(self, ctx: AtoParser.BridgeableContext) -> Node:
         return self.visitConnectable(ctx.connectable())
 
-    def visitConnectable(self, ctx: AtoParser.ConnectableContext) -> NodeType:
+    def visitConnectable(self, ctx: AtoParser.ConnectableContext) -> Node:
         match ctx.field_reference(), ctx.signaldef_stmt(), ctx.pindef_stmt():
             case (field_ref_ctx, None, None):
                 return self._build_field_ref(field_ref_ctx)
@@ -1014,7 +1007,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
     def visitConnect_stmt(self, ctx: AtoParser.Connect_stmtContext) -> AST.ConnectStmt:
         left, right = [self.visitMif(mif_ctx) for mif_ctx in ctx.mif()]
-        return AST.ConnectStmt.create_instance(
+        return AST.ConnectStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -1049,7 +1042,7 @@ class ANTLRVisitor(AtoParserVisitor):
             case _:
                 raise ValueError(f"Unexpected bridgeables: {ctx.getText()}")
 
-        return AST.DirectedConnectStmt.create_instance(
+        return AST.DirectedConnectStmt.__create_instance__(
             tg=self._type_graph,
             g=self._graph,
             source_info=self._extract_source_info(ctx),
@@ -1182,23 +1175,6 @@ class ASTVisitor:
         with self._scope_stack.enter():
             for scope_child in NodeHelpers.get_children(node).values():
                 self.visit(scope_child)
-
-        return node
-
-    def visit_PragmaStmt(self, node: BoundNode) -> BoundNode:
-        pragma = AST.PragmaStmt.get_pragma(node)
-        name, args = ASTVisitor._parse_pragma(pragma)
-
-        if name == ASTVisitor._Pragma.EXPERIMENT.value:
-            if len(args) != 1:
-                raise DslException("Experiment pragma takes exactly one argument")
-            if not isinstance(args[0], str):
-                raise DslException("Experiment pragma takes a single string argument")
-            if args[0] not in ASTVisitor._Experiments:
-                raise DslException(f"Unknown experiment: {args[0]}")
-            self._enable_experiment(ASTVisitor._Experiments(args[0]))
-        else:
-            raise DslException(f"Unknown pragma: {name}")
 
         return node
 

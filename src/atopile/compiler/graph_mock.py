@@ -11,6 +11,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Generator, Sequence
 from typing import TypedDict, TypeVar
 
+import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
@@ -65,17 +66,19 @@ class NodeHelpers:
 
     @staticmethod
     def get_type_name(n: BoundNode) -> str | None:
-        try:
-            (type_node,) = NodeHelpers.get_neighbours(n, EdgeType.get_tid())
-            return cast_assert(str, type_node.node().get_attr(key="type_identifier"))
-        except ValueError:
-            return None
+        # if (type_edge := EdgeType.get_type_edge(bound_node=n)) is None:
+        return None
+
+        # type_node = EdgeType.get_type_node(edge=type_edge.edge())
+        # type_bound = type_edge.g().bind(node=type_node)
+        # type_name = type_bound.node().get_attr(key="type_identifier")
+        return "type_name"
+        # return cast_assert(str, type_name)
 
     @staticmethod
     def print_tree(
         bound_node: BoundNode,
         renderer: Callable[[BoundEdge | None, BoundNode], str] | None = None,
-        *,
         edge_types: Sequence[type] | None = None,
         exclude_node_types: Sequence[str] | None = None,
     ) -> None:

@@ -1,11 +1,10 @@
 from pathlib import Path
-from typing import cast
 
 import atopile.compiler.ast_types as AST
+import faebryk.core.node as fabll
 from atopile.compiler.ast_graph import build_file
 from atopile.compiler.graph_mock import BoundNode, NodeHelpers
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.source import EdgeSource
 from faebryk.core.zig.gen.graph.graph import BoundEdge
 
 RENDER_SOURCE_CHUNKS = False
@@ -18,31 +17,34 @@ def truncate_text(text: str) -> str:
 
 
 def ast_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
-    inbound_edge_name = (
-        EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
-    ) or "<anonymous>"
+    # inbound_edge_name = (
+    #     EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
+    # ) or "<anonymous>"
+    inbound_edge_name = ""
 
     type_name = NodeHelpers.get_type_name(node)
 
-    attrs = node.node().get_attrs()
-    attrs.pop("uuid")
-    attrs_text = (
-        "<"
-        + ", ".join([f"{k}={truncate_text(str(v))}" for k, v in attrs.items()])
-        + ">"
-        if attrs
-        else ""
-    )
+    # attrs = node.node().get_attrs()
+    # attrs.pop("uuid")
+    # attrs_text = (
+    #     "<"
+    #     + ", ".join([f"{k}={truncate_text(str(v))}" for k, v in attrs.items()])
+    #     + ">"
+    #     if attrs
+    #     else ""
+    # )
+    attrs_text = ""
 
-    if type_name == "Parameter":
-        lit_value = AST.try_extract_constrained_literal(node)
-        match lit_value:
-            case str():
-                param_value = f" is! '{truncate_text(lit_value)}'"
-            case _:
-                param_value = f" is! {lit_value}"
-    else:
-        param_value = ""
+    # if type_name == "Parameter":
+    #     lit_value = fabll.Parameter(node).try_extract_constrained_literal()
+    #     match lit_value:
+    #         case str():
+    #             param_value = f" is! '{truncate_text(lit_value)}'"
+    #         case _:
+    #             param_value = f" is! {lit_value}"
+    # else:
+    #     param_value = ""
+    param_value = ""
 
     edge_text = f".{inbound_edge_name}: "
 
@@ -62,8 +64,8 @@ if __name__ == "__main__":
 
     NodeHelpers.print_tree(
         ast_root,
-        edge_types=[EdgeSource, EdgeComposition],
-        renderer=ast_renderer,
+        edge_types=[EdgeComposition],
+        # renderer=ast_renderer,
         exclude_node_types=[AST.SourceChunk.__qualname__]
         if not RENDER_SOURCE_CHUNKS
         else None,

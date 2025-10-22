@@ -9,13 +9,12 @@ Rules:
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import ClassVar, Iterable, Self
+from typing import ClassVar, Iterable, Self, cast
 
-from atopile.compiler.graph_mock import BoundNode, EdgeComposition, Node
-from faebryk.core.fabll import Child, NodeType, NodeTypeAttributes
-from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
+from faebryk.core.node import BoundNodeType, Child, Node, Parameter
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView
+from faebryk.core.zig.gen.graph.graph import GraphView
 
 
 @dataclass(frozen=True)
@@ -30,152 +29,70 @@ class SourceInfo:
 LiteralT = float | int | str | bool
 
 
-def constrain_to_literal(
-    g: GraphView, tg: TypeGraph, node: Node, value: LiteralT
-) -> None:
-    text_value = LiteralValue.create_instance(
-        tg=tg, g=g, attributes=LiteralValueAttributes(value=value)
-    )
-
-    expr = ExpressionAliasIs.create_instance(
-        tg=tg, g=g, attributes=ExpressionAliasIsAttributes(constrained=True)
-    )
-
-    EdgeOperand.add_operand(
-        bound_node=expr.instance, operand=node, operand_identifier="lhs"
-    )
-
-    EdgeOperand.add_operand(
-        bound_node=expr.instance,
-        operand=text_value.instance.node(),
-        operand_identifier="rhs",
-    )
-
-
-def try_extract_constrained_literal(node: BoundNode) -> LiteralT | None:
-    # TODO: solver? `only_proven=True` parameter?
-
-    if (inbound_expr_edge := EdgeOperand.get_expression_edge(bound_node=node)) is None:
-        return None
-
-    expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
-
-    operands: list[BoundNode] = []
-
-    def visit(ctx: None, edge: BoundEdge) -> None:
-        operands.append(edge.g().bind(node=edge.edge().target()))
-
-    EdgeOperand.visit_operand_edges(bound_node=expr, ctx=None, f=visit)
-
-    assert len(operands) == 2
-    (lit_operand,) = [op for op in operands if not node.node().is_same(other=op.node())]
-
-    return LiteralValue.Attributes.of(node=lit_operand).value
-
-
-class Parameter(NodeType):
-    pass
-
-
-@dataclass(frozen=True)
-class LiteralValueAttributes(NodeTypeAttributes):
-    value: float | int | str | bool | None
-
-
-class LiteralValue(NodeType[LiteralValueAttributes]):
-    Attributes = LiteralValueAttributes
-
-
-@dataclass(frozen=True)
-class ExpressionAliasIsAttributes(NodeTypeAttributes):
-    constrained: bool  # TODO: principled reason for this not being a Parameter
-
-
-class ExpressionAliasIs(NodeType[ExpressionAliasIsAttributes]):
-    # TODO: constrain operand cardinality?
-
-    Attributes = ExpressionAliasIsAttributes
-
-
-class FileLocation(NodeType):
+class FileLocation(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.start_line = Child(Parameter, tg=tg)
-        cls.start_col = Child(Parameter, tg=tg)
-        cls.end_line = Child(Parameter, tg=tg)
-        cls.end_col = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.start_line = t.Child(Parameter)
+        cls.start_col = t.Child(Parameter)
+        cls.end_line = t.Child(Parameter)
+        cls.end_col = t.Child(Parameter)
 
-    def set_start_line(self, tg: TypeGraph, g: GraphView, value: int):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.start_line.get().instance.node(), value=value
-        )
+    def set_start_line(self, g: GraphView, value: int):
+        self.start_line.get().constrain_to_literal(g=g, value=value)
 
-    def set_start_col(self, tg: TypeGraph, g: GraphView, value: int):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.start_col.get().instance.node(), value=value
-        )
+    def set_start_col(self, g: GraphView, value: int):
+        self.start_col.get().constrain_to_literal(g=g, value=value)
 
-    def set_end_line(self, tg: TypeGraph, g: GraphView, value: int):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.end_line.get().instance.node(), value=value
-        )
+    def set_end_line(self, g: GraphView, value: int):
+        self.end_line.get().constrain_to_literal(g=g, value=value)
 
-    def set_end_col(self, tg: TypeGraph, g: GraphView, value: int):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.end_col.get().instance.node(), value=value
-        )
+    def set_end_col(self, g: GraphView, value: int):
+        self.end_col.get().constrain_to_literal(g=g, value=value)
 
 
-class SourceChunk(NodeType):
+class SourceChunk(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.text = Child(Parameter, tg=tg)
-        cls.loc = Child(FileLocation, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.text = t.Child(Parameter)
+        cls.loc = t.Child(FileLocation)
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.text.get().instance.node(), value=source_info.text
-        )
-
-        self.loc.get().set_start_line(tg=tg, g=g, value=source_info.start_line)
-        self.loc.get().set_start_col(tg=tg, g=g, value=source_info.start_column)
-        self.loc.get().set_end_line(tg=tg, g=g, value=source_info.end_line)
-        self.loc.get().set_end_col(tg=tg, g=g, value=source_info.end_column)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.text.get().constrain_to_literal(g=g, value=source_info.text)
+        self.loc.get().set_start_line(g=g, value=source_info.start_line)
+        self.loc.get().set_start_col(g=g, value=source_info.start_column)
+        self.loc.get().set_end_line(g=g, value=source_info.end_line)
+        self.loc.get().set_end_col(g=g, value=source_info.end_column)
 
 
-class TypeRef(NodeType):
+class TypeRef(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.name = Child(Parameter, tg=tg)
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.name = t.Child(Parameter)
+        cls.source = t.Child(SourceChunk)
 
-    def set_name(self, tg: TypeGraph, g: GraphView, name: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.name.get().instance.node(), value=name
-        )
+    def set_name(self, g: GraphView, name: str):
+        self.name.get().constrain_to_literal(g=g, value=name)
 
-    def set_source(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
 
-class ImportPath(NodeType):
+class ImportPath(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.path = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.path = t.Child(Parameter)
 
-    def set_path(self, tg: TypeGraph, g: GraphView, path: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.path.get().instance.node(), value=path
-        )
+    def set_path(self, g: GraphView, path: str):
+        self.path.get().constrain_to_literal(g=g, value=path)
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
     # TODO: get_path -> str | None
 
 
-class FieldRefPart(NodeType):
+class FieldRefPart(Node):
     @dataclass(frozen=True)
     class Info:
         name: str
@@ -183,381 +100,307 @@ class FieldRefPart(NodeType):
         source_info: SourceInfo
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.name = Child(Parameter, tg=tg)
-        cls.key = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.name = t.Child(Parameter)
+        cls.key = t.Child(Parameter)
 
     @classmethod
-    def create_instance(cls, tg: TypeGraph, g: GraphView, info: Info) -> Self:
-        field_ref_part = super().create_instance(tg=tg, g=g)
-        field_ref_part.source.get().set_source_info(
-            tg=tg, g=g, source_info=info.source_info
-        )
-        constrain_to_literal(
-            g=g, tg=tg, node=field_ref_part.name.get().instance.node(), value=info.name
-        )
+    def __create_instance__(cls, tg: TypeGraph, g: GraphView, info: Info) -> Self:  # pyright: ignore[reportIncompatibleMethodOverride]
+        field_ref_part = super().__create_instance__(tg=tg, g=g)
+        field_ref_part.source.get().set_source_info(g=g, source_info=info.source_info)
+        field_ref_part.name.get().constrain_to_literal(g=g, value=info.name)
 
         if info.key is not None:
-            constrain_to_literal(
-                g=g,
-                tg=tg,
-                node=field_ref_part.key.get().instance.node(),
-                value=info.key,
-            )
+            field_ref_part.key.get().constrain_to_literal(g=g, value=info.key)
 
         return field_ref_part
 
 
-class FieldRef(NodeType):
+class FieldRef(Node):
     _part_idx = 0
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.pin = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.pin = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         parts: Iterable[FieldRefPart.Info],
     ) -> Self:
-        field_ref = super().create_instance(tg=tg, g=g)
-        field_ref.set_source_info(tg=tg, g=g, source_info=source_info)
+        field_ref = super().__create_instance__(tg=tg, g=g)
+        field_ref.set_source_info(g=g, source_info=source_info)
         for part_info in parts:
-            part = FieldRefPart.create_instance(tg=tg, g=g, info=part_info)
-            field_ref.add_part(tg=tg, g=g, part=part)
+            part = FieldRefPart.__create_instance__(tg=tg, g=g, info=part_info)
+            field_ref.add_part(g=g, part=part)
         return field_ref
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def add_part(self, tg: TypeGraph, g: GraphView, part: FieldRefPart):
+    def add_part(self, g: GraphView, part: FieldRefPart):
         # TODO: capture sequencing
         self._part_idx += 1
-
-        child = Child(FieldRefPart, tg=tg).bind(part.instance)
-        self.add_anon_child(child)
-
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=part.instance.node(),
-            child_identifier=f"part_{self._part_idx}",
-        )
+        self.add_instance_child(part, name=f"part_{self._part_idx}")
 
 
-class Number(NodeType):
+class Number(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.value = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.value = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, value: int | float
     ) -> Self:
-        number = super().create_instance(tg=tg, g=g)
-        number.set_source_info(tg=tg, g=g, source_info=source_info)
-        number.set_value(tg=tg, g=g, value=value)
+        number = super().__create_instance__(tg=tg, g=g)
+        number.set_source_info(g=g, source_info=source_info)
+        number.set_value(g=g, value=value)
         return number
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_value(self, tg: TypeGraph, g: GraphView, value: int | float):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.value.get().instance.node(), value=value
-        )
+    def set_value(self, g: GraphView, value: int | float):
+        self.value.get().constrain_to_literal(g=g, value=value)
 
 
-class Boolean(NodeType):
+class Boolean(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.value = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.value = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, value: bool
     ) -> Self:
-        boolean = super().create_instance(tg=tg, g=g)
-        boolean.set_source_info(tg=tg, g=g, source_info=source_info)
-        boolean.set_value(tg=tg, g=g, value=value)
+        boolean = super().__create_instance__(tg=tg, g=g)
+        boolean.set_source_info(g=g, source_info=source_info)
+        boolean.set_value(g=g, value=value)
         return boolean
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_value(self, tg: TypeGraph, g: GraphView, value: bool):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.value.get().instance.node(), value=value
-        )
+    def set_value(self, g: GraphView, value: bool):
+        self.value.get().constrain_to_literal(g=g, value=value)
 
 
-class Unit(NodeType):
+class Unit(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.symbol = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.symbol = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, symbol: str
     ) -> Self:
-        unit = super().create_instance(tg=tg, g=g)
-        unit.set_source_info(tg=tg, g=g, source_info=source_info)
-        unit.set_symbol(tg=tg, g=g, symbol=symbol)
+        unit = super().__create_instance__(tg=tg, g=g)
+        unit.set_source_info(g=g, source_info=source_info)
+        unit.set_symbol(g=g, symbol=symbol)
         return unit
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_symbol(self, tg: TypeGraph, g: GraphView, symbol: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.symbol.get().instance.node(), value=symbol
-        )
+    def set_symbol(self, g: GraphView, symbol: str):
+        self.symbol.get().constrain_to_literal(g=g, value=symbol)
 
 
-class Quantity(NodeType):
+class Quantity(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.number = Child(Number, tg=tg)
-        cls.unit = Child(Unit, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.number = t.Child(Number)
+        cls.unit = t.Child(Unit)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
-        *,
         value: int | float,
         value_source_info: SourceInfo,
         unit: tuple[str, SourceInfo] | None = None,
     ) -> Self:
-        quantity = super().create_instance(tg=tg, g=g)
-        quantity.set_source_info(tg=tg, g=g, source_info=source_info)
-        quantity.set_number(
-            tg=tg,
-            g=g,
-            number=value,
-            source_info=value_source_info,
-        )
+        quantity = super().__create_instance__(tg=tg, g=g)
+        quantity.set_source_info(g=g, source_info=source_info)
+        quantity.set_number(g=g, number=value, source_info=value_source_info)
         if unit is not None:
             symbol, unit_source = unit
-            quantity.set_unit(
-                tg=tg,
-                g=g,
-                unit=symbol,
-                source_info=unit_source,
-            )
+            quantity.set_unit(g=g, unit=symbol, source_info=unit_source)
         return quantity
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
     def set_number(
-        self,
-        tg: TypeGraph,
-        g: GraphView,
-        number: int | float,
-        *,
-        source_info: SourceInfo | None = None,
+        self, g: GraphView, number: int | float, source_info: SourceInfo | None = None
     ):
         number_node = self.number.get()
-        number_node.set_value(tg=tg, g=g, value=number)
+        number_node.set_value(g=g, value=number)
         if source_info is not None:
-            number_node.set_source_info(tg=tg, g=g, source_info=source_info)
+            number_node.set_source_info(g=g, source_info=source_info)
 
-    def set_unit(
-        self,
-        tg: TypeGraph,
-        g: GraphView,
-        unit: str,
-        *,
-        source_info: SourceInfo | None = None,
-    ):
+    def set_unit(self, g: GraphView, unit: str, source_info: SourceInfo | None = None):
         unit_node = self.unit.get()
-        unit_node.set_symbol(tg=tg, g=g, symbol=unit)
+        unit_node.set_symbol(g=g, symbol=unit)
         if source_info is not None:
-            unit_node.set_source_info(tg=tg, g=g, source_info=source_info)
+            unit_node.set_source_info(g=g, source_info=source_info)
 
 
-class BinaryExpression(NodeType):
+class BinaryExpression(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.operator = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.operator = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         operator: str,
-        left: NodeType,
-        right: NodeType,
+        left: Node,
+        right: Node,
     ) -> Self:
-        binary = super().create_instance(tg=tg, g=g)
-        binary.set_source_info(tg=tg, g=g, source_info=source_info)
-        binary.set_operator(tg=tg, g=g, operator=operator)
-        binary.set_left(tg=tg, g=g, node=left)
-        binary.set_right(tg=tg, g=g, node=right)
+        binary = super().__create_instance__(tg=tg, g=g)
+        binary.set_source_info(g=g, source_info=source_info)
+        binary.set_operator(g=g, operator=operator)
+        binary.set_left(g=g, node=left)
+        binary.set_right(g=g, node=right)
         return binary
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_operator(self, tg: TypeGraph, g: GraphView, operator: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.operator.get().instance.node(), value=operator
-        )
+    def set_operator(self, g: GraphView, operator: str):
+        self.operator.get().constrain_to_literal(g=g, value=operator)
 
-    def set_left(self, tg: TypeGraph, g: GraphView, node: NodeType):
-        child = Child(type(node), tg=tg).bind(node.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            child_identifier="left",
-        )
+    def set_left(self, g: GraphView, node: Node):
+        # FIXME: static?
+        self.add_instance_child(node, name="left")
 
-    def set_right(self, tg: TypeGraph, g: GraphView, node: NodeType):
-        child = Child(type(node), tg=tg).bind(node.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            child_identifier="right",
-        )
+    def set_right(self, g: GraphView, node: Node):
+        # FIXME
+        self.add_instance_child(node, name="right")
 
 
-class GroupExpression(NodeType):
+class GroupExpression(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
-        cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, expression: NodeType
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls,
+        tg: TypeGraph,
+        g: GraphView,
+        source_info: SourceInfo,
+        expression: Node,  # FIXME: typing
     ) -> Self:
-        group = super().create_instance(tg=tg, g=g)
-        group.set_source_info(tg=tg, g=g, source_info=source_info)
-        group.set_expression(tg=tg, g=g, expression=expression)
+        group = super().__create_instance__(tg=tg, g=g)
+        group.set_source_info(g=g, source_info=source_info)
+        group.set_expression(g=g, expression=expression)
         return group
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_expression(self, tg: TypeGraph, g: GraphView, expression: NodeType):
-        child = Child(type(expression), tg=tg).bind(expression.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=expression.instance.node(),
-            child_identifier="expression",
-        )
+    def set_expression(self, g: GraphView, expression: Node):
+        # FIXME: static?
+        self.add_instance_child(expression, name="expression")
 
 
-class ComparisonClause(NodeType):
+class ComparisonClause(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.operator = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.operator = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         operator: str,
-        right: NodeType,
+        right: Node,
     ) -> Self:
-        clause = super().create_instance(tg=tg, g=g)
-        clause.set_source_info(tg=tg, g=g, source_info=source_info)
-        clause.set_operator(tg=tg, g=g, operator=operator)
-        clause.set_right(tg=tg, g=g, node=right)
+        clause = super().__create_instance__(tg=tg, g=g)
+        clause.set_source_info(g=g, source_info=source_info)
+        clause.set_operator(g=g, operator=operator)
+        clause.set_right(g=g, node=right)
         return clause
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_operator(self, tg: TypeGraph, g: GraphView, operator: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.operator.get().instance.node(), value=operator
-        )
+    def set_operator(self, g: GraphView, operator: str):
+        self.operator.get().constrain_to_literal(g=g, value=operator)
 
-    def set_right(self, tg: TypeGraph, g: GraphView, node: NodeType):
-        child = Child(type(node), tg=tg).bind(node.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            child_identifier="right",
-        )
+    def set_right(self, g: GraphView, node: Node):
+        # FIXME
+        self.add_instance_child(node, name="right")
 
 
-class ComparisonExpression(NodeType):
+class ComparisonExpression(Node):
     _clause_idx = 0
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
-        left: NodeType,
+        left: Node,
         clauses: Iterable[ComparisonClause],
     ) -> Self:
-        comparison = super().create_instance(tg=tg, g=g)
-        comparison.set_source_info(tg=tg, g=g, source_info=source_info)
-        comparison.set_left(tg=tg, g=g, node=left)
+        comparison = super().__create_instance__(tg=tg, g=g)
+        comparison.set_source_info(g=g, source_info=source_info)
+        comparison.set_left(g=g, node=left)
         for clause in clauses:
-            comparison.add_clause(tg=tg, g=g, clause=clause)
+            comparison.add_clause(g=g, clause=clause)
         return comparison
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_left(self, tg: TypeGraph, g: GraphView, node: NodeType):
-        child = Child(type(node), tg=tg).bind(node.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            child_identifier="left",
-        )
+    def set_left(self, g: GraphView, node: Node):
+        # FIXME: static?
+        self.add_instance_child(node, name="left")
 
-    def add_clause(self, tg: TypeGraph, g: GraphView, clause: ComparisonClause):
+    def add_clause(self, g: GraphView, clause: ComparisonClause):
         ComparisonExpression._clause_idx += 1
-        child = Child(type(clause), tg=tg).bind(clause.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=clause.instance.node(),
-            child_identifier=f"clause_{ComparisonExpression._clause_idx}",
+        # FIXME
+        self.add_instance_child(
+            clause, name=f"clause_{ComparisonExpression._clause_idx}"
         )
 
 
-class BilateralQuantity(NodeType):
+class BilateralQuantity(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.quantity = Child(Quantity, tg=tg)
-        cls.tolerance = Child(Quantity, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.quantity = t.Child(Quantity)
+        cls.tolerance = t.Child(Quantity)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -573,54 +416,40 @@ class BilateralQuantity(NodeType):
         tolerance_value_source_info: SourceInfo,
         tolerance_unit_source_info: SourceInfo | None,
     ) -> Self:
-        bilateral_quantity = super().create_instance(tg=tg, g=g)
-        bilateral_quantity.source.get().set_source_info(
-            tg=tg, g=g, source_info=source_info
-        )
+        bilateral_quantity = super().__create_instance__(tg=tg, g=g)
+        bilateral_quantity.source.get().set_source_info(g=g, source_info=source_info)
         quantity_node = bilateral_quantity.quantity.get()
-        quantity_node.set_source_info(tg=tg, g=g, source_info=quantity_source_info)
+        quantity_node.set_source_info(g=g, source_info=quantity_source_info)
         quantity_node.set_number(
-            tg=tg,
-            g=g,
-            number=quantity_value,
-            source_info=quantity_value_source_info,
+            g=g, number=quantity_value, source_info=quantity_value_source_info
         )
         if quantity_unit is not None:
             quantity_node.set_unit(
-                tg=tg,
-                g=g,
-                unit=quantity_unit,
-                source_info=quantity_unit_source_info,
+                g=g, unit=quantity_unit, source_info=quantity_unit_source_info
             )
 
         tolerance_node = bilateral_quantity.tolerance.get()
-        tolerance_node.set_source_info(tg=tg, g=g, source_info=tolerance_source_info)
+        tolerance_node.set_source_info(g=g, source_info=tolerance_source_info)
         tolerance_node.set_number(
-            tg=tg,
-            g=g,
-            number=tolerance_value,
-            source_info=tolerance_value_source_info,
+            g=g, number=tolerance_value, source_info=tolerance_value_source_info
         )
         if tolerance_unit is not None:
             tolerance_node.set_unit(
-                tg=tg,
-                g=g,
-                unit=tolerance_unit,
-                source_info=tolerance_unit_source_info,
+                g=g, unit=tolerance_unit, source_info=tolerance_unit_source_info
             )
 
         return bilateral_quantity
 
 
-class BoundedQuantity(NodeType):
+class BoundedQuantity(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.start = Child(Quantity, tg=tg)
-        cls.end = Child(Quantity, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.start = t.Child(Quantity)
+        cls.end = t.Child(Quantity)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -636,123 +465,87 @@ class BoundedQuantity(NodeType):
         end_value_source_info: SourceInfo,
         end_unit_source_info: SourceInfo | None,
     ) -> Self:
-        bounded = super().create_instance(tg=tg, g=g)
-        bounded.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        bounded = super().__create_instance__(tg=tg, g=g)
+        bounded.source.get().set_source_info(g=g, source_info=source_info)
 
         start_quantity = bounded.start.get()
-        start_quantity.set_source_info(tg=tg, g=g, source_info=start_source_info)
+        start_quantity.set_source_info(g=g, source_info=start_source_info)
         start_quantity.set_number(
-            tg=tg,
-            g=g,
-            number=start_value,
-            source_info=start_value_source_info,
+            g=g, number=start_value, source_info=start_value_source_info
         )
         if start_unit is not None:
             start_quantity.set_unit(
-                tg=tg,
-                g=g,
-                unit=start_unit,
-                source_info=start_unit_source_info,
+                g=g, unit=start_unit, source_info=start_unit_source_info
             )
 
         end_quantity = bounded.end.get()
-        end_quantity.set_source_info(tg=tg, g=g, source_info=end_source_info)
+        end_quantity.set_source_info(g=g, source_info=end_source_info)
         end_quantity.set_number(
-            tg=tg,
-            g=g,
-            number=end_value,
-            source_info=end_value_source_info,
+            g=g, number=end_value, source_info=end_value_source_info
         )
         if end_unit is not None:
-            end_quantity.set_unit(
-                tg=tg,
-                g=g,
-                unit=end_unit,
-                source_info=end_unit_source_info,
-            )
+            end_quantity.set_unit(g=g, unit=end_unit, source_info=end_unit_source_info)
 
         return bounded
 
 
-class Scope(NodeType):
+class Scope(Node):
     _stmt_idx: ClassVar[int] = 0
 
     # TODO: constrain stmt types
-    def add_stmt(self, tg: TypeGraph, g: GraphView, stmt: NodeType):
+    def add_stmt(self, g: GraphView, stmt: Node):
         # TODO: capture order independent from child_id
         Scope._stmt_idx += 1
-
-        child = Child(type(stmt), tg=tg).bind(stmt.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=stmt.instance.node(),
-            child_identifier=f"stmt_{Scope._stmt_idx}",  # TODO: anonymous children
+        self.add_instance_child(
+            stmt,
+            name=f"stmt_{Scope._stmt_idx}",  # TODO: anonymous children
         )
 
     # TODO: get_child_stmts -> Iterable[Assignment | ...]
 
 
-class File(NodeType):
+class File(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.scope = Child(Scope, tg=tg)
-        cls.path = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.scope = t.Child(Scope)
+        cls.path = t.Child(Parameter)
 
     # TODO: optional path
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         path: str,
-        child_stmts: Iterable[NodeType],
+        child_stmts: Iterable[Node],
     ) -> Self:
-        file = super().create_instance(tg=tg, g=g)
-        file.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        file.set_path(tg=tg, g=g, path=path)
+        file = super().__create_instance__(tg=tg, g=g)
+        file.source.get().set_source_info(g=g, source_info=source_info)
+        file.set_path(g=g, path=path)
 
         for child_node in child_stmts:
             if child_node is not None:  # FIXME
-                file.scope.get().add_stmt(tg=tg, g=g, stmt=child_node)
+                file.scope.get().add_stmt(g=g, stmt=child_node)
 
         return file
 
-    def set_path(self, tg: TypeGraph, g: GraphView, path: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.path.get().instance.node(), value=path
-        )
+    def set_path(self, g: GraphView, path: str):
+        self.path.get().constrain_to_literal(g=g, value=path)
 
 
-class BlockType(NodeType):
-    class Types(StrEnum):
-        COMPONENT = "component"
-        MODULE = "module"
-        INTERFACE = "interface"
+class BlockDefinition(Node):
+    @classmethod
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.block_type = t.Child(Parameter)  # TODO: enum domain
+        cls.type_ref = t.Child(TypeRef)
+        cls.super_type_ref = t.Child(TypeRef)
+        cls.scope = t.Child(Scope)
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.type = Child(Parameter, tg=tg)
-
-    def set_type(self, tg: TypeGraph, g: GraphView, type: "BlockType.Types"):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.type.get().instance.node(), value=type.value
-        )
-
-
-class BlockDefinition(NodeType):
-    @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.block_type = Child(Parameter, tg=tg)
-        cls.type_ref = Child(TypeRef, tg=tg)
-        cls.super_type_ref = Child(TypeRef, tg=tg)
-        cls.scope = Child(Scope, tg=tg)
-
-    @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -762,43 +555,30 @@ class BlockDefinition(NodeType):
         type_ref_source_info: SourceInfo,
         super_type_ref_name: str | None,
         super_type_ref_source_info: SourceInfo | None,
-        child_stmts: Iterable[NodeType],
+        child_stmts: Iterable[Node],
     ) -> Self:
-        block_definition = super().create_instance(tg=tg, g=g)
-        block_definition.source.get().set_source_info(
-            tg=tg, g=g, source_info=source_info
-        )
+        block_definition = super().__create_instance__(tg=tg, g=g)
+        block_definition.source.get().set_source_info(g=g, source_info=source_info)
+        block_definition.block_type.get().constrain_to_literal(g=g, value=block_type)
 
-        try:
-            block_type_val = BlockType.Types(block_type)
-        except ValueError:
-            raise ValueError(f"Invalid block type: {block_type}")
-
-        constrain_to_literal(
-            g=g,
-            tg=tg,
-            node=block_definition.block_type.get().instance.node(),
-            value=block_type_val,
-        )
-
-        block_definition.type_ref.get().set_name(tg=tg, g=g, name=type_ref_name)
+        block_definition.type_ref.get().set_name(g=g, name=type_ref_name)
         block_definition.type_ref.get().set_source(
-            tg=tg, g=g, source_info=type_ref_source_info
+            g=g, source_info=type_ref_source_info
         )
 
         if super_type_ref_name is not None:
             block_definition.super_type_ref.get().set_name(
-                tg=tg, g=g, name=super_type_ref_name
+                g=g, name=super_type_ref_name
             )
 
         if super_type_ref_source_info is not None:
             block_definition.super_type_ref.get().set_source(
-                tg=tg, g=g, source_info=super_type_ref_source_info
+                g=g, source_info=super_type_ref_source_info
             )
 
         for child_node in child_stmts:
             if child_node is not None:  # FIXME
-                block_definition.scope.get().add_stmt(tg=tg, g=g, stmt=child_node)
+                block_definition.scope.get().add_stmt(g=g, stmt=child_node)
 
         return block_definition
 
@@ -811,16 +591,16 @@ class SliceConfig:
     step: tuple[int, SourceInfo] | None = None
 
 
-class Slice(NodeType):
+class Slice(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.start = Child(Number, tg=tg)
-        cls.stop = Child(Number, tg=tg)
-        cls.step = Child(Number, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.start = t.Child(Number)
+        cls.stop = t.Child(Number)
+        cls.step = t.Child(Number)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -830,200 +610,167 @@ class Slice(NodeType):
         stop: tuple[int, SourceInfo] | None = None,
         step: tuple[int, SourceInfo] | None = None,
     ) -> Self:
-        slice_node = super().create_instance(tg=tg, g=g)
-        slice_node.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        slice_node = super().__create_instance__(tg=tg, g=g)
+        slice_node.source.get().set_source_info(g=g, source_info=source_info)
 
         if start is not None:
-            slice_node.set_start(tg=tg, g=g, value=start[0], source_info=start[1])
+            slice_node.set_start(g=g, value=start[0], source_info=start[1])
 
         if stop is not None:
-            slice_node.set_stop(tg=tg, g=g, value=stop[0], source_info=stop[1])
+            slice_node.set_stop(g=g, value=stop[0], source_info=stop[1])
 
         if step is not None:
-            slice_node.set_step(tg=tg, g=g, value=step[0], source_info=step[1])
+            slice_node.set_step(g=g, value=step[0], source_info=step[1])
 
         return slice_node
 
-    def set_start(
-        self, tg: TypeGraph, g: GraphView, value: int, source_info: SourceInfo
-    ):
+    def set_start(self, g: GraphView, value: int, source_info: SourceInfo):
         number = self.start.get()
-        number.set_value(tg=tg, g=g, value=value)
-        number.set_source_info(tg=tg, g=g, source_info=source_info)
+        number.set_value(g=g, value=value)
+        number.set_source_info(g=g, source_info=source_info)
 
-    def set_stop(
-        self, tg: TypeGraph, g: GraphView, value: int, source_info: SourceInfo
-    ):
+    def set_stop(self, g: GraphView, value: int, source_info: SourceInfo):
         number = self.stop.get()
-        number.set_value(tg=tg, g=g, value=value)
-        number.set_source_info(tg=tg, g=g, source_info=source_info)
+        number.set_value(g=g, value=value)
+        number.set_source_info(g=g, source_info=source_info)
 
-    def set_step(
-        self, tg: TypeGraph, g: GraphView, value: int, source_info: SourceInfo
-    ):
+    def set_step(self, g: GraphView, value: int, source_info: SourceInfo):
         number = self.step.get()
-        number.set_value(tg=tg, g=g, value=value)
-        number.set_source_info(tg=tg, g=g, source_info=source_info)
+        number.set_value(g=g, value=value)
+        number.set_source_info(g=g, source_info=source_info)
 
 
-class IterableFieldRef(NodeType):
+class IterableFieldRef(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.field = Child(FieldRef, tg=tg)
-        cls.slice = Child(Slice, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.field = t.Child(FieldRef)
+        cls.slice = t.Child(Slice)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
-        *,
         field_parts: Iterable[FieldRefPart.Info],
         field_source_info: SourceInfo,
         slice_config: SliceConfig | None = None,
     ) -> Self:
-        iterable = super().create_instance(tg=tg, g=g)
-        iterable.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        iterable = super().__create_instance__(tg=tg, g=g)
+        iterable.source.get().set_source_info(g=g, source_info=source_info)
 
         field_node = iterable.field.get()
-        field_node.set_source_info(tg=tg, g=g, source_info=field_source_info)
+        field_node.set_source_info(g=g, source_info=field_source_info)
         for part in field_parts:
-            field_part = FieldRefPart.create_instance(tg=tg, g=g, info=part)
-            field_node.add_part(tg=tg, g=g, part=field_part)
+            field_part = FieldRefPart.__create_instance__(tg=tg, g=g, info=part)
+            field_node.add_part(g=g, part=field_part)
 
         if slice_config is not None:
             slice_node = iterable.slice.get()
             slice_node.source.get().set_source_info(
-                tg=tg, g=g, source_info=slice_config.source
+                g=g, source_info=slice_config.source
             )
             if slice_config.start is not None:
+                start_value, start_source_info = slice_config.start
                 slice_node.set_start(
-                    tg=tg,
-                    g=g,
-                    value=slice_config.start[0],
-                    source_info=slice_config.start[1],
+                    g=g, value=start_value, source_info=start_source_info
                 )
             if slice_config.stop is not None:
-                slice_node.set_stop(
-                    tg=tg,
-                    g=g,
-                    value=slice_config.stop[0],
-                    source_info=slice_config.stop[1],
-                )
+                stop_value, stop_source_info = slice_config.stop
+                slice_node.set_stop(g=g, value=stop_value, source_info=stop_source_info)
             if slice_config.step is not None:
-                slice_node.set_step(
-                    tg=tg,
-                    g=g,
-                    value=slice_config.step[0],
-                    source_info=slice_config.step[1],
-                )
+                step_value, step_source_info = slice_config.step
+                slice_node.set_step(g=g, value=step_value, source_info=step_source_info)
         return iterable
 
 
-class FieldRefList(NodeType):
+class FieldRefList(Node):
     _item_idx = 0
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         items: Iterable[FieldRef],
     ) -> Self:
-        fr_list = super().create_instance(tg=tg, g=g)
-        fr_list.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        fr_list = super().__create_instance__(tg=tg, g=g)
+        fr_list.source.get().set_source_info(g=g, source_info=source_info)
         for item in items:
-            fr_list.add_item(tg=tg, g=g, item=item)
+            fr_list.add_item(g=g, item=item)
         return fr_list
 
-    def add_item(self, tg: TypeGraph, g: GraphView, item: FieldRef):
+    def add_item(self, g: GraphView, item: FieldRef):
         FieldRefList._item_idx += 1
-        child = Child(type(item), tg=tg).bind(item.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=item.instance.node(),
-            child_identifier=f"item_{FieldRefList._item_idx}",
-        )
+        self.add_instance_child(item, name=f"item_{FieldRefList._item_idx}")
 
 
-class ForStmt(NodeType):
+class ForStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.scope = Child(Scope, tg=tg)
-        cls.target = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.scope = t.Child(Scope)
+        cls.target = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         target: str,
-        iterable: NodeType,
-        body_stmts: Iterable[NodeType],
+        iterable: Node,
+        body_stmts: Iterable[Node],
     ) -> Self:
-        for_stmt = super().create_instance(tg=tg, g=g)
-        for_stmt.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        for_stmt.set_target(tg=tg, g=g, target=target)
-        for_stmt.set_iterable(tg=tg, g=g, iterable=iterable)
+        for_stmt = super().__create_instance__(tg=tg, g=g)
+        for_stmt.source.get().set_source_info(g=g, source_info=source_info)
+        for_stmt.set_target(g=g, target=target)
+        for_stmt.set_iterable(g=g, iterable=iterable)
         scope_node = for_stmt.scope.get()
         for stmt in body_stmts:
-            scope_node.add_stmt(tg=tg, g=g, stmt=stmt)
+            scope_node.add_stmt(g=g, stmt=stmt)
         return for_stmt
 
-    def set_target(self, tg: TypeGraph, g: GraphView, target: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.target.get().instance.node(), value=target
-        )
+    def set_target(self, g: GraphView, target: str):
+        self.target.get().constrain_to_literal(g=g, value=target)
 
-    def set_iterable(self, tg: TypeGraph, g: GraphView, iterable: NodeType):
-        child = Child(type(iterable), tg=tg).bind(iterable.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=iterable.instance.node(),
-            child_identifier="iterable",
-        )
+    def set_iterable(self, g: GraphView, iterable: Node):
+        # TODO: should this be dynamic?
+        self.add_instance_child(iterable, name="iterable")
 
 
-class PragmaStmt(NodeType):
+class PragmaStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.pragma = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.pragma = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, pragma: str
     ) -> Self:
-        pragma_stmt = super().create_instance(tg=tg, g=g)
-        pragma_stmt.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-
-        constrain_to_literal(
-            g=g, tg=tg, node=pragma_stmt.pragma.get().instance.node(), value=pragma
-        )
+        pragma_stmt = super().__create_instance__(tg=tg, g=g)
+        pragma_stmt.source.get().set_source_info(g=g, source_info=source_info)
+        pragma_stmt.pragma.get().constrain_to_literal(g=g, value=pragma)
 
         return pragma_stmt
 
 
-class ImportStmt(NodeType):
+class ImportStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.path = Child(ImportPath, tg=tg)
-        cls.type_ref = Child(TypeRef, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.path = t.Child(ImportPath)
+        cls.type_ref = t.Child(TypeRef)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -1033,34 +780,30 @@ class ImportStmt(NodeType):
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
     ) -> Self:
-        import_stmt = super().create_instance(tg=tg, g=g)
-        import_stmt.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        import_stmt = super().__create_instance__(tg=tg, g=g)
+        import_stmt.source.get().set_source_info(g=g, source_info=source_info)
 
         if path is not None:
-            import_stmt.path.get().set_path(tg=tg, g=g, path=path)
+            import_stmt.path.get().set_path(g=g, path=path)
 
         if path_source_info is not None:
-            import_stmt.path.get().set_source_info(
-                tg=tg, g=g, source_info=path_source_info
-            )
+            import_stmt.path.get().set_source_info(g=g, source_info=path_source_info)
 
-        import_stmt.type_ref.get().set_name(tg=tg, g=g, name=type_ref_name)
-        import_stmt.type_ref.get().set_source(
-            tg=tg, g=g, source_info=type_ref_source_info
-        )
+        import_stmt.type_ref.get().set_name(g=g, name=type_ref_name)
+        import_stmt.type_ref.get().set_source(g=g, source_info=type_ref_source_info)
 
         return import_stmt
 
 
-class TemplateArg(NodeType):
+class TemplateArg(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.name = Child(Parameter, tg=tg)
-        cls.value = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.name = t.Child(Parameter)
+        cls.value = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -1068,137 +811,141 @@ class TemplateArg(NodeType):
         name: str,
         value: LiteralT,
     ) -> Self:
-        template_arg = super().create_instance(tg=tg, g=g)
-        template_arg.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        constrain_to_literal(
-            g=g, tg=tg, node=template_arg.name.get().instance.node(), value=name
-        )
-        constrain_to_literal(
-            g=g, tg=tg, node=template_arg.value.get().instance.node(), value=value
-        )
+        template_arg = super().__create_instance__(tg=tg, g=g)
+        template_arg.source.get().set_source_info(g=g, source_info=source_info)
+        template_arg.name.get().constrain_to_literal(g=g, value=name)
+        template_arg.value.get().constrain_to_literal(g=g, value=value)
         return template_arg
 
 
-class Template(NodeType):
+class Template(Node):
     _arg_idx = 0
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         args: Iterable[TemplateArg],
     ) -> Self:
-        template = super().create_instance(tg=tg, g=g)
-        template.set_source_info(tg=tg, g=g, source_info=source_info)
+        template = super().__create_instance__(tg=tg, g=g)
+        template.set_source_info(g=g, source_info=source_info)
         for arg in args:
-            template.add_arg(tg=tg, g=g, arg=arg)
+            template.add_arg(g=g, arg=arg)
         return template
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def add_arg(self, tg: TypeGraph, g: GraphView, arg: TemplateArg):
+    def add_arg(self, g: GraphView, arg: TemplateArg):
         Template._arg_idx += 1
-        child = Child(TemplateArg, tg=tg).bind(arg.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=arg.instance.node(),
-            child_identifier=f"arg_{Template._arg_idx}",
-        )
+        # TODO: provide at construction?
+        self.add_instance_child(arg, name=f"arg_{Template._arg_idx}")
 
 
-class NewExpression(NodeType):
+class NewExpression(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.type_ref = Child(TypeRef, tg=tg)
-        cls.template = Child(Template, tg=tg)
-        cls.new_count = Child(Number, tg=tg)
-
-    def set_new_count(
-        self, tg: TypeGraph, g: GraphView, count: int, source_info: SourceInfo
-    ):
-        number = self.new_count.get()
-        number.set_value(tg=tg, g=g, value=count)
-        number.set_source_info(tg=tg, g=g, source_info=source_info)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.type_ref = t.Child(TypeRef)
+        cls.template = t.Child(Template)
+        cls.new_count = t.Child(Number)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
-        *,
         template: tuple[SourceInfo, Iterable[TemplateArg]] | None = None,
         new_count: tuple[int, SourceInfo] | None = None,
     ) -> Self:
-        new_expression = super().create_instance(tg=tg, g=g)
-        new_expression.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        new_expression.type_ref.get().set_name(tg=tg, g=g, name=type_ref_name)
-        new_expression.type_ref.get().set_source(
-            tg=tg, g=g, source_info=type_ref_source_info
-        )
+        new_expression = super().__create_instance__(tg=tg, g=g)
+        new_expression.source.get().set_source_info(g=g, source_info=source_info)
+        new_expression.type_ref.get().set_name(g=g, name=type_ref_name)
+        new_expression.type_ref.get().set_source(g=g, source_info=type_ref_source_info)
+
         if template is not None:
             template_source, template_args = template
             template_node = new_expression.template.get()
-            template_node.set_source_info(tg=tg, g=g, source_info=template_source)
+            template_node.set_source_info(g=g, source_info=template_source)
             for arg in template_args:
-                template_node.add_arg(tg=tg, g=g, arg=arg)
+                template_node.add_arg(g=g, arg=arg)
 
         if new_count is not None:
             count, count_source_info = new_count
             new_expression.set_new_count(
-                tg=tg, g=g, count=count, source_info=count_source_info
+                g=g, count=count, source_info=count_source_info
             )
 
         return new_expression
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
+
+    def set_new_count(self, g: GraphView, count: int, source_info: SourceInfo):
+        number = self.new_count.get()
+        number.set_value(g=g, value=count)
+        number.set_source_info(g=g, source_info=source_info)
 
 
-AssignableT = NewExpression  # FIXME
-
-
-class Assignable(NodeType):
+class String(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        # cls.value = Child(NewExpression, tg=tg)  #  TODO: other options
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.text = t.Child(Parameter)
 
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+    @classmethod
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
+        cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, text: str
+    ) -> Self:
+        string = super().__create_instance__(tg=tg, g=g)
+        string.set_source_info(g=g, source_info=source_info)
+        string.set_text(g=g, text=text)
+        return string
 
-    def set_value(self, tg: TypeGraph, g: GraphView, value: AssignableT):
-        child = Child(type(value), tg=tg).bind(value.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=value.instance.node(),
-            child_identifier="value",
-        )
+    def set_text(self, g: GraphView, text: str):
+        self.text.get().constrain_to_literal(g=g, value=text)
+
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
+
+
+AssignableT = NewExpression | String | Boolean  # FIXME
+
+
+class Assignable(Node):
+    @classmethod
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        # cls.value = t.Child(NewExpression)  #  TODO: other options
+
+    def set_source_info(self, g: GraphView, source_info: SourceInfo):
+        self.source.get().set_source_info(g=g, source_info=source_info)
+
+    def set_value(self, g: GraphView, value: AssignableT):
+        # TODO: guard
+        self.add_instance_child(value, name="value")
 
     # TODO: get_value -> AssignableT
 
 
-class Assignment(NodeType):
+class Assignment(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.target = Child(FieldRef, tg=tg)  # TODO: declarations?
-        cls.assignable = Child(Assignable, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.target = t.Child(FieldRef)  # TODO: declarations?
+        cls.assignable = t.Child(Assignable)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -1208,115 +955,92 @@ class Assignment(NodeType):
         assignable_value: AssignableT,
         assignable_source_info: SourceInfo,
     ) -> Self:
-        assignment = super().create_instance(tg=tg, g=g)
-        assignment.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        assignment = super().__create_instance__(tg=tg, g=g)
+        assignment.source.get().set_source_info(g=g, source_info=source_info)
 
         for part_info in target_field_ref_parts:
-            field_ref_part = FieldRefPart.create_instance(tg=tg, g=g, info=part_info)
-            assignment.target.get().add_part(tg=tg, g=g, part=field_ref_part)
+            field_ref_part = FieldRefPart.__create_instance__(
+                tg=tg, g=g, info=part_info
+            )
+            assignment.target.get().add_part(g=g, part=field_ref_part)
 
         assignment.target.get().set_source_info(
-            tg=tg, g=g, source_info=target_field_ref_source_info
+            g=g, source_info=target_field_ref_source_info
         )
 
-        assignment.assignable.get().set_value(tg=tg, g=g, value=assignable_value)
+        assignment.assignable.get().set_value(g=g, value=assignable_value)
         assignment.assignable.get().set_source_info(
-            tg=tg, g=g, source_info=assignable_source_info
+            g=g, source_info=assignable_source_info
         )
 
         return assignment
 
 
-class ConnectStmt(NodeType):
+class ConnectStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
-        left: NodeType,
-        right: NodeType,
+        left: Node,
+        right: Node,
     ) -> Self:
-        connect = super().create_instance(tg=tg, g=g)
-        connect.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        connect._set_endpoint(tg=tg, g=g, identifier="left", node=left)
-        connect._set_endpoint(tg=tg, g=g, identifier="right", node=right)
+        connect = super().__create_instance__(tg=tg, g=g)
+        connect.source.get().set_source_info(g=g, source_info=source_info)
+
+        for node, identifier in [(left, "left"), (right, "right")]:
+            connect.add_instance_child(node, name=identifier)
+
         return connect
 
-    def _set_endpoint(
-        self, tg: TypeGraph, g: GraphView, identifier: str, node: NodeType
-    ) -> None:
-        child = Child(type(node), tg=tg).bind(node.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            child_identifier=identifier,
-        )
 
-
-class DirectedConnectStmt(NodeType):
+class DirectedConnectStmt(Node):
     class Direction(StrEnum):
         RIGHT = "RIGHT"
         LEFT = "LEFT"
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.direction = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.direction = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         direction: "DirectedConnectStmt.Direction",
-        left: NodeType,
-        right: NodeType,
+        left: Node,
+        right: Node,
     ) -> Self:
-        directed = super().create_instance(tg=tg, g=g)
-        directed.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        directed.set_direction(tg=tg, g=g, direction=direction)
-        directed._set_endpoint(tg=tg, g=g, identifier="left", node=left)
-        directed._set_endpoint(tg=tg, g=g, identifier="right", node=right)
+        directed = super().__create_instance__(tg=tg, g=g)
+        directed.source.get().set_source_info(g=g, source_info=source_info)
+        directed.set_direction(g=g, direction=direction)
+
+        for node, identifier in [(left, "left"), (right, "right")]:
+            directed.add_instance_child(node, name=identifier)
+
         return directed
 
-    def set_direction(
-        self, tg: TypeGraph, g: GraphView, direction: "DirectedConnectStmt.Direction"
-    ):
-        constrain_to_literal(
-            g=g,
-            tg=tg,
-            node=self.direction.get().instance.node(),
-            value=direction.value,
-        )
-
-    def _set_endpoint(
-        self, tg: TypeGraph, g: GraphView, identifier: str, node: NodeType
-    ) -> None:
-        child = Child(type(node), tg=tg).bind(node.instance)
-        self.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            child_identifier=identifier,
-        )
+    def set_direction(self, g: GraphView, direction: "DirectedConnectStmt.Direction"):
+        self.direction.get().constrain_to_literal(g=g, value=direction.value)
 
 
-class RetypeStmt(NodeType):
+class RetypeStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.field_ref = Child(FieldRef, tg=tg)
-        cls.type_ref = Child(TypeRef, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.field_ref = t.Child(FieldRef)
+        cls.type_ref = t.Child(TypeRef)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -1326,114 +1050,104 @@ class RetypeStmt(NodeType):
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
     ) -> Self:
-        retype = super().create_instance(tg=tg, g=g)
-        retype.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        retype = super().__create_instance__(tg=tg, g=g)
+        retype.source.get().set_source_info(g=g, source_info=source_info)
 
         field_node = retype.field_ref.get()
-        field_node.set_source_info(tg=tg, g=g, source_info=field_ref_source_info)
+        field_node.set_source_info(g=g, source_info=field_ref_source_info)
+
+        # FIXME
         for part in field_ref_parts:
-            field_part = FieldRefPart.create_instance(tg=tg, g=g, info=part)
-            field_node.add_part(tg=tg, g=g, part=field_part)
+            field_part = FieldRefPart.__create_instance__(tg=tg, g=g, info=part)
+            field_node.add_part(g=g, part=field_part)
 
         type_node = retype.type_ref.get()
-        type_node.set_name(tg=tg, g=g, name=type_ref_name)
-        type_node.set_source(tg=tg, g=g, source_info=type_ref_source_info)
+        type_node.set_name(g=g, name=type_ref_name)
+        type_node.set_source(g=g, source_info=type_ref_source_info)
 
         return retype
 
 
-class PinDeclaration(NodeType):
+class PinDeclaration(Node):
     class Kind(StrEnum):
         NAME = "name"
         NUMBER = "number"
         STRING = "string"
 
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.kind = Child(Parameter, tg=tg)
-        cls.label = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.kind = t.Child(Parameter)
+        cls.label = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         kind: "PinDeclaration.Kind",
-        *,
         label_value: LiteralT | None = None,
     ) -> Self:
-        pin = super().create_instance(tg=tg, g=g)
-        pin.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        pin.set_kind(tg=tg, g=g, kind=kind)
+        pin = super().__create_instance__(tg=tg, g=g)
+        pin.source.get().set_source_info(g=g, source_info=source_info)
+        pin.set_kind(g=g, kind=kind)
         if label_value is not None:
-            pin.set_label(tg=tg, g=g, value=label_value)
+            pin.set_label(g=g, value=label_value)
         return pin
 
-    def set_kind(self, tg: TypeGraph, g: GraphView, kind: "PinDeclaration.Kind"):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.kind.get().instance.node(), value=kind.value
-        )
+    def set_kind(self, g: GraphView, kind: "PinDeclaration.Kind"):
+        self.kind.get().constrain_to_literal(g=g, value=kind.value)
 
-    def set_label(self, tg: TypeGraph, g: GraphView, value: LiteralT):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.label.get().instance.node(), value=value
-        )
+    def set_label(self, g: GraphView, value: LiteralT):
+        self.label.get().constrain_to_literal(g=g, value=value)
 
 
-class SignaldefStmt(NodeType):
+class SignaldefStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.name = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.name = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, name: str
     ) -> Self:
-        signal = super().create_instance(tg=tg, g=g)
-        signal.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        constrain_to_literal(
-            g=g, tg=tg, node=signal.name.get().instance.node(), value=name
-        )
+        signal = super().__create_instance__(tg=tg, g=g)
+        signal.source.get().set_source_info(g=g, source_info=source_info)
+        signal.name.get().constrain_to_literal(g=g, value=name)
         return signal
 
 
-class AssertStmt(NodeType):
+class AssertStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         comparison: ComparisonExpression,
     ) -> Self:
-        assert_stmt = super().create_instance(tg=tg, g=g)
-        assert_stmt.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        child = Child(type(comparison), tg=tg).bind(comparison.instance)
-        assert_stmt.add_anon_child(child)
-        EdgeComposition.add_child(
-            bound_node=assert_stmt.instance,
-            child=comparison.instance.node(),
-            child_identifier="comparison",
-        )
+        assert_stmt = super().__create_instance__(tg=tg, g=g)
+        assert_stmt.source.get().set_source_info(g=g, source_info=source_info)
+        assert_stmt.add_instance_child(comparison, name="comparison")
+
         return assert_stmt
 
 
-class DeclarationStmt(NodeType):
+class DeclarationStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.field_ref = Child(FieldRef, tg=tg)
-        cls.unit = Child(Unit, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.field_ref = t.Child(FieldRef)
+        cls.unit = t.Child(Unit)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -1443,54 +1157,31 @@ class DeclarationStmt(NodeType):
         unit_symbol: str,
         unit_source_info: SourceInfo,
     ) -> Self:
-        declaration = super().create_instance(tg=tg, g=g)
-        declaration.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        declaration = super().__create_instance__(tg=tg, g=g)
+        declaration.source.get().set_source_info(g=g, source_info=source_info)
 
         field_node = declaration.field_ref.get()
-        field_node.set_source_info(tg=tg, g=g, source_info=field_ref_source_info)
+        field_node.set_source_info(g=g, source_info=field_ref_source_info)
+        # FIXME
         for part in field_ref_parts:
-            field_part = FieldRefPart.create_instance(tg=tg, g=g, info=part)
-            field_node.add_part(tg=tg, g=g, part=field_part)
+            field_part = FieldRefPart.__create_instance__(tg=tg, g=g, info=part)
+            field_node.add_part(g=g, part=field_part)
 
         unit_node = declaration.unit.get()
-        unit_node.set_source_info(tg=tg, g=g, source_info=unit_source_info)
-        unit_node.set_symbol(tg=tg, g=g, symbol=unit_symbol)
+        unit_node.set_source_info(g=g, source_info=unit_source_info)
+        unit_node.set_symbol(g=g, symbol=unit_symbol)
 
         return declaration
 
 
-class String(NodeType):
+class StringStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.text = Child(Parameter, tg=tg)
-
-    @classmethod
-    def create_instance(
-        cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo, text: str
-    ) -> Self:
-        string = super().create_instance(tg=tg, g=g)
-        string.set_source_info(tg=tg, g=g, source_info=source_info)
-        string.set_text(tg=tg, g=g, text=text)
-        return string
-
-    def set_text(self, tg: TypeGraph, g: GraphView, text: str):
-        constrain_to_literal(
-            g=g, tg=tg, node=self.text.get().instance.node(), value=text
-        )
-
-    def set_source_info(self, tg: TypeGraph, g: GraphView, source_info: SourceInfo):
-        self.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-
-
-class StringStmt(NodeType):
-    @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.string = Child(String, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.string = t.Child(String)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
@@ -1498,85 +1189,75 @@ class StringStmt(NodeType):
         string_value: str,
         string_source_info: SourceInfo,
     ) -> Self:
-        string_stmt = super().create_instance(tg=tg, g=g)
-        string_stmt.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
-        string_stmt.string.get().set_text(tg=tg, g=g, text=string_value)
-        string_stmt.string.get().set_source_info(
-            tg=tg, g=g, source_info=string_source_info
-        )
+        string_stmt = super().__create_instance__(tg=tg, g=g)
+        string_stmt.source.get().set_source_info(g=g, source_info=source_info)
+        string_stmt.string.get().set_text(g=g, text=string_value)
+        string_stmt.string.get().set_source_info(g=g, source_info=string_source_info)
         return string_stmt
 
 
-class PassStmt(NodeType):
+class PassStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls, tg: TypeGraph, g: GraphView, source_info: SourceInfo
     ) -> Self:
-        stmt = super().create_instance(tg=tg, g=g)
-        stmt.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        stmt = super().__create_instance__(tg=tg, g=g)
+        stmt.source.get().set_source_info(g=g, source_info=source_info)
         return stmt
 
 
-class TraitStmt(NodeType):
+class TraitStmt(Node):
     @classmethod
-    def create_type(cls, tg: TypeGraph) -> None:
-        cls.source = Child(SourceChunk, tg=tg)
-        cls.type_ref = Child(TypeRef, tg=tg)
-        cls.target = Child(FieldRef, tg=tg)
-        cls.template = Child(Template, tg=tg)
-        cls.constructor = Child(Parameter, tg=tg)
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.source = t.Child(SourceChunk)
+        cls.type_ref = t.Child(TypeRef)
+        cls.target = t.Child(FieldRef)
+        cls.template = t.Child(Template)
+        cls.constructor = t.Child(Parameter)
 
     @classmethod
-    def create_instance(
+    def __create_instance__(  # pyright: ignore[reportIncompatibleMethodOverride]
         cls,
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
-        *,
         target_parts: Iterable[FieldRefPart.Info] | None = None,
         target_source_info: SourceInfo | None = None,
         template_data: tuple[SourceInfo, Iterable[TemplateArg]] | None = None,
         constructor: str | None = None,
     ) -> Self:
-        trait = super().create_instance(tg=tg, g=g)
-        trait.source.get().set_source_info(tg=tg, g=g, source_info=source_info)
+        trait = super().__create_instance__(tg=tg, g=g)
+        trait.source.get().set_source_info(g=g, source_info=source_info)
 
         type_node = trait.type_ref.get()
-        type_node.set_name(tg=tg, g=g, name=type_ref_name)
-        type_node.set_source(tg=tg, g=g, source_info=type_ref_source_info)
+        type_node.set_name(g=g, name=type_ref_name)
+        type_node.set_source(g=g, source_info=type_ref_source_info)
 
         if target_parts is not None and target_source_info is not None:
             target_node = trait.target.get()
-            target_node.set_source_info(tg=tg, g=g, source_info=target_source_info)
+            target_node.set_source_info(g=g, source_info=target_source_info)
             for part in target_parts:
                 target_node.add_part(
-                    tg=tg,
-                    g=g,
-                    part=FieldRefPart.create_instance(tg=tg, g=g, info=part),
+                    g=g, part=FieldRefPart.__create_instance__(tg=tg, g=g, info=part)
                 )
 
         if template_data is not None:
             template_source, template_args = template_data
             template_node = trait.template.get()
-            template_node.set_source_info(tg=tg, g=g, source_info=template_source)
+            template_node.set_source_info(g=g, source_info=template_source)
             for arg in template_args:
-                template_node.add_arg(tg=tg, g=g, arg=arg)
+                template_node.add_arg(g=g, arg=arg)
 
         if constructor is not None:
-            trait.set_constructor(tg=tg, g=g, constructor=constructor)
+            trait.set_constructor(g=g, constructor=constructor)
 
         return trait
 
-    def set_constructor(self, tg: TypeGraph, g: GraphView, constructor: str):
-        constrain_to_literal(
-            g=g,
-            tg=tg,
-            node=self.constructor.get().instance.node(),
-            value=constructor,
-        )
+    def set_constructor(self, g: GraphView, constructor: str):
+        self.constructor.get().constrain_to_literal(g=g, value=constructor)
