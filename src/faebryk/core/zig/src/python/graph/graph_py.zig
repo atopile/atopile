@@ -309,6 +309,23 @@ fn wrap_node_get_dynamic_attrs() type {
         }
     };
 }
+
+fn wrap_node_get_uuid() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_uuid",
+            .doc = "Return the unique identifier of the node",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
+            const uuid = graph.graph.Node.get_uuid(wrapper.data);
+            return py.PyLong_FromUnsignedLongLong(uuid);
+        }
+    };
+}
 fn wrap_node_is_same() type {
     return struct {
         pub const descr = method_descr{
@@ -339,6 +356,7 @@ fn wrap_node(root: *py.PyObject) void {
         wrap_node_create(),
         wrap_node_get_attr(),
         wrap_node_get_dynamic_attrs(),
+        wrap_node_get_uuid(),
         wrap_node_is_same(),
     };
     bind.wrap_namespace_struct(root, graph.graph.Node, extra_methods);

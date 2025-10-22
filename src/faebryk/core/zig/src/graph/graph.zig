@@ -227,6 +227,10 @@ pub const Node = struct {
     pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
         return UUID.equals(N1.attributes.uuid, N2.attributes.uuid);
     }
+
+    pub fn get_uuid(self: *@This()) UUID.T {
+        return self.attributes.uuid;
+    }
 };
 
 pub const NodeReference = *Node;
@@ -614,15 +618,14 @@ pub const GraphView = struct {
 test "basic" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
+    defer g.deinit();
     const TestLinkType = 1759269396;
     try Edge.register_type(TestLinkType);
 
     const n1 = Node.init(a);
-    defer n1.deinit();
     const n2 = Node.init(a);
-    defer n2.deinit();
     const e12 = Edge.init(a, n1, n2, TestLinkType);
-    defer e12.deinit();
+    // no deinit defer required, since graph will deinit all nodes and edges if they reach 0
 
     _ = g.insert_node(n1);
     _ = g.insert_node(n2);
@@ -636,10 +639,4 @@ test "basic" {
     try std.testing.expectEqual(n1._ref_count.ref_count, 1);
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
     try std.testing.expectEqual(e12._ref_count.ref_count, 1);
-
-    // has to be deleted first
-    g.deinit();
-    try std.testing.expectEqual(n1._ref_count.ref_count, 0);
-    try std.testing.expectEqual(n2._ref_count.ref_count, 0);
-    try std.testing.expectEqual(e12._ref_count.ref_count, 0);
 }
