@@ -227,6 +227,10 @@ pub const Node = struct {
     pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
         return UUID.equals(N1.attributes.uuid, N2.attributes.uuid);
     }
+
+    pub fn get_uuid(self: *@This()) UUID.T {
+        return self.attributes.uuid;
+    }
 };
 
 pub const NodeReference = *Node;

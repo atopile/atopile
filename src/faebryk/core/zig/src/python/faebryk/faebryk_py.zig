@@ -208,6 +208,139 @@ fn wrap_edge_composition_get_parent_edge() type {
     };
 }
 
+fn wrap_edge_composition_get_parent_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_parent_node",
+            .doc = "Get the parent node associated with the edge",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const node_ref = faebryk.composition.EdgeComposition.get_parent_node(kwarg_obj.edge);
+            return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+        }
+    };
+}
+
+fn wrap_edge_composition_get_child_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_child_node",
+            .doc = "Get the child node associated with the edge",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const node_ref = faebryk.composition.EdgeComposition.get_child_node(kwarg_obj.edge);
+            return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+        }
+    };
+}
+
+fn wrap_edge_composition_get_child_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_child_of",
+            .doc = "Get the child node of the edge relative to a node",
+            .args_def = struct {
+                edge: *graph.Edge,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.get_child_of(kwarg_obj.edge, kwarg_obj.node)) |node_ref| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_composition_get_parent_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_parent_of",
+            .doc = "Get the parent node of the edge relative to a node",
+            .args_def = struct {
+                edge: *graph.Edge,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.get_parent_of(kwarg_obj.edge, kwarg_obj.node)) |node_ref| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_composition_get_parent_node_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_parent_node_of",
+            .doc = "Get the parent node of a bound node within the composition",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.get_parent_node_of(kwarg_obj.bound_node.*)) |parent| {
+                return graph_py.makeBoundNodePyObject(parent);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_edge_composition_add_child() type {
     return struct {
         pub const descr = method_descr{
@@ -341,6 +474,87 @@ fn wrap_edge_composition_get_child_by_identifier() type {
     };
 }
 
+fn wrap_edge_composition_visit_children_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_children_of_type",
+            .doc = "Visit children edges of the given type",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                child_type: *graph.Node,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .child_type = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.composition.EdgeComposition.visit_children_of_type(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.child_type,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_children_of_type failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_composition_try_get_single_child_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "try_get_single_child_of_type",
+            .doc = "Return the single child of the specified type if it exists",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                child_type: *graph.Node,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .child_type = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.try_get_single_child_of_type(kwarg_obj.bound_node.*, kwarg_obj.child_type)) |child| {
+                return graph_py.makeBoundNodePyObject(child);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_edge_composition(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_composition_create(),
@@ -348,10 +562,17 @@ fn wrap_edge_composition(root: *py.PyObject) void {
         wrap_edge_composition_is_instance(),
         wrap_edge_composition_visit_children_edges(),
         wrap_edge_composition_get_parent_edge(),
+        wrap_edge_composition_get_parent_node(),
+        wrap_edge_composition_get_child_node(),
+        wrap_edge_composition_get_child_of(),
+        wrap_edge_composition_get_parent_of(),
+        wrap_edge_composition_get_parent_node_of(),
         wrap_edge_composition_add_child(),
         wrap_edge_composition_get_name(),
         wrap_edge_composition_get_tid(),
         wrap_edge_composition_get_child_by_identifier(),
+        wrap_edge_composition_visit_children_of_type(),
+        wrap_edge_composition_try_get_single_child_of_type(),
     };
     bind.wrap_namespace_struct(root, faebryk.composition.EdgeComposition, extra_methods);
     edge_composition_type = type_registry.getRegisteredTypeObject("EdgeComposition");

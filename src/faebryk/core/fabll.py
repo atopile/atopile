@@ -1,19 +1,31 @@
 from dataclasses import dataclass
-from typing import Any, Self, cast, override
+from typing import Any, Iterable, Iterator, Self, cast, override
 
-from typing_extensions import deprecated
+from ordered_set import OrderedSet
+from typing_extensions import Callable, deprecated
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
-from faebryk.libs.util import dataclass_as_kwargs, not_none
+from faebryk.libs.util import (
+    KeyErrorNotFound,
+    Tree,
+    dataclass_as_kwargs,
+    not_none,
+    zip_dicts_by_key,
+)
 
 
 class FaebrykApiException(Exception):
+    pass
+
+
+class TraitNotFound(FaebrykApiException):
     pass
 
 
@@ -158,12 +170,211 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         Attributes = cast(type[T], type(self).Attributes)
         return Attributes.of(self.instance)
 
-    def get_parent(self) -> "Node":
+    def get_root_id(self) -> str:
+        return f"0x{self.instance.node().get_uuid():X}"
+
+    def get_name(self, accept_no_parent: bool = False) -> str:
+        parent = self.get_parent()
+        if parent is None:
+            if accept_no_parent:
+                return self.get_root_id()
+            raise FaebrykApiException("Node has no parent")
+        return parent[1]
+
+    def get_parent(self) -> tuple["Node", str] | None:
         parent_edge = EdgeComposition.get_parent_edge(bound_node=self.instance)
         if parent_edge is None:
+            return None
+        parent_node = parent_edge.g().bind(
+            node=EdgeComposition.get_parent_node(edge=parent_edge.edge())
+        )
+        return (
+            Node(instance=parent_node),
+            EdgeComposition.get_name(edge=parent_edge.edge()),
+        )
+
+    def get_parent_force(self) -> tuple["Node", str]:
+        parent = self.get_parent()
+        if parent is None:
             raise FaebrykApiException("Node has no parent")
-        parent_node = parent_edge.g().bind(node=parent_edge.edge().target())
-        return Node(instance=parent_node)
+        return parent
+
+    # TODO get_parent_f, get_parent_of_type, get_parent_with_trait should be called
+    # get_ancestor_...
+    def get_parent_f(
+        self,
+        filter_expr: Callable[["Node[Any]"], bool],
+        direct_only: bool = False,
+        include_root: bool = True,
+    ) -> "Node[Any] | None":
+        parents = [p for p, _ in self.get_hierarchy()]
+        if not include_root:
+            parents = parents[:-1]
+        if direct_only:
+            parents = parents[-1:]
+        for p in reversed(parents):
+            if filter_expr(p):
+                return p
+        return None
+
+    def get_parent_of_type[P: Node[Any]](
+        self,
+        parent_type: type[P],
+        direct_only: bool = False,
+        include_root: bool = True,
+    ) -> P | None:
+        return cast(
+            P | None,
+            self.get_parent_f(
+                filter_expr=lambda p: p.isinstance(parent_type),
+                direct_only=direct_only,
+                include_root=include_root,
+            ),
+        )
+
+    def get_parent_with_trait[TR: Node](
+        self,
+        trait: type[TR],
+        include_self: bool = True,
+    ) -> tuple["Node[Any]", TR]:
+        hierarchy = self.get_hierarchy()
+        if not include_self:
+            hierarchy = hierarchy[:-1]
+        for parent, _ in reversed(hierarchy):
+            if parent.has_trait(trait):
+                return parent, parent.get_trait(trait)
+        raise KeyErrorNotFound(f"No parent with trait {trait} found")
+
+    def nearest_common_ancestor(
+        self, *others: "Node[Any]"
+    ) -> tuple["Node[Any]", str] | None:
+        """
+        Finds the nearest common ancestor of the given nodes, or None if no common
+        ancestor exists
+        """
+        nodes = [self, *others]
+        if not nodes:
+            return None
+
+        # Get hierarchies for all nodes
+        hierarchies = [list(n.get_hierarchy()) for n in nodes]
+        min_length = min(len(h) for h in hierarchies)
+
+        # Find the last matching ancestor
+        last_match = None
+        for i in range(min_length):
+            ref_node, ref_name = hierarchies[0][i]
+            if any(h[i][0] is not ref_node for h in hierarchies[1:]):
+                break
+            last_match = (ref_node, ref_name)
+
+        return last_match
+
+    # TODO: remove when get_children() is visitor
+    def get_direct_children(self) -> list[tuple[str | None, "Node"]]:
+        children: list[tuple[str | None, "Node"]] = []
+        EdgeComposition.visit_children_edges(
+            bound_node=self.instance,
+            ctx=children,
+            f=lambda ctx, edge: ctx.append(
+                (
+                    edge.edge().name(),
+                    Node(
+                        instance=edge.g().bind(
+                            node=EdgeComposition.get_child_node(edge=edge.edge())
+                        )
+                    ),
+                )
+            ),
+        )
+        return children
+
+    # TODO: convert to visitor pattern
+    # TODO: implement in zig
+    def get_children[C: Node](
+        self,
+        direct_only: bool,
+        types: type[C] | tuple[type[C], ...],
+        include_root: bool = False,
+        f_filter: Callable[[C], bool] | None = None,
+        sort: bool = True,
+    ) -> OrderedSet[C]:
+        # copied from old fabll
+        type_tuple = types if isinstance(types, tuple) else (types,)
+
+        result: list[C] = []
+
+        if include_root and self.isinstance(*type_tuple):
+            self_c = cast(C, self)
+            if not f_filter or f_filter(self_c):
+                result.append(self_c)
+
+        def _visit(node: "Node[Any]") -> None:
+            for _name, child in node.get_direct_children():
+                if child.isinstance(*type_tuple):
+                    candidate = cast(C, child)
+                    if not f_filter or f_filter(candidate):
+                        result.append(candidate)
+                if not direct_only:
+                    _visit(child)
+
+        _visit(self)
+
+        if sort:
+            result.sort(key=lambda n: n.get_name(accept_no_parent=True))
+
+        return OrderedSet(result)
+
+    @deprecated("refactor callers and remove")
+    def get_tree[C: Node](
+        self,
+        types: type[C] | tuple[type[C], ...],
+        include_root: bool = True,
+        f_filter: Callable[[C], bool] | None = None,
+        sort: bool = True,
+    ) -> Tree[C]:
+        out = self.get_children(
+            direct_only=True,
+            types=types,
+            f_filter=f_filter,
+            sort=sort,
+        )
+
+        tree = Tree[C](
+            {
+                n: n.get_tree(
+                    types=types,
+                    include_root=False,
+                    f_filter=f_filter,
+                    sort=sort,
+                )
+                for n in out
+            }
+        )
+
+        if include_root:
+            if not isinstance(types, tuple):
+                types = (types,)
+            if self.isinstance(*types):
+                if not f_filter or f_filter(cast(C, self)):
+                    tree = Tree[C]({cast(C, self): tree})
+
+        return tree
+
+    # TODO: get rid of
+    def iter_children_with_trait[TR: Node](
+        self,
+        trait: type[TR],
+        include_self: bool = True,
+    ) -> Iterator[tuple["Node[Any]", TR]]:
+        for level in self.get_tree(
+            types=Node, include_root=include_self
+        ).iter_by_depth():
+            yield from (
+                (child, child.get_trait(trait))
+                for child in level
+                if child.has_trait(trait)
+            )
 
     @property
     def tg(self) -> TypeGraph:
@@ -176,6 +387,107 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     def bind_typegraph_from_self(self) -> "BoundNodeType[Self, Any]":
         return self.bind_typegraph(tg=self.tg)
+
+    def isinstance(self, *type_node: "type[Node]") -> bool:
+        bound_type_nodes = [
+            tn.bind_typegraph_from_instance(self.instance) for tn in type_node
+        ]
+        return any(tn.isinstance(self) for tn in bound_type_nodes)
+
+    def get_hierarchy(self) -> list[tuple["Node", str]]:
+        hierarchy: list[tuple["Node[Any]", str]] = []
+        current: Node[Any] = self
+        while True:
+            if (parent_entry := current.get_parent()) is None:
+                hierarchy.append((current, current.get_root_id()))
+                break
+            hierarchy.append((current, parent_entry[1]))
+            current = parent_entry[0]
+
+        hierarchy.reverse()
+        return hierarchy
+
+    def get_full_name(self, types: bool = False) -> str:
+        parts: list[str] = []
+        if (parent := self.get_parent()) is not None:
+            parent_node, name = parent
+            if not parent_node.no_include_parents_in_full_name:
+                if (parent_full := parent_node.get_full_name(types=False)) is not None:
+                    parts.append(parent_full)
+            parts.append(name)
+        elif not self.no_include_parents_in_full_name:
+            parts.append(self.get_root_id())
+
+        base = ".".join(filter(None, parts))
+        if types:
+            type_name = self.__class__.__qualname__
+            return f"{base}|{type_name}" if base else type_name
+        return base
+
+    @property
+    def no_include_parents_in_full_name(self) -> bool:
+        return getattr(self, "_no_include_parents_in_full_name", False)
+
+    @no_include_parents_in_full_name.setter
+    def no_include_parents_in_full_name(self, value: bool) -> None:
+        setattr(self, "_no_include_parents_in_full_name", value)
+
+    def pretty_params(self, solver: Any = None) -> str:
+        raise NotImplementedError("pretty_params is not implemented")
+
+    def relative_address(self, root: "Node | None" = None) -> str:
+        """Return the address from root to self"""
+        if root is None:
+            return self.get_full_name()
+
+        root_name = root.get_full_name()
+        self_name = self.get_full_name()
+        if not self_name.startswith(root_name):
+            raise ValueError(f"Root {root_name} is not an ancestor of {self_name}")
+
+        return self_name.removeprefix(root_name + ".")
+
+    def try_get_trait[TR: Node[Any]](self, trait: type[TR]) -> TR | None:
+        impl = Trait.try_get_trait(
+            target=self.instance,
+            trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
+        )
+        if impl is None:
+            return None
+        return trait.bind_instance(instance=impl)
+
+    def get_trait[TR: Node](self, trait: type[TR]) -> TR:
+        impl = self.try_get_trait(trait)
+        if impl is None:
+            raise TraitNotFound(f"No trait {trait} found")
+        return impl
+
+    def has_trait(self, trait: type["Node[Any]"]) -> bool:
+        return self.try_get_trait(trait) is not None
+
+    def zip_children_by_name_with[N: Node](
+        self, other: "Node", sub_type: type[N]
+    ) -> dict[str, tuple[N, N]]:
+        nodes = self, other
+        children = tuple(
+            Node.with_names(
+                n.get_children(direct_only=True, include_root=False, types=sub_type)
+            )
+            for n in nodes
+        )
+        return zip_dicts_by_key(*children)
+
+    @staticmethod
+    def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
+        return {n.get_name(): n for n in nodes}
+
+    def __repr__(self) -> str:
+        return self.get_full_name()
+
+    def __rich_repr__(self):
+        yield self.get_full_name()
+
+    __rich_repr__.angular = True
 
     # overrides ------------------------------------------------------------------------
     @classmethod
@@ -225,9 +537,9 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
         instance = self.tg.instantiate_node(type_node=typenode, attributes=attrs)
         return self.t.bind_instance(instance=instance)
 
-    def isinstance(self, instance: BoundNode) -> bool:
+    def isinstance(self, instance: Node[Any]) -> bool:
         return EdgeType.is_node_instance_of(
-            bound_node=instance,
+            bound_node=instance.instance,
             node_type=self.get_or_create_type().node(),
         )
 
@@ -242,9 +554,11 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
         return [self.t(instance=instance) for instance in instances]
 
     # node type agnostic ---------------------------------------------------------------
-    def nodes_with_trait[T: Node](self, trait: type[T]) -> list[tuple["Node", T]]:
+    def nodes_with_trait[T: Node[Any]](
+        self, trait: type[T]
+    ) -> list[tuple["Node[Any]", T]]:
         impls = trait.bind_typegraph(self.tg).get_instances()
-        return [(impl.get_parent(), impl) for impl in impls]
+        return [(p[0], impl) for impl in impls if (p := impl.get_parent()) is not None]
 
     # TODO: Waiting for python to add support for type mapping
     def nodes_with_traits[*Ts](
@@ -316,21 +630,20 @@ class Parameter(Node):
 
         expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
 
-        lit: LiteralNode | None = None
+        class Ctx:
+            lit: LiteralNode | None = None
 
-        # TODO need better python visitor api
-        def visit(ctx: None, edge: BoundEdge) -> None:
-            nonlocal lit
-            operand = edge.g().bind(node=edge.edge().target())
-            tg = not_none(TypeGraph.of_instance(instance_node=operand))
+        def visit(ctx: type[Ctx], edge: BoundEdge) -> None:
+            operand = Node[Any].bind_instance(edge.g().bind(node=edge.edge().target()))
+            tg = not_none(TypeGraph.of_instance(instance_node=operand.instance))
             if LiteralNode.bind_typegraph(tg=tg).isinstance(instance=operand):
-                lit = LiteralNode(operand)
+                ctx.lit = LiteralNode.bind_instance(operand.instance)
 
-        EdgeOperand.visit_operand_edges(bound_node=expr, ctx=None, f=visit)
+        EdgeOperand.visit_operand_edges(bound_node=expr, ctx=Ctx, f=visit)
 
-        if lit is None:
+        if Ctx.lit is None:
             return None
-        return LiteralNode.Attributes.of(node=lit.instance).value
+        return LiteralNode.Attributes.of(node=Ctx.lit.instance).value
 
 
 @dataclass(frozen=True)
@@ -442,6 +755,12 @@ def test_fabll_basic():
         .node()
         .is_same(other=tnwc.tnwa2.get().instance.node())
     )
+
+    tnwc_children = tnwc.get_children(direct_only=False, types=(TestNodeWithoutAttr,))
+    assert len(tnwc_children) == 2
+    assert tnwc_children[0].get_name() == "tnwa1"
+    assert tnwc_children[1].get_name() == "tnwa2"
+    print(tnwc_children[0].get_full_name())
 
 
 if __name__ == "__main__":
