@@ -9,12 +9,15 @@ Rules:
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import ClassVar, Iterable, Self, cast
+from typing import ClassVar, Iterable, Self
 
-from faebryk.core.node import BoundNodeType, Child, Node, Parameter
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.node import BoundNodeType, Node, Parameter
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
+
+# TODO: remove `set_*` methods that could be incorporated into `setup`
+# TODO: capture dynamic substructure in TypeGraph schema
+# TODO: standardize on rhs/lhs instead of left/right for expressions
 
 
 @dataclass(frozen=True)
@@ -135,16 +138,18 @@ class FieldRef(Node):
     ) -> Self:
         field_ref = super().__create_instance__(tg=tg, g=g)
         field_ref.set_source_info(g=g, source_info=source_info)
+
         for part_info in parts:
             part = FieldRefPart.__create_instance__(tg=tg, g=g, info=part_info)
             field_ref.add_part(g=g, part=part)
+
         return field_ref
 
     def set_source_info(self, g: GraphView, source_info: SourceInfo):
         self.source.get().set_source_info(g=g, source_info=source_info)
 
     def add_part(self, g: GraphView, part: FieldRefPart):
-        # TODO: capture sequencing
+        # TODO: store as Sequence
         self._part_idx += 1
         self.add_instance_child(part, name=f"part_{self._part_idx}")
 
@@ -234,28 +239,24 @@ class Quantity(Node):
     ) -> Self:
         quantity = super().__create_instance__(tg=tg, g=g)
         quantity.set_source_info(g=g, source_info=source_info)
-        quantity.set_number(g=g, number=value, source_info=value_source_info)
+        quantity.set_number(g=g, value=value, source_info=value_source_info)
         if unit is not None:
             symbol, unit_source = unit
-            quantity.set_unit(g=g, unit=symbol, source_info=unit_source)
+            quantity.set_unit(g=g, symbol=symbol, source_info=unit_source)
         return quantity
 
     def set_source_info(self, g: GraphView, source_info: SourceInfo):
         self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_number(
-        self, g: GraphView, number: int | float, source_info: SourceInfo | None = None
-    ):
-        number_node = self.number.get()
-        number_node.set_value(g=g, value=number)
-        if source_info is not None:
-            number_node.set_source_info(g=g, source_info=source_info)
+    def set_number(self, g: GraphView, value: int | float, source_info: SourceInfo):
+        number = self.number.get()
+        number.set_value(g=g, value=value)
+        number.set_source_info(g=g, source_info=source_info)
 
-    def set_unit(self, g: GraphView, unit: str, source_info: SourceInfo | None = None):
-        unit_node = self.unit.get()
-        unit_node.set_symbol(g=g, symbol=unit)
-        if source_info is not None:
-            unit_node.set_source_info(g=g, source_info=source_info)
+    def set_unit(self, g: GraphView, symbol: str, source_info: SourceInfo):
+        unit = self.unit.get()
+        unit.set_symbol(g=g, symbol=symbol)
+        unit.set_source_info(g=g, source_info=source_info)
 
 
 class BinaryExpression(Node):
@@ -271,31 +272,21 @@ class BinaryExpression(Node):
         g: GraphView,
         source_info: SourceInfo,
         operator: str,
-        left: Node,
-        right: Node,
+        lhs: Node,
+        rhs: Node,  # TODO: restrict types
     ) -> Self:
         binary = super().__create_instance__(tg=tg, g=g)
         binary.set_source_info(g=g, source_info=source_info)
-        binary.set_operator(g=g, operator=operator)
-        binary.set_left(g=g, node=left)
-        binary.set_right(g=g, node=right)
+        binary.operator.get().constrain_to_literal(g=g, value=operator)
+        binary.add_instance_child(lhs, name="lhs")
+        binary.add_instance_child(rhs, name="rhs")
         return binary
 
     def set_source_info(self, g: GraphView, source_info: SourceInfo):
         self.source.get().set_source_info(g=g, source_info=source_info)
 
-    def set_operator(self, g: GraphView, operator: str):
-        self.operator.get().constrain_to_literal(g=g, value=operator)
 
-    def set_left(self, g: GraphView, node: Node):
-        # FIXME: static?
-        self.add_instance_child(node, name="left")
-
-    def set_right(self, g: GraphView, node: Node):
-        # FIXME
-        self.add_instance_child(node, name="right")
-
-
+# FIXME: do we need this?
 class GroupExpression(Node):
     @classmethod
     def __create_type__(cls, t: BoundNodeType) -> None:
@@ -311,15 +302,11 @@ class GroupExpression(Node):
     ) -> Self:
         group = super().__create_instance__(tg=tg, g=g)
         group.set_source_info(g=g, source_info=source_info)
-        group.set_expression(g=g, expression=expression)
+        group.add_instance_child(expression, name="expression")
         return group
 
     def set_source_info(self, g: GraphView, source_info: SourceInfo):
         self.source.get().set_source_info(g=g, source_info=source_info)
-
-    def set_expression(self, g: GraphView, expression: Node):
-        # FIXME: static?
-        self.add_instance_child(expression, name="expression")
 
 
 class ComparisonClause(Node):
@@ -421,21 +408,21 @@ class BilateralQuantity(Node):
         quantity_node = bilateral_quantity.quantity.get()
         quantity_node.set_source_info(g=g, source_info=quantity_source_info)
         quantity_node.set_number(
-            g=g, number=quantity_value, source_info=quantity_value_source_info
+            g=g, value=quantity_value, source_info=quantity_value_source_info
         )
         if quantity_unit is not None:
             quantity_node.set_unit(
-                g=g, unit=quantity_unit, source_info=quantity_unit_source_info
+                g=g, symbol=quantity_unit, source_info=quantity_unit_source_info
             )
 
         tolerance_node = bilateral_quantity.tolerance.get()
         tolerance_node.set_source_info(g=g, source_info=tolerance_source_info)
         tolerance_node.set_number(
-            g=g, number=tolerance_value, source_info=tolerance_value_source_info
+            g=g, value=tolerance_value, source_info=tolerance_value_source_info
         )
         if tolerance_unit is not None:
             tolerance_node.set_unit(
-                g=g, unit=tolerance_unit, source_info=tolerance_unit_source_info
+                g=g, symbol=tolerance_unit, source_info=tolerance_unit_source_info
             )
 
         return bilateral_quantity
@@ -471,20 +458,20 @@ class BoundedQuantity(Node):
         start_quantity = bounded.start.get()
         start_quantity.set_source_info(g=g, source_info=start_source_info)
         start_quantity.set_number(
-            g=g, number=start_value, source_info=start_value_source_info
+            g=g, value=start_value, source_info=start_value_source_info
         )
         if start_unit is not None:
             start_quantity.set_unit(
-                g=g, unit=start_unit, source_info=start_unit_source_info
+                g=g, symbol=start_unit, source_info=start_unit_source_info
             )
 
         end_quantity = bounded.end.get()
         end_quantity.set_source_info(g=g, source_info=end_source_info)
-        end_quantity.set_number(
-            g=g, number=end_value, source_info=end_value_source_info
-        )
+        end_quantity.set_number(g=g, value=end_value, source_info=end_value_source_info)
         if end_unit is not None:
-            end_quantity.set_unit(g=g, unit=end_unit, source_info=end_unit_source_info)
+            end_quantity.set_unit(
+                g=g, symbol=end_unit, source_info=end_unit_source_info
+            )
 
         return bounded
 
@@ -605,7 +592,6 @@ class Slice(Node):
         tg: TypeGraph,
         g: GraphView,
         source_info: SourceInfo,
-        *,
         start: tuple[int, SourceInfo] | None = None,
         stop: tuple[int, SourceInfo] | None = None,
         step: tuple[int, SourceInfo] | None = None,
@@ -918,7 +904,21 @@ class String(Node):
         self.source.get().set_source_info(g=g, source_info=source_info)
 
 
-AssignableT = NewExpression | String | Boolean  # FIXME
+ArithmeticAtomT = (
+    FieldRef | Quantity | BilateralQuantity | BoundedQuantity | GroupExpression
+)
+
+ArithmeticT = BinaryExpression | ArithmeticAtomT
+
+AssignableT = (
+    NewExpression
+    | String
+    | Boolean
+    | Quantity
+    | BoundedQuantity
+    | BilateralQuantity
+    | ArithmeticT
+)
 
 
 class Assignable(Node):
