@@ -24,11 +24,8 @@ For isolated memory measurements, use:
 """
 
 import gc
-import pickle
-import resource
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -55,11 +52,11 @@ def timer(func, iterations=1):
 def measure_memory_subprocess(impl_type, size_param):
     """
     Measure memory in isolated subprocess for accurate measurement.
-    
+
     Args:
         impl_type: 'cpp_chain', 'zig_chain', 'cpp_star', or 'zig_star'
         size_param: chain_length or num_leaves
-    
+
     Returns: (memory_mb, path_count)
     """
     # Create a temporary script to run in subprocess
@@ -151,20 +148,17 @@ else:
 
 print(f"{{increase_mb:.2f}},{{len(paths)}}")
 """
-    
+
     # Run in subprocess
     result = subprocess.run(
-        [sys.executable, "-c", script],
-        capture_output=True,
-        text=True,
-        timeout=300
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=300
     )
-    
+
     if result.returncode != 0:
         raise RuntimeError(f"Subprocess failed: {result.stderr}")
-    
+
     # Parse output
-    mem_mb, path_count = result.stdout.strip().split(',')
+    mem_mb, path_count = result.stdout.strip().split(",")
     return float(mem_mb), int(path_count)
 
 
@@ -176,7 +170,7 @@ print(f"{{increase_mb:.2f}},{{len(paths)}}")
 class CppModuleInterface(cpp.Node):
     """
     ModuleInterface with C++ backing for benchmarking.
-    
+
     Recreates the old architecture where ModuleInterface inherited from cpp.Node.
     Includes proper graph interface linking for pathfinding.
     """
@@ -184,11 +178,11 @@ class CppModuleInterface(cpp.Node):
     def __init__(self):
         super().__init__()
         cpp.Node.transfer_ownership(self)
-        
+
         # Create the "connected" GraphInterface for inter-node connections
         self.connected = cpp.GraphInterfaceModuleConnection()
         self.connected.node = self
-        
+
         # Link self_gif to connected so pathfinding can traverse through it
         # (pathfinding starts from self_gif, needs to reach connected interface)
         self.connected.connect(self.self_gif, cpp.LinkSibling())
@@ -278,7 +272,7 @@ def run_benchmark(
 ):
     """
     Generic benchmark runner for C++ vs Zig comparison.
-    
+
     Args:
         test_name: Name of the test (e.g., "DEEP CHAIN", "WIDE NET")
         size_desc: Size description (e.g., "deep chain, 1000 nodes")
@@ -288,28 +282,32 @@ def run_benchmark(
     """
     only_cpp = request.config.getoption("--only-cpp")
     only_zig = request.config.getoption("--only-zig")
-    
+
     run_cpp = not only_zig
     run_zig = not only_cpp
-    
+
     print(f"\n{'=' * 70}")
     print(f"{test_name}: {size_desc}")
     print(f"{'=' * 70}")
 
     cpp_build_time = cpp_time = cpp_mem = cpp_paths = cpp_graph_data = None
     if run_cpp:
-        print(f"\n  === C++ Implementation ===")
-        
+        print("\n  === C++ Implementation ===")
+
         # Measure memory in isolated subprocess
-        cpp_mem, cpp_path_count = measure_memory_subprocess(f'cpp_{topology}', size_param)
-        
+        cpp_mem, cpp_path_count = measure_memory_subprocess(
+            f"cpp_{topology}", size_param
+        )
+
         # Measure time and verify path count in-process
         _, (cpp_graph_data, cpp_paths) = timer(cpp_build_and_query)
         cpp_build_time, _ = timer(cpp_build_func)
         cpp_time, _ = timer(cpp_query_func, iterations=3)
-        
-        assert len(cpp_paths) == cpp_path_count, f"Path count mismatch: {len(cpp_paths)} vs {cpp_path_count}"
-        
+
+        assert len(cpp_paths) == cpp_path_count, (
+            f"Path count mismatch: {len(cpp_paths)} vs {cpp_path_count}"
+        )
+
         print(f"  Build time: {cpp_build_time * 1000:.2f} ms")
         print(f"  Query time: {cpp_time * 1000:.3f} ms")
         print(f"  Memory: {cpp_mem:.2f} MB")
@@ -317,25 +315,29 @@ def run_benchmark(
         if len(cpp_paths) > 0:
             path_lengths = [len(p) for p in cpp_paths]
             print(f"    Path lengths: min={min(path_lengths)}, max={max(path_lengths)}")
-        
+
         # Clean up completely before Zig
         del cpp_graph_data, cpp_paths
         gc.collect()
 
     zig_build_time = zig_time = zig_mem = zig_paths = zig_graph_data = None
     if run_zig:
-        print(f"\n  === Zig Implementation ===")
-        
+        print("\n  === Zig Implementation ===")
+
         # Measure memory in isolated subprocess
-        zig_mem, zig_path_count = measure_memory_subprocess(f'zig_{topology}', size_param)
-        
+        zig_mem, zig_path_count = measure_memory_subprocess(
+            f"zig_{topology}", size_param
+        )
+
         # Measure time and verify path count in-process
         _, (zig_graph_data, zig_paths) = timer(zig_build_and_query)
         zig_build_time, _ = timer(zig_build_func)
         zig_time, _ = timer(zig_query_func, iterations=3)
-        
-        assert len(zig_paths) == zig_path_count, f"Path count mismatch: {len(zig_paths)} vs {zig_path_count}"
-        
+
+        assert len(zig_paths) == zig_path_count, (
+            f"Path count mismatch: {len(zig_paths)} vs {zig_path_count}"
+        )
+
         print(f"  Build time: {zig_build_time * 1000:.2f} ms")
         print(f"  Query time: {zig_time * 1000:.3f} ms")
         print(f"  Memory: {zig_mem:.2f} MB")
@@ -347,13 +349,25 @@ def run_benchmark(
     print(f"\n{'=' * 70}")
     print(f"Summary ({size_desc}):")
     print(f"{'=' * 70}")
-    
+
     if run_cpp and run_zig:
         print(f"{'Metric':<25} {'C++':<15} {'Zig':<15} {'Winner':<15}")
         print(f"{'-' * 70}")
-        print(f"{'Build (ms)':<25} {cpp_build_time * 1000:<15.3f} {zig_build_time * 1000:<15.3f} {show_winner(cpp_build_time, zig_build_time):<15}")
-        print(f"{'Find all paths (ms)':<25} {cpp_time * 1000:<15.3f} {zig_time * 1000:<15.3f} {show_winner(cpp_time, zig_time):<15}")
-        print(f"{'Memory (MB)':<25} {cpp_mem:<15.2f} {zig_mem:<15.2f} {show_winner(cpp_mem, zig_mem):<15}")
+        print(
+            f"{'Build (ms)':<25} {cpp_build_time * 1000:<15.3f} "
+            f"{zig_build_time * 1000:<15.3f} "
+            f"{show_winner(cpp_build_time, zig_build_time):<15}"
+        )
+        print(
+            f"{'Find all paths (ms)':<25} {cpp_time * 1000:<15.3f} "
+            f"{zig_time * 1000:<15.3f} "
+            f"{show_winner(cpp_time, zig_time):<15}"
+        )
+        print(
+            f"{'Memory (MB)':<25} {cpp_mem:<15.2f} "
+            f"{zig_mem:<15.2f} "
+            f"{show_winner(cpp_mem, zig_mem):<15}"
+        )
     else:
         print(f"{'Metric':<25} {'Value':<15}")
         print(f"{'-' * 70}")
@@ -365,7 +379,7 @@ def run_benchmark(
             print(f"{'Build (ms)':<25} {zig_build_time * 1000:<15.3f}")
             print(f"{'Find all paths (ms)':<25} {zig_time * 1000:<15.3f}")
             print(f"{'Memory (MB)':<25} {zig_mem:<15.2f}")
-    
+
     print(f"{'=' * 70}\n")
 
 
@@ -379,25 +393,25 @@ def test_deep_chain(request, chain_length: int):
     """
     Scenario: Long linear chain N1 -> N2 -> N3 -> ... -> Nn
     Operation: Find all paths (full BFS exploration)
-    
+
     This tests pathfinder performance on graphs with high depth.
     """
     # Build closures that capture chain_length
     cpp_nodes = [None]
     zig_data = [None, None]
-    
+
     def cpp_build_and_query():
         nodes = build_cpp_chain(chain_length)
         paths = find_paths_cpp(nodes[0], [nodes[-1]])
         cpp_nodes[0] = nodes
         return nodes, paths
-    
+
     def zig_build_and_query():
         g, nodes = build_zig_chain(chain_length)
         paths = EdgeInterfaceConnection.get_connected(source=nodes[0])
         zig_data[0], zig_data[1] = g, nodes
         return (g, nodes), paths
-    
+
     run_benchmark(
         request,
         "DEEP CHAIN",
@@ -423,26 +437,26 @@ def test_wide_net(request, num_leaves: int):
     """
     Scenario: Star topology - one center node connected to N leaf nodes (1 layer deep)
     Operation: Find all paths (full BFS exploration)
-    
+
     This tests pathfinder performance on graphs with high width but shallow depth.
     Simulates scenarios like a power rail connected to many components.
     """
     # Build closures that capture num_leaves
     cpp_graph = [None, None]
     zig_data = [None, None, None]
-    
+
     def cpp_build_and_query():
         center, leaves = build_cpp_star(num_leaves)
         paths = find_paths_cpp(center, leaves)
         cpp_graph[0], cpp_graph[1] = center, leaves
         return (center, leaves), paths
-    
+
     def zig_build_and_query():
         g, center, leaves = build_zig_star(num_leaves)
         paths = EdgeInterfaceConnection.get_connected(source=center)
         zig_data[0], zig_data[1], zig_data[2] = g, center, leaves
         return (g, center, leaves), paths
-    
+
     run_benchmark(
         request,
         "WIDE NET",
@@ -461,16 +475,17 @@ def test_wide_net(request, num_leaves: int):
 if __name__ == "__main__":
     # Quick test run
     import sys
-    
+
     class FakeRequest:
         class FakeConfig:
             def getoption(self, opt):
                 return False
+
         config = FakeConfig()
-    
+
     req = FakeRequest()
     print("\n=== Deep Chain Test ===")
     test_deep_chain(req, 100)
-    
+
     print("\n=== Wide Net Test ===")
     test_wide_net(req, 100)

@@ -33,10 +33,18 @@ def test_down_connect():
     hv = [g.insert_node(node=Node.create()) for _ in range(2)]
     lv = [g.insert_node(node=Node.create()) for _ in range(2)]
 
-    EdgeComposition.add_child(bound_node=ep[0], child=hv[0].node(), child_identifier="hv")
-    EdgeComposition.add_child(bound_node=ep[0], child=lv[0].node(), child_identifier="lv")
-    EdgeComposition.add_child(bound_node=ep[1], child=hv[1].node(), child_identifier="hv")
-    EdgeComposition.add_child(bound_node=ep[1], child=lv[1].node(), child_identifier="lv")
+    EdgeComposition.add_child(
+        bound_node=ep[0], child=hv[0].node(), child_identifier="hv"
+    )
+    EdgeComposition.add_child(
+        bound_node=ep[0], child=lv[0].node(), child_identifier="lv"
+    )
+    EdgeComposition.add_child(
+        bound_node=ep[1], child=hv[1].node(), child_identifier="hv"
+    )
+    EdgeComposition.add_child(
+        bound_node=ep[1], child=lv[1].node(), child_identifier="lv"
+    )
 
     EdgeInterfaceConnection.connect(bn1=ep[0], bn2=ep[1])
 
@@ -108,10 +116,18 @@ def test_chains_mixed_shallow_nested():
     lv = [g.insert_node(node=Node.create()) for _ in range(3)]
 
     for i in range(3):
-        EdgeComposition.add_child(bound_node=el[i], child=line[i].node(), child_identifier="line")
-        EdgeComposition.add_child(bound_node=el[i], child=ref[i].node(), child_identifier="reference")
-        EdgeComposition.add_child(bound_node=ref[i], child=hv[i].node(), child_identifier="hv")
-        EdgeComposition.add_child(bound_node=ref[i], child=lv[i].node(), child_identifier="lv")
+        EdgeComposition.add_child(
+            bound_node=el[i], child=line[i].node(), child_identifier="line"
+        )
+        EdgeComposition.add_child(
+            bound_node=el[i], child=ref[i].node(), child_identifier="reference"
+        )
+        EdgeComposition.add_child(
+            bound_node=ref[i], child=hv[i].node(), child_identifier="hv"
+        )
+        EdgeComposition.add_child(
+            bound_node=ref[i], child=lv[i].node(), child_identifier="lv"
+        )
 
     EdgeInterfaceConnection.connect_shallow(bn1=el[0], bn2=el[1])
     EdgeInterfaceConnection.connect(bn1=el[1], bn2=el[2])
@@ -164,16 +180,23 @@ def test_split_flip_negative():
     lower1 = [g.insert_node(node=Node.create()) for _ in range(2)]
     lower2 = [g.insert_node(node=Node.create()) for _ in range(2)]
 
-    EdgeComposition.add_child(bound_node=high[0], child=lower1[0].node(), child_identifier="lower1")
-    EdgeComposition.add_child(bound_node=high[0], child=lower2[0].node(), child_identifier="lower2")
-    EdgeComposition.add_child(bound_node=high[1], child=lower1[1].node(), child_identifier="lower1")
-    EdgeComposition.add_child(bound_node=high[1], child=lower2[1].node(), child_identifier="lower2")
+    EdgeComposition.add_child(
+        bound_node=high[0], child=lower1[0].node(), child_identifier="lower1"
+    )
+    EdgeComposition.add_child(
+        bound_node=high[0], child=lower2[0].node(), child_identifier="lower2"
+    )
+    EdgeComposition.add_child(
+        bound_node=high[1], child=lower1[1].node(), child_identifier="lower1"
+    )
+    EdgeComposition.add_child(
+        bound_node=high[1], child=lower2[1].node(), child_identifier="lower2"
+    )
 
     EdgeInterfaceConnection.connect(bn1=lower1[0], bn2=lower2[1])
     EdgeInterfaceConnection.connect(bn1=lower2[0], bn2=lower1[1])
 
     assert not EdgeInterfaceConnection.is_connected_to(source=high[0], target=high[1])
-
 
 
 def test_up_connect_simple_two_negative():
@@ -190,10 +213,18 @@ def test_up_connect_simple_two_negative():
     lower1 = [g.insert_node(node=Node.create()) for _ in range(2)]
     lower2 = [g.insert_node(node=Node.create()) for _ in range(2)]
 
-    EdgeComposition.add_child(bound_node=high[0], child=lower1[0].node(), child_identifier="lower1")
-    EdgeComposition.add_child(bound_node=high[0], child=lower2[0].node(), child_identifier="lower2")
-    EdgeComposition.add_child(bound_node=high[1], child=lower1[1].node(), child_identifier="lower1")
-    EdgeComposition.add_child(bound_node=high[1], child=lower2[1].node(), child_identifier="lower2")
+    EdgeComposition.add_child(
+        bound_node=high[0], child=lower1[0].node(), child_identifier="lower1"
+    )
+    EdgeComposition.add_child(
+        bound_node=high[0], child=lower2[0].node(), child_identifier="lower2"
+    )
+    EdgeComposition.add_child(
+        bound_node=high[1], child=lower1[1].node(), child_identifier="lower1"
+    )
+    EdgeComposition.add_child(
+        bound_node=high[1], child=lower2[1].node(), child_identifier="lower2"
+    )
 
     EdgeInterfaceConnection.connect(bn1=lower1[0], bn2=lower1[1])
     assert not EdgeInterfaceConnection.is_connected_to(source=high[0], target=high[1])
@@ -222,8 +253,12 @@ def test_split_chain_single():
     l2 = [g.insert_node(node=Node.create()) for _ in range(3)]
 
     for i in range(3):
-        EdgeComposition.add_child(bound_node=h[i], child=l1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h[i], child=l2[i].node(), child_identifier="l2")
+        EdgeComposition.add_child(
+            bound_node=h[i], child=l1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h[i], child=l2[i].node(), child_identifier="l2"
+        )
 
     EdgeInterfaceConnection.connect(bn1=l1[0], bn2=l1[1])
     EdgeInterfaceConnection.connect(bn1=l2[0], bn2=l2[1])
@@ -248,8 +283,12 @@ def test_split_chain_flip():
     l2 = [g.insert_node(node=Node.create()) for _ in range(4)]
 
     for i in range(4):
-        EdgeComposition.add_child(bound_node=h[i], child=l1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h[i], child=l2[i].node(), child_identifier="l2")
+        EdgeComposition.add_child(
+            bound_node=h[i], child=l1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h[i], child=l2[i].node(), child_identifier="l2"
+        )
 
     EdgeInterfaceConnection.connect(bn1=l1[0], bn2=l2[1])
     EdgeInterfaceConnection.connect(bn1=l2[0], bn2=l1[1])
@@ -276,8 +315,12 @@ def test_up_connect_chain_multiple_same():
     l2 = [g.insert_node(node=Node.create()) for _ in range(3)]
 
     for i in range(3):
-        EdgeComposition.add_child(bound_node=h[i], child=l1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h[i], child=l2[i].node(), child_identifier="l2")
+        EdgeComposition.add_child(
+            bound_node=h[i], child=l1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h[i], child=l2[i].node(), child_identifier="l2"
+        )
 
     EdgeInterfaceConnection.connect(bn1=l1[0], bn2=l1[1])
     EdgeInterfaceConnection.connect(bn1=l2[0], bn2=l2[1])
@@ -303,8 +346,12 @@ def test_alternating_hierarchy_levels():
     l2 = [g.insert_node(node=Node.create()) for _ in range(2)]
 
     for i in range(2):
-        EdgeComposition.add_child(bound_node=h[i+1], child=l1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h[i+1], child=l2[i].node(), child_identifier="l2")
+        EdgeComposition.add_child(
+            bound_node=h[i + 1], child=l1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h[i + 1], child=l2[i].node(), child_identifier="l2"
+        )
 
     EdgeInterfaceConnection.connect(bn1=h[0], bn2=h[1])
     EdgeInterfaceConnection.connect(bn1=l1[0], bn2=l1[1])
@@ -338,12 +385,24 @@ def test_up_connect_hierarchy_mixed():
     l2_h2 = [g.insert_node(node=Node.create()) for _ in range(2)]
 
     for i in range(2):
-        EdgeComposition.add_child(bound_node=r[i], child=h1[i].node(), child_identifier="h1")
-        EdgeComposition.add_child(bound_node=r[i], child=h2[i].node(), child_identifier="h2")
-        EdgeComposition.add_child(bound_node=h1[i], child=l1_h1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h1[i], child=l2_h1[i].node(), child_identifier="l2")
-        EdgeComposition.add_child(bound_node=h2[i], child=l1_h2[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h2[i], child=l2_h2[i].node(), child_identifier="l2")
+        EdgeComposition.add_child(
+            bound_node=r[i], child=h1[i].node(), child_identifier="h1"
+        )
+        EdgeComposition.add_child(
+            bound_node=r[i], child=h2[i].node(), child_identifier="h2"
+        )
+        EdgeComposition.add_child(
+            bound_node=h1[i], child=l1_h1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h1[i], child=l2_h1[i].node(), child_identifier="l2"
+        )
+        EdgeComposition.add_child(
+            bound_node=h2[i], child=l1_h2[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h2[i], child=l2_h2[i].node(), child_identifier="l2"
+        )
 
     EdgeInterfaceConnection.connect(bn1=l1_h1[0], bn2=l1_h1[1])
     EdgeInterfaceConnection.connect(bn1=l2_h1[0], bn2=l2_h1[1])
@@ -351,8 +410,14 @@ def test_up_connect_hierarchy_mixed():
 
     assert len(EdgeInterfaceConnection.is_connected_to(source=h1[0], target=h1[1])) == 1
     assert len(EdgeInterfaceConnection.is_connected_to(source=h2[0], target=h2[1])) == 1
-    assert len(EdgeInterfaceConnection.is_connected_to(source=l1_h2[0], target=l1_h2[1])) == 0
-    assert len(EdgeInterfaceConnection.is_connected_to(source=l2_h2[0], target=l2_h2[1])) == 0
+    assert (
+        len(EdgeInterfaceConnection.is_connected_to(source=l1_h2[0], target=l1_h2[1]))
+        == 0
+    )
+    assert (
+        len(EdgeInterfaceConnection.is_connected_to(source=l2_h2[0], target=l2_h2[1]))
+        == 0
+    )
     assert len(EdgeInterfaceConnection.is_connected_to(source=r[0], target=r[1])) == 1
 
 
@@ -375,7 +440,7 @@ def test_up_connect_chain_hierarchy():
     h1_r = [g.insert_node(node=Node.create()) for _ in range(2)]
     h2_r = [g.insert_node(node=Node.create()) for _ in range(2)]
     hm = [g.insert_node(node=Node.create()) for _ in range(2)]
-    
+
     l1_h1r = [g.insert_node(node=Node.create()) for _ in range(2)]
     l2_h1r = [g.insert_node(node=Node.create()) for _ in range(2)]
     l1_hm = [g.insert_node(node=Node.create()) for _ in range(2)]
@@ -384,14 +449,30 @@ def test_up_connect_chain_hierarchy():
     l2_h2r = [g.insert_node(node=Node.create()) for _ in range(2)]
 
     for i in range(2):
-        EdgeComposition.add_child(bound_node=r[i], child=h1_r[i].node(), child_identifier="h1")
-        EdgeComposition.add_child(bound_node=r[i], child=h2_r[i].node(), child_identifier="h2")
-        EdgeComposition.add_child(bound_node=h1_r[i], child=l1_h1r[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h1_r[i], child=l2_h1r[i].node(), child_identifier="l2")
-        EdgeComposition.add_child(bound_node=h2_r[i], child=l1_h2r[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=h2_r[i], child=l2_h2r[i].node(), child_identifier="l2")
-        EdgeComposition.add_child(bound_node=hm[i], child=l1_hm[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=hm[i], child=l2_hm[i].node(), child_identifier="l2")
+        EdgeComposition.add_child(
+            bound_node=r[i], child=h1_r[i].node(), child_identifier="h1"
+        )
+        EdgeComposition.add_child(
+            bound_node=r[i], child=h2_r[i].node(), child_identifier="h2"
+        )
+        EdgeComposition.add_child(
+            bound_node=h1_r[i], child=l1_h1r[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h1_r[i], child=l2_h1r[i].node(), child_identifier="l2"
+        )
+        EdgeComposition.add_child(
+            bound_node=h2_r[i], child=l1_h2r[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h2_r[i], child=l2_h2r[i].node(), child_identifier="l2"
+        )
+        EdgeComposition.add_child(
+            bound_node=hm[i], child=l1_hm[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=hm[i], child=l2_hm[i].node(), child_identifier="l2"
+        )
 
     EdgeInterfaceConnection.connect(bn1=l1_h1r[0], bn2=l1_hm[0])
     EdgeInterfaceConnection.connect(bn1=l2_h1r[0], bn2=l2_hm[0])
@@ -428,7 +509,7 @@ def test_multi_level_hierarchy():
     m1_h1 = [g.insert_node(node=Node.create()) for _ in range(2)]
     m2_h1 = [g.insert_node(node=Node.create()) for _ in range(2)]
     m1_h2 = [g.insert_node(node=Node.create()) for _ in range(2)]
-    
+
     l1_m1h1 = [g.insert_node(node=Node.create()) for _ in range(2)]
     l2_m1h1 = [g.insert_node(node=Node.create()) for _ in range(2)]
     l1_m2h1 = [g.insert_node(node=Node.create()) for _ in range(2)]
@@ -436,16 +517,36 @@ def test_multi_level_hierarchy():
     l1_m1h2 = [g.insert_node(node=Node.create()) for _ in range(2)]
 
     for i in range(2):
-        EdgeComposition.add_child(bound_node=r[i], child=h1[i].node(), child_identifier="h1")
-        EdgeComposition.add_child(bound_node=r[i], child=h2[i].node(), child_identifier="h2")
-        EdgeComposition.add_child(bound_node=h1[i], child=m1_h1[i].node(), child_identifier="m1")
-        EdgeComposition.add_child(bound_node=h1[i], child=m2_h1[i].node(), child_identifier="m2")
-        EdgeComposition.add_child(bound_node=h2[i], child=m1_h2[i].node(), child_identifier="m1")
-        EdgeComposition.add_child(bound_node=m1_h1[i], child=l1_m1h1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=m1_h1[i], child=l2_m1h1[i].node(), child_identifier="l2")
-        EdgeComposition.add_child(bound_node=m2_h1[i], child=l1_m2h1[i].node(), child_identifier="l1")
-        EdgeComposition.add_child(bound_node=m2_h1[i], child=l2_m2h1[i].node(), child_identifier="l2")
-        EdgeComposition.add_child(bound_node=m1_h2[i], child=l1_m1h2[i].node(), child_identifier="l1")
+        EdgeComposition.add_child(
+            bound_node=r[i], child=h1[i].node(), child_identifier="h1"
+        )
+        EdgeComposition.add_child(
+            bound_node=r[i], child=h2[i].node(), child_identifier="h2"
+        )
+        EdgeComposition.add_child(
+            bound_node=h1[i], child=m1_h1[i].node(), child_identifier="m1"
+        )
+        EdgeComposition.add_child(
+            bound_node=h1[i], child=m2_h1[i].node(), child_identifier="m2"
+        )
+        EdgeComposition.add_child(
+            bound_node=h2[i], child=m1_h2[i].node(), child_identifier="m1"
+        )
+        EdgeComposition.add_child(
+            bound_node=m1_h1[i], child=l1_m1h1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=m1_h1[i], child=l2_m1h1[i].node(), child_identifier="l2"
+        )
+        EdgeComposition.add_child(
+            bound_node=m2_h1[i], child=l1_m2h1[i].node(), child_identifier="l1"
+        )
+        EdgeComposition.add_child(
+            bound_node=m2_h1[i], child=l2_m2h1[i].node(), child_identifier="l2"
+        )
+        EdgeComposition.add_child(
+            bound_node=m1_h2[i], child=l1_m1h2[i].node(), child_identifier="l1"
+        )
 
     EdgeInterfaceConnection.connect(bn1=l1_m1h1[0], bn2=l1_m1h1[1])
     EdgeInterfaceConnection.connect(bn1=l2_m1h1[0], bn2=l2_m1h1[1])
@@ -453,11 +554,27 @@ def test_multi_level_hierarchy():
     EdgeInterfaceConnection.connect(bn1=l2_m2h1[0], bn2=l2_m2h1[1])
     EdgeInterfaceConnection.connect(bn1=l1_m1h2[0], bn2=l1_m1h2[1])
 
-    assert len(EdgeInterfaceConnection.is_connected_to(source=l1_m1h1[0], target=l1_m1h1[1])) == 1
-    assert len(EdgeInterfaceConnection.is_connected_to(source=m1_h1[0], target=m1_h1[1])) == 1
-    assert len(EdgeInterfaceConnection.is_connected_to(source=m2_h1[0], target=m2_h1[1])) == 1
+    assert (
+        len(
+            EdgeInterfaceConnection.is_connected_to(
+                source=l1_m1h1[0], target=l1_m1h1[1]
+            )
+        )
+        == 1
+    )
+    assert (
+        len(EdgeInterfaceConnection.is_connected_to(source=m1_h1[0], target=m1_h1[1]))
+        == 1
+    )
+    assert (
+        len(EdgeInterfaceConnection.is_connected_to(source=m2_h1[0], target=m2_h1[1]))
+        == 1
+    )
     assert len(EdgeInterfaceConnection.is_connected_to(source=h1[0], target=h1[1])) == 1
-    assert len(EdgeInterfaceConnection.is_connected_to(source=m1_h2[0], target=m1_h2[1])) == 1
+    assert (
+        len(EdgeInterfaceConnection.is_connected_to(source=m1_h2[0], target=m1_h2[1]))
+        == 1
+    )
     assert len(EdgeInterfaceConnection.is_connected_to(source=h2[0], target=h2[1])) == 1
     assert len(EdgeInterfaceConnection.is_connected_to(source=r[0], target=r[1])) == 1
 
@@ -532,7 +649,9 @@ def test_no_parent_to_child():
     parent = g.insert_node(node=Node.create())
     child = g.insert_node(node=Node.create())
 
-    EdgeComposition.add_child(bound_node=parent, child=child.node(), child_identifier="c1")
+    EdgeComposition.add_child(
+        bound_node=parent, child=child.node(), child_identifier="c1"
+    )
 
     assert not EdgeInterfaceConnection.is_connected_to(source=parent, target=child)
 
@@ -550,10 +669,16 @@ def test_no_sibling_connection():
     parent = g.insert_node(node=Node.create())
     children = [g.insert_node(node=Node.create()) for _ in range(2)]
 
-    EdgeComposition.add_child(bound_node=parent, child=children[0].node(), child_identifier="c1")
-    EdgeComposition.add_child(bound_node=parent, child=children[1].node(), child_identifier="c2")
+    EdgeComposition.add_child(
+        bound_node=parent, child=children[0].node(), child_identifier="c1"
+    )
+    EdgeComposition.add_child(
+        bound_node=parent, child=children[1].node(), child_identifier="c2"
+    )
 
-    assert not EdgeInterfaceConnection.is_connected_to(source=children[0], target=children[1])
+    assert not EdgeInterfaceConnection.is_connected_to(
+        source=children[0], target=children[1]
+    )
 
 
 def test_shallow_connection_simple():
@@ -583,13 +708,19 @@ def test_shallow_connection_blocks_children():
     parents = [g.insert_node(node=Node.create()) for _ in range(2)]
     children = [g.insert_node(node=Node.create()) for _ in range(2)]
 
-    EdgeComposition.add_child(bound_node=parents[0], child=children[0].node(), child_identifier="c1")
-    EdgeComposition.add_child(bound_node=parents[1], child=children[1].node(), child_identifier="c1")
+    EdgeComposition.add_child(
+        bound_node=parents[0], child=children[0].node(), child_identifier="c1"
+    )
+    EdgeComposition.add_child(
+        bound_node=parents[1], child=children[1].node(), child_identifier="c1"
+    )
 
     EdgeInterfaceConnection.connect_shallow(bn1=parents[0], bn2=parents[1])
 
     assert EdgeInterfaceConnection.is_connected_to(source=parents[0], target=parents[1])
-    assert not EdgeInterfaceConnection.is_connected_to(source=children[0], target=children[1])
+    assert not EdgeInterfaceConnection.is_connected_to(
+        source=children[0], target=children[1]
+    )
 
 
 def test_multiple_paths():
@@ -629,15 +760,21 @@ def test_get_other_connected_node():
     be = EdgeInterfaceConnection.connect(bn1=bns[0], bn2=bns[1])
     edge = be.edge()
 
-    other_from_0 = EdgeInterfaceConnection.get_other_connected_node(edge=edge, node=bns[0].node())
+    other_from_0 = EdgeInterfaceConnection.get_other_connected_node(
+        edge=edge, node=bns[0].node()
+    )
     assert other_from_0 is not None
     assert other_from_0.is_same(other=bns[1].node())
 
-    other_from_1 = EdgeInterfaceConnection.get_other_connected_node(edge=edge, node=bns[1].node())
+    other_from_1 = EdgeInterfaceConnection.get_other_connected_node(
+        edge=edge, node=bns[1].node()
+    )
     assert other_from_1 is not None
     assert other_from_1.is_same(other=bns[0].node())
 
-    other_from_2 = EdgeInterfaceConnection.get_other_connected_node(edge=edge, node=bns[2].node())
+    other_from_2 = EdgeInterfaceConnection.get_other_connected_node(
+        edge=edge, node=bns[2].node()
+    )
     assert other_from_2 is None
 
 
@@ -670,12 +807,18 @@ def test_composition_and_interface_edges():
     roots = [g.insert_node(node=Node.create()) for _ in range(2)]
     children = [g.insert_node(node=Node.create()) for _ in range(2)]
 
-    EdgeComposition.add_child(bound_node=roots[0], child=children[0].node(), child_identifier="child")
-    EdgeComposition.add_child(bound_node=roots[1], child=children[1].node(), child_identifier="child")
+    EdgeComposition.add_child(
+        bound_node=roots[0], child=children[0].node(), child_identifier="child"
+    )
+    EdgeComposition.add_child(
+        bound_node=roots[1], child=children[1].node(), child_identifier="child"
+    )
 
     EdgeInterfaceConnection.connect(bn1=children[0], bn2=children[1])
 
-    assert EdgeInterfaceConnection.is_connected_to(source=children[0], target=children[1])
+    assert EdgeInterfaceConnection.is_connected_to(
+        source=children[0], target=children[1]
+    )
     assert not EdgeInterfaceConnection.is_connected_to(source=roots[0], target=roots[1])
 
     EdgeInterfaceConnection.connect(bn1=roots[0], bn2=roots[1])
@@ -705,7 +848,9 @@ def test_visit_connected_edges():
     def collect_edge(ctx, edge):
         ctx.append(edge)
 
-    EdgeInterfaceConnection.visit_connected_edges(bound_node=bns[0], ctx=collected_edges, f=collect_edge)
+    EdgeInterfaceConnection.visit_connected_edges(
+        bound_node=bns[0], ctx=collected_edges, f=collect_edge
+    )
 
     assert len(collected_edges) == 2
 
