@@ -6,7 +6,7 @@
 # Zig file instead.
 
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-from faebryk.core.zig.gen.graph.graph import BoundNode, Edge, Node
+from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
 class EdgePointer:
     @staticmethod
@@ -21,3 +21,5 @@ class EdgePointer:
     def get_referenced_node_from_node(*, node: BoundNode) -> BoundNode | None: ...
     @staticmethod
     def get_tid() -> Edge.Type: ...
+    @staticmethod
+    def point_to(*, bound_node: BoundNode, target_node: Node) -> BoundEdge: ...

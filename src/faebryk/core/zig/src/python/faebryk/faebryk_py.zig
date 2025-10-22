@@ -1717,6 +1717,35 @@ fn wrap_edge_pointer_get_tid() type {
     };
 }
 
+fn wrap_edge_pointer_point_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "point_to",
+            .doc = "Create a pointer edge from the bound node to the target node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                target_node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .target_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const bound_edge = faebryk.pointer.EdgePointer.point_to(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.target_node,
+            );
+            return graph_py.makeBoundEdgePyObject(bound_edge);
+        }
+    };
+}
+
 fn wrap_module(root: *py.PyObject) void {
     _ = root;
     // TODO
@@ -1730,6 +1759,7 @@ fn wrap_pointer(root: *py.PyObject) void {
         wrap_edge_pointer_get_referenced_node(),
         wrap_edge_pointer_get_referenced_node_from_node(),
         wrap_edge_pointer_get_tid(),
+        wrap_edge_pointer_point_to(),
     };
     bind.wrap_namespace_struct(root, faebryk.pointer.EdgePointer, extra_methods);
     edge_pointer_type = type_registry.getRegisteredTypeObject("EdgePointer");
