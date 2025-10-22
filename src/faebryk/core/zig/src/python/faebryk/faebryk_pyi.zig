@@ -13,7 +13,6 @@ pub fn make_pyi(allocator: std.mem.Allocator, output_dir: []const u8, source_dir
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "node_type", faebryk.node_type, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "next", faebryk.next, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "typegraph", faebryk.typegraph, output_dir, source_dir);
-    try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "source", faebryk.source, output_dir, source_dir);
     //try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "parameter", faebryk.parameter, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "pointer", faebryk.pointer, output_dir, source_dir);
     try pyzig.pyi.PyiGenerator.manualModuleStub(allocator, "trait", faebryk.trait, output_dir, source_dir);
