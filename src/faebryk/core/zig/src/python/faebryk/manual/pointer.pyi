@@ -9,7 +9,11 @@ class EdgePointer:
         *, from_node: Node, to_node: Node, identifier: str | None = None
     ) -> Edge: ...
     @staticmethod
-    def build(*, identifier: str | None) -> EdgeCreationAttributes: ...
+    def build(
+        *, identifier: str | None, order: int | None
+    ) -> EdgeCreationAttributes: ...
+    @staticmethod
+    def get_order(*, edge: Edge) -> int | None: ...
     @staticmethod
     def is_instance(*, edge: Edge) -> bool: ...
     @staticmethod
@@ -36,5 +40,9 @@ class EdgePointer:
     ) -> BoundNode | None: ...
     @staticmethod
     def point_to(
-        *, bound_node: BoundNode, target_node: Node, identifier: str | None = None
+        *,
+        bound_node: BoundNode,
+        target_node: Node,
+        identifier: str | None = None,
+        order: int | None,
     ) -> BoundEdge: ...

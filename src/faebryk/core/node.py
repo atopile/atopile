@@ -15,6 +15,7 @@ from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
+from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -122,6 +123,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 f"more than one level deep (found: {cls.__mro__})"
             )
         super().__init_subclass__()
+
+    @classmethod
+    def __create_instance__(cls, tg: TypeGraph, g: GraphView) -> Self:
+        """DO NOT OVERRIDE!"""
+
+        return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
     @classmethod
     def _type_identifier(cls) -> str:
@@ -507,6 +514,22 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     __rich_repr__.angular = True
 
+    def __eq__(self, other: object) -> bool:
+        match other:
+            case Node():
+                other_node = other.instance.node()
+            case GraphNode():
+                other_node = other
+            case BoundNode():
+                other_node = other.node()
+            case _:
+                return False
+
+        return self.instance.node().is_same(other=other_node)
+
+    def __hash__(self) -> int:
+        return self.instance.node().get_uuid()
+
     # instance edge sugar --------------------------------------------------------------
     def compose_with(self, node: "Node[Any]", name: str | None = None):
         EdgeComposition.add_child(
@@ -518,23 +541,34 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     # Get compositions with the get_children functions
 
-    def point_to(self, to_node: "Node[Any]", identifier: str | None = None) -> None:
+    def point_to(
+        self,
+        to_node: "Node[Any]",
+        identifier: str | None = None,
+        order: int | None = None,
+    ) -> None:
         EdgePointer.point_to(
             bound_node=self.instance,
             target_node=to_node.instance.node(),
             identifier=identifier,
+            order=order,
         )
 
     def get_references(self, identifier: str | None = None) -> "list[Node[Any]]":
-        references: list[BoundNode] = []
+        references: list[tuple[int | None, BoundNode]] = []
 
-        def _collect(ctx: list[BoundNode], bound_edge: BoundEdge) -> None:
+        def _collect(
+            ctx: list[tuple[int | None, BoundNode]], bound_edge: BoundEdge
+        ) -> None:
             edge_name = bound_edge.edge().name()
             if identifier is not None and edge_name != identifier:
                 return
             target = EdgePointer.get_referenced_node(edge=bound_edge.edge())
-            if target is not None:
-                ctx.append(bound_edge.g().bind(node=target))
+            if target is None:
+                return
+            edge_order = EdgePointer.get_order(edge=bound_edge.edge())
+            node = bound_edge.g().bind(node=target)
+            ctx.append((edge_order, node))
 
         if identifier is None:
             EdgePointer.visit_pointed_edges(
@@ -549,7 +583,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 ctx=references,
                 f=_collect,
             )
-        return [Node(instance=instance) for instance in references]
+        return [
+            Node(instance=instance)
+            for _, instance in sorted(references, key=lambda x: x[0] or 0)
+        ]
 
     def chain_to(self, to_node: "Node[Any]") -> None:
         EdgeNext.add_next(
@@ -564,10 +601,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         Override this to add children to the type.
         """
         pass
-
-    @classmethod
-    def __create_instance__(cls, tg: TypeGraph, g: GraphView) -> Self:
-        return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 class BoundNodeType[N: Node[Any], A: NodeAttributes]:
@@ -714,6 +747,14 @@ class Parameter(Node):
             return None
         return LiteralNode.Attributes.of(node=Ctx.lit.instance).value
 
+    def force_extract_literal[T: LiteralT](self, t: type[T]) -> T:
+        lit = self.try_extract_constrained_literal()
+        if lit is None:
+            raise FaebrykApiException(f"Parameter {self} has no literal")
+        if not isinstance(lit, t):
+            raise FaebrykApiException(f"Parameter {self} has no literal of type {t}")
+        return lit
+
 
 @dataclass(frozen=True)
 class LiteralNodeAttributes(NodeAttributes):
@@ -751,46 +792,49 @@ class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
 
 
 # ------------------------------------------------------------
-class Collection(Node):
+class Sequence(Node):
+    """
+    A sequence of (non-unique) elements.
+    Sorted by insertion order.
+    """
+
     _elem_identifier = "e"
 
-    @classmethod
-    def __create_instance__(
-        cls, tg: TypeGraph, g: GraphView, *elems: Node[Any]
-    ) -> Self:
-        out = super().__create_instance__(tg, g)
-        out.append(*elems)
-        return out
-
-    def append(self, *elems: Node[Any]) -> None:
-        for elem in elems:
-            self.point_to(elem, self._elem_identifier)
+    def append(self, *elems: Node[Any]) -> Self:
+        cur_len = len(self.as_list())
+        for i, elem in enumerate(elems):
+            self.point_to(elem, self._elem_identifier, order=cur_len + i)
+        return self
 
     def as_list(self) -> list[Node[Any]]:
         return self.get_references(self._elem_identifier)
 
 
 class Set(Node):
+    """
+    A set of unique elements.
+    Sorted by insertion order.
+    """
+
     _elem_identifier = "e"
 
-    @classmethod
-    def __create_instance__(
-        cls, tg: TypeGraph, g: GraphView, *elems: Node[Any]
-    ) -> Self:
-        out = super().__create_instance__(tg, g)
-        out.append(*elems)
-        return out
-
-    def append(self, *elems: Node[Any]) -> None:
+    def append(self, *elems: Node[Any]) -> Self:
         by_uuid = {elem.instance.node().get_uuid(): elem for elem in elems}
-        for node in self.as_list():
+        cur = self.as_list()
+        cur_len = len(cur)
+        for node in cur:
             by_uuid.pop(node.instance.node().get_uuid(), None)
 
-        for elem in by_uuid.values():
-            self.point_to(elem, self._elem_identifier)
+        for i, elem in enumerate(by_uuid.values()):
+            self.point_to(elem, self._elem_identifier, order=cur_len + i)
+
+        return self
 
     def as_list(self) -> list[Node[Any]]:
         return self.get_references(self._elem_identifier)
+
+    def as_set(self) -> set[Node[Any]]:
+        return set(self.as_list())
 
 
 class Traits:
@@ -804,8 +848,22 @@ class Traits:
     def get_obj[N: Node[Any]](self, t: type[N]) -> N:
         return self.node.get_parent_force()[0].cast(t)
 
+    @staticmethod
+    def mark_as_trait(t: BoundNodeType[Any, Any]) -> None:
+        Trait.mark_as_trait(trait_type=t.get_or_create_type())
+
+    @staticmethod
+    def add_to(node: Node[Any], trait: Node[Any]) -> None:
+        Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+
 
 # ------------------------------------------------------------
+
+
+def _make_graph_and_typegraph():
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+    return g, tg
 
 
 def test_fabll_basic():
@@ -844,11 +902,10 @@ def test_fabll_basic():
             t._add_link(
                 lhs_reference_path=["tnwa1"],
                 rhs_reference_path=["tnwa2"],
-                edge=EdgePointer.build(identifier=None),
+                edge=EdgePointer.build(identifier=None, order=None),
             )
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g, tg = _make_graph_and_typegraph()
     fileloc = FileLocation.bind_typegraph(tg).create_instance(
         g=g,
         attributes=FileLocationAttributes(
@@ -887,12 +944,6 @@ def test_fabll_basic():
     print(tnwc_children[0].get_full_name())
 
 
-def _make_graph_and_typegraph():
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
-    return g, tg
-
-
 def test_typegraph_of_type_and_instance_roundtrip():
     g, tg = _make_graph_and_typegraph()
 
@@ -921,6 +972,23 @@ def test_typegraph_of_type_and_instance_roundtrip():
 
     root_uuid = simple_instance.instance.node().get_uuid()
     assert simple_instance.get_root_id() == f"0x{root_uuid:X}"
+
+
+def test_trait_mark_as_trait():
+    g, tg = _make_graph_and_typegraph()
+
+    class ExampleTrait(Node):
+        @classmethod
+        def __create_type__(cls, t: "BoundNodeType[ExampleTrait, Any]") -> None:
+            Traits.mark_as_trait(t=t)
+
+    class ExampleNode(Node):
+        @classmethod
+        def __create_type__(cls, t: "BoundNodeType[ExampleNode, Any]") -> None:
+            cls.example_trait = t.Child(ExampleTrait)
+
+    node = ExampleNode.bind_typegraph(tg).create_instance(g=g)
+    assert node.try_get_trait(ExampleTrait) is not None
 
 
 def test_pointer_helpers():
@@ -991,6 +1059,129 @@ def test_pointer_helpers():
         left_child.instance.node().get_uuid(),
         right_child.instance.node().get_uuid(),
     }
+
+
+def test_set_basic():
+    """Test basic Set functionality: append, as_list, as_set."""
+    g, tg = _make_graph_and_typegraph()
+
+    class Element(Node):
+        pass
+
+    # Create a Set and some elements
+    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    elem1 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem2 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem3 = Element.bind_typegraph(tg).create_instance(g=g)
+
+    # Test empty set
+    assert len(set_node.as_list()) == 0
+    assert len(set_node.as_set()) == 0
+
+    # Test single append
+    set_node.append(elem1)
+    elems = set_node.as_list()
+    assert len(elems) == 1
+    assert elems[0].instance.node().is_same(other=elem1.instance.node())
+
+    # Test multiple appends
+    set_node.append(elem2, elem3)
+    elems = set_node.as_list()
+    assert len(elems) == 3
+    assert elems[0].instance.node().is_same(other=elem1.instance.node())
+    assert elems[1].instance.node().is_same(other=elem2.instance.node())
+    assert elems[2].instance.node().is_same(other=elem3.instance.node())
+
+    # Test as_set returns correct type and size
+    elem_set = set_node.as_set()
+    assert isinstance(elem_set, set)
+    assert len(elem_set) == 3
+
+
+def test_set_deduplication():
+    """Test that Set correctly deduplicates elements by UUID."""
+    g, tg = _make_graph_and_typegraph()
+
+    class Element(Node):
+        pass
+
+    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    elem1 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem2 = Element.bind_typegraph(tg).create_instance(g=g)
+
+    # Append elem1 multiple times
+    set_node.append(elem1)
+    set_node.append(elem1)
+    set_node.append(elem1)
+
+    # Should only have one element
+    elems = set_node.as_list()
+    assert len(elems) == 1
+    assert elems[0].instance.node().is_same(other=elem1.instance.node())
+
+    # Append elem2 and elem1 again
+    set_node.append(elem2, elem1)
+    elems = set_node.as_list()
+    # Should still only have 2 unique elements
+    assert len(elems) == 2
+    assert elems[0].instance.node().is_same(other=elem1.instance.node())
+    assert elems[1].instance.node().is_same(other=elem2.instance.node())
+
+
+def test_set_order_preservation():
+    """Test that Set preserves insertion order of unique elements."""
+    g, tg = _make_graph_and_typegraph()
+
+    class Element(Node):
+        pass
+
+    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    elem1 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem2 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem3 = Element.bind_typegraph(tg).create_instance(g=g)
+
+    # Append in specific order
+    set_node.append(elem2)
+    set_node.append(elem1)
+    set_node.append(elem3)
+
+    elems = set_node.as_list()
+    assert len(elems) == 3
+    # Order should be preserved: elem2, elem1, elem3
+    assert elems[0].instance.node().is_same(other=elem2.instance.node())
+    assert elems[1].instance.node().is_same(other=elem1.instance.node())
+    assert elems[2].instance.node().is_same(other=elem3.instance.node())
+
+    # Appending duplicates shouldn't change order
+    set_node.append(elem1, elem2)
+    elems = set_node.as_list()
+    assert len(elems) == 3
+    assert elems[0].instance.node().is_same(other=elem2.instance.node())
+    assert elems[1].instance.node().is_same(other=elem1.instance.node())
+    assert elems[2].instance.node().is_same(other=elem3.instance.node())
+
+
+def test_set_chaining():
+    """Test that Set.append returns self for method chaining."""
+    g, tg = _make_graph_and_typegraph()
+
+    class Element(Node):
+        pass
+
+    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    elem1 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem2 = Element.bind_typegraph(tg).create_instance(g=g)
+    elem3 = Element.bind_typegraph(tg).create_instance(g=g)
+
+    # Test method chaining
+    result = set_node.append(elem1).append(elem2).append(elem3)
+
+    # Result should be the same set_node
+    assert result.instance.node().is_same(other=set_node.instance.node())
+
+    # All elements should be in the set
+    elems = set_node.as_list()
+    assert len(elems) == 3
 
 
 if __name__ == "__main__":

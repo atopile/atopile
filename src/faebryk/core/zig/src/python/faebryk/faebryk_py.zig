@@ -1600,6 +1600,7 @@ fn wrap_edge_pointer_create() type {
                 kwarg_obj.from_node,
                 kwarg_obj.to_node,
                 if (identifier_copy) |copy| copy else null,
+                null,
             );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
@@ -1621,6 +1622,7 @@ fn wrap_edge_pointer_build() type {
             .doc = "Build a pointer edge creation attributes",
             .args_def = struct {
                 identifier: ?*py.PyObject = null,
+                order: *py.PyObject,
             },
             .static = true,
         };
@@ -1635,13 +1637,18 @@ fn wrap_edge_pointer_build() type {
                 }
             }
 
+            var order: ?u32 = null;
+            if (kwarg_obj.order != py.Py_None()) {
+                order = bind.unwrap_int(u32, kwarg_obj.order) orelse return null;
+            }
+
             const allocator = std.heap.c_allocator;
             const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
                 if (identifier_copy) |copy| std.heap.c_allocator.free(copy);
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
                 return null;
             };
-            attributes.* = faebryk.pointer.EdgePointer.build(if (identifier_copy) |copy| copy else null);
+            attributes.* = faebryk.pointer.EdgePointer.build(std.heap.c_allocator, if (identifier_copy) |copy| copy else null, order);
             return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
@@ -1742,6 +1749,34 @@ fn wrap_edge_pointer_get_tid() type {
     };
 }
 
+fn wrap_edge_pointer_get_order() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_order",
+            .doc = "Return the order of the pointer edge",
+            .args_def = struct {
+                edge: graph.EdgeReference,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const order = faebryk.pointer.EdgePointer.get_order(kwarg_obj.edge);
+
+            if (order == null) {
+                return bind.wrap_none();
+            }
+
+            return bind.wrap_int(order.?);
+        }
+    };
+}
+
 fn wrap_edge_pointer_point_to() type {
     return struct {
         pub const descr = method_descr{
@@ -1751,6 +1786,7 @@ fn wrap_edge_pointer_point_to() type {
                 bound_node: *graph.BoundNodeReference,
                 target_node: *graph.Node,
                 identifier: ?*py.PyObject = null,
+                order: *py.PyObject,
 
                 pub const fields_meta = .{
                     .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -1775,10 +1811,16 @@ fn wrap_edge_pointer_point_to() type {
                 }
             }
 
+            var order: ?u32 = null;
+            if (kwarg_obj.order != py.Py_None()) {
+                order = bind.unwrap_int(u32, kwarg_obj.order) orelse return null;
+            }
+
             const bound_edge = faebryk.pointer.EdgePointer.point_to(
                 kwarg_obj.bound_node.*,
                 kwarg_obj.target_node,
                 if (identifier_copy) |copy| copy else null,
+                order,
             );
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -1930,6 +1972,7 @@ fn wrap_pointer(root: *py.PyObject) void {
         wrap_edge_pointer_get_referenced_node(),
         wrap_edge_pointer_get_referenced_node_from_node(),
         wrap_edge_pointer_get_tid(),
+        wrap_edge_pointer_get_order(),
         wrap_edge_pointer_visit_pointed_edges(),
         wrap_edge_pointer_visit_pointed_edges_with_identifier(),
         wrap_edge_pointer_get_pointed_node_by_identifier(),
@@ -2131,32 +2174,6 @@ fn wrap_typegraph_add_type() type {
 
             const bnode = faebryk.typegraph.TypeGraph.add_type(wrapper.data, identifier) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_type failed");
-                return null;
-            };
-
-            return graph_py.makeBoundNodePyObject(bnode);
-        }
-    };
-}
-
-fn wrap_typegraph_add_trait() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "add_trait",
-            .doc = "Create and register a new trait node",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            if (!bind.check_no_positional_args(self, args)) return null;
-
-            _ = kwargs;
-
-            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
-
-            const bnode = faebryk.typegraph.TypeGraph.add_trait(wrapper.data) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "add_trait failed");
                 return null;
             };
 
@@ -2569,7 +2586,6 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_of_type(),
         wrap_typegraph_of_instance(),
         wrap_typegraph_add_type(),
-        wrap_typegraph_add_trait(),
         wrap_typegraph_add_make_child(),
         wrap_typegraph_add_make_link(),
         wrap_typegraph_instantiate(),
@@ -2610,6 +2626,32 @@ fn wrap_trait_add_trait_to() type {
                 return null;
             };
             return graph_py.makeBoundNodePyObject(trait_instance);
+        }
+    };
+}
+
+fn wrap_trait_mark_as_trait() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "mark_as_trait",
+            .doc = "Mark the provided node as a trait",
+            .args_def = struct {
+                trait_type: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            faebryk.trait.Trait.mark_as_trait(kwarg_obj.trait_type.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "mark_as_trait failed");
+                return null;
+            };
+            return bind.wrap_none();
         }
     };
 }
@@ -2741,6 +2783,7 @@ fn wrap_trait_visit_implementers() type {
 fn wrap_trait(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_trait_add_trait_to(),
+        wrap_trait_mark_as_trait(),
         wrap_trait_try_get_trait(),
         wrap_trait_visit_implementers(),
     };

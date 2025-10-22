@@ -21,19 +21,32 @@ const return_first = visitor.return_first;
 pub const EdgePointer = struct {
     pub const tid: Edge.EdgeType = 1759771470;
 
-    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str) EdgeReference {
+    pub fn init(allocator: std.mem.Allocator, from: NodeReference, to: NodeReference, identifier: ?str, order: ?u32) EdgeReference {
         const edge = Edge.init(allocator, from, to, tid);
-        build(identifier).apply_to(edge);
+        build(allocator, identifier, order).apply_to(edge);
         return edge;
     }
 
-    pub fn build(identifier: ?str) EdgeCreationAttributes {
+    pub fn build(allocator: std.mem.Allocator, identifier: ?str, order: ?u32) EdgeCreationAttributes {
+        var dynamic: ?graph.DynamicAttributes = null;
+        if (order) |o| {
+            dynamic = graph.DynamicAttributes.init(allocator);
+            dynamic.?.values.put("order", .{ .Int = o }) catch unreachable;
+        }
         return .{
             .edge_type = tid,
             .directional = true,
             .name = identifier,
-            .dynamic = null,
+            .dynamic = dynamic,
         };
+    }
+
+    pub fn get_order(edge: EdgeReference) ?u32 {
+        const order = edge.attributes.dynamic.values.get("order");
+        if (order) |o| {
+            return @intCast(o.Int);
+        }
+        return null;
     }
 
     pub fn get_referenced_node(edge: EdgeReference) ?NodeReference {
@@ -44,8 +57,8 @@ pub const EdgePointer = struct {
         return Edge.is_instance(E, tid);
     }
 
-    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str) BoundEdgeReference {
-        const edge = EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node, identifier);
+    pub fn point_to(bound_node: BoundNodeReference, target_node: NodeReference, identifier: ?str, order: ?u32) BoundEdgeReference {
+        const edge = EdgePointer.init(bound_node.g.allocator, bound_node.node, target_node, identifier, order);
         const bound_edge = bound_node.g.insert_edge(edge);
         return bound_edge;
     }
@@ -152,7 +165,7 @@ test "basic" {
 
     const n1 = g.create_and_insert_node();
     const n2 = g.create_and_insert_node();
-    const e12 = EdgePointer.init(a, n1.node, n2.node, null);
+    const e12 = EdgePointer.init(a, n1.node, n2.node, null, null);
 
     _ = g.insert_edge(e12);
 

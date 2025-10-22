@@ -231,7 +231,7 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "ImplementsType").?;
     }
 
-    fn get_ImplementsTrait(self: *@This()) BoundNodeReference {
+    pub fn get_ImplementsTrait(self: *@This()) BoundNodeReference {
         return EdgeComposition.get_child_by_identifier(self.self_node, "ImplementsTrait").?;
     }
 
@@ -325,7 +325,7 @@ pub const TypeGraph = struct {
         const make_child = try self.instantiate_node(self.get_MakeChild());
         MakeChildNode.Attributes.of(make_child.node).set_child_identifier(identifier);
 
-        _ = EdgePointer.point_to(make_child, child_type.node, identifier);
+        _ = EdgePointer.point_to(make_child, child_type.node, identifier, null);
         _ = EdgeComposition.add_child(target_type, make_child.node, null);
 
         return make_child;

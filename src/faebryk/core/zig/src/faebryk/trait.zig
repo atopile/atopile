@@ -17,6 +17,12 @@ pub const Trait = struct {
         return trait_instance;
     }
 
+    pub fn mark_as_trait(trait_type: BoundNodeReference) !void {
+        var tg = TypeGraph.of_type(trait_type) orelse return error.TypeGraphNotFound;
+        const impl_trait = try tg.instantiate_node(tg.get_ImplementsTrait());
+        _ = EdgeComposition.add_child(trait_type, impl_trait.node, null);
+    }
+
     pub fn try_get_trait(target: BoundNodeReference, trait_type: BoundNodeReference) ?BoundNodeReference {
         return EdgeComposition.try_get_single_child_of_type(target, trait_type.node);
     }
