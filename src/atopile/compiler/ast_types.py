@@ -13,7 +13,7 @@ from typing import ClassVar, Iterable, Self
 
 from atopile.compiler.graph_mock import BoundNode, EdgeComposition, Node
 from faebryk.core.fabll import Child, NodeType, NodeTypeAttributes
-from faebryk.core.zig.gen.faebryk.composition import EdgeOperand
+from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView
 
