@@ -70,180 +70,133 @@
   - Copies formatted `.pyi` outputs from `zig-out/lib/*.pyi` into this folder.
 - Manual: `zig build python-ext -Doptimize=ReleaseSafe -Dpython-include=... [-Dpython-lib=... -Dpython-lib-dir=...]`.
 
-## Memory and lifetimes
+## Memory Management
 
-- The parser duplicates token text; higher‑level `loads` for Python duplicates the input string into the C allocator to keep pointers valid after returning to Python.
-- File wrappers have `free(allocator)`; Python wrappers currently retain data for process lifetime unless explicitly freed from Zig. Avoid holding onto many large parsed files at once.
+### Zig-Python Memory Model
+- Parser duplicates token text into allocator-owned memory
+- Python `loads()` duplicates input strings to keep pointers valid after returning to Python
+- File wrappers have `free(allocator)`; Python wrappers retain data for process lifetime
+- Two construction patterns: `zig::loads()` (Zig owns) vs generated constructors (Python owns)
 
-Currently two ways of constructing structured sexp objects (e.g pcb).
-
-- zig::loads:
-  - zig will allocate and own memory for the structs
-  - if python gets an object it will run through obj prop which will allocate a pyobj wrapper that contains a pointer to the zig struct
-- generated python constructor
-  - since we generate a constructor for each struct (generated_init), python will allocate the memory the pyobj wrapper, onto which we then allocate a new zig struct and store the pointer in the pyobj wrapper
-
-### Defer and cleanup ordering (critical!)
-
-**Zig's `defer` statements execute in LIFO (Last In, First Out) order** — like a stack, the last defer added runs first.
-
-This matters when you have dependencies between resources:
+### Critical: Defer Ordering
+**Zig `defer` executes LIFO (Last In, First Out)** — containers must be cleaned up before their children:
 
 ```zig
 var graph = GraphView.init(allocator);
 const node1 = try Node.init(allocator);
 defer _ = node1.deinit() catch {};  // Runs 2nd
-const node2 = try Node.init(allocator);
-defer _ = node2.deinit() catch {};  // Runs 3rd
-defer graph.deinit();               // Runs 1st ← MUST clean up graph BEFORE nodes
+defer graph.deinit();               // Runs 1st ← Graph cleanup BEFORE nodes
 ```
 
-**Why:** If nodes are inserted into the graph, the graph holds references to them. You must:
-1. Clean up the parent/container first (releases references)
-2. Then clean up the children/contained objects
+**Rule:** Place `defer` for parents **after** children are created, so cleanup happens in reverse dependency order.
 
-**Wrong order causes memory leaks** because child `.deinit()` will fail with `error.InUse` when the reference count is still > 0.
+### Ownership & Shallow Copies
+Zig performs shallow copies (bitwise copy of struct fields, not heap data). For `ArrayList`-like structs:
+- Only metadata (~24 bytes) is copied
+- Both copies point to same heap allocation
+- **Single deinit rule:** Only one owner calls `.deinit()`
+- Use `var mutable = param` to get mutable binding for cleanup
 
-**Rule of thumb:** Place `defer` for containers/parents **after** all their children are created, so cleanup happens in reverse dependency order.
-
-### Ownership patterns and shallow copies
-
-**Zig doesn't have automatic move semantics like Rust.** When you pass a struct by value, Zig performs a shallow copy (bitwise copy of the struct fields).
-
-For structs that wrap heap allocations (like `ArrayList`), this means:
-- The struct metadata (~24 bytes: pointer + length + capacity) is copied
-- The underlying heap data is NOT copied
-- Both copies point to the same heap allocation
-
-**Key implications:**
-1. **Ownership transfer via shallow copy:** When you `append(path)` to an ArrayList or pass a struct by value, you're creating a new owner of the same heap data
-2. **Single deinit rule:** Only ONE owner should call `.deinit()` on the struct, otherwise you'll free the same memory twice
-3. **Function parameters are immutable:** Even when passed by value, you need `var mutable = param` to get a mutable binding to call `.deinit()`
-
-**Example - BFS path handling:**
+**BFS Example:**
 ```zig
-// Queue stores Path values for cache locality
-var open_path_queue = std.ArrayList(Path).init(allocator);
-
-// Pop transfers ownership (shallow copy from queue to local variable)
-var path = open_path_queue.orderedRemove(0);
-
-// Visitor receives ownership (another shallow copy)
-visitor_fn(ctx, path);  // fn(ctx, Path)
-
-// Inside visitor:
-if (keep_path) {
-    // Move into results (shallow copy, transfers ownership)
-    self.path_list.?.append(path) catch |err| { ... };
-} else {
-    // Discard - need mutable binding to call deinit
-    var mutable_path = path;
-    mutable_path.deinit();
+var path = queue.orderedRemove(0);  // Ownership transfer
+visitor_fn(ctx, path);              // Another shallow copy
+if (!keep_path) {
+    var mutable = path;             // Need mutable for deinit
+    mutable.deinit();
 }
 ```
 
-**Memory locality vs pointer indirection:**
-- `ArrayList(Path)` — Paths stored contiguously → better cache performance during iteration
-- `ArrayList(*Path)` — Paths scattered in heap → pointer chasing, worse cache
-- For hot paths like BFS, prefer value storage even with shallow copy overhead (~24 byte copies)
-
 ## Graph Pathfinder
 
-The pathfinder (`src/faebryk/core/zig/src/faebryk/pathfinder.zig`) implements a filtered BFS algorithm to find valid connection paths through the component hierarchy graph.
+The pathfinder implements a filtered BFS algorithm to find valid connection paths through the component hierarchy graph.
 
 ### Graph Structure
-
-The graph consists of two edge types:
-- **`EdgeComposition`** — Parent/child hierarchy relationships (e.g., a Module contains Interfaces)
-- **`EdgeInterfaceConnection`** — Actual electrical/logical connections between interfaces
-
-Each composition edge has a direction:
-- **UP** — Traversing from child to parent
-- **DOWN** — Traversing from parent to child
-- **HORIZONTAL** — Interface connections (same hierarchy level)
+- **`EdgeComposition`** — Parent/child hierarchy relationships (Module contains Interfaces)
+- **`EdgeInterfaceConnection`** — Electrical/logical connections between interfaces
+- **Directions**: UP (child→parent), DOWN (parent→child), HORIZONTAL (interface connections)
 
 ### Path Filters
+1. **`count_paths`** — Safety limits (stops at 1M paths)
+2. **`filter_only_end_nodes`** — Only keep paths ending at target nodes
+3. **`filter_path_by_edge_type`** — Require paths to start and end on composition or interface connection edges
+4. **`filter_siblings`** — Reject child→parent→child through same parent (sibling jumps)
+5. **`filter_heirarchy_stack`** — **Critical filter** ensuring valid hierarchy traversal
 
-The pathfinder runs a series of filters on each path during BFS traversal:
+### Hierarchy Rules
 
-1. **`count_paths`** — Statistics and safety limits (stops at 1M paths)
-2. **`filter_only_end_nodes`** — If target nodes specified, only keep paths ending at targets
-3. **`filter_path_by_edge_type`** — Only allow `EdgeComposition` and `EdgeInterfaceConnection` edges
-4. **`filter_path_by_node_type`** — (Future) type compatibility checking
-5. **`filter_siblings`** — Reject paths with child→parent→child through same parent (sibling jumps)
-6. **`filter_heirarchy_stack`** — **The critical filter** ensuring valid hierarchy traversal
+**Rule 1: Balanced traversal** — Paths must return to start hierarchy level
+- DOWN (parent→child): Push onto stack
+- UP (child→parent): Pop matching element from stack
+- Valid: Stack empty at end
 
-### Hierarchy Stack Filter (Key Logic)
+**Rule 2: No descent before ascent** — Cannot descend from starting level
+- Empty stack + DOWN edge → **Reject immediately**
 
-This filter maintains a stack of hierarchy elements to enforce three rules:
+**Rule 3: Shallow link restrictions** — Shallow links only accessible from same/higher level
+- Track depth: starts at 0, UP+1, DOWN-1
+- Shallow link at depth > 0 → **Reject** (starting node is lower than link)
 
-#### Rule 1: Balanced hierarchy traversal
-Paths must return to the same hierarchy level as the start node. The stack tracks each UP/DOWN traversal:
-- **DOWN movement** (parent→child): Push element onto stack
-- **UP movement** (child→parent) that matches the top: Pop from stack
-- **Valid path**: Stack is empty at the end (returned to start level)
-
-#### Rule 2: No descent before ascent
-**Paths cannot descend into children from the starting hierarchy level.**
-
-When the stack is empty (we're at the starting level) and we encounter a DOWN edge:
-→ **Reject the path immediately**
-
-#### Rule 3: Shallow link restrictions
-**Shallow links can only be crossed if the starting node is at the same hierarchical level or higher than where the shallow link is located.**
-
-Shallow links are special `EdgeInterfaceConnection` edges marked with `shallow_link = true`. These represent connections that should only be accessible if you start from the same level or above (closer to root):
-- Track hierarchy depth as we traverse: starts at 0, UP increments (+1), DOWN decrements (-1)
-- When encountering a shallow link, check if `depth <= 0`
-- If `depth > 0` (we've ascended above start), the starting node is **lower** than the link → reject
-- If `depth <= 0` (at or below start), the starting node is at same/higher level than the link → allow
-
-**Why this matters:**
-
+**Example:**
 ```
-Parent (EP_1)
-  ├─ Child (LV_1)  
-  └─ Child (HV_1)
-
-AnotherParent (EP_2)
-  ├─ Child (LV_2)
-  └─ Child (HV_2)
+Parent (EP_1)          AnotherParent (EP_2)
+  ├─ Child (LV_1)        ├─ Child (LV_2)  
+  └─ Child (HV_1)        └─ Child (HV_2)
 ```
 
-Without Rule 2:
-- ❌ `EP_1 → LV_1` would be valid (direct parent-to-child)
-- ❌ `LV_1 → EP_1 → LV_2` would have balanced stack but wrong semantics
+✅ Valid: `LV_1 → EP_1 → EP_2 → LV_2` (UP then DOWN)  
+❌ Invalid: `EP_1 → LV_1` (DOWN from start)  
+❌ Invalid: `LV_1 → LV_2` without UP first
 
-With Rule 2:
-- ✅ `EP_1 → EP_1` (self-connection, empty path)
-- ✅ `EP_1 → EP_2` (horizontal connection)
-- ✅ `LV_1 → EP_1 → EP_2 → LV_2` (UP then DOWN, valid connection through hierarchy)
-- ✅ `HV_1 → EP_1 → EP_2 → HV_2` (children connect via their parents)
-- ❌ `EP_1 → LV_1` (DOWN from start, rejected)
-- ❌ `LV_1 → LV_2` if only connected via `EP_1 → EP_2` (requires UP first)
+**Key insight:** Valid connections go "up-then-across-then-down" through hierarchy. Shallow links prevent child components from accessing parent-level connections they shouldn't see.
 
-With Rule 3 (Shallow Links):
-```
-Root
-  ├─ Module (M1)
-  │    ├─ SubModule (S1)
-  │    │    └─ Interface (I1)
-  │    └─ Interface (Shallow_I)  ← shallow link defined here
-  └─ Module (M2)
-       └─ Interface (I2)
+### Conditional Edge System
+
+Allows certain paths to be marked as "weak" and overridden by "strong" paths, enabling direct connections to take precedence over sibling connections.
+
+#### Core Concepts
+
+**1. Path Tracking** — Paths remember if they use conditional edges:
+```zig
+pub const BFSPath = struct {
+    via_conditional: bool = false,  // Uses conditional edges?
+};
 ```
 
-If `Shallow_I ←→ I2` (shallow interface connection):
-- ✅ Starting from **M1**: `M1 → Shallow_I → I2` (depth = 0 at shallow link, M1 is same level as link)
-- ✅ Starting from **Root**: `Root → M1 → Shallow_I → I2` (depth = -1 at shallow link, Root is higher than link)
-- ❌ Starting from **S1**: `S1 → M1 → Shallow_I → I2` (depth = +1 at shallow link, S1 is lower than link)
-- ❌ Starting from **I1**: `I1 → S1 → M1 → Shallow_I → I2` (depth = +2 at shallow link, I1 is lower than link)
+**2. Smart Visited Tracking** — Nodes remember HOW they were reached:
+```zig
+pub const VisitInfo = struct {
+    via_conditional: bool,  // Previously visited via conditional path?
+};
+```
 
-The rule prevents child components from using shallow links defined at parent levels. Shallow links are "shallow" because they're only visible from the same level or above where they're defined, not from deeper child components.
+**3. Override Logic** — Strong paths can override weak paths:
+```zig
+// Can revisit if: previous=conditional AND current=non-conditional
+const can_revisit = visit_info.via_conditional and !self.current_path_via_conditional;
+return !can_revisit; // Skip if we can't revisit
+```
 
-**The insight:** Valid connections must go "up-then-across-then-down" through the hierarchy. Starting with a descent means you're trying to connect to your own children without an actual interface connection. Shallow links enforce an additional constraint: they can only be used if you start from the same hierarchical level or higher (closer to root) than where the link is defined. This prevents child components from reaching "up and across" to use parent-level connections they shouldn't have access to.
+**4. Cycle Detection** — Prevents infinite loops:
+```zig
+// Never revisit nodes already in current path
+for (self.current_path.path.edges.items) |path_edge| {
+    if (Node.is_same(path_edge.source, other_node.?) or Node.is_same(path_edge.target, other_node.?)) {
+        return SKIP; // Would create cycle
+    }
+}
+```
 
-This elegantly prevents direct connections through composition edges while allowing legitimate hierarchical connections where children connect via their parents, with shallow links providing fine-grained control over connection visibility.
+#### Use Cases
+
+- **Sibling vs Direct**: `A → Parent → B` (conditional) vs `A → B` (non-conditional) → Direct wins
+- **Shallow Links**: Regular connections override shallow connections when both available  
+- **Extensible**: Add new edge attributes (`"conditional"`, `"weak"`, `"temporary"`) with same override logic
+
+#### Implementation
+- **Memory**: `VisitInfo` in `NodeRefMap.T(VisitInfo)` for O(1) lookup
+- **Performance**: Minimal overhead (one boolean per path)
+- **Debugging**: Set `DEBUG = true` in `graph.zig` and `pathfinder.zig` for detailed BFS output
 
 ## Relation to Python fileformats
 

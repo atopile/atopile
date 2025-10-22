@@ -136,6 +136,7 @@ pub const PathFinder = struct {
             copied_path.path.edges.appendSliceAssumeCapacity(path.path.edges.items);
             copied_path.filtered = path.filtered;
             copied_path.stop = path.stop;
+            copied_path.via_conditional = path.via_conditional;
 
             self.path_list.?.append(copied_path) catch |err| {
                 copied_path.deinit();
@@ -208,10 +209,11 @@ pub const PathFinder = struct {
     };
 
     pub fn count_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        _ = path;
         self.path_counter += 1;
 
-        if (DEBUG) std.debug.print("path_counter: {}", .{self.path_counter});
+        if (DEBUG) {
+            std.debug.print("path_counter: {} len: {}\n", .{ self.path_counter, path.path.edges.items.len });
+        }
         if (self.path_counter > 1_000_000) {
             return visitor.VisitResult(void){ .STOP = {} };
         }
@@ -315,9 +317,11 @@ pub const PathFinder = struct {
         // check that the connections are child -> parent -> child
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
-            // Filter sibling connections AND stop exploration from this dead-end
+            // Sibling paths are conditional/weak - they can be overridden by direct paths
+            // Filter them out, stop exploration, and mark as conditional
             path.filtered = true;
             path.stop = true;
+            path.via_conditional = true;
             if (DEBUG) {
                 std.debug.print("SIBLING PATH FILTERED! Path length: {}, last 2 edges are composition edges sharing parent\n", .{edges.len});
             }
@@ -418,8 +422,9 @@ pub const PathFinder = struct {
     // Validate shallow links in the path
     // Shallow links can only be crossed if the starting node is at the same level or higher
     // than where the shallow link is located
+    // Also marks path as conditional if it crosses any shallow links
     // Returns false if path violates shallow link rules
-    fn validate_shallow_edges(path: *const BFSPath) bool {
+    fn validate_shallow_edges(path: *BFSPath) bool {
         var current_node = path.start_node;
         var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
 
@@ -438,9 +443,21 @@ pub const PathFinder = struct {
                 }
             } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
                 // Check if this is a shallow link
-                if (edge.attributes.dynamic.values.get(shallow)) |shallow_value| {
+                const shallow_val = edge.attributes.dynamic.values.get(shallow);
+                if (DEBUG) {
+                    std.debug.print("Checking interface edge for shallow, found: {}\n", .{shallow_val != null});
+                }
+                if (shallow_val) |shallow_value| {
+                    if (DEBUG) {
+                        std.debug.print("Shallow value: {}\n", .{shallow_value.Bool});
+                    }
                     if (shallow_value.Bool) {
-                        // This is a shallow link
+                        // This is a shallow link - mark path as conditional
+                        path.via_conditional = true;
+                        if (DEBUG) {
+                            std.debug.print("Path marked as via_conditional due to shallow link\n", .{});
+                        }
+
                         // Can only cross if starting node is at same level or higher than the link
                         // depth > 0: we've ascended, meaning start is LOWER than link → reject
                         // depth <= 0: we're at or below start, meaning start is at same/higher than link → allow
@@ -497,6 +514,7 @@ pub const PathFinder = struct {
         // Step 3: Validate shallow links
         if (!validate_shallow_edges(path)) {
             path.filtered = true;
+            path.stop = true;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };

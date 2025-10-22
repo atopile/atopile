@@ -474,6 +474,38 @@ test "heirarchy_short" {
     try std.testing.expect(paths2.len == 1);
 }
 
+test "shallow_filter_allows_alternative_route" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const start_parent = try g.insert_node(try Node.init(g.allocator));
+    start_parent.node.attributes.name = "start_parent";
+    const start_child = try g.insert_node(try Node.init(g.allocator));
+    start_child.node.attributes.name = "start_child";
+    const target_parent = try g.insert_node(try Node.init(g.allocator));
+    target_parent.node.attributes.name = "target_parent";
+    const target_child = try g.insert_node(try Node.init(g.allocator));
+    target_child.node.attributes.name = "target_child";
+    const bus = try g.insert_node(try Node.init(g.allocator));
+    bus.node.attributes.name = "bus";
+
+    _ = try EdgeComposition.add_child(start_parent, start_child.node, "pin");
+    _ = try EdgeComposition.add_child(target_parent, target_child.node, "pin");
+
+    _ = try EdgeInterfaceConnection.connect_shallow(start_parent, target_parent);
+
+    _ = try EdgeInterfaceConnection.connect(start_parent, bus);
+    _ = try EdgeInterfaceConnection.connect(bus, target_parent);
+
+    const paths = try EdgeInterfaceConnection.is_connected_to(std.testing.allocator, start_child, target_child);
+    defer {
+        for (paths) |*path| path.deinit();
+        std.testing.allocator.free(paths);
+    }
+
+    try std.testing.expect(paths.len == 1);
+}
+
 test "loooooong_chain" {
     // Let's make it hard - create a long chain of nodes
     // Use a more efficient allocator for this stress test instead of testing allocator
