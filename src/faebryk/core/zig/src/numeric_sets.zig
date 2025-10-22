@@ -1,8 +1,11 @@
 const std = @import("std");
-const Bool_Set = @import("bool_sets.zig").Bool_Set;
+
 const graph_mod = @import("graph");
 const GraphView = graph_mod.graph.GraphView;
 const BoundNodeReference = graph_mod.graph.BoundNodeReference;
+
+const Bool_Node = @import("bool_sets.zig").Bool_Node;
+const Bool_Set = @import("bool_sets.zig").Bool_Set;
 const faebryk = @import("faebryk/lib.zig");
 const EdgeComposition = faebryk.composition.EdgeComposition;
 const EdgeNext = faebryk.next.EdgeNext;
@@ -845,64 +848,90 @@ pub const Numeric_Set = struct {
         return try Numeric_Set.init(g, allocator, &[_]_Continuous{}, components.items);
     }
 
-    pub fn min_elem(self: *const Numeric_Set) f64 {
-        return self.intervals.items[0].min;
+    pub fn min_elem(self: *const Numeric_Set, allocator: std.mem.Allocator) !f64 {
+        const self_intervals = try self.get_intervals(allocator);
+        defer allocator.free(self_intervals);
+
+        return self_intervals[0].get_min();
     }
 
-    pub fn max_elem(self: *const Numeric_Set) f64 {
-        return self.intervals.items[self.intervals.items.len - 1].max;
+    pub fn max_elem(self: *const Numeric_Set, allocator: std.mem.Allocator) !f64 {
+        const self_intervals = try self.get_intervals(allocator);
+        defer allocator.free(self_intervals);
+
+        return self_intervals[self_intervals.len - 1].get_max();
     }
 
-    pub fn op_ge_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
-        if (self.is_empty() or other.is_empty()) {
-            return Bool_Set.init(allocator, &[_]bool{});
+    pub fn op_ge_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        const min = try self.min_elem(allocator);
+        const max = try self.max_elem(allocator);
+        const other_min = try other.min_elem(allocator);
+        const other_max = try other.max_elem(allocator);
+
+        if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
+            return Bool_Set.init_empty(g);
         }
-        if (self.min_elem() >= other.max_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{true});
+        if (min >= other_max) {
+            return Bool_Set.init_from_single(g, true);
         }
-        if (self.max_elem() < other.min_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{false});
+        if (max < other_min) {
+            return Bool_Set.init_from_single(g, false);
         }
-        return Bool_Set.init(allocator, &[_]bool{ true, false });
+        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_gt_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
-        if (self.is_empty() or other.is_empty()) {
-            return Bool_Set.init(allocator, &[_]bool{});
+    pub fn op_gt_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        const min = try self.min_elem(allocator);
+        const max = try self.max_elem(allocator);
+        const other_min = try other.min_elem(allocator);
+        const other_max = try other.max_elem(allocator);
+
+        if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
+            return Bool_Set.init_empty(g);
         }
-        if (self.min_elem() > other.max_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{true});
+        if (min > other_max) {
+            return Bool_Set.init_from_single(g, true);
         }
-        if (self.max_elem() <= other.min_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{false});
+        if (max <= other_min) {
+            return Bool_Set.init_from_single(g, false);
         }
-        return Bool_Set.init(allocator, &[_]bool{ true, false });
+        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_le_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
-        if (self.is_empty() or other.is_empty()) {
-            return Bool_Set.init(allocator, &[_]bool{});
+    pub fn op_le_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        const min = try self.min_elem(allocator);
+        const max = try self.max_elem(allocator);
+        const other_min = try other.min_elem(allocator);
+        const other_max = try other.max_elem(allocator);
+
+        if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
+            return Bool_Set.init_empty(g);
         }
-        if (self.max_elem() <= other.min_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{true});
+        if (max <= other_min) {
+            return Bool_Set.init_from_single(g, true);
         }
-        if (self.min_elem() > other.max_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{false});
+        if (min > other_max) {
+            return Bool_Set.init_from_single(g, false);
         }
-        return Bool_Set.init(allocator, &[_]bool{ true, false });
+        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_lt_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
-        if (self.is_empty() or other.is_empty()) {
-            return Bool_Set.init(allocator, &[_]bool{});
+    pub fn op_lt_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+        const min = try self.min_elem(allocator);
+        const max = try self.max_elem(allocator);
+        const other_min = try other.min_elem(allocator);
+        const other_max = try other.max_elem(allocator);
+
+        if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
+            return Bool_Set.init_empty(g);
         }
-        if (self.max_elem() < other.min_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{true});
+        if (max < other_min) {
+            return Bool_Set.init_from_single(g, true);
         }
-        if (self.min_elem() >= other.max_elem()) {
-            return Bool_Set.init(allocator, &[_]bool{false});
+        if (min >= other_max) {
+            return Bool_Set.init_from_single(g, false);
         }
-        return Bool_Set.init(allocator, &[_]bool{ true, false });
+        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
     pub fn op_round_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, ndigits: i32) !Numeric_Set {
@@ -1851,6 +1880,34 @@ test "Numeric_Set.op_sin_intervals applies sine envelope" {
     try std.testing.expectApproxEqRel(@as(f64, 1.0), combined.get_max(), 1e-12);
 }
 
+test "Numeric_Set.get_min_elem returns the minimum element of the set" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+
+    const set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+
+    const min = try set.min_elem(std.testing.allocator);
+
+    try std.testing.expectApproxEqRel(@as(f64, 1.0), min, 1e-12);
+}
+
+test "Numeric_Set.get_max_elem returns the maximum element of the set" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+
+    const set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+
+    const max = try set.max_elem(std.testing.allocator);
+
+    try std.testing.expectApproxEqRel(@as(f64, 2.0), max, 1e-12);
+}
+
 test "Numeric_Set.op_ge_intervals returns false when lhs is less than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
@@ -1864,179 +1921,220 @@ test "Numeric_Set.op_ge_intervals returns false when lhs is less than rhs" {
         try _Continuous.init(&g, 3.0, 4.0),
     }, &[_]Numeric_Set{});
 
-    var result = try lhs.op_ge_intervals(&g, allocator, &rhs);
-    const result = try lhs.op_ge_intervals(allocator, &rhs);
-    defer result.deinit();
-    try std.testing.expectEqual(@as(usize, 1), result.elements.items.len);
-    try std.testing.expect(!result.elements.items[0]);
+    const result = try lhs.op_ge_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(!result_bools[0].get_value());
 }
 
-// test "Numeric_Set.op_ge_intervals returns true when lhs is greater than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-//     const result = try lhs.op_ge_intervals(allocator, &rhs);
-//     defer result.deinit();
-//     try std.testing.expectEqual(@as(usize, 1), result.elements.items.len);
-//     try std.testing.expect(result.elements.items[0]);
-// }
-// test "Numeric_Set.op_ge_intervals returns true and false when lhs is both greater and less than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 5.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-//     const result = try lhs.op_ge_intervals(allocator, &rhs);
-//     defer result.deinit();
-//     try std.testing.expectEqual(@as(usize, 2), result.elements.items.len);
-//     try std.testing.expect(result.elements.items[0]);
-//     try std.testing.expect(!result.elements.items[1]);
-// }
+test "Numeric_Set.op_ge_intervals returns true when lhs is greater than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_ge_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_gt_intervals returns false when lhs is less than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_gt_intervals returns false when lhs is less than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(!result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_gt_intervals returns false when lhs is equal to rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_gt_intervals returns false when lhs is equal to rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const val = 1.0;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, val, val),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, val, val),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(!result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_gt_intervals returns true when lhs is greater than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_gt_intervals returns true when lhs is greater than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_gt_intervals returns true and false when lhs is both greater and less than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 5.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_gt_intervals returns true and false when lhs is both greater and less than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 5.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 2), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+    try std.testing.expect(!result_bools[1].get_value());
+}
 
-// test "Numeric_Set.op_le_intervals returns false when lhs is greater than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_le_intervals returns false when lhs is greater than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_le_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(!result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_le_intervals returns false when lhs is equal to rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_le_intervals returns true when lhs is equal to rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const val = 1.0;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, val, val),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, val, val),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_le_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_le_intervals returns true and false when lhs is both less and greater than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 3.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(2.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-//     const result = try lhs.op_le_intervals(allocator, &rhs);
-//     defer result.deinit();
-//     try std.testing.expectEqual(@as(usize, 2), result.elements.items.len);
-//     try std.testing.expect(result.elements.items[0]);
-//     try std.testing.expect(!result.elements.items[1]);
-// }
+test "Numeric_Set.op_le_intervals returns true and false when lhs is both less and greater than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 3.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 2.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_le_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 2), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+    try std.testing.expect(!result_bools[1].get_value());
+}
 
-// test "Numeric_Set.op_lt_intervals returns false when lhs is greater than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_lt_intervals returns false when lhs is greater than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(!result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_lt_intervals returns false when lhs is equal to rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_lt_intervals returns false when lhs is equal to rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const val = 1.0;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, val, val),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, val, val),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(!result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_lt_intervals returns true when lhs is less than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 2.0),
-//     }, &[_]Numeric_Set{});
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(3.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_lt_intervals returns true when lhs is less than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 2.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 3.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 1), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+}
 
-// test "Numeric_Set.op_lt_intervals returns true and false when lhs is both less and greater than rhs" {
-//     const allocator = std.testing.allocator;
-//     const lhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(1.0, 3.0),
-//     }, &[_]Numeric_Set{});
-
-//     defer lhs.deinit();
-//     const rhs = try Numeric_Set.init(allocator, &[_]_Continuous{
-//         try _Continuous.init(2.0, 4.0),
-//     }, &[_]Numeric_Set{});
-//     defer rhs.deinit();
-// }
+test "Numeric_Set.op_lt_intervals returns true and false when lhs is both less and greater than rhs" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const allocator = std.testing.allocator;
+    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 1.0, 3.0),
+    }, &[_]Numeric_Set{});
+    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+        try _Continuous.init(&g, 2.0, 4.0),
+    }, &[_]Numeric_Set{});
+    const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
+    const result_bools = try result.get_bools(std.testing.allocator);
+    defer std.testing.allocator.free(result_bools);
+    try std.testing.expectEqual(@as(usize, 2), result_bools.len);
+    try std.testing.expect(result_bools[0].get_value());
+    try std.testing.expect(!result_bools[1].get_value());
+}
