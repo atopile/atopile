@@ -94,6 +94,11 @@ pub const TypeGraph = struct {
         };
 
         pub fn get_child_type(node: BoundNodeReference) ?BoundNodeReference {
+            if (Attributes.of(node.node).get_child_identifier()) |identifier| {
+                if (EdgePointer.get_pointed_node_by_identifier(node, identifier)) |child| {
+                    return child;
+                }
+            }
             return EdgePointer.get_referenced_node_from_node(node);
         }
     };
@@ -320,7 +325,7 @@ pub const TypeGraph = struct {
         const make_child = try self.instantiate_node(self.get_MakeChild());
         MakeChildNode.Attributes.of(make_child.node).set_child_identifier(identifier);
 
-        _ = EdgePointer.point_to(make_child, child_type.node);
+        _ = EdgePointer.point_to(make_child, child_type.node, identifier);
         _ = EdgeComposition.add_child(target_type, make_child.node, null);
 
         return make_child;

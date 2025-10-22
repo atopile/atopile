@@ -169,22 +169,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return cls(instance=instance)
 
     # instance methods -----------------------------------------------------------------
-    @deprecated("Use add_instance_child instead")
+    @deprecated("Use compose_with instead")
     def add(self, node: "Node[Any]"):
-        self.add_instance_child(node)
+        self.compose_with(node)
 
     def __setattr__(self, name: str, value: Any, /) -> None:
         if isinstance(value, Node) and not name.startswith("_"):
-            self.add_instance_child(value, name=name)
+            self.compose_with(value, name=name)
         return super().__setattr__(name, value)
-
-    def add_instance_child(self, node: "Node[Any]", name: str | None = None):
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            # TODO None or empty?
-            child_identifier=name or "",
-        )
 
     def attributes(self) -> T:
         Attributes = cast(type[T], type(self).Attributes)
@@ -516,11 +508,48 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     __rich_repr__.angular = True
 
     # instance edge sugar --------------------------------------------------------------
+    def compose_with(self, node: "Node[Any]", name: str | None = None):
+        EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=node.instance.node(),
+            # TODO None or empty?
+            child_identifier=name or "",
+        )
+
+    # Get compositions with the get_children functions
+
     def point_to(self, to_node: "Node[Any]", identifier: str | None = None) -> None:
         EdgePointer.point_to(
             bound_node=self.instance,
             target_node=to_node.instance.node(),
+            identifier=identifier,
         )
+
+    def get_references(self, identifier: str | None = None) -> "list[Node[Any]]":
+        references: list[BoundNode] = []
+
+        def _collect(ctx: list[BoundNode], bound_edge: BoundEdge) -> None:
+            edge_name = bound_edge.edge().name()
+            if identifier is not None and edge_name != identifier:
+                return
+            target = EdgePointer.get_referenced_node(edge=bound_edge.edge())
+            if target is not None:
+                ctx.append(bound_edge.g().bind(node=target))
+
+        if identifier is None:
+            EdgePointer.visit_pointed_edges(
+                bound_node=self.instance,
+                ctx=references,
+                f=_collect,
+            )
+        else:
+            EdgePointer.visit_pointed_edges_with_identifier(
+                bound_node=self.instance,
+                identifier=identifier,
+                ctx=references,
+                f=_collect,
+            )
+        return [Node(instance=instance) for instance in references]
 
     def chain_to(self, to_node: "Node[Any]") -> None:
         EdgeNext.add_next(
@@ -603,7 +632,8 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
     def nodes_with_traits[*Ts](
         self, traits: tuple[*Ts]
     ):  # -> list[tuple[Node, tuple[*Ts]]]:
-        pass
+        # TODO
+        raise NotImplementedError("nodes_with_traits is not implemented")
 
     @deprecated("Use get_instances instead")
     def nodes_of_type[N2: Node](self, t: type[N2]) -> set[N2]:
@@ -721,6 +751,46 @@ class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
 
 
 # ------------------------------------------------------------
+class Collection(Node):
+    _elem_identifier = "e"
+
+    @classmethod
+    def __create_instance__(
+        cls, tg: TypeGraph, g: GraphView, *elems: Node[Any]
+    ) -> Self:
+        out = super().__create_instance__(tg, g)
+        out.append(*elems)
+        return out
+
+    def append(self, *elems: Node[Any]) -> None:
+        for elem in elems:
+            self.point_to(elem, self._elem_identifier)
+
+    def as_list(self) -> list[Node[Any]]:
+        return self.get_references(self._elem_identifier)
+
+
+class Set(Node):
+    _elem_identifier = "e"
+
+    @classmethod
+    def __create_instance__(
+        cls, tg: TypeGraph, g: GraphView, *elems: Node[Any]
+    ) -> Self:
+        out = super().__create_instance__(tg, g)
+        out.append(*elems)
+        return out
+
+    def append(self, *elems: Node[Any]) -> None:
+        by_uuid = {elem.instance.node().get_uuid(): elem for elem in elems}
+        for node in self.as_list():
+            by_uuid.pop(node.instance.node().get_uuid(), None)
+
+        for elem in by_uuid.values():
+            self.point_to(elem, self._elem_identifier)
+
+    def as_list(self) -> list[Node[Any]]:
+        return self.get_references(self._elem_identifier)
 
 
 class Traits:
@@ -774,7 +844,7 @@ def test_fabll_basic():
             t._add_link(
                 lhs_reference_path=["tnwa1"],
                 rhs_reference_path=["tnwa2"],
-                edge=EdgePointer.build(),
+                edge=EdgePointer.build(identifier=None),
             )
 
     g = GraphView.create()
@@ -815,6 +885,112 @@ def test_fabll_basic():
     assert tnwc_children[0].get_name() == "tnwa1"
     assert tnwc_children[1].get_name() == "tnwa2"
     print(tnwc_children[0].get_full_name())
+
+
+def _make_graph_and_typegraph():
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+    return g, tg
+
+
+def test_typegraph_of_type_and_instance_roundtrip():
+    g, tg = _make_graph_and_typegraph()
+
+    class Simple(Node):
+        """Minimal node to exercise TypeGraph helpers."""
+
+        pass
+
+    bound_simple = Simple.bind_typegraph(tg)
+    type_node = bound_simple.get_or_create_type()
+
+    tg_from_type = TypeGraph.of_type(type_node=type_node)
+    assert tg_from_type is not None
+    rebound = tg_from_type.get_type_by_name(type_identifier=Simple._type_identifier())
+    assert rebound is not None
+    assert rebound.node().is_same(other=type_node.node())
+
+    simple_instance = bound_simple.create_instance(g=g)
+    tg_from_instance = TypeGraph.of_instance(instance_node=simple_instance.instance)
+    assert tg_from_instance is not None
+    rebound_from_instance = tg_from_instance.get_type_by_name(
+        type_identifier=Simple._type_identifier()
+    )
+    assert rebound_from_instance is not None
+    assert rebound_from_instance.node().is_same(other=type_node.node())
+
+    root_uuid = simple_instance.instance.node().get_uuid()
+    assert simple_instance.get_root_id() == f"0x{root_uuid:X}"
+
+
+def test_pointer_helpers():
+    g, tg = _make_graph_and_typegraph()
+
+    class Leaf(Node):
+        pass
+
+    class Parent(Node):
+        @classmethod
+        def __create_type__(cls, t: "BoundNodeType[Parent, Any]") -> None:
+            cls.left = t.Child(Leaf)
+            cls.right = t.Child(Leaf)
+
+    parent = Parent.bind_typegraph(tg).create_instance(g=g)
+    left_child = parent.left.get()
+    right_child = parent.right.get()
+
+    parent.point_to(left_child, identifier="left_ptr")
+    parent.point_to(right_child, identifier="right_ptr")
+
+    pointed_edges: list[str | None] = []
+
+    def _collect(names: list[str | None], edge: BoundEdge):
+        names.append(edge.edge().name())
+
+    EdgePointer.visit_pointed_edges(
+        bound_node=parent.instance,
+        ctx=pointed_edges,
+        f=_collect,
+    )
+    assert pointed_edges.count("left_ptr") == 1
+    assert pointed_edges.count("right_ptr") == 1
+
+    left = EdgePointer.get_pointed_node_by_identifier(
+        bound_node=parent.instance,
+        identifier="left_ptr",
+    )
+    assert left is not None
+    assert left.node().is_same(other=left_child.instance.node())
+
+    right = EdgePointer.get_pointed_node_by_identifier(
+        bound_node=parent.instance,
+        identifier="right_ptr",
+    )
+    assert right is not None
+    assert right.node().is_same(other=right_child.instance.node())
+
+    parent.point_to(left_child, identifier="shared")
+    parent.point_to(right_child, identifier="shared")
+
+    shared_edges: list[BoundEdge] = []
+
+    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
+        ctx.append(edge)
+
+    EdgePointer.visit_pointed_edges_with_identifier(
+        bound_node=parent.instance,
+        identifier="shared",
+        ctx=shared_edges,
+        f=_collect_shared,
+    )
+    assert len(shared_edges) == 2
+
+    shared_nodes = parent.get_references(identifier="shared")
+    uuids = {node.instance.node().get_uuid() for node in shared_nodes}
+    assert uuids == {
+        left_child.instance.node().get_uuid(),
+        right_child.instance.node().get_uuid(),
+    }
 
 
 if __name__ == "__main__":
