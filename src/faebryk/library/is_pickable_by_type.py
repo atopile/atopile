@@ -2,13 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
+from typing import Any
 
-import faebryk.library._F as F
-import faebryk.libs.library.L as L
-from faebryk.core.parameter import Parameter
+import faebryk.core.node as fabll
 
 
-class is_pickable_by_type(F.is_pickable.decless()):
+class is_pickable_by_type(fabll.Node):
     """
     Marks a module as being parametrically selectable using the given parameters.
 
@@ -17,6 +16,19 @@ class is_pickable_by_type(F.is_pickable.decless()):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
+    @classmethod
+    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
+        cls.endpoint_ = t.Child(nodetype=fabll.Parameter)
+        cls.params_ = t.Child(nodetype=fabll.Node)  # TODO: change to list
+
+    # @property
+    # def endpoint(self) -> Endpoint:
+    #     return self.endpoint_.get().try_extract_constrained_literal()
+
+    # @property
+    # def params(self) -> list[Parameter]:
+    #     return self.params_.get().as_list()
+
     class Endpoint(StrEnum):
         """Query endpoints known to the API."""
 
@@ -24,15 +36,15 @@ class is_pickable_by_type(F.is_pickable.decless()):
         CAPACITORS = "capacitors"
         INDUCTORS = "inductors"
 
-    def __init__(self, endpoint: Endpoint, params: list[Parameter]):
-        super().__init__()
-        self.endpoint = endpoint
-        self._params = params
+    # def __init__(self, endpoint: Endpoint, params: list[Parameter]):
+    #     super().__init__()
+    #     self.endpoint = endpoint
+    #     self._params = params
 
-    @property
-    def params(self) -> list[Parameter]:
-        return self._params
+    # @property
+    # def params(self) -> list[Parameter]:
+    #     return self._params
 
-    @property
-    def pick_type(self) -> type[L.Module]:
-        return type(self.get_obj(L.Module))
+    # @property
+    # def pick_type(self) -> type[L.Module]:
+    #     return type(self.get_obj(L.Module))

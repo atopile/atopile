@@ -17,6 +17,7 @@ This way we can add new modules without changing this file
 
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_usage_example import has_usage_example
+from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.has_package_requirements import has_package_requirements
@@ -37,7 +38,7 @@ from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.has_solver import has_solver
-from faebryk.library.can_bridge import can_bridge
+from faebryk.library.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
@@ -68,8 +69,6 @@ from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_d
 from faebryk.library.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.implements_design_check import implements_design_check
-from faebryk.library.can_bridge_by_name import can_bridge_by_name
-from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
@@ -85,6 +84,7 @@ from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.library.is_representable_by_single_value_defined import is_representable_by_single_value_defined
 from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
+from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint

@@ -76,12 +76,49 @@ class BoundChild[T: Node](Child[T]):
         return self.get_unbound(instance=self._instance)
 
 
+class BoundChildOfType[T: Node[Any]]:
+    """
+    Child of type
+    Adds child directly to type node, will not create child in every instance
+    Inherintly bound to the type node by definition, therefore no unbound version
+    """
+
+    def __init__[N: Node](self, nodetype: type[T], t: "BoundNodeType[N, Any]") -> None:
+        # TODO: why so many nodetype references
+        self.nodetype = nodetype
+        self.t = t
+        self.identifier: str = None  # type: ignore
+        self._instance = t.get_or_create_type()
+
+        if nodetype.Attributes is not NodeAttributes:
+            raise FaebrykApiException(
+                f"Can't have Child with custom Attributes: {nodetype.__name__}"
+            )
+
+    def get(self) -> T:
+        return self.get_unbound(instance=self._instance)
+
+    def get_unbound(self, instance: BoundNode) -> T:
+        assert self.identifier is not None, "Bug: Needs to be set on setattr"
+
+        child_instance = not_none(
+            EdgeComposition.get_child_by_identifier(
+                node=instance, child_identifier=self.identifier
+            )
+        )
+        bound = self.nodetype(instance=child_instance)
+        return bound
+
+
 class NodeMeta(type):
     @override
     def __setattr__(cls, name: str, value: Any, /) -> None:
         if isinstance(value, Child) and issubclass(cls, Node):
             value.identifier = name
             cls._add_child(value)
+        if isinstance(value, BoundChildOfType) and issubclass(cls, Node):
+            value.identifier = name
+            cls._add_child_to_type(child=value)
         return super().__setattr__(name, value)
 
 
@@ -150,6 +187,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             child_type_node=child_type_node,
             identifier=identifier,
         )
+
+    @classmethod
+    def _add_child_to_type(
+        cls,
+        child: BoundChildOfType,
+    ) -> BoundNode:
+        tg = child.t.tg
+        identifier = child.identifier
+        nodetype = child.nodetype
+
+        child_node = nodetype.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
+        EdgeComposition.add_child(
+            bound_node=cls.bind_typegraph(tg).get_or_create_type(),
+            child=child_node.instance.node(),
+            child_identifier=identifier,
+        )
+        return child_node
 
     @classmethod
     def add_anon_child(
@@ -679,6 +733,9 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
     def Child[C: Node[Any]](self, nodetype: type[C]) -> Child[C]:
         return Child(nodetype=nodetype, t=self)
 
+    def BoundChildOfType[C: Node[Any]](self, nodetype: type[C]) -> BoundChildOfType[C]:
+        return BoundChildOfType(nodetype=nodetype, t=self)
+
     def _add_link(
         self,
         *,
@@ -700,6 +757,19 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
                 path=rhs_reference_path,
             ).node(),
             edge_attributes=edge,
+        )
+
+    def add_link_pointer(
+        self,
+        *,
+        lhs_reference_path: list[str],
+        rhs_reference_path: list[str],
+        identifier: str | None = None,
+    ) -> None:
+        self._add_link(
+            lhs_reference_path=lhs_reference_path,
+            rhs_reference_path=rhs_reference_path,
+            edge=EdgePointer.build(identifier=identifier, order=None),
         )
 
 
@@ -1184,7 +1254,130 @@ def test_set_chaining():
     assert len(elems) == 3
 
 
-if __name__ == "__main__":
-    import typer
+def test_manual_resistor_def():
+    from faebryk.library.Electrical import Electrical
+    from faebryk.library.has_usage_example import has_usage_example
+    from faebryk.library.Resistor import Resistor
 
-    typer.run(test_fabll_basic)
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    # create electrical type node and insert into type graph
+    _ = Electrical.bind_typegraph(tg=tg).get_or_create_type()
+
+    # create resistor type node and insert into type graph
+    # add make child nodes for p1 and p2, insert into type graph
+    _ = Resistor.bind_typegraph(tg=tg).get_or_create_type()
+
+    resistor_instance = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    assert resistor_instance
+    print("resistor_instance:", resistor_instance.instance.node().get_dynamic_attrs())
+    print(resistor_instance._type_identifier())
+
+    # Electrical make child
+    p1 = EdgeComposition.get_child_by_identifier(
+        node=resistor_instance.instance, child_identifier="p1"
+    )
+    assert p1 is not None
+    print("p1:", p1)
+
+    # unconstrained Parameter make child
+    resistance = EdgeComposition.get_child_by_identifier(
+        node=resistor_instance.instance, child_identifier="resistance"
+    )
+    assert resistance is not None
+    print(
+        "resistance is type Parameter:",
+        EdgeType.is_node_instance_of(
+            bound_node=resistance,
+            node_type=Parameter.bind_typegraph(tg=tg).get_or_create_type().node(),
+        ),
+    )
+
+    # Constrained parameter type child
+    designator_prefix = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            child_identifier="designator_prefix",
+        )
+    )
+    prefix_param = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=designator_prefix,
+            child_identifier="prefix_param",
+        )
+    )
+    constraint_edge = not_none(EdgeOperand.get_expression_edge(bound_node=prefix_param))
+    expression_node = not_none(
+        EdgeOperand.get_expression_node(edge=constraint_edge.edge())
+    )
+    expression_bnode = g.bind(node=expression_node)
+
+    operands: list[BoundNode] = []
+    EdgeOperand.visit_operand_edges(
+        bound_node=expression_bnode,
+        ctx=operands,
+        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+    )
+    for operand in operands:
+        print(
+            f"{EdgeType.get_type_node(edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()).get_dynamic_attrs()} {operand.node().get_dynamic_attrs()}"
+        )
+
+    # Constrained trait with type child parameters to be constrained to literals
+    usage_example = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            child_identifier="usage_example",
+        )
+    )
+    example_bnode = g.bind(
+        node=has_usage_example.bind_instance(usage_example)
+        .example.get()
+        .instance.node()
+    )
+    expression_edge = not_none(
+        EdgeOperand.get_expression_edge(bound_node=example_bnode)
+    )
+    expression_node = not_none(
+        EdgeOperand.get_expression_node(edge=expression_edge.edge())
+    )
+    expression_bnode = g.bind(node=expression_node)
+    operands2: list[BoundNode] = []
+    EdgeOperand.visit_operand_edges(
+        bound_node=expression_bnode,
+        ctx=operands2,
+        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+    )
+    for operand in operands2:
+        print(
+            f"{EdgeType.get_type_node(edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()).get_dynamic_attrs()} {operand.node().get_dynamic_attrs()}"
+        )
+
+    # Is pickable by type
+    ipbt = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=resistor_instance.instance,
+            child_identifier="is_pickable_by_type",
+        )
+    )
+    ipbt_params = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=ipbt,
+            child_identifier="params_",
+        )
+    )
+    resistance_node_from_pointer = not_none(
+        EdgePointer.get_pointed_node_by_identifier(
+            bound_node=ipbt_params, identifier="resistance"
+        )
+    )
+    assert resistance.node().is_same(other=resistance_node_from_pointer.node())
+
+
+if __name__ == "__main__":
+    # import typer
+
+    # typer.run(test_fabll_basic)
+
+    test_manual_resistor_def()

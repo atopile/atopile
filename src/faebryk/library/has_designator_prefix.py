@@ -2,11 +2,16 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
+from typing import Any
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 
 
-class has_designator_prefix(Module.TraitT.decless()):
+class has_designator_prefix(fabll.Node):
+    @classmethod
+    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
+        cls.prefix_param = t.Child(nodetype=fabll.Parameter)
+
     class Prefix(StrEnum):
         A = "A"
         """Separable assembly or sub-assembly (e.g. printed circuit assembly)"""
@@ -225,9 +230,9 @@ class has_designator_prefix(Module.TraitT.decless()):
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
-    def __init__(self, prefix: str | Prefix) -> None:
-        super().__init__()
-        self.prefix = prefix
+    # def __init__(self, prefix: str | Prefix) -> None:
+    #     super().__init__()
+    #     self.prefix = prefix
 
-    def get_prefix(self) -> str:
-        return self.prefix
+    # def get_prefix(self) -> str:
+    #     return self.prefix
