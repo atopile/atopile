@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Iterable, Self
 
-from faebryk.core.node import BoundNodeType, Node, Parameter
+from faebryk.core.node import BoundNodeType, Node, Parameter, Sequence, Set
 from faebryk.core.zig.gen.graph.graph import GraphView
 
 # TODO: capture dynamic substructure in TypeGraph schema
@@ -110,12 +110,11 @@ class FieldRefPart(Node):
 
 
 class FieldRef(Node):
-    _part_idx = 0
-
     @classmethod
     def __create_type__(cls, t: BoundNodeType) -> None:
         cls.source = t.Child(SourceChunk)
         cls.pin = t.Child(Parameter)
+        cls.parts = t.Child(Sequence)
 
     def setup(
         self, g: GraphView, source_info: SourceInfo, parts: Iterable[FieldRefPart.Info]
@@ -126,9 +125,8 @@ class FieldRef(Node):
             part = FieldRefPart.bind_typegraph(self.tg).create_instance(g=g)
             part.setup(g=g, info=part_info)
 
-            # TODO: store as Sequence
-            self._part_idx += 1
-            self.compose_with(part, name=f"part_{self._part_idx}")
+            self.compose_with(part)
+            self.parts.get().append(part)
 
         return self
 
@@ -247,11 +245,10 @@ class ComparisonClause(Node):
 
 
 class ComparisonExpression(Node):
-    _clause_idx = 0
-
     @classmethod
     def __create_type__(cls, t: BoundNodeType) -> None:
         cls.source = t.Child(SourceChunk)
+        cls.rhs_clauses = t.Child(Sequence)
 
     def setup(
         self,
@@ -264,9 +261,8 @@ class ComparisonExpression(Node):
         self.compose_with(lhs, name="lhs")
 
         for clause in rhs_clauses:
-            # FIXME: sequence
-            self.compose_with(clause, name=f"clause_{ComparisonExpression._clause_idx}")
-            ComparisonExpression._clause_idx += 1
+            self.compose_with(clause)
+            self.rhs_clauses.get().append(clause)
 
         return self
 
@@ -354,9 +350,15 @@ class BoundedQuantity(Node):
 
 
 class Scope(Node):
+    @classmethod
+    def __create_type__(cls, t: BoundNodeType) -> None:
+        cls.stmts = t.Child(Set)
+
     def setup(self, g: GraphView, stmts: Iterable["StatementT"]) -> Self:
-        for idx, stmt in enumerate(stmts):
-            self.compose_with(stmt, name=f"stmt_{idx}")
+        for stmt in stmts:
+            self.stmts.get().append(stmt)
+            self.compose_with(stmt)
+
         return self
 
     # TODO: get_child_stmts -> Iterable[Assignment | ...]
@@ -509,15 +511,16 @@ class FieldRefList(Node):
     @classmethod
     def __create_type__(cls, t: BoundNodeType) -> None:
         cls.source = t.Child(SourceChunk)
+        cls.items = t.Child(Sequence)
 
     def setup(
         self, g: GraphView, source_info: SourceInfo, items: Iterable[FieldRef]
     ) -> Self:
         self.source.get().setup(g=g, source_info=source_info)
 
-        # FIXME: store as Sequence
-        for i, item in enumerate(items):
-            self.compose_with(item, name=f"item_{i}")
+        for item in items:
+            self.items.get().append(item)
+            self.compose_with(item)
 
         return self
 
@@ -739,7 +742,7 @@ class DirectedConnectStmt(Node):
         source_info: SourceInfo,
         direction: "DirectedConnectStmt.Direction",
         lhs: "ConnectableT",
-        rhs: "ConnectableT",
+        rhs: "ConnectableT | DirectedConnectStmt",
     ) -> Self:
         self.source.get().setup(g=g, source_info=source_info)
         self.direction.get().constrain_to_literal(g=g, value=direction.value)
