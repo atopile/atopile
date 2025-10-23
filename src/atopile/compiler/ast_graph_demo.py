@@ -17,38 +17,29 @@ def truncate_text(text: str) -> str:
 
 
 def ast_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
-    # inbound_edge_name = (
-    #     EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
-    # ) or "<anonymous>"
-    inbound_edge_name = ""
+    edge_label = (
+        EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
+    ) or "<anonymous>"
 
     type_name = NodeHelpers.get_type_name(node)
 
-    # attrs = node.node().get_attrs()
-    # attrs.pop("uuid")
-    # attrs_text = (
-    #     "<"
-    #     + ", ".join([f"{k}={truncate_text(str(v))}" for k, v in attrs.items()])
-    #     + ">"
-    #     if attrs
-    #     else ""
-    # )
-    attrs_text = ""
+    attrs = node.node().get_attrs()
+    attrs_parts = [
+        f"{k}={truncate_text(str(v))}" for k, v in attrs.items() if k != "uuid"
+    ]
+    attrs_text = f"<{', '.join(attrs_parts)}>" if attrs_parts else ""
 
-    # if type_name == "Parameter":
-    #     lit_value = fabll.Parameter(node).try_extract_constrained_literal()
-    #     match lit_value:
-    #         case str():
-    #             param_value = f" is! '{truncate_text(lit_value)}'"
-    #         case _:
-    #             param_value = f" is! {lit_value}"
-    # else:
-    #     param_value = ""
     param_value = ""
+    if type_name == "Parameter":
+        match lit_value := fabll.Parameter.bind_instance(
+            node
+        ).try_extract_constrained_literal():
+            case str():
+                param_value = f" is! '{truncate_text(lit_value)}'"
+            case _:
+                param_value = f" is! {lit_value}"
 
-    edge_text = f".{inbound_edge_name}: "
-
-    return f"{edge_text}{type_name}{attrs_text}{param_value}"
+    return f".{edge_label}: {type_name}{attrs_text}{param_value}"
 
 
 def typegraph_renderer(n: BoundNode) -> str:
@@ -65,7 +56,7 @@ if __name__ == "__main__":
     NodeHelpers.print_tree(
         ast_root,
         edge_types=[EdgeComposition],
-        # renderer=ast_renderer,
+        renderer=ast_renderer,
         exclude_node_types=[AST.SourceChunk.__qualname__]
         if not RENDER_SOURCE_CHUNKS
         else None,
