@@ -12,7 +12,7 @@ class Footprint(fabll.Module):
 
     @staticmethod
     def get_footprint_of_parent(
-        intf: ModuleInterface,
+        intf: fabll.ModuleInterface,
     ) -> "tuple[fabll.Node, Footprint]":
         parent, trait = intf.get_parent_with_trait(F.has_footprint)
         return parent, trait.get_footprint()

@@ -6,14 +6,14 @@ def test_minimal_graph():
     from faebryk.core.zig.gen.graph.graph import (  # type: ignore
         Edge,
         GraphView,
-        fabll.Node,
+        Node,
     )
 
     g = GraphView.create()
 
-    n1 = fabll.Node.create()
-    n2 = fabll.Node.create()
-    n3 = fabll.Node.create()
+    n1 = Node.create()
+    n2 = Node.create()
+    n3 = Node.create()
     e120 = Edge.create(source=n1, target=n2, edge_type=0)
     e130 = Edge.create(source=n1, target=n3, edge_type=0)
     e121 = Edge.create(source=n1, target=n2, edge_type=1)
@@ -47,10 +47,10 @@ def test_minimal_graph():
 
 def test_edge_composition_create():
     from faebryk.core.zig.gen.faebryk.composition import EdgeComposition  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import fabll.Node  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import Node  # type: ignore
 
-    parent = fabll.Node.create()
-    child = fabll.Node.create()
+    parent = Node.create()
+    child = Node.create()
 
     edge = EdgeComposition.create(parent=parent, child=child, child_identifier="kid")
 
@@ -66,13 +66,13 @@ def test_edge_composition_add_child_and_visit():
     )
     from faebryk.core.zig.gen.graph.graph import (  # type: ignore
         GraphView,
-        fabll.Node,
+        Node,
     )
 
     graph = GraphView.create()
-    parent = fabll.Node.create()
-    child_a = fabll.Node.create()
-    child_b = fabll.Node.create()
+    parent = Node.create()
+    child_a = Node.create()
+    child_b = Node.create()
 
     parent_bound = graph.insert_node(node=parent)
     child_a_bound = graph.insert_node(node=child_a)
@@ -109,35 +109,35 @@ def test_edge_composition_add_child_and_visit():
 
 def test_edge_type_create():
     from faebryk.core.zig.gen.faebryk.node_type import EdgeType  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import fabll.Node  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import Node  # type: ignore
 
-    type_node = fabll.Node.create()
-    instance_node = fabll.Node.create()
+    type_node = Node.create()
+    instance_node = Node.create()
     edge = EdgeType.create(type_node=type_node, instance_node=instance_node)
 
     assert EdgeType.is_instance(edge=edge) is True
     assert type_node.is_same(other=EdgeType.get_type_node(edge=edge))
 
     get_instance_node = EdgeType.get_instance_node(edge=edge)
-    assert isinstance(get_instance_node, fabll.Node)
+    assert isinstance(get_instance_node, Node)
     assert instance_node.is_same(other=get_instance_node)
 
 
 def test_edge_next():
     from faebryk.core.zig.gen.faebryk.next import EdgeNext  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import GraphView, fabll.Node  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import GraphView, Node  # type: ignore
 
     graph = GraphView.create()
 
-    previous_node = fabll.Node.create()
-    next_node = fabll.Node.create()
+    previous_node = Node.create()
+    next_node = Node.create()
     previous_bound = graph.insert_node(node=previous_node)
     _ = graph.insert_node(node=next_node)
     edge = EdgeNext.create(previous_node=previous_node, next_node=next_node)
     _ = graph.insert_edge(edge=edge)
     assert EdgeNext.is_instance(edge=edge) is True
     get_next_node = EdgeNext.get_next_node_from_node(node=previous_bound)
-    assert isinstance(get_next_node, fabll.Node)
+    assert isinstance(get_next_node, Node)
     assert next_node.is_same(other=get_next_node)
 
 

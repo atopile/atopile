@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.core.trait import TraitImpl
 
 
-class has_explicit_part(Module.TraitT.decless()):
+class has_explicit_part(fabll.Node):
     mfr: str
     partno: str
     supplier_id: str
@@ -51,7 +51,7 @@ class has_explicit_part(Module.TraitT.decless()):
     @override
     def on_obj_set(self):
         super().on_obj_set()
-        obj = self.get_obj(type=Module)
+        obj = self.get_obj(type=fabll.Module)
 
         if hasattr(self, "mfr"):
             assert self.partno

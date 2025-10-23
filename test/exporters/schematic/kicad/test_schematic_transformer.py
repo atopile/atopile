@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.schematic.kicad.transformer import SchTransformer
 from faebryk.libs.exceptions import UserException
@@ -21,7 +22,7 @@ def sch_file():
 
 @pytest.fixture
 def transformer(sch_file: kicad.schematic.SchematicFile):
-    app = Module()
+    app = fabll.Module()
     return SchTransformer(sch_file.kicad_sch, app.get_graph(), app)
 
 
@@ -71,7 +72,7 @@ def test_insert_symbol(full_transformer: SchTransformer):
     start_symbol_count = len(full_transformer.sch.symbols)
 
     # mimicing typically design/user-space
-    audio_jack = full_transformer.app.add(Module())
+    audio_jack = full_transformer.app.add(fabll.Module())
     pin_s = audio_jack.add(F.Electrical())
     pin_t = audio_jack.add(F.Electrical())
     pin_r = audio_jack.add(F.Electrical())

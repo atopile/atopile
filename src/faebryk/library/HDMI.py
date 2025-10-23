@@ -8,7 +8,7 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class HDMI(ModuleInterface):
+class HDMI(fabll.ModuleInterface):
     """
     HDMI interface
     """

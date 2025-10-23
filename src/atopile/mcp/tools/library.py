@@ -25,9 +25,9 @@ def _get_library_nodes(
             name=m.__name__,
             docstring=m.__doc__ or "",
             language=Language.FABLL,
-            type=NodeType.MODULE if issubclass(m, Module) else NodeType.INTERFACE,
+            type=NodeType.MODULE if issubclass(m, fabll.Module) else NodeType.INTERFACE,
             inherits=m.__bases__[0].__name__
-            if m.__bases__[0] not in [Module, ModuleInterface]
+            if m.__bases__[0] not in [fabll.Module, fabll.ModuleInterface]
             else None,
         )
         for m in F.__dict__.values()
@@ -97,7 +97,7 @@ def get_library_modules_or_interfaces(
     """
     types = tuple()
     if include_modules:
-        types += (Module,)
+        types += (fabll.Module,)
     if include_interfaces:
-        types += (ModuleInterface,)
+        types += (fabll.ModuleInterface,)
     return _get_library_nodes(types)

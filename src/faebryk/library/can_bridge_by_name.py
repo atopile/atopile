@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.core.fabll as fabll
 import faebryk.core.node as fabll
 
 

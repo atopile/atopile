@@ -85,7 +85,7 @@ class PickVerificationError(PickError):
 
 
 class PickErrorChildren(PickError):
-    def __init__(self, module: fabll.Node, children: dict[Module, PickError]):
+    def __init__(self, module: fabll.Node, children: dict[fabll.Module, PickError]):
         self.children = children
 
         message = f"Could not pick parts for children of {module}:\n" + "\n".join(
@@ -130,12 +130,12 @@ class NotCompatibleException(Exception):
         super().__init__(msg)
 
 
-class does_not_require_picker_check(Parameter.TraitT.decless()):
+class does_not_require_picker_check(fabll.Node):
     pass
 
 
-def get_pick_tree(module: fabll.Node | ModuleInterface) -> Tree[Module]:
-    if isinstance(module, Module):
+def get_pick_tree(module: fabll.Node | fabll.ModuleInterface) -> Tree[fabll.Module]:
+    if isinstance(module, fabll.Module):
         module = module.get_most_special()
 
     tree = Tree()
@@ -149,7 +149,9 @@ def get_pick_tree(module: fabll.Node | ModuleInterface) -> Tree[Module]:
         tree[module] = merge_tree
 
     for child in module.get_children(
-        direct_only=True, types=(Module, ModuleInterface), include_root=False
+        direct_only=True,
+        types=(fabll.Module, fabll.ModuleInterface),
+        include_root=False,
     ):
         child_tree = get_pick_tree(child)
         merge_tree.update(child_tree)
@@ -157,7 +159,7 @@ def get_pick_tree(module: fabll.Node | ModuleInterface) -> Tree[Module]:
     return tree
 
 
-def update_pick_tree(tree: Tree[Module]) -> tuple[Tree[Module], bool]:
+def update_pick_tree(tree: Tree[fabll.Module]) -> tuple[Tree[fabll.Module], bool]:
     if not tree:
         return tree, False
 
@@ -180,14 +182,14 @@ def check_missing_picks(module: fabll.Node):
     # - no parent with picker
 
     missing = module.get_children_modules(
-        types=Module,
+        types=fabll.Module,
         direct_only=False,
         include_root=True,
         # not specialized
         most_special=True,
         # leaf == no children
         f_filter=lambda m: not m.get_children_modules(
-            types=Module, f_filter=lambda x: not isinstance(x, F.Footprint)
+            types=fabll.Module, f_filter=lambda x: not isinstance(x, F.Footprint)
         )
         and not isinstance(m, F.Footprint)
         # no parent with part picked
@@ -223,8 +225,8 @@ def check_missing_picks(module: fabll.Node):
 
 
 def find_independent_groups(
-    modules: Iterable[Module], solver: Solver
-) -> list[set[Module]]:
+    modules: Iterable[fabll.Module], solver: Solver
+) -> list[set[fabll.Module]]:
     """
     Find groups of modules that are independent of each other.
     """
@@ -269,13 +271,13 @@ def find_independent_groups(
             param_eqs.add_eq(*ps)
 
         # find modules that are dependent on each other
-        module_eqs = EquivalenceClasses[Module](modules)
+        module_eqs = EquivalenceClasses[fabll.Module](modules)
         for p_eq in param_eqs.get():
             p_modules = {
                 m
                 for p in p_eq
                 if (parent := p.get_parent()) is not None
-                and isinstance(m := parent[0], Module)
+                and isinstance(m := parent[0], fabll.Module)
                 and m in modules
             }
             module_eqs.add_eq(*p_modules)
@@ -284,7 +286,7 @@ def find_independent_groups(
         return out
 
     graphs = EquivalenceClasses()
-    graph_to_m = defaultdict[Graph, set[Module]](set)
+    graph_to_m = defaultdict[Graph, set[fabll.Module]](set)
     for m in modules:
         params = m.get_trait(F.is_pickable_by_type).params
         new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
@@ -298,18 +300,18 @@ def find_independent_groups(
     return module_groups
 
 
-def _list_to_hack_tree(modules: Iterable[Module]) -> Tree[Module]:
+def _list_to_hack_tree(modules: Iterable[fabll.Module]) -> Tree[fabll.Module]:
     return Tree({m: Tree() for m in modules})
 
 
 def pick_topologically(
-    tree: Tree[Module], solver: Solver, progress: Advancable | None = None
+    tree: Tree[fabll.Module], solver: Solver, progress: Advancable | None = None
 ):
     # TODO implement backtracking
 
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
-    def _pick_explicit_modules(explicit_modules: list[Module]):
+    def _pick_explicit_modules(explicit_modules: list[fabll.Module]):
         logger.info(f"Picking {len(explicit_modules)} explicit parts")
         explicit_parts = picker_lib._find_modules(
             _list_to_hack_tree(explicit_modules), solver
@@ -320,7 +322,7 @@ def pick_topologically(
             if progress:
                 progress.advance()
 
-    def _get_candidates(_tree: Tree[Module]):
+    def _get_candidates(_tree: Tree[fabll.Module]):
         # with timings.as_global("pre-solve"):
         #    solver.simplify(*get_graphs(tree.keys()))
         try:

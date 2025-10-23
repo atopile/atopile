@@ -11,7 +11,7 @@ class _Bare(fabll.Node):
 
 
 class _Harness(fabll.Module):
-    iface: ModuleInterface
+    iface: fabll.ModuleInterface
 
 
 def test_lifecycle_transitions_and_guards():
@@ -38,7 +38,7 @@ def test_lifecycle_transitions_and_guards():
 
 
 def test_moduleinterface_runtime_only_operations():
-    iface = ModuleInterface()
+    iface = fabll.ModuleInterface()
     assert iface.get_lifecycle_stage() == "collection"
 
     # Runtime-only API is blocked until instantiation

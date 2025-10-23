@@ -1125,7 +1125,7 @@ def test_list_literal_invalid(bob: Bob):
 
 
 def test_plain_trait(bob: Bob):
-    class test_trait(fabll.Module.TraitT.decless()):
+    class test_trait(fabll.Node):
         pass
 
     F.test_trait = test_trait  # type: ignore
@@ -1149,7 +1149,7 @@ def test_plain_trait(bob: Bob):
 
 
 def test_unimported_trait(bob: Bob):
-    class test_trait(fabll.Module.TraitT.decless()):
+    class test_trait(fabll.Node):
         pass
 
     F.test_trait = test_trait  # type: ignore

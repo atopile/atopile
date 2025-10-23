@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
@@ -15,7 +16,7 @@ class has_single_electric_reference_shared(F.has_single_electric_reference.impl(
     def on_obj_set(self):
         super().on_obj_set()
 
-        if not isinstance(self.obj, (Module, ModuleInterface)):
+        if not isinstance(self.obj, (fabll.Module, fabll.ModuleInterface)):
             raise TypeError(
                 f"has_single_electric_reference_shared can only be used on "
                 f"modules or module interfaces, got {self.obj}"

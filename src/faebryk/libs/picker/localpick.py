@@ -34,7 +34,7 @@ class PickerOption:
 
     Assumes specified params are narrowest possible value for this part
     """
-    filter: Callable[[Module], bool] | None = None
+    filter: Callable[[fabll.Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str, str] | None = None
 

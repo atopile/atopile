@@ -73,7 +73,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     timings.add("get_all_nodes_graph")
 
     for n in [app, app.resistors[0]]:  # type: ignore
-        assert isinstance(n, Module)
+        assert isinstance(n, fabll.Module)
         name = type(n).__name__[0]
 
         n.get_children(direct_only=False, types=fabll.Node)
@@ -82,13 +82,13 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
         n.get_tree(types=fabll.Node)
         timings.add(f"get_node_tree {name}")
 
-        n.get_tree(types=ModuleInterface)
+        n.get_tree(types=fabll.ModuleInterface)
         timings.add(f"get_mif_tree {name}")
 
         n.get_children(direct_only=True, types=fabll.Node)
         timings.add(f"get_module_direct_children {name}")
 
-        n.get_children(direct_only=True, types=ModuleInterface)
+        n.get_children(direct_only=True, types=fabll.ModuleInterface)
         timings.add(f"get_mifs {name}")
 
     logger.info(f"{timings!r}")

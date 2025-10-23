@@ -219,7 +219,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
 
     parameters = dict[str, dict[str, P_Set[Any]]]()
 
-    for m in module.get_children_modules(types=Module, include_root=True):
+    for m in module.get_children_modules(types=fabll.Module, include_root=True):
         module_name = m.get_full_name(types=True)
         module_params = m.get_children(
             direct_only=True, include_root=True, types=Parameter

@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class USB_C(ModuleInterface):
+class USB_C(fabll.ModuleInterface):
     usb3: F.USB3
     cc1: F.Electrical
     cc2: F.Electrical

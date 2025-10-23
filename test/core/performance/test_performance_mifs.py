@@ -46,7 +46,7 @@ def ensure_typegraph(node: fabll.Node) -> None:
     "mif_type",
     [
         GraphInterface,
-        ModuleInterface,
+        fabll.ModuleInterface,
         F.Electrical,
         F.ElectricPower,
         F.ElectricLogic,
@@ -80,7 +80,7 @@ def test_performance_mifs_connect_check(mif_type):
     "mif_type",
     [
         GraphInterface,
-        ModuleInterface,
+        fabll.ModuleInterface,
         F.Electrical,
         F.ElectricPower,
         F.ElectricLogic,
@@ -106,7 +106,7 @@ def test_performance_mifs_connect_hull(mif_type):
     assert instances[0].is_connected_to(instances[-1])
     timings.add(name, "is_connected")
 
-    if issubclass(mif_type, ModuleInterface):
+    if issubclass(mif_type, fabll.ModuleInterface):
         ensure_typegraph(instances[0])
         list(instances[0].get_connected())
     else:

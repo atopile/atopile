@@ -104,7 +104,7 @@ def test_type_pick():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_no_pick():
-    module = Module()
+    module = fabll.Module()
     module.add(F.has_part_removed())
 
     pick_part_recursively(module, DefaultSolver())
@@ -323,7 +323,7 @@ def test_pick_voltage_divider_complex():
 
     # pick_part_recursively(app, solver)
 
-    # for m in app.get_children_modules(types=Module):
+    # for m in app.get_children_modules(types=fabll.Module):
     #    if not m.has_trait(F.has_part_picked):
     #        continue
     #    print(m.get_full_name(), m.pretty_params(solver))

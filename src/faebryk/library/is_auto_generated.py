@@ -1,13 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 from faebryk.libs.checksum import Checksum
 
 
 class _FileManuallyModified(Exception): ...
 
 
-class is_auto_generated(Module.TraitT.decless()):
+class is_auto_generated(fabll.Node):
     CHECKSUM_PLACEHOLDER = "{IS_AUTO_GENERATED_CHECKSUM}"
 
     def __init__(

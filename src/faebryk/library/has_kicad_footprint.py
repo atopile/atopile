@@ -4,13 +4,13 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-import faebryk.library._F as F
+import faebryk.core.node as fabll
 
 if TYPE_CHECKING:
     from faebryk.library.Pad import Pad
 
 
-class has_kicad_footprint(F.Footprint.TraitT):
+class has_kicad_footprint(fabll.Node):
     @abstractmethod
     def get_kicad_footprint(self) -> str: ...
 

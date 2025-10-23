@@ -65,7 +65,7 @@ class _HasUUID(Protocol):
 
 # TODO: consider common transformer base
 class SchTransformer:
-    class has_linked_sch_symbol(Module.TraitT):
+    class has_linked_sch_symbol(fabll.Node):
         symbol: kicad.schematic.SymbolInstance
 
     class has_linked_sch_symbol_defined(has_linked_sch_symbol.impl()):
@@ -73,7 +73,7 @@ class SchTransformer:
             super().__init__()
             self.symbol = symbol
 
-    class has_linked_pins(F.Symbol.Pin.TraitT):
+    class has_linked_pins(fabll.Node):
         pins: list[kicad.schematic.InstancePin]
 
     class has_linked_pins_defined(has_linked_pins.impl()):
@@ -236,9 +236,9 @@ class SchTransformer:
     def get_symbol(cmp: fabll.Node) -> F.Symbol:
         return not_none(cmp.get_trait(SchTransformer.has_linked_sch_symbol)).symbol
 
-    def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
+    def get_all_symbols(self) -> List[tuple[fabll.Module, F.Symbol]]:
         return [
-            (cast_assert(Module, cmp), t.symbol)
+            (cast_assert(fabll.Module, cmp), t.symbol)
             for cmp, t in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )

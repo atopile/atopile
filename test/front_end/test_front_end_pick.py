@@ -223,7 +223,7 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    r1, r2 = node.get_children_modules(direct_only=True, types=Module)
+    r1, r2 = node.get_children_modules(direct_only=True, types=fabll.Module)
     assert r1.has_trait(F.has_part_picked)
     assert r2.has_trait(F.has_part_picked)
 

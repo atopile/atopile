@@ -10,7 +10,7 @@ class Symbol(fabll.Module):
     linked with the module they represent via the `has_linked` trait.
     """
 
-    class Pin(ModuleInterface):
+    class Pin(fabll.ModuleInterface):
         represents = reference(F.Electrical)
 
         class has_pin(F.has_reference.decless()):
@@ -29,7 +29,7 @@ class Symbol(fabll.Module):
 
         reference: "Symbol" = reference()
 
-    class has_kicad_symbol(TraitT.decless()):
+    class has_kicad_symbol(fabll.Node):
         """
         If a symbol has this trait, then the symbol has a matching KiCAD symbol
         :param symbol_name: The full name of the KiCAD symbol including the library name

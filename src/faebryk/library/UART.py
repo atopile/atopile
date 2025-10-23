@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class UART(ModuleInterface):
+class UART(fabll.ModuleInterface):
     base_uart: F.UART_Base
     rts: F.ElectricLogic
     cts: F.ElectricLogic

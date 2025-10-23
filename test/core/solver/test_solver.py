@@ -927,7 +927,7 @@ def test_jlcpcb_pick_powered_led_simple():
     led.led.forward_voltage.constrain_subset(fabll.Range(1 * P.V, 4 * P.V))
 
     solver = DefaultSolver()
-    children_mods = led.get_children_modules(direct_only=False, types=(Module,))
+    children_mods = led.get_children_modules(direct_only=False, types=(fabll.Module,))
 
     pick_part_recursively(led, solver)
 
@@ -946,7 +946,7 @@ def test_jlcpcb_pick_powered_led_regression():
     )
 
     solver = DefaultSolver()
-    children_mods = led.get_children_modules(direct_only=False, types=(Module,))
+    children_mods = led.get_children_modules(direct_only=False, types=(fabll.Module,))
 
     pick_part_recursively(led, solver)
 

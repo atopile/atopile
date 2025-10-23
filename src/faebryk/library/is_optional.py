@@ -4,10 +4,12 @@
 import logging
 from abc import abstractmethod
 
+import faebryk.core.node as fabll
+
 logger = logging.getLogger(__name__)
 
 
-class is_optional(ModuleInterface.TraitT):
+class is_optional(fabll.Node):
     """
     Indicates that a module might not have a specific interface
     """

@@ -10,7 +10,7 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
-class I2S(ModuleInterface):
+class I2S(fabll.ModuleInterface):
     sd: F.ElectricLogic  # Serial Data
     ws: F.ElectricLogic  # Word Select (Left/Right Clock)
     sck: F.ElectricLogic  # Serial Clock

@@ -4,10 +4,12 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
+import faebryk.core.node as fabll
+
 if TYPE_CHECKING:
     from faebryk.library.Pad import Pad
 
 
-class has_linked_pad(ModuleInterface.TraitT):
+class has_linked_pad(fabll.Node):
     @abstractmethod
     def get_pads(self) -> set["Pad"]: ...

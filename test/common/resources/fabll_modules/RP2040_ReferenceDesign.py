@@ -196,17 +196,17 @@ class RP2040_ReferenceDesign(fabll.Module):
                     LayoutTypeHierarchy.Level(
                         mod_type=RP2040,
                         layout=LayoutAbsolute(
-                            Point((0, 0, 0, fabll.NONE)),
+                            Point((0, 0, 0, L.NONE)),
                         ),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=F.LDO,
-                        layout=LayoutAbsolute(Point((10, 14, 180, fabll.NONE))),
+                        layout=LayoutAbsolute(Point((10, 14, 180, L.NONE))),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=type(self.boot_selector),
                         layout=LayoutAbsolute(
-                            Point((-1.75, -11.5, 0, fabll.NONE)),
+                            Point((-1.75, -11.5, 0, L.NONE)),
                         ),
                         children_layout=LayoutExtrude(
                             vector=(3.5, 0, 90),
@@ -215,19 +215,19 @@ class RP2040_ReferenceDesign(fabll.Module):
                     LayoutTypeHierarchy.Level(
                         mod_type=type(self.flash),
                         layout=LayoutAbsolute(
-                            Point((-1.95, -20, 0, fabll.NONE)),
+                            Point((-1.95, -20, 0, L.NONE)),
                         ),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=F.Crystal_Oscillator,
                         layout=LayoutAbsolute(
-                            Point((-10, 15, 0, fabll.NONE)),
+                            Point((-10, 15, 0, L.NONE)),
                         ),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=F.Resistor,
                         layout=LayoutExtrude(
-                            base=Point((0.75, -6, 0, fabll.NONE)),
+                            base=Point((0.75, -6, 0, L.NONE)),
                             vector=(1.25, 0, 270),
                         ),
                     ),

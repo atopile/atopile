@@ -23,7 +23,7 @@ class RP2040(fabll.Module):
     class ADC(F.ElectricSignal):
         pass
 
-    class PWM(ModuleInterface):
+    class PWM(fabll.ModuleInterface):
         A: F.ElectricLogic
         B: F.ElectricLogic
 
@@ -53,7 +53,7 @@ class RP2040(fabll.Module):
     class SPI(F.SPI):
         cs: F.ElectricLogic
 
-    class UART(ModuleInterface):
+    class UART(fabll.ModuleInterface):
         base_uart: F.UART_Base
         rts: F.ElectricLogic
         cts: F.ElectricLogic
@@ -64,7 +64,7 @@ class RP2040(fabll.Module):
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class USBPowerControl(ModuleInterface):
+    class USBPowerControl(fabll.ModuleInterface):
         ovcur_det: F.ElectricLogic
         vbus_det: F.ElectricLogic
         vbus_en: F.ElectricLogic

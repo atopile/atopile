@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class JTAG(ModuleInterface):
+class JTAG(fabll.ModuleInterface):
     dbgrq: F.ElectricLogic
     tdo: F.ElectricLogic
     tdi: F.ElectricLogic

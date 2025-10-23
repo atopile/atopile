@@ -5,7 +5,8 @@ import logging
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any
 
-import faebryk.core.fabll as fabll
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.library.can_attach_to_footprint_symmetrically import (
     can_attach_to_footprint_symmetrically,
 )
@@ -49,7 +50,8 @@ class Capacitor(fabll.Node):
             nodetype=can_attach_to_footprint_symmetrically
         )
 
-        # Child of the typegraph, not a make child that should be replicated in instances
+        # Child of the typegraph, not a make child that should be replicated in
+        # instances
         cls.designator_prefix = t.BoundChildOfType(nodetype=has_designator_prefix)
         cls.designator_prefix.get().prefix_param.get().constrain_to_literal(
             g=t.tg.get_graph_view(), value=has_designator_prefix.Prefix.C

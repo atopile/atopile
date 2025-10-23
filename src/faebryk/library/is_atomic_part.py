@@ -8,7 +8,7 @@ import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.util import once
 
 
-class is_atomic_part(Module.TraitT.decless()):
+class is_atomic_part(fabll.Node):
     def __init__(
         self,
         manufacturer: str,

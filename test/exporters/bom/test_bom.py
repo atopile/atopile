@@ -33,7 +33,7 @@ def test_bom_picker_pick():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_explicit_pick():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     m.add(F.has_explicit_part.by_supplier("C25804", pinmap={}))
     _build(m)
@@ -44,7 +44,7 @@ def test_bom_explicit_pick():
 
 
 def test_bom_kicad_footprint_no_lcsc():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     fp = F.KicadFootprint(pin_names=["1", "2"])
     fp.add(
@@ -60,7 +60,7 @@ def test_bom_kicad_footprint_no_lcsc():
 
 
 def test_bom_kicad_footprint_lcsc_verbose():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     fp = F.KicadFootprint(pin_names=["1", "2"])
     fp.add(
@@ -80,7 +80,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
 
 
 def test_bom_kicad_footprint_lcsc_compact():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     m.add(
         F.has_explicit_part.by_supplier(

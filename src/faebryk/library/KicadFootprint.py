@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class KicadFootprint(F.Footprint):
-    class has_file(F.Footprint.TraitT.decless()):
+    class has_file(fabll.Node):
         """
         Direct reference to a KiCAD footprint file
         """
@@ -23,7 +23,7 @@ class KicadFootprint(F.Footprint):
             super().__init__()
             self.file = Path(file)
 
-    class has_kicad_identifier(F.Footprint.TraitT.decless()):
+    class has_kicad_identifier(fabll.Node):
         def __init__(self, kicad_identifier: str):
             super().__init__()
             self.kicad_identifier = kicad_identifier

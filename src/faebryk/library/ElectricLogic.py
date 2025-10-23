@@ -16,7 +16,7 @@ class ElectricLogic(F.ElectricSignal):
     For more states / continuous signals check ElectricSignal.
     """
 
-    class has_pulls(F.Logic.TraitT):
+    class has_pulls(fabll.Node):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
 
@@ -29,7 +29,7 @@ class ElectricLogic(F.ElectricSignal):
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]:
             return self.up, self.down
 
-    class can_be_pulled(F.Logic.TraitT):
+    class can_be_pulled(fabll.Node):
         @abstractmethod
         def pull(self, up: bool, owner: fabll.Node) -> F.Resistor: ...
 

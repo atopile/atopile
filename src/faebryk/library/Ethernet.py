@@ -8,7 +8,7 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class Ethernet(ModuleInterface):
+class Ethernet(fabll.ModuleInterface):
     """
     1000BASE-T Gigabit Ethernet Interface
     """

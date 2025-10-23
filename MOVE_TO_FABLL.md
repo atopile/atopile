@@ -28,6 +28,7 @@
   - [ ] literals (fabll.Range...)
 - [ ] Links
 - [ ] GraphInterface
+- [ ] CNode
 
 ##
 

@@ -7,9 +7,9 @@ import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 
-class Pad(ModuleInterface):
+class Pad(fabll.ModuleInterface):
     net: F.Electrical
-    pcb: ModuleInterface
+    pcb: fabll.ModuleInterface
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
@@ -17,7 +17,7 @@ class Pad(ModuleInterface):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
-        intf: ModuleInterface,
+        intf: fabll.ModuleInterface,
     ) -> "Pad":
         pads = Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         if len(pads) != 1:
@@ -26,7 +26,7 @@ class Pad(ModuleInterface):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint(
-        intf: ModuleInterface,
+        intf: fabll.ModuleInterface,
     ) -> list["Pad"]:
         # This only finds directly attached pads
         # -> misses from parents / children nodes

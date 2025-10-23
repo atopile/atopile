@@ -9,7 +9,7 @@ from faebryk.libs.util import once
 
 
 class _TSwitch(fabll.Module):
-    T = ModuleInterface
+    T = fabll.ModuleInterface
 
     def __init__(self, t: type[T]):
         super().__init__()
@@ -21,7 +21,7 @@ class _TSwitch(fabll.Module):
 
 
 @once  # This means we can use a normal "isinstance" to test for them
-def Switch[T: ModuleInterface](interface_type: type[T]):
+def Switch[T: fabll.ModuleInterface](interface_type: type[T]):
     class _Switch(_TSwitch):
         def __init__(self) -> None:
             super().__init__(interface_type)

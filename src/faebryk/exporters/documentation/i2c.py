@@ -23,7 +23,7 @@ def export_i2c_tree(
 
     # Filter buses
     mifs = app.bind_typegraph_from_self().nodes_of_type(F.I2C)
-    buses = ModuleInterface._group_into_buses(mifs)
+    buses = fabll.ModuleInterface._group_into_buses(mifs)
     buses = {
         k: v for k, v in buses.items() if len(v) > 1 and k.bus_crosses_pad_boundary()
     }

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class SurgeProtection(fabll.Module):
     tvs = fabll.list_f_field(0, F.TVS)()
-    nested = fabll.list_f_field(0, Module)()
+    nested = fabll.list_f_field(0, fabll.Module)()
 
     def __init__(self, tvs_count: int = 1):
         super().__init__()

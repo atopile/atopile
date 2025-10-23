@@ -38,7 +38,7 @@ def load_part_info_from_pcb(G: fabll.Graph):
     )
 
     for node, trait in nodes:
-        assert isinstance(node, Module)
+        assert isinstance(node, fabll.Module)
         if isinstance(node, F.Footprint):
             continue
         if node.has_trait(F.has_part_picked):

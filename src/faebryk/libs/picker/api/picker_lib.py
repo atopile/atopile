@@ -194,8 +194,8 @@ def _process_candidates(
 
 
 def _find_modules(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
+    modules: Tree[fabll.Module], solver: Solver
+) -> dict[fabll.Module, list[Component]]:
     timings = Times(name="find_modules")
 
     params = {m: _prepare_query(m, solver) for m in modules}
@@ -204,7 +204,7 @@ def _find_modules(
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
 
-    def _map_response[T](results: list[T]) -> dict[Module, T]:
+    def _map_response[T](results: list[T]) -> dict[fabll.Module, T]:
         assert len(results) == len(queries)
         return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
 
@@ -338,7 +338,7 @@ def _get_compatible_parameters(
 
 
 def _check_candidates_compatible(
-    module_candidates: list[tuple[Module, Component]],
+    module_candidates: list[tuple[fabll.Module, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -368,7 +368,7 @@ def _check_candidates_compatible(
 
 
 def check_and_attach_candidates(
-    candidates: list[tuple[Module, Component]],
+    candidates: list[tuple[fabll.Module, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -392,8 +392,8 @@ def check_and_attach_candidates(
 
 
 def get_candidates(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
+    modules: Tree[fabll.Module], solver: Solver
+) -> dict[fabll.Module, list[Component]]:
     candidates = modules.copy()
     parts = {}
     empty = set()

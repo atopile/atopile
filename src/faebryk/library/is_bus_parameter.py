@@ -18,13 +18,13 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-class is_bus_parameter(Parameter.TraitT.decless()):
+class is_bus_parameter(fabll.Node):
     """
     Marks a parameter as a bus parameter.
     This means that it's constraints are dependent on the bus connections.
     """
 
-    type KEY = Callable[[ModuleInterface], Parameter] | Parameter
+    type KEY = Callable[[fabll.ModuleInterface], Parameter] | Parameter
     type EXPR_FACTORY = Callable[[], Expression]
     type REDUCE = tuple[KEY, EXPR_FACTORY]
 
@@ -47,16 +47,18 @@ class is_bus_parameter(Parameter.TraitT.decless()):
     @staticmethod
     def _get_key_from_parameter(
         obj: Parameter,
-    ) -> Callable[[ModuleInterface], Parameter]:
+    ) -> Callable[[fabll.ModuleInterface], Parameter]:
         # TODO consider handling fields as obj
         # e.g ElectricPower.max_current instead of self.max_current
 
         p = obj.get_parent()
         if not p:
-            raise NodeException(obj, "Can't auto-detect key for non-parented parameter")
+            raise fabll.NodeException(
+                obj, "Can't auto-detect key for non-parented parameter"
+            )
         parent, name = p
-        if not isinstance(parent, ModuleInterface):
-            raise NodeException(
+        if not isinstance(parent, fabll.ModuleInterface):
+            raise fabll.NodeException(
                 obj, "Can't auto-detect key for non-mif child parameter"
             )
 
@@ -74,11 +76,11 @@ class is_bus_parameter(Parameter.TraitT.decless()):
         self._key = self._get_key_from_parameter(obj)
 
     @once
-    def mif_parent(self) -> ModuleInterface:
-        return cast_assert(ModuleInterface, not_none(self.obj.get_parent())[0])
+    def mif_parent(self) -> fabll.ModuleInterface:
+        return cast_assert(fabll.ModuleInterface, not_none(self.obj.get_parent())[0])
 
     @assert_once
-    def resolve(self, mifs: set[ModuleInterface]):
+    def resolve(self, mifs: set[fabll.ModuleInterface]):
         if self._guard:
             return
 
@@ -87,7 +89,7 @@ class is_bus_parameter(Parameter.TraitT.decless()):
         mif_parent = self.mif_parent()
         self_param = self.get_obj(Parameter)
         if self._key(mif_parent) is not self_param:
-            raise NodeException(self, "Key not mapping to parameter")
+            raise fabll.NodeException(self, "Key not mapping to parameter")
 
         params = [self._key(mif) for mif in mifs]
         params_with_guard = [
@@ -128,7 +130,7 @@ class is_bus_parameter(Parameter.TraitT.decless()):
 
         times = Times()
 
-        busses: list[set[ModuleInterface]] = []
+        busses: list[set[fabll.ModuleInterface]] = []
 
         params_grouped_by_mif = groupby(bus_parameters, lambda p: p[1].mif_parent())
 

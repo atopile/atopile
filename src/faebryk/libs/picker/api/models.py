@@ -66,7 +66,7 @@ class BaseParams(Serializable):
 
 
 @once
-def make_params_for_type(module_type: type[Module]) -> type:
+def make_params_for_type(module_type: type[fabll.Module]) -> type:
     m = module_type()
     assert m.has_trait(F.is_pickable_by_type)
     pickable_trait = m.get_trait(F.is_pickable_by_type)

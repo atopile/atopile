@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class DifferentialPair(ModuleInterface):
+class DifferentialPair(fabll.ModuleInterface):
     p: F.ElectricSignal
     n: F.ElectricSignal
 

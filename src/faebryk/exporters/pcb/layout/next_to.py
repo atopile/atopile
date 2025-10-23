@@ -29,5 +29,5 @@ class LayoutNextTo(Layout):
 
         for n in node:
             # TODO: why the assert?
-            assert isinstance(n, Module)
+            assert isinstance(n, fabll.Module)
             place_next_to(self._target, n, route=True, params=self._params)

@@ -11,8 +11,8 @@ from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 
 def test_moduleinterface_get_connected_requires_typegraph():
     class Harness(fabll.Module):
-        left: ModuleInterface
-        right: ModuleInterface
+        left: fabll.ModuleInterface
+        right: fabll.ModuleInterface
 
     app = Harness()
     app.left.connect(app.right)

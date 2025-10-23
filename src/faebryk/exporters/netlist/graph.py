@@ -16,7 +16,7 @@ from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, once
 logger = logging.getLogger(__name__)
 
 
-class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
+class can_represent_kicad_footprint(fabll.Node):
     kicad_footprint = FBRKNetlist.Component
 
     def __init__(self, component: fabll.Node, graph: fabll.Graph) -> None:
@@ -71,7 +71,7 @@ def ensure_ref_and_value(c: fabll.Node):
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
-    buses = ModuleInterface._group_into_buses(interfaces)
+    buses = fabll.ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
 
     # Iterate buses in a deterministic order by their string representation
@@ -197,7 +197,7 @@ def _name_shittiness(name: str | None) -> float:
 
 
 @once
-def _get_stable_node_name(mif: ModuleInterface) -> str:
+def _get_stable_node_name(mif: fabll.ModuleInterface) -> str:
     """Get a stable hierarchical name for a module interface."""
     return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
 
@@ -248,7 +248,7 @@ def _register_named_nets(
             )
 
 
-def _calculate_suggested_name_rank(mif: ModuleInterface, base_depth: int) -> int:
+def _calculate_suggested_name_rank(mif: fabll.ModuleInterface, base_depth: int) -> int:
     """Calculate rank for a suggested name based on hierarchy."""
     rank = base_depth
 
@@ -263,7 +263,7 @@ def _calculate_suggested_name_rank(mif: ModuleInterface, base_depth: int) -> int
 
 
 def _extract_net_name_info(
-    mif: ModuleInterface,
+    mif: fabll.ModuleInterface,
 ) -> tuple[set[str], list[tuple[str, int]], dict[str, float]]:
     """Extract naming information from an interface."""
     required_names: set[str] = set()
@@ -296,13 +296,13 @@ def _extract_net_name_info(
             elif trait.level == F.has_net_name.Level.SUGGESTED:
                 rank = _calculate_suggested_name_rank(mif, node_depth)
                 suggested_names.append((trait.name, rank))
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         pass
 
     # Handle implicit names
     try:
         name = mif.get_name()
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         return required_names, suggested_names, implicit_candidates
 
     # Adjust depth for interfaces on the same level
@@ -407,7 +407,7 @@ def _extract_interface_candidate(mif: F.Electrical) -> tuple[str, int] | None:
 
             if is_interface and is_not_electrical:
                 return (name_in_parent, len(node.get_hierarchy()))
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         pass
 
     return None
@@ -481,7 +481,7 @@ def _apply_affixes(
 
 
 def _find_anchor_interface(hierarchy: list[tuple]) -> tuple[int, tuple] | None:
-    """Find the first non-Electrical ModuleInterface in hierarchy."""
+    """Find the first non-Electrical fabll.ModuleInterface in hierarchy."""
     for idx, (node, name) in enumerate(hierarchy):
         is_interface = isinstance(node, fabll.ModuleInterface)
         is_not_electrical = not isinstance(node, F.Electrical)
@@ -496,7 +496,7 @@ def _find_owner_module(hierarchy: list[tuple], before_idx: int) -> str | None:
     """Find the nearest owning Module before the given index."""
     for j in range(before_idx - 1, -1, -1):
         node, name = hierarchy[j]
-        if isinstance(node, Module):
+        if isinstance(node, fabll.Module):
             return name
     return None
 
@@ -542,7 +542,7 @@ def _process_single_interface(mif: F.Electrical) -> tuple[int, list[str]] | None
 
         return score, path
 
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         return None
 
 
@@ -570,9 +570,9 @@ def _get_owner_module_name(net: F.Net) -> str | None:
         try:
             hierarchy = mif.get_hierarchy()
             for node, name_in_parent in hierarchy:
-                if node.get_parent() and isinstance(node, Module):
+                if node.get_parent() and isinstance(node, fabll.Module):
                     owner_names.add(name_in_parent)
-        except NodeNoParent:
+        except fabll.NodeNoParent:
             continue
     if not owner_names:
         return None

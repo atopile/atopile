@@ -13,7 +13,7 @@ from faebryk.libs.util import md_list
 logger = logging.getLogger(__name__)
 
 
-class requires_pulls(Module.TraitT.decless()):
+class requires_pulls(fabll.Node):
     class RequiresPullNotFulfilled(F.implements_design_check.UnfulfilledCheckException):
         def __init__(
             self,

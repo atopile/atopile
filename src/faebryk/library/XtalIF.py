@@ -10,7 +10,7 @@ from faebryk.libs.units import P  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-class XtalIF(ModuleInterface):
+class XtalIF(fabll.ModuleInterface):
     """
     TODO: Docstring describing your module
     """

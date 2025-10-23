@@ -18,10 +18,10 @@ def test_closed_world_violation():
     """Verify error when connecting to external interface."""
 
     class App1(fabll.Module):
-        mif: ModuleInterface
+        mif: fabll.ModuleInterface
 
     class App2(fabll.Module):
-        mif: ModuleInterface
+        mif: fabll.ModuleInterface
 
     app1 = App1()
     app2 = App2()
@@ -36,7 +36,7 @@ def test_self_connection_is_ignored():
     """Verify self-connection is silently ignored (existing behavior)."""
 
     class App(fabll.Module):
-        mif: ModuleInterface
+        mif: fabll.ModuleInterface
 
     app = App()
     app.mif.connect(app.mif)
@@ -59,7 +59,7 @@ def test_double_build_raises_error():
     """Verify that TypeGraph can only be built once."""
 
     class App(fabll.Module):
-        mif: ModuleInterface
+        mif: fabll.ModuleInterface
 
     app = App()
     app.create_typegraph()
@@ -88,8 +88,8 @@ def test_runtime_queries_require_instantiation_and_binding():
     """Verify get_connected() fails before instantiation+binding."""
 
     class App(fabll.Module):
-        mif1: ModuleInterface
-        mif2: ModuleInterface
+        mif1: fabll.ModuleInterface
+        mif2: fabll.ModuleInterface
 
     app = App()
     app.mif1.connect(app.mif2)
@@ -121,7 +121,7 @@ def test_double_bind_raises_error():
     """Verify binding fails if already bound."""
 
     class App(fabll.Module):
-        mif: ModuleInterface
+        mif: fabll.ModuleInterface
 
     app = App()
 
@@ -142,8 +142,8 @@ def test_instantiation_creates_connections():
     """Verify EdgeInterfaceConnection created during instantiate()."""
 
     class App(fabll.Module):
-        mif1: ModuleInterface
-        mif2: ModuleInterface
+        mif1: fabll.ModuleInterface
+        mif2: fabll.ModuleInterface
 
     app = App()
     app.mif1.connect(app.mif2)

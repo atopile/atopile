@@ -15,7 +15,7 @@ from faebryk.core.trait import Trait
 logger = logging.getLogger(__name__)
 
 
-class implements_design_check(Trait.TraitT.decless()):
+class implements_design_check(fabll.Node):
     class CheckStage(Enum):
         POST_DESIGN = auto()
         POST_SOLVE = auto()

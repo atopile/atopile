@@ -50,7 +50,7 @@ from atopile.parse import parser
 from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtoParser import AtoParser as ap
 from atopile.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.node import FieldExistsError, NodeException
+from faebryk.core.node import FieldExistsError
 from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
@@ -684,7 +684,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 def ato_error_converter():
     try:
         yield
-    except NodeException as ex:
+    except fabll.NodeException as ex:
         if from_dsl_ := ex.node.try_get_trait(from_dsl):
             raise errors.UserException.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
         else:
@@ -2133,7 +2133,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 # Try a proper connection
                 a.connect(b)
 
-            except NodeException as top_ex:
+            except fabll.NodeException as top_ex:
                 top_ex = errors.UserNodeException.from_node_exception(
                     top_ex, ctx, self.get_traceback()
                 )
@@ -2156,7 +2156,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                     try:
                         self._connect(c_a, c_b, None)
-                    except NodeException:
+                    except fabll.NodeException:
                         raise top_ex
 
                 else:
@@ -2228,7 +2228,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         try:
             head.connect_via(bridgeables, *([tail] if tail else []))
-        except NodeException as ex:
+        except fabll.NodeException as ex:
             raise errors.UserNodeException.from_node_exception(
                 ex, ctx, self.get_traceback()
             )
@@ -2249,7 +2249,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ):
                 raise TypeError(
                     node,
-                    f"Can't connect `{node}` because it's not a `ModuleInterface`"
+                    f"Can't connect `{node}` because it's not a `fabll.ModuleInterface`"
                     f" or `Module` with `can_bridge` trait",
                 )
             return node
@@ -3035,7 +3035,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise errors.UserTypeError.from_ctx(
                     ctx.field_reference(),
                     f"Cannot iterate over type `{complete_type_string(_iterable_node)}`"
-                    f". Expected `list[fabll.Node]`, `dict[str, fabll.Node]` or `set[fabll.Node]`"
+                    f". Expected `list[Node]`, `dict[str, Node]` or `set[Node]`"
                     f"  (e.g., from `new X[N]`).",
                     traceback=self.get_traceback(),
                 )

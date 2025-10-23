@@ -5,9 +5,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, override
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 from faebryk.libs.kicad.fileformats import kicad
@@ -27,7 +26,7 @@ class PCB(fabll.Node):
         self._path = path
         self._pcb_file: kicad.pcb.PcbFile | None = None
         self._transformer: "PCB_Transformer | None" = None
-        self.app: fabll.Node, | None = None
+        self.app: fabll.Node | None = None
 
     def load(self):
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -128,7 +127,7 @@ class PCB(fabll.Node):
                 )
 
     # TODO use reference
-    class has_pcb(Module.TraitT.decless()):
+    class has_pcb(fabll.Node):
         class has_pcb_ref(F.has_reference.decless()):
             reference: "PCB" = reference()
 

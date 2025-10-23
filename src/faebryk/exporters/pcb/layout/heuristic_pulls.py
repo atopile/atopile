@@ -35,7 +35,7 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
 
     @staticmethod
     def find_module_candidates(node: fabll.Node):
-        return Module.get_children_modules(
+        return fabll.Module.get_children_modules(
             node,
             direct_only=False,
             types=F.Resistor,

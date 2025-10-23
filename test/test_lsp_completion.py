@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import faebryk.core.node as fabll
 from faebryk.core.parameter import Parameter
 
 # Add the src directory to the Python path
@@ -19,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import lsprotocol.types as lsp
 
-import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.lsp.lsp_server import (
     _extract_field_reference_before_dot,
@@ -226,7 +226,7 @@ class TestFieldReferenceResolution:
             """)
         with mock_file(ato) as uri:
             result = _find_field_reference_node(str(uri), ato, "resistor", 5)
-            assert isinstance(result, Module)
+            assert isinstance(result, fabll.Module)
             result2 = _find_field_reference_node(str(uri), ato, "resistor", 8)
             assert isinstance(result2, Parameter)
 

@@ -623,10 +623,10 @@ def _get_node_completions(node: fabll.Node) -> list[lsp.CompletionItem]:
                     continue
 
                 # Determine the completion item kind based on the node type
-                if isinstance(child, Module):
+                if isinstance(child, fabll.Module):
                     kind = lsp.CompletionItemKind.Field
                     detail = f"Module: {class_name}"
-                elif isinstance(child, ModuleInterface):
+                elif isinstance(child, fabll.ModuleInterface):
                     kind = lsp.CompletionItemKind.Interface
                     detail = f"Interface: {class_name}"
                 elif isinstance(child, Parameter):
@@ -760,9 +760,9 @@ def _get_stdlib_types():
 
 
 def _node_type_to_completion_item(node_type: type[fabll.Node]) -> lsp.CompletionItem:
-    if issubclass(node_type, Module):
+    if issubclass(node_type, fabll.Module):
         kind = lsp.CompletionItemKind.Field
-    elif issubclass(node_type, ModuleInterface):
+    elif issubclass(node_type, fabll.ModuleInterface):
         kind = lsp.CompletionItemKind.Interface
     elif issubclass(node_type, Parameter):
         kind = lsp.CompletionItemKind.Unit
@@ -894,7 +894,7 @@ def _handle_new_keyword_completion(
     completion_items = [
         _node_type_to_completion_item(type(node))
         for node in node_types.values()
-        if isinstance(node, (Module, ModuleInterface))
+        if isinstance(node, (fabll.Module, fabll.ModuleInterface))
     ]
 
     return lsp.CompletionList(is_incomplete=False, items=completion_items)

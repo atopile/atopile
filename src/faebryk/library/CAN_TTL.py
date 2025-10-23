@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class CAN_TTL(ModuleInterface):
+class CAN_TTL(fabll.ModuleInterface):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 

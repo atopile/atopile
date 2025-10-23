@@ -277,7 +277,7 @@ def test_muster_success_tracking():
     """Test that MusterTarget tracks success/failure status."""
     from unittest.mock import Mock
 
-    app = Mock(spec=Module)
+    app = Mock(spec=fabll.Module)
     solver = Mock(spec=Solver)
     pcb = Mock(spec=F.PCB)
 
@@ -297,7 +297,7 @@ def test_muster_failure_tracking():
     """Test that MusterTarget tracks failure status when exception occurs."""
     from unittest.mock import Mock
 
-    app = Mock(spec=Module)
+    app = Mock(spec=fabll.Module)
     solver = Mock(spec=Solver)
     pcb = Mock(spec=F.PCB)
 

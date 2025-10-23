@@ -45,7 +45,7 @@ def split_designator(designator: str) -> tuple[str, int]:
     return (prefix, number)
 
 
-def make_bom(components: set[Module]):
+def make_bom(components: set[fabll.Module]):
     bomlines = [line for c in components if (line := _get_bomline(c))]
     bomlines = sorted(
         _compact_bomlines(bomlines),
@@ -56,7 +56,7 @@ def make_bom(components: set[Module]):
     return rows
 
 
-def write_bom_jlcpcb(components: set[Module], path: Path) -> None:
+def write_bom_jlcpcb(components: set[fabll.Module], path: Path) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
     with open(path, "w", newline="", encoding="utf-8") as bom_csv:

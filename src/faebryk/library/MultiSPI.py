@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.util import times
 
 
-class MultiSPI(ModuleInterface):
+class MultiSPI(fabll.ModuleInterface):
     def __init__(self, data_lane_count: int) -> None:
         super().__init__()
         self._data_lane_count = data_lane_count

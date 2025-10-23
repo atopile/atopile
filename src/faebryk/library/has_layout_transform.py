@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class has_layout_transform(fabll.Module.TraitT.decless()):
+class has_layout_transform(fabll.Node):
     """
     Docstring describing your module
     """

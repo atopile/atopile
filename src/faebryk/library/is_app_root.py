@@ -4,7 +4,7 @@
 import faebryk.core.node as fabll
 
 
-class is_app_root(fabll.Module.TraitT.decless()):
+class is_app_root(fabll.Node):
     """
     Indicates that the module is the root of an application.
     """

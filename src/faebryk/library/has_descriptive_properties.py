@@ -4,7 +4,7 @@
 import faebryk.core.node as fabll
 
 
-class has_descriptive_properties(Module.TraitT):
+class has_descriptive_properties(fabll.Node):
     """
     Attributes that will be written to PCB footprint
     """

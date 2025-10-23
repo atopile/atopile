@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class USB2_0(ModuleInterface):
+class USB2_0(fabll.ModuleInterface):
     usb_if: F.USB2_0_IF
 
     def __preinit__(self):

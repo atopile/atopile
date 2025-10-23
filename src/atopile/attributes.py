@@ -70,7 +70,7 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         return False
 
 
-class _has_ato_cmp_attrs(fabll.Module.TraitT.decless()):
+class _has_ato_cmp_attrs(fabll.Node):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap: dict[str, F.Electrical | None] = {}

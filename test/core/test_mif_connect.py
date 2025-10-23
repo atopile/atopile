@@ -4,7 +4,6 @@
 import logging
 from itertools import chain, pairwise
 
-import NodeException
 import pytest
 
 import faebryk.core.node as fabll
@@ -15,7 +14,7 @@ from faebryk.core.link import (
     LinkDirectConditionalFilterResult,
     LinkDirectDerived,
 )
-from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
+from faebryk.core.moduleinterface import IMPLIED_PATHS
 from faebryk.libs.app.erc import (
     ERCFaultShortedModuleInterfaces,
     ERCPowerSourcesShortedError,
@@ -55,7 +54,7 @@ def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
 
 
 def test_self():
-    mif = ModuleInterface()
+    mif = fabll.ModuleInterface()
     assert mif.is_connected_to(mif)
 
 
@@ -67,8 +66,8 @@ def test_up_connect_simple_single():
     ```
     """
 
-    class High(ModuleInterface):
-        lower: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -86,9 +85,9 @@ def test_up_connect_simple_two():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -108,10 +107,10 @@ def test_up_connect_simple_multiple():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
-        lower3: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
+        lower3: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -131,14 +130,14 @@ def test_up_connect_chain_simple():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
 
-    middle = ModuleInterface()
+    middle = fabll.ModuleInterface()
 
     high1.lower1.connect(middle)
     high2.lower1.connect(middle)
@@ -156,9 +155,9 @@ def test_up_connect_chain_multiple_same():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -181,9 +180,9 @@ def test_up_connect_chain_multiple_mixed():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -210,9 +209,9 @@ def test_split_chain_single():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -237,9 +236,9 @@ def test_split_chain_double_flat_no_inter():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -279,9 +278,9 @@ def test_split_chain_double_flat_inter():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -316,13 +315,13 @@ def test_split_chain_double_hierarchy():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.ModuleInterface):
         high: High
 
     class App(fabll.Module):
@@ -355,9 +354,9 @@ def test_split_chain_flip():
     Note: Shallowness not important, just makes it harder
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -387,9 +386,9 @@ def test_split_flip_negative():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -410,9 +409,9 @@ def test_up_connect_chain_multiple_mixed_simulate_realworld():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -463,13 +462,13 @@ def test_up_connect_chain_hierarchy():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.ModuleInterface):
         high1: High
         high2: High
 
@@ -502,11 +501,11 @@ def test_up_connect_hierarchy():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.ModuleInterface):
         high1: High
         high2: High
 
@@ -533,13 +532,13 @@ def test_up_connect_hierarchy_mixed():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.ModuleInterface):
         high1: High
         high2: High
 
@@ -561,9 +560,9 @@ def test_up_connect_simple_two_negative():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -582,10 +581,10 @@ def test_up_connect_simple_multiple_negative():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
-        lower3: ModuleInterface
+    class High(fabll.ModuleInterface):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
+        lower3: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -654,7 +653,7 @@ def test_chains_direct():
     ```
     """
 
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs[0].connect(mifs[1])
     mifs[1].connect(mifs[2])
     assert mifs[0].is_connected_to(mifs[2])
@@ -667,7 +666,7 @@ def test_chains_double_shallow_flat():
     ```
     """
 
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs[0].connect_shallow(mifs[1])
     mifs[1].connect_shallow(mifs[2])
     assert mifs[0].is_connected_to(mifs[2])
@@ -680,7 +679,7 @@ def test_chains_mixed_shallow_flat():
     ```
     """
 
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs[0].connect_shallow(mifs[1])
     mifs[1].connect(mifs[2])
     assert mifs[0].is_connected_to(mifs[2])
@@ -752,9 +751,9 @@ def test_shallow_bridge_simple():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.ModuleInterface): ...
 
-    class High(ModuleInterface):
+    class High(fabll.ModuleInterface):
         lower1: Low
         lower2: Low
 
@@ -934,7 +933,7 @@ def test_shallow_bridge_full():
     assert bus_i.is_connected_to(bus_o)
 
 
-class Specialized(ModuleInterface): ...
+class Specialized(fabll.ModuleInterface): ...
 
 
 class DoubleSpecialized(Specialized): ...
@@ -942,7 +941,7 @@ class DoubleSpecialized(Specialized): ...
 
 def test_specialize_general_to_special():
     # general connection -> specialized connection
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs_special = times(3, Specialized)
 
     mifs[0].connect(mifs[1])
@@ -956,7 +955,7 @@ def test_specialize_general_to_special():
 
 def test_specialize_special_to_general():
     # specialized connection -> general connection
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs_special = times(3, Specialized)
 
     mifs_special[0].connect(mifs_special[1])
@@ -977,7 +976,7 @@ def test_specialize_link():
                 needs_only_first_in_path=True,
             )
 
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs_special = times(3, Specialized)
 
     mifs[0].connect(mifs[1], link=_Link)
@@ -997,7 +996,7 @@ def test_specialize_link():
 
 def test_specialize_double_with_gap():
     # double specialization with gap
-    mifs = times(2, ModuleInterface)
+    mifs = times(2, fabll.ModuleInterface)
     mifs_special = times(1, Specialized)
     mifs_double_special = times(2, DoubleSpecialized)
 
@@ -1010,7 +1009,7 @@ def test_specialize_double_with_gap():
 
 
 def test_specialize_double_with_gap_2():
-    mifs = times(2, ModuleInterface)
+    mifs = times(2, fabll.ModuleInterface)
     mifs_special = times(1, Specialized)
     mifs_double_special = times(2, DoubleSpecialized)
 
@@ -1151,7 +1150,7 @@ def test_shallow_implied_paths():
 
 
 def test_direct_shallow_instance():
-    class MIFType(ModuleInterface):
+    class MIFType(fabll.ModuleInterface):
         pass
 
     mif1 = MIFType()
@@ -1276,20 +1275,20 @@ def test_regression_rp2040_usb_diffpair_full():
 
 
 def test_connect_incompatible():
-    class A(ModuleInterface):
+    class A(fabll.ModuleInterface):
         pass
 
-    class B(ModuleInterface):
+    class B(fabll.ModuleInterface):
         pass
 
     x = A()
     y = B()
-    with pytest.raises(NodeException):
+    with pytest.raises(fabll.NodeException):
         x.connect(y)  # type: ignore
 
 
 def test_connect_incompatible_hierarchical():
-    class A(ModuleInterface):
+    class A(fabll.ModuleInterface):
         pass
 
     class B(A):
@@ -1297,7 +1296,7 @@ def test_connect_incompatible_hierarchical():
 
     x = A()
     y = B()
-    with pytest.raises(NodeException):
+    with pytest.raises(fabll.NodeException):
         x.connect(y)  # type: ignore
 
 
@@ -1305,5 +1304,5 @@ def test_connect_incompatible_hierarchical_regression():
     x = F.ElectricPower()
     y = F.Electrical()
 
-    with pytest.raises(NodeException):
+    with pytest.raises(fabll.NodeException):
         x.connect(y)  # type: ignore

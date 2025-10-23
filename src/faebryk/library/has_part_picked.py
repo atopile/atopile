@@ -4,6 +4,7 @@
 import logging
 from typing import TYPE_CHECKING, Self
 
+import faebryk.core.node as fabll
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class has_part_picked(Module.TraitT.decless()):
+class has_part_picked(fabll.Node):
     def __init__(self, part: "PickedPart | None") -> None:
         """
         None = remove part from netlist

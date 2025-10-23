@@ -1,9 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 
 
-class has_designator(Module.TraitT.decless()):
+class has_designator(fabll.Node):
     def __init__(self, value: str) -> None:
         super().__init__()
         self.value = value

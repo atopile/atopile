@@ -9,7 +9,7 @@ from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import cast_assert
 
 
-class has_package_requirements(Module.TraitT.decless()):
+class has_package_requirements(fabll.Node):
     """
     Collection of constraints for package of module.
     """

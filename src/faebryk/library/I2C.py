@@ -14,7 +14,7 @@ from faebryk.libs.util import invert_dict, md_list, partition_as_list
 logger = logging.getLogger(__name__)
 
 
-class I2C(ModuleInterface):
+class I2C(fabll.ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
@@ -118,7 +118,7 @@ class I2C(ModuleInterface):
 
         return bus_interfaces
 
-    class requires_unique_addresses(ModuleInterface.TraitT.decless()):
+    class requires_unique_addresses(fabll.Node):
         class DuplicateAddressException(
             F.implements_design_check.UnfulfilledCheckException
         ):

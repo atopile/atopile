@@ -25,11 +25,21 @@ from faebryk.libs.util import (
 )
 
 
-class FaebrykApiException(Exception):
+class FabLLException(Exception):
     pass
 
 
-class TraitNotFound(FaebrykApiException):
+class TraitNotFound(FabLLException):
+    pass
+
+
+class NodeException(FabLLException):
+    def __init__(self, node: "Node[Any]", message: str):
+        self.node = node
+        super().__init__(message)
+
+
+class NodeNoParent(NodeException):
     pass
 
 
@@ -40,14 +50,12 @@ class Child[T: Node[Any]]:
         self.identifier: str = None  # type: ignore
 
         if nodetype.Attributes is not NodeAttributes:
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"Can't have Child with custom Attributes: {nodetype.__name__}"
             )
 
     def get(self) -> T:
-        raise FaebrykApiException(
-            "Called on class child instead of bound instance child"
-        )
+        raise FabLLException("Called on class child instead of bound instance child")
 
     def get_unbound(self, instance: BoundNode) -> T:
         assert self.identifier is not None, "Bug: Needs to be set on setattr"
@@ -91,7 +99,7 @@ class BoundChildOfType[T: Node[Any]]:
         self._instance = t.get_or_create_type()
 
         if nodetype.Attributes is not NodeAttributes:
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"Can't have Child with custom Attributes: {nodetype.__name__}"
             )
 
@@ -155,7 +163,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if len(cls.__mro__) > len(Node.__mro__) + 1:
             # mro(): [Leaf, NodeType, object] is allowed (len==3),
             # deeper (len>3) is forbidden
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"NodeType subclasses cannot themselves be subclassed "
                 f"more than one level deep (found: {cls.__mro__})"
             )
@@ -251,7 +259,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if parent is None:
             if accept_no_parent:
                 return self.get_root_id()
-            raise FaebrykApiException("Node has no parent")
+            raise FabLLException("Node has no parent")
         return parent[1]
 
     def get_parent(self) -> tuple["Node", str] | None:
@@ -269,7 +277,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_parent_force(self) -> tuple["Node", str]:
         parent = self.get_parent()
         if parent is None:
-            raise FaebrykApiException("Node has no parent")
+            raise NodeNoParent(self)
         return parent
 
     # TODO get_parent_f, get_parent_of_type, get_parent_with_trait should be called
@@ -453,7 +461,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def tg(self) -> TypeGraph:
         tg = TypeGraph.of_instance(instance_node=self.instance)
         if tg is None:
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"Failed to bind typegraph from instance: {self.instance}"
             )
         return tg
@@ -560,7 +568,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def cast[N: Node[Any]](self, t: type[N], check: bool = True) -> N:
         if check and not self.isinstance(t):
             # TODO other exception
-            raise FaebrykApiException(f"Node {self} is not an instance of {t}")
+            raise FabLLException(f"Node {self} is not an instance of {t}")
         return t.bind_instance(self.instance)
 
     def __repr__(self) -> str:
@@ -823,9 +831,9 @@ class Parameter(Node):
     def force_extract_literal[T: LiteralT](self, t: type[T]) -> T:
         lit = self.try_extract_constrained_literal()
         if lit is None:
-            raise FaebrykApiException(f"Parameter {self} has no literal")
+            raise FabLLException(f"Parameter {self} has no literal")
         if not isinstance(lit, t):
-            raise FaebrykApiException(f"Parameter {self} has no literal of type {t}")
+            raise FabLLException(f"Parameter {self} has no literal of type {t}")
         return lit
 
 
@@ -931,11 +939,17 @@ class Traits:
 
 
 # --------------------------------------------------------------------------------------
+# TODO remove
 # re-export GraphView to be used from fabll namespace
 Graph = TypeGraph
-# TODO remove
+# Node type aliases
 Module = Node
 ModuleInterface = Node
+# lib fields
+rt_field = None
+f_field = None
+d_field = None
+p_field = None
 
 
 # --------------------------------------------------------------------------------------
@@ -1331,9 +1345,10 @@ def test_manual_resistor_def():
         f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
     )
     for operand in operands:
-        print(
-            f"{EdgeType.get_type_node(edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()).get_dynamic_attrs()} {operand.node().get_dynamic_attrs()}"
-        )
+        attrs = EdgeType.get_type_node(
+            edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()
+        ).get_dynamic_attrs()
+        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
 
     # Constrained trait with type child parameters to be constrained to literals
     usage_example = not_none(
@@ -1361,9 +1376,10 @@ def test_manual_resistor_def():
         f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
     )
     for operand in operands2:
-        print(
-            f"{EdgeType.get_type_node(edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()).get_dynamic_attrs()} {operand.node().get_dynamic_attrs()}"
-        )
+        attrs = EdgeType.get_type_node(
+            edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()
+        ).get_dynamic_attrs()
+        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
 
     # Is pickable by type
     ipbt = not_none(

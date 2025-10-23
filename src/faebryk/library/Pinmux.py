@@ -61,7 +61,7 @@ class Pinmux(fabll.Module):
         pin.connect(function)
 
     def enable(
-        self, bus: ModuleInterface, pins: list[int | F.Electrical] | None = None
+        self, bus: fabll.ModuleInterface, pins: list[int | F.Electrical] | None = None
     ):
         signals = [
             logic.line

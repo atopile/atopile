@@ -86,7 +86,7 @@ class Path:
 
 class Route(fabll.Module):
     net_: F.Electrical
-    pcb: ModuleInterface
+    pcb: fabll.ModuleInterface
 
     def __init__(
         self,
@@ -166,7 +166,7 @@ def apply_route_in_pcb(route: Route, transformer: "PCB_Transformer"):
 
 def get_internal_nets_of_node(
     node: fabll.Node,
-) -> Mapping[F.Net | None, Iterable[ModuleInterface]]:
+) -> Mapping[F.Net | None, Iterable[fabll.ModuleInterface]]:
     """
     Returns all Nets occuring (at least partially) within Node
     and returns for each of those the corresponding mifs

@@ -1072,7 +1072,7 @@ def post_init_decorator(cls):
 
 
 class DAG[T]:
-    class fabll.Node[T2]:
+    class Node[T2]:
         def __init__(self, value: T2):
             self.value = value
             self._children = []
@@ -1101,13 +1101,13 @@ class DAG[T]:
     def leaves(self) -> set[T]:
         return {node.value for node in self.nodes.values() if not node.children}
 
-    def get(self, value: T) -> fabll.Node[T]:
+    def get(self, value: T) -> Node[T]:
         return self.add_or_get(value)
 
-    def get_node(self, value: T) -> fabll.Node[T] | None:
+    def get_node(self, value: T) -> Node[T] | None:
         return self.nodes.get(value)
 
-    def add_or_get(self, value: T) -> fabll.Node[T]:
+    def add_or_get(self, value: T) -> Node[T]:
         node = self.get_node(value)
         if node is not None:
             return node
@@ -1122,7 +1122,10 @@ class DAG[T]:
         child_node._parents.append(parent_node)
 
     def _dfs_cycle_check(
-        self, node: fabll.Node[T], visiting: set[fabll.Node[T]], visited: set[fabll.Node[T]]
+        self,
+        node: Node[T],
+        visiting: set[Node[T]],
+        visited: set[Node[T]],
     ) -> bool:
         """Helper recursive function for cycle detection."""
         visiting.add(node)

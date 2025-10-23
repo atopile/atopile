@@ -83,7 +83,7 @@ def _githash_layout(layout: Path) -> Generator[Path, None, None]:
         yield tmp_layout
 
 
-MusterFuncType = Callable[[Module, Solver, F.PCB, LoggingStage], None]
+MusterFuncType = Callable[[fabll.Module, Solver, F.PCB, LoggingStage], None]
 
 
 @dataclass
@@ -484,7 +484,7 @@ def generate_bom(
 ) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
-        app.get_children_modules(types=Module),
+        app.get_children_modules(types=fabll.Module),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
 

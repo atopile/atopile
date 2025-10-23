@@ -53,7 +53,8 @@ class has_simple_value_representation_based_on_params_chain(fabll.Node):
 
     #         domain = self.param.domain
 
-    #         # TODO this is probably not the only place we will ever need this big switch
+    #         # TODO this is probably not the only place we will ever need
+    #         #  this big switch
     #         # consider moving it somewhere else
     #         if isinstance(domain, EnumDomain):
     #             if self.tolerance:
