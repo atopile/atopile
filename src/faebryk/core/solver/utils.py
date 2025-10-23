@@ -19,8 +19,8 @@ from typing import (
     cast,
 )
 
-from faebryk.core.graph import Graph
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
+from faebryk.core.node import Graph
 from faebryk.core.parameter import (
     Associative,
     CanonicalExpression,
@@ -155,9 +155,9 @@ SolverAllExtended = ParameterOperatable.All | SolverLiteral
 # TODO move
 def get_graphs(values: Iterable) -> list[Graph]:
     return unique_ref(
-        p.get_graph() if isinstance(p, Node) else p
+        p.get_graph() if isinstance(p, fabll.Node) else p
         for p in values
-        if isinstance(p, (Node, Graph))
+        if isinstance(p, (fabll.Node, Graph))
     )
 
 

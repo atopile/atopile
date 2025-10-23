@@ -26,11 +26,7 @@ from more_itertools import first
 from shapely import Polygon
 
 # import faebryk.library._F as F
-from faebryk.core.graph import Graph, 
 import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
@@ -212,7 +208,7 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    def __init__(self, pcb: PCB, graph: Graph, app: fabll.Node -> None:
+    def __init__(self, pcb: PCB, graph: fabll.Graph, app: fabll.Node) -> None:
         self.pcb = pcb
         self.app = app
 
@@ -289,7 +285,7 @@ class PCB_Transformer:
             )
 
     @staticmethod
-    def map_footprints(graph: Graph, pcb: PCB) -> dict[Module, Footprint]:
+    def map_footprints(graph: fabll.Graph, pcb: PCB) -> dict[Module, Footprint]:
         """
         Attach as many nodes <> footprints as possible, and
         return the set of nodes that were missing footprints.
@@ -303,7 +299,7 @@ class PCB_Transformer:
         }
 
         # Also try nodes without footprints, because they might get them later
-        for module in fabll.Node.bind_typegraph(graph).nodes_of_type(Module):
+        for module in fabll.Node.bind_typegraph(graph).nodes_of_type(fabll.Module):
             atopile_addr = module.get_full_name()
 
             # First, try to find the footprint by the atopile address
@@ -313,7 +309,7 @@ class PCB_Transformer:
 
         return footprint_map
 
-    def bind_footprint(self, pcb_fp: Footprint, module: fabll.Node:
+    def bind_footprint(self, pcb_fp: Footprint, module: fabll.Node):
         """
         Generates links between:
         - Module and PCB Footprint
@@ -443,7 +439,7 @@ class PCB_Transformer:
 
     # Getter ---------------------------------------------------------------------------
     @staticmethod
-    def get_fp(cmp: Node) -> Footprint:
+    def get_fp(cmp: fabll.Node) -> Footprint:
         return cmp.get_trait(PCB_Transformer.has_linked_kicad_footprint).get_fp()
 
     def get_all_footprints(self) -> List[tuple[Module, Footprint]]:
@@ -671,7 +667,7 @@ class PCB_Transformer:
         return fp, pad
 
     @staticmethod
-    def get_pad(intf: "F.Electrical") -> tuple[Footprint, Pad, Node]:
+    def get_pad(intf: "F.Electrical") -> tuple[Footprint, Pad, fabll.Node]:
         obj, ffp = F.Footprint.get_footprint_of_parent(intf)
         fp, pad = PCB_Transformer._get_pad(ffp, intf)
 
@@ -2040,9 +2036,9 @@ class PCB_Transformer:
             for child in grouped[False]:
                 yield from _iter_modules(tree[child])
 
-        def _get_cluster(component: fabll.Node -> Node | None:
+        def _get_cluster(component: fabll.Node) -> fabll.Node | None:
             if (parent := component.get_parent()) is not None:
-                return cast_assert(Node, parent[0])
+                return cast_assert(fabll.Node, parent[0])
             return None
 
         components = _iter_modules(self.app.get_tree(types=Module))

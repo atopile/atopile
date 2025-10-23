@@ -1,9 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
@@ -14,7 +13,7 @@ class CAN(ModuleInterface):
 
     diff_pair: F.DifferentialPair
 
-    speed = L.p_field(units=P.bps)
+    speed = fabll.p_field(units=P.bps)
 
     def __preinit__(self) -> None:
         self.speed.add(F.is_bus_parameter())
@@ -28,7 +27,7 @@ class CAN(ModuleInterface):
             F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import CAN, ElectricPower, Resistor
 

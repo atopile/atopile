@@ -11,10 +11,9 @@ from typing import Any, Iterable
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.cpp import Graph
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -51,7 +50,6 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
 )
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.library import L
 from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
@@ -79,7 +77,7 @@ def _create_letters(
 
     out = []
 
-    class App(Node):
+    class App(fabll.Node):
         def __preinit__(self) -> None:
             for _ in range(n):
                 p = Parameter(units=units)
@@ -95,9 +93,9 @@ def test_solve_phase_one():
     solver = DefaultSolver()
 
     def Voltage():
-        return L.p_field(units=P.V, within=Range(0 * P.V, 10 * P.kV))
+        return fabll.p_field(units=P.V, within=Range(0 * P.V, 10 * P.kV))
 
-    class App(Module):
+    class App(fabll.Module):
         voltage1 = Voltage()
         voltage2 = Voltage()
         voltage3 = Voltage()
@@ -117,8 +115,8 @@ def test_solve_phase_one():
 
 
 def test_simplify():
-    class App(Module):
-        ops = L.list_field(
+    class App(fabll.Module):
+        ops = fabll.list_field(
             10,
             lambda: Parameter(
                 units=dimensionless, within=Range(0, 1, units=dimensionless)
@@ -154,8 +152,8 @@ def test_simplify():
 
 
 def test_simplify_logic_and():
-    class App(Module):
-        p = L.list_field(4, lambda: Parameter(domain=L.Domains.BOOL()))
+    class App(fabll.Module):
+        p = fabll.list_field(4, lambda: Parameter(domain=fabll.Domains.BOOL()))
 
     app = App()
     anded = And(app.p[0], True)
@@ -171,7 +169,7 @@ def test_simplify_logic_and():
 
 
 def test_shortcircuit_logic_and():
-    p0 = Parameter(domain=L.Domains.BOOL())
+    p0 = Parameter(domain=fabll.Domains.BOOL())
     expr = p0 & False
     expr.constrain()
     G = expr.get_graph()
@@ -182,8 +180,8 @@ def test_shortcircuit_logic_and():
 
 
 def test_shortcircuit_logic_or():
-    class App(Module):
-        p = L.list_field(4, lambda: Parameter(domain=L.Domains.BOOL()))
+    class App(fabll.Module):
+        p = fabll.list_field(4, lambda: Parameter(domain=fabll.Domains.BOOL()))
 
     app = App()
     ored = Or(app.p[0], True)
@@ -271,8 +269,8 @@ def test_solve_realworld_bigger():
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 def test_solve_realworld_biggest():
-    class App(Module):
-        led = L.f_field(F.PoweredLED)(low_side_resistor=True)
+    class App(fabll.Module):
+        led = fabll.f_field(F.PoweredLED)(low_side_resistor=True)
         mcu: RP2040_ReferenceDesign
         usb_power: USB_C_PSU_Vertical
 
@@ -319,7 +317,7 @@ def test_obvious_contradiction_by_literal():
 
 
 def test_subset_is():
-    A, B = params = times(2, lambda: Parameter(domain=L.Domains.Numbers.REAL()))
+    A, B = params = times(2, lambda: Parameter(domain=fabll.Domains.Numbers.REAL()))
 
     A.alias_is(Range(0, 15))
     B.constrain_subset(Range(5, 20))
@@ -335,7 +333,7 @@ def test_subset_is():
 
 
 def test_subset_is_expr():
-    A, B, C = params = times(3, lambda: Parameter(domain=L.Domains.Numbers.REAL()))
+    A, B, C = params = times(3, lambda: Parameter(domain=fabll.Domains.Numbers.REAL()))
 
     context = ParameterOperatable.ReprContext()
     for p in params:
@@ -555,9 +553,9 @@ def test_literal_folding_add_multiplicative_2():
 
 
 def test_transitive_subset():
-    A = Parameter(domain=L.Domains.Numbers.REAL())
-    B = Parameter(domain=L.Domains.Numbers.REAL())
-    C = Parameter(domain=L.Domains.Numbers.REAL())
+    A = Parameter(domain=fabll.Domains.Numbers.REAL())
+    B = Parameter(domain=fabll.Domains.Numbers.REAL())
+    C = Parameter(domain=fabll.Domains.Numbers.REAL())
 
     A.constrain_subset(B)
     B.constrain_subset(C)
@@ -761,7 +759,7 @@ def test_try_fulfill_super_basic(predicate_type: type[ConstrainableExpression]):
 
 
 def test_congruence_filter():
-    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+    A = Parameter(domain=fabll.Domains.ENUM(F.LED.Color))
     x = Is(A, EnumSet(F.LED.Color.EMERALD))
 
     y1 = Not(x).constrain()
@@ -774,7 +772,7 @@ def test_congruence_filter():
 
 
 def test_inspect_enum_simple():
-    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+    A = Parameter(domain=fabll.Domains.ENUM(F.LED.Color))
 
     A.constrain_subset(F.LED.Color.EMERALD)
 
@@ -784,9 +782,9 @@ def test_inspect_enum_simple():
 
 
 def test_regression_enum_contradiction():
-    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+    A = Parameter(domain=fabll.Domains.ENUM(F.LED.Color))
 
-    A.constrain_subset(L.EnumSet(F.LED.Color.BLUE, F.LED.Color.RED))
+    A.constrain_subset(fabll.EnumSet(F.LED.Color.BLUE, F.LED.Color.RED))
 
     solver = DefaultSolver()
     with pytest.raises(Contradiction):
@@ -819,9 +817,9 @@ def test_simple_pick():
                     supplier_partno="C72043",
                 ),
                 params={
-                    "color": L.EnumSet(F.LED.Color.EMERALD),
+                    "color": fabll.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
-                    "forward_voltage": L.Single(3.7 * P.volt),
+                    "forward_voltage": fabll.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
                 },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
@@ -839,7 +837,7 @@ def test_simple_pick():
 @pytest.mark.usefixtures("setup_project_config")
 def test_simple_negative_pick():
     led = F.LED()
-    led.color.constrain_subset(L.EnumSet(F.LED.Color.RED, F.LED.Color.BLUE))
+    led.color.constrain_subset(fabll.EnumSet(F.LED.Color.RED, F.LED.Color.BLUE))
 
     solver = DefaultSolver()
     pick_module_by_params(
@@ -853,9 +851,9 @@ def test_simple_negative_pick():
                     supplier_partno="C72043",
                 ),
                 params={
-                    "color": L.EnumSet(F.LED.Color.EMERALD),
+                    "color": fabll.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
-                    "forward_voltage": L.Single(3.7 * P.volt),
+                    "forward_voltage": fabll.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
                 },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
@@ -867,9 +865,9 @@ def test_simple_negative_pick():
                     supplier_partno="C72041",
                 ),
                 params={
-                    "color": L.EnumSet(F.LED.Color.BLUE),
+                    "color": fabll.EnumSet(F.LED.Color.BLUE),
                     "max_brightness": 28.5 * P.mcandela,
-                    "forward_voltage": L.Single(3.1 * P.volt),
+                    "forward_voltage": fabll.Single(3.1 * P.volt),
                     "max_current": 100 * P.mA,
                 },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
@@ -886,7 +884,7 @@ def test_simple_negative_pick():
 
 def test_jlcpcb_pick_resistor():
     resistor = F.Resistor()
-    resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
+    resistor.resistance.constrain_subset(fabll.Range(10 * P.ohm, 100 * P.ohm))
 
     solver = DefaultSolver()
     pick_part_recursively(resistor, solver)
@@ -898,7 +896,7 @@ def test_jlcpcb_pick_resistor():
 @pytest.mark.usefixtures("setup_project_config")
 def test_jlcpcb_pick_capacitor():
     capacitor = F.Capacitor()
-    capacitor.capacitance.constrain_subset(L.Range(100 * P.nF, 1 * P.uF))
+    capacitor.capacitance.constrain_subset(fabll.Range(100 * P.nF, 1 * P.uF))
     capacitor.max_voltage.constrain_ge(50 * P.V)
 
     solver = DefaultSolver()
@@ -911,7 +909,7 @@ def test_jlcpcb_pick_capacitor():
 @pytest.mark.xfail(reason="TODO: add support for leds")
 def test_jlcpcb_pick_led():
     led = F.LED()
-    led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
+    led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
     led.max_current.constrain_ge(10 * P.mA)
 
     solver = DefaultSolver()
@@ -924,9 +922,9 @@ def test_jlcpcb_pick_led():
 @pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_simple():
     led = F.PoweredLED()
-    led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
-    led.power.voltage.constrain_subset(L.Range(1.8 * P.V, 5.5 * P.V))
-    led.led.forward_voltage.constrain_subset(L.Range(1 * P.V, 4 * P.V))
+    led.led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
+    led.power.voltage.constrain_subset(fabll.Range(1.8 * P.V, 5.5 * P.V))
+    led.led.forward_voltage.constrain_subset(fabll.Range(1 * P.V, 4 * P.V))
 
     solver = DefaultSolver()
     children_mods = led.get_children_modules(direct_only=False, types=(Module,))
@@ -1031,7 +1029,7 @@ def test_param_isolation():
 def test_extracted_literal_folding(op):
     A = Parameter()
     B = Parameter()
-    C = Parameter(domain=L.Domains.Numbers.REAL())
+    C = Parameter(domain=fabll.Domains.Numbers.REAL())
 
     lit1 = Range(0, 10)
     lit2 = Range(10, 20)
@@ -1066,7 +1064,7 @@ def test_fold_pow():
 
 
 def test_graph_split():
-    class App(Module):
+    class App(fabll.Module):
         A: Parameter
         B: Parameter
 
@@ -1200,9 +1198,9 @@ def test_fold_mul_zero():
 
 
 def test_fold_or_true():
-    A = Parameter(domain=L.Domains.BOOL())
-    B = Parameter(domain=L.Domains.BOOL())
-    C = Parameter(domain=L.Domains.BOOL())
+    A = Parameter(domain=fabll.Domains.BOOL())
+    B = Parameter(domain=fabll.Domains.BOOL())
+    C = Parameter(domain=fabll.Domains.BOOL())
 
     A.alias_is(True)
 
@@ -1214,8 +1212,8 @@ def test_fold_or_true():
 
 
 def test_fold_not():
-    A = Parameter(domain=L.Domains.BOOL())
-    B = Parameter(domain=L.Domains.BOOL())
+    A = Parameter(domain=fabll.Domains.BOOL())
+    B = Parameter(domain=fabll.Domains.BOOL())
 
     A.alias_is(False)
     (Not(A)).alias_is(B)
@@ -1322,7 +1320,7 @@ def test_fold_literals():
 
 
 def test_deduce_negative():
-    A = Parameter(domain=L.Domains.BOOL())
+    A = Parameter(domain=fabll.Domains.BOOL())
 
     p = Not(A)
 
@@ -1472,7 +1470,7 @@ def test_simplify_non_terminal_manual_test_2():
     INCREASE = 20 * P.percent
     TOLERANCE = 5 * P.percent
     increase = as_lit(
-        L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(100 * P.percent)
+        fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(100 * P.percent)
     )
     for p1, p2 in pairwise(ps):
         p2.constrain_subset(p1 * increase)
@@ -1559,7 +1557,7 @@ def test_voltage_divider_find_r_bottom():
 @pytest.mark.xfail(reason="TODO reenable ge fold")
 def test_min_max_single():
     p0 = Parameter(units=P.V)
-    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+    p0.alias_is(fabll.Range(0 * P.V, 10 * P.V))
 
     p1 = Parameter(units=P.V)
     p1.alias_is(Max(p0))
@@ -1567,15 +1565,15 @@ def test_min_max_single():
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1)
     out = solver.inspect_get_known_supersets(p1)
-    assert out == L.Single(10 * P.V)
+    assert out == fabll.Single(10 * P.V)
 
 
 @pytest.mark.xfail(reason="TODO")
 def test_min_max_multi():
     p0 = Parameter(units=P.V)
-    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+    p0.alias_is(fabll.Range(0 * P.V, 10 * P.V))
     p3 = Parameter(units=P.V)
-    p3.alias_is(L.Range(4 * P.V, 15 * P.V))
+    p3.alias_is(fabll.Range(4 * P.V, 15 * P.V))
 
     p1 = Parameter(units=P.V)
     p1.alias_is(Max(p0, p3))
@@ -1583,7 +1581,7 @@ def test_min_max_multi():
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1, p3)
     out = solver.inspect_get_known_supersets(p1)
-    assert out == L.Single(15 * P.V)
+    assert out == fabll.Single(15 * P.V)
 
 
 @pytest.mark.xfail(
@@ -1718,9 +1716,9 @@ def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expe
 
     def _get_param_from_lit(lit: CanonicalLiteral):
         if isinstance(lit, BoolSet):
-            p = Parameter(domain=L.Domains.BOOL())
+            p = Parameter(domain=fabll.Domains.BOOL())
         elif isinstance(lit, Quantity_Set):
-            p = Parameter(domain=L.Domains.Numbers.REAL())
+            p = Parameter(domain=fabll.Domains.Numbers.REAL())
         else:
             raise NotImplementedError()
         return p
@@ -1774,7 +1772,7 @@ def test_solve_voltage_divider_complex():
     rand_ = Decimal(random())
     r_any_nominal = r_top.min_elem + rand_ * (r_top.max_elem - r_top.min_elem)
     assert isinstance(r_any_nominal, Quantity)
-    r_any = L.Range.from_center_rel(r_any_nominal, 0.01)
+    r_any = fabll.Range.from_center_rel(r_any_nominal, 0.01)
     rdiv.r_top.resistance.alias_is(r_any)
     print(f"Set r_top to {r_any}")
 
@@ -1806,7 +1804,7 @@ def test_solve_voltage_divider_complex():
     # check valid result
     assert res_total_current.is_subset_of(total_current)
     if not res_v_out.is_subset_of(v_out) and res_v_out.is_subset_of(
-        v_out * L.Range.from_center_rel(1, 0.05)
+        v_out * fabll.Range.from_center_rel(1, 0.05)
     ):
         pytest.xfail("Slightly inaccurate, need more symbolic correlation")
 

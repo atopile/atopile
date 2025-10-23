@@ -3,18 +3,16 @@
 
 import io
 import logging
-from types import UnionType
-from typing import TYPE_CHECKING, Any, overload
+from typing import TYPE_CHECKING, Any
 
-import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
+from faebryk.core.zig.gen.graph.graph import BoundNode
 
 if TYPE_CHECKING:
-    from faebryk.core.trait import Trait
+    pass
 
 logger = logging.getLogger(__name__)
 

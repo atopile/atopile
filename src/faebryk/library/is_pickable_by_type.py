@@ -46,5 +46,5 @@ class is_pickable_by_type(fabll.Node):
     #     return self._params
 
     # @property
-    # def pick_type(self) -> type[L.Module]:
-    #     return type(self.get_obj(L.Module))
+    # def pick_type(self) -> type[fabll.Module]:
+    #     return type(self.get_obj(fabll.Module))

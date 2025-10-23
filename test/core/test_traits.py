@@ -1,9 +1,10 @@
 from abc import abstractmethod
 from typing import cast
 
+import NodeAlreadyBound
 import pytest
 
-from faebryk.core.node import Node, NodeAlreadyBound
+import faebryk.core.node as fabll
 from faebryk.core.trait import (
     Trait,
     TraitImpl,
@@ -68,7 +69,7 @@ def test_trait_equality():
 
 
 def test_trait_basic_operations():
-    obj = Node()
+    obj = fabll.Node()
 
     class trait1(Trait):
         @abstractmethod
@@ -101,7 +102,7 @@ def test_trait_basic_operations():
 
 
 def test_trait_replacement():
-    obj = Node()
+    obj = fabll.Node()
 
     class trait1(Trait):
         @abstractmethod
@@ -133,7 +134,7 @@ def test_trait_replacement():
 
 
 def test_trait_object_binding():
-    obj = Node()
+    obj = fabll.Node()
 
     class trait1(Trait):
         pass
@@ -155,7 +156,7 @@ def test_trait_object_binding():
 
 
 def test_trait_inheritance_and_override():
-    obj = Node()
+    obj = fabll.Node()
 
     class trait1(Trait):
         pass
@@ -183,7 +184,7 @@ def test_trait_inheritance_and_override():
 
 
 def test_trait_impl_confusion():
-    obj = Node()
+    obj = fabll.Node()
 
     class trait1(Trait):
         pass
@@ -199,7 +200,7 @@ def test_trait_impl_confusion():
 
 
 def test_trait_impl_exception():
-    obj = Node()
+    obj = fabll.Node()
 
     class trait1impl(Trait.decless()):
         pass
@@ -217,7 +218,7 @@ def test_trait_decless_basic():
             super().__init__()
             self.data = data
 
-    n = Node()
+    n = fabll.Node()
     n.add(T1("test"))
 
     assert n.has_trait(T1)
@@ -235,7 +236,7 @@ def test_trait_decless_inherit():
             super().__init__(data)
             self.more_data = more_data
 
-    n = Node()
+    n = fabll.Node()
     n.add(T2("test", "more"))
 
     assert n.has_trait(T1)
@@ -253,7 +254,7 @@ def test_trait_decless_inherit_2():
             super().__init__()
             self.data = data
 
-    n = Node()
+    n = fabll.Node()
     n.add(T2("test"))
 
     assert n.has_trait(T1)

@@ -5,8 +5,6 @@ import logging
 from dataclasses import dataclass
 
 import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.util import find_or, groupby, not_none
 
@@ -24,7 +22,7 @@ class LayoutTypeHierarchy(Layout):
 
     layouts: list[Level]
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """

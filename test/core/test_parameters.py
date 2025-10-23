@@ -7,8 +7,8 @@ from typing import cast
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Add,
     Additive,
@@ -19,7 +19,6 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
-from faebryk.libs.library import L
 from faebryk.libs.library.L import Range
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.sets.sets import BoolSet, EnumSet
@@ -32,7 +31,7 @@ logger = logging.getLogger(__name__)
 def test_new_definitions():
     _ = Parameter(
         units=P.ohm,
-        domain=L.Domains.Numbers.REAL(negative=False),
+        domain=fabll.Domains.Numbers.REAL(negative=False),
         soft_set=Range(1 * P.ohm, 10 * P.Mohm),
         likely_constrained=True,
     )
@@ -49,7 +48,7 @@ def test_compact_repr():
     expr2str = expr2.compact_repr(context)
     assert expr2str == "B volt + A volt"
 
-    p3 = Parameter(domain=L.Domains.BOOL())
+    p3 = Parameter(domain=fabll.Domains.BOOL())
     expr3 = Not(p3)
     expr3str = expr3.compact_repr(context)
     assert expr3str == "¬C"
@@ -118,8 +117,8 @@ def test_visualize():
     """
     from faebryk.exporters.visualize.interactive_params import visualize_parameters
 
-    class App(Node):
-        p1 = L.f_field(Parameter)(units=P.V)
+    class App(fabll.Node):
+        p1 = fabll.f_field(Parameter)(units=P.V)
 
     app = App()
 

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.fabll as fabll
-import faebryk.library._F as F
 import faebryk.core.node as fabll
 
 
@@ -13,7 +12,7 @@ class can_bridge_by_name(fabll.Node):
         self._output_name = output_name
 
     def get_in(self):
-        return self.get_obj(Module)[self._input_name]
+        return self.get_obj(fabll.Module)[self._input_name]
 
     def get_out(self):
-        return self.get_obj(Module)[self._output_name]
+        return self.get_obj(fabll.Module)[self._output_name]

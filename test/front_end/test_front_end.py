@@ -5,6 +5,7 @@ from typing import Optional, Union, cast
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import address, errors
@@ -12,7 +13,6 @@ from atopile.datatypes import TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.library import L
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
@@ -20,10 +20,10 @@ from faebryk.libs.util import cast_assert
 
 
 def _get_mif(
-    bob: Bob, node: L.Node, name: str, key: str | None = None
-) -> L.ModuleInterface:
+    bob: Bob, node: fabll.Node, name: str, key: str | None = None
+) -> fabll.ModuleInterface:
     return cast_assert(
-        L.ModuleInterface,
+        fabll.ModuleInterface,
         bob.resolve_field_shortcut(node, name, key),
     )
 
@@ -37,7 +37,7 @@ def test_empty_module_build(bob: Bob):
     )
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     assert isinstance(node, bob.modules[address.AddrStr(":A")])
 
 
@@ -50,7 +50,7 @@ def test_simple_module_build(bob: Bob):
     )
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     param = node.runtime["a"]
     assert isinstance(param, fab_param.ParameterOperatable)
@@ -67,7 +67,7 @@ def test_arithmetic(bob: Bob):
     )
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     # TODO: check output
     # Requires params solver to be sane
@@ -87,7 +87,7 @@ def test_simple_new(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     child = bob.resolve_node_shortcut(node, "child")
     assert child.has_trait(_has_ato_cmp_attrs)
 
@@ -109,7 +109,7 @@ def test_multiple_new(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     resistors = bob.resolve_field_shortcut(node, "resistors")
     assert isinstance(resistors, list)
     assert len(set(resistors)) == 5
@@ -202,7 +202,7 @@ def test_nested_nodes(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
 
 def test_resistor(bob: Bob, repo_root: Path):
@@ -225,7 +225,7 @@ def test_resistor(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
     assert r1.get_trait(F.has_package_requirements)._size == SMDSize.I0805
@@ -246,7 +246,7 @@ def test_standard_library_import(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
@@ -304,7 +304,7 @@ def test_reserved_attrs(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = bob.resolve_node_shortcut(node, "a")
     assert a.get_trait(F.has_package_requirements)._size == pkg
@@ -344,7 +344,7 @@ def test_import_ato(bob: Bob, tmp_path):
     tree = parse_text_as_file(top_module_content)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
@@ -400,7 +400,7 @@ def test_signal_connect(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -428,7 +428,7 @@ def test_interface_connect(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -475,7 +475,7 @@ def test_duck_type_connect(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -507,7 +507,7 @@ def test_directed_connect_signals(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -536,7 +536,7 @@ def test_directed_connect_power_via_led(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
     current_limiting_resistor = cast_assert(
@@ -567,7 +567,7 @@ def test_directed_connect_signal_to_resistor(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
@@ -644,7 +644,7 @@ def test_requires(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     assert a.has_trait(F.requires_external_usage)
@@ -663,7 +663,7 @@ def test_key(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     r = bob.resolve_node_shortcut(node, "r")
     assert isinstance(r, F.Resistor)
@@ -684,7 +684,7 @@ def test_pin_ref(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
 
 def test_non_ex_pin_ref(bob: Bob):
@@ -727,7 +727,7 @@ def test_regression_pin_refs(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
 
 def test_pragma_feature_existing(bob: Bob):
@@ -802,13 +802,13 @@ def test_for_loop_basic(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     resistors = bob.resolve_field_shortcut(node, "resistors")
     assert isinstance(resistors, list)
     for r in resistors:
         assert isinstance(r, F.Resistor)
         assert r.unnamed[0].is_connected_to(r.unnamed[1])
-        assert r.resistance.try_get_literal() == L.Range.from_center_rel(
+        assert r.resistance.try_get_literal() == fabll.Range.from_center_rel(
             100 * P.kohm, 0.1
         )
 
@@ -1041,7 +1041,7 @@ def test_list_literal_nested(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     nested = bob.resolve_field_shortcut(node, "nested")
-    assert isinstance(nested, L.Module)
+    assert isinstance(nested, fabll.Module)
     r1 = bob.resolve_field_shortcut(nested, "r1")
     assert isinstance(r1, F.Resistor)
     r2 = bob.resolve_field_shortcut(nested, "r2")
@@ -1125,7 +1125,7 @@ def test_list_literal_invalid(bob: Bob):
 
 
 def test_plain_trait(bob: Bob):
-    class test_trait(L.Module.TraitT.decless()):
+    class test_trait(fabll.Module.TraitT.decless()):
         pass
 
     F.test_trait = test_trait  # type: ignore
@@ -1144,12 +1144,12 @@ def test_plain_trait(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     assert node.has_trait(test_trait)
 
 
 def test_unimported_trait(bob: Bob):
-    class test_trait(L.Module.TraitT.decless()):
+    class test_trait(fabll.Module.TraitT.decless()):
         pass
 
     F.test_trait = test_trait  # type: ignore
@@ -1407,7 +1407,7 @@ def test_slice_for_loop(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     resistors = bob.resolve_field_shortcut(node, "resistors")
     resistors2 = bob.resolve_field_shortcut(node, "resistors2")
     assert isinstance(resistors, list)
@@ -1511,7 +1511,7 @@ def test_directed_connect_reverse_signals(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -1540,7 +1540,7 @@ def test_directed_connect_reverse_power_via_led(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
     current_limiting_resistor = cast_assert(
@@ -1571,7 +1571,7 @@ def test_directed_connect_reverse_resistor_to_signal(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     a = _get_mif(bob, node, "a")
     r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
@@ -1617,7 +1617,7 @@ def test_module_templating(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     addressor7 = bob.resolve_field_shortcut(node, "addressor7")
     assert isinstance(addressor7, F.Addressor)
     assert addressor7._address_bits == 7
@@ -1637,7 +1637,7 @@ def test_module_templating_list(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     addressors = bob.resolve_field_shortcut(node, "addressors")
     assert isinstance(addressors, list)
     addressors = cast(list[F.Addressor], addressors)
@@ -1731,7 +1731,7 @@ def test_assign_to_enum_param(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     cap = bob.resolve_field_shortcut(node, "cap")
     assert isinstance(cap, F.Capacitor)
     assert cap.temperature_coefficient.try_get_literal_subset() == P_Set.from_value(
@@ -1759,7 +1759,7 @@ def test_trait_template_enum(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     r = bob.resolve_field_shortcut(node, "r")
     assert isinstance(r, F.Resistor)
 
@@ -1814,7 +1814,7 @@ def test_module_template_enum(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     r = bob.resolve_field_shortcut(node, "r")
     assert isinstance(r, ResistorWithSize)
 
@@ -1865,31 +1865,31 @@ class _StrEnumForTests(StrEnum):
 
 
 # Test classes for enum template tests
-class ModuleWithIntEnum(L.Module):
+class ModuleWithIntEnum(fabll.Module):
     def __init__(self, value: _IntEnumForTests):
         super().__init__()
         self._value = value
 
 
-class ModuleWithStrEnum(L.Module):
+class ModuleWithStrEnum(fabll.Module):
     def __init__(self, mode: _StrEnumForTests):
         super().__init__()
         self._mode = mode
 
 
-class ModuleWithOptionalEnum(L.Module):
+class ModuleWithOptionalEnum(fabll.Module):
     def __init__(self, color: F.LED.Color | None = None):
         super().__init__()
         self._color = color
 
 
-class ModuleWithTypingOptionalEnum(L.Module):
+class ModuleWithTypingOptionalEnum(fabll.Module):
     def __init__(self, color: Optional[F.LED.Color] = None):
         super().__init__()
         self._color = color
 
 
-class ModuleWithEnumUnion(L.Module):
+class ModuleWithEnumUnion(fabll.Module):
     def __init__(
         self,
         value: F.LED.Color | F.MOSFET.ChannelType | F.Capacitor.TemperatureCoefficient,
@@ -1898,7 +1898,7 @@ class ModuleWithEnumUnion(L.Module):
         self._value = value
 
 
-class ModuleWithTypingUnionEnum(L.Module):
+class ModuleWithTypingUnionEnum(fabll.Module):
     def __init__(
         self,
         value: Union[
@@ -1909,31 +1909,31 @@ class ModuleWithTypingUnionEnum(L.Module):
         self._value = value
 
 
-class ModuleWithStrOrEnum(L.Module):
+class ModuleWithStrOrEnum(fabll.Module):
     def __init__(self, label: str | F.LED.Color):
         super().__init__()
         self._label = label
 
 
-class ModuleWithTypingUnionStrOrEnum(L.Module):
+class ModuleWithTypingUnionStrOrEnum(fabll.Module):
     def __init__(self, label: Union[str, F.LED.Color]):
         super().__init__()
         self._label = label
 
 
-class ModuleWithStrOrStrEnum(L.Module):
+class ModuleWithStrOrStrEnum(fabll.Module):
     def __init__(self, config: str | _StrEnumForTests):
         super().__init__()
         self._config = config
 
 
-class ModuleWithEnumOrNone(L.Module):
+class ModuleWithEnumOrNone(fabll.Module):
     def __init__(self, channel: F.MOSFET.ChannelType | None = None):
         super().__init__()
         self._channel = channel
 
 
-class ModuleWithTypingUnionEnumOrNone(L.Module):
+class ModuleWithTypingUnionEnumOrNone(fabll.Module):
     def __init__(self, channel: Union[F.MOSFET.ChannelType, None] = None):
         super().__init__()
         self._channel = channel
@@ -2026,7 +2026,7 @@ def test_module_template_enum_scenarios(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     mod = bob.resolve_field_shortcut(node, "mod")
     assert isinstance(mod, eval(module_name))
 
@@ -2089,7 +2089,7 @@ def test_module_template_enum_union_types(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     mod = bob.resolve_field_shortcut(node, "mod")
     assert isinstance(mod, eval(module_name))
     assert mod._value == expected_value
@@ -2098,7 +2098,7 @@ def test_module_template_enum_union_types(
 def test_module_template_multiple_enum_args(bob: Bob):
     """Test multiple enum arguments in module template constructor."""
 
-    class ModuleWithMultipleEnums(L.Module):
+    class ModuleWithMultipleEnums(fabll.Module):
         def __init__(
             self,
             color: F.LED.Color,
@@ -2127,7 +2127,7 @@ def test_module_template_multiple_enum_args(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     mod1 = bob.resolve_field_shortcut(node, "mod1")
     assert isinstance(mod1, ModuleWithMultipleEnums)
@@ -2145,12 +2145,12 @@ def test_module_template_multiple_enum_args(bob: Bob):
 def test_module_template_mixed_syntax_compatibility(bob: Bob):
     """Test that both Optional and | None syntax work in the same context."""
 
-    class ModuleWithModernOptional(L.Module):
+    class ModuleWithModernOptional(fabll.Module):
         def __init__(self, color: F.LED.Color | None = None):
             super().__init__()
             self._color = color
 
-    class ModuleWithTypingOptional(L.Module):
+    class ModuleWithTypingOptional(fabll.Module):
         def __init__(self, color: Optional[F.LED.Color] = None):
             super().__init__()
             self._color = color
@@ -2174,7 +2174,7 @@ def test_module_template_mixed_syntax_compatibility(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
 
     mod1 = bob.resolve_field_shortcut(node, "mod1")
     assert isinstance(mod1, ModuleWithModernOptional)

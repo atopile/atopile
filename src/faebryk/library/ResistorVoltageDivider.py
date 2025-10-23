@@ -3,17 +3,16 @@
 
 import logging
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.parameter import R
-from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class ResistorVoltageDivider(Module):
+class ResistorVoltageDivider(fabll.Module):
     """
     A voltage divider using two resistors.
     node[0] ~ resistor[1] ~ node[1] ~ resistor[2] ~ node[2]
@@ -32,13 +31,13 @@ class ResistorVoltageDivider(Module):
     r_top: F.Resistor
 
     # Variables
-    v_in = L.p_field(units=P.V, domain=R.Domains.Numbers.REAL())
-    v_out = L.p_field(units=P.V, domain=R.Domains.Numbers.REAL())
-    max_current = L.p_field(units=P.A)
-    total_resistance = L.p_field(units=P.Ω)
-    ratio = L.p_field(units=P.dimensionless, within=Quantity_Interval(0.0, 1.0))
+    v_in = fabll.p_field(units=P.V, domain=R.Domains.Numbers.REAL())
+    v_out = fabll.p_field(units=P.V, domain=R.Domains.Numbers.REAL())
+    max_current = fabll.p_field(units=P.A)
+    total_resistance = fabll.p_field(units=P.Ω)
+    ratio = fabll.p_field(units=P.dimensionless, within=Quantity_Interval(0.0, 1.0))
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power.hv, self.output.line)
 

@@ -19,17 +19,17 @@ def test_add():
 def test_cnodes():
     from faebryk.core.cpp import LinkNamedParent, Node
 
-    n1 = Node()
+    n1 = fabll.Node()
     n1.transfer_ownership(n1)
-    n2 = Node()
+    n2 = fabll.Node()
     n2.transfer_ownership(n2)
 
-    class _Node(Node):
+    class _fabll.Node(Node):
         def __init__(self) -> None:
             super().__init__()
             self.transfer_ownership(self)
 
-    n3 = _Node()
+    n3 = _fabll.Node()
 
     n1.children.connect(n2.parent, LinkNamedParent("test1"))
     n2.children.connect(n3.parent, LinkNamedParent("test2"))
@@ -43,27 +43,24 @@ def test_cnodes():
 
 
 def test_pynode():
-    from faebryk.core.node import Node
+    import faebryk.core.node as fabll
 
-    n = Node()
+    n = fabll.Node()
     print(n)
     print("---")
 
-    class SubNode(Node):
+    class SubNode(fabll.Node):
         a: Node
         b: Node
 
     sn = SubNode()
     print(sn.a)
 
-    print(sn.get_children(direct_only=True, types=Node))
+    print(sn.get_children(direct_only=True, types=fabll.Node))
 
 
 def test_derived_pynodes():
-    import faebryk.core.node as fabll
-    import faebryk.core.node as fabll
-
-    class App(Module):
+    class App(fabll.Module):
         mif1: ModuleInterface
         mif2: ModuleInterface
 
@@ -77,7 +74,7 @@ def test_derived_pynodes():
 
 
 def test_traits_basic():
-    from faebryk.core.node import Node
+    import faebryk.core.node as fabll
     from faebryk.core.trait import Trait
 
     class T(Trait):
@@ -88,7 +85,7 @@ def test_traits_basic():
         def do(self):
             print("do")
 
-    class A(Node):
+    class A(fabll.Node):
         t: T_do
 
     a = A()
@@ -99,9 +96,9 @@ def test_traits_basic():
 
 
 def test_forgotten_superinit():
-    from faebryk.core.node import Node
+    import faebryk.core.node as fabll
 
-    class A(Node):
+    class A(fabll.Node):
         def __init__(self):
             pass
 
@@ -152,7 +149,6 @@ def test_link():
 
 def test_mif_link():
     from faebryk.core.link import LinkDirectConditional
-    import faebryk.core.node as fabll
 
     mif1 = ModuleInterface()
     mif2 = ModuleInterface()
@@ -178,43 +174,41 @@ def test_cpp_type():
 
 
 def test_isinstance_base():
-    from faebryk.core.node import Node
+    import faebryk.core.node as fabll
 
-    assert Node._mro == []
-    assert Node._mro_ids == set()
+    assert fabll.Node._mro == []
+    assert fabll.Node._mro_ids == set()
 
-    n = Node()
-    assert n.isinstance(Node)
-    assert n.isinstance([Node])
+    n = fabll.Node()
+    assert n.isinstance(fabll.Node)
+    assert n.isinstance([fabll.Node])
 
 
 def test_isinstance_existing():
     import faebryk.core.node as fabll
-    from faebryk.core.node import Node
 
-    assert Module._mro == [Module, Node]
-    assert Module._mro_ids == {id(Module), id(Node)}
+    assert Module._mro == [Module, fabll.Node]
+    assert Module._mro_ids == {id(fabll.Module), id(fabll.Node)}
 
     m = Module()
-    assert m.isinstance(Module)
-    assert m.isinstance(Node)
+    assert m.isinstance(fabll.Module)
+    assert m.isinstance(fabll.Node)
 
 
 def test_isinstance_new():
     import faebryk.core.node as fabll
-    from faebryk.core.node import Node
 
-    class A(Module):
+    class A(fabll.Module):
         pass
 
-    class B(Module):
+    class B(fabll.Module):
         pass
 
     a = A()
     assert a.isinstance(A)
-    assert a.isinstance(Module)
-    assert a.isinstance(Node)
+    assert a.isinstance(fabll.Module)
+    assert a.isinstance(fabll.Node)
     assert not a.isinstance(B)
 
-    assert a.isinstance([A, Module, Node])
+    assert a.isinstance([A, Module, fabll.Node])
     assert a.isinstance([B, Module])

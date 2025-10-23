@@ -3,9 +3,8 @@
 
 import logging
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.exporters.pcb.layout.heuristic_decoupling import Params, place_next_to
 from faebryk.exporters.pcb.layout.layout import Layout
 
@@ -20,7 +19,7 @@ class LayoutNextTo(Layout):
         self._params = params or Params()
         self._target = target
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         # Remove nodes that have a position defined
         node = tuple(
             n

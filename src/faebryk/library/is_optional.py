@@ -4,8 +4,6 @@
 import logging
 from abc import abstractmethod
 
-import faebryk.core.node as fabll
-
 logger = logging.getLogger(__name__)
 
 

@@ -3,9 +3,8 @@
 
 from typing import Self, override
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.core.trait import TraitImpl
 
 
@@ -99,7 +98,7 @@ class has_explicit_part(Module.TraitT.decless()):
         self.on_obj_set()
 
     @override
-    def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
+    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
         assert isinstance(old, has_explicit_part)
         old._merge(self)
         return False

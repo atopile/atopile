@@ -4,15 +4,13 @@
 import pytest
 
 import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 
 
-class _Bare(Node):
+class _Bare(fabll.Node):
     pass
 
 
-class _Harness(Module):
+class _Harness(fabll.Module):
     iface: ModuleInterface
 
 
@@ -28,7 +26,7 @@ def test_lifecycle_transitions_and_guards():
 
     # Instantiation transitions to runtime
     runtime_root = _Harness()
-    Node.instantiate(runtime_root)
+    fabll.Node.instantiate(runtime_root)
     assert runtime_root.get_lifecycle_stage() == "runtime"
 
     # Collection-only APIs now fail
@@ -47,6 +45,6 @@ def test_moduleinterface_runtime_only_operations():
     with pytest.raises(RuntimeError, match="Operation requires runtime graph access"):
         iface.get_connected()
 
-    Node.instantiate(iface)
+    fabll.Node.instantiate(iface)
     assert iface.get_lifecycle_stage() == "runtime"
     assert iface.get_connected() == {}

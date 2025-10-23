@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 
@@ -46,7 +45,7 @@ class Pad(ModuleInterface):
     def get_fp(self) -> F.Footprint:
         return not_none(self.get_parent_of_type(F.Footprint))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Pad
 

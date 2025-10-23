@@ -3,8 +3,8 @@
 
 from pathlib import Path
 
-import faebryk.library._F as F  # noqa: F401
 import faebryk.core.node as fabll
+import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.util import once
 
 
@@ -53,7 +53,7 @@ class is_atomic_part(Module.TraitT.decless()):
     def on_obj_set(self):
         super().on_obj_set()
 
-        obj = self.get_obj(Module)
+        obj = self.get_obj(fabll.Module)
 
         fp_path, fp_lib = self.fp_path
         fp = F.KicadFootprint.from_path(fp_path, lib_name=fp_lib)

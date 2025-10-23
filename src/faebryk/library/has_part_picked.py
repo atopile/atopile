@@ -4,7 +4,6 @@
 import logging
 from typing import TYPE_CHECKING, Self
 
-import faebryk.core.node as fabll
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:

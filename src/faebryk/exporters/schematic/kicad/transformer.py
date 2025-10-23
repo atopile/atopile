@@ -11,13 +11,11 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, List, Protocol
 
+import faebryk.core.node as fabll
+
 # import numpy as np
 # from shapely import Polygon
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, 
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
@@ -87,7 +85,7 @@ class SchTransformer:
             self.pins = pins
 
     def __init__(
-        self, sch: SCH, graph: Graph, app: fabll.Node cleanup: bool = True
+        self, sch: SCH, graph: fabll.Graph, app: fabll.Node, cleanup: bool = True
     ) -> None:
         self.sch = sch
         self.graph = graph
@@ -162,7 +160,7 @@ class SchTransformer:
                 ],
             )
 
-    def attach_symbol(self, node: Node, symbol: kicad.schematic.SymbolInstance):
+    def attach_symbol(self, node: fabll.Node, symbol: kicad.schematic.SymbolInstance):
         """Bind the module and symbol together on the graph"""
         graph_sym = node.get_trait(F.Symbol.has_symbol).reference
 
@@ -235,7 +233,7 @@ class SchTransformer:
 
     # Getter ---------------------------------------------------------------------------
     @staticmethod
-    def get_symbol(cmp: Node) -> F.Symbol:
+    def get_symbol(cmp: fabll.Node) -> F.Symbol:
         return not_none(cmp.get_trait(SchTransformer.has_linked_sch_symbol)).symbol
 
     def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
@@ -293,7 +291,7 @@ class SchTransformer:
     @get_lib_pin.register
     def _(self, pin: F.Symbol.Pin) -> kicad.schematic.SymbolPin:
         graph_symbol, _ = not_none(pin.get_parent())
-        assert isinstance(graph_symbol, Node)
+        assert isinstance(graph_symbol, fabll.Node)
         lib_sym = self.get_lib_symbol(graph_symbol)
         units = self.get_related_lib_sym_units(lib_sym)
         sym = graph_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
@@ -402,7 +400,7 @@ class SchTransformer:
 
     def insert_symbol(
         self,
-        module: fabll.Node
+        module: fabll.Node,
         at: Point2D | None = None,
         rotation: int | None = None,
     ):

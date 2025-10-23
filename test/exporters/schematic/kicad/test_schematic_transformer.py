@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 
 import faebryk.library._F as F
-import faebryk.core.node as fabll
 from faebryk.exporters.schematic.kicad.transformer import SchTransformer
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.kicad.fileformats import Property, kicad

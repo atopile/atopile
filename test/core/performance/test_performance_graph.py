@@ -6,12 +6,9 @@ from itertools import pairwise, product
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
-from faebryk.libs.library import L
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 
@@ -31,8 +28,8 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     count = 10 * 2**count_power
 
     def _factory_simple_resistors():
-        class App(Module):
-            resistors = L.list_field(count, F.Resistor)
+        class App(fabll.Module):
+            resistors = fabll.list_field(count, F.Resistor)
 
             def __init__(self, timings: Times) -> None:
                 super().__init__()
@@ -44,8 +41,8 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
         return App
 
     def _factory_interconnected_resistors():
-        class App(Module):
-            resistors = L.list_field(count, F.Resistor)
+        class App(fabll.Module):
+            resistors = fabll.list_field(count, F.Resistor)
 
             def __init__(self, timings: Times) -> None:
                 super().__init__()
@@ -79,16 +76,16 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
         assert isinstance(n, Module)
         name = type(n).__name__[0]
 
-        n.get_children(direct_only=False, types=Node)
+        n.get_children(direct_only=False, types=fabll.Node)
         timings.add(f"get_node_children_all {name}")
 
-        n.get_tree(types=Node)
+        n.get_tree(types=fabll.Node)
         timings.add(f"get_node_tree {name}")
 
         n.get_tree(types=ModuleInterface)
         timings.add(f"get_mif_tree {name}")
 
-        n.get_children(direct_only=True, types=Node)
+        n.get_children(direct_only=True, types=fabll.Node)
         timings.add(f"get_module_direct_children {name}")
 
         n.get_children(direct_only=True, types=ModuleInterface)

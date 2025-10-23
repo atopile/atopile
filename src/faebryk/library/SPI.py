@@ -1,9 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 
 
 class SPI(ModuleInterface):
@@ -11,7 +10,7 @@ class SPI(ModuleInterface):
     miso: F.ElectricLogic
     mosi: F.ElectricLogic
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -23,7 +22,7 @@ class SPI(ModuleInterface):
         self.miso.line.add(F.has_net_name("MISO", level=F.has_net_name.Level.SUGGESTED))
         self.mosi.line.add(F.has_net_name("MOSI", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import SPI, ElectricPower, ElectricLogic
 

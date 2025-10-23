@@ -3,13 +3,12 @@
 
 from enum import Enum, auto
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class MOSFET(Module):
+class MOSFET(fabll.Module):
     class ChannelType(Enum):
         N_CHANNEL = auto()
         P_CHANNEL = auto()
@@ -18,22 +17,22 @@ class MOSFET(Module):
         ENHANCEMENT = auto()
         DEPLETION = auto()
 
-    channel_type = L.p_field(domain=L.Domains.ENUM(ChannelType))
-    saturation_type = L.p_field(domain=L.Domains.ENUM(SaturationType))
-    gate_source_threshold_voltage = L.p_field(units=P.V)
-    max_drain_source_voltage = L.p_field(units=P.V)
-    max_continuous_drain_current = L.p_field(units=P.A)
-    on_resistance = L.p_field(units=P.ohm)
+    channel_type = fabll.p_field(domain=fabll.Domains.ENUM(ChannelType))
+    saturation_type = fabll.p_field(domain=fabll.Domains.ENUM(SaturationType))
+    gate_source_threshold_voltage = fabll.p_field(units=P.V)
+    max_drain_source_voltage = fabll.p_field(units=P.V)
+    max_continuous_drain_current = fabll.p_field(units=P.A)
+    on_resistance = fabll.p_field(units=P.ohm)
 
     source: F.Electrical
     gate: F.Electrical
     drain: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.Q
     )
 
-    # @L.rt_field
+    # @fabll.rt_field
     # def pickable(self) -> F.is_pickable_by_type:
     #     return F.is_pickable_by_type(
     #         F.is_pickable_by_type.Type.MOSFET,
@@ -49,11 +48,11 @@ class MOSFET(Module):
     #     )
 
     # TODO pretty confusing
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(in_if=self.source, out_if=self.drain)
 
-    @L.rt_field
+    @fabll.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
@@ -71,7 +70,7 @@ class MOSFET(Module):
         self.gate.add(F.has_net_name("gate", level=F.has_net_name.Level.SUGGESTED))
         self.drain.add(F.has_net_name("drain", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import MOSFET, ElectricLogic, ElectricPower
 

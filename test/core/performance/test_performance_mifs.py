@@ -5,11 +5,10 @@ import logging
 
 import pytest
 
-from faebryk.core.graph import InstanceGraphFunctions
-import faebryk.library._F as F
-from faebryk.core.graphinterface import GraphInterface
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
+from faebryk.core.graph import InstanceGraphFunctions
+from faebryk.core.graphinterface import GraphInterface
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 from test.common.resources.fabll_modules.RP2040 import RP2040
@@ -21,10 +20,8 @@ from test.common.resources.fabll_modules.USB2514B import USB2514B
 logger = logging.getLogger(__name__)
 
 
-def ensure_typegraph(node: Node) -> None:
+def ensure_typegraph(node: fabll.Node) -> None:
     """Build TypeGraph, instantiate, and bind for the node's tree."""
-    from faebryk.core.graph import Instance
-import faebryk.core.node as fabll
 
     root = node._get_root()
 
@@ -35,7 +32,7 @@ import faebryk.core.node as fabll
     # Build type graph
     typegraph, _ = root.create_typegraph()
 
-    # Instantiate instance graph (independent of Node)
+    # Instantiate instance graph (independent of fabll.Node)
     instance_root = InstanceGraphFunctions.create(typegraph, type(root).__qualname__)
 
     # Bind instance to tree

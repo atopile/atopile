@@ -8,14 +8,10 @@ from dash import Dash, html
 from rich.console import Console
 from rich.table import Table
 
-import faebryk.library._F as F
-from faebryk.core.graph import Graph, 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.link import Link
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
 from faebryk.exporters.visualize.util import generate_pastel_palette
@@ -53,13 +49,15 @@ _GROUP_TYPES = {
     F.ElectricLogic: "#EBE1F1",  # Very soft lavender
     # Defaults
     ModuleInterface: "#DFFFE4",  # Very light green
-    Node: "#FCFCFF",  # Almost white
+    fabll.Node: "#FCFCFF",  # Almost white
 }
 
 
-def _group(node: Node):
+def _group(node: fabll.Node):
     try:
-        subtype = find_or(_GROUP_TYPES, lambda t: isinstance(node, t), default=Node)
+        subtype = find_or(
+            _GROUP_TYPES, lambda t: isinstance(node, t), default=fabll.Node
+        )
     except KeyErrorAmbiguous as e:
         subtype = e.duplicates[0]
 
@@ -217,7 +215,7 @@ def _Layout(stylesheet: _Stylesheet, elements: list[dict[str, dict]]):
 def interactive_subgraph(
     edges: Iterable[tuple[GraphInterface, GraphInterface, Link]],
     gifs: list[GraphInterface],
-    nodes: Iterable[Node],
+    nodes: Iterable[fabll.Node],
     height: int | None = None,
 ):
     links = [link for _, _, link in edges]
@@ -259,7 +257,7 @@ def interactive_subgraph(
     for typegroup, colors in [
         ("GIF", gif_type_colors),
         ("Link", link_type_colors),
-        ("Node", group_types_colors),
+        ("fabll.Node", group_types_colors),
     ]:
         table = Table(title="Legend")
         table.add_column("Type", style="cyan")
@@ -276,14 +274,14 @@ def interactive_subgraph(
 
 
 def interactive_graph(
-    G: Graph,
-    node_types: tuple[type[Node], ...] | None = None,
+    G: fabll.Graph,
+    node_types: tuple[type[fabll.Node], ...] | None = None,
     depth: int = 0,
     filter_unconnected: bool = True,
     height: int | None = None,
 ):
     if node_types is None:
-        node_types = (Node,)
+        node_types = (fabll.Node,)
 
     # Build elements
     nodes = fabll.Node.bind_typegraph(G).nodes_of_types(node_types)

@@ -4,9 +4,8 @@
 
 import logging
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,7 @@ class requires_external_usage(Trait.decless()):
     class RequiresExternalUsageNotFulfilled(
         F.implements_design_check.UnfulfilledCheckException
     ):
-        def __init__(self, nodes: list[Node]):
+        def __init__(self, nodes: list[fabll.Node]):
             super().__init__(
                 "Nodes requiring external usage but not used externally",
                 nodes=nodes,

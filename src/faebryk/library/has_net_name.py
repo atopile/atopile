@@ -1,10 +1,10 @@
 from enum import IntEnum, auto
 
+import faebryk.core.node as fabll
 from faebryk.core.trait import TraitImpl
-from faebryk.libs.library import L
 
 
-class has_net_name(L.Trait.decless()):
+class has_net_name(fabll.Trait.decless()):
     """Provide a net name suggestion or expectation"""
 
     # TODO:
@@ -29,7 +29,7 @@ class has_net_name(L.Trait.decless()):
     def expected(cls, name: str) -> "has_net_name":
         return cls(name, cls.Level.EXPECTED)
 
-    def handle_duplicate(self, old: TraitImpl, node: L.Node) -> bool:
+    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
         assert isinstance(old, has_net_name)  # Asserting trait, not impl
         # FIXME: gracefully handle hitting this multiple times
         return super().handle_duplicate(old, node)

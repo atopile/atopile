@@ -3,16 +3,15 @@
 
 import logging
 
-import faebryk.library._F as F
-from faebryk.core.graph import Graph, 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
 
 logger = logging.getLogger(__name__)
 
 
 def check_design(
-    G: Graph,
+    G: fabll.Graph,
     stage: F.implements_design_check.CheckStage,
     exclude: tuple[str, ...] = tuple(),
 ):

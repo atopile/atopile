@@ -16,7 +16,7 @@ class has_descriptive_properties(Module.TraitT):
         raise NotImplementedError()
 
     @staticmethod
-    def get_from(obj: fabll.Node key: str) -> str | None:
+    def get_from(obj: fabll.Node, key: str) -> str | None:
         if not obj.has_trait(has_descriptive_properties):
             return None
         return obj.get_trait(has_descriptive_properties).get_properties().get(key)

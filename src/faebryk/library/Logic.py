@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F
-from faebryk.libs.library import L  # noqa: F401
 
 
 class Logic(F.Signal):
@@ -10,7 +10,7 @@ class Logic(F.Signal):
     Acts as protocol, because multi inheritance is not supported
     """
 
-    # state = L.p_field(domain=L.Domains.BOOL())
+    # state = fabll.p_field(domain=fabll.Domains.BOOL())
 
     def set(self, on: bool):
         # self.state.constrain_subset(on)

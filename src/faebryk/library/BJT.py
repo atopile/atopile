@@ -3,13 +3,12 @@
 
 from enum import Enum, auto
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.node import rt_field
-from faebryk.libs.library import L
 
 
-class BJT(Module):
+class BJT(fabll.Module):
     class DopingType(Enum):
         NPN = auto()
         PNP = auto()
@@ -21,14 +20,14 @@ class BJT(Module):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
-    operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
+    doping_type = fabll.p_field(domain=fabll.Domains.ENUM(DopingType))
+    operation_region = fabll.p_field(domain=fabll.Domains.ENUM(OperationRegion))
 
     emitter: F.Electrical
     base: F.Electrical
     collector: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.Q
     )
 
@@ -48,7 +47,7 @@ class BJT(Module):
             case_sensitive=False,
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import BJT, Resistor, ElectricPower
 

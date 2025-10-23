@@ -4,8 +4,8 @@
 import logging
 import math
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class FilterElectricalLC(F.Filter):
     capacitor: F.Capacitor
     inductor: F.Inductor
 
-    z0 = L.p_field(units=P.ohm)
+    z0 = fabll.p_field(units=P.ohm)
 
     def __preinit__(self):
         self.order.alias_is(2)

@@ -4,7 +4,6 @@
 from abc import abstractmethod
 
 import faebryk.library._F as F
-import faebryk.core.node as fabll
 
 
 class has_pin_association_heuristic(Module.TraitT):

@@ -3,7 +3,6 @@
 
 from abc import abstractmethod
 
-import faebryk.core.node as fabll
 from faebryk.core.parameter import Parameter
 
 

@@ -6,9 +6,9 @@ import logging
 import re
 from typing import Type
 
+import faebryk.core.node as fabll
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
-import faebryk.libs.library.L as L
 from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
 from faebryk.core.trait import TraitImpl
@@ -19,11 +19,11 @@ from faebryk.libs.util import md_list, not_none
 log = logging.getLogger(__name__)
 
 
-shim_map: dict[address.AddrStr, tuple[Type[L.Node], str]] = {}
+shim_map: dict[address.AddrStr, tuple[Type[fabll.Node], str]] = {}
 
 
 def _register_shim(addr: str | address.AddrStr, preferred: str):
-    def _wrapper[T: Type[L.Node]](cls: T) -> T:
+    def _wrapper[T: Type[fabll.Node]](cls: T) -> T:
         shim_map[address.AddrStr(addr)] = cls, preferred
         return cls
 
@@ -70,13 +70,13 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         return False
 
 
-class _has_ato_cmp_attrs(L.Module.TraitT.decless()):
+class _has_ato_cmp_attrs(fabll.Module.TraitT.decless()):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap: dict[str, F.Electrical | None] = {}
 
     def on_obj_set(self):
-        self.module = self.get_obj(L.Module)
+        self.module = self.get_obj(fabll.Module)
         self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
         self.module.add(F.has_designator_prefix(F.has_designator_prefix.Prefix.U))
 
@@ -93,7 +93,7 @@ class _has_ato_cmp_attrs(L.Module.TraitT.decless()):
 
 # FIXME: this would ideally be some kinda of mixin,
 # however, we can't have multiple bases for Nodes
-class GlobalAttributes(L.Module):
+class GlobalAttributes(fabll.Module):
     """
     These attributes are available to all modules and interfaces in a design.
     """
@@ -205,7 +205,7 @@ class GlobalAttributes(L.Module):
         GlobalAttributes._handle_package_size(self, value)
 
     @staticmethod
-    def _handle_package_size(module: L.Module, value: str):
+    def _handle_package_size(module: fabll.Module, value: str):
         match module:
             case F.Resistor():
                 value = re.sub(r"^R", "I", value)
@@ -319,7 +319,7 @@ class Resistor(F.Resistor):
         return self.resistance
 
     @value.setter
-    def value(self, value: L.Range):
+    def value(self, value: fabll.Range):
         self.resistance.constrain_subset(value)
 
     @property
@@ -355,7 +355,7 @@ class Resistor(F.Resistor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @L.rt_field
+    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -375,7 +375,7 @@ class CommonCapacitor(F.Capacitor):
         return self.capacitance
 
     @value.setter
-    def value(self, value: L.Range):
+    def value(self, value: fabll.Range):
         self.capacitance.constrain_subset(value)
 
     @property
@@ -419,7 +419,7 @@ class Capacitor(CommonCapacitor):
     every times it's referenced.
     """
 
-    @L.rt_field
+    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -469,7 +469,7 @@ class Inductor(F.Inductor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @L.rt_field
+    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()

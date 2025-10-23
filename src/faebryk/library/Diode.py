@@ -3,51 +3,50 @@
 
 from deprecated import deprecated
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.parameter import ParameterOperatable
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class Diode(Module):
-    forward_voltage = L.p_field(
+class Diode(fabll.Module):
+    forward_voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,
-        soft_set=L.Range(0.1 * P.V, 1 * P.V),
+        soft_set=fabll.Range(0.1 * P.V, 1 * P.V),
         tolerance_guess=10 * P.percent,
     )
     # Current at which the design is functional
-    current = L.p_field(
+    current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
+        soft_set=fabll.Range(0.1 * P.mA, 10 * P.A),
         tolerance_guess=10 * P.percent,
     )
-    reverse_working_voltage = L.p_field(
+    reverse_working_voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,
-        soft_set=L.Range(10 * P.V, 100 * P.V),
+        soft_set=fabll.Range(10 * P.V, 100 * P.V),
         tolerance_guess=10 * P.percent,
     )
-    reverse_leakage_current = L.p_field(
+    reverse_leakage_current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(0.1 * P.nA, 1 * P.µA),
+        soft_set=fabll.Range(0.1 * P.nA, 1 * P.µA),
         tolerance_guess=10 * P.percent,
     )
     # Current at which the design may be damaged
     # In some cases, this is useful to know, e.g. to calculate the brightness of an LED
-    max_current = L.p_field(
+    max_current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
+        soft_set=fabll.Range(0.1 * P.mA, 10 * P.A),
     )
 
     anode: F.Electrical
     cathode: F.Electrical
 
-    # @L.rt_field
+    # @fabll.rt_field
     # def pickable(self):
     #     return F.is_pickable_by_type(
     #         F.is_pickable_by_type.Type.Diode,
@@ -59,22 +58,22 @@ class Diode(Module):
     #         },
     #     )
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.anode, self.cathode)
 
-    @L.rt_field
+    @fabll.rt_field
     def simple_value_representation(self):
         S = F.has_simple_value_representation_based_on_params_chain.Spec
         return F.has_simple_value_representation_based_on_params_chain(
             S(self.forward_voltage),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.D
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
@@ -101,7 +100,7 @@ class Diode(Module):
             F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Diode, Resistor, ElectricPower
 

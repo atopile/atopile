@@ -4,10 +4,7 @@
 import logging
 from typing import Callable, cast
 
-from faebryk.core.cpp import Graph
 import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import NodeException
 from faebryk.core.parameter import Expression, Parameter
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -123,7 +120,7 @@ class is_bus_parameter(Parameter.TraitT.decless()):
             guard._guard = False
 
     @staticmethod
-    def resolve_bus_parameters(graph: Graph):
+    def resolve_bus_parameters(graph: fabll.Graph):
         bus_parameters = cast(
             list[tuple[Parameter, is_bus_parameter]],
             fabll.Node.bind_typegraph(graph).nodes_with_trait(is_bus_parameter),

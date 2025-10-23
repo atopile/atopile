@@ -13,7 +13,6 @@ from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 if TYPE_CHECKING:
     from rich.console import Console, ConsoleOptions, ConsoleRenderable
 
-    from faebryk.core.node import NodeException
 
 
 def _render_tokens(

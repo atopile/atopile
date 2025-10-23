@@ -3,8 +3,8 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,11 @@ class CapacitorElectrolytic(F.Capacitor):
         self.power.hv.connect(self.anode)
         self.power.lv.connect(self.cathode)
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.anode, self.cathode)
 
-    @L.rt_field
+    @fabll.rt_field
     def has_pin_association_heuristic_lookup_table(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
@@ -42,7 +42,7 @@ class CapacitorElectrolytic(F.Capacitor):
             F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import CapacitorElectrolytic, ElectricPower
 

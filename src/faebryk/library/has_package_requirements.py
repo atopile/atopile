@@ -4,7 +4,6 @@
 import faebryk.core.node as fabll
 from faebryk.core.parameter import EnumDomain
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.library import L
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import cast_assert
@@ -15,7 +14,7 @@ class has_package_requirements(Module.TraitT.decless()):
     Collection of constraints for package of module.
     """
 
-    size = L.p_field(domain=EnumDomain(SMDSize))
+    size = fabll.p_field(domain=EnumDomain(SMDSize))
 
     def __init__(self, *, size: SMDSize | EnumSet[SMDSize] | None = None) -> None:
         super().__init__()

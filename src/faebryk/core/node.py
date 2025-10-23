@@ -461,6 +461,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def bind_typegraph_from_self(self) -> "BoundNodeType[Self, Any]":
         return self.bind_typegraph(tg=self.tg)
 
+    def get_graph(self) -> TypeGraph:
+        return self.tg
+
     def isinstance(self, *type_node: "type[Node]") -> bool:
         bound_type_nodes = [
             tn.bind_typegraph_from_instance(self.instance) for tn in type_node
@@ -927,7 +930,15 @@ class Traits:
         Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
 
 
-# ------------------------------------------------------------
+# --------------------------------------------------------------------------------------
+# re-export GraphView to be used from fabll namespace
+Graph = TypeGraph
+# TODO remove
+Module = Node
+ModuleInterface = Node
+
+
+# --------------------------------------------------------------------------------------
 
 
 def _make_graph_and_typegraph():

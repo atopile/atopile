@@ -15,7 +15,7 @@ from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P, Quantity
+from faebryk.libs.units import Quantity
 
 # FIXME: this has to go this way to avoid gen_F detecting a circular import
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ class Capacitor(fabll.Node):
 
     @classmethod
     def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        # TODO: Switch to list_field unnamed = L.list_field(2, F.Electrical)
+        # TODO: Switch to list_field unnamed = fabll.list_field(2, F.Electrical)
         cls.p1 = t.Child(nodetype=Electrical)
         cls.p2 = t.Child(nodetype=Electrical)
 
@@ -95,7 +95,7 @@ class Capacitor(fabll.Node):
             g=t.tg.get_graph_view(), value=has_usage_example.Language.ato
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def simple_value_representation(self):
         S = F.has_simple_value_representation_based_on_params_chain.Spec
         return F.has_simple_value_representation_based_on_params_chain(
@@ -113,13 +113,13 @@ class Capacitor(fabll.Node):
         if nominal_capacitance is not None:
             if tolerance is None:
                 tolerance = 0.2
-            capacitance = L.Range.from_center_rel(nominal_capacitance, tolerance)
+            capacitance = fabll.Range.from_center_rel(nominal_capacitance, tolerance)
             self.capacitance.constrain_subset(capacitance)
 
         if size is not None:
             self.add(F.has_package_requirements(size=size))
 
-    class _has_power(L.Trait.decless()):
+    class _has_power(fabll.Trait.decless()):
         """
         This trait is used to add power interfaces to
         capacitors who use them, keeping the interfaces

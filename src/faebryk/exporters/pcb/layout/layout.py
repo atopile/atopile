@@ -1,8 +1,8 @@
 from abc import abstractmethod
 
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 
 
 class Layout:
     @abstractmethod
-    def apply(self, *node: Node): ...
+    def apply(self, *node: fabll.Node): ...

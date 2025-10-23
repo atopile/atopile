@@ -3,8 +3,6 @@
 
 from abc import abstractmethod
 
-import faebryk.core.node as fabll
-
 
 class has_overriden_name(Module.TraitT):
     @abstractmethod

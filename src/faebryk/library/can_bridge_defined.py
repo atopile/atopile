@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.fabll as fabll
-import faebryk.library._F as F
 import faebryk.core.node as fabll
 
 

@@ -5,8 +5,8 @@ import logging
 
 from rich.progress import track
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.font import Font
 from faebryk.libs.geometry.basic import get_distributed_points_in_polygon
@@ -58,7 +58,7 @@ class FontLayout(Layout):
         """
         return len(self.coords)
 
-    def apply(self, *nodes_to_distribute: Node) -> None:
+    def apply(self, *nodes_to_distribute: fabll.Node) -> None:
         """
         Apply the PCB positions to all nodes that are inside the font
         """

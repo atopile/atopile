@@ -97,10 +97,10 @@ def setup_basic_logging():
 
 class NodeHighlighter(RegexHighlighter):
     """
-    Apply style to anything that looks like an faebryk Node\n
+    Apply style to anything that looks like an faebryk fabll.Node\n
     <*|XOR_with_NANDS.nands[2]|NAND.inputs[0]|Logic> with
       <*|TI_CD4011BE.nands[2]|ElectricNAND.inputs[0]|ElectricLogic>\n
-    \t<> = Node\n
+    \t<> = fabll.Node\n
     \t|  = Type\n
     \t.  = Parent\n
     \t*  = Root
@@ -109,7 +109,7 @@ class NodeHighlighter(RegexHighlighter):
     base_style = "node."
     highlights = [
         #  r"(?P<Rest>(.*))",
-        r"(?P<Node>([/</>]))",
+        r"(?P<fabll.Node>([/</>]))",
         r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
         r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
         r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",

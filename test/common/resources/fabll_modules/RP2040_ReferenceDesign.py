@@ -3,15 +3,14 @@
 
 import logging
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
-import faebryk.core.node as fabll
 from faebryk.exporters.pcb.layout.heuristic_decoupling import (
     LayoutHeuristicElectricalClosenessDecouplingCaps,
 )
 from faebryk.exporters.pcb.layout.heuristic_pulls import (
     LayoutHeuristicElectricalClosenessPullResistors,
 )
-from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P  # noqa: F401
 from test.common.resources.fabll_modules.RP2040 import RP2040
@@ -22,20 +21,20 @@ from test.common.resources.fabll_modules.Winbond_Elec_W25Q128JVSIQ import (
 logger = logging.getLogger(__name__)
 
 
-class RP2040_ReferenceDesign(Module):
+class RP2040_ReferenceDesign(fabll.Module):
     """Minimal required design for the Raspberry Pi RP2040 microcontroller.
     Based on the official Raspberry Pi RP2040 hardware design guidlines.
     """
 
-    class Jumper(Module):
+    class Jumper(fabll.Module):
         logic_out: F.ElectricLogic
 
         resistor: F.Resistor
-        switch = L.f_field(F.Switch(F.Electrical))()
+        switch = fabll.f_field(F.Switch(F.Electrical))()
 
         def __preinit__(self):
             self.resistor.resistance.constrain_subset(
-                L.Range.from_center_rel(1 * P.kohm, 0.05)
+                fabll.Range.from_center_rel(1 * P.kohm, 0.05)
             )
             self.logic_out.set_weak(True, self).resistance.alias_is(
                 self.resistor.resistance
@@ -55,7 +54,7 @@ class RP2040_ReferenceDesign(Module):
             # TODO make other trait for manual footprint, no pick
             self.switch.add(F.has_part_removed())
 
-        @L.rt_field
+        @fabll.rt_field
         def single_reference(self):
             return F.has_single_electric_reference_defined(self.logic_out.reference)
 
@@ -78,7 +77,7 @@ class RP2040_ReferenceDesign(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    datasheet = L.f_field(F.has_datasheet_defined)(
+    datasheet = fabll.f_field(F.has_datasheet_defined)(
         "https://datasheets.raspberrypi.com/rp2040/hardware-design-with-rp2040.pdf"
     )
 
@@ -102,11 +101,13 @@ class RP2040_ReferenceDesign(Module):
 
         # XTAL
         xtal = self.clock_source.crystal
-        xtal.load_capacitance.constrain_subset(L.Range.from_center_rel(10 * P.pF, 0.2))
-        xtal.frequency.constrain_subset(L.Range.from_center_rel(12 * P.MHz, 0.05))
+        xtal.load_capacitance.constrain_subset(
+            fabll.Range.from_center_rel(10 * P.pF, 0.2)
+        )
+        xtal.frequency.constrain_subset(fabll.Range.from_center_rel(12 * P.MHz, 0.05))
 
         self.clock_source.current_limiting_resistor.resistance.constrain_subset(
-            L.Range.from_center_rel(1 * P.kohm, 0.05)
+            fabll.Range.from_center_rel(1 * P.kohm, 0.05)
         )
 
         xtal.add(F.has_explicit_part.by_supplier("C20625731"))
@@ -118,7 +119,7 @@ class RP2040_ReferenceDesign(Module):
             self.usb.usb_if.d.terminated(), "_terminated_usb_data"
         )
         terminated_usb_data.impedance.constrain_subset(
-            L.Range.from_center_rel(27.4 * P.ohm, 0.05)
+            fabll.Range.from_center_rel(27.4 * P.ohm, 0.05)
         )
 
         # Flash
@@ -170,7 +171,7 @@ class RP2040_ReferenceDesign(Module):
             types=F.Capacitor,
             f_filter=lambda c: bool(
                 c.capacitance.try_get_literal()
-                == L.Range.from_center_rel(100 * P.nF, 0.2)
+                == fabll.Range.from_center_rel(100 * P.nF, 0.2)
             ),
         )
         for c in caps_100nF:
@@ -180,7 +181,7 @@ class RP2040_ReferenceDesign(Module):
             self
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def pcb_layout(self):
         from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
         from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
@@ -195,17 +196,17 @@ class RP2040_ReferenceDesign(Module):
                     LayoutTypeHierarchy.Level(
                         mod_type=RP2040,
                         layout=LayoutAbsolute(
-                            Point((0, 0, 0, L.NONE)),
+                            Point((0, 0, 0, fabll.NONE)),
                         ),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=F.LDO,
-                        layout=LayoutAbsolute(Point((10, 14, 180, L.NONE))),
+                        layout=LayoutAbsolute(Point((10, 14, 180, fabll.NONE))),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=type(self.boot_selector),
                         layout=LayoutAbsolute(
-                            Point((-1.75, -11.5, 0, L.NONE)),
+                            Point((-1.75, -11.5, 0, fabll.NONE)),
                         ),
                         children_layout=LayoutExtrude(
                             vector=(3.5, 0, 90),
@@ -214,19 +215,19 @@ class RP2040_ReferenceDesign(Module):
                     LayoutTypeHierarchy.Level(
                         mod_type=type(self.flash),
                         layout=LayoutAbsolute(
-                            Point((-1.95, -20, 0, L.NONE)),
+                            Point((-1.95, -20, 0, fabll.NONE)),
                         ),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=F.Crystal_Oscillator,
                         layout=LayoutAbsolute(
-                            Point((-10, 15, 0, L.NONE)),
+                            Point((-10, 15, 0, fabll.NONE)),
                         ),
                     ),
                     LayoutTypeHierarchy.Level(
                         mod_type=F.Resistor,
                         layout=LayoutExtrude(
-                            base=Point((0.75, -6, 0, L.NONE)),
+                            base=Point((0.75, -6, 0, fabll.NONE)),
                             vector=(1.25, 0, 270),
                         ),
                     ),

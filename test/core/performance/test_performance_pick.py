@@ -8,13 +8,12 @@ from typing import Callable
 
 import pytest
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import get_algorithms
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.core.solver.utils import S_LOG, set_log_level
-from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
     PickError,
@@ -40,7 +39,7 @@ def _setup():
     NO_PROGRESS_BAR.set(True)
 
 
-class _RP2040_Basic(Module):
+class _RP2040_Basic(fabll.Module):
     rp2040: RP2040
     ldo: F.LDO
     led: F.LED
@@ -84,12 +83,12 @@ def test_performance_pick_rc_formulas():
     INCREASE = 10 * P.percent
     TOLERANCE = 20 * P.percent
 
-    class App(Module):
-        alias_res = L.list_field(_GROUPS, F.Resistor)
-        res = L.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
+    class App(fabll.Module):
+        alias_res = fabll.list_field(_GROUPS, F.Resistor)
+        res = fabll.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
 
         def __preinit__(self):
-            increase = L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(
+            increase = fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(
                 100 * P.percent
             )
 

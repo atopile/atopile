@@ -2,18 +2,17 @@
 # SPDX-License-Identifier: MIT
 
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class Crystal_Oscillator(Module):
+class Crystal_Oscillator(fabll.Module):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
     crystal: F.Crystal
-    capacitors = L.list_field(2, F.Capacitor)
+    capacitors = fabll.list_field(2, F.Capacitor)
     current_limiting_resistor: F.Resistor
 
     xtal_if: F.XtalIF
@@ -23,9 +22,9 @@ class Crystal_Oscillator(Module):
     # ----------------------------------------
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
-    _STRAY_CAPACITANCE = L.Range(1 * P.pF, 5 * P.pF)
+    _STRAY_CAPACITANCE = fabll.Range(1 * P.pF, 5 * P.pF)
 
-    @L.rt_field
+    @fabll.rt_field
     def capacitance(self):
         return (self.crystal.load_capacitance - self._STRAY_CAPACITANCE) * 2
 
@@ -43,11 +42,11 @@ class Crystal_Oscillator(Module):
         )
         self.crystal.unnamed[1].connect(self.xtal_if.xin)
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Crystal_Oscillator, ElectricPower
 

@@ -4,8 +4,10 @@
 import logging
 from itertools import chain, pairwise
 
+import NodeException
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.link import (
     LinkDirect,
@@ -13,15 +15,12 @@ from faebryk.core.link import (
     LinkDirectConditionalFilterResult,
     LinkDirectDerived,
 )
-import faebryk.core.node as fabll
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
-from faebryk.core.node import Node, NodeException
 from faebryk.libs.app.erc import (
     ERCFaultShortedModuleInterfaces,
     ERCPowerSourcesShortedError,
     simple_erc,
 )
-from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
 from test.common.resources.fabll_modules.ButtonCell import ButtonCell
 from test.common.resources.fabll_modules.RP2040 import RP2040
@@ -32,7 +31,7 @@ from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
 logger = logging.getLogger(__name__)
 
 
-def ensure_typegraph(node: Node) -> Node:
+def ensure_typegraph(node: fabll.Node) -> fabll.Node:
     """Build TypeGraph, instantiate, and bind for the node's tree."""
     root = node._get_root()
 
@@ -41,12 +40,12 @@ def ensure_typegraph(node: Node) -> Node:
     assert not getattr(root, "_instance_bound", None), "Instance already bound"
 
     # Instantiate graph and execute runtime hooks
-    Node.instantiate(root)
+    fabll.Node.instantiate(root)
     return root
 
 
-def bind_to_module(*nodes: Node) -> Module:
-    class _Harness(Module):
+def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
+    class _Harness(fabll.Module):
         pass
 
     harness = _Harness()
@@ -244,8 +243,8 @@ def test_split_chain_double_flat_no_inter():
         lower1: Low
         lower2: Low
 
-    class App(Module):
-        high = L.list_field(4, High)
+    class App(fabll.Module):
+        high = fabll.list_field(4, High)
 
     app = App()
 
@@ -286,8 +285,8 @@ def test_split_chain_double_flat_inter():
         lower1: Low
         lower2: Low
 
-    class App(Module):
-        high = L.list_field(4, High)
+    class App(fabll.Module):
+        high = fabll.list_field(4, High)
 
     app = App()
 
@@ -326,9 +325,9 @@ def test_split_chain_double_hierarchy():
     class Higher(ModuleInterface):
         high: High
 
-    class App(Module):
-        high = L.list_field(3, High)
-        higher = L.list_field(2, Higher)
+    class App(fabll.Module):
+        high = fabll.list_field(3, High)
+        higher = fabll.list_field(2, Higher)
 
     app = App()
 
@@ -362,8 +361,8 @@ def test_split_chain_flip():
         lower1: Low
         lower2: Low
 
-    class App(Module):
-        high = L.list_field(4, High)
+    class App(fabll.Module):
+        high = fabll.list_field(4, High)
 
     app = App()
 
@@ -613,7 +612,7 @@ def test_up_connect():
     ```
     """
 
-    class UARTBuffer(Module):
+    class UARTBuffer(fabll.Module):
         bus_in: F.UART_Base
         bus_out: F.UART_Base
 
@@ -759,14 +758,14 @@ def test_shallow_bridge_simple():
         lower1: Low
         lower2: Low
 
-    class ShallowBridge(Module):
+    class ShallowBridge(fabll.Module):
         high_in: High
         high_out: High
 
         def __preinit__(self) -> None:
             self.high_in.connect_shallow(self.high_out)
 
-        @L.rt_field
+        @fabll.rt_field
         def can_bridge(self):
             return F.can_bridge_defined(self.high_in, self.high_out)
 
@@ -793,7 +792,7 @@ def test_shallow_bridge_partial():
     ```
     """
 
-    class Buffer(Module):
+    class Buffer(fabll.Module):
         ins: F.Electrical
         outs: F.Electrical
 
@@ -806,7 +805,7 @@ def test_shallow_bridge_partial():
 
             self.ins_l.connect_shallow(self.outs_l)
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
@@ -847,12 +846,12 @@ def test_shallow_bridge_full():
     - OL: Output Logic
     """
 
-    class Buffer(Module):
-        ins = L.list_field(2, F.Electrical)
-        outs = L.list_field(2, F.Electrical)
+    class Buffer(fabll.Module):
+        ins = fabll.list_field(2, F.Electrical)
+        outs = fabll.list_field(2, F.Electrical)
 
-        ins_l = L.list_field(2, F.ElectricLogic)
-        outs_l = L.list_field(2, F.ElectricLogic)
+        ins_l = fabll.list_field(2, F.ElectricLogic)
+        outs_l = fabll.list_field(2, F.ElectricLogic)
 
         def __preinit__(self) -> None:
             assert (
@@ -869,13 +868,13 @@ def test_shallow_bridge_full():
             for l1, l2 in zip(self.ins_l, self.outs_l):
                 l1.connect_shallow(l2)
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class UARTBuffer(Module):
+    class UARTBuffer(fabll.Module):
         buf: Buffer
         bus_in: F.UART_Base
         bus_out: F.UART_Base
@@ -890,7 +889,7 @@ def test_shallow_bridge_full():
             bus_o.tx.line.connect(buf.outs[0])
             bus_o.rx.line.connect(buf.outs[1])
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)

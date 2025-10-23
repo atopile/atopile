@@ -3,7 +3,6 @@
 
 from abc import abstractmethod
 
-import faebryk.core.node as fabll
 from faebryk.libs.util import cast_assert, find
 
 

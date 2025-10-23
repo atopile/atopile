@@ -3,7 +3,8 @@
 
 # import faebryk.library._F as F
 import faebryk.core.node as fabll
-# from faebryk.libs.library import L
+
+# import faebryk.core.node as fabll
 
 
 class Electrical(fabll.Node):
@@ -31,7 +32,7 @@ class Electrical(fabll.Node):
     # def net_crosses_pad_boundary(self) -> bool:
     #     from faebryk.library.Pad import Pad
 
-    #     def _get_pad(n: Node):
+    #     def _get_pad(n: fabll.Node):
     #         if (parent := n.get_parent()) is None:
     #             return None
 
@@ -49,7 +50,7 @@ class Electrical(fabll.Node):
 
 #     return len(pads_on_net) > 1
 
-# usage_example = L.f_field(F.has_usage_example)(
+# usage_example = fabll.f_field(F.has_usage_example)(
 #     example="""
 #     import Electrical, Resistor, Capacitor
 

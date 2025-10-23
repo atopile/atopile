@@ -3,7 +3,6 @@
 from typing import Any
 
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.library.can_attach_to_footprint_symmetrically import (
     can_attach_to_footprint_symmetrically,
 )

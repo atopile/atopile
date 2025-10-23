@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
 import faebryk.core.node as fabll
@@ -14,11 +13,6 @@ import faebryk.core.node as fabll
 #     Parameter,
 #     ParameterOperableHasNoLiteral,
 # )
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval_Disjoint,
-)
-from faebryk.libs.sets.sets import BoolSet, EnumSet
-from faebryk.libs.units import Quantity, Unit, to_si_str
 from faebryk.libs.util import join_if_non_empty
 
 logger = logging.getLogger(__name__)

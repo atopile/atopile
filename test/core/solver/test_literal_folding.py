@@ -20,8 +20,8 @@ from hypothesis.strategies._internal.lazy import LazyStrategy
 from rich.console import Console
 from rich.table import Table
 
-from faebryk.core.core import Namespace
 import faebryk.core.node as fabll
+from faebryk.core.core import Namespace
 from faebryk.core.parameter import (
     Abs,
     Add,

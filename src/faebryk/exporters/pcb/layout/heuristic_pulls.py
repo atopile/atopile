@@ -3,9 +3,8 @@
 
 import logging
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.exporters.pcb.layout.heuristic_decoupling import Params, place_next_to
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.util import not_none
@@ -20,7 +19,7 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
         super().__init__()
         self._params = params or Params()
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         # Remove nodes that have a position defined
         node = tuple(
             n
@@ -35,7 +34,7 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
             place_next_to(logic.line, n, route=True, params=self._params)
 
     @staticmethod
-    def find_module_candidates(node: Node):
+    def find_module_candidates(node: fabll.Node):
         return Module.get_children_modules(
             node,
             direct_only=False,
@@ -44,7 +43,9 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
         )
 
     @classmethod
-    def add_to_all_suitable_modules(cls, node: Node, params: Params | None = None):
+    def add_to_all_suitable_modules(
+        cls, node: fabll.Node, params: Params | None = None
+    ):
         layout = cls(params)
         candidates = cls.find_module_candidates(node)
         for c in candidates:

@@ -11,10 +11,8 @@ from dash import Dash, html
 from dash.dependencies import Input, Output, State
 
 # import faebryk.library._F as F
-from faebryk.core.graph import Graph, 
 import faebryk.core.node as fabll
 from faebryk.core.link import LinkSibling
-from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter
 from faebryk.exporters.parameters.parameters_to_file import parameter_report
 from faebryk.exporters.visualize.interactive_params_base import (
@@ -39,7 +37,9 @@ class ParamLink:
 
 def _node(node: Operand):
     try:
-        subtype = find_or(_GROUP_TYPES, lambda t: isinstance(node, t), default=Node)
+        subtype = find_or(
+            _GROUP_TYPES, lambda t: isinstance(node, t), default=fabll.Node
+        )
     except KeyErrorAmbiguous as e:
         subtype = e.duplicates[0]
 
@@ -225,7 +225,7 @@ def buttons(layout: Layout):
         return current_layout
 
 
-def visualize_parameters(G: Graph, height: int | None = None):
+def visualize_parameters(G: fabll.Graph, height: int | None = None):
     Operand_ = (Parameter, Expression)
     nodes = fabll.Node.bind_typegraph(G).nodes_of_types(Operand_)
     nodes = cast(list[Operand], nodes)

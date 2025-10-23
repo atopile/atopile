@@ -5,10 +5,8 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterable, Mapping, Sequence
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 from faebryk.libs.geometry.basic import Geometry
 
 if TYPE_CHECKING:
@@ -86,7 +84,7 @@ class Path:
         return Path(path=self.path + other.path)
 
 
-class Route(Module):
+class Route(fabll.Module):
     net_: F.Electrical
     pcb: ModuleInterface
 
@@ -167,7 +165,7 @@ def apply_route_in_pcb(route: Route, transformer: "PCB_Transformer"):
 
 
 def get_internal_nets_of_node(
-    node: Node,
+    node: fabll.Node,
 ) -> Mapping[F.Net | None, Iterable[ModuleInterface]]:
     """
     Returns all Nets occuring (at least partially) within Node

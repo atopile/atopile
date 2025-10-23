@@ -5,9 +5,8 @@ import logging
 from collections.abc import Sequence
 from typing import Callable
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.util import md_list
 
@@ -19,7 +18,7 @@ class requires_pulls(Module.TraitT.decless()):
         def __init__(
             self,
             signals: Sequence[F.ElectricSignal],
-            bus: set[Node],
+            bus: set[fabll.Node],
             required_resistance: Quantity_Interval,
         ):
             message = (
@@ -47,7 +46,7 @@ class requires_pulls(Module.TraitT.decless()):
         def __init__(
             self,
             signals: Sequence[F.ElectricSignal],
-            bus: set[Node],
+            bus: set[fabll.Node],
             required_resistance: Quantity_Interval,
         ):
             message = (
@@ -72,7 +71,7 @@ class requires_pulls(Module.TraitT.decless()):
     def __init__(
         self,
         *signals: F.ElectricSignal,
-        pred: Callable[[F.ElectricSignal, set[Node]], bool] | None,
+        pred: Callable[[F.ElectricSignal, set[fabll.Node]], bool] | None,
         required_resistance: Quantity_Interval,
     ):
         super().__init__()

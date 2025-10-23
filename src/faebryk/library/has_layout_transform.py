@@ -4,7 +4,7 @@
 import logging
 from typing import TYPE_CHECKING, Callable
 
-from faebryk.libs.library import L
+import faebryk.core.node as fabll
 
 if TYPE_CHECKING:
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class has_layout_transform(L.Module.TraitT.decless()):
+class has_layout_transform(fabll.Module.TraitT.decless()):
     """
     Docstring describing your module
     """

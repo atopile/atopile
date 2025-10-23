@@ -6,9 +6,8 @@ import math
 from dataclasses import dataclass
 from enum import IntEnum
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.core.trait import TraitNotFound
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.layout import Layout
@@ -190,7 +189,7 @@ def _next_to_pad(
 
 
 def place_next_to_pad(
-    module: fabll.Node
+    module: fabll.Node,
     pad: F.Pad,
     params: Params,
 ):
@@ -223,7 +222,7 @@ def place_next_to_pad(
 
 def place_next_to(
     parent_intf: F.Electrical,
-    module: fabll.Node
+    module: fabll.Node,
     params: Params,
     route: bool = False,
 ):
@@ -271,7 +270,7 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
         super().__init__()
         self._params = params or Params()
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         # Remove nodes that have a position defined
         node = tuple(n for n in node if not n.has_trait(F.has_pcb_position))
 
@@ -282,7 +281,7 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
             place_next_to(power.hv, n, route=True, params=self._params)
 
     @staticmethod
-    def find_module_candidates(node: Node):
+    def find_module_candidates(node: fabll.Node):
         return Module.get_children_modules(
             node,
             direct_only=False,
@@ -294,7 +293,9 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
         )
 
     @classmethod
-    def add_to_all_suitable_modules(cls, node: Node, params: Params | None = None):
+    def add_to_all_suitable_modules(
+        cls, node: fabll.Node, params: Params | None = None
+    ):
         layout = cls(params)
         candidates = cls.find_module_candidates(node)
         for c in candidates:

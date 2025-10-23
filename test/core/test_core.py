@@ -3,6 +3,7 @@
 
 import unittest
 
+import faebryk.core.node as fabll
 from faebryk.core.cpp import (
     GraphInterface,
     GraphInterfaceHierarchical,
@@ -16,10 +17,6 @@ from faebryk.core.link import (
     LinkParent,
     LinkSibling,
 )
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
-from faebryk.libs.library import L
 
 
 class TestGraph(unittest.TestCase):
@@ -49,14 +46,14 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(gif1.G, gif2.G)
 
     def test_node_gifs(self):
-        from faebryk.core.node import Node
+        import faebryk.core.node as fabll
 
-        n1 = Node()
+        n1 = fabll.Node()
 
         self.assertIsInstance(n1.self_gif.is_connected_to(n1.parent), LinkSibling)
         self.assertIsInstance(n1.self_gif.is_connected_to(n1.children), LinkSibling)
 
-        n2 = Node()
+        n2 = fabll.Node()
         n1.add(n2, name="n2")
 
         self.assertIsInstance(n1.children.is_connected_to(n2.parent), LinkParent)
@@ -72,24 +69,24 @@ class TestGraph(unittest.TestCase):
 
     # TODO move to own file
     def test_fab_ll_simple_hierarchy(self):
-        class N(Node):
+        class N(fabll.Node):
             SN1: Node
             SN2: Node
-            SN3 = L.list_field(2, Node)
+            SN3 = fabll.list_field(2, fabll.Node)
 
-            @L.rt_field
+            @fabll.rt_field
             def SN4(self):
-                return Node()
+                return fabll.Node()
 
         n = N()
-        children = n.get_children(direct_only=True, types=Node)
+        children = n.get_children(direct_only=True, types=fabll.Node)
         self.assertEqual(children, {n.SN1, n.SN2, n.SN3[0], n.SN3[1], n.SN4})
 
     def test_fab_ll_chain_names(self):
-        root = Node()
+        root = fabll.Node()
         x = root
         for i in range(10):
-            y = Node()
+            y = fabll.Node()
             x.add(y, f"i{i}")
             x = y
 
@@ -98,11 +95,11 @@ class TestGraph(unittest.TestCase):
         )
 
     def test_fab_ll_chain_tree(self):
-        root = Node()
+        root = fabll.Node()
         x = root
         for i in range(10):
-            y = Node()
-            z = Node()
+            y = fabll.Node()
+            z = fabll.Node()
             x.add(y, f"i{i}")
             x.add(z, f"j{i}")
             x = y
@@ -112,12 +109,12 @@ class TestGraph(unittest.TestCase):
         )
 
     def test_fab_ll_chain_tree_with_root(self):
-        root = Node()
+        root = fabll.Node()
         root.no_include_parents_in_full_name = True
         x = root
         for i in range(10):
-            y = Node()
-            z = Node()
+            y = fabll.Node()
+            z = fabll.Node()
             x.add(y, f"i{i}")
             x.add(z, f"j{i}")
             x = y
@@ -171,7 +168,7 @@ class TestGraph(unittest.TestCase):
             self.assertEqual(counter, target)
             counter = 0
 
-        class N1(Node):
+        class N1(fabll.Node):
             def __preinit__(self):
                 nonlocal counter
                 counter += 1
@@ -205,8 +202,8 @@ class TestGraph(unittest.TestCase):
 
 
 def test_get_children_modules_simple():
-    class App(Module):
-        m: Module
+    class App(fabll.Module):
+        m: fabll.Module
 
     app = App()
 
@@ -215,10 +212,10 @@ def test_get_children_modules_simple():
 
 
 def test_get_children_modules_specialized():
-    class App(Module):
-        m: Module
+    class App(fabll.Module):
+        m: fabll.Module
 
-    class ModuleSpecial(Module):
+    class ModuleSpecial(fabll.Module):
         pass
 
     app = App()
@@ -230,11 +227,11 @@ def test_get_children_modules_specialized():
 
 
 def test_get_children_modules_specialized_chain():
-    class App(Module):
-        m: Module
+    class App(fabll.Module):
+        m: fabll.Module
 
-    class ModuleSpecial(Module):
-        m: Module
+    class ModuleSpecial(fabll.Module):
+        m: fabll.Module
 
     app = App()
     special = ModuleSpecial()

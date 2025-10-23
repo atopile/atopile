@@ -3,17 +3,15 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux
 
 logger = logging.getLogger(__name__)
 
 
-class RP2040(Module):
+class RP2040(fabll.Module):
     """
     Raspberry Pi RP2040 MCU
     Note: Don't forget to use the pinmux!
@@ -29,13 +27,13 @@ class RP2040(Module):
         A: F.ElectricLogic
         B: F.ElectricLogic
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class CoreRegulator(Module):
+    class CoreRegulator(fabll.Module):
         power_in: F.ElectricPower
         power_out: F.ElectricPower
 
@@ -44,11 +42,11 @@ class RP2040(Module):
 
             # TODO get tolerance
             self.power_out.voltage.constrain_subset(
-                L.Range.from_center_rel(1.1 * P.V, 0.05)
+                fabll.Range.from_center_rel(1.1 * P.V, 0.05)
             )
-            self.power_in.voltage.constrain_subset(L.Range(1.8 * P.V, 3.3 * P.V))
+            self.power_in.voltage.constrain_subset(fabll.Range(1.8 * P.V, 3.3 * P.V))
 
-        @L.rt_field
+        @fabll.rt_field
         def bridge(self):
             return F.can_bridge_defined(self.power_in, self.power_out)
 
@@ -60,7 +58,7 @@ class RP2040(Module):
         rts: F.ElectricLogic
         cts: F.ElectricLogic
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
@@ -71,7 +69,7 @@ class RP2040(Module):
         vbus_det: F.ElectricLogic
         vbus_en: F.ElectricLogic
 
-        @L.rt_field
+        @fabll.rt_field
         def single_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
@@ -84,11 +82,11 @@ class RP2040(Module):
     power_usb_phy: F.ElectricPower
     core_regulator: CoreRegulator
 
-    io = L.list_field(30, F.Electrical)
-    io_soft = L.list_field(6, F.Electrical)
+    io = fabll.list_field(30, F.Electrical)
+    io_soft = fabll.list_field(6, F.Electrical)
 
     # IO
-    qspi = L.f_field(F.MultiSPI)(data_lane_count=4)
+    qspi = fabll.f_field(F.MultiSPI)(data_lane_count=4)
     swd: F.SWD
     xtal_if: F.XtalIF
 
@@ -98,28 +96,28 @@ class RP2040(Module):
     usb_power_control: USBPowerControl
 
     # peripherals
-    spi = L.list_field(2, SPI)
-    pwm = L.list_field(8, PWM)
-    i2c = L.list_field(2, F.I2C)
-    uart = L.list_field(2, UART)
-    pio = L.list_field(2, PIO)
-    adc = L.list_field(4, ADC)
-    clock_in = L.list_field(2, F.ElectricLogic)
-    clock_out = L.list_field(4, F.ElectricLogic)
-    gpio = L.list_field(30 + 6, F.ElectricLogic)
+    spi = fabll.list_field(2, SPI)
+    pwm = fabll.list_field(8, PWM)
+    i2c = fabll.list_field(2, F.I2C)
+    uart = fabll.list_field(2, UART)
+    pio = fabll.list_field(2, PIO)
+    adc = fabll.list_field(4, ADC)
+    clock_in = fabll.list_field(2, F.ElectricLogic)
+    clock_out = fabll.list_field(4, F.ElectricLogic)
+    gpio = fabll.list_field(30 + 6, F.ElectricLogic)
 
     def __preinit__(self):
         # TODO get tolerance
         self.power_adc.voltage.constrain_subset(
-            L.Range.from_center_rel(3.3 * P.V, 0.05)
+            fabll.Range.from_center_rel(3.3 * P.V, 0.05)
         )
         self.power_usb_phy.voltage.constrain_subset(
-            L.Range.from_center_rel(3.3 * P.V, 0.05)
+            fabll.Range.from_center_rel(3.3 * P.V, 0.05)
         )
         self.power_core.voltage.constrain_subset(
-            L.Range.from_center_rel(1.1 * P.V, 0.05)
+            fabll.Range.from_center_rel(1.1 * P.V, 0.05)
         )
-        self.power_io.voltage.constrain_subset(L.Range(1.8 * P.V, 3.3 * P.V))
+        self.power_io.voltage.constrain_subset(fabll.Range(1.8 * P.V, 3.3 * P.V))
 
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         F.ElectricLogic.connect_all_node_references(
@@ -154,24 +152,24 @@ class RP2040(Module):
         self.adc[3].line.connect(self.io[29])
         F.ElectricLogic.connect_all_node_references(self.adc + [self.power_adc])
 
-    @L.rt_field
+    @fabll.rt_field
     def pinmux(self):
         return RP2040Pinmux(self)
 
-    @L.rt_field
+    @fabll.rt_field
     def decoupled(self):
         return F.can_be_decoupled_rails(self.power_io, self.power_core)
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    datasheet = L.f_field(F.has_datasheet_defined)(
+    datasheet = fabll.f_field(F.has_datasheet_defined)(
         "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
     )
 
-    mfr = L.f_field(F.has_explicit_part.by_mfr)("Raspberry Pi", "RP2040")
+    mfr = fabll.f_field(F.has_explicit_part.by_mfr)("Raspberry Pi", "RP2040")
 
-    @L.rt_field
+    @fabll.rt_field
     def attach_to_footprint(self):
         return F.can_attach_to_footprint_via_pinmap(
             {
@@ -235,7 +233,7 @@ class RP2040(Module):
             }
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={

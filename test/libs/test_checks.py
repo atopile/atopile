@@ -5,8 +5,8 @@ import logging
 
 import pytest
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 def test_requires_external_usage():
-    class App(Module):
-        class Outer(Module):
-            class Inner(Module):
+    class App(fabll.Module):
+        class Outer(fabll.Module):
+            class Inner(fabll.Module):
                 b: F.Electrical
 
             a: F.Electrical

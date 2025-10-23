@@ -5,17 +5,14 @@ import unittest
 from typing import Sequence
 
 import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
-from faebryk.libs.library import L
 
 
 class TestUtil(unittest.TestCase):
     def test_trees(self):
-        class N(Module):
+        class N(fabll.Module):
             mif: ModuleInterface
 
-            @L.rt_field
+            @fabll.rt_field
             def n(self):
                 if self._depth == 0:
                     # TODO does this work?
@@ -29,7 +26,7 @@ class TestUtil(unittest.TestCase):
         level_count = 5
         n = N(level_count)
 
-        def assertEqual(n1: Sequence[Node], n2: Sequence[Node]):
+        def assertEqual(n1: Sequence[fabll.Node], n2: Sequence[fabll.Node]):
             n1s = list(sorted(n1, key=id))
             n2s = list(sorted(n2, key=id))
             self.assertEqual(n1s, n2s)

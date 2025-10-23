@@ -14,8 +14,8 @@ from more_itertools import first
 from rich.table import Table
 from rich.tree import Tree
 
-from faebryk.core.graph import Graph, 
 import faebryk.core.node as fabll
+from faebryk.core.node import Graph
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Domain,
@@ -112,7 +112,7 @@ class Transformations:
 
     @staticmethod
     def identity(
-        *gs: Graph, input_print_context: ParameterOperatable.ReprContext
+        *gs: fabll.Graph, input_print_context: ParameterOperatable.ReprContext
     ) -> "Transformations":
         return Transformations(
             mutated={
@@ -409,7 +409,7 @@ class MutationStage:
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        *graphs: fabll.Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext,
@@ -827,7 +827,7 @@ class MutationMap:
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        *graphs: fabll.Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext | None = None,
@@ -895,7 +895,7 @@ class MutationMap:
     def print_name_mappings(self, log: Callable[[str], None] = logger.debug):
         table = Table(title="Name mappings", show_lines=True)
         table.add_column("Variable name")
-        table.add_column("Node name")
+        table.add_column("fabll.Node name")
 
         for p in sorted(
             fabll.Node.bind_typegraph(*self.input_graphs).nodes_of_type(Parameter),
@@ -1344,7 +1344,7 @@ class Mutator:
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
 
-    def remove_graph(self, g: Graph):
+    def remove_graph(self, g: fabll.Graph):
         # TODO implementing graph removal has to be more explicit
         # e.g mark as no more use, and then future mutators ignore it for the algos
         # for now at least remove expressions

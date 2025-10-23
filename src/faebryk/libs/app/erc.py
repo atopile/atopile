@@ -7,13 +7,10 @@ from typing import Callable, Iterable, cast
 
 from more_itertools import first
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
 from faebryk.core.cpp import Path
-from faebryk.core.graph import Graph, 
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
@@ -118,7 +115,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
+def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
     """Simple ERC check.
 
     This function will check for the following ERC violations:

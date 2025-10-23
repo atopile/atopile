@@ -12,7 +12,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import faebryk.core.node as fabll
 from faebryk.core.parameter import Parameter
 
 # Add the src directory to the Python path
@@ -20,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import lsprotocol.types as lsp
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.lsp.lsp_server import (
     _extract_field_reference_before_dot,
@@ -27,7 +27,6 @@ from atopile.lsp.lsp_server import (
     _get_node_completions,
     on_document_completion,
 )
-from faebryk.core.node import Node
 
 
 @contextmanager
@@ -145,7 +144,7 @@ class TestNodeCompletions:
     def test_get_node_completions_empty_node(self):
         """Test completion extraction from a minimal node"""
 
-        class EmptyNode(Node):
+        class EmptyNode(fabll.Node):
             pass
 
         node = EmptyNode()

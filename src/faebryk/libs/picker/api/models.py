@@ -9,8 +9,8 @@ from typing import Any
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
@@ -196,7 +196,7 @@ class Component:
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, module: fabll.Node qty: int = 1):
+    def attach(self, module: fabll.Node, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
 
         module.add(

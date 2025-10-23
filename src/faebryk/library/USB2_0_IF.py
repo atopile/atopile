@@ -1,16 +1,15 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
 class USB2_0_IF(ModuleInterface):
     class Data(F.DifferentialPair):
         # FIXME: this should be in diffpair right?
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
@@ -18,7 +17,7 @@ class USB2_0_IF(ModuleInterface):
 
         def __preinit__(self):
             self.single_electric_reference.get_reference().voltage.constrain_subset(
-                L.Range(0 * P.V, 3.6 * P.V)
+                fabll.Range(0 * P.V, 3.6 * P.V)
             )
 
     d: Data

@@ -5,8 +5,8 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.util import times
 
 if TYPE_CHECKING:
@@ -46,11 +46,11 @@ class KicadFootprint(F.Footprint):
         unique_pin_names = sorted(set(pin_names))
         self.pin_names_sorted = list(enumerate(unique_pin_names))
 
-    @L.rt_field
+    @fabll.rt_field
     def pins(self):
         return times(len(self.pin_names_sorted), F.Pad)
 
-    @L.rt_field
+    @fabll.rt_field
     def attach_via_pinmap(self):
         return F.can_attach_via_pinmap_pinlist(
             {pin_name: self.pins[i] for i, pin_name in self.pin_names_sorted}

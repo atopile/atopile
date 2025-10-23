@@ -5,10 +5,8 @@ import json
 import logging
 from enum import StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, 
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
@@ -31,7 +29,7 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
-def load_part_info_from_pcb(G: Graph):
+def load_part_info_from_pcb(G: fabll.Graph):
     """
     Load descriptive properties from footprints and saved parameters.
     """
@@ -118,7 +116,7 @@ def load_part_info_from_pcb(G: Graph):
             param.alias_is(param_value)
 
 
-def save_part_info_to_pcb(G: Graph):
+def save_part_info_to_pcb(G: fabll.Graph):
     """
     Save parameters to footprints (by copying them to descriptive properties).
     """

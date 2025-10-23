@@ -8,9 +8,8 @@ from typing import Any, Callable, Sequence
 
 from more_itertools import first
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.library._F as F
 from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
@@ -23,9 +22,9 @@ class implements_design_check(Trait.TraitT.decless()):
         POST_PCB = auto()
 
     class UnfulfilledCheckException(Exception):
-        nodes: Sequence[Node]
+        nodes: Sequence[fabll.Node]
 
-        def __init__(self, message: str, nodes: Sequence[Node]):
+        def __init__(self, message: str, nodes: Sequence[fabll.Node]):
             self.nodes = nodes
             super().__init__(message)
 
@@ -53,7 +52,7 @@ class implements_design_check(Trait.TraitT.decless()):
     @staticmethod
     def register_post_pcb_check(func: Callable[[Any], None]):
         """
-        Guarantees PCB availability via Node in Graph
+        Guarantees PCB availability via fabll.Node in Graph
         """
         if not func.__name__ == "__check_post_pcb__":
             raise TypeError(f"Method {func.__name__} is not a post-pcb check name.")

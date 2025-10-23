@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, override
 
 import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 from faebryk.libs.kicad.fileformats import kicad
@@ -20,14 +20,14 @@ if TYPE_CHECKING:
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 
-class PCB(Node):
+class PCB(fabll.Node):
     def __init__(self, path: Path):
         super().__init__()
 
         self._path = path
         self._pcb_file: kicad.pcb.PcbFile | None = None
         self._transformer: "PCB_Transformer | None" = None
-        self.app: fabll.Node | None = None
+        self.app: fabll.Node, | None = None
 
     def load(self):
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -137,7 +137,7 @@ class PCB(Node):
             self._pcbs = {pcb}
 
         def on_obj_set(self):
-            obj = self.get_obj(Module)
+            obj = self.get_obj(fabll.Module)
             for pcb in self._pcbs:
                 if pcb.app and pcb.app is not obj:
                     raise ValueError(
@@ -150,7 +150,7 @@ class PCB(Node):
             return super().on_obj_set()
 
         @override
-        def handle_duplicate(self, old: "PCB.has_pcb", node: Node) -> bool:
+        def handle_duplicate(self, old: "PCB.has_pcb", node: fabll.Node) -> bool:
             self._pcbs.update(old._pcbs)
             return True
 

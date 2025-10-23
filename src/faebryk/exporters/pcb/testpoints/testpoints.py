@@ -5,14 +5,14 @@ import json
 import logging
 from pathlib import Path
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 logger = logging.getLogger(__name__)
 
 
-def _get_testpoints(app: fabll.Node -> list[F.TestPoint]:
+def _get_testpoints(app: fabll.Node) -> list[F.TestPoint]:
     return [
         testpoint
         for testpoint in app.get_children_modules(
@@ -27,7 +27,7 @@ def _get_testpoints(app: fabll.Node -> list[F.TestPoint]:
 
 
 def export_testpoints(
-    app: fabll.Node
+    app: fabll.Node,
     testpoints_file: Path,
 ):
     """

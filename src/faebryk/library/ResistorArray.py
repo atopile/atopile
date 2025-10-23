@@ -3,25 +3,24 @@
 
 import logging
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
-class ResistorArray(Module):
-    resistance = L.p_field(units=P.ohm)
-    rated_power = L.p_field(units=P.W)
-    rated_voltage = L.p_field(units=P.V)
+class ResistorArray(fabll.Module):
+    resistance = fabll.p_field(units=P.ohm)
+    rated_power = fabll.p_field(units=P.W)
+    rated_voltage = fabll.p_field(units=P.V)
 
-    @L.rt_field
+    @fabll.rt_field
     def resistors(self):
         return times(self._resistor_count, F.Resistor)
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R
     )
 
@@ -35,7 +34,7 @@ class ResistorArray(Module):
             resistor.max_power = self.rated_power
             resistor.max_voltage = self.rated_voltage
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import ResistorArray, ElectricPower, ElectricLogic
 

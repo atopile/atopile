@@ -9,14 +9,13 @@ from socket import gaierror
 
 import more_itertools
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
-import faebryk.core.node as fabll
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.http import RequestError, TimeoutException
-from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -90,7 +89,7 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
+def _from_smd_size(cls, size: SMDSize, type: type[fabll.Module]) -> "BackendPackage":
     if issubclass(type, F.Resistor):
         prefix = "R"
     elif issubclass(type, F.Capacitor):
@@ -110,7 +109,7 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: fabll.Node solver: Solver
+    module: fabll.Node, solver: Solver
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
     assert module.has_trait(F.is_pickable)
     # Error can propagate through,
@@ -163,7 +162,9 @@ def _prepare_query(
     )
 
 
-def _process_candidates(module: fabll.Node candidates: list[Component]) -> list[Component]:
+def _process_candidates(
+    module: fabll.Node, candidates: list[Component]
+) -> list[Component]:
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
@@ -254,7 +255,7 @@ def _find_modules(
     return out
 
 
-def _attach(module: fabll.Node c: Component):
+def _attach(module: fabll.Node, c: Component):
     """
     Calls LCSC attach and wraps errors into PickError
     """
@@ -277,7 +278,7 @@ def _attach(module: fabll.Node c: Component):
 
 
 def _get_compatible_parameters(
-    module: fabll.Node c: "Component", solver: Solver
+    module: fabll.Node, c: "Component", solver: Solver
 ) -> dict[Parameter, ParameterOperatable.Literal]:
     """
     Check if the parameters of a component are compatible with the module
@@ -420,7 +421,7 @@ def get_candidates(
     return {}
 
 
-def attach_single_no_check(cmp: fabll.Node part: Component, solver: Solver):
+def attach_single_no_check(cmp: fabll.Node, part: Component, solver: Solver):
     """
     Attach a single component to a module
     Attention: Does not check compatibility before or after!

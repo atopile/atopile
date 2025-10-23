@@ -3,10 +3,8 @@
 
 import logging
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.util import (  # noqa: F401
     KeyErrorAmbiguous,
     KeyErrorNotFound,
@@ -17,7 +15,7 @@ from faebryk.libs.util import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-class Pinmux(Module):
+class Pinmux(fabll.Module):
     """
     Generic Pinmux Base Class
     """
@@ -44,10 +42,10 @@ class Pinmux(Module):
         self.configured: dict[F.Electrical, F.Electrical] = {}
 
     def _get_ios(self) -> list[F.Electrical]:
-        raise L.AbstractclassError()
+        raise fabll.AbstractclassError()
 
     def _get_matrix(self) -> dict[F.Electrical, list[F.Electrical | None]]:
-        raise L.AbstractclassError()
+        raise fabll.AbstractclassError()
 
     def set_function(self, pin: int | F.Electrical, function: int | F.Electrical):
         if isinstance(pin, int):

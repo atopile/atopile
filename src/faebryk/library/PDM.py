@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 import logging
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ class PDM(ModuleInterface):
     clock: F.ElectricLogic
     select: F.ElectricLogic
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)

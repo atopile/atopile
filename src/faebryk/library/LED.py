@@ -6,9 +6,9 @@ from enum import Enum, auto
 
 from deprecated import deprecated
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.parameter import ParameterOperatable
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
@@ -43,11 +43,11 @@ class LED(F.Diode):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness = L.p_field(units=P.candela)
-    max_brightness = L.p_field(units=P.candela)
-    color = L.p_field(domain=L.Domains.ENUM(Color))
+    brightness = fabll.p_field(units=P.candela)
+    max_brightness = fabll.p_field(units=P.candela)
+    color = fabll.p_field(domain=fabll.Domains.ENUM(Color))
 
-    # @L.rt_field
+    # @fabll.rt_field
     # def pickable(self):
     #     return F.is_pickable_by_type(
     #         F.is_pickable_by_type.Type.LED,
@@ -104,7 +104,7 @@ class LED(F.Diode):
             low_side,
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import LED, Resistor, ElectricPower
 

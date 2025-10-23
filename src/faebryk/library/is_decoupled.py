@@ -3,13 +3,13 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.libs.library.L as L
 
 logger = logging.getLogger(__name__)
 
 
-class is_decoupled(L.Trait.decless()):
+class is_decoupled(fabll.Trait.decless()):
     def __init__(self, capacitor: F.Capacitor):
         super().__init__()
         self._capacitor = capacitor

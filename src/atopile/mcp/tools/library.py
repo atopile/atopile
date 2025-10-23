@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import faebryk.core.node as fabll
 from atopile.mcp.util import (
     Language,
     MCPTools,
@@ -8,9 +9,6 @@ from atopile.mcp.util import (
     NodeInfoOverview,
     NodeType,
 )
-import faebryk.core.node as fabll
-import faebryk.core.node as fabll
-from faebryk.core.node import Node
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +16,7 @@ library_tools = MCPTools()
 
 
 def _get_library_nodes(
-    t: type[Node] | tuple[type[Node], ...],
+    t: type[fabll.Node] | tuple[type[fabll.Node], ...],
 ) -> list[NodeInfoOverview]:
     import faebryk.library._F as F
 
@@ -41,7 +39,7 @@ def _locator_from_file_path(path: Path) -> str:
     return f"#file://{path.as_posix()}"
 
 
-def _get_library_node(name: str, t: type[Node] = Node) -> NodeInfo:
+def _get_library_node(name: str, t: type[fabll.Node] = fabll.Node) -> NodeInfo:
     import faebryk.library._F as F
 
     if name not in F.__dict__:

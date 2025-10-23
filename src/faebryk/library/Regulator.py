@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.libs.library import L
+import faebryk.library._F as F
 
 
-class Regulator(Module):
+class Regulator(fabll.Module):
     power_in: F.ElectricPower
     power_out: F.ElectricPower
 
@@ -14,11 +13,11 @@ class Regulator(Module):
         self.power_out.add(F.Power.is_power_source.impl()())
         self.power_in.add(F.Power.is_power_sink.impl()())
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power_in, self.power_out)
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Regulator, ElectricPower
 
