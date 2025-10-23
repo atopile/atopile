@@ -20,8 +20,6 @@ const EdgeComposition = composition_mod.EdgeComposition;
 const EdgeInterfaceConnection = interface_mod.EdgeInterfaceConnection;
 const EdgeType = type_mod.EdgeType;
 
-const DEBUG = false;
-
 // Import hierarchy types from graph module
 const HeirarchyTraverseDirection = graph.HeirarchyTraverseDirection;
 const HeirarchyElement = graph.HeirarchyElement;
@@ -95,20 +93,12 @@ pub const PathFinder = struct {
 
         switch (result) {
             .ERROR => |err| {
-                if (DEBUG) std.debug.print("!!!ERROR!!!: {}\n", .{err});
                 return err;
             },
             .CONTINUE => {},
             .EXHAUSTED => {},
             .OK => {},
             .STOP => {},
-        }
-
-        if (DEBUG) {
-            for (self.path_list.?.items) |path| {
-                std.debug.print("path: ", .{});
-                path.path.print_path();
-            }
         }
 
         // Transfer ownership to BFSPaths
@@ -169,7 +159,6 @@ pub const PathFinder = struct {
 
                             // If all end nodes found, stop the search
                             if (end_nodes.items.len == 0) {
-                                if (DEBUG) std.debug.print("STOP BFS!!! - All end nodes found\n", .{});
                                 return visitor.VisitResult(void){ .STOP = {} };
                             }
                             break;
@@ -182,7 +171,6 @@ pub const PathFinder = struct {
 
         // Filter says shut it down!
         if (result == .STOP) {
-            if (DEBUG) std.debug.print("STOP BFS!!! - Filter stopped\n", .{});
             return visitor.VisitResult(void){ .STOP = {} };
         }
 
@@ -190,11 +178,8 @@ pub const PathFinder = struct {
     }
 
     pub fn run_filters(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        if (DEBUG) std.debug.print("FILTERS\n", .{});
         for (filters) |filter| {
-            if (DEBUG) std.debug.print("{s:<32}", .{filter.name});
             const result = filter.func(self, path);
-            if (DEBUG) std.debug.print("filtered:{} stop:{}\n", .{ path.filtered, path.stop });
             switch (result) {
                 .CONTINUE => {},
                 .STOP => return visitor.VisitResult(void){ .STOP = {} },
@@ -219,12 +204,9 @@ pub const PathFinder = struct {
         .{ .name = "filter_heirarchy_stack", .func = Self.filter_heirarchy_stack },
     };
 
-    pub fn count_paths(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+    pub fn count_paths(self: *Self, _: *BFSPath) visitor.VisitResult(void) {
         self.path_counter += 1;
 
-        if (DEBUG) {
-            std.debug.print("path_counter: {} len: {}\n", .{ self.path_counter, path.path.edges.items.len });
-        }
         if (self.path_counter > 1_000_000) {
             return visitor.VisitResult(void){ .STOP = {} };
         }
@@ -333,9 +315,6 @@ pub const PathFinder = struct {
             path.filtered = true;
             path.stop = true;
             path.via_conditional = true;
-            if (DEBUG) {
-                std.debug.print("SIBLING PATH FILTERED! Path length: {}, last 2 edges are composition edges sharing parent\n", .{edges.len});
-            }
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -414,17 +393,6 @@ pub const PathFinder = struct {
             }
         }
 
-        if (DEBUG) {
-            for (folded_stack.items) |elem| {
-                std.debug.print("Folded stack - direction: {} child_name: {s} parent_type: {} child_type: {}\n", .{
-                    elem.traverse_direction,
-                    elem.edge.attributes.name orelse "",
-                    elem.edge.source.attributes.fake_type orelse 0,
-                    elem.edge.target.attributes.fake_type orelse 0,
-                });
-            }
-        }
-
         // Rule 1: Valid paths must have empty folded stack (balanced hierarchy)
         const valid = folded_stack.items.len == 0;
         return .{ .valid = valid, .folded_stack = folded_stack };
@@ -455,28 +423,16 @@ pub const PathFinder = struct {
             } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
                 // Check if this is a shallow link
                 const shallow_val = edge.attributes.dynamic.values.get(shallow);
-                if (DEBUG) {
-                    std.debug.print("Checking interface edge for shallow, found: {}\n", .{shallow_val != null});
-                }
                 if (shallow_val) |shallow_value| {
-                    if (DEBUG) {
-                        std.debug.print("Shallow value: {}\n", .{shallow_value.Bool});
-                    }
                     if (shallow_value.Bool) {
                         // This is a shallow link - mark path as conditional
                         path.via_conditional = true;
-                        if (DEBUG) {
-                            std.debug.print("Path marked as via_conditional due to shallow link\n", .{});
-                        }
 
                         // Can only cross if starting node is at same level or higher than the link
                         // depth > 0: we've ascended, meaning start is LOWER than link → reject
                         // depth <= 0: we're at or below start, meaning start is at same/higher than link → allow
                         if (hierarchy_depth > 0) {
                             // We've ascended above the starting level - start is lower than link
-                            if (DEBUG) {
-                                std.debug.print("Shallow link crossed at depth {}, starting node is lower than link level, rejecting path\n", .{hierarchy_depth});
-                            }
                             return false;
                         }
                     }
@@ -591,19 +547,9 @@ test "visit_paths_bfs" {
 
     const paths1 = try pf1.find_paths(bn1, &end_nodes);
     defer paths1.deinit();
-
-    if (DEBUG) {
-        std.debug.print("\nTEST\nFound {} paths:\n", .{paths1.paths.items.len});
-        // Print paths for debugging
-        for (paths1.paths.items) |path| {
-            path.path.print_path();
-        }
-        std.debug.print("\n", .{});
-    }
 }
 
 test "filter_heirarchy_stack" {
-    if (DEBUG) std.debug.print("test filter_heirarchy_stack\n", .{});
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
 
