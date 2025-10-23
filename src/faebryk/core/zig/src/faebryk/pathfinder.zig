@@ -68,7 +68,7 @@ pub const PathFinder = struct {
         self: *Self,
         start_node: BoundNodeReference,
         end_nodes: ?[]const BoundNodeReference,
-    ) ![]const BFSPath {
+    ) !graph.BFSPaths {
         self.deinit();
 
         // Re-initialize lists with reasonable initial capacity
@@ -111,7 +111,18 @@ pub const PathFinder = struct {
             }
         }
 
-        return self.path_list.?.items;
+        // Transfer ownership to BFSPaths
+        var bfs_paths = graph.BFSPaths.init(self.allocator);
+        bfs_paths.paths = self.path_list.?;
+        self.path_list = null; // Clear our reference to prevent double-free
+
+        // Also clear end_nodes since we're not transferring it
+        if (self.end_nodes) |*list| {
+            list.deinit();
+            self.end_nodes = null;
+        }
+
+        return bfs_paths;
     }
 
     // BFS visitor callback
@@ -579,11 +590,12 @@ test "visit_paths_bfs" {
     const end_nodes = [_]BoundNodeReference{};
 
     const paths1 = try pf1.find_paths(bn1, &end_nodes);
+    defer paths1.deinit();
 
     if (DEBUG) {
-        std.debug.print("\nTEST\nFound {} paths:\n", .{paths1.len});
+        std.debug.print("\nTEST\nFound {} paths:\n", .{paths1.paths.items.len});
         // Print paths for debugging
-        for (paths1) |path| {
+        for (paths1.paths.items) |path| {
             path.path.print_path();
         }
         std.debug.print("\n", .{});

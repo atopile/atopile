@@ -102,69 +102,19 @@ pub const EdgeInterfaceConnection = struct {
     // Note: Caller is responsible for freeing the returned BFSPaths
     pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !graph.BFSPaths {
         var pf = PathFinder.init(allocator);
-        // Don't defer pf.deinit() - we're transferring ownership of the paths
-        errdefer pf.deinit();
+        defer pf.deinit();
 
-        const paths = try pf.find_paths(source, &[_]graph.BoundNodeReference{target});
-
-        // Transfer ownership by cloning the paths into a new BFSPaths
-        var result = graph.BFSPaths.init(allocator);
-        errdefer result.deinit();
-
-        try result.paths.ensureTotalCapacity(paths.len);
-        for (paths) |path| {
-            result.paths.appendAssumeCapacity(path);
-        }
-
-        // Clear the pathfinder's list without freeing the paths (we transferred them)
-        if (pf.path_list) |*list| {
-            list.clearRetainingCapacity();
-            list.deinit();
-            pf.path_list = null;
-        }
-
-        // Clean up other pathfinder resources
-        if (pf.end_nodes) |*list| {
-            list.deinit();
-            pf.end_nodes = null;
-        }
-
-        return result;
+        return try pf.find_paths(source, &[_]graph.BoundNodeReference{target});
     }
 
     // Get all nodes connected to the source node (without filtering by end nodes)
     // Note: Caller is responsible for freeing the returned BFSPaths
     pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference) !graph.BFSPaths {
         var pf = PathFinder.init(allocator);
-        // Don't defer pf.deinit() - we're transferring ownership of the paths
-        errdefer pf.deinit();
+        defer pf.deinit();
 
         // Pass null for end_nodes to get all reachable paths
-        const paths = try pf.find_paths(source, null);
-
-        // Transfer ownership by cloning the paths into a new BFSPaths
-        var result = graph.BFSPaths.init(allocator);
-        errdefer result.deinit();
-
-        try result.paths.ensureTotalCapacity(paths.len);
-        for (paths) |path| {
-            result.paths.appendAssumeCapacity(path);
-        }
-
-        // Clear the pathfinder's list without freeing the paths (we transferred them)
-        if (pf.path_list) |*list| {
-            list.clearRetainingCapacity();
-            list.deinit();
-            pf.path_list = null;
-        }
-
-        // Clean up other pathfinder resources
-        if (pf.end_nodes) |*list| {
-            list.deinit();
-            pf.end_nodes = null;
-        }
-
-        return result;
+        return try pf.find_paths(source, null);
     }
 
     // visit all paths for a given node (pathfinder)
@@ -543,6 +493,7 @@ test "loooooong_chain" {
     var pf = PathFinder.init(g.allocator);
     defer pf.deinit();
     const paths = try pf.find_paths(nodes.items[0], &[_]graph.BoundNodeReference{nodes.items[chain_length - 1]});
+    defer paths.deinit();
 
     // Stop timer
     const elapsed = timer.read();
@@ -551,19 +502,19 @@ test "loooooong_chain" {
 
     std.debug.print("\nPathfinding completed!\n", .{});
     std.debug.print("  Total paths explored: {}\n", .{pf.path_counter});
-    std.debug.print("  Valid paths found: {}\n", .{paths.len});
+    std.debug.print("  Valid paths found: {}\n", .{paths.paths.items.len});
     std.debug.print("  Time: {d:.3}s ({} ms)\n", .{ elapsed_s, elapsed_ms });
 
     // Verify we found a path
     var result = false;
-    for (paths) |path| {
+    for (paths.paths.items) |path| {
         if (Node.is_same(path.get_last_node().?.node, nodes.items[chain_length - 1].node)) {
             result = true;
             break;
         }
     }
 
-    try std.testing.expect(paths.len == 1);
+    try std.testing.expect(paths.paths.items.len == 1);
 }
 
 test "shallow_edges" {
