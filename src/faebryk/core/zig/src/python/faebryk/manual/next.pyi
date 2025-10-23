@@ -1,8 +1,11 @@
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
 class EdgeNext:
     @staticmethod
     def create(*, previous_node: Node, next_node: Node) -> Edge: ...
+    @staticmethod
+    def build() -> EdgeCreationAttributes: ...
     @staticmethod
     def add_next(*, previous_node: BoundNode, next_node: BoundNode) -> BoundEdge: ...
     @staticmethod

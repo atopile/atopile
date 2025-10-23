@@ -1,5 +1,9 @@
 const std = @import("std");
 
+// Why we are visiting instead of iterating:
+// - Iterate vs List: Iterators are lazy and thus fast for search in large lists
+// - Visit vs Iterate: Visit is parallelizable
+
 pub fn VisitResult(comptime T: type) type {
     return union(enum) {
         OK: T,
@@ -16,6 +20,14 @@ pub fn collect(comptime T: type) type {
             const list: *std.ArrayList(T) = @ptrCast(@alignCast(ctx));
             list.append(val) catch |e| return VisitResult(void){ .ERROR = e };
             return VisitResult(void){ .CONTINUE = {} };
+        }
+    };
+}
+
+pub fn return_first(comptime T: type) type {
+    return struct {
+        pub fn visit(_: *anyopaque, val: T) VisitResult(T) {
+            return VisitResult(T){ .OK = val };
         }
     };
 }

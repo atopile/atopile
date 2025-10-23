@@ -16,15 +16,19 @@ const BoundNodeWrapper = graph_py.BoundNodeWrapper;
 const BoundEdgeWrapper = graph_py.BoundEdgeWrapper;
 
 const EdgeCompositionWrapper = bind.PyObjectWrapper(faebryk.composition.EdgeComposition);
+const EdgeOperandWrapper = bind.PyObjectWrapper(faebryk.operand.EdgeOperand);
 const EdgeTypeWrapper = bind.PyObjectWrapper(faebryk.node_type.EdgeType);
 const EdgeNextWrapper = bind.PyObjectWrapper(faebryk.next.EdgeNext);
 const EdgePointerWrapper = bind.PyObjectWrapper(faebryk.pointer.EdgePointer);
+const EdgeCreationAttributesWrapper = bind.PyObjectWrapper(faebryk.edgebuilder.EdgeCreationAttributes);
 const TypeGraphWrapper = bind.PyObjectWrapper(faebryk.typegraph.TypeGraph);
 
 var edge_composition_type: ?*py.PyTypeObject = null;
+var edge_operand_type: ?*py.PyTypeObject = null;
 var edge_type_type: ?*py.PyTypeObject = null;
 var edge_next_type: ?*py.PyTypeObject = null;
 var edge_pointer_type: ?*py.PyTypeObject = null;
+var edge_creation_attributes_type: ?*py.PyTypeObject = null;
 var type_graph_type: ?*py.PyTypeObject = null;
 
 pub const method_descr = bind.method_descr;
@@ -59,11 +63,7 @@ fn wrap_edge_composition_create() type {
                 kwarg_obj.parent,
                 kwarg_obj.child,
                 identifier_const,
-            ) catch {
-                std.heap.c_allocator.free(identifier_const);
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create EdgeComposition edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -73,6 +73,34 @@ fn wrap_edge_composition_create() type {
             }
 
             return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_composition_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for an EdgeComposition",
+            .args_def = struct {
+                child_identifier: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const identifier_copy = bind.unwrap_str_copy(kwarg_obj.child_identifier) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                allocator.free(identifier_copy);
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+
+            attributes.* = faebryk.composition.EdgeComposition.build(identifier_copy);
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
 }
@@ -180,6 +208,139 @@ fn wrap_edge_composition_get_parent_edge() type {
     };
 }
 
+fn wrap_edge_composition_get_parent_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_parent_node",
+            .doc = "Get the parent node associated with the edge",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const node_ref = faebryk.composition.EdgeComposition.get_parent_node(kwarg_obj.edge);
+            return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+        }
+    };
+}
+
+fn wrap_edge_composition_get_child_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_child_node",
+            .doc = "Get the child node associated with the edge",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const node_ref = faebryk.composition.EdgeComposition.get_child_node(kwarg_obj.edge);
+            return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+        }
+    };
+}
+
+fn wrap_edge_composition_get_child_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_child_of",
+            .doc = "Get the child node of the edge relative to a node",
+            .args_def = struct {
+                edge: *graph.Edge,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.get_child_of(kwarg_obj.edge, kwarg_obj.node)) |node_ref| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_composition_get_parent_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_parent_of",
+            .doc = "Get the parent node of the edge relative to a node",
+            .args_def = struct {
+                edge: *graph.Edge,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.get_parent_of(kwarg_obj.edge, kwarg_obj.node)) |node_ref| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_composition_get_parent_node_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_parent_node_of",
+            .doc = "Get the parent node of a bound node within the composition",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.get_parent_node_of(kwarg_obj.bound_node.*)) |parent| {
+                return graph_py.makeBoundNodePyObject(parent);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_edge_composition_add_child() type {
     return struct {
         pub const descr = method_descr{
@@ -218,11 +379,7 @@ fn wrap_edge_composition_add_child() type {
                 kwarg_obj.bound_node.*,
                 kwarg_obj.child,
                 identifier_copy,
-            ) catch {
-                allocator.free(identifier_copy);
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add child edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -316,19 +473,476 @@ fn wrap_edge_composition_get_child_by_identifier() type {
         }
     };
 }
+
+fn wrap_edge_composition_visit_children_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_children_of_type",
+            .doc = "Visit children edges of the given type",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                child_type: *graph.Node,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .child_type = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.composition.EdgeComposition.visit_children_of_type(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.child_type,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_children_of_type failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_composition_try_get_single_child_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "try_get_single_child_of_type",
+            .doc = "Return the single child of the specified type if it exists",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                child_type: *graph.Node,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .child_type = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.composition.EdgeComposition.try_get_single_child_of_type(kwarg_obj.bound_node.*, kwarg_obj.child_type)) |child| {
+                return graph_py.makeBoundNodePyObject(child);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_edge_composition(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_composition_create(),
+        wrap_edge_composition_build(),
         wrap_edge_composition_is_instance(),
         wrap_edge_composition_visit_children_edges(),
         wrap_edge_composition_get_parent_edge(),
+        wrap_edge_composition_get_parent_node(),
+        wrap_edge_composition_get_child_node(),
+        wrap_edge_composition_get_child_of(),
+        wrap_edge_composition_get_parent_of(),
+        wrap_edge_composition_get_parent_node_of(),
         wrap_edge_composition_add_child(),
         wrap_edge_composition_get_name(),
         wrap_edge_composition_get_tid(),
         wrap_edge_composition_get_child_by_identifier(),
+        wrap_edge_composition_visit_children_of_type(),
+        wrap_edge_composition_try_get_single_child_of_type(),
     };
     bind.wrap_namespace_struct(root, faebryk.composition.EdgeComposition, extra_methods);
     edge_composition_type = type_registry.getRegisteredTypeObject("EdgeComposition");
+}
+
+fn wrap_edge_operand_create() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "create",
+            .doc = "Create a new EdgeOperand",
+            .args_def = struct {
+                expression: *graph.Node,
+                operand: *graph.Node,
+                operand_identifier: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .expression = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                    .operand = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var identifier_const: ?[]const u8 = null;
+            if (kwarg_obj.operand_identifier) |identifier_obj| {
+                if (identifier_obj != py.Py_None()) {
+                    identifier_const = bind.unwrap_str_copy(identifier_obj) orelse return null;
+                }
+            }
+
+            const edge_ref = faebryk.operand.EdgeOperand.init(
+                std.heap.c_allocator,
+                kwarg_obj.expression,
+                kwarg_obj.operand,
+                identifier_const,
+            );
+
+            const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
+            if (edge_obj == null) {
+                if (identifier_const) |identifier| {
+                    std.heap.c_allocator.free(identifier);
+                }
+                edge_ref.deinit();
+                return null;
+            }
+
+            return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_operand_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for an EdgeOperand",
+            .args_def = struct {
+                operand_identifier: ?*py.PyObject = null,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.operand_identifier) |identifier_obj| {
+                if (identifier_obj != py.Py_None()) {
+                    identifier_copy = bind.unwrap_str_copy(identifier_obj) orelse return null;
+                }
+            }
+
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                if (identifier_copy) |identifier| {
+                    allocator.free(identifier);
+                }
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+
+            attributes.* = faebryk.operand.EdgeOperand.build(identifier_copy);
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
+        }
+    };
+}
+
+fn wrap_edge_operand_is_instance() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "is_instance",
+            .doc = "Check if the object is an instance of EdgeOperand",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const is_match = faebryk.operand.EdgeOperand.is_instance(kwarg_obj.edge);
+            return bind.wrap_bool(is_match);
+        }
+    };
+}
+
+fn wrap_edge_operand_visit_operand_edges() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_operand_edges",
+            .doc = "Visit the operand edges attached to an expression node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.operand.EdgeOperand.visit_operand_edges(
+                kwarg_obj.bound_node.*,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_operand_edges failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
+fn wrap_edge_operand_get_expression_edge() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_expression_edge",
+            .doc = "Get the inbound EdgeOperand edge for an operand node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const expression_edge = faebryk.operand.EdgeOperand.get_expression_edge(kwarg_obj.bound_node.*);
+            if (expression_edge) |edge_ref| {
+                return graph_py.makeBoundEdgePyObject(edge_ref);
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
+fn wrap_edge_operand_add_operand() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_operand",
+            .doc = "Attach an operand node to an expression via EdgeOperand",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                operand: *graph.Node,
+                operand_identifier: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .operand = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = kwarg_obj.bound_node.g.allocator;
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.operand_identifier) |identifier_obj| {
+                if (identifier_obj != py.Py_None()) {
+                    const identifier_c = py.PyUnicode_AsUTF8(identifier_obj);
+                    if (identifier_c == null) {
+                        py.PyErr_SetString(py.PyExc_TypeError, "operand_identifier must be a string");
+                        return null;
+                    }
+                    const identifier_slice = std.mem.span(identifier_c.?);
+                    identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+                        py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate operand_identifier");
+                        return null;
+                    };
+                }
+            }
+
+            const bound_edge = faebryk.operand.EdgeOperand.add_operand(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.operand,
+                identifier_copy,
+            );
+
+            return graph_py.makeBoundEdgePyObject(bound_edge);
+        }
+    };
+}
+
+fn wrap_edge_operand_get_name() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_name",
+            .doc = "Get the operand identifier stored on the EdgeOperand",
+            .args_def = struct {
+                edge: *graph.Edge,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const name = faebryk.operand.EdgeOperand.get_name(kwarg_obj.edge) catch |err| {
+                switch (err) {
+                    error.InvalidEdgeType => {
+                        py.PyErr_SetString(py.PyExc_TypeError, "edge is not an EdgeOperand edge");
+                    },
+                }
+                return null;
+            };
+
+            if (name == null) {
+                return bind.wrap_none();
+            }
+
+            const value = name.?;
+            const ptr: [*c]const u8 = if (value.len == 0) "" else @ptrCast(value.ptr);
+            const py_str = py.PyUnicode_FromStringAndSize(ptr, @intCast(value.len));
+            if (py_str == null) {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create Python string");
+                return null;
+            }
+
+            return py_str;
+        }
+    };
+}
+
+fn wrap_edge_operand_get_tid() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_tid",
+            .doc = "Get the tid of the EdgeOperand",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const tid = faebryk.operand.EdgeOperand.tid;
+            return py.PyLong_FromLongLong(@intCast(tid));
+        }
+    };
+}
+
+fn wrap_edge_operand_get_operand_by_identifier() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_operand_by_identifier",
+            .doc = "Get the operand node bound to an expression by identifier",
+            .args_def = struct {
+                node: *graph.BoundNodeReference,
+                operand_identifier: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.operand_identifier) orelse return null;
+
+            const operand = faebryk.operand.EdgeOperand.get_operand_by_identifier(kwarg_obj.node.*, identifier);
+            if (operand) |_operand| {
+                return graph_py.makeBoundNodePyObject(_operand);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_operand(root: *py.PyObject) void {
+    const extra_methods = [_]type{
+        wrap_edge_operand_create(),
+        wrap_edge_operand_build(),
+        wrap_edge_operand_is_instance(),
+        wrap_edge_operand_visit_operand_edges(),
+        wrap_edge_operand_get_expression_edge(),
+        wrap_edge_operand_add_operand(),
+        wrap_edge_operand_get_name(),
+        wrap_edge_operand_get_tid(),
+        wrap_edge_operand_get_operand_by_identifier(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.operand.EdgeOperand, extra_methods);
+    edge_operand_type = type_registry.getRegisteredTypeObject("EdgeOperand");
+}
+
+fn wrap_edge_interface_connection_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for an interface connection edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.interface.EdgeInterfaceConnection.build();
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
+        }
+    };
 }
 
 fn wrap_edge_interface_connection_get_tid() type {
@@ -350,6 +964,7 @@ fn wrap_edge_interface_connection_get_tid() type {
 
 fn wrap_interface(root: *py.PyObject) void {
     const extra_methods = [_]type{
+        wrap_edge_interface_connection_build(),
         wrap_edge_interface_connection_get_tid(),
     };
     bind.wrap_namespace_struct(root, faebryk.interface.EdgeInterfaceConnection, extra_methods);
@@ -379,10 +994,7 @@ fn wrap_edge_type_create() type {
                 std.heap.c_allocator,
                 kwarg_obj.type_node,
                 kwarg_obj.instance_node,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -391,6 +1003,27 @@ fn wrap_edge_type_create() type {
             }
 
             return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_type_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for a type edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.node_type.EdgeType.build();
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
 }
@@ -569,10 +1202,7 @@ fn wrap_edge_type_add_instance() type {
             const bound_edge = faebryk.node_type.EdgeType.add_instance(
                 kwarg_obj.bound_type_node.*,
                 kwarg_obj.bound_instance_node.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add instance edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -627,6 +1257,7 @@ fn wrap_edge_type_is_node_instance_of() type {
 fn wrap_node_type(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_type_create(),
+        wrap_edge_type_build(),
         wrap_edge_type_is_instance(),
         wrap_edge_type_visit_instance_edges(),
         wrap_edge_type_get_type_node(),
@@ -664,10 +1295,7 @@ fn wrap_edge_next_create() type {
                 std.heap.c_allocator,
                 kwarg_obj.previous_node,
                 kwarg_obj.next_node,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create edge");
-                return null;
-            };
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
@@ -676,6 +1304,27 @@ fn wrap_edge_next_create() type {
             }
 
             return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_next_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for a next edge",
+            .args_def = struct {},
+            .static = true,
+        };
+
+        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.next.EdgeNext.build();
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
 }
@@ -703,10 +1352,7 @@ fn wrap_edge_next_add_next() type {
             const bound_edge = faebryk.next.EdgeNext.add_next(
                 kwarg_obj.previous_node.*,
                 kwarg_obj.next_node.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to add next edge");
-                return null;
-            };
+            );
 
             return graph_py.makeBoundEdgePyObject(bound_edge);
         }
@@ -907,6 +1553,7 @@ fn wrap_edge_next_get_next_node_from_node() type {
 fn wrap_edge_next(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_next_create(),
+        wrap_edge_next_build(),
         wrap_edge_next_add_next(),
         wrap_edge_next_is_instance(),
         wrap_edge_next_get_previous_node(),
@@ -928,7 +1575,7 @@ fn wrap_edge_pointer_create() type {
             .args_def = struct {
                 from_node: *graph.Node,
                 to_node: *graph.Node,
-                identifier: *py.PyObject,
+                identifier: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .from_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
@@ -941,18 +1588,68 @@ fn wrap_edge_pointer_create() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_ref = faebryk.pointer.EdgePointer.init(std.heap.c_allocator, kwarg_obj.from_node, kwarg_obj.to_node) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to create pointer edge");
-                return null;
-            };
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.identifier) |identifier_obj| {
+                if (identifier_obj != py.Py_None()) {
+                    identifier_copy = bind.unwrap_str_copy(identifier_obj) orelse return null;
+                }
+            }
+
+            const edge_ref = faebryk.pointer.EdgePointer.init(
+                std.heap.c_allocator,
+                kwarg_obj.from_node,
+                kwarg_obj.to_node,
+                if (identifier_copy) |copy| copy else null,
+                null,
+            );
 
             const edge_obj = bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge_ref);
             if (edge_obj == null) {
+                if (identifier_copy) |copy| std.heap.c_allocator.free(copy);
                 edge_ref.deinit();
                 return null;
             }
 
             return edge_obj;
+        }
+    };
+}
+
+fn wrap_edge_pointer_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Build a pointer edge creation attributes",
+            .args_def = struct {
+                identifier: ?*py.PyObject = null,
+                order: *py.PyObject,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.identifier) |identifier_obj| {
+                if (identifier_obj != py.Py_None()) {
+                    identifier_copy = bind.unwrap_str_copy(identifier_obj) orelse return null;
+                }
+            }
+
+            var order: ?u32 = null;
+            if (kwarg_obj.order != py.Py_None()) {
+                order = bind.unwrap_int(u32, kwarg_obj.order) orelse return null;
+            }
+
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                if (identifier_copy) |copy| std.heap.c_allocator.free(copy);
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = faebryk.pointer.EdgePointer.build(std.heap.c_allocator, if (identifier_copy) |copy| copy else null, order);
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
 }
@@ -1008,6 +1705,34 @@ fn wrap_edge_pointer_get_referenced_node() type {
     };
 }
 
+fn wrap_edge_pointer_get_referenced_node_from_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_referenced_node_from_node",
+            .doc = "Return the bound node referenced by the pointer edge attached to a bound node",
+            .args_def = struct {
+                node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.pointer.EdgePointer.get_referenced_node_from_node(kwarg_obj.node.*)) |node| {
+                return graph_py.makeBoundNodePyObject(node);
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
 fn wrap_edge_pointer_get_tid() type {
     return struct {
         pub const descr = method_descr{
@@ -1024,6 +1749,216 @@ fn wrap_edge_pointer_get_tid() type {
     };
 }
 
+fn wrap_edge_pointer_get_order() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_order",
+            .doc = "Return the order of the pointer edge",
+            .args_def = struct {
+                edge: graph.EdgeReference,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const order = faebryk.pointer.EdgePointer.get_order(kwarg_obj.edge);
+
+            if (order == null) {
+                return bind.wrap_none();
+            }
+
+            return bind.wrap_int(order.?);
+        }
+    };
+}
+
+fn wrap_edge_pointer_point_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "point_to",
+            .doc = "Create a pointer edge from the bound node to the target node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                target_node: *graph.Node,
+                identifier: ?*py.PyObject = null,
+                order: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .target_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = kwarg_obj.bound_node.g.allocator;
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.identifier) |identifier_obj| {
+                if (identifier_obj != py.Py_None()) {
+                    const identifier_str = bind.unwrap_str(identifier_obj) orelse return null;
+                    identifier_copy = allocator.dupe(u8, identifier_str) catch {
+                        py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate identifier");
+                        return null;
+                    };
+                }
+            }
+
+            var order: ?u32 = null;
+            if (kwarg_obj.order != py.Py_None()) {
+                order = bind.unwrap_int(u32, kwarg_obj.order) orelse return null;
+            }
+
+            const bound_edge = faebryk.pointer.EdgePointer.point_to(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.target_node,
+                if (identifier_copy) |copy| copy else null,
+                order,
+            );
+            return graph_py.makeBoundEdgePyObject(bound_edge);
+        }
+    };
+}
+
+fn wrap_edge_pointer_visit_pointed_edges() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_pointed_edges",
+            .doc = "Invoke a callback for each pointer edge starting from the bound node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.pointer.EdgePointer.visit_pointed_edges(
+                kwarg_obj.bound_node.*,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_pointed_edges failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_pointer_visit_pointed_edges_with_identifier() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_pointed_edges_with_identifier",
+            .doc = "Invoke a callback for each pointer edge with the given identifier",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                identifier: *py.PyObject,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.pointer.EdgePointer.visit_pointed_edges_with_identifier(
+                kwarg_obj.bound_node.*,
+                identifier,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_pointed_edges_with_identifier failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_pointer_get_pointed_node_by_identifier() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_pointed_node_by_identifier",
+            .doc = "Return the bound node pointed to by the given identifier",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                identifier: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+
+            if (faebryk.pointer.EdgePointer.get_pointed_node_by_identifier(kwarg_obj.bound_node.*, identifier)) |node| {
+                return graph_py.makeBoundNodePyObject(node);
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_module(root: *py.PyObject) void {
     _ = root;
     // TODO
@@ -1032,12 +1967,114 @@ fn wrap_module(root: *py.PyObject) void {
 fn wrap_pointer(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_pointer_create(),
+        wrap_edge_pointer_build(),
         wrap_edge_pointer_is_instance(),
         wrap_edge_pointer_get_referenced_node(),
+        wrap_edge_pointer_get_referenced_node_from_node(),
         wrap_edge_pointer_get_tid(),
+        wrap_edge_pointer_get_order(),
+        wrap_edge_pointer_visit_pointed_edges(),
+        wrap_edge_pointer_visit_pointed_edges_with_identifier(),
+        wrap_edge_pointer_get_pointed_node_by_identifier(),
+        wrap_edge_pointer_point_to(),
     };
     bind.wrap_namespace_struct(root, faebryk.pointer.EdgePointer, extra_methods);
     edge_pointer_type = type_registry.getRegisteredTypeObject("EdgePointer");
+}
+
+fn wrap_edgebuilder_init() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "init",
+            .doc = "Create a new EdgeCreationAttributes",
+            .args_def = struct {
+                edge_type: *py.PyObject,
+                directional: *py.PyObject,
+                name: *py.PyObject,
+                dynamic: *py.PyObject,
+            },
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
+            if (py.PyErr_Occurred() != null) {
+                py.PyErr_SetString(py.PyExc_TypeError, "edge_type must be an integer");
+                return null;
+            }
+
+            const edge_type: graph.Edge.EdgeType = @intCast(edge_type_raw);
+            const edge_directional: ?bool = if (kwarg_obj.directional == py.Py_None()) null else bind.unwrap_bool(kwarg_obj.directional);
+            const edge_name: ?[]u8 = if (kwarg_obj.name == py.Py_None()) null else bind.unwrap_str_copy(kwarg_obj.name) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+
+            var dynamic = _unwrap_literal_str_dict(kwarg_obj.dynamic, allocator) catch return null;
+            defer if (dynamic != null) dynamic.?.deinit();
+
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+            attributes.* = .{
+                .edge_type = edge_type,
+                .directional = edge_directional,
+                .name = edge_name,
+                .dynamic = dynamic,
+            };
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
+        }
+    };
+}
+
+fn wrap_edgebuilder_apply_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "apply_to",
+            .doc = "Apply the attributes to an edge",
+            .args_def = struct {
+                edge: graph.EdgeReference,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                };
+            },
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            attributes.data.apply_to(kwarg_obj.edge);
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edgebuilder(root: *py.PyObject) void {
+    const extra_methods = [_]type{
+        wrap_edgebuilder_init(),
+        wrap_edgebuilder_apply_to(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.edgebuilder.EdgeCreationAttributes, extra_methods);
+    edge_creation_attributes_type = type_registry.getRegisteredTypeObject("EdgeCreationAttributes");
+}
+
+fn make_typegraph_pyobject(value: faebryk.typegraph.TypeGraph) ?*py.PyObject {
+    const allocator = std.heap.c_allocator;
+    const ptr = allocator.create(faebryk.typegraph.TypeGraph) catch {
+        py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+        return null;
+    };
+    ptr.* = value;
+
+    const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
+    if (obj == null) {
+        allocator.destroy(ptr);
+        return null;
+    }
+
+    return obj;
 }
 
 fn wrap_typegraph_init() type {
@@ -1058,24 +2095,62 @@ fn wrap_typegraph_init() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = std.heap.c_allocator;
-            const ptr = allocator.create(faebryk.typegraph.TypeGraph) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            };
-            ptr.* = faebryk.typegraph.TypeGraph.init(kwarg_obj.g) catch {
-                allocator.destroy(ptr);
-                py.PyErr_SetString(py.PyExc_ValueError, "init failed");
-                return null;
-            };
+            const typegraph = faebryk.typegraph.TypeGraph.init(kwarg_obj.g);
+            return make_typegraph_pyobject(typegraph);
+        }
+    };
+}
 
-            const obj = bind.wrap_obj("TypeGraph", &type_graph_type, TypeGraphWrapper, ptr);
-            if (obj == null) {
-                allocator.destroy(ptr);
-                return null;
+fn wrap_typegraph_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "of_type",
+            .doc = "Return the TypeGraph that owns the provided type node",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.typegraph.TypeGraph.of_type(kwarg_obj.type_node.*)) |tg| {
+                return make_typegraph_pyobject(tg);
             }
 
-            return obj;
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_typegraph_of_instance() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "of_instance",
+            .doc = "Return the TypeGraph that owns the provided instance node",
+            .args_def = struct {
+                instance_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .instance_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.typegraph.TypeGraph.of_instance(kwarg_obj.instance_node.*)) |tg| {
+                return make_typegraph_pyobject(tg);
+            }
+
+            return bind.wrap_none();
         }
     };
 }
@@ -1107,32 +2182,6 @@ fn wrap_typegraph_add_type() type {
     };
 }
 
-fn wrap_typegraph_add_trait() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "add_trait",
-            .doc = "Create and register a new trait node",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            if (!bind.check_no_positional_args(self, args)) return null;
-
-            _ = kwargs;
-
-            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
-
-            const bnode = faebryk.typegraph.TypeGraph.add_trait(wrapper.data) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "add_trait failed");
-                return null;
-            };
-
-            return graph_py.makeBoundNodePyObject(bnode);
-        }
-    };
-}
-
 fn wrap_typegraph_add_make_child() type {
     return struct {
         pub const descr = method_descr{
@@ -1155,15 +2204,24 @@ fn wrap_typegraph_add_make_child() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+            const allocator = kwarg_obj.type_node.g.allocator;
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.identifier != py.Py_None()) {
+                const identifier_slice = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+                identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate identifier");
+                    return null;
+                };
+            }
             const resolved_child_type = kwarg_obj.child_type_node;
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 resolved_child_type.*,
-                identifier,
+                if (identifier_copy) |copy| copy else null,
             ) catch {
+                if (identifier_copy) |copy| allocator.free(copy);
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
                 return null;
             };
@@ -1259,15 +2317,13 @@ fn wrap_typegraph_add_make_link() type {
                 type_node: *graph.BoundNodeReference,
                 lhs_reference_node: *graph.Node,
                 rhs_reference_node: *graph.Node,
-                edge_type: *py.PyObject,
-                edge_directional: *py.PyObject,
-                edge_name: *py.PyObject,
-                edge_attributes: *py.PyObject,
+                edge_attributes: *faebryk.edgebuilder.EdgeCreationAttributes,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                     .lhs_reference_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
                     .rhs_reference_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                    .edge_attributes = bind.ARG{ .Wrapper = EdgeCreationAttributesWrapper, .storage = &edge_creation_attributes_type },
                 };
             },
             .static = false,
@@ -1277,28 +2333,8 @@ fn wrap_typegraph_add_make_link() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const edge_type_raw = py.PyLong_AsLongLong(kwarg_obj.edge_type);
-            if (py.PyErr_Occurred() != null) {
-                py.PyErr_SetString(py.PyExc_TypeError, "edge_type must be an integer");
-                return null;
-            }
-
             const type_node = kwarg_obj.type_node.*;
-            const edge_type: graph.Edge.EdgeType = @intCast(edge_type_raw);
-            const edge_directional: ?bool = if (kwarg_obj.edge_directional == py.Py_None()) null else bind.unwrap_bool(kwarg_obj.edge_directional);
-            const edge_name: ?[]u8 = if (kwarg_obj.edge_name == py.Py_None()) null else bind.unwrap_str_copy(kwarg_obj.edge_name) orelse return null;
-
-            const allocator = type_node.g.allocator;
-
-            var dynamic = _unwrap_literal_str_dict(kwarg_obj.edge_attributes, allocator) catch return null;
-            defer if (dynamic != null) dynamic.?.deinit();
-
-            const edge_attributes = faebryk.typegraph.TypeGraph.MakeLinkNode.Attributes.EdgeCreationAttributes{
-                .edge_type = edge_type,
-                .directional = edge_directional,
-                .name = edge_name,
-                .dynamic = dynamic,
-            };
+            const edge_attributes = kwarg_obj.edge_attributes.*;
 
             const make_link = faebryk.typegraph.TypeGraph.add_make_link(
                 wrapper.data,
@@ -1337,6 +2373,43 @@ fn wrap_typegraph_instantiate() type {
                 py.PyErr_SetString(py.PyExc_ValueError, "instantiate failed");
                 return null;
             };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_typegraph_instantiate_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "instantiate_node",
+            .doc = "Instantiate the given type node into a graph",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+                attributes: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var attributes = _unwrap_literal_str_dict(kwarg_obj.attributes, std.heap.c_allocator) catch return null;
+            defer if (attributes != null) attributes.?.deinit();
+
+            const bnode = faebryk.typegraph.TypeGraph.instantiate_node(wrapper.data, kwarg_obj.type_node.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "instantiate_node failed");
+                return null;
+            };
+
+            if (attributes) |attrs| {
+                attrs.copy_into(&bnode.node.attributes.dynamic);
+            }
 
             return graph_py.makeBoundNodePyObject(bnode);
         }
@@ -1427,12 +2500,64 @@ fn wrap_typegraph_reference_resolve() type {
             const resolved = faebryk.typegraph.TypeGraph.ChildReferenceNode.resolve(
                 kwarg_obj.reference_node.*,
                 kwarg_obj.base_node.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "reference_resolve failed");
+            );
+
+            return graph_py.makeBoundNodePyObject(resolved);
+        }
+    };
+}
+
+fn wrap_typegraph_get_type_by_name() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_type_by_name",
+            .args_def = struct {
+                type_identifier: *py.PyObject,
+            },
+            .doc = "Get a type node by name",
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
+
+            const bnode = faebryk.typegraph.TypeGraph.get_type_by_name(wrapper.data, identifier) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "get_type_by_name failed");
+                return null;
+            };
+            if (bnode == null) {
+                return py.Py_None();
+            }
+
+            return graph_py.makeBoundNodePyObject(bnode.?);
+        }
+    };
+}
+
+fn wrap_typegraph_get_or_create_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_or_create_type",
+            .args_def = struct {
+                type_identifier: *py.PyObject,
+            },
+            .doc = "Get or create a type node by name",
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
+
+            const bnode = faebryk.typegraph.TypeGraph.get_or_create_type(wrapper.data, identifier) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "get_or_create_type failed");
                 return null;
             };
 
-            return graph_py.makeBoundNodePyObject(resolved);
+            return graph_py.makeBoundNodePyObject(bnode);
         }
     };
 }
@@ -1458,13 +2583,17 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
 fn wrap_typegraph(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_init(),
+        wrap_typegraph_of_type(),
+        wrap_typegraph_of_instance(),
         wrap_typegraph_add_type(),
-        wrap_typegraph_add_trait(),
         wrap_typegraph_add_make_child(),
         wrap_typegraph_add_make_link(),
         wrap_typegraph_instantiate(),
+        wrap_typegraph_instantiate_node(),
         wrap_typegraph_reference_create(),
         wrap_typegraph_reference_resolve(),
+        wrap_typegraph_get_type_by_name(),
+        wrap_typegraph_get_or_create_type(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
@@ -1473,9 +2602,192 @@ fn wrap_typegraph(root: *py.PyObject) void {
     }
 }
 
+fn wrap_trait_add_trait_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_trait_to",
+            .doc = "Instantiate the trait on the target node and attach it as a child instance",
+            .args_def = struct {
+                target: *graph.BoundNodeReference,
+                trait_type: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const trait_instance = faebryk.trait.Trait.add_trait_to(kwarg_obj.target.*, kwarg_obj.trait_type.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "add_trait_to failed");
+                return null;
+            };
+            return graph_py.makeBoundNodePyObject(trait_instance);
+        }
+    };
+}
+
+fn wrap_trait_mark_as_trait() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "mark_as_trait",
+            .doc = "Mark the provided node as a trait",
+            .args_def = struct {
+                trait_type: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            faebryk.trait.Trait.mark_as_trait(kwarg_obj.trait_type.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "mark_as_trait failed");
+                return null;
+            };
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_trait_try_get_trait() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "try_get_trait",
+            .doc = "Return the trait instance attached to the target node if it exists",
+            .args_def = struct {
+                target: *graph.BoundNodeReference,
+                trait_type: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            if (faebryk.trait.Trait.try_get_trait(kwarg_obj.target.*, kwarg_obj.trait_type.*)) |trait_instance| {
+                return graph_py.makeBoundNodePyObject(trait_instance);
+            }
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_trait_visit_implementers() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_implementers",
+            .doc = "Invoke a callback for every node implementing the given trait",
+            .args_def = struct {
+                trait_type: *graph.BoundNodeReference,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .trait_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const VisitCtx = struct {
+                py_ctx: ?*py.PyObject,
+                callable: ?*py.PyObject,
+                had_error: bool = false,
+
+                pub fn call(ctx_ptr: *anyopaque, bound_node: graph.BoundNodeReference) visitor.VisitResult(void) {
+                    const inner_self: *@This() = @ptrCast(@alignCast(ctx_ptr));
+
+                    const node_obj = graph_py.makeBoundNodePyObject(bound_node) orelse {
+                        inner_self.had_error = true;
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    };
+
+                    const args_tuple = py.PyTuple_New(2) orelse {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(node_obj);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    };
+
+                    const ctx_obj: *py.PyObject = if (inner_self.py_ctx) |c| c else py.Py_None();
+                    py.Py_INCREF(ctx_obj);
+                    if (py.PyTuple_SetItem(args_tuple, 0, ctx_obj) < 0) {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(node_obj);
+                        py.Py_DECREF(args_tuple);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    }
+
+                    if (py.PyTuple_SetItem(args_tuple, 1, node_obj) < 0) {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(args_tuple);
+                        py.Py_DECREF(node_obj);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    }
+
+                    const result = py.PyObject_Call(inner_self.callable, args_tuple, null);
+                    if (result == null) {
+                        inner_self.had_error = true;
+                        py.Py_DECREF(args_tuple);
+                        return visitor.VisitResult(void){ .ERROR = error.Callback };
+                    }
+
+                    py.Py_DECREF(result.?);
+                    py.Py_DECREF(args_tuple);
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+            };
+
+            var visit_ctx = VisitCtx{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.trait.Trait.visit_implementers(
+                kwarg_obj.trait_type.*,
+                void,
+                @ptrCast(&visit_ctx),
+                VisitCtx.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_implementers failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            return bind.wrap_none();
+        }
+    };
+}
+
 fn wrap_trait(root: *py.PyObject) void {
-    _ = root;
-    // TODO
+    const extra_methods = [_]type{
+        wrap_trait_add_trait_to(),
+        wrap_trait_mark_as_trait(),
+        wrap_trait_try_get_trait(),
+        wrap_trait_visit_implementers(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.trait.Trait, extra_methods);
 }
 
 fn wrap_composition_file(root: *py.PyObject) ?*py.PyObject {
@@ -1597,6 +2909,36 @@ fn wrap_trait_file(root: *py.PyObject) ?*py.PyObject {
 
     return module;
 }
+
+fn wrap_edgebuilder_file(root: *py.PyObject) ?*py.PyObject {
+    const module = py.PyModule_Create2(&main_module_def, 1013);
+    if (module == null) {
+        return null;
+    }
+
+    wrap_edgebuilder(module.?);
+
+    if (py.PyModule_AddObject(root, "edgebuilder", module) < 0) {
+        return null;
+    }
+
+    return module;
+}
+
+fn wrap_operand_file(root: *py.PyObject) ?*py.PyObject {
+    const module = py.PyModule_Create2(&main_module_def, 1013);
+    if (module == null) {
+        return null;
+    }
+
+    wrap_edge_operand(module.?);
+
+    if (py.PyModule_AddObject(root, "operand", module) < 0) {
+        return null;
+    }
+
+    return module;
+}
 // ====================================================================================================================
 
 // Main module methods
@@ -1626,6 +2968,8 @@ pub fn make_python_module() ?*py.PyObject {
     _ = wrap_typegraph_file(module.?);
     _ = wrap_next_file(module.?);
     _ = wrap_pointer_file(module.?);
+    _ = wrap_edgebuilder_file(module.?);
     _ = wrap_trait_file(module.?);
+    _ = wrap_operand_file(module.?);
     return module;
 }

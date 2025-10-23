@@ -1,6 +1,7 @@
 const graph_mod = @import("graph");
 const std = @import("std");
 const node_type_mod = @import("node_type.zig");
+const edgebuilder_mod = @import("edgebuilder.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -12,17 +13,26 @@ const Edge = graph.Edge;
 const Node = graph.Node;
 const GraphView = graph.GraphView;
 const str = graph.str;
+const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
+const return_first = visitor.return_first;
 
 pub const EdgeComposition = struct {
     pub const tid: Edge.EdgeType = 1759269250;
 
-    pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) !EdgeReference {
-        const edge = try Edge.init(allocator, parent, child, tid);
-        errdefer edge.deinit();
+    pub fn init(allocator: std.mem.Allocator, parent: NodeReference, child: NodeReference, child_identifier: str) EdgeReference {
+        const edge = Edge.init(allocator, parent, child, tid);
 
-        edge.attributes.directional = true;
-        edge.attributes.name = child_identifier;
+        build(child_identifier).apply_to(edge);
         return edge;
+    }
+
+    pub fn build(child_identifier: str) EdgeCreationAttributes {
+        return .{
+            .edge_type = tid,
+            .directional = true,
+            .name = child_identifier,
+            .dynamic = null,
+        };
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -84,10 +94,15 @@ pub const EdgeComposition = struct {
         return Edge.get_single_edge(bound_node, tid, true);
     }
 
-    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) !graph.BoundEdgeReference {
+    pub fn get_parent_node_of(bound_node: graph.BoundNodeReference) ?graph.BoundNodeReference {
+        const parent_edge = EdgeComposition.get_parent_edge(bound_node) orelse return null;
+        return parent_edge.g.bind(EdgeComposition.get_parent_node(parent_edge.edge));
+    }
+
+    pub fn add_child(bound_node: graph.BoundNodeReference, child: NodeReference, child_identifier: ?str) graph.BoundEdgeReference {
         // if child identifier is null, then generate a unique identifier
-        const link = try EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
-        const bound_edge = try bound_node.g.insert_edge(link);
+        const link = EdgeComposition.init(bound_node.g.allocator, bound_node.node, child, child_identifier orelse "");
+        const bound_edge = bound_node.g.insert_edge(link);
         return bound_edge;
     }
 
@@ -152,29 +167,39 @@ pub const EdgeComposition = struct {
         var visit = Visit{ .parent = parent, .child_type = child_type, .cb_ctx = ctx, .cb = f };
         return parent.visit_edges_of_type(tid, T, &visit, Visit.visit);
     }
+
+    pub fn try_get_single_child_of_type(bound_node: graph.BoundNodeReference, child_type: graph.NodeReference) ?graph.BoundNodeReference {
+        const Ctx = struct {};
+        var ctx = Ctx{};
+        const result = EdgeComposition.visit_children_of_type(bound_node, child_type, graph.BoundEdgeReference, &ctx, return_first(graph.BoundEdgeReference).visit);
+        switch (result) {
+            .OK => |found| return found.g.bind(EdgeComposition.get_child_node(found.edge)),
+            .CONTINUE => unreachable,
+            .STOP => unreachable,
+            .ERROR => return null, // Convert error to null since function returns optional
+            .EXHAUSTED => return null,
+        }
+    }
 };
 
 test "basic" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(std.testing.allocator);
-    const n1 = try Node.init(a);
-    const n2 = try Node.init(a);
-    const n3 = try Node.init(a);
 
-    const bn1 = try g.insert_node(n1);
-    const bn2 = try g.insert_node(n2);
-    const bn3 = try g.insert_node(n3);
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
 
-    _ = try EdgeComposition.add_child(bn1, n2, "child1");
-    _ = try EdgeComposition.add_child(bn1, n3, "child2");
+    _ = EdgeComposition.add_child(bn1, bn2.node, "child1");
+    _ = EdgeComposition.add_child(bn1, bn3.node, "child2");
 
     // has to be deleted first
     defer g.deinit();
 
     const parent_edge_bn2 = EdgeComposition.get_parent_edge(bn2);
     const parent_edge_bn3 = EdgeComposition.get_parent_edge(bn3);
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), n1));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), n1));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn2.?.edge), bn1.node));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(parent_edge_bn3.?.edge), bn1.node));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn2.?.edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(parent_edge_bn3.?.edge), "child2"));
 
@@ -196,11 +221,11 @@ test "basic" {
 
     try std.testing.expectEqual(result, visitor.VisitResult(void){ .EXHAUSTED = {} });
     try std.testing.expectEqual(visit.child_edges.items.len, 2);
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), n2));
-    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), n3));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[0].edge), bn2.node));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(visit.child_edges.items[1].edge), bn3.node));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[0].edge), "child1"));
     try std.testing.expect(std.mem.eql(u8, try EdgeComposition.get_name(visit.child_edges.items[1].edge), "child2"));
 
     const bchild = EdgeComposition.get_child_by_identifier(bn1, "child1");
-    try std.testing.expect(Node.is_same(bchild.?.node, n2));
+    try std.testing.expect(Node.is_same(bchild.?.node, bn2.node));
 }
