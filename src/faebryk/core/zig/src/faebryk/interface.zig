@@ -26,19 +26,17 @@ pub const EdgeInterfaceConnection = struct {
         return tid;
     }
 
-    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference) EdgeReference {
+    pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
         const edge = Edge.init(allocator, N1, N2, tid);
-        build().apply_to(edge);
-        return edge;
-    }
-
-    pub fn build() EdgeCreationAttributes {
-        return .{
+        const attributes = EdgeCreationAttributes{
             .edge_type = tid,
             .directional = false,
             .name = null,
-            .dynamic = null,
+            .dynamic = graph.DynamicAttributes.init(allocator),
         };
+        attributes.apply_to(edge);
+        try edge.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = shallow });
+        return edge;
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -57,16 +55,11 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        const e = Edge.init(bn1.g.allocator, bn1.node, bn2.node, tid);
-        e.attributes.directional = false;
-        try e.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = false });
-        return bn1.g.insert_edge(e);
+        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, false));
     }
 
     pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        var e = try EdgeInterfaceConnection.connect(bn1, bn2);
-        try e.edge.attributes.dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = true });
-        return e;
+        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
     }
 
     // visit all connected edges for a given node
@@ -142,12 +135,11 @@ test "basic" {
     std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
     std.debug.print("n3.uuid = {}\n", .{n3.attributes.uuid});
 
-    const e1 = EdgeInterfaceConnection.init(a, n1, n2);
-    defer e1.deinit();
+    const be1 = try EdgeInterfaceConnection.connect(bn1, bn2);
 
-    std.debug.print("e1.uuid = {}\n", .{e1.attributes.uuid});
-    std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
+    std.debug.print("e1.uuid = {}\n", .{be1.edge.attributes.uuid});
+    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
+    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
 
     // const n_list = EdgeInterfaceConnection.list_connections(e1);
 
@@ -161,11 +153,8 @@ test "basic" {
 
     // EdgeInterfaceConnection.connect(e1, n3, n1);
 
-    std.debug.print("e1.source.uuid = {}\n", .{e1.source.attributes.uuid});
-    std.debug.print("e1.target.uuid = {}\n", .{e1.target.attributes.uuid});
-
-    // Create connection between n1 and n2
-    const be1 = try EdgeInterfaceConnection.connect(bn1, bn2);
+    std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
+    std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
 
     // Expect shallow flag to be present and false by default
     const shallow_default = be1.edge.attributes.dynamic.values.get(EdgeInterfaceConnection.shallow_attribute).?;
