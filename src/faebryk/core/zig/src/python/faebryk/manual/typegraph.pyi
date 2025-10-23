@@ -1,4 +1,5 @@
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView, Literal, Node
 
 class TypeGraph:
@@ -15,6 +16,7 @@ class TypeGraph:
         type_node: BoundNode,
         child_type_node: BoundNode,
         identifier: str | None,
+        node_attributes: NodeCreationAttributes | None = ...,
     ) -> BoundNode: ...
     def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
     def add_make_link(
@@ -34,5 +36,6 @@ class TypeGraph:
     def reference_resolve(
         self, *, reference_node: BoundNode, base_node: BoundNode
     ) -> BoundNode: ...
+    def get_graph_view(self) -> GraphView: ...
     def get_type_by_name(self, *, type_identifier: str) -> BoundNode | None: ...
     def get_or_create_type(self, *, type_identifier: str) -> BoundNode: ...
