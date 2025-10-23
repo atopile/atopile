@@ -629,6 +629,22 @@ pub const BFSPath = struct {
     }
 };
 
+pub const BFSPaths = struct {
+    paths: std.ArrayList(BFSPath),
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator) @This() {
+        return .{ .paths = std.ArrayList(BFSPath).init(allocator), .allocator = allocator };
+    }
+
+    pub fn deinit(self: *const @This()) void {
+        for (self.paths.items) |*path| {
+            path.deinit();
+        }
+        self.paths.deinit();
+    }
+};
+
 pub const BoundNodeReference = struct {
     node: NodeReference,
     g: *GraphView,
