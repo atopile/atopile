@@ -6,8 +6,8 @@ from enum import Enum
 from more_itertools import first
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.sets.sets import P_Set
@@ -68,7 +68,7 @@ class I2C(ModuleInterface):
             or self.sda.line.net_crosses_pad_boundary()
         )
 
-    def terminate(self, owner: Module):
+    def terminate(self, owner: fabll.Node:
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
         self.pull_up_sda = self.sda.pulled.pull(up=True, owner=owner)

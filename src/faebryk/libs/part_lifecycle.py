@@ -18,7 +18,7 @@ from atopile.config import (
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
 from atopile.layout import in_sub_pcb
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
@@ -518,7 +518,7 @@ class PartLifecycle:
         def ingest_footprint(
             self,
             transformer: PCB_Transformer,
-            component: Module,
+            component: fabll.Node
             logger: logging.Logger,
             insert_point: kicad.pcb.Xyr | None = None,
         ) -> tuple[kicad.pcb.Footprint, bool]:

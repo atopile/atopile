@@ -4,7 +4,7 @@
 
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.units import P
 
 

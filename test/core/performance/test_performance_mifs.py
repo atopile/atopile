@@ -5,9 +5,10 @@ import logging
 
 import pytest
 
+from faebryk.core.graph import InstanceGraphFunctions
 import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
@@ -22,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 def ensure_typegraph(node: Node) -> None:
     """Build TypeGraph, instantiate, and bind for the node's tree."""
-    from faebryk.core.graph import InstanceGraphFunctions
+    from faebryk.core.graph import Instance
+import faebryk.core.node as fabll
 
     root = node._get_root()
 

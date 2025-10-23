@@ -8,7 +8,7 @@ import pytest
 import faebryk.library._F as F
 from atopile.build_steps import Muster, MusterTarget
 from atopile.cli.logging_ import LoggingStage
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.solver import Solver
 
 
@@ -147,13 +147,13 @@ def test_muster_register_decorator():
 
     @muster.register("target1")
     def func1(
-        app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+        app: fabll.Node solver: Solver, pcb: F.PCB, log_context: LoggingStage
     ) -> None:
         pass
 
     @muster.register("target2", dependencies=[muster.targets["target1"]])
     def func2(
-        app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+        app: fabll.Node solver: Solver, pcb: F.PCB, log_context: LoggingStage
     ) -> None:
         pass
 
@@ -161,7 +161,7 @@ def test_muster_register_decorator():
         "target3", dependencies=[muster.targets["target1"], muster.targets["target2"]]
     )
     def func3(
-        app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+        app: fabll.Node solver: Solver, pcb: F.PCB, log_context: LoggingStage
     ) -> None:
         pass
 

@@ -11,7 +11,7 @@ import more_itertools
 
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
@@ -110,7 +110,7 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: Module, solver: Solver
+    module: fabll.Node solver: Solver
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
     assert module.has_trait(F.is_pickable)
     # Error can propagate through,
@@ -163,7 +163,7 @@ def _prepare_query(
     )
 
 
-def _process_candidates(module: Module, candidates: list[Component]) -> list[Component]:
+def _process_candidates(module: fabll.Node candidates: list[Component]) -> list[Component]:
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
@@ -254,7 +254,7 @@ def _find_modules(
     return out
 
 
-def _attach(module: Module, c: Component):
+def _attach(module: fabll.Node c: Component):
     """
     Calls LCSC attach and wraps errors into PickError
     """
@@ -277,7 +277,7 @@ def _attach(module: Module, c: Component):
 
 
 def _get_compatible_parameters(
-    module: Module, c: "Component", solver: Solver
+    module: fabll.Node c: "Component", solver: Solver
 ) -> dict[Parameter, ParameterOperatable.Literal]:
     """
     Check if the parameters of a component are compatible with the module
@@ -420,7 +420,7 @@ def get_candidates(
     return {}
 
 
-def attach_single_no_check(cmp: Module, part: Component, solver: Solver):
+def attach_single_no_check(cmp: fabll.Node part: Component, solver: Solver):
     """
     Attach a single component to a module
     Attention: Does not check compatibility before or after!

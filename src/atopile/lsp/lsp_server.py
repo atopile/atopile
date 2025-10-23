@@ -24,8 +24,8 @@ from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait, TraitImpl
@@ -602,8 +602,8 @@ def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
     Extract completion items from a faebryk node.
     Returns parameters, sub-modules, and interfaces as completion items.
     """
-    from faebryk.core.module import Module
-    from faebryk.core.moduleinterface import ModuleInterface
+    import faebryk.core.node as fabll
+    import faebryk.core.node as fabll
     from faebryk.core.parameter import Parameter
 
     completion_items = []

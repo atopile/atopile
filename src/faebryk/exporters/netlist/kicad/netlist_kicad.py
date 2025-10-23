@@ -5,8 +5,9 @@ import itertools
 import logging
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.kicad.fileformats import kicad
@@ -103,7 +104,7 @@ def attach_kicad_info(G: Graph) -> None:
         n: t.get_footprint()
         # TODO maybe nicer to just look for footprints
         # and get their respective components instead
-        for n, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
+        for n, t in fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_footprint)
         if isinstance(n, Module)
     }
 

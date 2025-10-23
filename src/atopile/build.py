@@ -5,7 +5,7 @@ from atopile.config import BuildType, config
 from faebryk.library import _F as F
 
 if TYPE_CHECKING:
-    from faebryk.core.module import Module
+    import faebryk.core.node as fabll
 
 
 def init_app() -> "Module":

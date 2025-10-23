@@ -3,7 +3,7 @@
 
 import faebryk.core.fabll as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 
 
 class can_bridge_defined(fabll.Node):

@@ -5,7 +5,7 @@
 import pytest
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import _get_bomline
 from faebryk.libs.app.designators import attach_random_designators, load_designators
@@ -14,7 +14,7 @@ from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.units import P
 
 
-def _build(app: Module):
+def _build(app: fabll.Node:
     load_designators(app.get_graph(), attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)

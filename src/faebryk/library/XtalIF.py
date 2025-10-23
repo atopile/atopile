@@ -4,7 +4,7 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.units import P  # noqa: F401
 

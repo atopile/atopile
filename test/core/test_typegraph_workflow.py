@@ -10,8 +10,9 @@ separates type-level descriptors from instance graph materialization.
 
 import pytest
 
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.graph import InstanceGraphFunctions
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 
 
 def test_closed_world_violation():
@@ -42,7 +43,8 @@ def test_self_connection_is_ignored():
     app.mif.connect(app.mif)
 
     # Should not raise - self-connections filtered out in connect()
-    from faebryk.core.graph import InstanceGraphFunctions
+    from faebryk.core.graph import Instance
+import faebryk.core.node as fabll
 
     typegraph, _ = app.create_typegraph()
 
@@ -102,7 +104,8 @@ def test_runtime_queries_require_instantiation_and_binding():
         app.mif1.get_connected()
 
     # AFTER instantiation and binding: should work
-    from faebryk.core.graph import InstanceGraphFunctions
+    from faebryk.core.graph import Instance
+import faebryk.core.node as fabll
 
     instance_root = InstanceGraphFunctions.create(typegraph, type(app).__qualname__)
     app._bind_instance_hierarchy(instance_root)
@@ -126,7 +129,8 @@ def test_double_bind_raises_error():
         mif: ModuleInterface
 
     app = App()
-    from faebryk.core.graph import InstanceGraphFunctions
+    from faebryk.core.graph import Instance
+import faebryk.core.node as fabll
 
     typegraph, _ = app.create_typegraph()
 
@@ -151,7 +155,8 @@ def test_instantiation_creates_connections():
     app = App()
     app.mif1.connect(app.mif2)
 
-    from faebryk.core.graph import InstanceGraphFunctions
+    from faebryk.core.graph import Instance
+import faebryk.core.node as fabll
 
     typegraph, _ = app.create_typegraph()
 

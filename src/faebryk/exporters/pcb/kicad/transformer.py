@@ -26,9 +26,10 @@ from more_itertools import first
 from shapely import Polygon
 
 # import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
 from faebryk.libs.exceptions import UserException
@@ -211,7 +212,7 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    def __init__(self, pcb: PCB, graph: Graph, app: Module) -> None:
+    def __init__(self, pcb: PCB, graph: Graph, app: fabll.Node -> None:
         self.pcb = pcb
         self.app = app
 
@@ -276,7 +277,7 @@ class PCB_Transformer:
 
         unattached_nodes = {
             node
-            for node, trait in GraphFunctions(self.graph).nodes_with_trait(
+            for node, trait in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 F.has_footprint
             )
             if not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
@@ -302,7 +303,7 @@ class PCB_Transformer:
         }
 
         # Also try nodes without footprints, because they might get them later
-        for module in GraphFunctions(graph).nodes_of_type(Module):
+        for module in fabll.Node.bind_typegraph(graph).nodes_of_type(Module):
             atopile_addr = module.get_full_name()
 
             # First, try to find the footprint by the atopile address
@@ -312,7 +313,7 @@ class PCB_Transformer:
 
         return footprint_map
 
-    def bind_footprint(self, pcb_fp: Footprint, module: Module):
+    def bind_footprint(self, pcb_fp: Footprint, module: fabll.Node:
         """
         Generates links between:
         - Module and PCB Footprint
@@ -367,7 +368,7 @@ class PCB_Transformer:
 
         named_nets = {
             n
-            for n in GraphFunctions(self.graph).nodes_of_type(F.Net)
+            for n in fabll.Node.bind_typegraph(self.graph).nodes_of_type(F.Net)
             if n.has_trait(F.has_overriden_name)
         }
 
@@ -448,7 +449,7 @@ class PCB_Transformer:
     def get_all_footprints(self) -> List[tuple[Module, Footprint]]:
         return [
             (cast_assert(Module, cmp), t.get_fp())
-            for cmp, t in GraphFunctions(self.graph).nodes_with_trait(
+            for cmp, t in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 PCB_Transformer.has_linked_kicad_footprint
             )
         ]
@@ -1136,7 +1137,7 @@ class PCB_Transformer:
         import faebryk.library._F as F
 
         # position modules with defined positions
-        pos_mods = GraphFunctions(self.graph).nodes_with_traits(
+        pos_mods = fabll.Node.bind_typegraph(self.graph).nodes_with_traits(
             (F.has_pcb_position, self.has_linked_kicad_footprint)
         )
 
@@ -2013,7 +2014,7 @@ class PCB_Transformer:
         # We rely on this to reliably update the pcb
         self.attach()
 
-        gf = GraphFunctions(self.graph)
+        gf = fabll.Node.bind_typegraph(self.graph)
 
         # Update footprints
         processed_fps = dict[str, Footprint]()
@@ -2039,7 +2040,7 @@ class PCB_Transformer:
             for child in grouped[False]:
                 yield from _iter_modules(tree[child])
 
-        def _get_cluster(component: Module) -> Node | None:
+        def _get_cluster(component: fabll.Node -> Node | None:
             if (parent := component.get_parent()) is not None:
                 return cast_assert(Node, parent[0])
             return None

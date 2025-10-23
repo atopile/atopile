@@ -4,7 +4,7 @@
 from pathlib import Path
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.util import once
 
 

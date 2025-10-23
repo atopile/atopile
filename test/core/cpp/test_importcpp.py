@@ -60,8 +60,8 @@ def test_pynode():
 
 
 def test_derived_pynodes():
-    from faebryk.core.module import Module
-    from faebryk.core.moduleinterface import ModuleInterface
+    import faebryk.core.node as fabll
+    import faebryk.core.node as fabll
 
     class App(Module):
         mif1: ModuleInterface
@@ -152,7 +152,7 @@ def test_link():
 
 def test_mif_link():
     from faebryk.core.link import LinkDirectConditional
-    from faebryk.core.moduleinterface import ModuleInterface
+    import faebryk.core.node as fabll
 
     mif1 = ModuleInterface()
     mif2 = ModuleInterface()
@@ -189,7 +189,7 @@ def test_isinstance_base():
 
 
 def test_isinstance_existing():
-    from faebryk.core.module import Module
+    import faebryk.core.node as fabll
     from faebryk.core.node import Node
 
     assert Module._mro == [Module, Node]
@@ -201,7 +201,7 @@ def test_isinstance_existing():
 
 
 def test_isinstance_new():
-    from faebryk.core.module import Module
+    import faebryk.core.node as fabll
     from faebryk.core.node import Node
 
     class A(Module):

@@ -4,7 +4,7 @@
 from abc import abstractmethod
 
 from faebryk.core.link import Link
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 
 
 class has_single_connection(ModuleInterface.TraitT):

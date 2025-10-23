@@ -1,6 +1,6 @@
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 
@@ -44,7 +44,7 @@ class Symbol(Module):
     represents = reference(Module)
 
     @classmethod
-    def with_component(cls, component: Module, pin_map: dict[str, F.Electrical]):
+    def with_component(cls, component: fabll.Node pin_map: dict[str, F.Electrical]):
         sym = cls()
         sym.represents = component
         component.add(cls.has_symbol(sym))

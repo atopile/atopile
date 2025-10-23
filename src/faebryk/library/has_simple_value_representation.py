@@ -3,7 +3,7 @@
 
 from abc import abstractmethod
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 
 
 class has_simple_value_representation(Module.TraitT):

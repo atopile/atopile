@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Iterable
 
 import faebryk.library._F as F
 from faebryk.core.cpp import Graph
-from faebryk.core.graph import GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Is,
@@ -51,7 +51,7 @@ class PickSupplier(ABC):
     supplier_id: str
 
     @abstractmethod
-    def attach(self, module: Module, part: "PickerOption"): ...
+    def attach(self, module: fabll.Node part: "PickerOption"): ...
 
 
 @dataclass(frozen=True)
@@ -63,7 +63,7 @@ class PickedPart:
 
 
 class PickError(Exception):
-    def __init__(self, message: str, *modules: Module):
+    def __init__(self, message: str, *modules: fabll.Node:
         self.message = message
         self.modules = modules
 
@@ -75,19 +75,19 @@ class PickError(Exception):
 
 
 class PickErrorNotImplemented(PickError):
-    def __init__(self, module: Module):
+    def __init__(self, module: fabll.Node:
         message = f"Could not pick part for {module}: Not implemented"
         super().__init__(message, module)
 
 
 class PickVerificationError(PickError):
-    def __init__(self, message: str, *modules: Module):
+    def __init__(self, message: str, *modules: fabll.Node:
         message = f"Post-pick verification failed for picked parts:\n{message}"
         super().__init__(message, *modules)
 
 
 class PickErrorChildren(PickError):
-    def __init__(self, module: Module, children: dict[Module, PickError]):
+    def __init__(self, module: fabll.Node children: dict[Module, PickError]):
         self.children = children
 
         message = f"Could not pick parts for children of {module}:\n" + "\n".join(
@@ -111,7 +111,7 @@ class PickErrorChildren(PickError):
 class NotCompatibleException(Exception):
     def __init__(
         self,
-        module: Module,
+        module: fabll.Node
         component: "Component",
         param: Parameter | None = None,
         c_range: P_Set | None = None,
@@ -136,7 +136,7 @@ class does_not_require_picker_check(Parameter.TraitT.decless()):
     pass
 
 
-def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
+def get_pick_tree(module: fabll.Node| ModuleInterface) -> Tree[Module]:
     if isinstance(module, Module):
         module = module.get_most_special()
 
@@ -174,7 +174,7 @@ def update_pick_tree(tree: Tree[Module]) -> tuple[Tree[Module], bool]:
     return filtered_tree, False
 
 
-def check_missing_picks(module: Module):
+def check_missing_picks(module: fabll.Node:
     # - not skip self pick
     # - no parent with part picked
     # - not specialized
@@ -241,7 +241,7 @@ def find_independent_groups(
         # Find params aliased to lits
         aliased = EquivalenceClasses[ParameterOperatable]()
         lits = dict[ParameterOperatable, ParameterOperatable.Literal]()
-        for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(Is):
+        for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(Is):
             if not e.constrained:
                 continue
             aliased.add_eq(*e.operatable_operands)
@@ -261,7 +261,7 @@ def find_independent_groups(
 
         # find params related to each other
         param_eqs = EquivalenceClasses[Parameter]()
-        for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(
+        for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(
             ConstrainableExpression
         ):
             if not e.constrained:
@@ -410,7 +410,7 @@ def pick_topologically(
 # TODO should be a Picker
 @debug_perf
 def pick_part_recursively(
-    module: Module, solver: Solver, progress: Advancable | None = None
+    module: fabll.Node solver: Solver, progress: Advancable | None = None
 ):
     pick_tree = get_pick_tree(module)
     if progress:

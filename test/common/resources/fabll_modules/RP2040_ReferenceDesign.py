@@ -4,7 +4,7 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.exporters.pcb.layout.heuristic_decoupling import (
     LayoutHeuristicElectricalClosenessDecouplingCaps,
 )

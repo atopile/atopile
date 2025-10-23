@@ -6,7 +6,7 @@ from enum import Enum, auto
 from typing import Self
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 
 
@@ -32,7 +32,7 @@ class ElectricLogic(F.ElectricSignal):
 
     class can_be_pulled(F.Logic.TraitT):
         @abstractmethod
-        def pull(self, up: bool, owner: Module) -> F.Resistor: ...
+        def pull(self, up: bool, owner: fabll.Node -> F.Resistor: ...
 
     class can_be_pulled_defined(can_be_pulled.impl()):
         def __init__(self, line: F.Electrical, ref: F.ElectricPower) -> None:
@@ -40,7 +40,7 @@ class ElectricLogic(F.ElectricSignal):
             self.ref = ref
             self.line = line
 
-        def pull(self, up: bool, owner: Module):
+        def pull(self, up: bool, owner: fabll.Node:
             obj = self.obj
 
             up_r, down_r = None, None
@@ -121,7 +121,7 @@ class ElectricLogic(F.ElectricSignal):
         r = self.reference
         self.line.connect(r.hv if on else r.lv)
 
-    def set_weak(self, on: bool, owner: Module):
+    def set_weak(self, on: bool, owner: fabll.Node:
         """
         Set the logic signal by connecting to the reference via a pull resistor.
         """

@@ -5,7 +5,7 @@
 import pytest
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException

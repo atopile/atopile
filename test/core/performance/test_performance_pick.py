@@ -9,7 +9,7 @@ from typing import Callable
 import pytest
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.algorithm import get_algorithms
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE

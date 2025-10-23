@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from atopile.datatypes import TypeRef
 from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively

@@ -8,7 +8,7 @@ from textwrap import indent
 from typing import Callable, Iterable
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.parameter import (
     And,
     Is,
@@ -43,7 +43,7 @@ class PickerOption:
 
 
 class PickErrorParams(PickError):
-    def __init__(self, module: Module, options: list[PickerOption], solver: Solver):
+    def __init__(self, module: fabll.Node options: list[PickerOption], solver: Solver):
         self.options = options
 
         MAX = 5
@@ -63,7 +63,7 @@ class PickErrorParams(PickError):
 
 
 def pick_module_by_params(
-    module: Module, solver: Solver, options: Iterable[PickerOption]
+    module: fabll.Node solver: Solver, options: Iterable[PickerOption]
 ):
     if module.has_trait(F.has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")

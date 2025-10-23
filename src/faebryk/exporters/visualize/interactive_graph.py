@@ -9,11 +9,12 @@ from rich.console import Console
 from rich.table import Table
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.link import Link
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
@@ -285,7 +286,7 @@ def interactive_graph(
         node_types = (Node,)
 
     # Build elements
-    nodes = GraphFunctions(G).nodes_of_types(node_types)
+    nodes = fabll.Node.bind_typegraph(G).nodes_of_types(node_types)
     if depth > 0:
         nodes = [node for node in nodes if len(node.get_hierarchy()) <= depth]
 

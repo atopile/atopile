@@ -9,9 +9,10 @@ from typing import Generator, Iterable, Mapping
 
 import faebryk.library._F as F
 from atopile.errors import UserException
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
     kicad_footprint = FBRKNetlist.Component
 
-    def __init__(self, component: Module, graph: Graph) -> None:
+    def __init__(self, component: fabll.Node graph: Graph) -> None:
         """
         graph has to be electrically closed
         """
@@ -63,7 +64,7 @@ class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
         )
 
 
-def ensure_ref_and_value(c: Module):
+def ensure_ref_and_value(c: fabll.Node:
     value = (
         c.get_trait(F.has_simple_value_representation).get_value()
         if c.has_trait(F.has_simple_value_representation)
@@ -108,7 +109,7 @@ def add_or_get_nets(*interfaces: F.Electrical):
 
 def attach_nets(G: Graph) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
-    pad_mifs = [pad.net for pad in GraphFunctions(G).nodes_of_type(F.Pad)]
+    pad_mifs = [pad.net for pad in fabll.Node.bind_typegraph(G).nodes_of_type(F.Pad)]
     # Sort pad interfaces by stable node name to ensure deterministic bus grouping
     pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
     nets = add_or_get_nets(*pad_mifs)

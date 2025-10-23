@@ -6,8 +6,9 @@ import logging
 from enum import StrEnum
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
@@ -34,7 +35,7 @@ def load_part_info_from_pcb(G: Graph):
     """
     Load descriptive properties from footprints and saved parameters.
     """
-    nodes = GraphFunctions(G).nodes_with_trait(
+    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(
         PCB_Transformer.has_linked_kicad_footprint
     )
 
@@ -122,7 +123,7 @@ def save_part_info_to_pcb(G: Graph):
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
-    nodes = GraphFunctions(G).nodes_with_trait(F.has_part_picked)
+    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_part_picked)
 
     for node, _ in nodes:
         if t := node.try_get_trait(F.has_part_picked):

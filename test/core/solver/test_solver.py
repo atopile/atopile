@@ -13,7 +13,7 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.cpp import Graph
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Abs,

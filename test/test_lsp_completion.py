@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.parameter import Parameter
 
 # Add the src directory to the Python path

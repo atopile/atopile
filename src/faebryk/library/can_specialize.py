@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Iterable
 from faebryk.core.trait import Trait
 
 if TYPE_CHECKING:
-    from faebryk.core.module import Module
-    from faebryk.core.moduleinterface import ModuleInterface
+    import faebryk.core.node as fabll
+    import faebryk.core.node as fabll
 
 logger = logging.getLogger(__name__)
 

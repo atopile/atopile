@@ -10,9 +10,10 @@ from more_itertools import first
 import faebryk.library._F as F
 from atopile import errors
 from faebryk.core.cpp import Path
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
@@ -138,7 +139,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
 
     with accumulate(ERCFault) as accumulator:
         # shorted power
-        electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
+        electricpower = fabll.Node.bind_typegraph(G).nodes_of_type(F.ElectricPower)
         logger.info(f"Checking {len(electricpower)} Power")
 
         buses_grouped = ModuleInterface._group_into_buses(electricpower)
@@ -186,7 +187,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     )
 
         # shorted nets
-        nets = GraphFunctions(G).nodes_of_type(F.Net)
+        nets = fabll.Node.bind_typegraph(G).nodes_of_type(F.Net)
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
@@ -222,7 +223,9 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
         #            raise ERCFault([mif], "shorted symmetric footprint")
 
-        comps = GraphFunctions(G).nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
+        comps = fabll.Node.bind_typegraph(G).nodes_of_types(
+            (F.Resistor, F.Capacitor, F.Fuse)
+        )
         logger.info(f"Checking {len(comps)} passives")
         for comp in comps:
             with accumulator.collect():

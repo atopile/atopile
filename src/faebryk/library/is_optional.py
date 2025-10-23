@@ -4,7 +4,7 @@
 import logging
 from abc import abstractmethod
 
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 
 logger = logging.getLogger(__name__)
 

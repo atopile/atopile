@@ -6,7 +6,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Sequence
 
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find
 

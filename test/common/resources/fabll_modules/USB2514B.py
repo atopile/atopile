@@ -5,7 +5,7 @@ import logging
 from enum import Enum, auto
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once
@@ -31,7 +31,7 @@ class USB2514B(Module):
         @assert_once
         def configure_usb_port(
             self,
-            owner: Module,
+            owner: fabll.Node
             enable_usb: bool = True,
             enable_battery_charging: bool = True,
         ):
@@ -82,7 +82,7 @@ class USB2514B(Module):
     @assert_once
     def set_configuration_source(
         self,
-        owner: Module,
+        owner: fabll.Node
         configuration_source: ConfigurationSource = ConfigurationSource.DEFAULT,
     ):
         """
@@ -110,7 +110,7 @@ class USB2514B(Module):
     @assert_once
     def set_non_removable_ports(
         self,
-        owner: Module,
+        owner: fabll.Node
         non_removable_port_configuration: NonRemovablePortConfiguration,
     ):
         """

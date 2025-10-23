@@ -4,7 +4,7 @@
 import logging
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.parameter import R
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval

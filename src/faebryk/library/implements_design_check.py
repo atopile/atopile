@@ -9,7 +9,7 @@ from typing import Any, Callable, Sequence
 from more_itertools import first
 
 import faebryk.library._F as F
-from faebryk.core.graph import GraphFunctions
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
 
@@ -65,7 +65,7 @@ class implements_design_check(Trait.TraitT.decless()):
     def get_pcb(self):
         from faebryk.library.PCB import PCB
 
-        matches = GraphFunctions(self.get_graph()).nodes_of_type(PCB)
+        matches = fabll.Node.bind_typegraph(self.get_graph()).nodes_of_type(PCB)
         assert len(matches) == 1
         return first(matches)
 

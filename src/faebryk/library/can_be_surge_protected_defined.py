@@ -4,7 +4,7 @@
 import logging
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class can_be_surge_protected_defined(F.can_be_surge_protected.impl()):
         self.protect_if = protect_if
         self.low_potential = low_potential
 
-    def protect(self, owner: Module):
+    def protect(self, owner: fabll.Node:
         surge_protection = F.SurgeProtection.from_interfaces(
             self.low_potential, *self.protect_if
         )

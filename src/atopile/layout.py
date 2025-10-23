@@ -2,16 +2,14 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import override
+from typing import Any, override
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
 from atopile import front_end
 from atopile.address import AddressError, AddrStr
 from atopile.config import ProjectConfig, config
-from faebryk.core.graph import GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.libs.util import (
     DefaultFactoryDict,
     cast_assert,
@@ -22,28 +20,44 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-# TODO should be Node
-class SubPCB:
-    def __init__(self, path: Path) -> None:
-        self._path = path
+class SubPCB(fabll.Node):
+    @classmethod
+    def __create_type__(cls, t: "fabll.BoundNodeType[SubPCB, Any]") -> None:
+        cls.path = t.Child(fabll.Parameter)
+
+    @classmethod
+    def __create_instance__(
+        cls, tg: "fabll.TypeGraph", g: "fabll.GraphView", path: Path
+    ) -> "SubPCB":
+        out = super().__create_instance__(tg, g)
+        out.path.get().constrain_to_literal(g=g, value=str(path))
+        return out
+
+    def get_path(self) -> Path:
+        return Path(self.path.get().force_extract_literal(str))
 
 
-class has_subpcb(Module.TraitT.decless()):
-    def __init__(self, subpcb: SubPCB) -> None:
-        super().__init__()
-        self._subpcb = {subpcb}
+class has_subpcb(fabll.Node):
+    @classmethod
+    def __create_type__(cls, t: "fabll.BoundNodeType[has_subpcb, Any]") -> None:
+        cls.subpcb_ = t.Child(fabll.Set)
+        fabll.Traits.mark_as_trait(t)
 
-    @override
-    def handle_duplicate(self, old: "has_subpcb", node: Node) -> bool:
-        old._subpcb.update(self._subpcb)
-        return False
+    def setup(self, subpcb: "SubPCB") -> "has_subpcb":
+        self.subpcb_.get().append(subpcb)
+        return self
 
     @property
     def subpcb(self) -> set["SubPCB"]:
-        return self._subpcb
+        return {subpcb.cast(SubPCB) for subpcb in self.subpcb_.get().as_set()}
 
     def get_subpcb_by_path(self, path: Path) -> "SubPCB":
-        return find(self._subpcb, lambda subpcb: subpcb._path == path)
+        return find(self.subpcb, lambda subpcb: subpcb.get_path() == path)
+
+    @override
+    def handle_duplicate(self, old: "has_subpcb", node: fabll.Node) -> bool:
+        old.subpcb_.get().append(*self.subpcb_.get().as_list())
+        return False
 
 
 @dataclass(frozen=True)
@@ -60,35 +74,43 @@ class SubAddress:
         return f"{self.pcb_address}:{self.module_address}"
 
 
-class in_sub_pcb(Module.TraitT.decless()):
-    def __init__(self, sub_root_module: Module):
-        super().__init__()
-        self._sub_root_modules = {sub_root_module}
+class in_sub_pcb(fabll.Node):
+    _sub_root_module_identifier = "sub_root_module"
+
+    @classmethod
+    def __create_type__(cls, t: "fabll.BoundNodeType[in_sub_pcb, Any]") -> None:
+        cls.sub_root_modules = t.Child(fabll.Set)
+        fabll.Traits.mark_as_trait(t)
+
+    def setup(self, sub_root_module: fabll.Node[Any]) -> "in_sub_pcb":
+        self.sub_root_modules.get().append(sub_root_module)
+        return self
 
     @property
     def addresses(self) -> list[SubAddress]:
-        obj = self.get_obj(Module)
+        obj = fabll.Traits.bind(self).get_obj(fabll.Node)
         root = config.project.paths.root
         return [
             SubAddress(
-                str(pcb._path.relative_to(root)), obj.relative_address(sub_root_module)
+                str(pcb.get_path().relative_to(root)),
+                obj.relative_address(sub_root_module),
             )
-            for sub_root_module in self._sub_root_modules
+            for sub_root_module in self.sub_root_modules.get().as_list()
             for pcb in sub_root_module.get_trait(has_subpcb).subpcb
         ]
 
     @override
-    def handle_duplicate(self, old: "in_sub_pcb", node: Node) -> bool:
-        old._sub_root_modules.update(self._sub_root_modules)
+    def handle_duplicate(self, old: "in_sub_pcb", node: fabll.Node) -> bool:
+        old.sub_root_modules.get().append(*self.sub_root_modules.get().as_list())
         return False
 
 
-def _index_module_layouts() -> dict[type[Module], set[SubPCB]]:
+def _index_module_layouts() -> dict[type[fabll.Node], set[SubPCB]]:
     """Find, tag and return a set of all the modules with layouts."""
     directory = config.project.paths.root
 
     pcbs: dict[Path, SubPCB] = DefaultFactoryDict(SubPCB)
-    entries: dict[type[Module], set[SubPCB]] = defaultdict(set)
+    entries: dict[type[fabll.Node], set[SubPCB]] = defaultdict(set)
     ato_modules = front_end.bob.modules
 
     for filepath in directory.glob("**/ato.yaml"):
@@ -134,24 +156,26 @@ def _index_module_layouts() -> dict[type[Module], set[SubPCB]]:
     return entries
 
 
-def attach_sub_pcbs_to_entry_points(app: Module):
+def attach_sub_pcbs_to_entry_points(app: fabll.Node):
     module_index = _index_module_layouts()
+    has_pcb_bound = has_subpcb.bind_typegraph_from_instance(app.instance)
+    g = app.instance.g()
     for module_type, pcbs in module_index.items():
-        modules = app.get_children_modules(types=module_type, direct_only=False)
+        modules = app.get_children(types=module_type, direct_only=False)
         for module in modules:
             for pcb in pcbs:
-                module.add(has_subpcb(pcb))
+                fabll.Traits.add_to(
+                    module,
+                    has_pcb_bound.create_instance(g=g).setup(subpcb=pcb),
+                )
 
 
-def attach_subaddresses_to_modules(app: Module):
-    pcb_modules = GraphFunctions(app.get_graph()).nodes_with_trait(has_subpcb)
+def attach_subaddresses_to_modules(app: fabll.Node):
+    pcb_modules = app.bind_typegraph_from_self().nodes_with_trait(has_subpcb)
+    in_sub_pcb_bound = in_sub_pcb.bind_typegraph_from_instance(app.instance)
+    g = app.instance.g()
     for module, _ in pcb_modules:
-        assert isinstance(module, Module)
-
-        footprint_children = module.get_children(
-            direct_only=False,
-            f_filter=lambda c: c.has_trait(F.has_footprint),
-            types=Module,
-        )
-        for footprint_child in footprint_children:
-            footprint_child.add(in_sub_pcb(module))
+        for footprint_child, _ in module.iter_children_with_trait(F.has_footprint):
+            footprint_child.compose_with(
+                in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module),
+            )

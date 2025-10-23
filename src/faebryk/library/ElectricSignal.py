@@ -6,8 +6,8 @@ from typing import Iterable
 
 import faebryk.library._F as F
 from faebryk.core.link import LinkDirectConditional, LinkDirectConditionalFilterResult
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import (
@@ -77,7 +77,7 @@ class ElectricSignal(F.Signal):
     @classmethod
     def connect_all_module_references(
         cls,
-        node: Module | ModuleInterface,
+        node: fabll.Node| ModuleInterface,
         gnd_only=False,
         exclude: Iterable[Node] = (),
     ) -> F.ElectricPower:
@@ -95,7 +95,7 @@ class ElectricSignal(F.Signal):
     @L.rt_field
     def surge_protected(self):
         class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
-            def protect(_self, owner: Module):
+            def protect(_self, owner: fabll.Node:
                 out = super().protect(owner)
                 for tvs in out.get_children(direct_only=False, types=F.TVS):
                     tvs.reverse_working_voltage.alias_is(self.reference.voltage)

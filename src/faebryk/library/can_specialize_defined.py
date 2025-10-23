@@ -4,8 +4,8 @@
 import logging
 from typing import Iterable, Sequence
 
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.library.can_specialize import can_specialize
 
 logger = logging.getLogger(__name__)

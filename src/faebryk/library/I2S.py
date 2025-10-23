@@ -3,7 +3,7 @@
 import logging
 
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 from faebryk.core.parameter import R
 from faebryk.libs.library import L
 from faebryk.libs.units import P

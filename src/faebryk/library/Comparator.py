@@ -4,7 +4,7 @@
 from enum import Enum, auto
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 from faebryk.libs.units import P, quantity
 

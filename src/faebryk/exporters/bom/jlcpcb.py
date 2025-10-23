@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
     return compact_bomlines
 
 
-def _get_bomline(cmp: Module) -> BOMLine | None:
+def _get_bomline(cmp: fabll.Node -> BOMLine | None:
     if not cmp.has_trait(F.has_footprint):
         return
     # TODO make extra trait for this

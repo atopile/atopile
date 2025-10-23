@@ -4,8 +4,8 @@
 import logging
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux

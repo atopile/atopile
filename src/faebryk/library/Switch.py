@@ -4,8 +4,8 @@
 from typing import TypeGuard
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 from faebryk.libs.util import once
 
@@ -18,7 +18,7 @@ class _TSwitch(Module):
         self.t = t
 
     @staticmethod
-    def is_instance(obj: Module, t: type[T]) -> bool:
+    def is_instance(obj: fabll.Node t: type[T]) -> bool:
         return isinstance(obj, _TSwitch) and issubclass(obj.t, t)
 
 
@@ -40,7 +40,7 @@ def Switch[T: ModuleInterface](interface_type: type[T]):
             return F.can_bridge_defined(*self.unnamed)
 
         @staticmethod
-        def is_instance(obj: Module) -> "TypeGuard[_Switch]":
+        def is_instance(obj: fabll.Node -> "TypeGuard[_Switch]":
             return _TSwitch.is_instance(obj, interface_type)
 
     return _Switch

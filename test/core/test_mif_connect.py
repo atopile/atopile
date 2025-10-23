@@ -13,7 +13,7 @@ from faebryk.core.link import (
     LinkDirectConditionalFilterResult,
     LinkDirectDerived,
 )
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
 from faebryk.core.node import Node, NodeException
 from faebryk.libs.app.erc import (

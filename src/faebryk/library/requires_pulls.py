@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from typing import Callable
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.util import md_list

@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 
 
 class is_pickable(Module.TraitT):

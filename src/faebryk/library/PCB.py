@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, override
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
@@ -27,7 +27,7 @@ class PCB(Node):
         self._path = path
         self._pcb_file: kicad.pcb.PcbFile | None = None
         self._transformer: "PCB_Transformer | None" = None
-        self.app: Module | None = None
+        self.app: fabll.Node | None = None
 
     def load(self):
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer

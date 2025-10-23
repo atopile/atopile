@@ -11,7 +11,8 @@ from dash import Dash, html
 from dash.dependencies import Input, Output, State
 
 # import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
 from faebryk.core.link import LinkSibling
 from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter
@@ -226,7 +227,7 @@ def buttons(layout: Layout):
 
 def visualize_parameters(G: Graph, height: int | None = None):
     Operand_ = (Parameter, Expression)
-    nodes = GraphFunctions(G).nodes_of_types(Operand_)
+    nodes = fabll.Node.bind_typegraph(G).nodes_of_types(Operand_)
     nodes = cast(list[Operand], nodes)
 
     edges = {

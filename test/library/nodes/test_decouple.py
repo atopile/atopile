@@ -6,7 +6,7 @@ import pytest
 from pint import Quantity
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.units import P

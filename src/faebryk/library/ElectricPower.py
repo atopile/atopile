@@ -3,7 +3,7 @@
 
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.parameter import Add
 from faebryk.libs.library import L
@@ -19,7 +19,7 @@ class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
         def decouple(
             self,
-            owner: Module,
+            owner: fabll.Node
             count: int = 1,
         ):
             obj = self.get_obj(ElectricPower)
@@ -51,7 +51,7 @@ class ElectricPower(F.Power):
             return new_capacitor
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
-        def protect(self, owner: Module):
+        def protect(self, owner: fabll.Node:
             obj = self.get_obj(ElectricPower)
             surge_protection = F.SurgeProtection.from_interfaces(obj.lv, obj.hv)
             owner.add(

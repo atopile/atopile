@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.trait import TraitNotFound
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -190,7 +190,7 @@ def _next_to_pad(
 
 
 def place_next_to_pad(
-    module: Module,
+    module: fabll.Node
     pad: F.Pad,
     params: Params,
 ):
@@ -223,7 +223,7 @@ def place_next_to_pad(
 
 def place_next_to(
     parent_intf: F.Electrical,
-    module: Module,
+    module: fabll.Node
     params: Params,
     route: bool = False,
 ):

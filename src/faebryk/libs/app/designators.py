@@ -9,7 +9,8 @@ from typing import cast
 from natsort import natsorted
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
@@ -26,7 +27,9 @@ def attach_random_designators(graph: Graph):
     This ensures that everything which has a footprint must have a designator.
     """
 
-    nodes = {n for n, _ in GraphFunctions(graph).nodes_with_trait(F.has_footprint)}
+    nodes = {
+        n for n, _ in fabll.Node.bind_typegraph(graph).nodes_with_trait(F.has_footprint)
+    }
 
     in_use = {
         n.get_trait(F.has_designator).get_designator()
@@ -92,7 +95,7 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
             return None
         return _get_reference(fp)
 
-    nodes = GraphFunctions(graph).nodes_with_trait(
+    nodes = fabll.Node.bind_typegraph(graph).nodes_with_trait(
         PCB_Transformer.has_linked_kicad_footprint
     )
 

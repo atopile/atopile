@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.heuristic_decoupling import Params, place_next_to
 from faebryk.exporters.pcb.layout.layout import Layout

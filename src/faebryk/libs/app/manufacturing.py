@@ -4,7 +4,7 @@
 import logging
 from pathlib import Path
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
@@ -20,7 +20,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 logger = logging.getLogger(__name__)
 
 
-def export_pcba_artifacts(out: Path, pcb_path: Path, app: Module):
+def export_pcba_artifacts(out: Path, pcb_path: Path, app: fabll.Node:
     cad_path = out.joinpath("cad")
     cad_path.mkdir(parents=True, exist_ok=True)
 

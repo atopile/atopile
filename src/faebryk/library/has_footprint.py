@@ -4,7 +4,7 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 
 if TYPE_CHECKING:
     from faebryk.library.Footprint import Footprint

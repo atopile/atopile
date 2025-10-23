@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 from test.common.resources.fabll_modules.USB2_0_ESD_Protection import (

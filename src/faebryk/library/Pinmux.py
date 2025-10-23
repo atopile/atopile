@@ -4,8 +4,8 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.util import (  # noqa: F401
     KeyErrorAmbiguous,

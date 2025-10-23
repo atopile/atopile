@@ -21,7 +21,7 @@ from rich.console import Console
 from rich.table import Table
 
 from faebryk.core.core import Namespace
-from faebryk.core.graph import GraphFunctions
+import faebryk.core.node as fabll
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -830,7 +830,9 @@ class Stats:
         table.add_column("Type", justify="left")
         table.add_column("count", justify="right")
 
-        all_exprs = GraphFunctions(*get_graphs(self.exprs)).nodes_of_type(Arithmetic)
+        all_exprs = fabll.Node.bind_typegraph(*get_graphs(self.exprs)).nodes_of_type(
+            Arithmetic
+        )
         expr_types = groupby(all_exprs, type)
         for expr_type, exprs_for_type in expr_types.items():
             table.add_row(expr_type.__name__, str(len(exprs_for_type)))

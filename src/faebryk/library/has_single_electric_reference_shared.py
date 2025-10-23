@@ -3,8 +3,8 @@
 
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 
 
 class has_single_electric_reference_shared(F.has_single_electric_reference.impl()):

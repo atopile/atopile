@@ -14,8 +14,9 @@ from typing import Any, List, Protocol
 # import numpy as np
 # from shapely import Polygon
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
@@ -86,7 +87,7 @@ class SchTransformer:
             self.pins = pins
 
     def __init__(
-        self, sch: SCH, graph: Graph, app: Module, cleanup: bool = True
+        self, sch: SCH, graph: Graph, app: fabll.Node cleanup: bool = True
     ) -> None:
         self.sch = sch
         self.graph = graph
@@ -117,7 +118,7 @@ class SchTransformer:
             (Property.get_property(f.propertys, "Reference"), f.lib_id): f
             for f in self.sch.symbols
         }
-        for node, sym_trait in GraphFunctions(self.graph).nodes_with_trait(
+        for node, sym_trait in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
             F.Symbol.has_symbol
         ):
             # FIXME: I believe this trait is used as a proxy for being a component
@@ -145,7 +146,7 @@ class SchTransformer:
         # Log what we were able to attach
         attached = {
             n: t.symbol
-            for n, t in GraphFunctions(self.graph).nodes_with_trait(
+            for n, t in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )
         }
@@ -240,7 +241,7 @@ class SchTransformer:
     def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
         return [
             (cast_assert(Module, cmp), t.symbol)
-            for cmp, t in GraphFunctions(self.graph).nodes_with_trait(
+            for cmp, t in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )
         ]
@@ -401,7 +402,7 @@ class SchTransformer:
 
     def insert_symbol(
         self,
-        module: Module,
+        module: fabll.Node
         at: Point2D | None = None,
         rotation: int | None = None,
     ):

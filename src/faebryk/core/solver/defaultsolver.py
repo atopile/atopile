@@ -8,7 +8,8 @@ from itertools import count
 from types import SimpleNamespace
 from typing import Any, override
 
-from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graph import Graph, 
+import faebryk.core.node as fabll
 from faebryk.core.node import Node
 from faebryk.core.parameter import (
     ConstrainableExpression,
@@ -185,7 +186,7 @@ class DefaultSolver(Solver):
             raise ValueError("print_context not allowed when using reusable state")
 
         mutation_map = self.reusable_state.data.mutation_map
-        p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
+        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(ParameterOperatable)
         new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
         # TODO consider using mutator
@@ -329,7 +330,7 @@ class DefaultSolver(Solver):
         if not terminal:
             self.reusable_state = self.state
 
-        ifs = GraphFunctions(
+        ifs = fabll.Node.bind_typegraph(
             *self.state.data.mutation_map.last_stage.output_graphs
         ).nodes_of_type(IfThenElse)
         for i in ifs:
@@ -369,7 +370,7 @@ class DefaultSolver(Solver):
         if repr_pred is not None:
             new_Gs = [repr_pred.get_graph()]
 
-        new_preds = GraphFunctions(*new_Gs).nodes_of_type(ConstrainableExpression)
+        new_preds = fabll.Node.bind_typegraph(*new_Gs).nodes_of_type(ConstrainableExpression)
         not_deduced = [
             p for p in new_preds if p.constrained and not p._solver_terminated
         ]

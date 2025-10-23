@@ -6,7 +6,7 @@ from atopile.build_steps import Tags, muster
 from atopile.build_steps import generate_default as default_target
 from atopile.config import config
 from atopile.errors import UserToolNotAvailableError
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.exceptions import accumulate
@@ -29,7 +29,7 @@ def _check_kicad_cli() -> bool:
     return False
 
 
-def build(app: Module) -> None:
+def build(app: fabll.Node -> None:
     """Build the project."""
     if SKIP_SOLVING:
         logger.warning("Assertion checking is disabled")

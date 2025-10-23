@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import faebryk.library._F as F
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.library import L
