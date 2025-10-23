@@ -288,8 +288,8 @@ test "self_connect" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.insert_node(Node.init(g.allocator));
-    const bn2 = g.insert_node(Node.init(g.allocator));
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
 
     // expect not connected
     const paths1 = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn2);
@@ -306,9 +306,9 @@ test "is_connected_to" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.insert_node(Node.init(g.allocator));
-    const bn2 = g.insert_node(Node.init(g.allocator));
-    const bn3 = g.insert_node(Node.init(g.allocator));
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
     _ = try EdgeInterfaceConnection.connect(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn1, bn3);
 
@@ -325,16 +325,16 @@ test "down_connect" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const EP_1 = g.insert_node(Node.init(g.allocator));
-    const LV_1 = g.insert_node(Node.init(g.allocator));
-    const HV_1 = g.insert_node(Node.init(g.allocator));
+    const EP_1 = g.create_and_insert_node();
+    const LV_1 = g.create_and_insert_node();
+    const HV_1 = g.create_and_insert_node();
 
     _ = EdgeComposition.add_child(EP_1, LV_1.node, "LV");
     _ = EdgeComposition.add_child(EP_1, HV_1.node, "HV");
 
-    const EP_2 = g.insert_node(Node.init(g.allocator));
-    const LV_2 = g.insert_node(Node.init(g.allocator));
-    const HV_2 = g.insert_node(Node.init(g.allocator));
+    const EP_2 = g.create_and_insert_node();
+    const LV_2 = g.create_and_insert_node();
+    const HV_2 = g.create_and_insert_node();
 
     _ = EdgeComposition.add_child(EP_2, LV_2.node, "LV");
     _ = EdgeComposition.add_child(EP_2, HV_2.node, "HV");
@@ -366,12 +366,12 @@ test "no_connect_cases" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.insert_node(Node.init(g.allocator));
-    const bn2 = g.insert_node(Node.init(g.allocator));
-    const bn3 = g.insert_node(Node.init(g.allocator));
-    const bn4 = g.insert_node(Node.init(g.allocator));
-    const bn5 = g.insert_node(Node.init(g.allocator));
-    const bn6 = g.insert_node(Node.init(g.allocator));
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
+    const bn4 = g.create_and_insert_node();
+    const bn5 = g.create_and_insert_node();
+    const bn6 = g.create_and_insert_node();
 
     _ = EdgeComposition.add_child(bn1, bn2.node, null);
     _ = EdgeComposition.add_child(bn3, bn2.node, null);
@@ -397,9 +397,9 @@ test "chains_direct" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const M1 = g.insert_node(Node.init(g.allocator));
-    const M2 = g.insert_node(Node.init(g.allocator));
-    const M3 = g.insert_node(Node.init(g.allocator));
+    const M1 = g.create_and_insert_node();
+    const M2 = g.create_and_insert_node();
+    const M3 = g.create_and_insert_node();
 
     _ = try EdgeInterfaceConnection.connect(M1, M2);
     _ = try EdgeInterfaceConnection.connect(M2, M3);
@@ -413,13 +413,13 @@ test "multiple_paths" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.insert_node(Node.init(g.allocator));
-    const bn2 = g.insert_node(Node.init(g.allocator));
-    const bn3 = g.insert_node(Node.init(g.allocator));
-    const bn4 = g.insert_node(Node.init(g.allocator));
-    const bn5 = g.insert_node(Node.init(g.allocator));
-    const bn6 = g.insert_node(Node.init(g.allocator));
-    const bn7 = g.insert_node(Node.init(g.allocator));
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
+    const bn4 = g.create_and_insert_node();
+    const bn5 = g.create_and_insert_node();
+    const bn6 = g.create_and_insert_node();
+    const bn7 = g.create_and_insert_node();
 
     _ = try EdgeInterfaceConnection.connect(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn2, bn4);
@@ -442,9 +442,9 @@ test "heirarchy_short" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.insert_node(Node.init(g.allocator));
-    const bn2 = g.insert_node(Node.init(g.allocator));
-    const bn3 = g.insert_node(Node.init(g.allocator));
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
 
     _ = EdgeComposition.add_child(bn1, bn2.node, "HV");
     _ = EdgeComposition.add_child(bn1, bn3.node, "LV");
@@ -453,8 +453,8 @@ test "heirarchy_short" {
     defer paths1.deinit();
     try std.testing.expect(paths1.paths.items.len == 0);
 
-    const bn4 = g.insert_node(Node.init(g.allocator));
-    const bn5 = g.insert_node(Node.init(g.allocator));
+    const bn4 = g.create_and_insert_node();
+    const bn5 = g.create_and_insert_node();
 
     _ = try EdgeInterfaceConnection.connect(bn2, bn4);
     _ = try EdgeInterfaceConnection.connect(bn4, bn5);
@@ -469,15 +469,15 @@ test "shallow_filter_allows_alternative_route" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const start_parent = g.insert_node(Node.init(g.allocator));
+    const start_parent = g.create_and_insert_node();
     start_parent.node.attributes.name = "start_parent";
-    const start_child = g.insert_node(Node.init(g.allocator));
+    const start_child = g.create_and_insert_node();
     start_child.node.attributes.name = "start_child";
-    const target_parent = g.insert_node(Node.init(g.allocator));
+    const target_parent = g.create_and_insert_node();
     target_parent.node.attributes.name = "target_parent";
-    const target_child = g.insert_node(Node.init(g.allocator));
+    const target_child = g.create_and_insert_node();
     target_child.node.attributes.name = "target_child";
-    const bus = g.insert_node(Node.init(g.allocator));
+    const bus = g.create_and_insert_node();
     bus.node.attributes.name = "bus";
 
     _ = EdgeComposition.add_child(start_parent, start_child.node, "pin");
@@ -519,7 +519,7 @@ test "loooooong_chain" {
         if (i % 10000 == 0 and i > 0) {
             std.debug.print("  Created {} nodes...\n", .{i});
         }
-        const node = g.insert_node(Node.init(g.allocator));
+        const node = g.create_and_insert_node();
         nodes.appendAssumeCapacity(node);
     }
     std.debug.print("  All {} nodes created.\n", .{chain_length});
@@ -570,12 +570,12 @@ test "shallow_edges" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.insert_node(Node.init(g.allocator));
-    const bn2 = g.insert_node(Node.init(g.allocator));
-    const bn3 = g.insert_node(Node.init(g.allocator));
-    const bn4 = g.insert_node(Node.init(g.allocator));
-    const bn5 = g.insert_node(Node.init(g.allocator));
-    const bn6 = g.insert_node(Node.init(g.allocator));
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
+    const bn4 = g.create_and_insert_node();
+    const bn5 = g.create_and_insert_node();
+    const bn6 = g.create_and_insert_node();
 
     _ = EdgeComposition.add_child(bn1, bn2.node, null);
     _ = EdgeComposition.add_child(bn2, bn3.node, null);
