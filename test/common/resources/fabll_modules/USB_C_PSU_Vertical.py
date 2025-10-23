@@ -13,7 +13,7 @@ from test.common.resources.fabll_modules.USB_Type_C_Receptacle_14_pin_Vertical i
 
 
 # TODO bad module
-class USB_C_PSU_Vertical(fabll.Module):
+class USB_C_PSU_Vertical(fabll.Node):
     # interfaces
     power_out: F.ElectricPower
     usb: F.USB2_0

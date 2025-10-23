@@ -11,7 +11,7 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
-class Fuse(fabll.Module):
+class Fuse(fabll.Node):
     class FuseType(Enum):
         NON_RESETTABLE = auto()
         RESETTABLE = auto()

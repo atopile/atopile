@@ -9,7 +9,7 @@ from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.units import P
 
 
-class Diode(fabll.Module):
+class Diode(fabll.Node):
     forward_voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,

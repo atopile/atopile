@@ -4,7 +4,7 @@
 import faebryk.core.node as fabll
 
 
-class Power(fabll.ModuleInterface):
+class Power(fabll.Node):
     class is_power_source(fabll.Node): ...
 
     class is_power_sink(fabll.Node): ...

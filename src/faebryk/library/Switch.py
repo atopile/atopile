@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.util import once
 
 
-class _TSwitch(fabll.Module):
+class _TSwitch(fabll.Node):
     T = fabll.ModuleInterface
 
     def __init__(self, t: type[T]):

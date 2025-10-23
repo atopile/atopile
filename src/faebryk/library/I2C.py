@@ -14,7 +14,7 @@ from faebryk.libs.util import invert_dict, md_list, partition_as_list
 logger = logging.getLogger(__name__)
 
 
-class I2C(fabll.ModuleInterface):
+class I2C(fabll.Node):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 

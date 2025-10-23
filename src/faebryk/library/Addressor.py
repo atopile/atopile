@@ -9,7 +9,7 @@ from faebryk.libs.util import times
 logger = logging.getLogger(__name__)
 
 
-class Addressor(fabll.ModuleInterface):
+class Addressor(fabll.Node):
     address = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
     offset = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
     base = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())

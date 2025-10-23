@@ -213,7 +213,7 @@ def test_pick_error_group():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_pick_dependency_simple():
-    class App(fabll.Module):
+    class App(fabll.Node):
         r1: F.Resistor
         r2: F.Resistor
 
@@ -273,7 +273,7 @@ def test_pick_dependency_div_negative():
 def test_null_solver():
     capacitance = fabll.Range.from_center_rel(10 * P.nF, 0.2)
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         cap: F.Capacitor
 
         def __preinit__(self):
@@ -299,7 +299,7 @@ def test_null_solver():
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_voltage_divider_complex():
-    class App(fabll.Module):
+    class App(fabll.Node):
         supply: F.ElectricPower
         rdiv: F.ResistorVoltageDivider
         adc_input: F.ElectricSignal

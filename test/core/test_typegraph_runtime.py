@@ -10,7 +10,7 @@ from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 
 
 def test_moduleinterface_get_connected_requires_typegraph():
-    class Harness(fabll.Module):
+    class Harness(fabll.Node):
         left: fabll.ModuleInterface
         right: fabll.ModuleInterface
 
@@ -45,7 +45,7 @@ def test_trait_binding_has_composition_edge():
     class HasDemoTraitImpl(HasDemoTrait.impl()):
         pass
 
-    class Harness(fabll.Module):
+    class Harness(fabll.Node):
         trait: HasDemoTraitImpl
 
     app = Harness()

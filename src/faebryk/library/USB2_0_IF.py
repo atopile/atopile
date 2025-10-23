@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class USB2_0_IF(fabll.ModuleInterface):
+class USB2_0_IF(fabll.Node):
     class Data(F.DifferentialPair):
         # FIXME: this should be in diffpair right?
         @fabll.rt_field

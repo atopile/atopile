@@ -10,7 +10,7 @@ class _Bare(fabll.Node):
     pass
 
 
-class _Harness(fabll.Module):
+class _Harness(fabll.Node):
     iface: fabll.ModuleInterface
 
 

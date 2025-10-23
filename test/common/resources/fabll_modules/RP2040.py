@@ -11,7 +11,7 @@ from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux
 logger = logging.getLogger(__name__)
 
 
-class RP2040(fabll.Module):
+class RP2040(fabll.Node):
     """
     Raspberry Pi RP2040 MCU
     Note: Don't forget to use the pinmux!
@@ -23,7 +23,7 @@ class RP2040(fabll.Module):
     class ADC(F.ElectricSignal):
         pass
 
-    class PWM(fabll.ModuleInterface):
+    class PWM(fabll.Node):
         A: F.ElectricLogic
         B: F.ElectricLogic
 
@@ -33,7 +33,7 @@ class RP2040(fabll.Module):
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class CoreRegulator(fabll.Module):
+    class CoreRegulator(fabll.Node):
         power_in: F.ElectricPower
         power_out: F.ElectricPower
 
@@ -53,7 +53,7 @@ class RP2040(fabll.Module):
     class SPI(F.SPI):
         cs: F.ElectricLogic
 
-    class UART(fabll.ModuleInterface):
+    class UART(fabll.Node):
         base_uart: F.UART_Base
         rts: F.ElectricLogic
         cts: F.ElectricLogic
@@ -64,7 +64,7 @@ class RP2040(fabll.Module):
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class USBPowerControl(fabll.ModuleInterface):
+    class USBPowerControl(fabll.Node):
         ovcur_det: F.ElectricLogic
         vbus_det: F.ElectricLogic
         vbus_en: F.ElectricLogic

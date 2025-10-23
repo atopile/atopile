@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class Regulator(fabll.Module):
+class Regulator(fabll.Node):
     power_in: F.ElectricPower
     power_out: F.ElectricPower
 

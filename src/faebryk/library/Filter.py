@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class Filter(fabll.Module):
+class Filter(fabll.Node):
     class Response(Enum):
         LOWPASS = auto()
         HIGHPASS = auto()

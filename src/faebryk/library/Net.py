@@ -12,7 +12,7 @@ from faebryk.libs.util import KeyErrorAmbiguous, groupby
 logger = logging.getLogger(__name__)
 
 
-class Net(fabll.Module):
+class Net(fabll.Node):
     part_of: F.Electrical
 
     def get_connected_pads(self) -> dict[F.Pad, F.Footprint]:

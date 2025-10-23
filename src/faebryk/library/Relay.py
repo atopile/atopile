@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: make generic (use Switch module, different switch models, bistable, etc.)
-class Relay(fabll.Module):
+class Relay(fabll.Node):
     switch_a_nc: F.Electrical
     switch_a_common: F.Electrical
     switch_a_no: F.Electrical

@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class RS232(fabll.ModuleInterface):
+class RS232(fabll.Node):
     tx: F.ElectricLogic
     rx: F.ElectricLogic
     dtr: F.ElectricLogic

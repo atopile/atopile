@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class USB_Type_C_Receptacle_14_pin_Vertical(fabll.Module):
+class USB_Type_C_Receptacle_14_pin_Vertical(fabll.Node):
     """
     14 pin vertical female USB Type-C connector
     918-418K2022Y40000

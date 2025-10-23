@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from faebryk.core.trait import Trait
 
 
-class Footprint(fabll.Module):
+class Footprint(fabll.Node):
     class TraitT(Trait): ...
 
     @staticmethod

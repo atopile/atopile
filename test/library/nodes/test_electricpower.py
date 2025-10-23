@@ -101,7 +101,7 @@ def test_voltage_propagation():
 
 
 def test_current_consumption_sum_zero():
-    class Test(fabll.Module):
+    class Test(fabll.Node):
         p1: F.ElectricPower
         p2: F.ElectricPower
         p3: F.ElectricPower
@@ -128,7 +128,7 @@ def test_current_consumption_sum_zero():
 
 
 def test_current_consumption_sum_negative():
-    class Test(fabll.Module):
+    class Test(fabll.Node):
         p1: F.ElectricPower
         p2: F.ElectricPower
         p3: F.ElectricPower

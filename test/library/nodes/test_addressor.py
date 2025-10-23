@@ -11,7 +11,7 @@ from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 
 
-class ConfigurableI2CClient(fabll.Module):
+class ConfigurableI2CClient(fabll.Node):
     addressor = fabll.f_field(F.Addressor)(address_bits=3)
     i2c: F.I2C
     config = fabll.list_field(3, F.ElectricLogic)
@@ -46,7 +46,7 @@ def test_addressor():
     assert app.config[2].line.is_connected_to(app.ref.lv)
 
 
-class I2CBusTopology(fabll.Module):
+class I2CBusTopology(fabll.Node):
     server: F.I2C
     clients = fabll.list_field(3, ConfigurableI2CClient)
 

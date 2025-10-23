@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class SWD(fabll.ModuleInterface):
+class SWD(fabll.Node):
     clk: F.ElectricLogic
     dio: F.ElectricLogic
     swo: F.ElectricLogic

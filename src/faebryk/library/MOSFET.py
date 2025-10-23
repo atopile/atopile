@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class MOSFET(fabll.Module):
+class MOSFET(fabll.Node):
     class ChannelType(Enum):
         N_CHANNEL = auto()
         P_CHANNEL = auto()

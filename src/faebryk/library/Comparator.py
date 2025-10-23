@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P, quantity
 
 
-class Comparator(fabll.Module):
+class Comparator(fabll.Node):
     class OutputType(Enum):
         Differential = auto()
         PushPull = auto()

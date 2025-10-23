@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO this seems like it should be doing more
-class USB2_0_ESD_Protection(fabll.Module):
+class USB2_0_ESD_Protection(fabll.Node):
     """
     USB 2.0 ESD protection
     """

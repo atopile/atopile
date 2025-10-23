@@ -84,7 +84,7 @@ class Path:
         return Path(path=self.path + other.path)
 
 
-class Route(fabll.Module):
+class Route(fabll.Node):
     net_: F.Electrical
     pcb: fabll.ModuleInterface
 

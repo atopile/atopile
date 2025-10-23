@@ -12,7 +12,7 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
-class ResistorVoltageDivider(fabll.Module):
+class ResistorVoltageDivider(fabll.Node):
     """
     A voltage divider using two resistors.
     node[0] ~ resistor[1] ~ node[1] ~ resistor[2] ~ node[2]

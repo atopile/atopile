@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class EnablePin(fabll.ModuleInterface):
+class EnablePin(fabll.Node):
     enable: F.ElectricLogic
 
     def _handle_optional(self, needed: bool):

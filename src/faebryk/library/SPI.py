@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class SPI(fabll.ModuleInterface):
+class SPI(fabll.Node):
     sclk: F.ElectricLogic
     miso: F.ElectricLogic
     mosi: F.ElectricLogic

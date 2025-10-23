@@ -17,10 +17,10 @@ from faebryk.core.graph import InstanceGraphFunctions
 def test_closed_world_violation():
     """Verify error when connecting to external interface."""
 
-    class App1(fabll.Module):
+    class App1(fabll.Node):
         mif: fabll.ModuleInterface
 
-    class App2(fabll.Module):
+    class App2(fabll.Node):
         mif: fabll.ModuleInterface
 
     app1 = App1()
@@ -35,7 +35,7 @@ def test_closed_world_violation():
 def test_self_connection_is_ignored():
     """Verify self-connection is silently ignored (existing behavior)."""
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         mif: fabll.ModuleInterface
 
     app = App()
@@ -58,7 +58,7 @@ def test_self_connection_is_ignored():
 def test_double_build_raises_error():
     """Verify that TypeGraph can only be built once."""
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         mif: fabll.ModuleInterface
 
     app = App()
@@ -71,10 +71,10 @@ def test_double_build_raises_error():
 def test_post_build_specialization_raises_error():
     """Verify specialization must happen before create_typegraph()."""
 
-    class Base(fabll.Module):
+    class Base(fabll.Node):
         pass
 
-    class Special(fabll.Module):
+    class Special(fabll.Node):
         pass
 
     app = Base()
@@ -87,7 +87,7 @@ def test_post_build_specialization_raises_error():
 def test_runtime_queries_require_instantiation_and_binding():
     """Verify get_connected() fails before instantiation+binding."""
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         mif1: fabll.ModuleInterface
         mif2: fabll.ModuleInterface
 
@@ -120,7 +120,7 @@ def test_runtime_queries_require_instantiation_and_binding():
 def test_double_bind_raises_error():
     """Verify binding fails if already bound."""
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         mif: fabll.ModuleInterface
 
     app = App()
@@ -141,7 +141,7 @@ def test_double_bind_raises_error():
 def test_instantiation_creates_connections():
     """Verify EdgeInterfaceConnection created during instantiate()."""
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         mif1: fabll.ModuleInterface
         mif2: fabll.ModuleInterface
 

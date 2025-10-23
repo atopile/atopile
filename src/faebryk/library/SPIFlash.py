@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class SPIFlash(fabll.Module):
+class SPIFlash(fabll.Node):
     power: F.ElectricPower
     qspi = fabll.f_field(F.MultiSPI)(4)
 

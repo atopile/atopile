@@ -4,7 +4,7 @@ import faebryk.core.node as fabll
 from faebryk.core.trait import TraitImpl
 
 
-class has_net_name(fabll.Trait.decless()):
+class has_net_name(fabll.Node):
     """Provide a net name suggestion or expectation"""
 
     # TODO:

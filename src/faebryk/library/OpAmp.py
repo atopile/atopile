@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class OpAmp(fabll.Module):
+class OpAmp(fabll.Node):
     bandwidth = fabll.p_field(units=P.Hz)
     common_mode_rejection_ratio = fabll.p_field(units=P.dB)
     input_bias_current = fabll.p_field(units=P.A)

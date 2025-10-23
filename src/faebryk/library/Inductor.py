@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class Inductor(fabll.Module):
+class Inductor(fabll.Node):
     unnamed = fabll.list_field(2, F.Electrical)
 
     inductance = fabll.p_field(

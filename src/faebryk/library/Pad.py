@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 
-class Pad(fabll.ModuleInterface):
+class Pad(fabll.Node):
     net: F.Electrical
     pcb: fabll.ModuleInterface
 

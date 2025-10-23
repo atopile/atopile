@@ -11,7 +11,7 @@ from faebryk.libs.util import times
 logger = logging.getLogger(__name__)
 
 
-class ResistorArray(fabll.Module):
+class ResistorArray(fabll.Node):
     resistance = fabll.p_field(units=P.ohm)
     rated_power = fabll.p_field(units=P.W)
     rated_voltage = fabll.p_field(units=P.V)

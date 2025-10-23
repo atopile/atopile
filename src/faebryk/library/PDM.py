@@ -8,7 +8,7 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class PDM(fabll.ModuleInterface):
+class PDM(fabll.Node):
     """
     Pulse Density Modulation is a way of representing a sampled signal as a stream of
     single bits where the relative density of the pulses correspond to the analog

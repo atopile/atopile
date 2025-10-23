@@ -23,7 +23,7 @@ from faebryk.libs.util import cast_assert
     ],
 )
 def test_decouple(capacitances: list[tuple[int, Quantity, float]]):
-    class App(fabll.Module):
+    class App(fabll.Node):
         power: F.ElectricPower
 
     app = App()

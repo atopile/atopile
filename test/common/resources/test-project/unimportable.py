@@ -1,7 +1,7 @@
 import faebryk.core.node as fabll
 
 
-class App(fabll.Module):
+class App(fabll.Node):
     pass
 
 

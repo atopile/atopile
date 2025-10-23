@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 def test_requires_external_usage():
-    class App(fabll.Module):
-        class Outer(fabll.Module):
-            class Inner(fabll.Module):
+    class App(fabll.Node):
+        class Outer(fabll.Node):
+            class Inner(fabll.Node):
                 b: F.Electrical
 
             a: F.Electrical

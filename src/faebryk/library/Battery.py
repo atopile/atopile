@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class Battery(fabll.Module):
+class Battery(fabll.Node):
     voltage = fabll.p_field(
         units=P.V,
         soft_set=fabll.Range(0 * P.V, 100 * P.V),

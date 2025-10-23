@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class PoweredLED(fabll.Module):
+class PoweredLED(fabll.Node):
     power: F.ElectricPower
     current_limiting_resistor: F.Resistor
     led: F.LED

@@ -95,7 +95,7 @@ def test_solve_phase_one():
     def Voltage():
         return fabll.p_field(units=P.V, within=Range(0 * P.V, 10 * P.kV))
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         voltage1 = Voltage()
         voltage2 = Voltage()
         voltage3 = Voltage()
@@ -115,7 +115,7 @@ def test_solve_phase_one():
 
 
 def test_simplify():
-    class App(fabll.Module):
+    class App(fabll.Node):
         ops = fabll.list_field(
             10,
             lambda: Parameter(
@@ -152,7 +152,7 @@ def test_simplify():
 
 
 def test_simplify_logic_and():
-    class App(fabll.Module):
+    class App(fabll.Node):
         p = fabll.list_field(4, lambda: Parameter(domain=fabll.Domains.BOOL()))
 
     app = App()
@@ -180,7 +180,7 @@ def test_shortcircuit_logic_and():
 
 
 def test_shortcircuit_logic_or():
-    class App(fabll.Module):
+    class App(fabll.Node):
         p = fabll.list_field(4, lambda: Parameter(domain=fabll.Domains.BOOL()))
 
     app = App()
@@ -269,7 +269,7 @@ def test_solve_realworld_bigger():
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 def test_solve_realworld_biggest():
-    class App(fabll.Module):
+    class App(fabll.Node):
         led = fabll.f_field(F.PoweredLED)(low_side_resistor=True)
         mcu: RP2040_ReferenceDesign
         usb_power: USB_C_PSU_Vertical
@@ -1064,7 +1064,7 @@ def test_fold_pow():
 
 
 def test_graph_split():
-    class App(fabll.Module):
+    class App(fabll.Node):
         A: Parameter
         B: Parameter
 

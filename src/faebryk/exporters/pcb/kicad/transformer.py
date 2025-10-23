@@ -299,7 +299,7 @@ class PCB_Transformer:
         }
 
         # Also try nodes without footprints, because they might get them later
-        for module in fabll.Node.bind_typegraph(graph).nodes_of_type(fabll.Module):
+        for module in fabll.Node.bind_typegraph(graph).nodes_of_type(fabll.Node):
             atopile_addr = module.get_full_name()
 
             # First, try to find the footprint by the atopile address

@@ -93,7 +93,7 @@ class _has_ato_cmp_attrs(fabll.Node):
 
 # FIXME: this would ideally be some kinda of mixin,
 # however, we can't have multiple bases for Nodes
-class GlobalAttributes(fabll.Module):
+class GlobalAttributes(fabll.Node):
     """
     These attributes are available to all modules and interfaces in a design.
     """

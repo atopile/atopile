@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 from faebryk.core.trait import TraitImpl
 
 
-class has_net_name_affix(fabll.Trait.decless()):
+class has_net_name_affix(fabll.Node):
     """Require a fixed prefix/suffix to be applied to a derived net name.
 
     This does not set or suggest the base name, it enforces that when a name is

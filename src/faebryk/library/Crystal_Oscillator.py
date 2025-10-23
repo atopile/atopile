@@ -7,7 +7,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class Crystal_Oscillator(fabll.Module):
+class Crystal_Oscillator(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------

@@ -12,8 +12,8 @@ from faebryk.libs.util import assert_once
 logger = logging.getLogger(__name__)
 
 
-class USB2514B(fabll.Module):
-    class ConfigurableUSB(fabll.Module):
+class USB2514B(fabll.Node):
+    class ConfigurableUSB(fabll.Node):
         """
         USB port wrapper with configuration pins and power enable pin.
         """

@@ -9,7 +9,7 @@ from faebryk.libs.units import P, quantity
 from faebryk.libs.util import assert_once
 
 
-class LDO(fabll.Module):
+class LDO(fabll.Node):
     @assert_once
     def enable_output(self):
         self.enable.set(True)

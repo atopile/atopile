@@ -1865,31 +1865,31 @@ class _StrEnumForTests(StrEnum):
 
 
 # Test classes for enum template tests
-class ModuleWithIntEnum(fabll.Module):
+class ModuleWithIntEnum(fabll.Node):
     def __init__(self, value: _IntEnumForTests):
         super().__init__()
         self._value = value
 
 
-class ModuleWithStrEnum(fabll.Module):
+class ModuleWithStrEnum(fabll.Node):
     def __init__(self, mode: _StrEnumForTests):
         super().__init__()
         self._mode = mode
 
 
-class ModuleWithOptionalEnum(fabll.Module):
+class ModuleWithOptionalEnum(fabll.Node):
     def __init__(self, color: F.LED.Color | None = None):
         super().__init__()
         self._color = color
 
 
-class ModuleWithTypingOptionalEnum(fabll.Module):
+class ModuleWithTypingOptionalEnum(fabll.Node):
     def __init__(self, color: Optional[F.LED.Color] = None):
         super().__init__()
         self._color = color
 
 
-class ModuleWithEnumUnion(fabll.Module):
+class ModuleWithEnumUnion(fabll.Node):
     def __init__(
         self,
         value: F.LED.Color | F.MOSFET.ChannelType | F.Capacitor.TemperatureCoefficient,
@@ -1898,7 +1898,7 @@ class ModuleWithEnumUnion(fabll.Module):
         self._value = value
 
 
-class ModuleWithTypingUnionEnum(fabll.Module):
+class ModuleWithTypingUnionEnum(fabll.Node):
     def __init__(
         self,
         value: Union[
@@ -1909,31 +1909,31 @@ class ModuleWithTypingUnionEnum(fabll.Module):
         self._value = value
 
 
-class ModuleWithStrOrEnum(fabll.Module):
+class ModuleWithStrOrEnum(fabll.Node):
     def __init__(self, label: str | F.LED.Color):
         super().__init__()
         self._label = label
 
 
-class ModuleWithTypingUnionStrOrEnum(fabll.Module):
+class ModuleWithTypingUnionStrOrEnum(fabll.Node):
     def __init__(self, label: Union[str, F.LED.Color]):
         super().__init__()
         self._label = label
 
 
-class ModuleWithStrOrStrEnum(fabll.Module):
+class ModuleWithStrOrStrEnum(fabll.Node):
     def __init__(self, config: str | _StrEnumForTests):
         super().__init__()
         self._config = config
 
 
-class ModuleWithEnumOrNone(fabll.Module):
+class ModuleWithEnumOrNone(fabll.Node):
     def __init__(self, channel: F.MOSFET.ChannelType | None = None):
         super().__init__()
         self._channel = channel
 
 
-class ModuleWithTypingUnionEnumOrNone(fabll.Module):
+class ModuleWithTypingUnionEnumOrNone(fabll.Node):
     def __init__(self, channel: Union[F.MOSFET.ChannelType, None] = None):
         super().__init__()
         self._channel = channel
@@ -2098,7 +2098,7 @@ def test_module_template_enum_union_types(
 def test_module_template_multiple_enum_args(bob: Bob):
     """Test multiple enum arguments in module template constructor."""
 
-    class ModuleWithMultipleEnums(fabll.Module):
+    class ModuleWithMultipleEnums(fabll.Node):
         def __init__(
             self,
             color: F.LED.Color,
@@ -2145,12 +2145,12 @@ def test_module_template_multiple_enum_args(bob: Bob):
 def test_module_template_mixed_syntax_compatibility(bob: Bob):
     """Test that both Optional and | None syntax work in the same context."""
 
-    class ModuleWithModernOptional(fabll.Module):
+    class ModuleWithModernOptional(fabll.Node):
         def __init__(self, color: F.LED.Color | None = None):
             super().__init__()
             self._color = color
 
-    class ModuleWithTypingOptional(fabll.Module):
+    class ModuleWithTypingOptional(fabll.Node):
         def __init__(self, color: Optional[F.LED.Color] = None):
             super().__init__()
             self._color = color

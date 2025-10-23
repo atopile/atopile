@@ -39,7 +39,7 @@ def _setup():
     NO_PROGRESS_BAR.set(True)
 
 
-class _RP2040_Basic(fabll.Module):
+class _RP2040_Basic(fabll.Node):
     rp2040: RP2040
     ldo: F.LDO
     led: F.LED
@@ -83,7 +83,7 @@ def test_performance_pick_rc_formulas():
     INCREASE = 10 * P.percent
     TOLERANCE = 20 * P.percent
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         alias_res = fabll.list_field(_GROUPS, F.Resistor)
         res = fabll.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
 

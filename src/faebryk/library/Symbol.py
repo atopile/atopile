@@ -4,13 +4,13 @@ from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 
 
-class Symbol(fabll.Module):
+class Symbol(fabll.Node):
     """
     Symbols represent a symbol instance and are bi-directionally
     linked with the module they represent via the `has_linked` trait.
     """
 
-    class Pin(fabll.ModuleInterface):
+    class Pin(fabll.Node):
         represents = reference(F.Electrical)
 
         class has_pin(F.has_reference.decless()):

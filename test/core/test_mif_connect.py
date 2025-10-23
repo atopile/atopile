@@ -44,7 +44,7 @@ def ensure_typegraph(node: fabll.Node) -> fabll.Node:
 
 
 def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
-    class _Harness(fabll.Module):
+    class _Harness(fabll.Node):
         pass
 
     harness = _Harness()
@@ -66,7 +66,7 @@ def test_up_connect_simple_single():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower: fabll.ModuleInterface
 
     high1 = High()
@@ -85,7 +85,7 @@ def test_up_connect_simple_two():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
@@ -107,7 +107,7 @@ def test_up_connect_simple_multiple():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
         lower3: fabll.ModuleInterface
@@ -130,7 +130,7 @@ def test_up_connect_chain_simple():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
@@ -155,7 +155,7 @@ def test_up_connect_chain_multiple_same():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
@@ -180,9 +180,9 @@ def test_up_connect_chain_multiple_mixed():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -209,9 +209,9 @@ def test_split_chain_single():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -236,13 +236,13 @@ def test_split_chain_double_flat_no_inter():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         high = fabll.list_field(4, High)
 
     app = App()
@@ -278,13 +278,13 @@ def test_split_chain_double_flat_inter():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         high = fabll.list_field(4, High)
 
     app = App()
@@ -315,16 +315,16 @@ def test_split_chain_double_hierarchy():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class Higher(fabll.ModuleInterface):
+    class Higher(fabll.Node):
         high: High
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         high = fabll.list_field(3, High)
         higher = fabll.list_field(2, Higher)
 
@@ -354,13 +354,13 @@ def test_split_chain_flip():
     Note: Shallowness not important, just makes it harder
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         high = fabll.list_field(4, High)
 
     app = App()
@@ -386,9 +386,9 @@ def test_split_flip_negative():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -409,9 +409,9 @@ def test_up_connect_chain_multiple_mixed_simulate_realworld():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -462,13 +462,13 @@ def test_up_connect_chain_hierarchy():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class Higher(fabll.ModuleInterface):
+    class Higher(fabll.Node):
         high1: High
         high2: High
 
@@ -501,11 +501,11 @@ def test_up_connect_hierarchy():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
-    class Higher(fabll.ModuleInterface):
+    class Higher(fabll.Node):
         high1: High
         high2: High
 
@@ -532,13 +532,13 @@ def test_up_connect_hierarchy_mixed():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class Higher(fabll.ModuleInterface):
+    class Higher(fabll.Node):
         high1: High
         high2: High
 
@@ -560,7 +560,7 @@ def test_up_connect_simple_two_negative():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
 
@@ -581,7 +581,7 @@ def test_up_connect_simple_multiple_negative():
     ```
     """
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: fabll.ModuleInterface
         lower2: fabll.ModuleInterface
         lower3: fabll.ModuleInterface
@@ -611,7 +611,7 @@ def test_up_connect():
     ```
     """
 
-    class UARTBuffer(fabll.Module):
+    class UARTBuffer(fabll.Node):
         bus_in: F.UART_Base
         bus_out: F.UART_Base
 
@@ -751,13 +751,13 @@ def test_shallow_bridge_simple():
     ```
     """
 
-    class Low(fabll.ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(fabll.ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class ShallowBridge(fabll.Module):
+    class ShallowBridge(fabll.Node):
         high_in: High
         high_out: High
 
@@ -791,7 +791,7 @@ def test_shallow_bridge_partial():
     ```
     """
 
-    class Buffer(fabll.Module):
+    class Buffer(fabll.Node):
         ins: F.Electrical
         outs: F.Electrical
 
@@ -845,7 +845,7 @@ def test_shallow_bridge_full():
     - OL: Output Logic
     """
 
-    class Buffer(fabll.Module):
+    class Buffer(fabll.Node):
         ins = fabll.list_field(2, F.Electrical)
         outs = fabll.list_field(2, F.Electrical)
 
@@ -873,7 +873,7 @@ def test_shallow_bridge_full():
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class UARTBuffer(fabll.Module):
+    class UARTBuffer(fabll.Node):
         buf: Buffer
         bus_in: F.UART_Base
         bus_out: F.UART_Base
@@ -933,7 +933,7 @@ def test_shallow_bridge_full():
     assert bus_i.is_connected_to(bus_o)
 
 
-class Specialized(fabll.ModuleInterface): ...
+class Specialized(fabll.Node): ...
 
 
 class DoubleSpecialized(Specialized): ...
@@ -1150,7 +1150,7 @@ def test_shallow_implied_paths():
 
 
 def test_direct_shallow_instance():
-    class MIFType(fabll.ModuleInterface):
+    class MIFType(fabll.Node):
         pass
 
     mif1 = MIFType()
@@ -1275,10 +1275,10 @@ def test_regression_rp2040_usb_diffpair_full():
 
 
 def test_connect_incompatible():
-    class A(fabll.ModuleInterface):
+    class A(fabll.Node):
         pass
 
-    class B(fabll.ModuleInterface):
+    class B(fabll.Node):
         pass
 
     x = A()
@@ -1288,7 +1288,7 @@ def test_connect_incompatible():
 
 
 def test_connect_incompatible_hierarchical():
-    class A(fabll.ModuleInterface):
+    class A(fabll.Node):
         pass
 
     class B(A):

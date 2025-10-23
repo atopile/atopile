@@ -15,7 +15,7 @@ from faebryk.libs.util import (  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-class Pinmux(fabll.Module):
+class Pinmux(fabll.Node):
     """
     Generic Pinmux Base Class
     """

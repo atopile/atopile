@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class UART_Base(fabll.ModuleInterface):
+class UART_Base(fabll.Node):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 

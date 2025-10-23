@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def test_repr_chain_basic():
     import faebryk.library._F as F
 
-    class TestModule(fabll.Module):
+    class TestModule(fabll.Node):
         param1 = fabll.p_field(units=P.V)
         param2 = fabll.p_field(units=P.A)
         param3 = fabll.p_field(units=P.V)
@@ -48,7 +48,7 @@ def test_repr_chain_non_number():
         A = "AS"
         B = "BS"
 
-    class TestModule(fabll.Module):
+    class TestModule(fabll.Node):
         param1 = fabll.p_field(domain=fabll.Domains.ENUM(TestEnum))
         param2 = fabll.p_field(domain=fabll.Domains.BOOL())
 
@@ -71,7 +71,7 @@ def test_repr_chain_non_number():
 def test_repr_chain_no_literal():
     import faebryk.library._F as F
 
-    class TestModule(fabll.Module):
+    class TestModule(fabll.Node):
         param1 = fabll.p_field(units=P.V)
         param2 = fabll.p_field(units=P.A)
         param3 = fabll.p_field(units=P.V)

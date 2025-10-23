@@ -9,10 +9,10 @@ from faebryk.libs.units import P
 
 
 def test_i2c_requires_pulls():
-    class A(fabll.Module):
+    class A(fabll.Node):
         i2c: F.I2C
 
-    class App(fabll.Module):
+    class App(fabll.Node):
         a: A
         b: A
 
@@ -24,7 +24,7 @@ def test_i2c_requires_pulls():
     # no issue if no pad boundary is crossed
     check_design(app.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
 
-    class App2(fabll.Module):
+    class App2(fabll.Node):
         a: A
         b: A
 
@@ -77,7 +77,7 @@ def test_electric_signal_parallel_pull_resistance():
     r2_value = fabll.Range.from_center_rel(20 * P.kohm, 0.02)
     r3_value = fabll.Range.from_center_rel(30 * P.kohm, 0.02)
 
-    class TestModule(fabll.Module):
+    class TestModule(fabll.Node):
         signal: F.ElectricSignal
         power: F.ElectricPower
 
@@ -113,7 +113,7 @@ def test_electric_signal_single_pull_resistance():
 
     r1_value = fabll.Range.from_center_rel(10 * P.kohm, 0.02)
 
-    class TestModule(fabll.Module):
+    class TestModule(fabll.Node):
         signal: F.ElectricSignal
         power: F.ElectricPower
 

@@ -306,7 +306,7 @@ def _extract_net_name_info(
         return required_names, suggested_names, implicit_candidates
 
     # Adjust depth for interfaces on the same level
-    if mif.get_parent_of_type(fabll.ModuleInterface):
+    if mif.get_parent_of_type(fabll.Node):
         depth -= 1
 
     # Calculate implicit name score

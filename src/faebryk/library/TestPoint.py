@@ -9,7 +9,7 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class TestPoint(fabll.Module):
+class TestPoint(fabll.Node):
     """
     Basic test point.
     """

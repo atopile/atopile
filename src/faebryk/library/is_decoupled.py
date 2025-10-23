@@ -9,7 +9,7 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class is_decoupled(fabll.Trait.decless()):
+class is_decoupled(fabll.Node):
     def __init__(self, capacitor: F.Capacitor):
         super().__init__()
         self._capacitor = capacitor

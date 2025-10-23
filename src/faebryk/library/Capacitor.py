@@ -121,7 +121,7 @@ class Capacitor(fabll.Node):
         if size is not None:
             self.add(F.has_package_requirements(size=size))
 
-    class _has_power(fabll.Trait.decless()):
+    class _has_power(fabll.Node):
         """
         This trait is used to add power interfaces to
         capacitors who use them, keeping the interfaces

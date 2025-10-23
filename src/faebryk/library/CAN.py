@@ -6,7 +6,7 @@ import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
-class CAN(fabll.ModuleInterface):
+class CAN(fabll.Node):
     """
     CAN bus interface
     """

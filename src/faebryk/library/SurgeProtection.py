@@ -11,7 +11,7 @@ from faebryk.libs.util import partition
 logger = logging.getLogger(__name__)
 
 
-class SurgeProtection(fabll.Module):
+class SurgeProtection(fabll.Node):
     tvs = fabll.list_f_field(0, F.TVS)()
     nested = fabll.list_f_field(0, fabll.Module)()
 

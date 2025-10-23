@@ -21,12 +21,12 @@ from test.common.resources.fabll_modules.Winbond_Elec_W25Q128JVSIQ import (
 logger = logging.getLogger(__name__)
 
 
-class RP2040_ReferenceDesign(fabll.Module):
+class RP2040_ReferenceDesign(fabll.Node):
     """Minimal required design for the Raspberry Pi RP2040 microcontroller.
     Based on the official Raspberry Pi RP2040 hardware design guidlines.
     """
 
-    class Jumper(fabll.Module):
+    class Jumper(fabll.Node):
         logic_out: F.ElectricLogic
 
         resistor: F.Resistor
