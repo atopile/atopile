@@ -19,6 +19,7 @@ from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
+    cast_assert,
     dataclass_as_kwargs,
     not_none,
     zip_dicts_by_key,
@@ -156,7 +157,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             # mro(): [Leaf, NodeType, object] is allowed (len==3),
             # deeper (len>3) is forbidden
             raise FaebrykApiException(
-                f"NodeType subclasses cannot themselves be subclassed "
+                f"{cls.__qualname__} subclasses cannot themselves be subclassed "
                 f"more than one level deep (found: {cls.__mro__})"
             )
         super().__init_subclass__()
@@ -253,6 +254,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 return self.get_root_id()
             raise FaebrykApiException("Node has no parent")
         return parent[1]
+
+    def get_type_name(self) -> str | None:
+        # TODO: move to EdgeType
+
+        if (type_edge := EdgeType.get_type_edge(bound_node=self.instance)) is None:
+            return None
+
+        type_node = EdgeType.get_type_node(edge=type_edge.edge())
+        type_bound = type_edge.g().bind(node=type_node)
+        type_name = type_bound.node().get_attr(key="type_identifier")
+        return cast_assert(str, type_name)
 
     def get_parent(self) -> tuple["Node", str] | None:
         parent_edge = EdgeComposition.get_parent_edge(bound_node=self.instance)

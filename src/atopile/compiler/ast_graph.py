@@ -19,7 +19,7 @@ from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
-from atopile.compiler.graph_mock import BoundNode, NodeHelpers
+from atopile.compiler.graph_mock import BoundNode
 from atopile.compiler.parse import parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
@@ -27,6 +27,7 @@ from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import Node
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.libs.util import cast_assert
 
 
 class ANTLRVisitor(AtoParserVisitor):
@@ -1023,9 +1024,25 @@ class ASTVisitor:
     Generates a TypeGraph from the AST.
     """
 
+    @dataclass(frozen=True)
+    class _ImportRef:
+        name: str
+        path: Path
+
+        def __repr__(self) -> str:
+            return f'ImportRef(name={self.name}, path="{self.path}")'
+
+    @dataclass(frozen=True)
+    class _Symbol:
+        name: str
+        import_ref: ASTVisitor._ImportRef | None = None
+
+        def __repr__(self) -> str:
+            return f"Symbol(name={self.name}, import_ref={self.import_ref})"
+
     @dataclass
     class _ScopeState:
-        symbols: set[str] = field(default_factory=set)
+        symbols: set[ASTVisitor._Symbol] = field(default_factory=set)
 
     class _ScopeStack:
         stack: list[ASTVisitor._ScopeState]
@@ -1042,11 +1059,14 @@ class ASTVisitor:
             finally:
                 self.stack.pop()
 
-        def add_symbol(self, symbol: str) -> None:
+        def add_symbol(self, symbol: ASTVisitor._Symbol) -> None:
             # TODO: think about this
 
             current_state = self.stack[-1]
-            if symbol in current_state.symbols:
+            if any(
+                symbol.name == existing_symbol.name
+                for existing_symbol in current_state.symbols
+            ):
                 raise DslException(f"Symbol {symbol} already defined in scope")
 
             current_state.symbols.add(symbol)
@@ -1063,11 +1083,12 @@ class ASTVisitor:
         MODULE_TEMPLATING = "MODULE_TEMPLATING"
         INSTANCE_TRAITS = "INSTANCE_TRAITS"
 
-    def __init__(self, ast_root: BoundNode) -> None:
+    def __init__(self, ast_root: AST.File, graph: GraphView) -> None:
         self._ast_root = ast_root
-        self._type_graph = TypeGraph.create(g=ast_root.g())
-        self._type_nodes: dict[str, BoundNode] = {}
+        self._graph = graph
+        self._type_graph = TypeGraph.create(g=graph)
         self._scope_stack = ASTVisitor._ScopeStack()
+        self._type_roots: list[BoundNode] = []
         self._experiments: set[ASTVisitor._Experiments] = set()
 
     @staticmethod
@@ -1111,43 +1132,117 @@ class ASTVisitor:
         print(f"Enabling experiment: {experiment}")
         self._experiments.add(experiment)
 
-    def build(self) -> tuple[TypeGraph, dict[str, BoundNode]]:
+    def build(self) -> list[BoundNode]:
         # must start with a File (for now)
-        assert NodeHelpers.get_type_name(self._ast_root) == AST.File.__qualname__
+        assert self._ast_root.isinstance(AST.File)
 
         self.visit(self._ast_root)
-        return self._type_graph, self._type_nodes
 
-    def visit(self, node: BoundNode):
-        node_type = NodeHelpers.get_type_name(node)
+        return self._type_roots
+
+    def visit(self, node: Node):
+        # TODO: less magic dispatch
+
+        node_type = cast_assert(str, node.get_type_name())
         print(f"Visiting node of type {node_type}")
 
         try:
             handler = getattr(self, f"visit_{node_type}")
         except AttributeError:
-            raise NotImplementedError(f"No handler for node type: {node_type}")
+            print(f"No handler for node type: {node_type}")
+            # raise NotImplementedError(f"No handler for node type: {node_type}")
+            return None
 
-        return handler(node)
+        bound_node = getattr(AST, node_type).bind_instance(node.instance)
+        return handler(bound_node)
 
-    def visit_File(self, node: BoundNode) -> BoundNode:
-        scope_node = NodeHelpers.get_child(node, "scope")
-        assert scope_node is not None
-        return self.visit(scope_node)
+    def visit_File(self, node: AST.File):
+        self.visit(node.scope.get())
 
-    def visit_Scope(self, node: BoundNode) -> BoundNode:
+    def visit_Scope(self, node: AST.Scope):
         with self._scope_stack.enter():
-            for scope_child in NodeHelpers.get_children(node).values():
+            for scope_child in node.stmts.get().as_list():
                 self.visit(scope_child)
 
-        return node
+    def visit_PragmaStmt(self, node: AST.PragmaStmt):
+        if (pragma_text := node.pragma.get().try_extract_constrained_literal()) is None:
+            raise DslException(f"Pragma statement has no pragma text: {node}")
+
+        pragma_text = cast_assert(str, pragma_text)
+        pragma_func_name, pragma_args = self._parse_pragma(pragma_text)
+
+        match pragma_func_name:
+            case ASTVisitor._Pragma.EXPERIMENT.value:
+                match pragma_args:
+                    case [ASTVisitor._Experiments.BRIDGE_CONNECT]:
+                        self._enable_experiment(ASTVisitor._Experiments.BRIDGE_CONNECT)
+                    case [ASTVisitor._Experiments.FOR_LOOP]:
+                        self._enable_experiment(ASTVisitor._Experiments.FOR_LOOP)
+                    case [ASTVisitor._Experiments.TRAITS]:
+                        self._enable_experiment(ASTVisitor._Experiments.TRAITS)
+                    case [ASTVisitor._Experiments.MODULE_TEMPLATING]:
+                        self._enable_experiment(
+                            ASTVisitor._Experiments.MODULE_TEMPLATING
+                        )
+                    case [ASTVisitor._Experiments.INSTANCE_TRAITS]:
+                        self._enable_experiment(ASTVisitor._Experiments.INSTANCE_TRAITS)
+                    case _:
+                        raise DslException(
+                            f"Experiment not recognized: `{pragma_text}`"
+                        )
+            case _:
+                raise DslException(f"Pragma function not recognized: `{pragma_text}`")
+
+    def visit_ImportStmt(self, node: AST.ImportStmt):
+        type_ref_name = cast_assert(
+            str, node.type_ref.get().name.get().try_extract_constrained_literal()
+        )
+
+        if (
+            path_str := node.path.get().path.get().try_extract_constrained_literal()
+        ) is not None:
+            symbol = ASTVisitor._Symbol(
+                name=type_ref_name,
+                import_ref=ASTVisitor._ImportRef(
+                    name=type_ref_name, path=Path(cast_assert(str, path_str))
+                ),
+            )
+        else:
+            symbol = ASTVisitor._Symbol(name=type_ref_name, import_ref=None)
+        self._scope_stack.add_symbol(symbol)
+
+    def visit_BlockDefinition(self, node: AST.BlockDefinition):
+        match node.block_type.get().try_extract_constrained_literal():
+            # TODO: enum
+            case "module":
+                module_name = cast_assert(
+                    str,
+                    node.type_ref.get().name.get().try_extract_constrained_literal(),
+                )
+
+                type_node = self._type_graph.add_type(
+                    identifier=cast_assert(str, module_name)
+                )
+
+                self._type_roots.append(type_node)
+
+                with self._scope_stack.enter():
+                    for stmt in node.scope.get().stmts.get().as_list():
+                        self.visit(stmt)
+                        # TODO: append to type_node
+
+            case other_kind:
+                raise NotImplementedError(f"Block kind not supported: {other_kind}")
 
 
-def build_file(source_file: Path) -> tuple[BoundNode, TypeGraph]:
+def build_file(source_file: Path) -> tuple[TypeGraph, AST.File, list[BoundNode]]:
     graph = GraphView.create()
     type_graph = TypeGraph.create(g=graph)
 
     tree = parse_text_as_file(source_file.read_text(), source_file)
-    ast_root = ANTLRVisitor(graph, type_graph, source_file).visit(tree).instance
-    # type_graph, type_nodes = ASTVisitor(ast_root).build()
+    ast_root = ANTLRVisitor(graph, type_graph, source_file).visit(tree)
+    assert isinstance(ast_root, AST.File)
 
-    return ast_root, type_graph
+    type_roots = ASTVisitor(ast_root, graph).build()
+
+    return type_graph, ast_root, type_roots

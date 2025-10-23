@@ -21,7 +21,7 @@ def ast_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
         EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
     ) or "<anonymous>"
 
-    type_name = NodeHelpers.get_type_name(node)
+    type_name = fabll.Node.bind_instance(node).get_type_name()
 
     attrs = node.node().get_attrs()
     attrs_parts = [
@@ -42,24 +42,60 @@ def ast_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
     return f".{edge_label}: {type_name}{attrs_text}{param_value}"
 
 
-def typegraph_renderer(n: BoundNode) -> str:
-    attrs = n.node().get_attrs()
-    attrs_text = [f"{k}={truncate_text(str(v))}" for k, v in attrs.items()]
-    type_name = attrs.get("type_identifier")
+def typegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
+    edge_label = (
+        EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
+    ) or "<anonymous>"
 
-    return f"{type_name}({', '.join(attrs_text)})"
+    type_name = fabll.Node.bind_instance(node).get_type_name()
+
+    attrs = node.node().get_attrs()
+    attrs_parts = [
+        f"{k}={truncate_text(str(v))}" for k, v in attrs.items() if k != "uuid"
+    ]
+    attrs_text = f"<{', '.join(attrs_parts)}>" if attrs_parts else ""
+
+    return f".{edge_label}: {type_name}{attrs_text}"
+
+
+def instancegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
+    edge_label = (
+        EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
+    ) or "<anonymous>"
+
+    type_name = fabll.Node.bind_instance(node).get_type_name()
+    return f".{edge_label}: {type_name}"
 
 
 if __name__ == "__main__":
-    ast_root, type_graph = build_file(Path("examples/esp32_minimal/esp32_minimal.ato"))
 
-    NodeHelpers.print_tree(
-        ast_root,
-        edge_types=[EdgeComposition],
-        renderer=ast_renderer,
-        exclude_node_types=[AST.SourceChunk.__qualname__]
-        if not RENDER_SOURCE_CHUNKS
-        else None,
+    def _section(title: str, sep: str = "\n"):
+        print(sep + f" {title} ".center(80, "="))
+
+    _section("Build logs", sep="")
+    type_graph, ast_root, type_roots = build_file(
+        Path("examples/esp32_minimal/esp32_minimal.ato")
     )
 
-    # NodeHelpers.print_tree(type_nodes["File"], renderer=typegraph_renderer)
+    _section("AST Graph")
+    NodeHelpers.print_tree(
+        ast_root.instance,
+        renderer=ast_renderer,
+        exclude_node_types=[AST.SourceChunk] if not RENDER_SOURCE_CHUNKS else None,
+    )
+
+    for i, type_root in enumerate(type_roots):
+        _section(f"Type Graph {i + 1}")
+
+        NodeHelpers.print_tree(type_root, renderer=typegraph_renderer)
+
+    app_type = next(
+        n
+        for n in type_roots
+        if n.node().get_attr(key="type_identifier") == "ESP32_MINIMAL"
+    )
+
+    app = type_graph.instantiate_node(type_node=app_type, attributes={})
+
+    _section("Instance Graph")
+    NodeHelpers.print_tree(app, renderer=instancegraph_renderer)

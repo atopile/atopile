@@ -8,93 +8,35 @@ current Python code are implemented.
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Callable, Generator, Sequence
-from typing import TypedDict, TypeVar
+from collections.abc import Callable, Sequence
 
 import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.node_type import EdgeType
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
+from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Node
 from faebryk.libs.util import Tree, cast_assert
-
-Literal = int | float | str | bool
-_ContextT = TypeVar("_ContextT")
-
-
-# TODO: @python3.15 (PEP 728) extra_items=Literal
-class LiteralArgs(TypedDict): ...
 
 
 class NodeHelpers:
     @staticmethod
-    def get_neighbours(
-        bound_node: BoundNode, edge_type: Edge.Type
-    ) -> Generator[BoundNode, None, None]:
-        neighbours: list[BoundNode] = []
-
-        def collect(acc: list[BoundNode], bound_edge: BoundEdge) -> None:
-            edge = bound_edge.edge()
-            if edge.source().is_same(other=bound_node.node()):
-                acc.append(bound_node.g().bind(node=edge.target()))
-            elif edge.target().is_same(other=bound_node.node()):
-                acc.append(bound_node.g().bind(node=edge.source()))
-
-        bound_node.visit_edges_of_type(edge_type=edge_type, ctx=neighbours, f=collect)
-        yield from neighbours
-
-    @staticmethod
-    def get_children(bound_node: BoundNode) -> dict[str, BoundNode]:
-        children: dict[str, BoundNode] = {}
-
-        def collect(acc: dict[str, BoundNode], bound_edge: BoundEdge) -> None:
-            edge = bound_edge.edge()
-            if edge.source().is_same(other=bound_node.node()):
-                # TODO: handle unnamed children
-                acc[EdgeComposition.get_name(edge=edge)] = bound_edge.g().bind(
-                    node=edge.target()
-                )
-
-        bound_node.visit_edges_of_type(
-            edge_type=EdgeComposition.get_tid(), ctx=children, f=collect
-        )
-
-        return children
-
-    @staticmethod
-    def get_child(bound_node: BoundNode, identifier: str) -> BoundNode | None:
-        return NodeHelpers.get_children(bound_node).get(identifier)
-
-    @staticmethod
-    def get_type_name(n: BoundNode) -> str | None:
-        if (type_edge := EdgeType.get_type_edge(bound_node=n)) is None:
-            return None
-
-        type_node = EdgeType.get_type_node(edge=type_edge.edge())
-        type_bound = type_edge.g().bind(node=type_node)
-        type_name = type_bound.node().get_attr(key="type_identifier")
-        return cast_assert(str, type_name)
-
-    @staticmethod
     def print_tree(
         bound_node: BoundNode,
         renderer: Callable[[BoundEdge | None, BoundNode], str] | None = None,
-        edge_types: Sequence[type] | None = None,
-        exclude_node_types: Sequence[str] | None = None,
+        edge_types: Sequence[type] = (EdgeComposition,),
+        exclude_node_types: Sequence[type] | None = None,
     ) -> None:
-        edge_type_classes: Sequence[type] = edge_types or (EdgeComposition,)
         edge_type_ids: list[int] = []
-        for edge_type_cls in edge_type_classes:
+        for edge_type_cls in edge_types:
             get_tid = getattr(edge_type_cls, "get_tid", None)
             if not callable(get_tid):
                 raise AttributeError(
-                    f"{edge_type_cls!r} must expose a callable get_tid() returning an edge type id"
+                    f"{edge_type_cls!r} must expose a callable get_tid()"
                 )
             edge_type_ids.append(cast_assert(int, get_tid()))
 
-        exclude_types = frozenset(exclude_node_types or ())
+        exclude_types = frozenset([t.__qualname__ for t in exclude_node_types or ()])
 
         if exclude_types:
-            root_type = NodeHelpers.get_type_name(bound_node)
+            root_type = fabll.Node.bind_instance(bound_node).get_type_name()
             if root_type is not None and root_type in exclude_types:
                 return
 
@@ -121,7 +63,9 @@ class NodeHelpers:
                 if edge.source().is_same(other=source_node):
                     child_node = graph_view.bind(node=edge.target())
                     if exclude_types:
-                        child_type = NodeHelpers.get_type_name(child_node)
+                        child_type = fabll.Node.bind_instance(
+                            child_node
+                        ).get_type_name()
                         if child_type is not None and child_type in exclude_types:
                             return
                     acc.append((bound_edge, child_node))
