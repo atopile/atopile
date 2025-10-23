@@ -2020,7 +2020,6 @@ fn wrap_nodebuilder_init() type {
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            _ = self;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
