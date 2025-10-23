@@ -321,6 +321,12 @@ pub const PathFinder = struct {
 
     // Build the raw hierarchy element sequence from a path's composition edges
     // Returns a list of hierarchy elements representing each UP/DOWN traversal
+    fn resolve_node_type(g: *GraphView, node: NodeReference) !NodeReference {
+        const bound_node = g.bind(node);
+        const type_edge = EdgeType.get_type_edge(bound_node) orelse return error.MissingNodeType;
+        return EdgeType.get_type_node(type_edge.edge);
+    }
+
     fn build_hierarchy_elements(
         allocator: std.mem.Allocator,
         path: *const BFSPath,
@@ -329,6 +335,7 @@ pub const PathFinder = struct {
         errdefer elements.deinit();
 
         var current_node = path.start_node;
+        const g = path.start_node.g;
 
         for (path.path.edges.items) |edge| {
             if (edge.attributes.edge_type == EdgeComposition.tid) {
@@ -344,6 +351,8 @@ pub const PathFinder = struct {
                 const elem = HeirarchyElement{
                     .edge = edge,
                     .traverse_direction = direction,
+                    .parent_type_node = try resolve_node_type(g, EdgeComposition.get_parent_node(edge)),
+                    .child_type_node = try resolve_node_type(g, EdgeComposition.get_child_node(edge)),
                 };
                 try elements.append(elem);
             } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {

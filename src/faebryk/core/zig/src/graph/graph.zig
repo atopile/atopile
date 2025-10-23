@@ -529,6 +529,8 @@ pub const HeirarchyTraverseDirection = enum {
 pub const HeirarchyElement = struct {
     edge: EdgeReference,
     traverse_direction: HeirarchyTraverseDirection,
+    parent_type_node: NodeReference,
+    child_type_node: NodeReference,
 
     pub fn match(self: *const @This(), other: *const @This()) bool {
         // Match if same parent/child/name but opposite directions (up vs down)
@@ -537,9 +539,12 @@ pub const HeirarchyElement = struct {
             (self.traverse_direction == .down and other.traverse_direction == .up);
 
         // Compare structural properties from the edges
-        const parent_type_match = (self.edge.source.attributes.fake_type orelse 0) == (other.edge.source.attributes.fake_type orelse 0);
-        const child_type_match = (self.edge.target.attributes.fake_type orelse 0) == (other.edge.target.attributes.fake_type orelse 0);
-        const child_name_match = std.mem.eql(u8, self.edge.attributes.name orelse "", other.edge.attributes.name orelse "");
+        const parent_type_match = Node.is_same(self.parent_type_node, other.parent_type_node);
+        const child_type_match = Node.is_same(self.child_type_node, other.child_type_node);
+        const child_name_match = switch (self.traverse_direction) {
+            .horizontal => true, // edge connection interfaces (horizontal edges in heirarchy) shouldn't care about the children names as long as they're the same type
+            .up, .down => std.mem.eql(u8, self.edge.attributes.name orelse "", other.edge.attributes.name orelse ""),
+        };
 
         return parent_type_match and child_type_match and child_name_match and opposite_directions;
     }

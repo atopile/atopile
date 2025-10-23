@@ -5,6 +5,8 @@ const std = @import("std");
 const PathFinder = @import("pathfinder.zig").PathFinder;
 const EdgeComposition = @import("composition.zig").EdgeComposition;
 const edgebuilder_mod = @import("edgebuilder.zig");
+const TypeGraph = @import("typegraph.zig").TypeGraph;
+const EdgeType = @import("node_type.zig").EdgeType;
 
 const Node = graph.Node;
 const NodeReference = graph.NodeReference;
@@ -264,19 +266,20 @@ test "down_connect" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const EP_1 = g.create_and_insert_node();
-    const LV_1 = g.create_and_insert_node();
-    const HV_1 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const ElectricPowerType = try tg.add_type("ElectricPower");
+    const ElectricalType = try tg.add_type("Electrical");
 
-    _ = EdgeComposition.add_child(EP_1, LV_1.node, "LV");
-    _ = EdgeComposition.add_child(EP_1, HV_1.node, "HV");
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
 
-    const EP_2 = g.create_and_insert_node();
-    const LV_2 = g.create_and_insert_node();
-    const HV_2 = g.create_and_insert_node();
+    const EP_1 = try tg.instantiate_node(ElectricPowerType);
+    const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
+    const LV_1 = EdgeComposition.get_child_by_identifier(EP_1, "LV").?;
 
-    _ = EdgeComposition.add_child(EP_2, LV_2.node, "LV");
-    _ = EdgeComposition.add_child(EP_2, HV_2.node, "HV");
+    const EP_2 = try tg.instantiate_node(ElectricPowerType);
+    const HV_2 = EdgeComposition.get_child_by_identifier(EP_2, "HV").?;
+    const LV_2 = EdgeComposition.get_child_by_identifier(EP_2, "LV").?;
 
     _ = try EdgeInterfaceConnection.connect(EP_1, EP_2);
 
@@ -305,12 +308,15 @@ test "no_connect_cases" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
-    const bn4 = g.create_and_insert_node();
-    const bn5 = g.create_and_insert_node();
-    const bn6 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const GenericType = try tg.add_type("Generic");
+
+    const bn1 = try tg.instantiate_node(GenericType);
+    const bn2 = try tg.instantiate_node(GenericType);
+    const bn3 = try tg.instantiate_node(GenericType);
+    const bn4 = try tg.instantiate_node(GenericType);
+    const bn5 = try tg.instantiate_node(GenericType);
+    const bn6 = try tg.instantiate_node(GenericType);
 
     _ = EdgeComposition.add_child(bn1, bn2.node, null);
     _ = EdgeComposition.add_child(bn3, bn2.node, null);
@@ -381,51 +387,55 @@ test "heirarchy_short" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const ElectricPowerType = try tg.add_type("ElectricPower");
+    const ElectricalType = try tg.add_type("Electrical");
+    const LinkType = try tg.add_type("Link");
 
-    _ = EdgeComposition.add_child(bn1, bn2.node, "HV");
-    _ = EdgeComposition.add_child(bn1, bn3.node, "LV");
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
 
-    const paths1 = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
-    defer paths1.deinit();
-    try std.testing.expect(paths1.paths.items.len == 0);
+    const electric_power = try tg.instantiate_node(ElectricPowerType);
+    const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
+    const lv_pin = EdgeComposition.get_child_by_identifier(electric_power, "LV").?;
 
-    const bn4 = g.create_and_insert_node();
-    const bn5 = g.create_and_insert_node();
+    const parent_to_lv = try EdgeInterfaceConnection.is_connected_to(a, electric_power, lv_pin);
+    defer parent_to_lv.deinit();
+    try std.testing.expect(parent_to_lv.paths.items.len == 0);
 
-    _ = try EdgeInterfaceConnection.connect(bn2, bn4);
-    _ = try EdgeInterfaceConnection.connect(bn4, bn5);
-    _ = try EdgeInterfaceConnection.connect(bn5, bn3);
+    const link_a = try tg.instantiate_node(LinkType);
+    const link_b = try tg.instantiate_node(LinkType);
 
-    const paths2 = try EdgeInterfaceConnection.is_connected_to(a, bn2, bn3);
-    defer paths2.deinit();
-    try std.testing.expect(paths2.paths.items.len == 1);
+    _ = try EdgeInterfaceConnection.connect(hv_pin, link_a);
+    _ = try EdgeInterfaceConnection.connect(link_a, link_b);
+    _ = try EdgeInterfaceConnection.connect(link_b, lv_pin);
+
+    const hv_to_lv = try EdgeInterfaceConnection.is_connected_to(a, hv_pin, lv_pin);
+    defer hv_to_lv.deinit();
+    try std.testing.expect(hv_to_lv.paths.items.len == 1);
 }
 
 test "shallow_filter_allows_alternative_route" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const start_parent = g.create_and_insert_node();
-    start_parent.node.attributes.name = "start_parent";
-    const start_child = g.create_and_insert_node();
-    start_child.node.attributes.name = "start_child";
-    const target_parent = g.create_and_insert_node();
-    target_parent.node.attributes.name = "target_parent";
-    const target_child = g.create_and_insert_node();
-    target_child.node.attributes.name = "target_child";
-    const bus = g.create_and_insert_node();
-    bus.node.attributes.name = "bus";
+    var tg = TypeGraph.init(&g);
+    const ElectricPowerType = try tg.add_type("ElectricPower");
+    const ElectricalType = try tg.add_type("Electrical");
 
-    _ = EdgeComposition.add_child(start_parent, start_child.node, "pin");
-    _ = EdgeComposition.add_child(target_parent, target_child.node, "pin");
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
+
+    const start_parent = try tg.instantiate_node(ElectricPowerType);
+    const start_child = EdgeComposition.get_child_by_identifier(start_parent, "HV").?;
+    const target_parent = try tg.instantiate_node(ElectricPowerType);
+    const target_child = EdgeComposition.get_child_by_identifier(target_parent, "HV").?;
+    const bus = try tg.instantiate_node(ElectricalType);
 
     _ = try EdgeInterfaceConnection.connect_shallow(start_parent, target_parent);
 
-    _ = try EdgeInterfaceConnection.connect(start_parent, bus);
-    _ = try EdgeInterfaceConnection.connect(bus, target_parent);
+    _ = try EdgeInterfaceConnection.connect(start_child, bus);
+    _ = try EdgeInterfaceConnection.connect(bus, target_child);
 
     const paths = try EdgeInterfaceConnection.is_connected_to(a, start_child, target_child);
     defer paths.deinit();
@@ -510,12 +520,15 @@ test "shallow_edges" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
-    const bn4 = g.create_and_insert_node();
-    const bn5 = g.create_and_insert_node();
-    const bn6 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const GenericType = try tg.add_type("Generic");
+
+    const bn1 = try tg.instantiate_node(GenericType);
+    const bn2 = try tg.instantiate_node(GenericType);
+    const bn3 = try tg.instantiate_node(GenericType);
+    const bn4 = try tg.instantiate_node(GenericType);
+    const bn5 = try tg.instantiate_node(GenericType);
+    const bn6 = try tg.instantiate_node(GenericType);
 
     _ = EdgeComposition.add_child(bn1, bn2.node, null);
     _ = EdgeComposition.add_child(bn2, bn3.node, null);
@@ -535,25 +548,23 @@ test "shallow_edges" {
 }
 
 test "type_graph_pathfinder" {
-    const TypeGraph = @import("typegraph.zig").TypeGraph;
-    const EdgeType = @import("node_type.zig").EdgeType;
-
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
     var tg = TypeGraph.init(&g);
 
-    // Build I2C type hierarchy: ElectricLogic -> I2C (scl, sda) -> Sensor
-    const ElectricLogic = try tg.add_type("ElectricLogic");
+    // Build I2C type hierarchy: Sensor -> I2C -> {SCL, SDA}
     const I2C = try tg.add_type("I2C");
     const Sensor = try tg.add_type("Sensor");
+    const I2C_SCL = try tg.add_type("I2C_SCL");
+    const I2C_SDA = try tg.add_type("I2C_SDA");
 
-    // I2C has scl and sda lines (both ElectricLogic)
-    _ = try tg.add_make_child(I2C, ElectricLogic, "scl");
-    _ = try tg.add_make_child(I2C, ElectricLogic, "sda");
+    // I2C has dedicated SCL and SDA child types
+    _ = try tg.add_make_child(I2C, I2C_SCL, null);
+    _ = try tg.add_make_child(I2C, I2C_SDA, null);
 
     // Sensor has an I2C interface
-    _ = try tg.add_make_child(Sensor, I2C, "i2c");
+    _ = try tg.add_make_child(Sensor, I2C, null);
 
     // Create sensor instances
     const sensor1 = try tg.instantiate_node(Sensor);
@@ -561,22 +572,22 @@ test "type_graph_pathfinder" {
     const sensor3 = try tg.instantiate_node(Sensor);
 
     // Get I2C interfaces from each sensor
-    const sensor1_i2c = EdgeComposition.get_child_by_identifier(sensor1, "i2c").?;
-    const sensor2_i2c = EdgeComposition.get_child_by_identifier(sensor2, "i2c").?;
-    const sensor3_i2c = EdgeComposition.get_child_by_identifier(sensor3, "i2c").?;
+    const sensor1_i2c = EdgeComposition.try_get_single_child_of_type(sensor1, I2C.node).?;
+    const sensor2_i2c = EdgeComposition.try_get_single_child_of_type(sensor2, I2C.node).?;
+    const sensor3_i2c = EdgeComposition.try_get_single_child_of_type(sensor3, I2C.node).?;
 
     // Get SCL and SDA lines
-    const sensor1_scl = EdgeComposition.get_child_by_identifier(sensor1_i2c, "scl").?;
-    const sensor1_sda = EdgeComposition.get_child_by_identifier(sensor1_i2c, "sda").?;
-    const sensor2_scl = EdgeComposition.get_child_by_identifier(sensor2_i2c, "scl").?;
-    const sensor2_sda = EdgeComposition.get_child_by_identifier(sensor2_i2c, "sda").?;
-    const sensor3_scl = EdgeComposition.get_child_by_identifier(sensor3_i2c, "scl").?;
-    const sensor3_sda = EdgeComposition.get_child_by_identifier(sensor3_i2c, "sda").?;
+    const sensor1_scl = EdgeComposition.try_get_single_child_of_type(sensor1_i2c, I2C_SCL.node).?;
+    const sensor1_sda = EdgeComposition.try_get_single_child_of_type(sensor1_i2c, I2C_SDA.node).?;
+    const sensor2_scl = EdgeComposition.try_get_single_child_of_type(sensor2_i2c, I2C_SCL.node).?;
+    const sensor2_sda = EdgeComposition.try_get_single_child_of_type(sensor2_i2c, I2C_SDA.node).?;
+    const sensor3_scl = EdgeComposition.try_get_single_child_of_type(sensor3_i2c, I2C_SCL.node).?;
+    const sensor3_sda = EdgeComposition.try_get_single_child_of_type(sensor3_i2c, I2C_SDA.node).?;
 
     // Verify types
     try std.testing.expect(EdgeType.is_node_instance_of(sensor1_i2c, I2C.node));
-    try std.testing.expect(EdgeType.is_node_instance_of(sensor1_scl, ElectricLogic.node));
-    try std.testing.expect(EdgeType.is_node_instance_of(sensor1_sda, ElectricLogic.node));
+    try std.testing.expect(EdgeType.is_node_instance_of(sensor1_scl, I2C_SCL.node));
+    try std.testing.expect(EdgeType.is_node_instance_of(sensor1_sda, I2C_SDA.node));
 
     // Test 1: Connect I2C bus normally (sensor1.scl <-> sensor2.scl)
     _ = try EdgeInterfaceConnection.connect(sensor1_scl, sensor2_scl);
@@ -609,11 +620,11 @@ test "type_graph_pathfinder" {
     try std.testing.expect(paths_scl_shallow.paths.items.len == 0);
     std.debug.print("✓ Shallow link blocks child->parent->shallow: found {} path(s)\n", .{paths_scl_shallow.paths.items.len});
 
-    // Test 4: Type mismatch - I2C to ElectricLogic
+    // Test 4: Type mismatch - I2C to I2C_SCL
     const paths_wrong_type = try EdgeInterfaceConnection.is_connected_to(a, sensor1_i2c, sensor1_scl);
     defer paths_wrong_type.deinit();
     try std.testing.expect(paths_wrong_type.paths.items.len == 0);
-    std.debug.print("✓ Type mismatch filtered (I2C ≠ ElectricLogic): found {} path(s)\n", .{paths_wrong_type.paths.items.len});
+    std.debug.print("✓ Type mismatch filtered (I2C ≠ I2C_SCL): found {} path(s)\n", .{paths_wrong_type.paths.items.len});
 
     // Test 5: Multi-hop on same bus (sensor1.scl -> sensor2.scl, sensor2.sda -> sensor3.sda via shallow)
     // First connect SDA lines normally
@@ -629,9 +640,9 @@ test "type_graph_pathfinder" {
     // Test 6: Normal (non-shallow) I2C connection allows child traversal
     // Create a 4th sensor and connect its I2C with a normal (non-shallow) edge
     const sensor4 = try tg.instantiate_node(Sensor);
-    const sensor4_i2c = EdgeComposition.get_child_by_identifier(sensor4, "i2c").?;
-    const sensor4_scl = EdgeComposition.get_child_by_identifier(sensor4_i2c, "scl").?;
-    const sensor4_sda = EdgeComposition.get_child_by_identifier(sensor4_i2c, "sda").?;
+    const sensor4_i2c = EdgeComposition.try_get_single_child_of_type(sensor4, I2C.node).?;
+    const sensor4_scl = EdgeComposition.try_get_single_child_of_type(sensor4_i2c, I2C_SCL.node).?;
+    const sensor4_sda = EdgeComposition.try_get_single_child_of_type(sensor4_i2c, I2C_SDA.node).?;
 
     // Connect sensor1.i2c to sensor4.i2c with NORMAL (non-shallow) connection
     _ = try EdgeInterfaceConnection.connect(sensor1_i2c, sensor4_i2c);
@@ -650,7 +661,7 @@ test "type_graph_pathfinder" {
     try std.testing.expect(paths_sda_hierarchy.paths.items.len == 1);
     std.debug.print("✓ Normal I2C link allows SDA->I2C->I2C->SDA: found {} path(s)\n", .{paths_sda_hierarchy.paths.items.len});
 
-    // Test 6c: But SCL should NOT connect to SDA (different child names, even through hierarchy)
+    // Test 6c: But SCL should NOT connect to SDA (different child types, even through hierarchy)
     const paths_scl_to_sda_hierarchy = try EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor4_sda);
     defer paths_scl_to_sda_hierarchy.deinit();
     try std.testing.expect(paths_scl_to_sda_hierarchy.paths.items.len == 0);
