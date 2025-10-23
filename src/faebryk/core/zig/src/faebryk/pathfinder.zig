@@ -525,20 +525,20 @@ pub const PathFinder = struct {
 test "visit_paths_bfs" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
-    const n1 = try Node.init(a);
-    const n2 = try Node.init(a);
-    const n3 = try Node.init(a);
-    const n4 = try Node.init(a);
-    const n5 = try Node.init(a);
-    const n6 = try Node.init(a);
-    const n7 = try Node.init(a);
-    const e1 = try Edge.init(a, n1, n2, 1759242069);
-    const e2 = try Edge.init(a, n1, n3, 1759242069);
-    const e3 = try Edge.init(a, n2, n4, 1759242068);
-    const e4 = try Edge.init(a, n2, n5, 1759242069);
-    const e5 = try Edge.init(a, n5, n6, 1759242069);
-    const e6 = try Edge.init(a, n6, n1, 1759242069);
-    const e7 = try Edge.init(a, n4, n7, 1759242069);
+    const n1 = Node.init(a);
+    const n2 = Node.init(a);
+    const n3 = Node.init(a);
+    const n4 = Node.init(a);
+    const n5 = Node.init(a);
+    const n6 = Node.init(a);
+    const n7 = Node.init(a);
+    const e1 = Edge.init(a, n1, n2, 1759242069);
+    const e2 = Edge.init(a, n1, n3, 1759242069);
+    const e3 = Edge.init(a, n2, n4, 1759242068);
+    const e4 = Edge.init(a, n2, n5, 1759242069);
+    const e5 = Edge.init(a, n5, n6, 1759242069);
+    const e6 = Edge.init(a, n6, n1, 1759242069);
+    const e7 = Edge.init(a, n4, n7, 1759242069);
     n1.attributes.uuid = 1001;
     n2.attributes.uuid = 1002;
     n3.attributes.uuid = 1003;
@@ -555,20 +555,20 @@ test "visit_paths_bfs" {
     e7.attributes.uuid = 2007;
     defer g.deinit();
 
-    const bn1 = try g.insert_node(n1);
-    const bn2 = try g.insert_node(n2);
-    const bn4 = try g.insert_node(n4);
-    _ = try g.insert_node(n3);
-    _ = try g.insert_node(n5);
-    _ = try g.insert_node(n6);
-    _ = try g.insert_node(n7);
-    _ = try g.insert_edge(e1);
-    _ = try g.insert_edge(e2);
-    _ = try g.insert_edge(e3);
-    _ = try g.insert_edge(e4);
-    _ = try g.insert_edge(e5);
-    _ = try g.insert_edge(e6);
-    _ = try g.insert_edge(e7);
+    const bn1 = g.insert_node(n1);
+    const bn2 = g.insert_node(n2);
+    const bn4 = g.insert_node(n4);
+    _ = g.insert_node(n3);
+    _ = g.insert_node(n5);
+    _ = g.insert_node(n6);
+    _ = g.insert_node(n7);
+    _ = g.insert_edge(e1);
+    _ = g.insert_edge(e2);
+    _ = g.insert_edge(e3);
+    _ = g.insert_edge(e4);
+    _ = g.insert_edge(e5);
+    _ = g.insert_edge(e6);
+    _ = g.insert_edge(e7);
 
     var pf1 = PathFinder.init(a);
     defer pf1.deinit();
@@ -595,17 +595,17 @@ test "filter_heirarchy_stack" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
 
-    const bn1 = try g.insert_node(try Node.init(g.allocator));
+    const bn1 = g.insert_node(Node.init(g.allocator));
     bn1.node.attributes.name = "node1";
-    const bn2 = try g.insert_node(try Node.init(g.allocator));
+    const bn2 = g.insert_node(Node.init(g.allocator));
     bn2.node.attributes.name = "node2";
-    const bn3 = try g.insert_node(try Node.init(g.allocator));
+    const bn3 = g.insert_node(Node.init(g.allocator));
     bn3.node.attributes.name = "node3";
-    const bn4 = try g.insert_node(try Node.init(g.allocator));
+    const bn4 = g.insert_node(Node.init(g.allocator));
     bn4.node.attributes.name = "node1";
-    const be1 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
-    const be2 = try g.insert_edge(try Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
-    const be3 = try g.insert_edge(try Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
+    const be1 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
+    const be2 = g.insert_edge(Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
+    const be3 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
     var path = Path.init(&g);
 

@@ -199,14 +199,18 @@ pub const NodeAttributes = struct {
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
         self.dynamic.visit(ctx, f);
     }
+
+    pub fn put(self: *@This(), identifier: str, value: Literal) void {
+        self.dynamic.values.put(identifier, value) catch @panic("OOM dynamic attributes put");
+    }
 };
 
 pub const Node = struct {
     attributes: NodeAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator) !NodeReference {
-        const node = try allocator.create(Node);
+    pub fn init(allocator: std.mem.Allocator) NodeReference {
+        const node = allocator.create(Node) catch @panic("Failed to allocate Node");
 
         // Attributes
         node.attributes.uuid = UUID.gen_uuid(node);
@@ -228,6 +232,10 @@ pub const Node = struct {
 
     pub fn is_same(N1: NodeReference, N2: NodeReference) bool {
         return UUID.equals(N1.attributes.uuid, N2.attributes.uuid);
+    }
+
+    pub fn get_uuid(self: *@This()) UUID.T {
+        return self.attributes.uuid;
     }
 };
 
@@ -298,8 +306,8 @@ pub const Edge = struct {
     attributes: EdgeAttributes,
     _ref_count: GraphReferenceCounter,
 
-    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: EdgeType) !*@This() {
-        var edge = try allocator.create(Edge);
+    pub fn init(allocator: std.mem.Allocator, source: NodeReference, target: NodeReference, edge_type: EdgeType) *@This() {
+        var edge = allocator.create(Edge) catch @panic("OOM creating Edge");
         edge.source = source;
         edge.target = target;
 
@@ -333,7 +341,7 @@ pub const Edge = struct {
         if (type_set.get(edge_type)) |_| {
             return error.DuplicateType;
         }
-        try type_set.put(edge_type, {});
+        type_set.put(edge_type, {}) catch @panic("OOM registering edge type");
     }
 
     pub fn is_instance(E: EdgeReference, edge_type: EdgeType) bool {
@@ -686,6 +694,7 @@ pub const GraphView = struct {
     allocator: std.mem.Allocator,
     nodes: std.ArrayList(NodeReference),
     edges: std.ArrayList(EdgeReference),
+    self_node: NodeReference,
 
     // caches for fast lookups ---
     // fast Node->Edges lookup
@@ -703,14 +712,17 @@ pub const GraphView = struct {
     // => operations all through graph, no graph reference in Nodes or Edges
 
     pub fn init(allocator: std.mem.Allocator) @This() {
-        return .{
+        var out = GraphView{
             .base = null,
             .allocator = allocator,
             .nodes = std.ArrayList(NodeReference).init(allocator),
             .edges = std.ArrayList(EdgeReference).init(allocator),
             .neighbors = NodeRefMap.T(std.ArrayList(EdgeReference)).init(allocator),
             .neighbor_by_type = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
+            .self_node = Node.init(allocator),
         };
+        _ = out.insert_node(out.self_node);
+        return out;
     }
 
     pub fn deinit(g: *@This()) void {
@@ -746,18 +758,28 @@ pub const GraphView = struct {
         g.nodes.deinit();
     }
 
-    pub fn insert_node(g: *@This(), node: NodeReference) !BoundNodeReference {
-        try g.nodes.append(node);
+    pub fn insert_node(g: *@This(), node: NodeReference) BoundNodeReference {
+        g.nodes.append(node) catch {
+            @panic("Failed to append node");
+        };
         node._ref_count.inc(g);
 
         // handle caches
-        try g.neighbors.put(node, std.ArrayList(EdgeReference).init(g.allocator));
-        try g.neighbor_by_type.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator));
+        g.neighbors.put(node, std.ArrayList(EdgeReference).init(g.allocator)) catch {
+            @panic("Failed to allocate ArrayList");
+        };
+        g.neighbor_by_type.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator)) catch {
+            @panic("Failed to allocate EdgeTypeMap");
+        };
 
         return BoundNodeReference{
             .node = node,
             .g = g,
         };
+    }
+
+    pub fn create_and_insert_node(g: *@This()) BoundNodeReference {
+        return g.insert_node(Node.init(g.allocator));
     }
 
     pub fn bind(g: *@This(), node: NodeReference) BoundNodeReference {
@@ -768,24 +790,24 @@ pub const GraphView = struct {
         };
     }
 
-    pub fn insert_edge(g: *@This(), edge: EdgeReference) !BoundEdgeReference {
-        try g.edges.append(edge);
+    pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
+        g.edges.append(edge) catch @panic("OOM appending edge");
         edge._ref_count.inc(g);
 
         // handle caches
         const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
         if (!from_neighbors.contains(edge.attributes.edge_type)) {
-            try from_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
+            from_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type");
         }
-        try g.neighbors.getPtr(edge.source).?.append(edge);
-        try from_neighbors.getPtr(edge.attributes.edge_type).?.append(edge);
+        g.neighbors.getPtr(edge.source).?.append(edge) catch @panic("OOM appending neighbor edge");
+        from_neighbors.getPtr(edge.attributes.edge_type).?.append(edge) catch @panic("OOM appending neighbor type edge");
 
         const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
         if (!to_neighbors.contains(edge.attributes.edge_type)) {
-            try to_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator));
+            to_neighbors.put(edge.attributes.edge_type, std.ArrayList(EdgeReference).init(g.allocator)) catch @panic("OOM inserting reverse neighbor type");
         }
-        try g.neighbors.getPtr(edge.target).?.append(edge);
-        try to_neighbors.getPtr(edge.attributes.edge_type).?.append(edge);
+        g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM appending reverse neighbor edge");
+        to_neighbors.getPtr(edge.attributes.edge_type).?.append(edge) catch @panic("OOM appending reverse neighbor type edge");
 
         return BoundEdgeReference{
             .edge = edge,
@@ -1037,19 +1059,18 @@ pub const GraphView = struct {
 test "basic" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
+    defer g.deinit();
     const TestLinkType = 1759269396;
     try Edge.register_type(TestLinkType);
 
-    const n1 = try Node.init(a);
-    defer n1.deinit();
-    const n2 = try Node.init(a);
-    defer n2.deinit();
-    const e12 = try Edge.init(a, n1, n2, TestLinkType);
-    defer e12.deinit();
+    const n1 = Node.init(a);
+    const n2 = Node.init(a);
+    const e12 = Edge.init(a, n1, n2, TestLinkType);
+    // no deinit defer required, since graph will deinit all nodes and edges if they reach 0
 
-    _ = try g.insert_node(n1);
-    _ = try g.insert_node(n2);
-    _ = try g.insert_edge(e12);
+    _ = g.insert_node(n1);
+    _ = g.insert_node(n2);
+    _ = g.insert_edge(e12);
 
     const edges = g.get_edges(n1).?;
     try std.testing.expectEqual(edges.items.len, 1);
@@ -1059,12 +1080,6 @@ test "basic" {
     try std.testing.expectEqual(n1._ref_count.ref_count, 1);
     try std.testing.expectEqual(n2._ref_count.ref_count, 1);
     try std.testing.expectEqual(e12._ref_count.ref_count, 1);
-
-    // has to be deleted first
-    g.deinit();
-    try std.testing.expectEqual(n1._ref_count.ref_count, 0);
-    try std.testing.expectEqual(n2._ref_count.ref_count, 0);
-    try std.testing.expectEqual(e12._ref_count.ref_count, 0);
 }
 
 test "BFSPath cloneAndExtend preserves start metadata" {
