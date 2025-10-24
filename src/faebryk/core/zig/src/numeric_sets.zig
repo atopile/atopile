@@ -26,9 +26,9 @@ pub const Numeric = struct {
             .node = node,
         };
     }
-
-    pub fn get_value(self: Numeric) f64 {
-        return self.node.node.attributes.dynamic.values.get(value_identifier).?.Float;
+    pub fn get_value(self: Numeric) !f64 {
+        const literal = self.node.node.attributes.dynamic.values.get(value_identifier) orelse return error.ValueNotFound;
+        return literal.Float;
     }
 };
 
@@ -2090,12 +2090,11 @@ test "Numeric_Set.op_lt_intervals returns false when lhs is equal to rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const val = 1.0;
     const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
-        try _Continuous.init(&g, val, val),
+        try _Continuous.init(&g, 1.0, 2.0),
     }, &[_]Numeric_Set{});
     const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
-        try _Continuous.init(&g, val, val),
+        try _Continuous.init(&g, 1.0, 2.0),
     }, &[_]Numeric_Set{});
     const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
