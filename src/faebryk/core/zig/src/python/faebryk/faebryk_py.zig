@@ -924,26 +924,6 @@ fn wrap_edge_operand(root: *py.PyObject) void {
     edge_operand_type = type_registry.getRegisteredTypeObject("EdgeOperand");
 }
 
-fn wrap_edge_interface_connection_build() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "build",
-            .doc = "Return creation attributes for an interface connection edge",
-            .args_def = struct {},
-            .static = true,
-        };
-
-        pub fn impl(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const allocator = std.heap.c_allocator;
-            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
-                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
-                return null;
-            };
-            attributes.* = faebryk.interface.EdgeInterfaceConnection.build();
-            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
-        }
-    };
-}
 
 fn wrap_edge_interface_connection_get_tid() type {
     return struct {
@@ -1142,39 +1122,29 @@ fn wrap_edge_interface_connection_is_connected_to() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = kwarg_obj.source.g.allocator;
-            const paths = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
-                allocator,
+            var paths = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
+                kwarg_obj.source.g.allocator,
                 kwarg_obj.source.*,
                 kwarg_obj.target.*,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to find paths");
                 return null;
             };
+            defer paths.deinit();
 
             // Convert paths to Python list
-            const list = py.PyList_New(@intCast(paths.len));
-            if (list == null) {
-                for (paths) |*path| path.path.deinit();
-                allocator.free(paths);
-                return null;
-            }
+            const list = py.PyList_New(@intCast(paths.paths.items.len));
+            if (list == null) return null;
 
-            for (paths, 0..) |path, i| {
+            for (paths.paths.items, 0..) |path, i| {
                 // For now, just return path length as an int
                 // TODO: wrap BFSPath properly
                 const path_len = py.PyLong_FromLongLong(@intCast(path.path.edges.items.len));
                 if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
-                    for (paths) |*p| p.path.deinit();
-                    allocator.free(paths);
                     py.Py_DECREF(list.?);
                     return null;
                 }
             }
-
-            // Clean up paths after converting to Python
-            for (paths) |*path| path.path.deinit();
-            allocator.free(paths);
 
             return list;
         }
@@ -1199,38 +1169,28 @@ fn wrap_edge_interface_connection_get_connected() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const allocator = kwarg_obj.source.g.allocator;
-            const paths = faebryk.interface.EdgeInterfaceConnection.get_connected(
-                allocator,
+            var paths = faebryk.interface.EdgeInterfaceConnection.get_connected(
+                kwarg_obj.source.g.allocator,
                 kwarg_obj.source.*,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to get connected nodes");
                 return null;
             };
+            defer paths.deinit();
 
             // Convert paths to Python list
-            const list = py.PyList_New(@intCast(paths.len));
-            if (list == null) {
-                for (paths) |*path| path.path.deinit();
-                allocator.free(paths);
-                return null;
-            }
+            const list = py.PyList_New(@intCast(paths.paths.items.len));
+            if (list == null) return null;
 
-            for (paths, 0..) |path, i| {
+            for (paths.paths.items, 0..) |path, i| {
                 // For now, just return path length as an int
                 // TODO: wrap BFSPath properly
                 const path_len = py.PyLong_FromLongLong(@intCast(path.path.edges.items.len));
                 if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
-                    for (paths) |*p| p.path.deinit();
-                    allocator.free(paths);
                     py.Py_DECREF(list.?);
                     return null;
                 }
             }
-
-            // Clean up paths after converting to Python
-            for (paths) |*path| path.path.deinit();
-            allocator.free(paths);
 
             return list;
         }
@@ -1239,7 +1199,6 @@ fn wrap_edge_interface_connection_get_connected() type {
 
 fn wrap_interface(root: *py.PyObject) void {
     const extra_methods = [_]type{
-        wrap_edge_interface_connection_build(),
         wrap_edge_interface_connection_get_tid(),
         wrap_edge_interface_connection_is_instance(),
         wrap_edge_interface_connection_get_other_connected_node(),

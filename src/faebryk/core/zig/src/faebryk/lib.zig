@@ -8,3 +8,4 @@ pub const pointer = @import("pointer.zig");
 pub const trait = @import("trait.zig");
 pub const edgebuilder = @import("edgebuilder.zig");
 pub const operand = @import("operand.zig");
+pub const typegraph = @import("typegraph.zig");

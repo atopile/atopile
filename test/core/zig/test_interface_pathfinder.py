@@ -5,6 +5,7 @@ import pytest
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView, Node
 
 # ============================================================================
@@ -28,23 +29,30 @@ def test_down_connect():
     ```
     """
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    ep = [g.insert_node(node=Node.create()) for _ in range(2)]
-    hv = [g.insert_node(node=Node.create()) for _ in range(2)]
-    lv = [g.insert_node(node=Node.create()) for _ in range(2)]
+    # Create type hierarchy
+    ElectricPowerType = tg.add_type(identifier="ElectricPower")
+    ElectricalType = tg.add_type(identifier="Electrical")
 
-    EdgeComposition.add_child(
-        bound_node=ep[0], child=hv[0].node(), child_identifier="hv"
+    # Add children to ElectricPower type
+    tg.add_make_child(
+        type_node=ElectricPowerType, 
+        child_type_node=ElectricalType, 
+        identifier="HV"
     )
-    EdgeComposition.add_child(
-        bound_node=ep[0], child=lv[0].node(), child_identifier="lv"
+    tg.add_make_child(
+        type_node=ElectricPowerType, 
+        child_type_node=ElectricalType, 
+        identifier="LV"
     )
-    EdgeComposition.add_child(
-        bound_node=ep[1], child=hv[1].node(), child_identifier="hv"
-    )
-    EdgeComposition.add_child(
-        bound_node=ep[1], child=lv[1].node(), child_identifier="lv"
-    )
+
+    # Create instances
+    ep = [tg.instantiate_node(type_node=ElectricPowerType, attributes={}) for _ in range(2)]
+    
+    # Get child nodes using EdgeComposition
+    hv = [EdgeComposition.get_child_by_identifier(bound_node=ep[i], child_identifier="HV") for i in range(2)]
+    lv = [EdgeComposition.get_child_by_identifier(bound_node=ep[i], child_identifier="LV") for i in range(2)]
 
     EdgeInterfaceConnection.connect(bn1=ep[0], bn2=ep[1])
 
@@ -108,26 +116,47 @@ def test_chains_mixed_shallow_nested():
     ```
     """
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    el = [g.insert_node(node=Node.create()) for _ in range(3)]
-    line = [g.insert_node(node=Node.create()) for _ in range(3)]
-    ref = [g.insert_node(node=Node.create()) for _ in range(3)]
-    hv = [g.insert_node(node=Node.create()) for _ in range(3)]
-    lv = [g.insert_node(node=Node.create()) for _ in range(3)]
+    # Create type hierarchy
+    ElType = tg.add_type(identifier="El")
+    LineType = tg.add_type(identifier="Line")
+    RefType = tg.add_type(identifier="Ref")
+    HVType = tg.add_type(identifier="HV")
+    LVType = tg.add_type(identifier="LV")
 
-    for i in range(3):
-        EdgeComposition.add_child(
-            bound_node=el[i], child=line[i].node(), child_identifier="line"
-        )
-        EdgeComposition.add_child(
-            bound_node=el[i], child=ref[i].node(), child_identifier="reference"
-        )
-        EdgeComposition.add_child(
-            bound_node=ref[i], child=hv[i].node(), child_identifier="hv"
-        )
-        EdgeComposition.add_child(
-            bound_node=ref[i], child=lv[i].node(), child_identifier="lv"
-        )
+    # Add children to El type
+    tg.add_make_child(
+        type_node=ElType, 
+        child_type_node=LineType, 
+        identifier="line"
+    )
+    tg.add_make_child(
+        type_node=ElType, 
+        child_type_node=RefType, 
+        identifier="reference"
+    )
+    
+    # Add children to Ref type
+    tg.add_make_child(
+        type_node=RefType, 
+        child_type_node=HVType, 
+        identifier="hv"
+    )
+    tg.add_make_child(
+        type_node=RefType, 
+        child_type_node=LVType, 
+        identifier="lv"
+    )
+
+    # Create instances
+    el = [tg.instantiate_node(type_node=ElType, attributes={}) for _ in range(3)]
+    
+    # Get child nodes
+    line = [EdgeComposition.get_child_by_identifier(bound_node=el[i], child_identifier="line") for i in range(3)]
+    ref = [EdgeComposition.get_child_by_identifier(bound_node=el[i], child_identifier="reference") for i in range(3)]
+    hv = [EdgeComposition.get_child_by_identifier(bound_node=ref[i], child_identifier="hv") for i in range(3)]
+    lv = [EdgeComposition.get_child_by_identifier(bound_node=ref[i], child_identifier="lv") for i in range(3)]
 
     EdgeInterfaceConnection.connect_shallow(bn1=el[0], bn2=el[1])
     EdgeInterfaceConnection.connect(bn1=el[1], bn2=el[2])
@@ -175,23 +204,31 @@ def test_split_flip_negative():
     ```
     """
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    high = [g.insert_node(node=Node.create()) for _ in range(2)]
-    lower1 = [g.insert_node(node=Node.create()) for _ in range(2)]
-    lower2 = [g.insert_node(node=Node.create()) for _ in range(2)]
+    # Create type hierarchy
+    HighType = tg.add_type(identifier="High")
+    Lower1Type = tg.add_type(identifier="Lower1")
+    Lower2Type = tg.add_type(identifier="Lower2")
 
-    EdgeComposition.add_child(
-        bound_node=high[0], child=lower1[0].node(), child_identifier="lower1"
+    # Add children to High type
+    tg.add_make_child(
+        type_node=HighType, 
+        child_type_node=Lower1Type, 
+        identifier="lower1"
     )
-    EdgeComposition.add_child(
-        bound_node=high[0], child=lower2[0].node(), child_identifier="lower2"
+    tg.add_make_child(
+        type_node=HighType, 
+        child_type_node=Lower2Type, 
+        identifier="lower2"
     )
-    EdgeComposition.add_child(
-        bound_node=high[1], child=lower1[1].node(), child_identifier="lower1"
-    )
-    EdgeComposition.add_child(
-        bound_node=high[1], child=lower2[1].node(), child_identifier="lower2"
-    )
+
+    # Create instances
+    high = [tg.instantiate_node(type_node=HighType, attributes={}) for _ in range(2)]
+    
+    # Get child nodes
+    lower1 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower1") for i in range(2)]
+    lower2 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower2") for i in range(2)]
 
     EdgeInterfaceConnection.connect(bn1=lower1[0], bn2=lower2[1])
     EdgeInterfaceConnection.connect(bn1=lower2[0], bn2=lower1[1])
@@ -208,23 +245,31 @@ def test_up_connect_simple_two_negative():
     ```
     """
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    high = [g.insert_node(node=Node.create()) for _ in range(2)]
-    lower1 = [g.insert_node(node=Node.create()) for _ in range(2)]
-    lower2 = [g.insert_node(node=Node.create()) for _ in range(2)]
+    # Create type hierarchy
+    HighType = tg.add_type(identifier="High")
+    Lower1Type = tg.add_type(identifier="Lower1")
+    Lower2Type = tg.add_type(identifier="Lower2")
 
-    EdgeComposition.add_child(
-        bound_node=high[0], child=lower1[0].node(), child_identifier="lower1"
+    # Add children to High type
+    tg.add_make_child(
+        type_node=HighType, 
+        child_type_node=Lower1Type, 
+        identifier="lower1"
     )
-    EdgeComposition.add_child(
-        bound_node=high[0], child=lower2[0].node(), child_identifier="lower2"
+    tg.add_make_child(
+        type_node=HighType, 
+        child_type_node=Lower2Type, 
+        identifier="lower2"
     )
-    EdgeComposition.add_child(
-        bound_node=high[1], child=lower1[1].node(), child_identifier="lower1"
-    )
-    EdgeComposition.add_child(
-        bound_node=high[1], child=lower2[1].node(), child_identifier="lower2"
-    )
+
+    # Create instances
+    high = [tg.instantiate_node(type_node=HighType, attributes={}) for _ in range(2)]
+    
+    # Get child nodes
+    lower1 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower1") for i in range(2)]
+    lower2 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower2") for i in range(2)]
 
     EdgeInterfaceConnection.connect(bn1=lower1[0], bn2=lower1[1])
     assert not EdgeInterfaceConnection.is_connected_to(source=high[0], target=high[1])
@@ -645,13 +690,22 @@ def test_no_parent_to_child():
     ```
     """
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    parent = g.insert_node(node=Node.create())
-    child = g.insert_node(node=Node.create())
+    # Create type hierarchy
+    ParentType = tg.add_type(identifier="Parent")
+    ChildType = tg.add_type(identifier="Child")
 
-    EdgeComposition.add_child(
-        bound_node=parent, child=child.node(), child_identifier="c1"
+    # Add child to parent type
+    tg.add_make_child(
+        type_node=ParentType, 
+        child_type_node=ChildType, 
+        identifier="c1"
     )
+
+    # Create instances
+    parent = tg.instantiate_node(type_node=ParentType, attributes={})
+    child = EdgeComposition.get_child_by_identifier(bound_node=parent, child_identifier="c1")
 
     assert not EdgeInterfaceConnection.is_connected_to(source=parent, target=child)
 
@@ -704,16 +758,24 @@ def test_shallow_connection_blocks_children():
     ```
     """
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    parents = [g.insert_node(node=Node.create()) for _ in range(2)]
-    children = [g.insert_node(node=Node.create()) for _ in range(2)]
+    # Create type hierarchy
+    ParentType = tg.add_type(identifier="Parent")
+    ChildType = tg.add_type(identifier="Child")
 
-    EdgeComposition.add_child(
-        bound_node=parents[0], child=children[0].node(), child_identifier="c1"
+    # Add child to parent type
+    tg.add_make_child(
+        type_node=ParentType, 
+        child_type_node=ChildType, 
+        identifier="c1"
     )
-    EdgeComposition.add_child(
-        bound_node=parents[1], child=children[1].node(), child_identifier="c1"
-    )
+
+    # Create instances
+    parents = [tg.instantiate_node(type_node=ParentType, attributes={}) for _ in range(2)]
+    
+    # Get child nodes
+    children = [EdgeComposition.get_child_by_identifier(bound_node=parents[i], child_identifier="c1") for i in range(2)]
 
     EdgeInterfaceConnection.connect_shallow(bn1=parents[0], bn2=parents[1])
 
@@ -803,16 +865,24 @@ def test_edge_type_consistency():
 def test_composition_and_interface_edges():
     """Test composition hierarchy with interface connections."""
     g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    roots = [g.insert_node(node=Node.create()) for _ in range(2)]
-    children = [g.insert_node(node=Node.create()) for _ in range(2)]
+    # Create type hierarchy
+    RootType = tg.add_type(identifier="Root")
+    ChildType = tg.add_type(identifier="Child")
 
-    EdgeComposition.add_child(
-        bound_node=roots[0], child=children[0].node(), child_identifier="child"
+    # Add child to root type
+    tg.add_make_child(
+        type_node=RootType, 
+        child_type_node=ChildType, 
+        identifier="child"
     )
-    EdgeComposition.add_child(
-        bound_node=roots[1], child=children[1].node(), child_identifier="child"
-    )
+
+    # Create instances
+    roots = [tg.instantiate_node(type_node=RootType, attributes={}) for _ in range(2)]
+    
+    # Get child nodes
+    children = [EdgeComposition.get_child_by_identifier(bound_node=roots[i], child_identifier="child") for i in range(2)]
 
     EdgeInterfaceConnection.connect(bn1=children[0], bn2=children[1])
 
