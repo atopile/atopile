@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Self, cast, override
+from typing import Any, Iterable, Iterator, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
@@ -379,23 +379,30 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         include_root: bool = False,
         f_filter: Callable[[C], bool] | None = None,
         sort: bool = True,
+        required_trait: "type[Node[Any]] | None" = None,
     ) -> OrderedSet[C]:
         # copied from old fabll
         type_tuple = types if isinstance(types, tuple) else (types,)
 
         result: list[C] = []
 
-        if include_root and self.isinstance(*type_tuple):
-            self_c = cast(C, self)
-            if not f_filter or f_filter(self_c):
-                result.append(self_c)
+        def check(node: "Node[Any]") -> TypeGuard[C]:
+            if not node.isinstance(*type_tuple):
+                return False
+            candidate = cast(C, node)
+            if required_trait and not node.has_trait(required_trait):
+                return False
+            if f_filter and not f_filter(candidate):
+                return False
+            return True
+
+        if include_root and check(self):
+            result.append(self)
 
         def _visit(node: "Node[Any]") -> None:
             for _name, child in node.get_direct_children():
-                if child.isinstance(*type_tuple):
-                    candidate = cast(C, child)
-                    if not f_filter or f_filter(candidate):
-                        result.append(candidate)
+                if check(child):
+                    result.append(child)
                 if not direct_only:
                     _visit(child)
 
@@ -936,6 +943,56 @@ class Traits:
     @staticmethod
     def add_to(node: Node[Any], trait: Node[Any]) -> None:
         Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+
+
+class is_module(Node):
+    """
+    Replaces Module type.
+    TODO: Will remove in the future.
+    Exists for now as compatibility layer.
+    specialization/retyping is removed and done in ast -> typegraph now
+
+    Replacement guide:
+    - creation: instead of inherit of Module -> inherit of Node + add is_module trait
+    - usage instead of type check, trait check:
+        - replace isinstance(node, Module) with node.has_trait(is_module)
+        - replace get_children(types=(Module,)) with get_children_with_trait(is_module)
+        - ...
+    """
+
+    @classmethod
+    def __create_type__(cls, t: "BoundNodeType[is_module, Any]") -> None:
+        Traits.mark_as_trait(t=t)
+
+    def get_obj(self) -> Node[Any]:
+        return Traits.get_obj(Traits.bind(self), Node)
+
+
+class is_interface(Node):
+    """
+    Placeholder till Ray is done.
+
+    Replacement guide:
+    - creation: instead of inherit of ModuleInterface
+        -> inherit of Node + add is_interface trait
+    - usage: blabla.<interface_function>(...)
+        -> blabla.get_trait(is_interface).<interface_function>(...)
+    - usage: isinstance(blabla, ModuleInterface)
+        -> blabla.has_trait(is_interface)
+    """
+
+    @classmethod
+    def __create_type__(cls, t: "BoundNodeType[is_interface, Any]") -> None:
+        Traits.mark_as_trait(t=t)
+
+    def get_obj(self) -> Node[Any]:
+        return Traits.get_obj(Traits.bind(self), Node)
+
+    def connect(self, other: "Node[Any]") -> None:
+        raise NotImplementedError()
+
+    def is_connected_to(self, *other: "Node[Any]") -> bool:
+        raise NotImplementedError()
 
 
 # --------------------------------------------------------------------------------------
