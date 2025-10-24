@@ -45,14 +45,13 @@ pub const EdgeInterfaceConnection = struct {
         return Edge.is_instance(E, tid);
     }
 
-    // Get other connected node given an already connected node and edge reference
     pub fn get_other_connected_node(E: EdgeReference, N: NodeReference) ?NodeReference {
         if (Node.is_same(E.source, N)) {
             return E.target;
         } else if (Node.is_same(E.target, N)) {
             return E.source;
         } else {
-            return null; // Returns null if given node and edge were not connected in the first place
+            return null;
         }
     }
 
@@ -64,7 +63,6 @@ pub const EdgeInterfaceConnection = struct {
         return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
     }
 
-    // visit all connected edges for a given node
     pub fn visit_connected_edges(
         bound_node: graph.BoundNodeReference,
         ctx: *anyopaque,
@@ -93,8 +91,6 @@ pub const EdgeInterfaceConnection = struct {
         return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
     }
 
-    // Find paths from source to target. Returns empty BFSPaths if not connected.
-    // Note: Caller is responsible for freeing the returned BFSPaths
     pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !graph.BFSPaths {
         var pf = PathFinder.init(allocator);
         defer pf.deinit();
@@ -102,19 +98,13 @@ pub const EdgeInterfaceConnection = struct {
         return try pf.find_paths(source, &[_]graph.BoundNodeReference{target});
     }
 
-    // Get all nodes connected to the source node (without filtering by end nodes)
-    // Note: Caller is responsible for freeing the returned BFSPaths
+    // TODO - A visitor would be nice instead of just returning a list don't ya think?
     pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference) !graph.BFSPaths {
         var pf = PathFinder.init(allocator);
         defer pf.deinit();
 
-        // Pass null for end_nodes to get all reachable paths
         return try pf.find_paths(source, null);
     }
-
-    // visit all paths for a given node (pathfinder)
-
-    // "shallow" links
 };
 
 const a = std.testing.allocator;
