@@ -563,13 +563,9 @@ test "filter_heirarchy_stack" {
     defer g.deinit();
 
     const bn1 = g.create_and_insert_node();
-    bn1.node.attributes.name = "node1";
     const bn2 = g.create_and_insert_node();
-    bn2.node.attributes.name = "node2";
     const bn3 = g.create_and_insert_node();
-    bn3.node.attributes.name = "node3";
     const bn4 = g.create_and_insert_node();
-    bn4.node.attributes.name = "node1";
     const be1 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn1.node, EdgeComposition.tid));
     const be2 = g.insert_edge(Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
     const be3 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));

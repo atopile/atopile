@@ -192,9 +192,6 @@ pub const UUID = struct {
 pub const NodeAttributes = struct {
     uuid: UUID.T,
     dynamic: DynamicAttributes,
-    name: ?str, // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
-    fake_type: ?u64, // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
-
     pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
         f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
         self.dynamic.visit(ctx, f);
@@ -215,9 +212,6 @@ pub const Node = struct {
         // Attributes
         node.attributes.uuid = UUID.gen_uuid(node);
         node.attributes.dynamic = DynamicAttributes.init(allocator);
-        node.attributes.name = null; // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
-        node.attributes.fake_type = null; // TODO keeping this for now to keep my pathfinder building but I need to switch to type graph
-
         node._ref_count = GraphReferenceCounter.init(allocator, .{ .Node = node });
         return node;
     }
@@ -1013,7 +1007,7 @@ pub const GraphView = struct {
             // Mark node at end of path as visited (O(1) with HashMap)
             // Use path's actual conditional status (set by filters when crossing conditional edges)
             // Filtered paths without conditional edges should still prevent future exploration
-            if (DEBUG) std.debug.print("Marking node '{s}' as visited, via_conditional={} (filtered={})\n", .{ node_at_path_end.node.attributes.name orelse "unnamed", path.via_conditional, path.filtered });
+            if (DEBUG) std.debug.print("Marking node #{d} as visited, via_conditional={} (filtered={})\n", .{ node_at_path_end.node.attributes.uuid, path.via_conditional, path.filtered });
             visited_nodes.put(node_at_path_end.node, VisitInfo{ .via_conditional = path.via_conditional }) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
