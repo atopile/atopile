@@ -603,16 +603,6 @@ pub const BFSPath = struct {
         new_path.path.edges.appendSliceAssumeCapacity(base.path.edges.items);
         new_path.path.edges.appendAssumeCapacity(edge);
 
-        // Preserve via_conditional flag from base, or set it if new edge is conditional
-        // Check for shallow interface connections (a type of conditional edge)
-        new_path.via_conditional = base.via_conditional;
-        if (edge.attributes.dynamic.values.get("shallow")) |shallow_val| {
-            if (shallow_val.Bool) {
-                new_path.via_conditional = true;
-            }
-        }
-        // Note: Filters can also manually set via_conditional for other conditional scenarios
-
         return new_path;
     }
 
