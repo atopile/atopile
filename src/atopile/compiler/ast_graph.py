@@ -1022,6 +1022,10 @@ class DslException(Exception): ...
 class ASTVisitor:
     """
     Generates a TypeGraph from the AST.
+
+    Error handling strategy:
+    - Fail early (TODO: revisit — return list of errors and let caller decide what to do)
+    - Use DslException for errors arising from code contents
     """
 
     @dataclass(frozen=True)
@@ -1040,9 +1044,23 @@ class ASTVisitor:
         def __repr__(self) -> str:
             return f"Symbol(name={self.name}, import_ref={self.import_ref})"
 
+    @dataclass(frozen=True)
+    class _Field:
+        name: str
+
+    @dataclass(frozen=True)
+    class _NewChildSpec:
+        type_identifier: str
+
+    @dataclass(frozen=True)
+    class _AddChildAction:
+        target_name: str
+        child_spec: ASTVisitor._NewChildSpec
+
     @dataclass
     class _ScopeState:
-        symbols: set[ASTVisitor._Symbol] = field(default_factory=set)
+        symbols: dict[str, ASTVisitor._Symbol] = field(default_factory=dict)
+        fields: dict[str, ASTVisitor._Field] = field(default_factory=dict)
 
     class _ScopeStack:
         stack: list[ASTVisitor._ScopeState]
@@ -1060,18 +1078,22 @@ class ASTVisitor:
                 self.stack.pop()
 
         def add_symbol(self, symbol: ASTVisitor._Symbol) -> None:
-            # TODO: think about this
-
             current_state = self.stack[-1]
-            if any(
-                symbol.name == existing_symbol.name
-                for existing_symbol in current_state.symbols
-            ):
+            if symbol.name in current_state.symbols:
                 raise DslException(f"Symbol {symbol} already defined in scope")
 
-            current_state.symbols.add(symbol)
+            current_state.symbols[symbol.name] = symbol
 
             print(f"Added symbol {symbol} to scope")
+
+        def add_field(self, field: ASTVisitor._Field) -> None:
+            current_state = self.stack[-1]
+            if field.name in current_state.fields:
+                raise DslException(f"Field {field} already defined in scope")
+
+            current_state.fields[field.name] = field
+
+            print(f"Added field {field} to scope")
 
     class _Pragma(StrEnum):
         EXPERIMENT = "experiment"
@@ -1212,9 +1234,35 @@ class ASTVisitor:
         self._scope_stack.add_symbol(symbol)
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
+        # TODO: consider pushing this type_node to a current_type stack so
+        # child visitor can own this logic
+        def handle_add_child(
+            action: ASTVisitor._AddChildAction, type_node: BoundNode
+        ) -> None:
+            child_type_node = self._type_graph.get_or_create_type(
+                type_identifier=action.child_spec.type_identifier
+            )
+            self._type_graph.add_make_child(
+                type_node=type_node,
+                child_type_node=child_type_node,
+                identifier=action.target_name,
+            )
+
+        def handle_statement(stmt: Node, type_node: BoundNode) -> None:
+            match maybe_spec := self.visit(stmt):
+                case ASTVisitor._AddChildAction():
+                    handle_add_child(maybe_spec, type_node)
+                case None:
+                    pass
+                case _:
+                    raise NotImplementedError(
+                        f"Unhandled statement type: {maybe_spec.get_type_name()}"
+                    )
+
         match node.block_type.get().try_extract_constrained_literal():
             # TODO: enum
             case "module":
+                # TODO: attach "is_module" trait
                 module_name = cast_assert(
                     str,
                     node.type_ref.get().name.get().try_extract_constrained_literal(),
@@ -1228,11 +1276,64 @@ class ASTVisitor:
 
                 with self._scope_stack.enter():
                     for stmt in node.scope.get().stmts.get().as_list():
-                        self.visit(stmt)
-                        # TODO: append to type_node
+                        handle_statement(stmt, type_node)
 
             case other_kind:
                 raise NotImplementedError(f"Block kind not supported: {other_kind}")
+
+    def visit_PassStmt(self, node: AST.PassStmt):
+        pass
+
+    def visit_StringStmt(self, node: AST.StringStmt):
+        # TODO: add docstring trait to preceding node
+        pass
+
+    def visit_Assignment(self, node: AST.Assignment):
+        # TODO: handle nested field refs
+        # TODO: check if field ref chain head can be followed to a type node
+        # TODO: handle pin suffix
+        # TODO: handle keys in chain
+
+        target_parts = node.target.get().parts.get().as_list()
+
+        if len(target_parts) != 1:
+            raise NotImplementedError(
+                f"Nested field refs not supported: {target_parts}"
+            )
+
+        target_part = target_parts[-1].cast(t=AST.FieldRefPart)
+        target_name = cast_assert(
+            str, target_part.name.get().try_extract_constrained_literal()
+        )
+
+        # TODO: record in schema so we can access node.assignable.get().value.get()
+        assignable_value = node.assignable.get().get_child(name="value")
+
+        assignable = self.visit(assignable_value)
+        action: ASTVisitor._AddChildAction | None = None
+
+        if isinstance(assignable, ASTVisitor._NewChildSpec):
+            action = ASTVisitor._AddChildAction(
+                target_name=target_name, child_spec=assignable
+            )
+
+        self._scope_stack.add_field(ASTVisitor._Field(name=target_name))
+
+        return action
+
+    def visit_NewExpression(self, node: AST.NewExpression):
+        type_name = cast_assert(
+            str, node.type_ref.get().name.get().try_extract_constrained_literal()
+        )
+        return ASTVisitor._NewChildSpec(type_identifier=type_name)
+
+        # TODO: check type ref is valid:
+        # - exists in a containing scope
+
+        # TODO: return enough info for the blockdef to add a child to the type
+
+        # TODO: handle template args
+        # TODO: handle creating sequence
 
 
 def build_file(source_file: Path) -> tuple[TypeGraph, AST.File, list[BoundNode]]:

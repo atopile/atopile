@@ -374,6 +374,27 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         )
         return children
 
+    def get_child(self, name: str) -> "Node[Any]":
+        # TODO: improve this implementation
+        children: list["Node[Any]"] = []
+
+        def collect(ctx: list["Node[Any]"], edge: BoundEdge) -> None:
+            if edge.edge().name() == name:
+                ctx.append(
+                    Node(
+                        instance=edge.g().bind(
+                            node=EdgeComposition.get_child_node(edge=edge.edge())
+                        )
+                    )
+                )
+
+        EdgeComposition.visit_children_edges(
+            bound_node=self.instance, ctx=children, f=collect
+        )
+
+        (child,) = children
+        return child
+
     # TODO: convert to visitor pattern
     # TODO: implement in zig
     def get_children[C: Node](
