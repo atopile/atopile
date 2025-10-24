@@ -2,8 +2,6 @@ const std = @import("std");
 pub const str = []const u8;
 const visitor = @import("visitor.zig");
 
-const DEBUG = false;
-
 pub const NodeRefMap = struct {
     pub fn eql(_: @This(), a: NodeReference, b: NodeReference) bool {
         return Node.is_same(a, b);
@@ -435,14 +433,19 @@ pub const Path = struct {
         self.edges.deinit();
     }
 
-    pub fn print_path(self: *const @This()) void {
-        if (DEBUG) {
-            std.debug.print("PATH - len: {} - ", .{self.edges.items.len});
-            for (self.edges.items) |edge| {
-                std.debug.print("e{}->", .{edge.attributes.uuid});
-            }
-            std.debug.print("\n", .{});
+    pub fn format(
+        self: @This(),
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt; // Unused
+        _ = options; // Unused
+        try writer.print("PATH - len: {} - ", .{self.edges.items.len});
+        for (self.edges.items) |edge| {
+            try writer.print("e{}->", .{edge.attributes.uuid});
         }
+        try writer.print("\n", .{});
     }
 
     pub fn get_other_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
@@ -907,9 +910,6 @@ pub const GraphView = struct {
                     // Previous visit via conditional, current NOT via conditional → ALLOW (override with better path)
                     // Previous visit NOT via conditional → always skip (already found best path)
                     const can_revisit = visit_info.via_conditional and !self.current_path_via_conditional;
-                    if (DEBUG and can_revisit) {
-                        std.debug.print("ALLOWING REVISIT: prev_conditional={} current_conditional={}\n", .{ visit_info.via_conditional, self.current_path_via_conditional });
-                    }
                     return !can_revisit;
                 }
                 return false; // Not visited, don't skip
@@ -917,7 +917,6 @@ pub const GraphView = struct {
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                if (DEBUG) std.debug.print("e-{} ", .{edge.edge.attributes.uuid});
 
                 // Check if other node should be skipped based on visit history
                 const other_node = edge.edge.get_other_node(self.start_node.node);
@@ -926,7 +925,6 @@ pub const GraphView = struct {
                 if (other_node != null) {
                     for (self.current_path.path.edges.items) |path_edge| {
                         if (Node.is_same(path_edge.source, other_node.?) or Node.is_same(path_edge.target, other_node.?)) {
-                            if (DEBUG) std.debug.print("ignored, would create cycle\n", .{});
                             return visitor.VisitResult(void){ .CONTINUE = {} };
                         }
                     }
@@ -936,12 +934,10 @@ pub const GraphView = struct {
 
                 // If should skip, exit edge visitor and continue with BFS
                 if (should_skip) {
-                    if (DEBUG) std.debug.print("ignored, already visited n-{}\n", .{other_node.?.attributes.uuid});
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
                 // If not visited, create a new path and append it to the open path queue
                 else {
-                    if (DEBUG) std.debug.print("added\n", .{});
                     const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     };
@@ -992,22 +988,12 @@ pub const GraphView = struct {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
 
-            if (DEBUG) {
-                std.debug.print("PATH - len: {} - ", .{path.path.edges.items.len});
-                std.debug.print("n{}->", .{start_node.node.attributes.uuid});
-                for (path.path.edges.items) |edge| {
-                    std.debug.print("e{}->", .{edge.attributes.uuid});
-                }
-                std.debug.print("n{}\n", .{node_at_path_end.node.attributes.uuid});
-            }
-
             // Call visitor - visitor can modify the path
             const bfs_visitor_result = f(ctx, path);
 
             // Mark node at end of path as visited (O(1) with HashMap)
             // Use path's actual conditional status (set by filters when crossing conditional edges)
             // Filtered paths without conditional edges should still prevent future exploration
-            if (DEBUG) std.debug.print("Marking node #{d} as visited, via_conditional={} (filtered={})\n", .{ node_at_path_end.node.attributes.uuid, path.via_conditional, path.filtered });
             visited_nodes.put(node_at_path_end.node, VisitInfo{ .via_conditional = path.via_conditional }) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
@@ -1029,7 +1015,6 @@ pub const GraphView = struct {
 
             if (!path.stop) {
                 // Use edge visitor to extend this path and create new paths for the queue
-                if (DEBUG) std.debug.print("EDGE VISITOR - Visiting edges from n-{}\n", .{node_at_path_end.node.attributes.uuid});
                 var edge_visitor = EdgeVisitor{
                     .start_node = node_at_path_end,
                     .visited_nodes = &visited_nodes,
@@ -1045,12 +1030,9 @@ pub const GraphView = struct {
                     .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
                     else => {},
                 }
-            } else {
-                if (DEBUG) std.debug.print("PATH - stopped\n", .{});
-            }
+            } else {}
         }
 
-        if (DEBUG) std.debug.print("STOP BFS!!! - Exhausted\n", .{});
         return visitor.VisitResult(T){ .EXHAUSTED = {} };
     }
 };
