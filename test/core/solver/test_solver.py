@@ -14,6 +14,7 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.cpp import Graph
+from faebryk.core.node import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -50,7 +51,6 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
 )
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
 from faebryk.libs.picker.picker import pick_part_recursively

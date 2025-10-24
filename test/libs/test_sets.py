@@ -6,7 +6,7 @@ from enum import Enum, auto
 
 import pytest
 
-from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
+from faebryk.core.node import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
 from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval,
     Numeric_Interval_Disjoint,

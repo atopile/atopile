@@ -64,7 +64,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import accumulate, downgrade, iter_through_errors
-from faebryk.libs.library.L import Range, Single
 from faebryk.libs.picker.picker import does_not_require_picker_check
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
 from faebryk.libs.sets.sets import BoolSet
@@ -729,7 +728,7 @@ class _ParameterDefinition:
     ctx: ParserRuleContext
     traceback: Sequence[ParserRuleContext]
     ref: FieldRef
-    value: Range | Single | None = None
+    value: fabll.Range | fabll.Single | None = None
 
     @property
     def is_declaration(self) -> bool:
@@ -2695,7 +2694,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         """Yield a physical value from a physical context."""
         if ctx.quantity():
             qty = self.visitQuantity(ctx.quantity())
-            value = Single(qty)
+            value = fabll.Single(qty)
         elif ctx.bilateral_quantity():
             value = self.visitBilateral_quantity(ctx.bilateral_quantity())
         elif ctx.bound_quantity():
@@ -2757,7 +2756,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             # Calculate tolerance value from percentage/ppm
             tol_value = tol_num / tol_divider
-            return Range.from_center_rel(nominal_qty, tol_value)
+            return fabll.Range.from_center_rel(nominal_qty, tol_value)
 
         # Ensure the tolerance has a unit
         if tol_name := tol_ctx.name():
@@ -2781,7 +2780,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        return Range.from_center(nominal_qty, tol_qty)
+        return fabll.Range.from_center(nominal_qty, tol_qty)
 
     def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
         """Yield a physical value from a bound quantity context."""
@@ -2804,7 +2803,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        return Range(start, end)
+        return fabll.Range(start, end)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """

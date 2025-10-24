@@ -16,7 +16,6 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
-from faebryk.libs.library.L import Range
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P
@@ -29,7 +28,7 @@ def test_new_definitions():
     _ = Parameter(
         units=P.ohm,
         domain=fabll.Domains.Numbers.REAL(negative=False),
-        soft_set=Range(1 * P.ohm, 10 * P.Mohm),
+        soft_set=fabll.Range(1 * P.ohm, 10 * P.Mohm),
         likely_constrained=True,
     )
 

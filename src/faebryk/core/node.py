@@ -949,7 +949,17 @@ ModuleInterface = Node
 rt_field = None
 f_field = None
 d_field = None
+# Param stuff
 p_field = None
+Range = None
+RangeWithGaps = None
+Single = None
+DiscreteSet = None
+EmptySet = None
+RelaxedQuantity = None
+Expressions = None
+Domains = None
+Predicates = None
 
 
 # --------------------------------------------------------------------------------------
