@@ -515,38 +515,6 @@ pub const Path = struct {
     }
 };
 
-// Hierarchy traversal direction for composition edges
-pub const HeirarchyTraverseDirection = enum {
-    up, // Child to parent
-    down, // Parent to child
-    horizontal, // Same level (interface connections)
-};
-
-// Element representing a single hierarchy traversal step
-pub const HeirarchyElement = struct {
-    edge: EdgeReference,
-    traverse_direction: HeirarchyTraverseDirection,
-    parent_type_node: NodeReference,
-    child_type_node: NodeReference,
-
-    pub fn match(self: *const @This(), other: *const @This()) bool {
-        // Match if same parent/child/name but opposite directions (up vs down)
-        // This matches edges with the same STRUCTURAL relationship, not the same edge instance
-        const opposite_directions = (self.traverse_direction == .up and other.traverse_direction == .down) or
-            (self.traverse_direction == .down and other.traverse_direction == .up);
-
-        // Compare structural properties from the edges
-        const parent_type_match = Node.is_same(self.parent_type_node, other.parent_type_node);
-        const child_type_match = Node.is_same(self.child_type_node, other.child_type_node);
-        const child_name_match = switch (self.traverse_direction) {
-            .horizontal => true, // edge connection interfaces (horizontal edges in heirarchy) shouldn't care about the children names as long as they're the same type
-            .up, .down => std.mem.eql(u8, self.edge.attributes.name orelse "", other.edge.attributes.name orelse ""),
-        };
-
-        return parent_type_match and child_type_match and child_name_match and opposite_directions;
-    }
-};
-
 pub const BFSPath = struct {
     path: Path,
     start_node: BoundNodeReference,
@@ -559,10 +527,6 @@ pub const BFSPath = struct {
     // Non-conditional paths can revisit nodes that were previously reached via conditional paths
     // This enables preference for "strong" paths over "weak" conditional paths
     via_conditional: bool = false,
-
-    // Hierarchy analysis data (computed by pathfinder filters)
-    hierarchy_elements_raw: ?std.ArrayList(HeirarchyElement) = null, // Raw sequence before folding
-    hierarchy_stack_folded: ?std.ArrayList(HeirarchyElement) = null, // After folding matching pairs
 
     fn is_consistent(self: *const @This()) bool {
         return self.start_node.g == self.path.g;
@@ -602,6 +566,7 @@ pub const BFSPath = struct {
         // Extend with prior edges before adding the new edge.
         new_path.path.edges.appendSliceAssumeCapacity(base.path.edges.items);
         new_path.path.edges.appendAssumeCapacity(edge);
+        new_path.via_conditional = base.via_conditional;
 
         return new_path;
     }
@@ -609,16 +574,6 @@ pub const BFSPath = struct {
     pub fn deinit(self: *@This()) void {
         self.assert_consistent();
         self.path.deinit();
-
-        // Clean up hierarchy analysis data if present
-        if (self.hierarchy_elements_raw) |*raw| {
-            raw.deinit();
-            self.hierarchy_elements_raw = null;
-        }
-        if (self.hierarchy_stack_folded) |*folded| {
-            folded.deinit();
-            self.hierarchy_stack_folded = null;
-        }
     }
 
     pub fn get_last_node(self: *const @This()) ?BoundNodeReference {

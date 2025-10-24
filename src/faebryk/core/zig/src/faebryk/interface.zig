@@ -383,7 +383,7 @@ test "multiple_paths" {
     try std.testing.expect(all_paths.paths.items.len == 8);
 }
 
-test "heirarchy_short" {
+test "hierarchy_short" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 

@@ -121,7 +121,7 @@ The pathfinder implements a filtered BFS algorithm to find valid connection path
 2. **`filter_only_end_nodes`** — Only keep paths ending at target nodes
 3. **`filter_path_by_edge_type`** — Require paths to start and end on composition or interface connection edges
 4. **`filter_siblings`** — Reject child→parent→child through same parent (sibling jumps)
-5. **`filter_heirarchy_stack`** — **Critical filter** ensuring valid hierarchy traversal
+5. **`filter_hierarchy_stack`** — **Critical filter** ensuring valid hierarchy traversal
 
 ### Hierarchy Rules
 
