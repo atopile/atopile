@@ -590,7 +590,10 @@ pub const BFSPath = struct {
 
         var new_path = try g.allocator.create(BFSPath);
         new_path.* = BFSPath.init(base.start_node);
-        errdefer new_path.destroy(g.allocator);
+        errdefer {
+            new_path.deinit();
+            g.allocator.destroy(new_path);
+        }
 
         // Pre-allocate exact capacity needed to avoid reallocation
         const new_len = base.path.edges.items.len + 1;
@@ -626,12 +629,6 @@ pub const BFSPath = struct {
             folded.deinit();
             self.hierarchy_stack_folded = null;
         }
-    }
-
-    pub fn destroy(self: *@This(), allocator: std.mem.Allocator) void {
-        self.assert_consistent();
-        self.deinit();
-        allocator.destroy(self);
     }
 
     pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
@@ -887,7 +884,8 @@ pub const GraphView = struct {
 
         defer {
             while (open_path_queue.readItem()) |bfspath| {
-                bfspath.destroy(g.allocator);
+                bfspath.deinit();
+                g.allocator.destroy(bfspath);
             }
             open_path_queue.deinit();
         }
@@ -983,7 +981,10 @@ pub const GraphView = struct {
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
-            defer path.destroy(g.allocator);
+            defer {
+                path.deinit();
+                g.allocator.destroy(path);
+            }
             const node_at_path_end = path.path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
@@ -1092,7 +1093,10 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     try base.path.edges.append(e12);
 
     const cloned = try BFSPath.cloneAndExtend(&base, e23);
-    defer cloned.destroy(g.allocator);
+    defer {
+        cloned.deinit();
+        g.allocator.destroy(cloned);
+    }
 
     try std.testing.expect(cloned.start_node.node == bn1.node);
     try std.testing.expect(cloned.start_node.g == bn1.g);
