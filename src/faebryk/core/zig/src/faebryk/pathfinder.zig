@@ -225,19 +225,13 @@ pub const PathFinder = struct {
         const edges = path.path.edges.items;
         if (edges.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
 
-        const first = edges[0].attributes.edge_type;
-        const last = edges[edges.len - 1].attributes.edge_type;
-
-        const first_allowed = switch (first) {
-            EdgeComposition.tid, EdgeInterfaceConnection.tid => true,
-            else => false,
-        };
-        const last_allowed = switch (last) {
+        const last_edge_type = edges[edges.len - 1].attributes.edge_type;
+        const is_allowed = switch (last_edge_type) {
             EdgeComposition.tid, EdgeInterfaceConnection.tid => true,
             else => false,
         };
 
-        if (!first_allowed or !last_allowed) {
+        if (!is_allowed) {
             path.stop = true;
             path.filtered = true;
         }

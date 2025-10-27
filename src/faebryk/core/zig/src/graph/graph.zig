@@ -902,10 +902,6 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
-        _ = start_node.get_edges() orelse {
-            return visitor.VisitResult(T){ .ERROR = error.NoEdges };
-        };
-
         // Create empty base path for extending with edges
         var empty_base = BFSPath.init(start_node);
         defer empty_base.deinit();
