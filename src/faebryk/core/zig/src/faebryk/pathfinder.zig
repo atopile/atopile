@@ -209,13 +209,8 @@ pub const PathFinder = struct {
         const traversed_edges = path.traversed_edges.items;
         if (traversed_edges.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
 
-        const last_edge_type = traversed_edges[traversed_edges.len - 1].edge.attributes.edge_type;
-        const is_allowed = switch (last_edge_type) {
-            EdgeComposition.tid, EdgeInterfaceConnection.tid => true,
-            else => false,
-        };
-
-        if (!is_allowed) {
+        const last_edge = traversed_edges[traversed_edges.len - 1].edge;
+        if (!EdgeComposition.is_instance(last_edge) and !EdgeInterfaceConnection.is_instance(last_edge)) {
             path.stop = true;
             path.filtered = true;
         }
