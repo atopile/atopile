@@ -418,34 +418,67 @@ pub const Edge = struct {
     }
 };
 
-pub const Path = struct {
+pub const BFSPath = struct {
     edges: std.ArrayList(EdgeReference),
     g: *GraphView,
+    start_node: BoundNodeReference,
+    filtered: bool = false, // filter this path out
+    stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
-    pub fn init(g: *GraphView) @This() {
-        return .{
-            .edges = std.ArrayList(EdgeReference).init(g.allocator),
-            .g = g,
+    // Tracks if this path uses conditional/weak edges that could be overridden by better paths
+    // Must be set by pathfinder filters when they detect conditional edge usage
+    // (e.g., shallow links, voltage-dependent connections, etc.)
+    // Non-conditional paths can revisit nodes that were previously reached via conditional paths
+    // This enables preference for "strong" paths over "weak" conditional paths
+    via_conditional: bool = false,
+
+    fn is_consistent(self: *const @This()) bool {
+        return self.start_node.g == self.g;
+    }
+
+    fn assert_consistent(self: *const @This()) void {
+        std.debug.assert(self.is_consistent());
+    }
+
+    pub fn init(start: BoundNodeReference) @This() {
+        var path = BFSPath{
+            .edges = std.ArrayList(EdgeReference).init(start.g.allocator),
+            .g = start.g,
+            .start_node = start,
+            .filtered = false,
+            .stop = false,
         };
+        path.assert_consistent();
+        return path;
+    }
+
+    pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
+        base.assert_consistent();
+        const g = base.g;
+        std.debug.assert(base.start_node.g == g);
+
+        var new_path = try g.allocator.create(BFSPath);
+        new_path.* = BFSPath.init(base.start_node);
+        errdefer {
+            new_path.deinit();
+            g.allocator.destroy(new_path);
+        }
+
+        // Pre-allocate exact capacity needed to avoid reallocation
+        const new_len = base.edges.items.len + 1;
+        try new_path.edges.ensureTotalCapacity(new_len);
+
+        // Extend with prior edges before adding the new edge.
+        new_path.edges.appendSliceAssumeCapacity(base.edges.items);
+        new_path.edges.appendAssumeCapacity(edge);
+        new_path.via_conditional = base.via_conditional;
+
+        return new_path;
     }
 
     pub fn deinit(self: *@This()) void {
+        self.assert_consistent();
         self.edges.deinit();
-    }
-
-    pub fn format(
-        self: @This(),
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt; // Unused
-        _ = options; // Unused
-        try writer.print("PATH - len: {} - ", .{self.edges.items.len});
-        for (self.edges.items) |edge| {
-            try writer.print("e{}->", .{edge.attributes.uuid});
-        }
-        try writer.print("\n", .{});
     }
 
     pub fn get_other_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
@@ -476,34 +509,7 @@ pub const Path = struct {
     }
 
     pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
-        if (self.edges.items.len == 0) {
-            return null;
-        }
-        const last_edge = self.edges.items[self.edges.items.len - 1];
-
-        // For undirected edges, try to infer the end node using the previous edge.
-        if (self.edges.items.len >= 2) {
-            const second_last_edge = self.edges.items[self.edges.items.len - 2];
-            const shared_node = blk: {
-                if (Node.is_same(last_edge.source, second_last_edge.source)) break :blk last_edge.source;
-                if (Node.is_same(last_edge.source, second_last_edge.target)) break :blk last_edge.source;
-                if (Node.is_same(last_edge.target, second_last_edge.source)) break :blk last_edge.target;
-                if (Node.is_same(last_edge.target, second_last_edge.target)) break :blk last_edge.target;
-                return null; // invalid path: last two edges do not connect
-            };
-            return self.g.bind(last_edge.get_other_node(shared_node));
-        }
-
-        // If the last edge is directional, we can use its target.
-        if (last_edge.attributes.directional) |d| {
-            if (d) {
-                return self.g.bind(last_edge.target);
-            }
-            return null;
-        }
-
-        // Single undirected edge with no context: ambiguous
-        return null;
+        return self.get_other_node(self.start_node);
     }
 
     pub fn get_first_node(self: *const @This()) ?BoundNodeReference {
@@ -513,72 +519,6 @@ pub const Path = struct {
         const last_node = self.get_last_node() orelse return null;
         return self.get_other_node(last_node);
     }
-};
-
-pub const BFSPath = struct {
-    path: Path,
-    start_node: BoundNodeReference,
-    filtered: bool = false, // filter this path out
-    stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
-
-    // Tracks if this path uses conditional/weak edges that could be overridden by better paths
-    // Must be set by pathfinder filters when they detect conditional edge usage
-    // (e.g., shallow links, voltage-dependent connections, etc.)
-    // Non-conditional paths can revisit nodes that were previously reached via conditional paths
-    // This enables preference for "strong" paths over "weak" conditional paths
-    via_conditional: bool = false,
-
-    fn is_consistent(self: *const @This()) bool {
-        return self.start_node.g == self.path.g;
-    }
-
-    fn assert_consistent(self: *const @This()) void {
-        std.debug.assert(self.is_consistent());
-    }
-
-    pub fn init(start: BoundNodeReference) @This() {
-        var path = BFSPath{
-            .path = Path.init(start.g),
-            .start_node = start,
-            .filtered = false,
-            .stop = false,
-        };
-        path.assert_consistent();
-        return path;
-    }
-
-    pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
-        base.assert_consistent();
-        const g = base.path.g;
-        std.debug.assert(base.start_node.g == g);
-
-        var new_path = try g.allocator.create(BFSPath);
-        new_path.* = BFSPath.init(base.start_node);
-        errdefer {
-            new_path.deinit();
-            g.allocator.destroy(new_path);
-        }
-
-        // Pre-allocate exact capacity needed to avoid reallocation
-        const new_len = base.path.edges.items.len + 1;
-        try new_path.path.edges.ensureTotalCapacity(new_len);
-
-        // Extend with prior edges before adding the new edge.
-        new_path.path.edges.appendSliceAssumeCapacity(base.path.edges.items);
-        new_path.path.edges.appendAssumeCapacity(edge);
-        new_path.via_conditional = base.via_conditional;
-
-        return new_path;
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.assert_consistent();
-        self.path.deinit();
-    }
-
-    pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
-        return self.path.get_other_node(self.start_node);
-    }
 
     pub fn contains(self: *const @This(), node: NodeReference) bool {
         // Check if start_node is in the path
@@ -587,12 +527,27 @@ pub const BFSPath = struct {
         }
 
         // Check if any edge in the path touches the node
-        for (self.path.edges.items) |path_edge| {
+        for (self.edges.items) |path_edge| {
             if (Node.is_same(path_edge.source, node) or Node.is_same(path_edge.target, node)) {
                 return true;
             }
         }
         return false;
+    }
+
+    pub fn format(
+        self: @This(),
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt; // Unused
+        _ = options; // Unused
+        try writer.print("PATH - len: {} - ", .{self.edges.items.len});
+        for (self.edges.items) |edge| {
+            try writer.print("e{}->", .{edge.attributes.uuid});
+        }
+        try writer.print("\n", .{});
     }
 };
 
@@ -904,7 +859,7 @@ pub const GraphView = struct {
                 path.deinit();
                 g.allocator.destroy(path);
             }
-            const node_at_path_end = path.path.get_other_node(start_node) orelse {
+            const node_at_path_end = path.get_other_node(start_node) orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
 
@@ -986,24 +941,26 @@ test "BFSPath cloneAndExtend preserves start metadata" {
         else => return err,
     };
 
-    const n1 = try Node.init(a);
-    const n2 = try Node.init(a);
-    const n3 = try Node.init(a);
+    const n1 = Node.init(a);
+    const n2 = Node.init(a);
+    const n3 = Node.init(a);
 
-    const bn1 = try g.insert_node(n1);
-    _ = try g.insert_node(n2);
-    _ = try g.insert_node(n3);
+    const bn1 = g.insert_node(n1);
+    _ = g.insert_node(n2);
+    _ = g.insert_node(n3);
 
-    const e12 = try Edge.init(a, n1, n2, TestEdgeType);
-    const e23 = try Edge.init(a, n2, n3, TestEdgeType);
-    _ = try g.insert_edge(e12);
-    _ = try g.insert_edge(e23);
+    const e12 = Edge.init(a, n1, n2, TestEdgeType);
+    const e23 = Edge.init(a, n2, n3, TestEdgeType);
+    _ = g.insert_edge(e12);
+    _ = g.insert_edge(e23);
 
     var base = BFSPath.init(bn1);
     defer base.deinit();
-    try base.path.edges.append(e12);
+    try base.edges.append(e12);
 
-    const cloned = try BFSPath.cloneAndExtend(&base, e23);
+    const cloned = BFSPath.cloneAndExtend(&base, e23) catch |err| switch (err) {
+        else => return err,
+    };
     defer {
         cloned.deinit();
         g.allocator.destroy(cloned);
@@ -1011,10 +968,10 @@ test "BFSPath cloneAndExtend preserves start metadata" {
 
     try std.testing.expect(cloned.start_node.node == bn1.node);
     try std.testing.expect(cloned.start_node.g == bn1.g);
-    try std.testing.expect(cloned.path.g == bn1.g);
-    try std.testing.expectEqual(@as(usize, 2), cloned.path.edges.items.len);
-    try std.testing.expect(cloned.path.edges.items[0] == e12);
-    try std.testing.expect(cloned.path.edges.items[1] == e23);
+    try std.testing.expect(cloned.g == bn1.g);
+    try std.testing.expectEqual(@as(usize, 2), cloned.edges.items.len);
+    try std.testing.expect(cloned.edges.items[0] == e12);
+    try std.testing.expect(cloned.edges.items[1] == e23);
 }
 
 test "BFSPath detects inconsistent graph view" {
@@ -1024,20 +981,20 @@ test "BFSPath detects inconsistent graph view" {
     var g2 = GraphView.init(a);
     defer g2.deinit();
 
-    const n1 = try Node.init(a);
-    const bn1 = try g1.insert_node(n1);
+    const n1 = Node.init(a);
+    const bn1 = g1.insert_node(n1);
 
     var path = BFSPath.init(bn1);
     defer {
-        path.path.g = path.start_node.g;
+        path.g = path.start_node.g;
         path.deinit();
     }
 
     try std.testing.expect(path.is_consistent());
-    path.path.g = &g2;
+    path.g = &g2;
     try std.testing.expect(!path.is_consistent());
 
     // Restoring the original graph view before cleanup prevents the assertion from firing.
-    path.path.g = path.start_node.g;
+    path.g = path.start_node.g;
     try std.testing.expect(path.is_consistent());
 }

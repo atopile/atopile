@@ -8,7 +8,6 @@ const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 const Node = graph.Node;
 const Edge = graph.Edge;
-const Path = graph.Path;
 const BFSPath = graph.BFSPath;
 const NodeReference = graph.NodeReference;
 const EdgeReference = graph.EdgeReference;
@@ -126,11 +125,11 @@ pub const PathFinder = struct {
 
         if (!path.filtered) {
             var copied_path = BFSPath.init(path.start_node);
-            copied_path.path.edges.ensureTotalCapacity(path.path.edges.items.len) catch |err| {
+            copied_path.edges.ensureTotalCapacity(path.edges.items.len) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
             };
-            copied_path.path.edges.appendSliceAssumeCapacity(path.path.edges.items);
+            copied_path.edges.appendSliceAssumeCapacity(path.edges.items);
             copied_path.filtered = path.filtered;
             copied_path.stop = path.stop;
             copied_path.via_conditional = path.via_conditional;
@@ -145,7 +144,7 @@ pub const PathFinder = struct {
             // Continues searching for better paths (e.g., direct over sibling)
             if (self.end_nodes.items.len > 0) {
                 const end_nodes = &self.end_nodes;
-                const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+                const path_end = path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
                 if (!path.stop) {
                     for (end_nodes.items, 0..) |end_node, i| {
@@ -206,7 +205,7 @@ pub const PathFinder = struct {
 
     pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
-        const edges = path.path.edges.items;
+        const edges = path.edges.items;
         if (edges.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
 
         const last_edge_type = edges[edges.len - 1].attributes.edge_type;
@@ -225,7 +224,7 @@ pub const PathFinder = struct {
     pub fn filter_path_by_same_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         const start_node = path.start_node;
-        const end_node = path.path.get_other_node(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+        const end_node = path.get_other_node(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
         const start_type_edge = EdgeType.get_type_edge(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
         const end_type_edge = EdgeType.get_type_edge(end_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -245,7 +244,7 @@ pub const PathFinder = struct {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+        const path_end = path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
         for (self.end_nodes.items) |end_node| {
             if (Node.is_same(path_end.node, end_node.node)) {
@@ -261,7 +260,7 @@ pub const PathFinder = struct {
     pub fn filter_siblings(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
-        const edges = path.path.edges.items;
+        const edges = path.edges.items;
         if (edges.len < 2) return visitor.VisitResult(void){ .CONTINUE = {} };
 
         const last_edges = [_]EdgeReference{ edges[edges.len - 1], edges[edges.len - 2] };
@@ -297,7 +296,7 @@ pub const PathFinder = struct {
         var current_node = path.start_node;
         const g = path.start_node.g;
 
-        for (path.path.edges.items) |edge| {
+        for (path.edges.items) |edge| {
             if (EdgeComposition.is_instance(edge)) {
                 // Determine traversal direction based on current node position
                 const direction: HierarchyTraverseDirection = if (Node.is_same(EdgeComposition.get_child_node(edge), current_node.node))
@@ -361,7 +360,7 @@ pub const PathFinder = struct {
         var current_node = path.start_node;
         var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
 
-        for (path.path.edges.items) |edge| {
+        for (path.edges.items) |edge| {
             if (EdgeComposition.is_instance(edge)) {
                 // Update hierarchy depth based on traversal direction
                 const child_node = EdgeComposition.get_child_node(edge);
@@ -405,7 +404,7 @@ pub const PathFinder = struct {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        const allocator = path.path.g.allocator;
+        const allocator = path.g.allocator;
 
         var hierarchy_elements = build_hierarchy_elements(allocator, path) catch |err| {
             return visitor.VisitResult(void){ .ERROR = err };
@@ -503,18 +502,11 @@ test "filter_hierarchy_stack" {
     const be2 = g.insert_edge(Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
     const be3 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
-    var path = Path.init(&g);
+    var bfs_path = BFSPath.init(bn1);
 
-    try path.edges.append(be1.edge);
-    try path.edges.append(be3.edge);
-    try path.edges.append(be2.edge);
-
-    var bfs_path = BFSPath{
-        .path = path,
-        .start_node = bn1,
-        .filtered = false,
-        .stop = false,
-    };
+    try bfs_path.edges.append(be1.edge);
+    try bfs_path.edges.append(be3.edge);
+    try bfs_path.edges.append(be2.edge);
     defer bfs_path.deinit();
 
     var pf = PathFinder.init(g.allocator);
