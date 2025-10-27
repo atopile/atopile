@@ -418,8 +418,13 @@ pub const Edge = struct {
     }
 };
 
+pub const TraversedEdge = struct {
+    edge: EdgeReference,
+    forward: bool, // true if traversing source→target, false if target→source
+};
+
 pub const BFSPath = struct {
-    edges: std.ArrayList(EdgeReference),
+    traversed_edges: std.ArrayList(TraversedEdge),
     g: *GraphView,
     start_node: BoundNodeReference,
     filtered: bool = false, // filter this path out
@@ -442,7 +447,7 @@ pub const BFSPath = struct {
 
     pub fn init(start: BoundNodeReference) @This() {
         var path = BFSPath{
-            .edges = std.ArrayList(EdgeReference).init(start.g.allocator),
+            .traversed_edges = std.ArrayList(TraversedEdge).init(start.g.allocator),
             .g = start.g,
             .start_node = start,
             .filtered = false,
@@ -452,7 +457,7 @@ pub const BFSPath = struct {
         return path;
     }
 
-    pub fn cloneAndExtend(base: *const BFSPath, edge: EdgeReference) !*BFSPath {
+    pub fn cloneAndExtend(base: *const BFSPath, from_node: BoundNodeReference, edge: EdgeReference) !*BFSPath {
         base.assert_consistent();
         const g = base.g;
         std.debug.assert(base.start_node.g == g);
@@ -465,12 +470,21 @@ pub const BFSPath = struct {
         }
 
         // Pre-allocate exact capacity needed to avoid reallocation
-        const new_len = base.edges.items.len + 1;
-        try new_path.edges.ensureTotalCapacity(new_len);
+        const new_len = base.traversed_edges.items.len + 1;
+        try new_path.traversed_edges.ensureTotalCapacity(new_len);
 
-        // Extend with prior edges before adding the new edge.
-        new_path.edges.appendSliceAssumeCapacity(base.edges.items);
-        new_path.edges.appendAssumeCapacity(edge);
+        // Copy prior edges
+        for (base.traversed_edges.items) |item| {
+            new_path.traversed_edges.appendAssumeCapacity(item);
+        }
+
+        // Add new edge with traversal direction
+        const forward = Node.is_same(edge.source, from_node.node);
+        new_path.traversed_edges.appendAssumeCapacity(TraversedEdge{
+            .edge = edge,
+            .forward = forward,
+        });
+
         new_path.via_conditional = base.via_conditional;
 
         return new_path;
@@ -478,46 +492,27 @@ pub const BFSPath = struct {
 
     pub fn deinit(self: *@This()) void {
         self.assert_consistent();
-        self.edges.deinit();
+        self.traversed_edges.deinit();
     }
 
-    pub fn get_other_node(self: *const @This(), bn: BoundNodeReference) ?BoundNodeReference {
-        if (self.edges.items.len == 0) {
-            return bn;
-        }
-        const last_edge = self.edges.items[self.edges.items.len - 1];
-
-        // special case - path length 1: need the starting node to disambiguate
-        if (self.edges.items.len == 1) {
-            return bn.g.bind(last_edge.get_other_node(bn.node));
-        }
-
-        // For length >= 2, infer the junction node shared by the last two edges,
-        // then return the opposite node on the last edge.
-        const second_last_edge = self.edges.items[self.edges.items.len - 2];
-        const shared_node = blk: {
-            if (Node.is_same(last_edge.source, second_last_edge.source)) break :blk last_edge.source;
-            if (Node.is_same(last_edge.source, second_last_edge.target)) break :blk last_edge.source;
-            if (Node.is_same(last_edge.target, second_last_edge.source)) break :blk last_edge.target;
-            if (Node.is_same(last_edge.target, second_last_edge.target)) break :blk last_edge.target;
-            // If no shared node, path is invalid
-            return null;
-        };
-
-        const end = last_edge.get_other_node(shared_node);
-        return bn.g.bind(end);
-    }
-
+    /// Returns the final destination of the path
     pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
-        return self.get_other_node(self.start_node);
+        if (self.traversed_edges.items.len == 0) {
+            return self.start_node;
+        }
+        const traversed_edge = self.traversed_edges.items[self.traversed_edges.items.len - 1];
+        const last_node = if (traversed_edge.forward) traversed_edge.edge.target else traversed_edge.edge.source;
+        return self.g.bind(last_node);
     }
 
+    /// Returns the first node reached after start_node (destination of first edge)
     pub fn get_first_node(self: *const @This()) ?BoundNodeReference {
-        if (self.edges.items.len == 0) {
-            return null;
+        if (self.traversed_edges.items.len == 0) {
+            return self.start_node;
         }
-        const last_node = self.get_last_node() orelse return null;
-        return self.get_other_node(last_node);
+        const traversed_edge = self.traversed_edges.items[0];
+        const first_node = if (traversed_edge.forward) traversed_edge.edge.target else traversed_edge.edge.source;
+        return self.g.bind(first_node);
     }
 
     pub fn contains(self: *const @This(), node: NodeReference) bool {
@@ -526,9 +521,14 @@ pub const BFSPath = struct {
             return true;
         }
 
-        // Check if any edge in the path touches the node
-        for (self.edges.items) |path_edge| {
-            if (Node.is_same(path_edge.source, node) or Node.is_same(path_edge.target, node)) {
+        // Check if any traversed edge touches the node by checking both edge endpoints
+        for (self.traversed_edges.items) |traversed_edge| {
+            const edge_start = if (traversed_edge.forward) traversed_edge.edge.source else traversed_edge.edge.target;
+            if (Node.is_same(edge_start, node)) {
+                return true;
+            }
+            const edge_end = if (traversed_edge.forward) traversed_edge.edge.target else traversed_edge.edge.source;
+            if (Node.is_same(edge_end, node)) {
                 return true;
             }
         }
@@ -543,9 +543,9 @@ pub const BFSPath = struct {
     ) !void {
         _ = fmt; // Unused
         _ = options; // Unused
-        try writer.print("PATH - len: {} - ", .{self.edges.items.len});
-        for (self.edges.items) |edge| {
-            try writer.print("e{}->", .{edge.attributes.uuid});
+        try writer.print("PATH - len: {} - ", .{self.traversed_edges.items.len});
+        for (self.traversed_edges.items) |traversed_edge| {
+            try writer.print("e{}->", .{traversed_edge.edge.attributes.uuid});
         }
         try writer.print("\n", .{});
     }
@@ -839,7 +839,7 @@ pub const GraphView = struct {
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
 
-                const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch @panic("OOM");
+                const new_path = BFSPath.cloneAndExtend(self.current_path, self.start_node, edge.edge) catch @panic("OOM");
                 self.open_path_queue.writeItem(new_path) catch @panic("OOM");
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -859,7 +859,7 @@ pub const GraphView = struct {
                 path.deinit();
                 g.allocator.destroy(path);
             }
-            const node_at_path_end = path.get_other_node(start_node) orelse {
+            const node_at_path_end = path.get_last_node() orelse {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
 
@@ -956,9 +956,13 @@ test "BFSPath cloneAndExtend preserves start metadata" {
 
     var base = BFSPath.init(bn1);
     defer base.deinit();
-    try base.edges.append(e12);
+    try base.traversed_edges.append(TraversedEdge{
+        .edge = e12,
+        .forward = true, // n1 -> n2 is forward (source to target)
+    });
 
-    const cloned = BFSPath.cloneAndExtend(&base, e23) catch |err| switch (err) {
+    const bn2_bound = g.bind(n2);
+    const cloned = BFSPath.cloneAndExtend(&base, bn2_bound, e23) catch |err| switch (err) {
         else => return err,
     };
     defer {
@@ -969,9 +973,9 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     try std.testing.expect(cloned.start_node.node == bn1.node);
     try std.testing.expect(cloned.start_node.g == bn1.g);
     try std.testing.expect(cloned.g == bn1.g);
-    try std.testing.expectEqual(@as(usize, 2), cloned.edges.items.len);
-    try std.testing.expect(cloned.edges.items[0] == e12);
-    try std.testing.expect(cloned.edges.items[1] == e23);
+    try std.testing.expectEqual(@as(usize, 2), cloned.traversed_edges.items.len);
+    try std.testing.expect(cloned.traversed_edges.items[0].edge == e12);
+    try std.testing.expect(cloned.traversed_edges.items[1].edge == e23);
 }
 
 test "BFSPath detects inconsistent graph view" {

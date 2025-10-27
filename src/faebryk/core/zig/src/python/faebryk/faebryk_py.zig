@@ -1138,7 +1138,7 @@ fn wrap_edge_interface_connection_is_connected_to() type {
             for (paths.paths.items, 0..) |path, i| {
                 // For now, just return path length as an int
                 // TODO: wrap BFSPath properly
-                const path_len = py.PyLong_FromLongLong(@intCast(path.edges.items.len));
+                const path_len = py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
                 if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
                     py.Py_DECREF(list.?);
                     return null;
@@ -1184,7 +1184,7 @@ fn wrap_edge_interface_connection_get_connected() type {
             for (paths.paths.items, 0..) |path, i| {
                 // For now, just return path length as an int
                 // TODO: wrap BFSPath properly
-                const path_len = py.PyLong_FromLongLong(@intCast(path.edges.items.len));
+                const path_len = py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
                 if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
                     py.Py_DECREF(list.?);
                     return null;
