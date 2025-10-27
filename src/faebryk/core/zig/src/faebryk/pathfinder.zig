@@ -54,10 +54,10 @@ pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    path_list: std.ArrayList(BFSPath), // Valid complete paths (plain paths without metadata)
-    end_nodes: std.ArrayList(BoundNodeReference), // End nodes to search for (optional)
-    path_counter: u64, // Counters for statistics
-    valid_path_counter: u64, // Count of valid complete paths
+    path_list: std.ArrayList(BFSPath),
+    end_nodes: std.ArrayList(BoundNodeReference),
+    path_counter: u64,
+    valid_path_counter: u64,
 
     pub fn init(allocator: std.mem.Allocator) PathFinder {
         return .{
@@ -84,18 +84,14 @@ pub const PathFinder = struct {
         start_node: BoundNodeReference,
         end_nodes: ?[]const BoundNodeReference,
     ) !graph.BFSPaths {
-
-        // Clear and pre-allocate lists with reasonable initial capacity
         self.path_list.clearRetainingCapacity();
         try self.path_list.ensureTotalCapacity(256);
-
         self.end_nodes.clearRetainingCapacity();
         if (end_nodes) |nodes| {
             try self.end_nodes.ensureTotalCapacity(nodes.len);
             self.end_nodes.appendSliceAssumeCapacity(nodes);
         }
 
-        // Run BFS with our visitor callback
         const result = start_node.g.visit_paths_bfs(
             start_node,
             void,
@@ -116,7 +112,7 @@ pub const PathFinder = struct {
         // Transfer ownership to BFSPaths
         var bfs_paths = graph.BFSPaths.init(self.allocator);
         bfs_paths.paths = self.path_list;
-        self.path_list = std.ArrayList(BFSPath).init(self.allocator); // Reinitialize empty list
+        self.path_list = std.ArrayList(BFSPath).init(self.allocator);
 
         return bfs_paths;
     }
@@ -125,16 +121,10 @@ pub const PathFinder = struct {
     pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
 
-        // Run filters on path
         const result = self.run_filters(path);
+        if (result == .ERROR) return result;
 
-        if (result == .ERROR) {
-            return result;
-        }
-
-        // Filter says keep!
         if (!path.filtered) {
-            // Deep copy the path - pre-allocate capacity to avoid reallocations
             var copied_path = BFSPath.init(path.start_node);
             copied_path.path.edges.ensureTotalCapacity(path.path.edges.items.len) catch |err| {
                 copied_path.deinit();
@@ -151,20 +141,16 @@ pub const PathFinder = struct {
             };
             self.valid_path_counter += 1;
 
-            // Only remove end node from search list if we found a VALID path to it
-            // Filtered OR stopped paths don't count as "found" - keep searching for better paths
+            // Remove end node from search if we found a valid path (not filtered/stopped)
+            // Continues searching for better paths (e.g., direct over sibling)
             if (self.end_nodes.items.len > 0) {
                 const end_nodes = &self.end_nodes;
                 const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
-                // Only mark end node as found if path is valid and not a dead-end
-                // This allows BFS to continue searching for better paths (e.g., direct over sibling)
                 if (!path.stop) {
                     for (end_nodes.items, 0..) |end_node, i| {
                         if (Node.is_same(path_end.node, end_node.node)) {
                             _ = end_nodes.swapRemove(i);
-
-                            // If all end nodes found, stop the search
                             if (end_nodes.items.len == 0) {
                                 return visitor.VisitResult(void){ .STOP = {} };
                             }
@@ -174,9 +160,7 @@ pub const PathFinder = struct {
                 }
             }
         }
-        // Filter says don't keep - BFS will deinitialize
 
-        // Filter says shut it down!
         if (result == .STOP) {
             return visitor.VisitResult(void){ .STOP = {} };
         }
@@ -256,55 +240,42 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // Filter out paths that don't end at any of the target end nodes
     pub fn filter_only_end_nodes(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        // Only filter if end nodes are specified and the list is not empty
         if (self.end_nodes.items.len == 0) {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
         const path_end = path.path.get_other_node(path.start_node) orelse {
-            // Empty path or invalid - keep it
             return visitor.VisitResult(void){ .CONTINUE = {} };
         };
 
-        // Check if path ends at one of the target nodes
         for (self.end_nodes.items) |end_node| {
             if (Node.is_same(path_end.node, end_node.node)) {
-                // Path ends at target - keep it
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         }
 
-        // Path doesn't end at any target node - filter it out
         path.filtered = true;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // formerly known as filter_path_by_dead_end_split
-    // filters out paths where the last 2 edges represent a child -> parent -> child path
+    // Filters out paths where last 2 edges form child -> parent -> child (sibling traversal)
     pub fn filter_siblings(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
         const edges = path.path.edges.items;
-        if (edges.len < 2) {
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-        const last_edges = [_]EdgeReference{
-            edges[edges.len - 1],
-            edges[edges.len - 2],
-        };
-        // check that all edges are hierarchy edges
+        if (edges.len < 2) return visitor.VisitResult(void){ .CONTINUE = {} };
+
+        const last_edges = [_]EdgeReference{ edges[edges.len - 1], edges[edges.len - 2] };
+
         for (last_edges) |edge| {
-            if (edge.attributes.edge_type != EdgeComposition.tid) {
+            if (!EdgeComposition.is_instance(edge)) {
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         }
-        // check that the connections are child -> parent -> child
-        const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
-        if (edge_1_and_edge_2_share_parent) {
-            // Sibling paths are conditional/weak - they can be overridden by direct paths
-            // Filter them out, stop exploration, and mark as conditional
+
+        const share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
+        if (share_parent) {
             path.filtered = true;
             path.stop = true;
             path.via_conditional = true;
@@ -312,8 +283,6 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    // Build the raw hierarchy element sequence from a path's composition edges
-    // Returns a list of hierarchy elements representing each UP/DOWN traversal
     fn resolve_node_type(g: *GraphView, node: NodeReference) !NodeReference {
         const bound_node = g.bind(node);
         const type_edge = EdgeType.get_type_edge(bound_node) orelse return error.MissingNodeType;
@@ -331,7 +300,7 @@ pub const PathFinder = struct {
         const g = path.start_node.g;
 
         for (path.path.edges.items) |edge| {
-            if (edge.attributes.edge_type == EdgeComposition.tid) {
+            if (EdgeComposition.is_instance(edge)) {
                 // Determine traversal direction based on current node position
                 const direction: HierarchyTraverseDirection = if (Node.is_same(EdgeComposition.get_child_node(edge), current_node.node))
                     HierarchyTraverseDirection.up
@@ -348,7 +317,7 @@ pub const PathFinder = struct {
                     .child_type_node = try resolve_node_type(g, EdgeComposition.get_child_node(edge)),
                 };
                 try elements.append(elem);
-            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
+            } else if (EdgeInterfaceConnection.is_instance(edge)) {
                 // Interface connections don't create hierarchy elements
             } else {
                 return error.InvalidEdgeType;
@@ -363,9 +332,6 @@ pub const PathFinder = struct {
         return elements;
     }
 
-    // Fold and validate hierarchy elements using stack-based matching
-    // Returns true if path is valid (empty folded stack), false otherwise
-    // Also returns true (invalid) if Rule 2 violated (DOWN from starting level)
     fn fold_and_validate_hierarchy(
         allocator: std.mem.Allocator,
         raw_elements: []const HierarchyElement,
@@ -385,31 +351,22 @@ pub const PathFinder = struct {
                     try folded_stack.append(elem);
                 }
             } else {
-                // Stack is empty - we're at the starting hierarchy level
-                // Rule 2: Reject paths that descend (DOWN) from starting level
                 if (elem.traverse_direction == HierarchyTraverseDirection.down) {
-                    // Invalid - descending without first ascending
                     return false;
                 }
                 try folded_stack.append(elem);
             }
         }
 
-        // Rule 1: Valid paths must have empty folded stack (balanced hierarchy)
         return folded_stack.items.len == 0;
     }
 
-    // Validate shallow links in the path
-    // Shallow links can only be crossed if the starting node is at the same level or higher
-    // than where the shallow link is located
-    // Also marks path as conditional if it crosses any shallow links
-    // Returns false if path violates shallow link rules
     fn validate_shallow_edges(path: *BFSPath) bool {
         var current_node = path.start_node;
         var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
 
         for (path.path.edges.items) |edge| {
-            if (edge.attributes.edge_type == EdgeComposition.tid) {
+            if (EdgeComposition.is_instance(edge)) {
                 // Update hierarchy depth based on traversal direction
                 const child_node = EdgeComposition.get_child_node(edge);
                 const parent_node = EdgeComposition.get_parent_node(edge);
@@ -421,19 +378,13 @@ pub const PathFinder = struct {
                     // Going DOWN (parent to child) - moving away from root
                     hierarchy_depth -= 1;
                 }
-            } else if (edge.attributes.edge_type == EdgeInterfaceConnection.tid) {
+            } else if (EdgeInterfaceConnection.is_instance(edge)) {
                 // Check if this is a shallow link
                 const shallow_val = edge.attributes.dynamic.values.get(shallow);
                 if (shallow_val) |shallow_value| {
                     if (shallow_value.Bool) {
-                        // This is a shallow link - mark path as conditional
                         path.via_conditional = true;
-
-                        // Can only cross if starting node is at same level or higher than the link
-                        // depth > 0: we've ascended, meaning start is LOWER than link → reject
-                        // depth <= 0: we're at or below start, meaning start is at same/higher than link → allow
                         if (hierarchy_depth > 0) {
-                            // We've ascended above the starting level - start is lower than link
                             return false;
                         }
                     }
@@ -449,10 +400,10 @@ pub const PathFinder = struct {
         return true;
     }
 
-    // Main filter: validates that paths follow proper hierarchy traversal rules
-    // Rule 1: Paths must return to the same hierarchy level (balanced stack)
-    // Rule 2: Paths cannot descend into children from the starting level
-    // Rule 3: Shallow links can only be crossed if starting node is at same level or higher than the link
+    // Validates paths follow hierarchy rules:
+    // 1. Must return to same level (balanced stack)
+    // 2. Cannot descend from starting level
+    // 3. Shallow links only if start is at same level or higher
     pub fn filter_hierarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
@@ -462,24 +413,20 @@ pub const PathFinder = struct {
 
         const allocator = path.path.g.allocator;
 
-        // Step 1: Build raw hierarchy elements from path
         var hierarchy_elements = build_hierarchy_elements(allocator, path) catch |err| {
             return visitor.VisitResult(void){ .ERROR = err };
         };
         defer hierarchy_elements.deinit();
 
-        // Step 2: Fold and validate the hierarchy
         const hierarchy_valid = fold_and_validate_hierarchy(allocator, hierarchy_elements.items) catch |err| {
             return visitor.VisitResult(void){ .ERROR = err };
         };
 
-        // Mark path as filtered if hierarchy validation failed
         if (!hierarchy_valid) {
             path.filtered = true;
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        // Step 3: Validate shallow links
         if (!validate_shallow_edges(path)) {
             path.filtered = true;
             path.stop = true;
