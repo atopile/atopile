@@ -13,9 +13,15 @@ class TypeGraph:
         self,
         *,
         type_node: BoundNode,
-        child_type_node: BoundNode,
+        child_type_identifier: str,
         identifier: str | None,
     ) -> BoundNode: ...
+    def set_make_child_type(
+        self,
+        *,
+        make_child_node: BoundNode,
+        child_type_node: BoundNode,
+    ) -> None: ...
     def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
     def add_make_link(
         self,
@@ -25,6 +31,7 @@ class TypeGraph:
         rhs_reference_node: Node,
         edge_attributes: EdgeCreationAttributes,
     ) -> BoundNode: ...
+    def link_type_references(self) -> None: ...
     def instantiate(
         self, *, type_identifier: str, attributes: dict[str, Literal]
     ) -> BoundNode: ...

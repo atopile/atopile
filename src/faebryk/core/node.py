@@ -174,20 +174,26 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     # type construction ----------------------------------------------------------------
     @classmethod
-    def _add_child(
-        cls,
-        child: Child,
-    ) -> BoundNode:
+    def _add_child(cls, child: Child) -> BoundNode:
         tg = child.t.tg
         identifier = child.identifier
         nodetype = child.nodetype
 
+        parent_type_node = cls.bind_typegraph(tg).get_or_create_type()
         child_type_node = nodetype.bind_typegraph(tg).get_or_create_type()
-        return tg.add_make_child(
-            type_node=cls.bind_typegraph(tg).get_or_create_type(),
-            child_type_node=child_type_node,
+
+        make_child = tg.add_make_child(
+            type_node=parent_type_node,
+            child_type_identifier=nodetype._type_identifier(),
             identifier=identifier,
         )
+
+        tg.set_make_child_type(
+            make_child_node=make_child,
+            child_type_node=child_type_node,
+        )
+
+        return make_child
 
     @classmethod
     def _add_child_to_type(

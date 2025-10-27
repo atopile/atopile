@@ -43,9 +43,10 @@ def ast_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
 
 
 def typegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
-    edge_label = (
+    edge_name = (
         EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
-    ) or "<anonymous>"
+    )
+    edge_label = f".{edge_name}" if edge_name else "<anonymous>"
 
     type_name = fabll.Node.bind_instance(node).get_type_name()
 
@@ -55,7 +56,7 @@ def typegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
     ]
     attrs_text = f"<{', '.join(attrs_parts)}>" if attrs_parts else ""
 
-    return f".{edge_label}: {type_name}{attrs_text}"
+    return f"{edge_label}: {type_name}{attrs_text}"
 
 
 def instancegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
@@ -95,7 +96,7 @@ if __name__ == "__main__":
         if n.node().get_attr(key="type_identifier") == "ESP32_MINIMAL"
     )
 
-    app = type_graph.instantiate_node(type_node=app_type, attributes={})
-
     _section("Instance Graph")
+
+    app = type_graph.instantiate_node(type_node=app_type, attributes={})
     NodeHelpers.print_tree(app, renderer=instancegraph_renderer)

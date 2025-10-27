@@ -1024,7 +1024,7 @@ class ASTVisitor:
     Generates a TypeGraph from the AST.
 
     Error handling strategy:
-    - Fail early (TODO: revisit — return list of errors and let caller decide what to do)
+    - Fail early (TODO: revisit — return list of errors and let caller decide impact)
     - Use DslException for errors arising from code contents
     """
 
@@ -1050,7 +1050,7 @@ class ASTVisitor:
 
     @dataclass(frozen=True)
     class _NewChildSpec:
-        type_identifier: str
+        symbol: ASTVisitor._Symbol
 
     @dataclass(frozen=True)
     class _AddChildAction:
@@ -1094,6 +1094,13 @@ class ASTVisitor:
             current_state.fields[field.name] = field
 
             print(f"Added field {field} to scope")
+
+        def resolve_symbol(self, name: str) -> ASTVisitor._Symbol:
+            for state in reversed(self.stack):
+                if name in state.symbols:
+                    return state.symbols[name]
+
+            raise DslException(f"Symbol `{name}` is not available in this scope")
 
     class _Pragma(StrEnum):
         EXPERIMENT = "experiment"
@@ -1154,13 +1161,13 @@ class ASTVisitor:
         print(f"Enabling experiment: {experiment}")
         self._experiments.add(experiment)
 
-    def build(self) -> list[BoundNode]:
+    def build(self) -> tuple[TypeGraph, list[BoundNode]]:
         # must start with a File (for now)
         assert self._ast_root.isinstance(AST.File)
 
         self.visit(self._ast_root)
 
-        return self._type_roots
+        return self._type_graph, self._type_roots
 
     def visit(self, node: Node):
         # TODO: less magic dispatch
@@ -1236,22 +1243,15 @@ class ASTVisitor:
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
         # TODO: consider pushing this type_node to a current_type stack so
         # child visitor can own this logic
-        def handle_add_child(
-            action: ASTVisitor._AddChildAction, type_node: BoundNode
-        ) -> None:
-            child_type_node = self._type_graph.get_or_create_type(
-                type_identifier=action.child_spec.type_identifier
-            )
-            self._type_graph.add_make_child(
-                type_node=type_node,
-                child_type_node=child_type_node,
-                identifier=action.target_name,
-            )
 
         def handle_statement(stmt: Node, type_node: BoundNode) -> None:
             match maybe_spec := self.visit(stmt):
-                case ASTVisitor._AddChildAction():
-                    handle_add_child(maybe_spec, type_node)
+                case ASTVisitor._AddChildAction() as action:
+                    self._type_graph.add_make_child(
+                        type_node=type_node,
+                        child_type_identifier=action.child_spec.symbol.name,
+                        identifier=action.target_name,
+                    )
                 case None:
                     pass
                 case _:
@@ -1271,12 +1271,13 @@ class ASTVisitor:
                 type_node = self._type_graph.add_type(
                     identifier=cast_assert(str, module_name)
                 )
-
                 self._type_roots.append(type_node)
 
                 with self._scope_stack.enter():
                     for stmt in node.scope.get().stmts.get().as_list():
                         handle_statement(stmt, type_node)
+
+                self._scope_stack.add_symbol(ASTVisitor._Symbol(name=module_name))
 
             case other_kind:
                 raise NotImplementedError(f"Block kind not supported: {other_kind}")
@@ -1308,7 +1309,6 @@ class ASTVisitor:
 
         # TODO: record in schema so we can access node.assignable.get().value.get()
         assignable_value = node.assignable.get().get_child(name="value")
-
         assignable = self.visit(assignable_value)
         action: ASTVisitor._AddChildAction | None = None
 
@@ -1325,7 +1325,8 @@ class ASTVisitor:
         type_name = cast_assert(
             str, node.type_ref.get().name.get().try_extract_constrained_literal()
         )
-        return ASTVisitor._NewChildSpec(type_identifier=type_name)
+        symbol = self._scope_stack.resolve_symbol(type_name)
+        return ASTVisitor._NewChildSpec(symbol=symbol)
 
         # TODO: check type ref is valid:
         # - exists in a containing scope
@@ -1338,12 +1339,13 @@ class ASTVisitor:
 
 def build_file(source_file: Path) -> tuple[TypeGraph, AST.File, list[BoundNode]]:
     graph = GraphView.create()
-    type_graph = TypeGraph.create(g=graph)
+    ast_type_graph = TypeGraph.create(g=graph)
 
     tree = parse_text_as_file(source_file.read_text(), source_file)
-    ast_root = ANTLRVisitor(graph, type_graph, source_file).visit(tree)
+    ast_root = ANTLRVisitor(graph, ast_type_graph, source_file).visit(tree)
     assert isinstance(ast_root, AST.File)
 
-    type_roots = ASTVisitor(ast_root, graph).build()
+    type_graph, type_roots = ASTVisitor(ast_root, graph).build()
+    type_graph.link_type_references()
 
     return type_graph, ast_root, type_roots

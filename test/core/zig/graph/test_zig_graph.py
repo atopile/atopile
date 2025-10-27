@@ -1,3 +1,6 @@
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+
+
 def test_load_graph_module():
     from faebryk.core.zig.gen.graph.graph import GraphView  # type: ignore  # noqa: F401
 
@@ -150,14 +153,16 @@ def test_typegraph_instantiate():
     g = GraphView.create()
     type_graph = TypeGraph.create(g=g)
 
-    Electrical = type_graph.add_type(identifier="Electrical")
+    type_graph.add_type(identifier="Electrical")
     Resistor = type_graph.add_type(identifier="Resistor")
     type_graph.add_make_child(
-        type_node=Resistor, child_type_node=Electrical, identifier="p1"
+        type_node=Resistor, child_type_identifier="Electrical", identifier="p1"
     )
     type_graph.add_make_child(
-        type_node=Resistor, child_type_node=Electrical, identifier="p2"
+        type_node=Resistor, child_type_identifier="Electrical", identifier="p2"
     )
+
+    type_graph.link_type_references()
 
     rp1_ref = type_graph.add_reference(type_node=Resistor, path=["p1"])
     rp2_ref = type_graph.add_reference(type_node=Resistor, path=["p2"])
@@ -165,13 +170,17 @@ def test_typegraph_instantiate():
         type_node=Resistor,
         lhs_reference_node=rp1_ref.node(),
         rhs_reference_node=rp2_ref.node(),
-        edge_type=EdgePointer.get_tid(),
-        edge_directional=True,
-        edge_name="test",
-        edge_attributes={"test_key": "test_value"},
+        edge_attributes=EdgeCreationAttributes(
+            edge_type=EdgePointer.get_tid(),
+            directional=True,
+            name="test",
+            dynamic={"test_key": "test_value"},
+        ),
     )
 
-    resistor_instance = type_graph.instantiate(type_identifier="Resistor")
+    resistor_instance = type_graph.instantiate(
+        type_identifier="Resistor", attributes={}
+    )
 
     collected = []
     EdgeComposition.visit_children_edges(
