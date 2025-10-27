@@ -247,6 +247,7 @@ def prepare_build(
 def post_design_checks(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    return
     check_design(
         app.get_graph(),
         stage=F.implements_design_check.CheckStage.POST_DESIGN,

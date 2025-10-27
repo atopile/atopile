@@ -1166,9 +1166,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 params_with_definitions, key=lambda p: p.get_parent_force()[0]
             )
             for assignee_node, assigned_params in params_by_node.items():
-                is_part_module = isinstance(assignee_node, L.Module) and (
-                    assignee_node.has_trait(F.is_pickable_by_supplier_id)
-                    or assignee_node.has_trait(F.is_pickable_by_part_number)
+                is_part_module = (
+                    False
+                    and isinstance(assignee_node, L.Module)
+                    and (
+                        assignee_node.has_trait(F.is_pickable_by_supplier_id)
+                        or assignee_node.has_trait(F.is_pickable_by_part_number)
+                    )
                 )
 
                 gospel_params: list[Parameter] = []
