@@ -54,34 +54,27 @@ pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    path_list: ?std.ArrayList(BFSPath) = null, // Valid complete paths (plain paths without metadata)
-    end_nodes: ?std.ArrayList(BoundNodeReference) = null, // End nodes to search for (optional)
+    path_list: std.ArrayList(BFSPath), // Valid complete paths (plain paths without metadata)
+    end_nodes: std.ArrayList(BoundNodeReference), // End nodes to search for (optional)
     path_counter: u64 = 0, // Counters for statistics
     valid_path_counter: u64 = 0, // Count of valid complete paths
 
     pub fn init(allocator: std.mem.Allocator) PathFinder {
         return .{
             .allocator = allocator,
-            .path_list = null,
-            .end_nodes = null,
+            .path_list = std.ArrayList(BFSPath).init(allocator),
+            .end_nodes = std.ArrayList(BoundNodeReference).init(allocator),
             .path_counter = 0,
             .valid_path_counter = 0,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        if (self.path_list) |*list| {
-            for (list.items) |*path| {
-                path.deinit();
-            }
-            list.deinit();
-            self.path_list = null;
+        for (self.path_list.items) |*path| {
+            path.deinit();
         }
-
-        if (self.end_nodes) |*list| {
-            list.deinit();
-            self.end_nodes = null;
-        }
+        self.path_list.deinit();
+        self.end_nodes.deinit();
     }
 
     // Find all valid paths between start and end nodes
@@ -92,14 +85,14 @@ pub const PathFinder = struct {
         end_nodes: ?[]const BoundNodeReference,
     ) !graph.BFSPaths {
 
-        // Re-initialize lists with reasonable initial capacity
-        self.path_list = std.ArrayList(BFSPath).init(self.allocator);
-        try self.path_list.?.ensureTotalCapacity(256); // Start with room for 256 paths
-        self.end_nodes = std.ArrayList(BoundNodeReference).init(self.allocator);
+        // Clear and pre-allocate lists with reasonable initial capacity
+        self.path_list.clearRetainingCapacity();
+        try self.path_list.ensureTotalCapacity(256);
 
+        self.end_nodes.clearRetainingCapacity();
         if (end_nodes) |nodes| {
-            try self.end_nodes.?.ensureTotalCapacity(nodes.len);
-            self.end_nodes.?.appendSliceAssumeCapacity(nodes);
+            try self.end_nodes.ensureTotalCapacity(nodes.len);
+            self.end_nodes.appendSliceAssumeCapacity(nodes);
         }
 
         // Run BFS with our visitor callback
@@ -122,8 +115,8 @@ pub const PathFinder = struct {
 
         // Transfer ownership to BFSPaths
         var bfs_paths = graph.BFSPaths.init(self.allocator);
-        bfs_paths.paths = self.path_list.?;
-        self.path_list = null; // Clear our reference to prevent double-free
+        bfs_paths.paths = self.path_list;
+        self.path_list = std.ArrayList(BFSPath).init(self.allocator); // Reinitialize empty list
 
         return bfs_paths;
     }
@@ -152,7 +145,7 @@ pub const PathFinder = struct {
             copied_path.stop = path.stop;
             copied_path.via_conditional = path.via_conditional;
 
-            self.path_list.?.append(copied_path) catch |err| {
+            self.path_list.append(copied_path) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
             };
@@ -160,7 +153,8 @@ pub const PathFinder = struct {
 
             // Only remove end node from search list if we found a VALID path to it
             // Filtered OR stopped paths don't count as "found" - keep searching for better paths
-            if (self.end_nodes) |*end_nodes| {
+            if (self.end_nodes.items.len > 0) {
+                const end_nodes = &self.end_nodes;
                 const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
                 // Only mark end node as found if path is valid and not a dead-end
@@ -278,8 +272,7 @@ pub const PathFinder = struct {
     // Filter out paths that don't end at any of the target end nodes
     pub fn filter_only_end_nodes(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         // Only filter if end nodes are specified and the list is not empty
-        const end_nodes = self.end_nodes orelse return visitor.VisitResult(void){ .CONTINUE = {} };
-        if (end_nodes.items.len == 0) {
+        if (self.end_nodes.items.len == 0) {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
@@ -289,7 +282,7 @@ pub const PathFinder = struct {
         };
 
         // Check if path ends at one of the target nodes
-        for (end_nodes.items) |end_node| {
+        for (self.end_nodes.items) |end_node| {
             if (Node.is_same(path_end.node, end_node.node)) {
                 // Path ends at target - keep it
                 return visitor.VisitResult(void){ .CONTINUE = {} };
