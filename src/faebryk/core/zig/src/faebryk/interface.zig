@@ -110,6 +110,8 @@ pub const EdgeInterfaceConnection = struct {
 const a = std.testing.allocator;
 
 test "basic" {
+    // N1 --> N2
+    // N1 --> N3
     // Allocate some nodes and edges
     var g = graph.GraphView.init(a);
     defer g.deinit(); // Graph owns all inserted nodes/edges and handles their cleanup
@@ -216,6 +218,7 @@ test "basic" {
 }
 
 test "self_connect" {
+    // N1 (self-connect implied)
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -234,6 +237,9 @@ test "self_connect" {
 }
 
 test "is_connected_to" {
+    //     A
+    //    / \
+    //   B   C
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -249,10 +255,10 @@ test "is_connected_to" {
 }
 
 test "down_connect" {
-    // P1 -->  P2
-    //  HV      HV
-    //  LV      LV
-
+    // P1 --> P2
+    //  |      |
+    // HV     HV
+    // LV     LV
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -295,6 +301,13 @@ test "down_connect" {
 }
 
 test "no_connect_cases" {
+    // N1 --> N2 <-- N3
+    //        |        \
+    //        v         v
+    //       N5 <-- N4
+    //        ^
+    //        |
+    //       N6
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -329,6 +342,7 @@ test "no_connect_cases" {
 }
 
 test "chains_direct" {
+    // M1 --> M2 --> M3
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -344,7 +358,46 @@ test "chains_direct" {
     try std.testing.expect(paths.paths.items.len == 1);
 }
 
+test "chains_double_shallow_flat" {
+    // N1 ==> N2 ==> N3
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
+
+    _ = try EdgeInterfaceConnection.connect_shallow(bn1, bn2);
+    _ = try EdgeInterfaceConnection.connect_shallow(bn2, bn3);
+
+    const paths = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
+    defer paths.deinit();
+    try std.testing.expect(paths.paths.items.len == 1);
+}
+
+test "chains_mixed_shallow_flat" {
+    // N1 ==> N2 --> N3
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    const bn1 = g.create_and_insert_node();
+    const bn2 = g.create_and_insert_node();
+    const bn3 = g.create_and_insert_node();
+
+    _ = try EdgeInterfaceConnection.connect_shallow(bn1, bn2);
+    _ = try EdgeInterfaceConnection.connect(bn2, bn3);
+
+    const paths = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
+    defer paths.deinit();
+    try std.testing.expect(paths.paths.items.len == 1);
+}
+
 test "multiple_paths" {
+    //         N5
+    //        /
+    // N1 ---N2--> N4 --> N7
+    //   \        ^
+    //    N3 ----+
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -374,6 +427,9 @@ test "multiple_paths" {
 }
 
 test "hierarchy_short" {
+    // ElectricPower
+    //   |      |
+    //  HV --> LinkA --> LinkB --> LV
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -406,6 +462,9 @@ test "hierarchy_short" {
 }
 
 test "shallow_filter_allows_alternative_route" {
+    // P1 ==> P2 (shallow)
+    //  |       |
+    // HV ---- Bus --- HV
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -433,7 +492,155 @@ test "shallow_filter_allows_alternative_route" {
     try std.testing.expect(paths.paths.items.len == 1);
 }
 
+test "chains_mixed_shallow_nested" {
+    // El0 ==> El1 --> El2
+    //  |       |
+    // Line    Line
+    //  |       |
+    // Ref     Ref
+    //  |       |
+    // HV      HV
+    // LV      LV
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const ElType = try tg.add_type("El");
+    const LineType = try tg.add_type("Line");
+    const RefType = try tg.add_type("Ref");
+    const HVType = try tg.add_type("HV");
+    const LVType = try tg.add_type("LV");
+
+    _ = try tg.add_make_child(ElType, LineType, "line");
+    _ = try tg.add_make_child(ElType, RefType, "reference");
+    _ = try tg.add_make_child(RefType, HVType, "hv");
+    _ = try tg.add_make_child(RefType, LVType, "lv");
+
+    var el: [3]graph.BoundNodeReference = undefined;
+    for (&el) |*slot| slot.* = try tg.instantiate_node(ElType);
+
+    var line: [3]graph.BoundNodeReference = undefined;
+    var reference: [3]graph.BoundNodeReference = undefined;
+    var hv: [3]graph.BoundNodeReference = undefined;
+    var lv: [3]graph.BoundNodeReference = undefined;
+
+    for (el, 0..) |node, idx| {
+        line[idx] = EdgeComposition.get_child_by_identifier(node, "line").?;
+        reference[idx] = EdgeComposition.get_child_by_identifier(node, "reference").?;
+        hv[idx] = EdgeComposition.get_child_by_identifier(reference[idx], "hv").?;
+        lv[idx] = EdgeComposition.get_child_by_identifier(reference[idx], "lv").?;
+    }
+
+    _ = try EdgeInterfaceConnection.connect_shallow(el[0], el[1]);
+    _ = try EdgeInterfaceConnection.connect(el[1], el[2]);
+
+    var el_paths = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[2]);
+    defer el_paths.deinit();
+    try std.testing.expect(el_paths.paths.items.len == 1);
+
+    var line_paths = try EdgeInterfaceConnection.is_connected_to(a, line[1], line[2]);
+    defer line_paths.deinit();
+    try std.testing.expect(line_paths.paths.items.len == 1);
+
+    var ref_paths = try EdgeInterfaceConnection.is_connected_to(a, reference[1], reference[2]);
+    defer ref_paths.deinit();
+    try std.testing.expect(ref_paths.paths.items.len == 1);
+
+    var block_line = try EdgeInterfaceConnection.is_connected_to(a, line[0], line[1]);
+    defer block_line.deinit();
+    try std.testing.expect(block_line.paths.items.len == 0);
+
+    var block_ref = try EdgeInterfaceConnection.is_connected_to(a, reference[0], reference[1]);
+    defer block_ref.deinit();
+    try std.testing.expect(block_ref.paths.items.len == 0);
+
+    var block_line_far = try EdgeInterfaceConnection.is_connected_to(a, line[0], line[2]);
+    defer block_line_far.deinit();
+    try std.testing.expect(block_line_far.paths.items.len == 0);
+
+    var block_ref_far = try EdgeInterfaceConnection.is_connected_to(a, reference[0], reference[2]);
+    defer block_ref_far.deinit();
+    try std.testing.expect(block_ref_far.paths.items.len == 0);
+
+    _ = try EdgeInterfaceConnection.connect(line[0], line[1]);
+    _ = try EdgeInterfaceConnection.connect(reference[0], reference[1]);
+
+    var el_up = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[1]);
+    defer el_up.deinit();
+    try std.testing.expect(el_up.paths.items.len == 1);
+
+    var el_full = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[2]);
+    defer el_full.deinit();
+    try std.testing.expect(el_full.paths.items.len == 1);
+}
+
+test "split_flip_negative" {
+    // H1     H2
+    //  L1 --> L2
+    //  L2 --> L1
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const HighType = try tg.add_type("High");
+    const Lower1Type = try tg.add_type("Lower1");
+    const Lower2Type = try tg.add_type("Lower2");
+
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1");
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2");
+
+    var high: [2]graph.BoundNodeReference = undefined;
+    for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
+
+    var lower1: [2]graph.BoundNodeReference = undefined;
+    var lower2: [2]graph.BoundNodeReference = undefined;
+    for (high, 0..) |node, idx| {
+        lower1[idx] = EdgeComposition.get_child_by_identifier(node, "lower1").?;
+        lower2[idx] = EdgeComposition.get_child_by_identifier(node, "lower2").?;
+    }
+
+    _ = try EdgeInterfaceConnection.connect(lower1[0], lower2[1]);
+    _ = try EdgeInterfaceConnection.connect(lower2[0], lower1[1]);
+
+    var paths = try EdgeInterfaceConnection.is_connected_to(a, high[0], high[1]);
+    defer paths.deinit();
+    try std.testing.expect(paths.paths.items.len == 0);
+}
+
+test "up_connect_simple_two_negative" {
+    // H1      H2
+    //  L1 -->  L1
+    //  L2      L2
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const HighType = try tg.add_type("High");
+    const Lower1Type = try tg.add_type("Lower1");
+    const Lower2Type = try tg.add_type("Lower2");
+
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1");
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2");
+
+    var high: [2]graph.BoundNodeReference = undefined;
+    for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
+
+    var lower1: [2]graph.BoundNodeReference = undefined;
+    var lower2: [2]graph.BoundNodeReference = undefined;
+    for (high, 0..) |node, idx| {
+        lower1[idx] = EdgeComposition.get_child_by_identifier(node, "lower1").?;
+        lower2[idx] = EdgeComposition.get_child_by_identifier(node, "lower2").?;
+    }
+
+    _ = try EdgeInterfaceConnection.connect(lower1[0], lower1[1]);
+
+    var paths = try EdgeInterfaceConnection.is_connected_to(a, high[0], high[1]);
+    defer paths.deinit();
+    try std.testing.expect(paths.paths.items.len == 0);
+}
+
 test "loooooong_chain" {
+    // N0 --> N1 --> ... --> N10000
     // Let's make it hard - create a long chain of nodes
     // Use a more efficient allocator for this stress test instead of testing allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -507,6 +714,11 @@ test "loooooong_chain" {
 }
 
 test "shallow_edges" {
+    // N1 --> N2 --> N3
+    //      ||
+    //      || (shallow)
+    //      ||
+    // N4 --> N5 --> N6
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
@@ -538,6 +750,10 @@ test "shallow_edges" {
 }
 
 test "type_graph_pathfinder" {
+    // Sensor
+    //   └── I2C
+    //        ├── SCL
+    //        └── SDA
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
