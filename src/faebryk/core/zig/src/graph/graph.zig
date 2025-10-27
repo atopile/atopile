@@ -505,16 +505,6 @@ pub const BFSPath = struct {
         return self.g.bind(last_node);
     }
 
-    /// Returns the first node reached after start_node (destination of first edge)
-    pub fn get_first_node(self: *const @This()) ?BoundNodeReference {
-        if (self.traversed_edges.items.len == 0) {
-            return self.start_node;
-        }
-        const traversed_edge = self.traversed_edges.items[0];
-        const first_node = if (traversed_edge.forward) traversed_edge.edge.target else traversed_edge.edge.source;
-        return self.g.bind(first_node);
-    }
-
     pub fn contains(self: *const @This(), node: NodeReference) bool {
         // Check if start_node is in the path
         if (Node.is_same(self.start_node.node, node)) {
