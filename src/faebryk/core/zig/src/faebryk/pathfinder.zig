@@ -274,8 +274,8 @@ pub const PathFinder = struct {
             }
         }
 
-        const share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
-        if (share_parent) {
+        const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
+        if (edge_1_and_edge_2_share_parent) {
             path.filtered = true;
             path.stop = true;
             path.via_conditional = true;

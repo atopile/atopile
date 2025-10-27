@@ -820,12 +820,10 @@ pub const GraphView = struct {
         ctx: *anyopaque,
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
-        // Initialize variables required for BFS with reasonable initial capacity
         var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(g.allocator);
-        open_path_queue.ensureTotalCapacity(1024) catch {}; // Pre-allocate for 1024 paths in queue
-        // Use HashMap for O(1) visited node checks with VisitInfo tracking
+        open_path_queue.ensureTotalCapacity(1024) catch {};
         var visited_nodes = NodeRefMap.T(VisitInfo).init(g.allocator);
-        visited_nodes.ensureTotalCapacity(1024) catch {}; // Pre-allocate for 1024 visited nodes
+        visited_nodes.ensureTotalCapacity(1024) catch {};
 
         defer {
             while (open_path_queue.readItem()) |bfspath| {
@@ -836,7 +834,6 @@ pub const GraphView = struct {
         }
         defer visited_nodes.deinit();
 
-        // Initialize edge visitor
         const EdgeVisitor = struct {
             start_node: BoundNodeReference,
             current_path: *BFSPath,
@@ -845,8 +842,6 @@ pub const GraphView = struct {
             g: *GraphView,
             current_path_via_conditional: bool,
 
-            // O(1) lookup using HashMap
-            // Returns true if node should be skipped (already visited via better or equal path)
             fn should_skip_node(self: *@This(), node: NodeReference) bool {
                 if (self.visited_nodes.get(node)) |visit_info| {
                     // Previous visit via conditional, current via conditional → skip (prevent loops)
@@ -861,10 +856,8 @@ pub const GraphView = struct {
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
-                // Check if other node should be skipped based on visit history
                 const other_node = edge.edge.get_other_node(self.start_node.node);
 
-                // Cycle detection: never revisit a node that's already in the current path
                 if (other_node != null) {
                     for (self.current_path.path.edges.items) |path_edge| {
                         if (Node.is_same(path_edge.source, other_node.?) or Node.is_same(path_edge.target, other_node.?)) {
@@ -874,39 +867,30 @@ pub const GraphView = struct {
                 }
 
                 const should_skip = other_node != null and self.should_skip_node(other_node.?);
-
-                // If should skip, exit edge visitor and continue with BFS
                 if (should_skip) {
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
-                // If not visited, create a new path and append it to the open path queue
-                else {
-                    const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
 
-                    // Enqueue new path
-                    self.open_path_queue.writeItem(new_path) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
+                const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch |err| {
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
 
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
+                self.open_path_queue.writeItem(new_path) catch |err| {
+                    return visitor.VisitResult(void){ .ERROR = err };
+                };
+
+                return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
         // BFS setup
-
-        // Assume provided root node is already visited (not via conditional edges since it's the start)
         visited_nodes.put(start_node.node, VisitInfo{ .via_conditional = false }) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
-        // Create empty base path for extending with edges
         var empty_base = BFSPath.init(start_node);
         defer empty_base.deinit();
 
-        // Always add empty path (node is connected to itself)
         const empty_path_copy = start_node.g.allocator.create(BFSPath) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
@@ -930,17 +914,11 @@ pub const GraphView = struct {
                 return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
             };
 
-            // Call visitor - visitor can modify the path
             const bfs_visitor_result = f(ctx, path);
-
-            // Mark node at end of path as visited (O(1) with HashMap)
-            // Use path's actual conditional status (set by filters when crossing conditional edges)
-            // Filtered paths without conditional edges should still prevent future exploration
             visited_nodes.put(node_at_path_end.node, VisitInfo{ .via_conditional = path.via_conditional }) catch |err| {
                 return visitor.VisitResult(T){ .ERROR = err };
             };
 
-            // Report BFS visitor status
             switch (bfs_visitor_result) {
                 .STOP => {
                     return visitor.VisitResult(T){ .STOP = {} };
@@ -955,24 +933,24 @@ pub const GraphView = struct {
                 .OK => {},
             }
 
-            if (!path.stop) {
-                // Use edge visitor to extend this path and create new paths for the queue
-                var edge_visitor = EdgeVisitor{
-                    .start_node = node_at_path_end,
-                    .visited_nodes = &visited_nodes,
-                    .current_path = path,
-                    .open_path_queue = &open_path_queue,
-                    .g = g,
-                    .current_path_via_conditional = path.via_conditional,
-                };
+            if (path.stop) {
+                continue;
+            }
 
-                const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            var edge_visitor = EdgeVisitor{
+                .start_node = node_at_path_end,
+                .visited_nodes = &visited_nodes,
+                .current_path = path,
+                .open_path_queue = &open_path_queue,
+                .g = g,
+                .current_path_via_conditional = path.via_conditional,
+            };
 
-                switch (edge_visitor_result) {
-                    .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
-                    else => {},
-                }
-            } else {}
+            const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            switch (edge_visitor_result) {
+                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
+                else => {},
+            }
         }
 
         return visitor.VisitResult(T){ .EXHAUSTED = {} };
