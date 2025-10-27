@@ -85,12 +85,12 @@ pub const PathFinder = struct {
     }
 
     // Find all valid paths between start and end nodes
+    // Note: PathFinder is intended for single-use. Create a new instance for each search.
     pub fn find_paths(
         self: *Self,
         start_node: BoundNodeReference,
         end_nodes: ?[]const BoundNodeReference,
     ) !graph.BFSPaths {
-        self.deinit();
 
         // Re-initialize lists with reasonable initial capacity
         self.path_list = std.ArrayList(BFSPath).init(self.allocator);
@@ -101,10 +101,6 @@ pub const PathFinder = struct {
             try self.end_nodes.?.ensureTotalCapacity(nodes.len);
             self.end_nodes.?.appendSliceAssumeCapacity(nodes);
         }
-
-        // Reset counters
-        self.path_counter = 0;
-        self.valid_path_counter = 0;
 
         // Run BFS with our visitor callback
         const result = start_node.g.visit_paths_bfs(
@@ -128,12 +124,6 @@ pub const PathFinder = struct {
         var bfs_paths = graph.BFSPaths.init(self.allocator);
         bfs_paths.paths = self.path_list.?;
         self.path_list = null; // Clear our reference to prevent double-free
-
-        // Also clear end_nodes since we're not transferring it
-        if (self.end_nodes) |*list| {
-            list.deinit();
-            self.end_nodes = null;
-        }
 
         return bfs_paths;
     }
