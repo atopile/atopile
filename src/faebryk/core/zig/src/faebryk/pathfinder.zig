@@ -206,7 +206,7 @@ pub const PathFinder = struct {
         .{ .name = "count_paths", .func = Self.count_paths },
         .{ .name = "filter_only_end_nodes", .func = Self.filter_only_end_nodes },
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
-        .{ .name = "filter_path_by_node_type", .func = Self.filter_path_by_node_type },
+        .{ .name = "filter_path_by_same_node_type", .func = Self.filter_path_by_same_node_type },
         .{ .name = "filter_siblings", .func = Self.filter_siblings },
         .{ .name = "filter_hierarchy_stack", .func = Self.filter_hierarchy_stack },
     };
@@ -238,7 +238,7 @@ pub const PathFinder = struct {
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
-    pub fn filter_path_by_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
+    pub fn filter_path_by_same_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         const start_node = path.start_node;
         const end_node = path.path.get_other_node(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -253,13 +253,6 @@ pub const PathFinder = struct {
             path.filtered = true;
         }
 
-        // waiting on type graph implementation for node types
-        // var first_node = path.path.get_first_node();
-        // var last_node = path.path.get_last_node();
-
-        // if (last_node.?.node.attributes.dynamic.values.get("node type") != first_node.?.node.attributes.dynamic.values.get("node type")) {
-        //     path.filtered = true;
-        // }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
