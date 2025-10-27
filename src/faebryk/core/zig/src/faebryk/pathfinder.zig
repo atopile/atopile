@@ -56,8 +56,8 @@ pub const PathFinder = struct {
     allocator: std.mem.Allocator,
     path_list: std.ArrayList(BFSPath), // Valid complete paths (plain paths without metadata)
     end_nodes: std.ArrayList(BoundNodeReference), // End nodes to search for (optional)
-    path_counter: u64 = 0, // Counters for statistics
-    valid_path_counter: u64 = 0, // Count of valid complete paths
+    path_counter: u64, // Counters for statistics
+    valid_path_counter: u64, // Count of valid complete paths
 
     pub fn init(allocator: std.mem.Allocator) PathFinder {
         return .{
