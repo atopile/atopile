@@ -37,22 +37,27 @@ def test_down_connect():
 
     # Add children to ElectricPower type
     tg.add_make_child(
-        type_node=ElectricPowerType, 
-        child_type_node=ElectricalType, 
-        identifier="HV"
+        type_node=ElectricPowerType, child_type_node=ElectricalType, identifier="HV"
     )
     tg.add_make_child(
-        type_node=ElectricPowerType, 
-        child_type_node=ElectricalType, 
-        identifier="LV"
+        type_node=ElectricPowerType, child_type_node=ElectricalType, identifier="LV"
     )
 
     # Create instances
-    ep = [tg.instantiate_node(type_node=ElectricPowerType, attributes={}) for _ in range(2)]
-    
+    ep = [
+        tg.instantiate_node(type_node=ElectricPowerType, attributes={})
+        for _ in range(2)
+    ]
+
     # Get child nodes using EdgeComposition
-    hv = [EdgeComposition.get_child_by_identifier(bound_node=ep[i], child_identifier="HV") for i in range(2)]
-    lv = [EdgeComposition.get_child_by_identifier(bound_node=ep[i], child_identifier="LV") for i in range(2)]
+    hv = [
+        EdgeComposition.get_child_by_identifier(bound_node=ep[i], child_identifier="HV")
+        for i in range(2)
+    ]
+    lv = [
+        EdgeComposition.get_child_by_identifier(bound_node=ep[i], child_identifier="LV")
+        for i in range(2)
+    ]
 
     EdgeInterfaceConnection.connect(bn1=ep[0], bn2=ep[1])
 
@@ -126,37 +131,41 @@ def test_chains_mixed_shallow_nested():
     LVType = tg.add_type(identifier="LV")
 
     # Add children to El type
-    tg.add_make_child(
-        type_node=ElType, 
-        child_type_node=LineType, 
-        identifier="line"
-    )
-    tg.add_make_child(
-        type_node=ElType, 
-        child_type_node=RefType, 
-        identifier="reference"
-    )
-    
+    tg.add_make_child(type_node=ElType, child_type_node=LineType, identifier="line")
+    tg.add_make_child(type_node=ElType, child_type_node=RefType, identifier="reference")
+
     # Add children to Ref type
-    tg.add_make_child(
-        type_node=RefType, 
-        child_type_node=HVType, 
-        identifier="hv"
-    )
-    tg.add_make_child(
-        type_node=RefType, 
-        child_type_node=LVType, 
-        identifier="lv"
-    )
+    tg.add_make_child(type_node=RefType, child_type_node=HVType, identifier="hv")
+    tg.add_make_child(type_node=RefType, child_type_node=LVType, identifier="lv")
 
     # Create instances
     el = [tg.instantiate_node(type_node=ElType, attributes={}) for _ in range(3)]
-    
+
     # Get child nodes
-    line = [EdgeComposition.get_child_by_identifier(bound_node=el[i], child_identifier="line") for i in range(3)]
-    ref = [EdgeComposition.get_child_by_identifier(bound_node=el[i], child_identifier="reference") for i in range(3)]
-    hv = [EdgeComposition.get_child_by_identifier(bound_node=ref[i], child_identifier="hv") for i in range(3)]
-    lv = [EdgeComposition.get_child_by_identifier(bound_node=ref[i], child_identifier="lv") for i in range(3)]
+    line = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=el[i], child_identifier="line"
+        )
+        for i in range(3)
+    ]
+    ref = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=el[i], child_identifier="reference"
+        )
+        for i in range(3)
+    ]
+    hv = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=ref[i], child_identifier="hv"
+        )
+        for i in range(3)
+    ]
+    lv = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=ref[i], child_identifier="lv"
+        )
+        for i in range(3)
+    ]
 
     EdgeInterfaceConnection.connect_shallow(bn1=el[0], bn2=el[1])
     EdgeInterfaceConnection.connect(bn1=el[1], bn2=el[2])
@@ -213,22 +222,28 @@ def test_split_flip_negative():
 
     # Add children to High type
     tg.add_make_child(
-        type_node=HighType, 
-        child_type_node=Lower1Type, 
-        identifier="lower1"
+        type_node=HighType, child_type_node=Lower1Type, identifier="lower1"
     )
     tg.add_make_child(
-        type_node=HighType, 
-        child_type_node=Lower2Type, 
-        identifier="lower2"
+        type_node=HighType, child_type_node=Lower2Type, identifier="lower2"
     )
 
     # Create instances
     high = [tg.instantiate_node(type_node=HighType, attributes={}) for _ in range(2)]
-    
+
     # Get child nodes
-    lower1 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower1") for i in range(2)]
-    lower2 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower2") for i in range(2)]
+    lower1 = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=high[i], child_identifier="lower1"
+        )
+        for i in range(2)
+    ]
+    lower2 = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=high[i], child_identifier="lower2"
+        )
+        for i in range(2)
+    ]
 
     EdgeInterfaceConnection.connect(bn1=lower1[0], bn2=lower2[1])
     EdgeInterfaceConnection.connect(bn1=lower2[0], bn2=lower1[1])
@@ -254,22 +269,28 @@ def test_up_connect_simple_two_negative():
 
     # Add children to High type
     tg.add_make_child(
-        type_node=HighType, 
-        child_type_node=Lower1Type, 
-        identifier="lower1"
+        type_node=HighType, child_type_node=Lower1Type, identifier="lower1"
     )
     tg.add_make_child(
-        type_node=HighType, 
-        child_type_node=Lower2Type, 
-        identifier="lower2"
+        type_node=HighType, child_type_node=Lower2Type, identifier="lower2"
     )
 
     # Create instances
     high = [tg.instantiate_node(type_node=HighType, attributes={}) for _ in range(2)]
-    
+
     # Get child nodes
-    lower1 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower1") for i in range(2)]
-    lower2 = [EdgeComposition.get_child_by_identifier(bound_node=high[i], child_identifier="lower2") for i in range(2)]
+    lower1 = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=high[i], child_identifier="lower1"
+        )
+        for i in range(2)
+    ]
+    lower2 = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=high[i], child_identifier="lower2"
+        )
+        for i in range(2)
+    ]
 
     EdgeInterfaceConnection.connect(bn1=lower1[0], bn2=lower1[1])
     assert not EdgeInterfaceConnection.is_connected_to(source=high[0], target=high[1])
@@ -697,15 +718,13 @@ def test_no_parent_to_child():
     ChildType = tg.add_type(identifier="Child")
 
     # Add child to parent type
-    tg.add_make_child(
-        type_node=ParentType, 
-        child_type_node=ChildType, 
-        identifier="c1"
-    )
+    tg.add_make_child(type_node=ParentType, child_type_node=ChildType, identifier="c1")
 
     # Create instances
     parent = tg.instantiate_node(type_node=ParentType, attributes={})
-    child = EdgeComposition.get_child_by_identifier(bound_node=parent, child_identifier="c1")
+    child = EdgeComposition.get_child_by_identifier(
+        bound_node=parent, child_identifier="c1"
+    )
 
     assert not EdgeInterfaceConnection.is_connected_to(source=parent, target=child)
 
@@ -765,17 +784,20 @@ def test_shallow_connection_blocks_children():
     ChildType = tg.add_type(identifier="Child")
 
     # Add child to parent type
-    tg.add_make_child(
-        type_node=ParentType, 
-        child_type_node=ChildType, 
-        identifier="c1"
-    )
+    tg.add_make_child(type_node=ParentType, child_type_node=ChildType, identifier="c1")
 
     # Create instances
-    parents = [tg.instantiate_node(type_node=ParentType, attributes={}) for _ in range(2)]
-    
+    parents = [
+        tg.instantiate_node(type_node=ParentType, attributes={}) for _ in range(2)
+    ]
+
     # Get child nodes
-    children = [EdgeComposition.get_child_by_identifier(bound_node=parents[i], child_identifier="c1") for i in range(2)]
+    children = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=parents[i], child_identifier="c1"
+        )
+        for i in range(2)
+    ]
 
     EdgeInterfaceConnection.connect_shallow(bn1=parents[0], bn2=parents[1])
 
@@ -872,17 +894,18 @@ def test_composition_and_interface_edges():
     ChildType = tg.add_type(identifier="Child")
 
     # Add child to root type
-    tg.add_make_child(
-        type_node=RootType, 
-        child_type_node=ChildType, 
-        identifier="child"
-    )
+    tg.add_make_child(type_node=RootType, child_type_node=ChildType, identifier="child")
 
     # Create instances
     roots = [tg.instantiate_node(type_node=RootType, attributes={}) for _ in range(2)]
-    
+
     # Get child nodes
-    children = [EdgeComposition.get_child_by_identifier(bound_node=roots[i], child_identifier="child") for i in range(2)]
+    children = [
+        EdgeComposition.get_child_by_identifier(
+            bound_node=roots[i], child_identifier="child"
+        )
+        for i in range(2)
+    ]
 
     EdgeInterfaceConnection.connect(bn1=children[0], bn2=children[1])
 
