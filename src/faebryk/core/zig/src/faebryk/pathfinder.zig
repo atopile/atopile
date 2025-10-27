@@ -245,9 +245,7 @@ pub const PathFinder = struct {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        const path_end = path.path.get_other_node(path.start_node) orelse {
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        };
+        const path_end = path.path.get_other_node(path.start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
 
         for (self.end_nodes.items) |end_node| {
             if (Node.is_same(path_end.node, end_node.node)) {
@@ -324,9 +322,7 @@ pub const PathFinder = struct {
             }
 
             // Move to next node in path
-            current_node = current_node.g.bind(
-                edge.get_other_node(current_node.node) orelse return error.InvalidNode,
-            );
+            current_node = current_node.g.bind(edge.get_other_node(current_node.node));
         }
 
         return elements;
@@ -392,9 +388,7 @@ pub const PathFinder = struct {
             }
 
             // Move to next node
-            current_node = current_node.g.bind(
-                edge.get_other_node(current_node.node) orelse return false,
-            );
+            current_node = current_node.g.bind(edge.get_other_node(current_node.node));
         }
 
         return true;

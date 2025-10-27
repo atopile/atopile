@@ -364,13 +364,13 @@ pub const Edge = struct {
         return null;
     }
 
-    pub fn get_other_node(self: *const @This(), N: NodeReference) ?NodeReference {
+    pub fn get_other_node(self: *const @This(), N: NodeReference) NodeReference {
         if (Node.is_same(self.source, N)) {
             return self.target;
         } else if (Node.is_same(self.target, N)) {
             return self.source;
         } else {
-            return null; // Returns null if given node and edge were not connected in the first place
+            @panic("Edge is not connected to the given node");
         }
     }
 
@@ -456,7 +456,7 @@ pub const Path = struct {
 
         // special case - path length 1: need the starting node to disambiguate
         if (self.edges.items.len == 1) {
-            return bn.g.bind(last_edge.get_other_node(bn.node) orelse return null);
+            return bn.g.bind(last_edge.get_other_node(bn.node));
         }
 
         // For length >= 2, infer the junction node shared by the last two edges,
@@ -471,7 +471,7 @@ pub const Path = struct {
             return null;
         };
 
-        const end = last_edge.get_other_node(shared_node) orelse return null;
+        const end = last_edge.get_other_node(shared_node);
         return bn.g.bind(end);
     }
 
@@ -491,7 +491,7 @@ pub const Path = struct {
                 if (Node.is_same(last_edge.target, second_last_edge.target)) break :blk last_edge.target;
                 return null; // invalid path: last two edges do not connect
             };
-            return self.g.bind(last_edge.get_other_node(shared_node) orelse return null);
+            return self.g.bind(last_edge.get_other_node(shared_node));
         }
 
         // If the last edge is directional, we can use its target.
@@ -858,15 +858,13 @@ pub const GraphView = struct {
 
                 const other_node = edge.edge.get_other_node(self.start_node.node);
 
-                if (other_node != null) {
-                    for (self.current_path.path.edges.items) |path_edge| {
-                        if (Node.is_same(path_edge.source, other_node.?) or Node.is_same(path_edge.target, other_node.?)) {
-                            return visitor.VisitResult(void){ .CONTINUE = {} };
-                        }
+                for (self.current_path.path.edges.items) |path_edge| {
+                    if (Node.is_same(path_edge.source, other_node) or Node.is_same(path_edge.target, other_node)) {
+                        return visitor.VisitResult(void){ .CONTINUE = {} };
                     }
                 }
 
-                const should_skip = other_node != null and self.should_skip_node(other_node.?);
+                const should_skip = self.should_skip_node(other_node);
                 if (should_skip) {
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
@@ -888,18 +886,10 @@ pub const GraphView = struct {
             return visitor.VisitResult(T){ .ERROR = err };
         };
 
-        var empty_base = BFSPath.init(start_node);
-        defer empty_base.deinit();
-
         const empty_path_copy = start_node.g.allocator.create(BFSPath) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
-        empty_path_copy.* = BFSPath{
-            .path = Path.init(start_node.g),
-            .start_node = start_node,
-            .filtered = false,
-            .stop = false,
-        };
+        empty_path_copy.* = BFSPath.init(start_node);
         open_path_queue.writeItem(empty_path_copy) catch |err| {
             return visitor.VisitResult(T){ .ERROR = err };
         };
