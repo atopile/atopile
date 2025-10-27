@@ -869,30 +869,19 @@ pub const GraphView = struct {
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
 
-                const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch |err| {
-                    return visitor.VisitResult(void){ .ERROR = err };
-                };
-
-                self.open_path_queue.writeItem(new_path) catch |err| {
-                    return visitor.VisitResult(void){ .ERROR = err };
-                };
+                const new_path = BFSPath.cloneAndExtend(self.current_path, edge.edge) catch @panic("OOM");
+                self.open_path_queue.writeItem(new_path) catch @panic("OOM");
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
         // BFS setup
-        visited_nodes.put(start_node.node, VisitInfo{ .via_conditional = false }) catch |err| {
-            return visitor.VisitResult(T){ .ERROR = err };
-        };
+        visited_nodes.put(start_node.node, VisitInfo{ .via_conditional = false }) catch @panic("OOM");
 
-        const empty_path_copy = start_node.g.allocator.create(BFSPath) catch |err| {
-            return visitor.VisitResult(T){ .ERROR = err };
-        };
+        const empty_path_copy = start_node.g.allocator.create(BFSPath) catch @panic("OOM");
         empty_path_copy.* = BFSPath.init(start_node);
-        open_path_queue.writeItem(empty_path_copy) catch |err| {
-            return visitor.VisitResult(T){ .ERROR = err };
-        };
+        open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
@@ -905,9 +894,7 @@ pub const GraphView = struct {
             };
 
             const bfs_visitor_result = f(ctx, path);
-            visited_nodes.put(node_at_path_end.node, VisitInfo{ .via_conditional = path.via_conditional }) catch |err| {
-                return visitor.VisitResult(T){ .ERROR = err };
-            };
+            visited_nodes.put(node_at_path_end.node, VisitInfo{ .via_conditional = path.via_conditional }) catch @panic("OOM");
 
             switch (bfs_visitor_result) {
                 .STOP => {
