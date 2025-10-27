@@ -154,18 +154,6 @@ def test_chains_mixed_shallow_nested():
         )
         for i in range(3)
     ]
-    hv = [
-        EdgeComposition.get_child_by_identifier(
-            bound_node=ref[i], child_identifier="hv"
-        )
-        for i in range(3)
-    ]
-    lv = [
-        EdgeComposition.get_child_by_identifier(
-            bound_node=ref[i], child_identifier="lv"
-        )
-        for i in range(3)
-    ]
 
     EdgeInterfaceConnection.connect_shallow(bn1=el[0], bn2=el[1])
     EdgeInterfaceConnection.connect(bn1=el[1], bn2=el[2])
@@ -282,12 +270,6 @@ def test_up_connect_simple_two_negative():
     lower1 = [
         EdgeComposition.get_child_by_identifier(
             bound_node=high[i], child_identifier="lower1"
-        )
-        for i in range(2)
-    ]
-    lower2 = [
-        EdgeComposition.get_child_by_identifier(
-            bound_node=high[i], child_identifier="lower2"
         )
         for i in range(2)
     ]
