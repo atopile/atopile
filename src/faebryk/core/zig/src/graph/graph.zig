@@ -579,6 +579,21 @@ pub const BFSPath = struct {
     pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
         return self.path.get_other_node(self.start_node);
     }
+
+    pub fn contains(self: *const @This(), node: NodeReference) bool {
+        // Check if start_node is in the path
+        if (Node.is_same(self.start_node.node, node)) {
+            return true;
+        }
+
+        // Check if any edge in the path touches the node
+        for (self.path.edges.items) |path_edge| {
+            if (Node.is_same(path_edge.source, node) or Node.is_same(path_edge.target, node)) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 pub const BFSPaths = struct {
@@ -843,6 +858,12 @@ pub const GraphView = struct {
             current_path_via_conditional: bool,
 
             fn should_skip_node(self: *@This(), node: NodeReference) bool {
+                // Skip if node would create a cycle in the path
+                if (self.current_path.contains(node)) {
+                    return true;
+                }
+
+                // Check visited tracking
                 if (self.visited_nodes.get(node)) |visit_info| {
                     // Previous visit via conditional, current via conditional → skip (prevent loops)
                     // Previous visit via conditional, current NOT via conditional → ALLOW (override with better path)
@@ -857,12 +878,6 @@ pub const GraphView = struct {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
                 const other_node = edge.edge.get_other_node(self.start_node.node);
-
-                for (self.current_path.path.edges.items) |path_edge| {
-                    if (Node.is_same(path_edge.source, other_node) or Node.is_same(path_edge.target, other_node)) {
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
-                    }
-                }
 
                 const should_skip = self.should_skip_node(other_node);
                 if (should_skip) {
