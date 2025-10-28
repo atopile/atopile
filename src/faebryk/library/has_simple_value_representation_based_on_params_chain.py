@@ -13,19 +13,32 @@ import faebryk.core.node as fabll
 #     Parameter,
 #     ParameterOperableHasNoLiteral,
 # )
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.libs.util import join_if_non_empty
 
 logger = logging.getLogger(__name__)
 
 
 class has_simple_value_representation_based_on_params_chain(fabll.Node):
+    params = fabll.ChildField(fabll.Node)
+    unit = fabll.ChildField(fabll.Parameter)
+    tolerance = fabll.ChildField(fabll.Parameter)
+    prefix = fabll.ChildField(fabll.Parameter)
+    suffix = fabll.ChildField(fabll.Parameter)
+
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        cls.params = t.Child(nodetype=fabll.Node)  # TODO: change to list
-        cls.unit = t.Child(nodetype=fabll.Parameter)
-        cls.tolerance = t.Child(nodetype=fabll.Parameter)
-        cls.prefix = t.Child(nodetype=fabll.Parameter)
-        cls.suffix = t.Child(nodetype=fabll.Parameter)
+    def MakeChild(cls, params: dict[str, fabll.ChildField]):
+        out = fabll.ChildField(cls)
+        for param_name, param_ref in params.items():
+            field = fabll.EdgeField(
+                [out, cls.params],
+                [param_ref],
+                edge=EdgePointer.build(identifier=param_name, order=None),
+            )
+            out.add_dependant(field)
+        return out
 
     # @dataclass
     # class Spec:

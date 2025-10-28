@@ -8,9 +8,7 @@ import faebryk.core.node as fabll
 
 
 class has_designator_prefix(fabll.Node):
-    @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        cls.prefix_param = t.Child(nodetype=fabll.Parameter)
+    prefix_param = fabll.ChildField(fabll.Parameter)
 
     class Prefix(StrEnum):
         A = "A"
@@ -229,6 +227,14 @@ class has_designator_prefix(fabll.Node):
 
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
+
+    @classmethod
+    def MakeChild(cls, value: Prefix) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            fabll.Parameter.ConstrainToLiteral.MakeChild([out, cls.prefix_param], value)
+        )
+        return out
 
     # def __init__(self, prefix: str | Prefix) -> None:
     #     super().__init__()

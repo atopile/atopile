@@ -37,7 +37,7 @@ class Capacitor(fabll.Node):
         C0G = auto()
 
     @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
+    def __create_type__(cls, t: fabll.TypeNodeBoundTG[fabll.Node, Any]) -> None:
         # TODO: Switch to list_field unnamed = fabll.list_field(2, F.Electrical)
         cls.p1 = t.Child(nodetype=Electrical)
         cls.p2 = t.Child(nodetype=Electrical)

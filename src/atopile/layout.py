@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class SubPCB(fabll.Node):
-    @classmethod
-    def __create_type__(cls, t: "fabll.BoundNodeType[SubPCB, Any]") -> None:
-        cls.path = t.Child(fabll.Parameter)
+    path = fabll.ChildField(fabll.Parameter)
 
     @classmethod
     def __create_instance__(
@@ -38,10 +36,8 @@ class SubPCB(fabll.Node):
 
 
 class has_subpcb(fabll.Node):
-    @classmethod
-    def __create_type__(cls, t: "fabll.BoundNodeType[has_subpcb, Any]") -> None:
-        cls.subpcb_ = t.Child(fabll.Set)
-        fabll.Traits.mark_as_trait(t)
+    subpcb_ = fabll.ChildField(fabll.Set)
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, subpcb: "SubPCB") -> "has_subpcb":
         self.subpcb_.get().append(subpcb)
@@ -76,11 +72,8 @@ class SubAddress:
 
 class in_sub_pcb(fabll.Node):
     _sub_root_module_identifier = "sub_root_module"
-
-    @classmethod
-    def __create_type__(cls, t: "fabll.BoundNodeType[in_sub_pcb, Any]") -> None:
-        cls.sub_root_modules = t.Child(fabll.Set)
-        fabll.Traits.mark_as_trait(t)
+    sub_root_modules = fabll.ChildField(fabll.Set)
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, sub_root_module: fabll.Node[Any]) -> "in_sub_pcb":
         self.sub_root_modules.get().append(sub_root_module)
