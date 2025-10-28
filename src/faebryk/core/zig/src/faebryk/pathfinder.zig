@@ -305,37 +305,29 @@ pub const PathFinder = struct {
     }
 
     fn validate_shallow_edges(path: *BFSPath) bool {
-        var hierarchy_depth: i32 = 0; // 0 = starting level, positive = higher (toward root), negative = lower (toward leaves)
+        var depth: i32 = 0;
 
-        for (path.traversed_edges.items) |traversed_edge| {
-            const edge = traversed_edge.edge;
-            const edge_start = if (traversed_edge.forward) edge.source else edge.target;
-            if (EdgeComposition.is_instance(edge)) {
-                // Update hierarchy depth based on traversal direction
-                const child_node = EdgeComposition.get_child_node(edge);
-                const parent_node = EdgeComposition.get_parent_node(edge);
+        for (path.traversed_edges.items) |te| {
+            const e = te.edge;
+            const start = if (te.forward) e.source else e.target;
 
-                if (Node.is_same(child_node, edge_start)) {
-                    // Going UP (child to parent) - moving toward root
-                    hierarchy_depth += 1;
-                } else if (Node.is_same(parent_node, edge_start)) {
-                    // Going DOWN (parent to child) - moving away from root
-                    hierarchy_depth -= 1;
+            if (EdgeComposition.is_instance(e)) {
+                const is_up = Node.is_same(EdgeComposition.get_child_node(e), start);
+                const is_down = Node.is_same(EdgeComposition.get_parent_node(e), start);
+
+                if (is_up) {
+                    depth += 1;
+                } else if (is_down) {
+                    depth -= 1;
                 }
-            } else if (EdgeInterfaceConnection.is_instance(edge)) {
-                // Check if this is a shallow link
-                const shallow_val = edge.attributes.dynamic.values.get(shallow);
-                if (shallow_val) |shallow_value| {
-                    if (shallow_value.Bool) {
-                        path.via_conditional = true;
-                        if (hierarchy_depth > 0) {
-                            return false;
-                        }
-                    }
+            } else if (EdgeInterfaceConnection.is_instance(e)) {
+                const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
+                if (shallow_val.Bool) {
+                    path.via_conditional = true;
+                    if (depth > 0) return false;
                 }
             }
         }
-
         return true;
     }
 
@@ -346,30 +338,27 @@ pub const PathFinder = struct {
     pub fn filter_hierarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
-        if (path.filtered) {
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
+        if (path.filtered) return visitor.VisitResult(void){ .CONTINUE = {} };
 
-        const allocator = path.g.allocator;
-
-        var hierarchy_elements = build_hierarchy_elements(allocator, path) catch |err| {
+        var hierarchy_elements = build_hierarchy_elements(path.g.allocator, path) catch |err| {
             return visitor.VisitResult(void){ .ERROR = err };
         };
         defer hierarchy_elements.deinit();
 
-        const hierarchy_valid = fold_and_validate_hierarchy(allocator, hierarchy_elements.items) catch |err| {
+        const hierarchy_valid = fold_and_validate_hierarchy(path.g.allocator, hierarchy_elements.items) catch |err| {
             return visitor.VisitResult(void){ .ERROR = err };
         };
 
-        if (!hierarchy_valid) {
+        if (hierarchy_valid) {
+            if (validate_shallow_edges(path)) {
+                // ok
+            } else {
+                path.filtered = true;
+                path.stop = true;
+                path.via_conditional = true;
+            }
+        } else {
             path.filtered = true;
-            path.via_conditional = true;
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-
-        if (!validate_shallow_edges(path)) {
-            path.filtered = true;
-            path.stop = true;
             path.via_conditional = true;
         }
 
