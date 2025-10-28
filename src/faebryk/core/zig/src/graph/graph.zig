@@ -493,7 +493,7 @@ pub const BFSPath = struct {
     }
 
     /// Returns the final destination of the path
-    pub fn get_last_node(self: *const @This()) ?BoundNodeReference {
+    pub fn get_last_node(self: *const @This()) BoundNodeReference {
         if (self.traversed_edges.items.len == 0) {
             return self.start_node;
         }
@@ -841,7 +841,7 @@ pub const GraphView = struct {
 
             // run BFS visitor
             const bfs_visitor_result = f(ctx, path);
-            const node_at_path_end = path.get_last_node() orelse return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
+            const node_at_path_end = path.get_last_node();
 
             // Record visited strength, upgrading from weak->strong when applicable
             if (visited_nodes.get(node_at_path_end.node)) |prev| {

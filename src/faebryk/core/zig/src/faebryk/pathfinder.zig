@@ -135,10 +135,10 @@ pub const PathFinder = struct {
             const result = filter.func(self, path);
             switch (result) {
                 .CONTINUE => {},
-                .STOP => return visitor.VisitResult(void){ .STOP = {} },
-                .ERROR => |err| return visitor.VisitResult(void){ .ERROR = err },
-                .OK => |value| return visitor.VisitResult(void){ .OK = value },
-                .EXHAUSTED => return visitor.VisitResult(void){ .EXHAUSTED = {} },
+                .STOP => return result,
+                .ERROR => return result,
+                .OK => {},
+                .EXHAUSTED => return result,
             }
             // stop iterating through other paths if a filter says st
             if (path.stop_new_path_discovery) {
@@ -188,7 +188,7 @@ pub const PathFinder = struct {
     pub fn filter_path_by_same_node_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
         const start_node = path.start_node;
-        const end_node = path.get_last_node() orelse return visitor.VisitResult(void){ .CONTINUE = {} };
+        const end_node = path.get_last_node();
 
         const start_type_edge = EdgeType.get_type_edge(start_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
         const end_type_edge = EdgeType.get_type_edge(end_node) orelse return visitor.VisitResult(void){ .CONTINUE = {} };
