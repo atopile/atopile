@@ -777,9 +777,9 @@ pub const GraphView = struct {
         f: fn (*anyopaque, *BFSPath) visitor.VisitResult(T),
     ) visitor.VisitResult(T) {
         var open_path_queue = std.fifo.LinearFifo(*BFSPath, .Dynamic).init(g.allocator);
-        open_path_queue.ensureTotalCapacity(1024) catch {};
+        open_path_queue.ensureTotalCapacity(1024) catch @panic("OOM");
         var visited_nodes = NodeRefMap.T(VisitInfo).init(g.allocator);
-        visited_nodes.ensureTotalCapacity(1024) catch {};
+        visited_nodes.ensureTotalCapacity(1024) catch @panic("OOM");
 
         defer {
             while (open_path_queue.readItem()) |bfspath| {
@@ -804,12 +804,13 @@ pub const GraphView = struct {
                     return false;
                 }
 
+                // if node has been weak visited, allow it to be re-added to paths
                 if (self.visited_nodes.get(node)) |visit_info| {
-                    // allow revisit if previously only weakly visited
                     if (visit_info.visit_strength == .weak) return true;
                     return false;
                 }
 
+                // else not visited, add to path
                 return true;
             }
 
@@ -837,11 +838,11 @@ pub const GraphView = struct {
                 path.deinit();
                 g.allocator.destroy(path);
             }
-            const node_at_path_end = path.get_last_node() orelse {
-                return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
-            };
 
+            // run BFS visitor
             const bfs_visitor_result = f(ctx, path);
+            const node_at_path_end = path.get_last_node() orelse return visitor.VisitResult(T){ .ERROR = error.InvalidPath };
+
             // Record visited strength, upgrading from weak->strong when applicable
             if (visited_nodes.get(node_at_path_end.node)) |prev| {
                 const prev_strength = prev.visit_strength;
@@ -852,15 +853,9 @@ pub const GraphView = struct {
             }
 
             switch (bfs_visitor_result) {
-                .STOP => {
-                    return visitor.VisitResult(T){ .STOP = {} };
-                },
-                .ERROR => |err| {
-                    return visitor.VisitResult(T){ .ERROR = err };
-                },
-                .EXHAUSTED => {
-                    return visitor.VisitResult(T){ .EXHAUSTED = {} };
-                },
+                .STOP => return bfs_visitor_result,
+                .ERROR => return bfs_visitor_result,
+                .EXHAUSTED => return bfs_visitor_result,
                 .CONTINUE => {},
                 .OK => {},
             }
@@ -878,10 +873,7 @@ pub const GraphView = struct {
             };
 
             const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
-            switch (edge_visitor_result) {
-                .ERROR => |err| return visitor.VisitResult(T){ .ERROR = err },
-                else => {},
-            }
+            if (edge_visitor_result == .ERROR) return edge_visitor_result;
         }
 
         return visitor.VisitResult(T){ .EXHAUSTED = {} };

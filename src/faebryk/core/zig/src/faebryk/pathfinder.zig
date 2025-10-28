@@ -140,6 +140,10 @@ pub const PathFinder = struct {
                 .OK => |value| return visitor.VisitResult(void){ .OK = value },
                 .EXHAUSTED => return visitor.VisitResult(void){ .EXHAUSTED = {} },
             }
+            // stop iterating through other paths if a filter says st
+            if (path.stop_new_path_discovery) {
+                continue;
+            }
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
