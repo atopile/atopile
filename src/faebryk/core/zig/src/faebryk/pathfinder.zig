@@ -147,7 +147,7 @@ pub const PathFinder = struct {
             }
             // stop iterating through other paths if a filter says st
             if (path.stop_new_path_discovery) {
-                continue;
+                break;
             }
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
