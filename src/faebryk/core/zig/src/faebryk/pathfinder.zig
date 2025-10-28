@@ -124,7 +124,7 @@ pub const PathFinder = struct {
             copied_path.traversed_edges.appendSliceAssumeCapacity(path.traversed_edges.items);
             copied_path.invalid_path = path.invalid_path;
             copied_path.stop = path.stop;
-            copied_path.via_conditional = path.via_conditional;
+            copied_path.visit_strength = path.visit_strength;
 
             self.path_list.append(copied_path) catch |err| {
                 copied_path.deinit();
@@ -228,7 +228,7 @@ pub const PathFinder = struct {
         if (edge_1_and_edge_2_share_parent) {
             path.invalid_path = true;
             path.stop = true;
-            path.via_conditional = true;
+            path.visit_strength = .weak;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -293,7 +293,7 @@ pub const PathFinder = struct {
             } else if (EdgeInterfaceConnection.is_instance(e)) {
                 const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
                 if (shallow_val.Bool) {
-                    path.via_conditional = true;
+                    path.visit_strength = .weak;
                     if (depth > 0) {
                         path.stop = true;
                         return false;
@@ -323,8 +323,8 @@ pub const PathFinder = struct {
         if (!ok) {
             path.invalid_path = true;
             // path.stop already set for shallow violations inside validator
-            // For pure hierarchy violations, we mark via_conditional to match previous behavior
-            if (!path.stop) path.via_conditional = true;
+            // For pure hierarchy violations, mark as weak to prefer stronger revisits
+            if (!path.stop) path.visit_strength = .weak;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };

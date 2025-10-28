@@ -430,12 +430,9 @@ pub const BFSPath = struct {
     invalid_path: bool = false, // invalid path (e.g., hierarchy violation, shallow link violation, etc.)
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
-    // Tracks if this path uses conditional/weak edges that could be overridden by better paths
-    // Must be set by pathfinder filters when they detect conditional edge usage
-    // (e.g., shallow links, voltage-dependent connections, etc.)
-    // Non-conditional paths can revisit nodes that were previously reached via conditional paths
-    // This enables preference for "strong" paths over "weak" conditional paths
-    via_conditional: bool = false,
+    // Visit strength for this path: strong (default) vs weak (conditional/soft)
+    // Weak paths may be overridden by a later strong visit at the same node.
+    visit_strength: VisitStrength = .strong,
 
     fn is_consistent(self: *const @This()) bool {
         return self.start_node.g == self.g;
@@ -485,7 +482,7 @@ pub const BFSPath = struct {
             .forward = forward,
         });
 
-        new_path.via_conditional = base.via_conditional;
+        new_path.visit_strength = base.visit_strength;
 
         return new_path;
     }
@@ -585,12 +582,11 @@ pub const BoundEdgeReference = struct {
 
 // Information about how a node was reached during graph traversal
 // Used to determine if a node can be revisited via a "better" path
+pub const VisitStrength = enum { strong, weak };
+
 pub const VisitInfo = struct {
-    // Was this node reached via conditional/weak edges?
-    // Conditional edges are edges that may not always be valid paths
-    // (e.g., shallow links, filtered edges, etc.)
-    // Non-conditional paths can override conditional paths during BFS
-    via_conditional: bool,
+    // How was this node last reached? Strong dominates weak.
+    visit_strength: VisitStrength,
 };
 
 pub const GraphView = struct {
@@ -800,7 +796,7 @@ pub const GraphView = struct {
             open_path_queue: *std.fifo.LinearFifo(*BFSPath, .Dynamic),
             visited_nodes: *NodeRefMap.T(VisitInfo),
             g: *GraphView,
-            current_path_via_conditional: bool,
+            // no per-path strength needed here; decisions rely on recorded VisitInfo
 
             fn valid_node_to_add_to_path(self: *@This(), node: NodeReference) bool {
                 // if node is contained in current path, we should not add to the path
@@ -809,10 +805,8 @@ pub const GraphView = struct {
                 }
 
                 if (self.visited_nodes.get(node)) |visit_info| {
-                    // if node was visited via conditional, we should add to the path (we want to keep exploring)
-                    if (visit_info.via_conditional) {
-                        return true;
-                    }
+                    // allow revisit if previously only weakly visited
+                    if (visit_info.visit_strength == .weak) return true;
                     return false;
                 }
 
@@ -832,7 +826,7 @@ pub const GraphView = struct {
         };
 
         // BFS setup
-        visited_nodes.put(start_node.node, VisitInfo{ .via_conditional = false }) catch @panic("OOM");
+        visited_nodes.put(start_node.node, VisitInfo{ .visit_strength = .strong }) catch @panic("OOM");
         const empty_path_copy = start_node.g.allocator.create(BFSPath) catch @panic("OOM");
         empty_path_copy.* = BFSPath.init(start_node);
         open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
@@ -848,7 +842,14 @@ pub const GraphView = struct {
             };
 
             const bfs_visitor_result = f(ctx, path);
-            visited_nodes.put(node_at_path_end.node, VisitInfo{ .via_conditional = path.via_conditional }) catch @panic("OOM");
+            // Record visited strength, upgrading from weak->strong when applicable
+            if (visited_nodes.get(node_at_path_end.node)) |prev| {
+                const prev_strength = prev.visit_strength;
+                const new_strength = if (prev_strength == .strong) .strong else path.visit_strength;
+                visited_nodes.put(node_at_path_end.node, VisitInfo{ .visit_strength = new_strength }) catch @panic("OOM");
+            } else {
+                visited_nodes.put(node_at_path_end.node, VisitInfo{ .visit_strength = path.visit_strength }) catch @panic("OOM");
+            }
 
             switch (bfs_visitor_result) {
                 .STOP => {
@@ -874,7 +875,6 @@ pub const GraphView = struct {
                 .current_path = path,
                 .open_path_queue = &open_path_queue,
                 .g = g,
-                .current_path_via_conditional = path.via_conditional,
             };
 
             const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
