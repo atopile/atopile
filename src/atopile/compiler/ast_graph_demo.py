@@ -2,10 +2,10 @@ from pathlib import Path
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
-from atopile.compiler.ast_graph import build_file
+from atopile.compiler.ast_graph import build_file, link_imports
 from atopile.compiler.graph_mock import BoundNode, NodeHelpers
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.graph.graph import BoundEdge
+from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView
 
 RENDER_SOURCE_CHUNKS = False
 
@@ -69,34 +69,33 @@ def instancegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> s
 
 
 if __name__ == "__main__":
+    source_path = Path("examples/esp32_minimal/esp32_minimal.ato")
 
     def _section(title: str, sep: str = "\n"):
         print(sep + f" {title} ".center(80, "="))
 
     _section("Build logs", sep="")
-    type_graph, ast_root, type_roots = build_file(
-        Path("examples/esp32_minimal/esp32_minimal.ato")
-    )
+    graph = GraphView.create()
+    result = build_file(graph, source_path.resolve())
 
     _section("AST Graph")
     NodeHelpers.print_tree(
-        ast_root.instance,
+        result.ast_root.instance,
         renderer=ast_renderer,
         exclude_node_types=[AST.SourceChunk] if not RENDER_SOURCE_CHUNKS else None,
     )
 
-    for i, type_root in enumerate(type_roots):
-        _section(f"Type Graph {i + 1}")
-
+    for i, (type_name, type_root) in enumerate(result.state.type_roots.items()):
+        _section(f"Pre-Link Type Graph {type_name}")
         NodeHelpers.print_tree(type_root, renderer=typegraph_renderer)
 
-    app_type = next(
-        n
-        for n in type_roots
-        if n.node().get_attr(key="type_identifier") == "ESP32_MINIMAL"
-    )
+    _section("Linking", sep="\n\n")
+    link_imports(graph, result.state)
+
+    _section("Post-Link Type Graph: ESP32_MINIMAL")
+    app_type = result.state.type_roots["ESP32_MINIMAL"]
+    NodeHelpers.print_tree(app_type, renderer=typegraph_renderer)
 
     _section("Instance Graph")
-
-    app = type_graph.instantiate_node(type_node=app_type, attributes={})
+    app = result.state.type_graph.instantiate_node(type_node=app_type, attributes={})
     NodeHelpers.print_tree(app, renderer=instancegraph_renderer)

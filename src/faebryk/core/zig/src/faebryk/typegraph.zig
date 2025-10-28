@@ -131,7 +131,7 @@ pub const TypeGraph = struct {
         }
 
         pub fn set_resolved_type(reference: BoundNodeReference, type_node: BoundNodeReference) void {
-            // TOOD: this edge must live outside the TypeGraph for inter-TypeGraph linking
+            // FIXME: this edge must live outside the TypeGraph for inter-TypeGraph linking
             _ = EdgePointer.point_to(reference, type_node.node, "resolved", null);
         }
 
@@ -374,12 +374,9 @@ pub const TypeGraph = struct {
         return make_child;
     }
 
-    pub fn set_make_child_type(self: *@This(), make_child: BoundNodeReference, child_type: BoundNodeReference) !void {
+    pub fn link_type_reference(self: *@This(), type_reference: BoundNodeReference, target_type: BoundNodeReference) void {
         _ = self;
-        const type_reference = MakeChildNode.get_type_reference(make_child) orelse {
-            return error.MissingTypeReference;
-        };
-        TypeReferenceNode.set_resolved_type(type_reference, child_type);
+        TypeReferenceNode.set_resolved_type(type_reference, target_type);
     }
 
     pub fn add_make_link(

@@ -23,11 +23,14 @@ class TypeGraph:
         child_type_identifier: str,
         identifier: str | None,
     ) -> BoundNode: ...
-    def set_make_child_type(
+    def get_make_child_type_reference(
+        self, *, make_child: BoundNode
+    ) -> BoundNode | None: ...
+    def link_type_reference(
         self,
         *,
-        make_child_node: BoundNode,
-        child_type_node: BoundNode,
+        type_reference: BoundNode,
+        target_type_node: BoundNode,
     ) -> None: ...
     def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
     def add_make_link(

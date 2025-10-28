@@ -188,9 +188,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             identifier=identifier,
         )
 
-        tg.set_make_child_type(
-            make_child_node=make_child,
-            child_type_node=child_type_node,
+        make_child_node = Node.bind_instance(make_child)
+        type_reference = next(
+            (
+                child_node
+                for _name, child_node in make_child_node.get_direct_children()
+                if child_node.get_type_name() == "TypeReference"
+            ),
+            None,
+        )
+
+        if type_reference is None:
+            raise FaebrykApiException("MakeChild node missing TypeReference child")
+
+        tg.link_type_reference(
+            type_reference=type_reference.instance, target_type_node=child_type_node
         )
 
         return make_child

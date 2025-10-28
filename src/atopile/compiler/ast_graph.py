@@ -20,14 +20,14 @@ from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
 from atopile.compiler.graph_mock import BoundNode
-from atopile.compiler.parse import parse_text_as_file
+from atopile.compiler.parse import parse_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import Node
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import cast_assert, not_none
 
 
 class ANTLRVisitor(AtoParserVisitor):
@@ -1019,6 +1019,50 @@ class ANTLRVisitor(AtoParserVisitor):
 class DslException(Exception): ...
 
 
+@dataclass
+class BuildState:
+    type_graph: TypeGraph
+    type_roots: dict[str, BoundNode]
+    external_type_refs: list[tuple[BoundNode, GenTypeGraphIR.ImportRef]]
+    file_path: Path
+
+
+class GenTypeGraphIR:
+    @dataclass(frozen=True)
+    class ImportRef:
+        name: str
+        path: str
+
+        def __repr__(self) -> str:
+            return f'ImportRef(name={self.name}, path="{self.path}")'
+
+    @dataclass(frozen=True)
+    class Symbol:
+        name: str
+        import_ref: GenTypeGraphIR.ImportRef | None = None
+
+        def __repr__(self) -> str:
+            return f"Symbol(name={self.name}, import_ref={self.import_ref})"
+
+    @dataclass(frozen=True)
+    class Field:
+        name: str
+
+    @dataclass(frozen=True)
+    class NewChildSpec:
+        symbol: GenTypeGraphIR.Symbol
+
+    @dataclass(frozen=True)
+    class AddChildAction:
+        target_name: str
+        child_spec: GenTypeGraphIR.NewChildSpec
+
+    @dataclass
+    class ScopeState:
+        symbols: dict[str, GenTypeGraphIR.Symbol] = field(default_factory=dict)
+        fields: dict[str, GenTypeGraphIR.Field] = field(default_factory=dict)
+
+
 class ASTVisitor:
     """
     Generates a TypeGraph from the AST.
@@ -1026,58 +1070,26 @@ class ASTVisitor:
     Error handling strategy:
     - Fail early (TODO: revisit — return list of errors and let caller decide impact)
     - Use DslException for errors arising from code contents
+
+    TODO: store graph references instead of reifying as IR?
     """
 
-    @dataclass(frozen=True)
-    class _ImportRef:
-        name: str
-        path: Path
-
-        def __repr__(self) -> str:
-            return f'ImportRef(name={self.name}, path="{self.path}")'
-
-    @dataclass(frozen=True)
-    class _Symbol:
-        name: str
-        import_ref: ASTVisitor._ImportRef | None = None
-
-        def __repr__(self) -> str:
-            return f"Symbol(name={self.name}, import_ref={self.import_ref})"
-
-    @dataclass(frozen=True)
-    class _Field:
-        name: str
-
-    @dataclass(frozen=True)
-    class _NewChildSpec:
-        symbol: ASTVisitor._Symbol
-
-    @dataclass(frozen=True)
-    class _AddChildAction:
-        target_name: str
-        child_spec: ASTVisitor._NewChildSpec
-
-    @dataclass
-    class _ScopeState:
-        symbols: dict[str, ASTVisitor._Symbol] = field(default_factory=dict)
-        fields: dict[str, ASTVisitor._Field] = field(default_factory=dict)
-
     class _ScopeStack:
-        stack: list[ASTVisitor._ScopeState]
+        stack: list[GenTypeGraphIR.ScopeState]
 
         def __init__(self) -> None:
             self.stack = []
 
         @contextmanager
-        def enter(self) -> Generator[ASTVisitor._ScopeState, None, None]:
-            state = ASTVisitor._ScopeState()
+        def enter(self) -> Generator[GenTypeGraphIR.ScopeState, None, None]:
+            state = GenTypeGraphIR.ScopeState()
             self.stack.append(state)
             try:
                 yield state
             finally:
                 self.stack.pop()
 
-        def add_symbol(self, symbol: ASTVisitor._Symbol) -> None:
+        def add_symbol(self, symbol: GenTypeGraphIR.Symbol) -> None:
             current_state = self.stack[-1]
             if symbol.name in current_state.symbols:
                 raise DslException(f"Symbol {symbol} already defined in scope")
@@ -1086,7 +1098,7 @@ class ASTVisitor:
 
             print(f"Added symbol {symbol} to scope")
 
-        def add_field(self, field: ASTVisitor._Field) -> None:
+        def add_field(self, field: GenTypeGraphIR.Field) -> None:
             current_state = self.stack[-1]
             if field.name in current_state.fields:
                 raise DslException(f"Field {field} already defined in scope")
@@ -1095,7 +1107,7 @@ class ASTVisitor:
 
             print(f"Added field {field} to scope")
 
-        def resolve_symbol(self, name: str) -> ASTVisitor._Symbol:
+        def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
             for state in reversed(self.stack):
                 if name in state.symbols:
                     return state.symbols[name]
@@ -1112,13 +1124,19 @@ class ASTVisitor:
         MODULE_TEMPLATING = "MODULE_TEMPLATING"
         INSTANCE_TRAITS = "INSTANCE_TRAITS"
 
-    def __init__(self, ast_root: AST.File, graph: GraphView) -> None:
+    def __init__(self, ast_root: AST.File, graph: GraphView, file_path: Path) -> None:
         self._ast_root = ast_root
         self._graph = graph
         self._type_graph = TypeGraph.create(g=graph)
         self._scope_stack = ASTVisitor._ScopeStack()
-        self._type_roots: list[BoundNode] = []
         self._experiments: set[ASTVisitor._Experiments] = set()
+
+        self._state = BuildState(
+            type_graph=self._type_graph,
+            type_roots={},
+            external_type_refs=[],
+            file_path=file_path,
+        )
 
     @staticmethod
     def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -1161,13 +1179,11 @@ class ASTVisitor:
         print(f"Enabling experiment: {experiment}")
         self._experiments.add(experiment)
 
-    def build(self) -> tuple[TypeGraph, list[BoundNode]]:
+    def build(self) -> BuildState:
         # must start with a File (for now)
         assert self._ast_root.isinstance(AST.File)
-
         self.visit(self._ast_root)
-
-        return self._type_graph, self._type_roots
+        return self._state
 
     def visit(self, node: Node):
         # TODO: less magic dispatch
@@ -1227,18 +1243,18 @@ class ASTVisitor:
             str, node.type_ref.get().name.get().try_extract_constrained_literal()
         )
 
-        if (
-            path_str := node.path.get().path.get().try_extract_constrained_literal()
-        ) is not None:
-            symbol = ASTVisitor._Symbol(
-                name=type_ref_name,
-                import_ref=ASTVisitor._ImportRef(
-                    name=type_ref_name, path=Path(cast_assert(str, path_str))
-                ),
-            )
-        else:
-            symbol = ASTVisitor._Symbol(name=type_ref_name, import_ref=None)
-        self._scope_stack.add_symbol(symbol)
+        path_literal = node.path.get().path.get().try_extract_constrained_literal()
+
+        # TODO
+        if path_literal is None:
+            raise NotImplementedError("stdlib imports not supported yet")
+
+        import_ref = GenTypeGraphIR.ImportRef(
+            name=type_ref_name, path=cast_assert(str, path_literal)
+        )
+        self._scope_stack.add_symbol(
+            GenTypeGraphIR.Symbol(name=type_ref_name, import_ref=import_ref)
+        )
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
         # TODO: consider pushing this type_node to a current_type stack so
@@ -1246,12 +1262,20 @@ class ASTVisitor:
 
         def handle_statement(stmt: Node, type_node: BoundNode) -> None:
             match maybe_spec := self.visit(stmt):
-                case ASTVisitor._AddChildAction() as action:
-                    self._type_graph.add_make_child(
+                case GenTypeGraphIR.AddChildAction() as action:
+                    make_child = self._type_graph.add_make_child(
                         type_node=type_node,
                         child_type_identifier=action.child_spec.symbol.name,
                         identifier=action.target_name,
                     )
+
+                    import_ref = not_none(action.child_spec.symbol.import_ref)
+                    type_reference = not_none(
+                        self._type_graph.get_make_child_type_reference(
+                            make_child=make_child
+                        )
+                    )
+                    self._state.external_type_refs.append((type_reference, import_ref))
                 case None:
                     pass
                 case _:
@@ -1271,13 +1295,13 @@ class ASTVisitor:
                 type_node = self._type_graph.add_type(
                     identifier=cast_assert(str, module_name)
                 )
-                self._type_roots.append(type_node)
+                self._state.type_roots[module_name] = type_node
 
                 with self._scope_stack.enter():
                     for stmt in node.scope.get().stmts.get().as_list():
                         handle_statement(stmt, type_node)
 
-                self._scope_stack.add_symbol(ASTVisitor._Symbol(name=module_name))
+                self._scope_stack.add_symbol(GenTypeGraphIR.Symbol(name=module_name))
 
             case other_kind:
                 raise NotImplementedError(f"Block kind not supported: {other_kind}")
@@ -1310,14 +1334,14 @@ class ASTVisitor:
         # TODO: record in schema so we can access node.assignable.get().value.get()
         assignable_value = node.assignable.get().get_child(name="value")
         assignable = self.visit(assignable_value)
-        action: ASTVisitor._AddChildAction | None = None
+        action: GenTypeGraphIR.AddChildAction | None = None
 
-        if isinstance(assignable, ASTVisitor._NewChildSpec):
-            action = ASTVisitor._AddChildAction(
+        if isinstance(assignable, GenTypeGraphIR.NewChildSpec):
+            action = GenTypeGraphIR.AddChildAction(
                 target_name=target_name, child_spec=assignable
             )
 
-        self._scope_stack.add_field(ASTVisitor._Field(name=target_name))
+        self._scope_stack.add_field(GenTypeGraphIR.Field(name=target_name))
 
         return action
 
@@ -1326,7 +1350,7 @@ class ASTVisitor:
             str, node.type_ref.get().name.get().try_extract_constrained_literal()
         )
         symbol = self._scope_stack.resolve_symbol(type_name)
-        return ASTVisitor._NewChildSpec(symbol=symbol)
+        return GenTypeGraphIR.NewChildSpec(symbol=symbol)
 
         # TODO: check type ref is valid:
         # - exists in a containing scope
@@ -1337,15 +1361,54 @@ class ASTVisitor:
         # TODO: handle creating sequence
 
 
-def build_file(source_file: Path) -> tuple[TypeGraph, AST.File, list[BoundNode]]:
-    graph = GraphView.create()
+@dataclass
+class BuildFileResult:
+    ast_root: AST.File
+    state: BuildState
+
+
+def build_file(graph: GraphView, path: Path) -> BuildFileResult:
+    # TODO: per-file caching
     ast_type_graph = TypeGraph.create(g=graph)
-
-    tree = parse_text_as_file(source_file.read_text(), source_file)
-    ast_root = ANTLRVisitor(graph, ast_type_graph, source_file).visit(tree)
+    parsed = parse_file(path)
+    ast_root = ANTLRVisitor(graph, ast_type_graph, path).visit(parsed)
     assert isinstance(ast_root, AST.File)
+    build_state = ASTVisitor(ast_root, graph, path).build()
+    return BuildFileResult(ast_root=ast_root, state=build_state)
 
-    type_graph, type_roots = ASTVisitor(ast_root, graph).build()
-    type_graph.link_type_references()
 
-    return type_graph, ast_root, type_roots
+def _resolve_import_path(base_file: Path, raw_path: str) -> Path:
+    # TODO: include all search paths
+    # TODO: get base dirs from config
+    search_paths = [
+        base_file.parent,
+        Path(".ato/modules"),
+    ]
+
+    for search_path in search_paths:
+        if (candidate := search_path / raw_path).exists():
+            return candidate
+
+    raise DslException(f"Import path not found: `{raw_path}`")
+
+
+def link_imports(graph: GraphView, build_state: BuildState) -> None:
+    # TODO: handle cycles
+
+    for type_reference, import_ref in build_state.external_type_refs:
+        source_path = _resolve_import_path(
+            base_file=build_state.file_path, raw_path=import_ref.path
+        )
+        assert source_path.exists()
+
+        child_result = build_file(graph, source_path)
+
+        link_imports(graph, child_result.state)
+        child_result.state.type_graph.link_type_references()
+
+        build_state.type_graph.link_type_reference(
+            type_reference=type_reference,
+            target_type_node=child_result.state.type_roots[import_ref.name],
+        )
+
+    build_state.type_graph.link_type_references()
