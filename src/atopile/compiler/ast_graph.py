@@ -25,6 +25,7 @@ from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import Node
+from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 from faebryk.libs.util import cast_assert, not_none
@@ -1040,9 +1041,13 @@ class GenTypeGraphIR:
     class Symbol:
         name: str
         import_ref: GenTypeGraphIR.ImportRef | None = None
+        type_node: BoundNode | None = None
 
         def __repr__(self) -> str:
-            return f"Symbol(name={self.name}, import_ref={self.import_ref})"
+            return (
+                f"Symbol(name={self.name}, import_ref={self.import_ref}, "
+                f"type_node={self.type_node})"
+            )
 
     @dataclass(frozen=True)
     class Field:
@@ -1269,13 +1274,31 @@ class ASTVisitor:
                         identifier=action.target_name,
                     )
 
-                    import_ref = not_none(action.child_spec.symbol.import_ref)
                     type_reference = not_none(
                         self._type_graph.get_make_child_type_reference(
                             make_child=make_child
                         )
                     )
-                    self._state.external_type_refs.append((type_reference, import_ref))
+
+                    symbol = action.child_spec.symbol
+
+                    if symbol.import_ref:
+                        self._state.external_type_refs.append(
+                            (type_reference, symbol.import_ref)
+                        )
+                        return
+
+                    if (target := symbol.type_node) is None:
+                        raise DslException(
+                            f"Type `{symbol.name}` is not defined in scope"
+                        )
+
+                    Linker.link_type_reference(
+                        g=self._graph,
+                        type_reference=type_reference,
+                        target_type_node=target,
+                    )
+
                 case None:
                     pass
                 case _:
@@ -1301,7 +1324,9 @@ class ASTVisitor:
                     for stmt in node.scope.get().stmts.get().as_list():
                         handle_statement(stmt, type_node)
 
-                self._scope_stack.add_symbol(GenTypeGraphIR.Symbol(name=module_name))
+                self._scope_stack.add_symbol(
+                    GenTypeGraphIR.Symbol(name=module_name, type_node=type_node)
+                )
 
             case other_kind:
                 raise NotImplementedError(f"Block kind not supported: {other_kind}")
@@ -1402,13 +1427,12 @@ def link_imports(graph: GraphView, build_state: BuildState) -> None:
         assert source_path.exists()
 
         child_result = build_file(graph, source_path)
-
         link_imports(graph, child_result.state)
-        child_result.state.type_graph.link_type_references()
-
-        build_state.type_graph.link_type_reference(
+        Linker.link_type_reference(
+            g=graph,
             type_reference=type_reference,
             target_type_node=child_result.state.type_roots[import_ref.name],
         )
 
-    build_state.type_graph.link_type_references()
+    if build_state.type_graph.collect_unresolved_type_references():
+        raise DslException("Unresolved type references remaining after linking")

@@ -8,6 +8,7 @@ from typing_extensions import Callable, deprecated
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.next import EdgeNext
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
@@ -188,21 +189,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             identifier=identifier,
         )
 
-        make_child_node = Node.bind_instance(make_child)
-        type_reference = next(
-            (
-                child_node
-                for _name, child_node in make_child_node.get_direct_children()
-                if child_node.get_type_name() == "TypeReference"
-            ),
-            None,
-        )
-
-        if type_reference is None:
+        # TODO reconsider whether this should be here
+        if (
+            type_reference := tg.get_make_child_type_reference(make_child=make_child)
+        ) is None:
             raise FaebrykApiException("MakeChild node missing TypeReference child")
 
-        tg.link_type_reference(
-            type_reference=type_reference.instance, target_type_node=child_type_node
+        Linker.link_type_reference(
+            g=parent_type_node.g(),
+            type_reference=type_reference,
+            target_type_node=child_type_node,
         )
 
         return make_child
