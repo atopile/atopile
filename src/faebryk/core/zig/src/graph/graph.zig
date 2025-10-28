@@ -430,9 +430,9 @@ pub const BFSPath = struct {
     invalid_path: bool = false, // invalid path (e.g., hierarchy violation, shallow link violation, etc.)
     stop_new_path_discovery: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
-    // Visit strength for this path: strong (default) vs weak (conditional/soft)
-    // Weak paths may be overridden by a later strong visit at the same node.
-    visit_strength: VisitStrength = .strong,
+    // Visit strength for this path (set by filters):
+    // .unvisited until evaluated, .weak for conditional paths, .strong otherwise.
+    visit_strength: VisitStrength = .unvisited,
 
     fn is_consistent(self: *const @This()) bool {
         return self.start_node.g == self.g;
@@ -582,7 +582,7 @@ pub const BoundEdgeReference = struct {
 
 // Information about how a node was reached during graph traversal
 // Used to determine if a node can be revisited via a "better" path
-pub const VisitStrength = enum { strong, weak };
+pub const VisitStrength = enum { unvisited, weak, strong };
 
 pub const VisitInfo = struct {
     // How was this node last reached? Strong dominates weak.
@@ -804,14 +804,26 @@ pub const GraphView = struct {
                     return false;
                 }
 
-                // if node has been weak visited, allow it to be re-added to paths
-                if (self.visited_nodes.get(node)) |visit_info| {
-                    if (visit_info.visit_strength == .weak) return true;
-                    return false;
-                }
+                // Determine prior visit strength (default: none)
+                const prior_strength: VisitStrength = blk: {
+                    if (self.visited_nodes.get(node)) |visit_info| break :blk visit_info.visit_strength;
+                    break :blk .unvisited;
+                };
 
-                // else not visited, add to path
-                return true;
+                const current_strength: VisitStrength = switch (self.current_path.visit_strength) {
+                    .unvisited => .strong,
+                    else => self.current_path.visit_strength,
+                };
+
+                // Revisit policy:
+                // - unvisited: always allow
+                // - weak: allow only if current path is effectively strong (upgrade weak→strong)
+                // - strong: disallow
+                return switch (prior_strength) {
+                    .unvisited => true,
+                    .weak => current_strength == .strong,
+                    .strong => false,
+                };
             }
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {

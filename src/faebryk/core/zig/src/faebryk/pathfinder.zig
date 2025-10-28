@@ -113,6 +113,11 @@ pub const PathFinder = struct {
         if (result == .ERROR) return result;
         if (result == .STOP) return result;
 
+        // path survived all filters so gets upgraded to strong
+        if (path.visit_strength == .unvisited) {
+            path.visit_strength = .strong;
+        }
+
         // if path is invalid, don't save to path_list
         if (path.invalid_path) {
             return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -206,12 +211,11 @@ pub const PathFinder = struct {
     // Filters out paths where last 2 edges form child -> parent -> child (sibling traversal)
     pub fn filter_siblings(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
-
         const traversed_edges = path.traversed_edges.items;
+
         if (traversed_edges.len < 2) return visitor.VisitResult(void){ .CONTINUE = {} };
 
         const last_edges = [_]EdgeReference{ traversed_edges[traversed_edges.len - 1].edge, traversed_edges[traversed_edges.len - 2].edge };
-
         for (last_edges) |edge| {
             if (!EdgeComposition.is_instance(edge)) {
                 return visitor.VisitResult(void){ .CONTINUE = {} };
