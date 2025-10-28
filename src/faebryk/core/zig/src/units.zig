@@ -8,6 +8,7 @@ const TypeGraph = @import("faebryk/typegraph.zig").TypeGraph;
 const EdgeOperand = @import("faebryk/operand.zig").EdgeOperand;
 const Numeric = @import("numeric_sets.zig").Numeric;
 const EdgeType = @import("faebryk/node_type.zig").EdgeType;
+const visitor = graph_mod.visitor;
 
 // ato units example
 // is_base_unit: type {
@@ -48,18 +49,53 @@ const EdgeType = @import("faebryk/node_type.zig").EdgeType;
 pub const Parameter = struct {
     instance: BoundNodeReference,
 
+    pub const Error = error{
+        TypeGraphNotFound,
+    };
+
     pub fn get_or_create_type(tg: *TypeGraph) !BoundNodeReference {
         const type_node = try tg.get_or_create_type("Parameter");
         return type_node;
     }
 
-    pub fn constrain_to_literal(tg: *TypeGraph, param: BoundNodeReference, literal: BoundNodeReference) !void {
-        try AliasIs.alias_is(tg, param, literal);
+    pub fn create_instance(tg: *TypeGraph) !Parameter {
+        const type_node = try get_or_create_type(tg);
+        const instance = try tg.instantiate_node(type_node);
+        return of(instance);
     }
 
-    pub fn try_extract_constrained_literal(tg: *TypeGraph, param: BoundNodeReference) !Numeric {
+    pub fn of(node: BoundNodeReference) Parameter {
+        return .{ .instance = node };
+    }
 
-        EdgeOperand.visit_operands_of_type()
+    pub fn constrain_to_literal(self: Parameter, literal: BoundNodeReference) !void {
+        var tg = TypeGraph.of_instance(self.instance) orelse return Error.TypeGraphNotFound;
+        try AliasIs.alias_is(&tg, self.instance, literal);
+    }
+
+    pub fn try_extract_constrained_literal(self: Parameter) !?Numeric {
+        const inbound_expr_edge = EdgeOperand.get_expression_edge(self.instance) orelse return null;
+        const expr_node_ref = EdgeOperand.get_expression_node(inbound_expr_edge.edge);
+        const expr_node = graph_mod.graph.BoundNodeReference{ .g = inbound_expr_edge.g, .node = expr_node_ref };
+
+        var found: ?Numeric = null;
+        const Finder = struct {
+            target: *?Numeric,
+            pub fn visit(self_ptr: *anyopaque, operand_edge: graph_mod.graph.BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                const operand_ref = EdgeOperand.get_operand_node(operand_edge.edge);
+                const operand_graph = operand_edge.g;
+                const bound_operand = graph_mod.graph.BoundNodeReference{ .g = operand_graph, .node = operand_ref };
+                const numeric = Numeric.of(bound_operand);
+                _ = numeric.get_value() catch return visitor.VisitResult(void){ .CONTINUE = {} };
+                self.target.* = numeric;
+                return visitor.VisitResult(void){ .STOP = {} };
+            }
+        };
+
+        var finder = Finder{ .target = &found };
+        _ = EdgeOperand.visit_operand_edges(expr_node, void, &finder, Finder.visit);
+        return found;
     }
 };
 
@@ -116,10 +152,10 @@ pub const is_base_unit = struct {
 
     pub fn setup(self: *@This(), exponent: i64) !void {
         const exponent_param = try self.get_exponent_param();
-        const exponent_literal = Numeric.init(self.instance.g, @bitCast(exponent));
+        const exponent_literal = Numeric.init(self.instance.g, @floatFromInt(exponent));
 
         var tg = TypeGraph.of_instance(self.instance) orelse return error.TypeGraphNotFound;
-        try AliasIs.alias_is(&tg, exponent_param, exponent_literal);
+        try AliasIs.alias_is(&tg, exponent_param, exponent_literal.node);
     }
 
     pub fn of(node: BoundNodeReference) !is_base_unit {
@@ -139,13 +175,11 @@ test "units.is_base_unit.create_instance creates an instance" {
 
     // Get the exponent node
     const exponent_node = try base_unit.get_exponent_param();
+    const parameter = Parameter.of(exponent_node);
 
-    // Get the edge from the exponent param to the aliasis literal
-    const param_alias_is_edge = EdgeOperand.get_expression_edge(exponent_node) orelse return error.ParamAliasIsEdgeNotFound;
-
-    const alias = EdgeOperand.get_operand_node(param_alias_is_edge);
-
-    // try std.testing.expectEqual(exponent, exponent_value);
+    const literal_numeric = try parameter.try_extract_constrained_literal() orelse return error.LiteralNotFound;
+    const exponent_value = try literal_numeric.get_value();
+    try std.testing.expectEqual(@as(f64, @floatFromInt(exponent)), exponent_value);
 }
 
 pub const is_unit = struct {
