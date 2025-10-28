@@ -427,7 +427,7 @@ pub const BFSPath = struct {
     traversed_edges: std.ArrayList(TraversedEdge),
     g: *GraphView,
     start_node: BoundNodeReference,
-    filtered: bool = false, // filter this path out
+    invalid_path: bool = false, // invalid path (e.g., hierarchy violation, shallow link violation, etc.)
     stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
     // Tracks if this path uses conditional/weak edges that could be overridden by better paths
@@ -450,7 +450,7 @@ pub const BFSPath = struct {
             .traversed_edges = std.ArrayList(TraversedEdge).init(start.g.allocator),
             .g = start.g,
             .start_node = start,
-            .filtered = false,
+            .invalid_path = false,
             .stop = false,
         };
         path.assert_consistent();
@@ -820,24 +820,21 @@ pub const GraphView = struct {
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
-
                 const other_node = edge.edge.get_other_node(self.start_node.node);
-
                 const should_skip = self.should_skip_node(other_node);
+
                 if (should_skip) {
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
 
                 const new_path = BFSPath.cloneAndExtend(self.current_path, self.start_node, edge.edge) catch @panic("OOM");
                 self.open_path_queue.writeItem(new_path) catch @panic("OOM");
-
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
 
         // BFS setup
         visited_nodes.put(start_node.node, VisitInfo{ .via_conditional = false }) catch @panic("OOM");
-
         const empty_path_copy = start_node.g.allocator.create(BFSPath) catch @panic("OOM");
         empty_path_copy.* = BFSPath.init(start_node);
         open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");

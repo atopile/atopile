@@ -115,14 +115,14 @@ pub const PathFinder = struct {
         const result = self.run_filters(path);
         if (result == .ERROR) return result;
 
-        if (!path.filtered) {
+        if (!path.invalid_path) {
             var copied_path = BFSPath.init(path.start_node);
             copied_path.traversed_edges.ensureTotalCapacity(path.traversed_edges.items.len) catch |err| {
                 copied_path.deinit();
                 return visitor.VisitResult(void){ .ERROR = err };
             };
             copied_path.traversed_edges.appendSliceAssumeCapacity(path.traversed_edges.items);
-            copied_path.filtered = path.filtered;
+            copied_path.invalid_path = path.invalid_path;
             copied_path.stop = path.stop;
             copied_path.via_conditional = path.via_conditional;
 
@@ -177,14 +177,17 @@ pub const PathFinder = struct {
 
     pub fn filter_path_by_edge_type(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
-        const traversed_edges = path.traversed_edges.items;
-        if (traversed_edges.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
 
-        const last_edge = traversed_edges[traversed_edges.len - 1].edge;
-        if (!EdgeComposition.is_instance(last_edge) and !EdgeInterfaceConnection.is_instance(last_edge)) {
-            path.stop = true;
-            path.filtered = true;
+        // skip this check if no edges in path
+        if (path.traversed_edges.items.len == 0) return visitor.VisitResult(void){ .CONTINUE = {} };
+
+        // filter out edges that aren't composition or interface
+        const last_edge = path.traversed_edges.items[path.traversed_edges.items.len - 1].edge;
+        if (EdgeComposition.is_instance(last_edge) or EdgeInterfaceConnection.is_instance(last_edge)) {
+            return visitor.VisitResult(void){ .CONTINUE = {} };
         }
+        path.stop = true;
+        path.invalid_path = true;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
@@ -200,7 +203,7 @@ pub const PathFinder = struct {
         const end_node_type = EdgeType.get_type_node(end_type_edge.edge);
 
         if (!Node.is_same(start_node_type, end_node_type)) {
-            path.filtered = true;
+            path.invalid_path = true;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -223,7 +226,7 @@ pub const PathFinder = struct {
 
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
-            path.filtered = true;
+            path.invalid_path = true;
             path.stop = true;
             path.via_conditional = true;
         }
@@ -231,135 +234,97 @@ pub const PathFinder = struct {
     }
 
     fn resolve_node_type(g: *GraphView, node: NodeReference) !NodeReference {
-        const bound_node = g.bind(node);
-        const type_edge = EdgeType.get_type_edge(bound_node) orelse return error.MissingNodeType;
-        return EdgeType.get_type_node(type_edge.edge);
+        const te = EdgeType.get_type_edge(g.bind(node)) orelse return error.MissingNodeType;
+        return EdgeType.get_type_node(te.edge);
     }
 
-    fn build_hierarchy_elements(
+    fn validate_hierarchy_and_shallow(
         allocator: std.mem.Allocator,
-        path: *const BFSPath,
-    ) !std.ArrayList(HierarchyElement) {
-        var elements = std.ArrayList(HierarchyElement).init(allocator);
-        errdefer elements.deinit();
+        path: *BFSPath,
+    ) !bool {
+        var stack = std.ArrayList(HierarchyElement).init(allocator);
+        defer stack.deinit();
 
         const g = path.start_node.g;
+        var depth: i32 = 0;
 
-        for (path.traversed_edges.items) |traversed_edge| {
-            const edge = traversed_edge.edge;
-            const edge_start = if (traversed_edge.forward) edge.source else edge.target;
-            if (EdgeComposition.is_instance(edge)) {
-                // Determine traversal direction based on starting node
-                const direction: HierarchyTraverseDirection = if (Node.is_same(EdgeComposition.get_child_node(edge), edge_start))
-                    HierarchyTraverseDirection.up
-                else if (Node.is_same(EdgeComposition.get_parent_node(edge), edge_start))
-                    HierarchyTraverseDirection.down
-                else
+        // iterate through path
+        for (path.traversed_edges.items) |te| {
+            const e = te.edge;
+            const start = if (te.forward) e.source else e.target;
+
+            // hierarchical edge
+            if (EdgeComposition.is_instance(e)) {
+
+                // determine traversal direciton
+                var dir: HierarchyTraverseDirection = undefined;
+                if (Node.is_same(EdgeComposition.get_child_node(e), start)) {
+                    dir = .up;
+                } else if (Node.is_same(EdgeComposition.get_parent_node(e), start)) {
+                    dir = .down;
+                } else {
                     return error.InvalidEdge;
+                }
 
-                // Create and append hierarchy element
                 const elem = HierarchyElement{
-                    .edge = edge,
-                    .traverse_direction = direction,
-                    .parent_type_node = try resolve_node_type(g, EdgeComposition.get_parent_node(edge)),
-                    .child_type_node = try resolve_node_type(g, EdgeComposition.get_child_node(edge)),
+                    .edge = e,
+                    .traverse_direction = dir,
+                    .parent_type_node = try resolve_node_type(g, EdgeComposition.get_parent_node(e)),
+                    .child_type_node = try resolve_node_type(g, EdgeComposition.get_child_node(e)),
                 };
-                try elements.append(elem);
-            } else if (EdgeInterfaceConnection.is_instance(edge)) {
-                // Interface connections don't create hierarchy elements
+
+                // build hierarchy stack
+                if (stack.items.len == 0) {
+                    if (dir == .down) return false; // cannot descend below start
+                    try stack.append(elem);
+                } else {
+                    const top = &stack.items[stack.items.len - 1];
+                    if (top.match(&elem)) {
+                        _ = stack.pop();
+                    } else {
+                        try stack.append(elem);
+                    }
+                }
+
+                // update depth
+                depth += if (dir == .up) 1 else -1;
+
+                // shallow interface edge
+            } else if (EdgeInterfaceConnection.is_instance(e)) {
+                const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
+                if (shallow_val.Bool) {
+                    path.via_conditional = true;
+                    if (depth > 0) {
+                        path.stop = true;
+                        return false;
+                    }
+                }
             } else {
                 return error.InvalidEdgeType;
             }
         }
 
-        return elements;
-    }
-
-    fn fold_and_validate_hierarchy(
-        allocator: std.mem.Allocator,
-        raw_elements: []const HierarchyElement,
-    ) !bool {
-        var folded_stack = std.ArrayList(HierarchyElement).init(allocator);
-        defer folded_stack.deinit();
-
-        for (raw_elements) |elem| {
-            if (folded_stack.items.len > 0) {
-                // Stack has elements - check for matching pair to fold
-                const top = &folded_stack.items[folded_stack.items.len - 1];
-                if (top.match(&elem)) {
-                    // Matching UP/DOWN pair - fold by popping
-                    _ = folded_stack.pop();
-                } else {
-                    // No match - push to stack
-                    try folded_stack.append(elem);
-                }
-            } else {
-                if (elem.traverse_direction == HierarchyTraverseDirection.down) {
-                    return false;
-                }
-                try folded_stack.append(elem);
-            }
-        }
-
-        return folded_stack.items.len == 0;
-    }
-
-    fn validate_shallow_edges(path: *BFSPath) bool {
-        var depth: i32 = 0;
-
-        for (path.traversed_edges.items) |te| {
-            const e = te.edge;
-            const start = if (te.forward) e.source else e.target;
-
-            if (EdgeComposition.is_instance(e)) {
-                const is_up = Node.is_same(EdgeComposition.get_child_node(e), start);
-                const is_down = Node.is_same(EdgeComposition.get_parent_node(e), start);
-
-                if (is_up) {
-                    depth += 1;
-                } else if (is_down) {
-                    depth -= 1;
-                }
-            } else if (EdgeInterfaceConnection.is_instance(e)) {
-                const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
-                if (shallow_val.Bool) {
-                    path.via_conditional = true;
-                    if (depth > 0) return false;
-                }
-            }
-        }
-        return true;
+        return stack.items.len == 0;
     }
 
     // Validates paths follow hierarchy rules:
     // 1. Must return to same level (balanced stack)
     // 2. Cannot descend from starting level
-    // 3. Shallow links only if start is at same level or higher
+    // 3. Shallow links only if at same or deeper level
     pub fn filter_hierarchy_stack(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
         _ = self;
 
-        if (path.filtered) return visitor.VisitResult(void){ .CONTINUE = {} };
+        if (path.invalid_path) return visitor.VisitResult(void){ .CONTINUE = {} };
 
-        var hierarchy_elements = build_hierarchy_elements(path.g.allocator, path) catch |err| {
-            return visitor.VisitResult(void){ .ERROR = err };
-        };
-        defer hierarchy_elements.deinit();
-
-        const hierarchy_valid = fold_and_validate_hierarchy(path.g.allocator, hierarchy_elements.items) catch |err| {
+        const ok = validate_hierarchy_and_shallow(path.g.allocator, path) catch |err| {
             return visitor.VisitResult(void){ .ERROR = err };
         };
 
-        if (hierarchy_valid) {
-            if (validate_shallow_edges(path)) {
-                // ok
-            } else {
-                path.filtered = true;
-                path.stop = true;
-                path.via_conditional = true;
-            }
-        } else {
-            path.filtered = true;
-            path.via_conditional = true;
+        if (!ok) {
+            path.invalid_path = true;
+            // path.stop already set for shallow violations inside validator
+            // For pure hierarchy violations, we mark via_conditional to match previous behavior
+            if (!path.stop) path.via_conditional = true;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
