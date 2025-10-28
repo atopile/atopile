@@ -241,6 +241,7 @@ test "self_connect" {
     // expect connected
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn1);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, bn1.node));
 }
 
 test "is_connected_to" {
@@ -258,6 +259,7 @@ test "is_connected_to" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn2);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, bn2.node));
 }
 
 test "down_connect" {
@@ -291,12 +293,15 @@ test "down_connect" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, EP_1, EP_2);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, EP_2.node));
 
     var path_hv = try EdgeInterfaceConnection.is_connected_to(a, HV_1, HV_2);
     defer path_hv.deinit();
+    try std.testing.expect(Node.is_same(path_hv.get_last_node().?.node, HV_2.node));
 
     var path_lv = try EdgeInterfaceConnection.is_connected_to(a, LV_1, LV_2);
     defer path_lv.deinit();
+    try std.testing.expect(Node.is_same(path_lv.get_last_node().?.node, LV_2.node));
 
     try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, HV_1, LV_2));
 
@@ -312,6 +317,7 @@ test "down_connect" {
 
     var path_hv_link_lv = try EdgeInterfaceConnection.is_connected_to(a, HV_1, LV_2);
     defer path_hv_link_lv.deinit();
+    try std.testing.expect(Node.is_same(path_hv_link_lv.get_last_node().?.node, LV_2.node));
 
     _ = try EdgeInterfaceConnection.connect_shallow(HV_1_Child, LV_2);
 
@@ -367,6 +373,7 @@ test "chains_direct" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, M1, M3);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, M3.node));
 }
 
 test "chains_double_shallow_flat" {
@@ -383,6 +390,7 @@ test "chains_double_shallow_flat" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, bn3.node));
 }
 
 test "chains_mixed_shallow_flat" {
@@ -399,6 +407,7 @@ test "chains_mixed_shallow_flat" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn3);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, bn3.node));
 }
 
 test "multiple_paths" {
@@ -428,6 +437,7 @@ test "multiple_paths" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn4);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, bn4.node));
 
     const all_paths = try EdgeInterfaceConnection.get_connected(a, bn1);
     defer all_paths.deinit();
@@ -464,6 +474,7 @@ test "hierarchy_short" {
 
     var hv_to_lv = try EdgeInterfaceConnection.is_connected_to(a, hv_pin, lv_pin);
     defer hv_to_lv.deinit();
+    try std.testing.expect(Node.is_same(hv_to_lv.get_last_node().?.node, lv_pin.node));
 }
 
 test "shallow_filter_allows_alternative_route" {
@@ -493,6 +504,7 @@ test "shallow_filter_allows_alternative_route" {
 
     var path = try EdgeInterfaceConnection.is_connected_to(a, start_child, target_child);
     defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, target_child.node));
 }
 
 test "chains_mixed_shallow_nested" {
@@ -539,12 +551,15 @@ test "chains_mixed_shallow_nested" {
 
     var el_path = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[2]);
     defer el_path.deinit();
+    try std.testing.expect(Node.is_same(el_path.get_last_node().?.node, el[2].node));
 
     var line_path = try EdgeInterfaceConnection.is_connected_to(a, line[1], line[2]);
     defer line_path.deinit();
+    try std.testing.expect(Node.is_same(line_path.get_last_node().?.node, line[2].node));
 
     var ref_path = try EdgeInterfaceConnection.is_connected_to(a, reference[1], reference[2]);
     defer ref_path.deinit();
+    try std.testing.expect(Node.is_same(ref_path.get_last_node().?.node, reference[2].node));
 
     try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, line[0], line[1]));
 
@@ -559,9 +574,11 @@ test "chains_mixed_shallow_nested" {
 
     var el_up = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[1]);
     defer el_up.deinit();
+    try std.testing.expect(Node.is_same(el_up.get_last_node().?.node, el[1].node));
 
     var el_full = try EdgeInterfaceConnection.is_connected_to(a, el[0], el[2]);
     defer el_full.deinit();
+    try std.testing.expect(Node.is_same(el_full.get_last_node().?.node, el[2].node));
 }
 
 test "split_flip_negative" {
@@ -718,6 +735,7 @@ test "shallow_edges" {
 
     var shallow_path = try EdgeInterfaceConnection.is_connected_to(a, bn2, bn5);
     defer shallow_path.deinit();
+    try std.testing.expect(Node.is_same(shallow_path.get_last_node().?.node, bn5.node));
 
     try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn3, bn6));
 }
@@ -772,6 +790,7 @@ test "type_graph_pathfinder" {
     _ = try EdgeInterfaceConnection.connect(sensor1_scl, sensor2_scl);
     var paths_scl = try EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor2_scl);
     defer paths_scl.deinit();
+    try std.testing.expect(Node.is_same(paths_scl.get_last_node().?.node, sensor2_scl.node));
     std.debug.print("✓ I2C SCL lines connected\n", .{});
 
     // Test 2: Different signal types should not connect (scl ≠ sda)
@@ -785,6 +804,7 @@ test "type_graph_pathfinder" {
     // Test 3a: Direct connection through shallow link works at I2C level
     var paths_i2c_shallow = try EdgeInterfaceConnection.is_connected_to(a, sensor2_i2c, sensor3_i2c);
     defer paths_i2c_shallow.deinit();
+    try std.testing.expect(Node.is_same(paths_i2c_shallow.get_last_node().?.node, sensor3_i2c.node));
     std.debug.print("✓ Shallow link at I2C level works\n", .{});
 
     // Test 3b: Cannot traverse from child (SCL) up through parent and across shallow link
@@ -820,12 +840,14 @@ test "type_graph_pathfinder" {
     // Path: sensor1.scl -> (up to sensor1.i2c) -> (normal edge to sensor4.i2c) -> (down to sensor4.scl)
     var paths_scl_hierarchy = try EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor4_scl);
     defer paths_scl_hierarchy.deinit();
+    try std.testing.expect(Node.is_same(paths_scl_hierarchy.get_last_node().?.node, sensor4_scl.node));
     std.debug.print("✓ Normal I2C link allows SCL->I2C->I2C->SCL\n", .{});
 
     // Test 6b: SDA should be connected through I2C hierarchy
     // Path: sensor1.sda -> (up to sensor1.i2c) -> (normal edge to sensor4.i2c) -> (down to sensor4.sda)
     var paths_sda_hierarchy = try EdgeInterfaceConnection.is_connected_to(a, sensor1_sda, sensor4_sda);
     defer paths_sda_hierarchy.deinit();
+    try std.testing.expect(Node.is_same(paths_sda_hierarchy.get_last_node().?.node, sensor4_sda.node));
     std.debug.print("✓ Normal I2C link allows SDA->I2C->I2C->SDA\n", .{});
 
     // Test 6c: But SCL should NOT connect to SDA (different child types, even through hierarchy)
