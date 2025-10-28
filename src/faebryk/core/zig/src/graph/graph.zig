@@ -428,7 +428,7 @@ pub const BFSPath = struct {
     g: *GraphView,
     start_node: BoundNodeReference,
     invalid_path: bool = false, // invalid path (e.g., hierarchy violation, shallow link violation, etc.)
-    stop: bool = false, // Do not keep going down this path (do not add to open_path_queue)
+    stop_new_path_discovery: bool = false, // Do not keep going down this path (do not add to open_path_queue)
 
     // Visit strength for this path: strong (default) vs weak (conditional/soft)
     // Weak paths may be overridden by a later strong visit at the same node.
@@ -448,7 +448,7 @@ pub const BFSPath = struct {
             .g = start.g,
             .start_node = start,
             .invalid_path = false,
-            .stop = false,
+            .stop_new_path_discovery = false,
         };
         path.assert_consistent();
         return path;
@@ -865,7 +865,7 @@ pub const GraphView = struct {
                 .OK => {},
             }
 
-            if (path.stop) {
+            if (path.stop_new_path_discovery) {
                 continue;
             }
 

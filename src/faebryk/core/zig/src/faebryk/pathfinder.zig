@@ -91,9 +91,7 @@ pub const PathFinder = struct {
         );
 
         switch (result) {
-            .ERROR => |err| {
-                return err;
-            },
+            .ERROR => |err| return err,
             .CONTINUE => {},
             .EXHAUSTED => {},
             .OK => {},
@@ -111,31 +109,23 @@ pub const PathFinder = struct {
     // BFS visitor callback
     pub fn visit_fn(self_ptr: *anyopaque, path: *BFSPath) visitor.VisitResult(void) {
         const self: *Self = @ptrCast(@alignCast(self_ptr));
-
         const result = self.run_filters(path);
         if (result == .ERROR) return result;
+        if (result == .STOP) return result;
 
-        if (!path.invalid_path) {
-            var copied_path = BFSPath.init(path.start_node);
-            copied_path.traversed_edges.ensureTotalCapacity(path.traversed_edges.items.len) catch |err| {
-                copied_path.deinit();
-                return visitor.VisitResult(void){ .ERROR = err };
-            };
-            copied_path.traversed_edges.appendSliceAssumeCapacity(path.traversed_edges.items);
-            copied_path.invalid_path = path.invalid_path;
-            copied_path.stop = path.stop;
-            copied_path.visit_strength = path.visit_strength;
-
-            self.path_list.append(copied_path) catch |err| {
-                copied_path.deinit();
-                return visitor.VisitResult(void){ .ERROR = err };
-            };
-            self.valid_path_counter += 1;
+        // if path is invalid, don't save to path_list
+        if (path.invalid_path) {
+            return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
-        if (result == .STOP) {
-            return visitor.VisitResult(void){ .STOP = {} };
-        }
+        // else save to path_list
+        var copied_path = BFSPath.init(path.start_node);
+        copied_path.traversed_edges.ensureTotalCapacity(path.traversed_edges.items.len) catch @panic("OOM");
+        copied_path.traversed_edges.appendSliceAssumeCapacity(path.traversed_edges.items);
+        copied_path.stop_new_path_discovery = path.stop_new_path_discovery;
+        copied_path.visit_strength = path.visit_strength;
+        self.path_list.append(copied_path) catch @panic("OOM");
+        self.valid_path_counter += 1;
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -186,7 +176,7 @@ pub const PathFinder = struct {
         if (EdgeComposition.is_instance(last_edge) or EdgeInterfaceConnection.is_instance(last_edge)) {
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
-        path.stop = true;
+        path.stop_new_path_discovery = true;
         path.invalid_path = true;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -227,7 +217,7 @@ pub const PathFinder = struct {
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
             path.invalid_path = true;
-            path.stop = true;
+            path.stop_new_path_discovery = true;
             path.visit_strength = .weak;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -295,7 +285,7 @@ pub const PathFinder = struct {
                 if (shallow_val.Bool) {
                     path.visit_strength = .weak;
                     if (depth > 0) {
-                        path.stop = true;
+                        path.stop_new_path_discovery = true;
                         return false;
                     }
                 }
@@ -324,7 +314,7 @@ pub const PathFinder = struct {
             path.invalid_path = true;
             // path.stop already set for shallow violations inside validator
             // For pure hierarchy violations, mark as weak to prefer stronger revisits
-            if (!path.stop) path.visit_strength = .weak;
+            if (!path.stop_new_path_discovery) path.visit_strength = .weak;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
