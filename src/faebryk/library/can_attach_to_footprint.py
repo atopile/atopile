@@ -3,10 +3,10 @@
 
 from abc import abstractmethod
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 
 
-class can_attach_to_footprint(Module.TraitT):
+class can_attach_to_footprint(fabll.Node):
     @abstractmethod
     def attach(self, footprint: F.Footprint): ...

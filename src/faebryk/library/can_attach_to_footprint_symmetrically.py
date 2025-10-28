@@ -5,12 +5,7 @@ import faebryk.core.node as fabll
 
 
 class can_attach_to_footprint_symmetrically(fabll.Node):
-    @classmethod
-    def __create_type__(
-        cls,
-        t: fabll.BoundNodeType[fabll.Node, fabll.NodeAttributes],
-    ) -> None:
-        pass
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     # def attach(self, footprint: F.Footprint):
     #     self.obj.add(F.has_footprint_defined(footprint))

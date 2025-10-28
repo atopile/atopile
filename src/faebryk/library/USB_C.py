@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class USB_C(ModuleInterface):
+class USB_C(fabll.Node):
     usb3: F.USB3
     cc1: F.Electrical
     cc2: F.Electrical
@@ -26,7 +25,7 @@ class USB_C(ModuleInterface):
         self.tx.p.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
         self.tx.n.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import USB_C, ElectricPower, Resistor
 

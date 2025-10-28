@@ -4,8 +4,8 @@
 import logging
 import math
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint, Quantity_Set
 
 logger = logging.getLogger(__name__)
@@ -50,13 +50,13 @@ class FilterElectricalRC(F.Filter):
         # Set the max voltage of the capacitor to min 1.5 times the output voltage
         self.capacitor.max_voltage.constrain_ge(self.out.reference.voltage * 1.5)
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.in_.line, self.out.line)
 
@@ -74,7 +74,7 @@ class FilterElectricalRC(F.Filter):
         out.cutoff_frequency.constrain_subset(cutoff_frequency)
         return out
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import FilterElectricalRC, ElectricSignal, ElectricPower
 

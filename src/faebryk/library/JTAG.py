@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class JTAG(ModuleInterface):
+class JTAG(fabll.Node):
     dbgrq: F.ElectricLogic
     tdo: F.ElectricLogic
     tdi: F.ElectricLogic
@@ -17,7 +16,7 @@ class JTAG(ModuleInterface):
     n_reset: F.ElectricLogic
     vtref: F.ElectricPower
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -41,7 +40,7 @@ class JTAG(ModuleInterface):
         )
         self.vtref.add(F.has_net_name("VTREF", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import JTAG, ElectricPower, Resistor
 

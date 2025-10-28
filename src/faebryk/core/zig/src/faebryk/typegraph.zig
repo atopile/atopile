@@ -5,6 +5,7 @@ const composition_mod = @import("composition.zig");
 const next_mod = @import("next.zig");
 const pointer_mod = @import("pointer.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const nodebuilder_mod = @import("nodebuilder.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -21,6 +22,7 @@ const EdgeComposition = composition_mod.EdgeComposition;
 const EdgePointer = pointer_mod.EdgePointer;
 const EdgeNext = next_mod.EdgeNext;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
+const NodeCreationAttributes = nodebuilder_mod.NodeCreationAttributes;
 
 // TODO: BoundNodeReference and NodeReference used mixed all over the place
 // TODO: move add/create functions into respective structs
@@ -71,25 +73,47 @@ pub const TypeGraph = struct {
 
     pub const MakeChildNode = struct {
         pub const Attributes = struct {
-            node: NodeReference,
+            node: BoundNodeReference,
 
-            pub fn of(node: NodeReference) @This() {
+            pub fn of(node: BoundNodeReference) @This() {
                 return .{ .node = node };
             }
 
             pub const child_identifier = "child_identifier";
+            pub const child_literal_value = "child_literal_value";
 
             pub fn set_child_identifier(self: @This(), identifier: ?str) void {
                 if (identifier) |_identifier| {
-                    self.node.attributes.dynamic.values.put(child_identifier, .{ .String = _identifier }) catch unreachable;
+                    self.node.node.attributes.dynamic.values.put(child_identifier, .{ .String = _identifier }) catch unreachable;
                 }
             }
 
             pub fn get_child_identifier(self: @This()) ?str {
-                if (self.node.attributes.dynamic.values.get(child_identifier)) |value| {
+                if (self.node.node.attributes.dynamic.values.get(child_identifier)) |value| {
                     return value.String;
                 }
                 return null;
+            }
+
+            pub fn set_node_attributes(self: @This(), attributes: NodeCreationAttributes) void {
+                if (attributes.dynamic) |d| {
+                    d.copy_into(&self.node.node.attributes.dynamic);
+                }
+            }
+
+            pub fn get_node_attributes(self: @This()) NodeCreationAttributes {
+                var dynamic = graph.DynamicAttributes.init(self.node.g.allocator);
+
+                var it = self.node.node.attributes.dynamic.values.iterator();
+                while (it.next()) |e| {
+                    const key = e.key_ptr.*;
+                    if (std.mem.eql(u8, key, "child_identifier")) {
+                        continue;
+                    }
+                    dynamic.values.put(key, e.value_ptr.*) catch unreachable;
+                }
+
+                return .{ .dynamic = if (dynamic.values.count() > 0) dynamic else null };
             }
         };
 
@@ -98,6 +122,17 @@ pub const TypeGraph = struct {
                 return TypeReferenceNode.get_resolved_type(type_ref);
             }
             return null;
+        }
+
+        pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
+            var dynamic: ?graph.DynamicAttributes = null;
+            if (value) |v| {
+                dynamic = graph.DynamicAttributes.init(allocator);
+                dynamic.?.values.put("value", .{ .String = v }) catch unreachable;
+            }
+            return .{
+                .dynamic = if (dynamic) |d| d else null,
+            };
         }
 
         pub fn get_type_reference(node: BoundNodeReference) ?BoundNodeReference {
@@ -214,6 +249,17 @@ pub const TypeGraph = struct {
 
         pub fn get_resolved_type(reference: BoundNodeReference) ?BoundNodeReference {
             return EdgePointer.get_pointed_node_by_identifier(reference, "resolved");
+        }
+
+        pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
+            var dynamic: ?graph.DynamicAttributes = null;
+            if (value) |v| {
+                dynamic = graph.DynamicAttributes.init(allocator);
+                dynamic.?.values.put("value", .{ .String = v }) catch unreachable;
+            }
+            return .{
+                .dynamic = if (dynamic) |d| d else null,
+            };
         }
     };
 
@@ -426,6 +472,7 @@ pub const TypeGraph = struct {
         // Add type trait
         const trait_implements_type_instance = try self.instantiate_node(self.get_ImplementsType());
         _ = EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
+        _ = EdgeComposition.add_child(self.self_node, type_node.node, identifier);
 
         return type_node;
     }
@@ -440,9 +487,21 @@ pub const TypeGraph = struct {
         return trait;
     }
 
-    pub fn add_make_child(self: *@This(), target_type: BoundNodeReference, child_type_identifier: str, identifier: ?str) !BoundNodeReference {
+    pub fn add_make_child(
+        self: *@This(),
+        target_type: BoundNodeReference,
+        child_type_identifier: str,
+        identifier: ?str,
+        node_attributes: ?*NodeCreationAttributes,
+    ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
-        MakeChildNode.Attributes.of(make_child.node).set_child_identifier(identifier);
+        MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
+        if (node_attributes) |_node_attributes| {
+            MakeChildNode.Attributes.of(make_child).set_node_attributes(_node_attributes.*);
+            if (_node_attributes.dynamic) |*d| {
+                d.*.deinit();
+            }
+        }
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
         _ = EdgeComposition.add_child(make_child, type_reference.node, "type_ref");
@@ -484,7 +543,7 @@ pub const TypeGraph = struct {
                 const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
 
                 // 2.1) Resolve child instructions (identifier and type)
-                const child_identifier = MakeChildNode.Attributes.of(make_child.node).get_child_identifier();
+                const child_identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
                 const referenced_type = MakeChildNode.get_child_type(make_child) orelse {
                     return visitor.VisitResult(void){ .ERROR = error.UnresolvedTypeReference };
                 };
@@ -496,6 +555,14 @@ pub const TypeGraph = struct {
 
                 // 2.3) Attach child instance to parent instance with the reference name
                 _ = EdgeComposition.add_child(self.parent_instance, child.node, child_identifier);
+
+                // 2.4) Copy node attributes from MakeChild node to child instance
+                var node_attributes = MakeChildNode.Attributes.of(make_child).get_node_attributes();
+                if (node_attributes.dynamic) |d| {
+                    std.debug.print("copied dynamic attributes to child: {any}\n", .{d});
+                    d.copy_into(&child.node.attributes.dynamic);
+                    node_attributes.dynamic.?.deinit();
+                }
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -618,6 +685,10 @@ pub const TypeGraph = struct {
         }
         return try self.add_type(type_identifier);
     }
+
+    pub fn get_graph_view(self: *@This()) *GraphView {
+        return self.self_node.g;
+    }
 };
 
 test "basic typegraph" {
@@ -650,10 +721,23 @@ test "basic instantiation" {
     _ = try tg.add_make_child(Capacitor, "Electrical", "p1");
     _ = try tg.add_make_child(Capacitor, "Electrical", "p2");
     const Resistor = try tg.add_type("Resistor");
+
     _ = try tg.add_make_child(Resistor, "Electrical", "p1");
     _ = try tg.add_make_child(Resistor, "Electrical", "p2");
     _ = try tg.add_make_child(Resistor, "Capacitor", "cap1");
 
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+
+    var node_attrs = TypeGraph.MakeChildNode.build(a, "test_string");
+    _ = try tg.add_make_child(
+        Capacitor,
+        Electrical,
+        "tp",
+        &node_attrs,
+    );
+    // node_attrs.deinit();
+    // a.destroy(node_attrs.dynamic.?); //TODO: Figure out one line allocation/deallocation
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);

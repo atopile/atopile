@@ -2,12 +2,16 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 
 
 class has_pcb_position_defined_relative(F.has_pcb_position.impl()):
-    def __init__(self, position_relative: F.has_pcb_position.Point, to: Module) -> None:
+    def __init__(
+        self,
+        position_relative: F.has_pcb_position.Point,
+        to: fabll.Node,
+    ) -> None:
         super().__init__()
         self.position_relative = position_relative
         self.to = to

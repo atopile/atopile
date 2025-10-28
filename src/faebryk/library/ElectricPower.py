@@ -2,11 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.core.parameter import Add
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
@@ -19,7 +17,7 @@ class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
         def decouple(
             self,
-            owner: Module,
+            owner: fabll.Node,
             count: int = 1,
         ):
             obj = self.get_obj(ElectricPower)
@@ -51,7 +49,7 @@ class ElectricPower(F.Power):
             return new_capacitor
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
-        def protect(self, owner: Module):
+        def protect(self, owner: fabll.Node):
             obj = self.get_obj(ElectricPower)
             surge_protection = F.SurgeProtection.from_interfaces(obj.lv, obj.hv)
             owner.add(
@@ -64,24 +62,24 @@ class ElectricPower(F.Power):
     hv: F.Electrical
     lv: F.Electrical
 
-    voltage = L.p_field(
+    voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(0 * P.V, 1000 * P.V),
+        domain=fabll.Domains.Numbers.REAL(),
+        soft_set=fabll.Range(0 * P.V, 1000 * P.V),
         tolerance_guess=5 * P.percent,
     )
-    max_current = L.p_field(
+    max_current = fabll.p_field(
         units=P.A,
-        domain=L.Domains.Numbers.REAL(),
+        domain=fabll.Domains.Numbers.REAL(),
     )
     """
     WARNING!!!
     Only for this particular power interface
     Does not propagate to connections
     """
-    bus_max_current_consumption_sum = L.p_field(
-        units=P.A, domain=L.Domains.Numbers.REAL()
+    bus_max_current_consumption_sum = fabll.p_field(
+        units=P.A, domain=fabll.Domains.Numbers.REAL()
     )
     """
     Summed current for all connected power interfaces
@@ -91,11 +89,11 @@ class ElectricPower(F.Power):
     surge_protected: can_be_surge_protected_power
     decoupled: can_be_decoupled_power
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self)
 
-    def fused(self, attach_to: Node | None = None):
+    def fused(self, attach_to: fabll.Node | None = None):
         fused_power = type(self)()
         fuse = fused_power.add(F.Fuse())
 
@@ -105,7 +103,7 @@ class ElectricPower(F.Power):
         self.connect_shallow(fused_power)
 
         fuse.trip_current.constrain_subset(
-            self.max_current * L.Range.from_center_rel(1.0, 0.1)
+            self.max_current * fabll.Range.from_center_rel(1.0, 0.1)
         )
         # TODO maybe better bus_consumption
         fused_power.max_current.constrain_le(fuse.trip_current)
@@ -143,7 +141,7 @@ class ElectricPower(F.Power):
         self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
         self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import ElectricPower
 

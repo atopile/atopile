@@ -1,13 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 
 
-class Power(ModuleInterface):
-    class is_power_source(ModuleInterface.TraitT): ...
+class Power(fabll.Node):
+    class is_power_source(fabll.Node): ...
 
-    class is_power_sink(ModuleInterface.TraitT): ...
+    class is_power_sink(fabll.Node): ...
 
     def make_source(self):
         self.add(self.is_power_source.impl()())

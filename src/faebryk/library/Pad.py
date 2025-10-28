@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 from faebryk.libs.util import not_none
 
 
-class Pad(ModuleInterface):
+class Pad(fabll.Node):
     net: F.Electrical
-    pcb: ModuleInterface
+    pcb: fabll.ModuleInterface
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
@@ -18,7 +17,7 @@ class Pad(ModuleInterface):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
-        intf: ModuleInterface,
+        intf: fabll.ModuleInterface,
     ) -> "Pad":
         pads = Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         if len(pads) != 1:
@@ -27,7 +26,7 @@ class Pad(ModuleInterface):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint(
-        intf: ModuleInterface,
+        intf: fabll.ModuleInterface,
     ) -> list["Pad"]:
         # This only finds directly attached pads
         # -> misses from parents / children nodes
@@ -46,7 +45,7 @@ class Pad(ModuleInterface):
     def get_fp(self) -> F.Footprint:
         return not_none(self.get_parent_of_type(F.Footprint))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Pad
 

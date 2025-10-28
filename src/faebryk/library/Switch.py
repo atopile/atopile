@@ -3,51 +3,49 @@
 
 from typing import TypeGuard
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 from faebryk.libs.util import once
 
 
-class _TSwitch(Module):
-    T = ModuleInterface
+class _TSwitch(fabll.Node):
+    T = fabll.ModuleInterface
 
     def __init__(self, t: type[T]):
         super().__init__()
         self.t = t
 
     @staticmethod
-    def is_instance(obj: Module, t: type[T]) -> bool:
+    def is_instance(obj: fabll.Node, t: type[T]) -> bool:
         return isinstance(obj, _TSwitch) and issubclass(obj.t, t)
 
 
 @once  # This means we can use a normal "isinstance" to test for them
-def Switch[T: ModuleInterface](interface_type: type[T]):
+def Switch[T: fabll.ModuleInterface](interface_type: type[T]):
     class _Switch(_TSwitch):
         def __init__(self) -> None:
             super().__init__(interface_type)
 
-        designator_prefix = L.f_field(F.has_designator_prefix)(
+        designator_prefix = fabll.f_field(F.has_designator_prefix)(
             F.has_designator_prefix.Prefix.S
         )
         attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
-        unnamed = L.list_field(2, interface_type)
+        unnamed = fabll.list_field(2, interface_type)
 
-        @L.rt_field
+        @fabll.rt_field
         def can_bridge(self):
             return F.can_bridge_defined(*self.unnamed)
 
         @staticmethod
-        def is_instance(obj: Module) -> "TypeGuard[_Switch]":
+        def is_instance(obj: fabll.Node) -> "TypeGuard[_Switch]":
             return _TSwitch.is_instance(obj, interface_type)
 
     return _Switch
 
 
 # Usage example for the Switch factory
-usage_example = L.f_field(F.has_usage_example)(
+usage_example = fabll.f_field(F.has_usage_example)(
     example="""
     import Switch, Electrical, ElectricLogic, ElectricPower
 

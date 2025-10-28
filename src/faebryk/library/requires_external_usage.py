@@ -4,9 +4,8 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
 from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,7 @@ class requires_external_usage(Trait.decless()):
     class RequiresExternalUsageNotFulfilled(
         F.implements_design_check.UnfulfilledCheckException
     ):
-        def __init__(self, nodes: list[Node]):
+        def __init__(self, nodes: list[fabll.Node]):
             super().__init__(
                 "Nodes requiring external usage but not used externally",
                 nodes=nodes,
@@ -24,7 +23,7 @@ class requires_external_usage(Trait.decless()):
 
     @property
     def fulfilled(self) -> bool:
-        obj = self.get_obj(type=ModuleInterface)
+        obj = self.get_obj(type=fabll.ModuleInterface)
         connected_to = set(obj.connected.get_connected_nodes(types=[type(obj)]))
         parent = obj.get_parent()
         # no shared parent possible
@@ -45,7 +44,7 @@ class requires_external_usage(Trait.decless()):
         return False
 
     def on_obj_set(self):
-        if not isinstance(self.obj, ModuleInterface):
+        if not isinstance(self.obj, fabll.ModuleInterface):
             raise NotImplementedError("Only supported on ModuleInterfaces")
 
         super().on_obj_set()

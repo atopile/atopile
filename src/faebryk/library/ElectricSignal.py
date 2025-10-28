@@ -4,12 +4,10 @@
 from functools import reduce
 from typing import Iterable
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.link import LinkDirectConditional, LinkDirectConditionalFilterResult
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import CNode, Node
-from faebryk.libs.library import L
+from faebryk.core.node import CNode
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -45,7 +43,7 @@ class ElectricSignal(F.Signal):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.reference)
 
@@ -54,7 +52,7 @@ class ElectricSignal(F.Signal):
     # ----------------------------------------
     @staticmethod
     def connect_all_node_references(
-        nodes: Iterable[Node], gnd_only=False
+        nodes: Iterable[fabll.Node], gnd_only=False
     ) -> F.ElectricPower:
         # TODO check if any child contains ElectricLogic which is not connected
         # e.g find them in graph and check if any has parent without "single reference"
@@ -77,13 +75,13 @@ class ElectricSignal(F.Signal):
     @classmethod
     def connect_all_module_references(
         cls,
-        node: Module | ModuleInterface,
+        node: fabll.Node | fabll.ModuleInterface,
         gnd_only=False,
-        exclude: Iterable[Node] = (),
+        exclude: Iterable[fabll.Node] = (),
     ) -> F.ElectricPower:
         return cls.connect_all_node_references(
             node.get_children(
-                direct_only=True, types=(Module, ModuleInterface)
+                direct_only=True, types=(fabll.Module, fabll.ModuleInterface)
             ).difference(set(exclude)),
             gnd_only=gnd_only,
         )
@@ -92,10 +90,10 @@ class ElectricSignal(F.Signal):
     def connect_all_references(ifs: Iterable["ElectricSignal"]) -> F.ElectricPower:
         return F.ElectricPower.connect(*[x.reference for x in ifs])
 
-    @L.rt_field
+    @fabll.rt_field
     def surge_protected(self):
         class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
-            def protect(_self, owner: Module):
+            def protect(_self, owner: fabll.Node):
                 out = super().protect(owner)
                 for tvs in out.get_children(direct_only=False, types=F.TVS):
                     tvs.reverse_working_voltage.alias_is(self.reference.voltage)
@@ -160,7 +158,7 @@ class ElectricSignal(F.Signal):
             except ZeroDivisionError:
                 return None
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import ElectricSignal, ElectricPower
 

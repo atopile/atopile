@@ -5,8 +5,8 @@ import logging
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Sequence
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find
 
@@ -25,7 +25,7 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
     def __init__(
         self,
         topology: Topology = Topology.DIRECT,
-        extra_mifs: Sequence[ModuleInterface] | None = None,
+        extra_mifs: Sequence[fabll.ModuleInterface] | None = None,
         extra_pads: Sequence[F.Pad] | None = None,
     ) -> None:
         super().__init__()

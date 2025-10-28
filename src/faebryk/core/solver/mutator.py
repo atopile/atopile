@@ -14,7 +14,8 @@ from more_itertools import first
 from rich.table import Table
 from rich.tree import Tree
 
-from faebryk.core.graph import Graph, GraphFunctions
+import faebryk.core.node as fabll
+from faebryk.core.node import Graph
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Domain,
@@ -111,11 +112,14 @@ class Transformations:
 
     @staticmethod
     def identity(
-        *gs: Graph, input_print_context: ParameterOperatable.ReprContext
+        *gs: fabll.Graph, input_print_context: ParameterOperatable.ReprContext
     ) -> "Transformations":
         return Transformations(
             mutated={
-                po: po for po in GraphFunctions(*gs).nodes_of_type(ParameterOperatable)
+                po: po
+                for po in fabll.Node.bind_typegraph(*gs).nodes_of_type(
+                    ParameterOperatable
+                )
             },
             input_print_context=input_print_context,
         )
@@ -376,9 +380,9 @@ class MutationStage:
         self.iteration = iteration
         self.transformations = transformations
         self.input_print_context = print_context
-        self.input_operables = GraphFunctions(*self.input_graphs).nodes_of_type(
-            ParameterOperatable
-        )
+        self.input_operables = fabll.Node.bind_typegraph(
+            *self.input_graphs
+        ).nodes_of_type(ParameterOperatable)
 
     @property
     def output_graphs(self) -> list[Graph]:
@@ -399,11 +403,13 @@ class MutationStage:
     @property
     @once
     def output_operables(self) -> set[ParameterOperatable]:
-        return GraphFunctions(*self.output_graphs).nodes_of_type(ParameterOperatable)
+        return fabll.Node.bind_typegraph(*self.output_graphs).nodes_of_type(
+            ParameterOperatable
+        )
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        *graphs: fabll.Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext,
@@ -438,7 +444,7 @@ class MutationStage:
         log: Callable[[str], None] = logger.debug,
     ):
         for i, g in enumerate(self.output_graphs):
-            pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
+            pre_nodes = fabll.Node.bind_typegraph(g).nodes_of_type(type_filter)
             if SHOW_SS_IS:
                 nodes = pre_nodes
             else:
@@ -821,7 +827,7 @@ class MutationMap:
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        *graphs: fabll.Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext | None = None,
@@ -889,10 +895,10 @@ class MutationMap:
     def print_name_mappings(self, log: Callable[[str], None] = logger.debug):
         table = Table(title="Name mappings", show_lines=True)
         table.add_column("Variable name")
-        table.add_column("Node name")
+        table.add_column("fabll.Node name")
 
         for p in sorted(
-            GraphFunctions(*self.input_graphs).nodes_of_type(Parameter),
+            fabll.Node.bind_typegraph(*self.input_graphs).nodes_of_type(Parameter),
             key=Parameter.get_full_name,
         ):
             table.add_row(p.compact_repr(self.input_print_context), p.get_full_name())
@@ -1338,12 +1344,12 @@ class Mutator:
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
 
-    def remove_graph(self, g: Graph):
+    def remove_graph(self, g: fabll.Graph):
         # TODO implementing graph removal has to be more explicit
         # e.g mark as no more use, and then future mutators ignore it for the algos
         # for now at least remove expressions
         assert g in self.G
-        self.remove(*GraphFunctions(g).nodes_of_type(Expression))
+        self.remove(*fabll.Node.bind_typegraph(g).nodes_of_type(Expression))
 
     def register_created_parameter(
         self, param: Parameter, from_ops: Sequence[ParameterOperatable] | None = None
@@ -1389,7 +1395,7 @@ class Mutator:
         elif created_only:
             out = {n for n in self.transformations.created if isinstance(n, t)}
         else:
-            out = GraphFunctions(*self.G).nodes_of_type(t)
+            out = fabll.Node.bind_typegraph(*self.G).nodes_of_type(t)
 
         if not include_terminated:
             out = {
@@ -1416,7 +1422,7 @@ class Mutator:
         if new_only:
             out = {n for n in self._new_operables if isinstance(n, t)}
         else:
-            out = GraphFunctions(*self.G).nodes_of_types(t)
+            out = fabll.Node.bind_typegraph(*self.G).nodes_of_types(t)
         out = cast(set[ParameterOperatable], out)
         if not include_terminated:
             out = {
@@ -1595,7 +1601,9 @@ class Mutator:
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
             (
-                GraphFunctions(*_touched_graphs).nodes_of_type(ParameterOperatable)
+                fabll.Node.bind_typegraph(*_touched_graphs).nodes_of_type(
+                    ParameterOperatable
+                )
                 - touched
             ),
             ascending=True,
@@ -1606,7 +1614,9 @@ class Mutator:
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
         untouched_graphs = self.G - _touched_graphs
-        for p in GraphFunctions(*untouched_graphs).nodes_of_type(ParameterOperatable):
+        for p in fabll.Node.bind_typegraph(*untouched_graphs).nodes_of_type(
+            ParameterOperatable
+        ):
             self.transformations.mutated[p] = p
 
     def check_no_illegal_mutations(self):
@@ -1636,7 +1646,7 @@ class Mutator:
         all_new_params = {
             op
             for g in all_new_graphs
-            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            for op in fabll.Node.bind_typegraph(g).nodes_of_type(ParameterOperatable)
         }
         non_registered = all_new_params.difference(
             self.transformations.created, self.transformations.mutated.values()

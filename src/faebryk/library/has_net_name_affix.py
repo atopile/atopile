@@ -1,11 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 from faebryk.core.trait import TraitImpl
-from faebryk.libs.library import L
 
 
-class has_net_name_affix(L.Trait.decless()):
+class has_net_name_affix(fabll.Node):
     """Require a fixed prefix/suffix to be applied to a derived net name.
 
     This does not set or suggest the base name, it enforces that when a name is
@@ -34,7 +34,7 @@ class has_net_name_affix(L.Trait.decless()):
     def both(cls, prefix: str, suffix: str) -> "has_net_name_affix":
         return cls(required_prefix=prefix, required_suffix=suffix)
 
-    def handle_duplicate(self, old: TraitImpl, node: L.Node) -> bool:
+    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
         # If re-added, keep the more specific (non-None) values; error on conflicts
         assert isinstance(old, has_net_name_affix)
         # Merge if compatible

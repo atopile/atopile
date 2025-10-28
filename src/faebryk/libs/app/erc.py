@@ -7,12 +7,10 @@ from typing import Callable, Iterable, cast
 
 from more_itertools import first
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
 from faebryk.core.cpp import Path
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
@@ -24,7 +22,7 @@ class ERCFault(errors.UserException):
     """Base class for ERC faults."""
 
 
-class ModuleInterfacePath(list[ModuleInterface]):
+class ModuleInterfacePath(list[fabll.ModuleInterface]):
     """A path of ModuleInterfaces."""
 
     @classmethod
@@ -33,13 +31,15 @@ class ModuleInterfacePath(list[ModuleInterface]):
         Convert a Path (of GraphInterfaces) to a ModuleInterfacePath.
         """
         mifs = cast(
-            list[ModuleInterface],
-            [gif.node for gif in path if gif.node.isinstance(ModuleInterface)],
+            list[fabll.ModuleInterface],
+            [gif.node for gif in path if gif.node.isinstance(fabll.ModuleInterface)],
         )
         return cls(mifs)
 
     def snip_head(
-        self, scissors: Callable[[ModuleInterface], bool], include_last: bool = True
+        self,
+        scissors: Callable[[fabll.ModuleInterface], bool],
+        include_last: bool = True,
     ) -> "ModuleInterfacePath":
         """
         Keep the head until the scissors predicate returns False.
@@ -50,7 +50,9 @@ class ModuleInterfacePath(list[ModuleInterface]):
         return self
 
     def snip_tail(
-        self, scissors: Callable[[ModuleInterface], bool], include_first: bool = True
+        self,
+        scissors: Callable[[fabll.ModuleInterface], bool],
+        include_first: bool = True,
     ) -> "ModuleInterfacePath":
         """
         Keep the tail until the scissors predicate returns False.
@@ -62,7 +64,7 @@ class ModuleInterfacePath(list[ModuleInterface]):
 
     @classmethod
     def from_connection(
-        cls, a: ModuleInterface, b: ModuleInterface
+        cls, a: fabll.ModuleInterface, b: fabll.ModuleInterface
     ) -> "ModuleInterfacePath | None":
         """
         Return a ModuleInterfacePath between two ModuleInterfaces, if it exists,
@@ -73,7 +75,7 @@ class ModuleInterfacePath(list[ModuleInterface]):
             #  - iterate through all paths
             #  - make a helper function
             #    ModuleInterfacePath.get_subpaths(path: Path, search: SubpathSearch)
-            #    e.g SubpathSearch = tuple[Callable[[ModuleInterface], bool], ...]
+            #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
             #  - choose out of subpaths
             #    - be careful with LinkDirectDerived edges (if there is a faulting edge
             #      is derived, save it as candidate and only yield it if no other found)
@@ -117,7 +119,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
+def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
     """Simple ERC check.
 
     This function will check for the following ERC violations:
@@ -138,10 +140,10 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
 
     with accumulate(ERCFault) as accumulator:
         # shorted power
-        electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
+        electricpower = fabll.Node.bind_typegraph(G).nodes_of_type(F.ElectricPower)
         logger.info(f"Checking {len(electricpower)} Power")
 
-        buses_grouped = ModuleInterface._group_into_buses(electricpower)
+        buses_grouped = fabll.ModuleInterface._group_into_buses(electricpower)
         buses = list(buses_grouped.values())
 
         # We do collection both inside and outside the loop because we don't
@@ -151,7 +153,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
             for ep in electricpower:
                 if mif_path := ModuleInterfacePath.from_connection(ep.lv, ep.hv):
 
-                    def _keep_head(x: ModuleInterface) -> bool:
+                    def _keep_head(x: fabll.ModuleInterface) -> bool:
                         if parent := x.get_parent():
                             parent_node, _ = parent
                             if isinstance(parent_node, F.ElectricPower):
@@ -159,7 +161,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
 
                         return True
 
-                    def _keep_tail(x: ModuleInterface) -> bool:
+                    def _keep_tail(x: fabll.ModuleInterface) -> bool:
                         if parent := x.get_parent():
                             parent_node, _ = parent
                             if isinstance(parent_node, F.ElectricPower):
@@ -186,7 +188,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     )
 
         # shorted nets
-        nets = GraphFunctions(G).nodes_of_type(F.Net)
+        nets = fabll.Node.bind_typegraph(G).nodes_of_type(F.Net)
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
@@ -222,7 +224,9 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
         #            raise ERCFault([mif], "shorted symmetric footprint")
 
-        comps = GraphFunctions(G).nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
+        comps = fabll.Node.bind_typegraph(G).nodes_of_types(
+            (F.Resistor, F.Capacitor, F.Fuse)
+        )
         logger.info(f"Checking {len(comps)} passives")
         for comp in comps:
             with accumulator.collect():
@@ -250,13 +254,13 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         # TODO check multiple pulls per logic
 
 
-def check_modules_for_erc(module: Iterable[Module]):
+def check_modules_for_erc(module: Iterable[fabll.Module]):
     for m in module:
         logger.info(f"Checking {m} {'-' * 20}")
         simple_erc(m.get_graph())
 
 
-def check_classes_for_erc(classes: Iterable[Callable[[], Module]]):
+def check_classes_for_erc(classes: Iterable[Callable[[], fabll.Module]]):
     modules = []
     for c in classes:
         try:
@@ -272,7 +276,7 @@ def check_classes_for_erc(classes: Iterable[Callable[[], Module]]):
 
 def check_library_for_erc(lib):
     members = inspect.getmembers(lib, inspect.isclass)
-    module_classes = [m[1] for m in members if issubclass(m[1], Module)]
+    module_classes = [m[1] for m in members if issubclass(m[1], fabll.Module)]
     check_classes_for_erc(module_classes)
 
 

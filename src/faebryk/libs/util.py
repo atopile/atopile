@@ -1122,7 +1122,10 @@ class DAG[T]:
         child_node._parents.append(parent_node)
 
     def _dfs_cycle_check(
-        self, node: Node[T], visiting: set[Node[T]], visited: set[Node[T]]
+        self,
+        node: Node[T],
+        visiting: set[Node[T]],
+        visited: set[Node[T]],
     ) -> bool:
         """Helper recursive function for cycle detection."""
         visiting.add(node)
@@ -1361,7 +1364,7 @@ class Tree[T](dict[T, "Tree[T]"]):
 
             trees = [child for tree in trees for child in tree.values()]
 
-        raise KeyErrorNotFound(f"Node {node} not found in tree")
+        raise KeyErrorNotFound(f"fabll.Node {node} not found in tree")
 
     def to_dag(self, dag: DAG[T] | None = None) -> DAG[T]:
         if dag is None:

@@ -3,13 +3,12 @@
 
 from typing import Self, override
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.core.trait import TraitImpl
 
 
-class has_explicit_part(Module.TraitT.decless()):
+class has_explicit_part(fabll.Node):
     mfr: str
     partno: str
     supplier_id: str
@@ -52,7 +51,7 @@ class has_explicit_part(Module.TraitT.decless()):
     @override
     def on_obj_set(self):
         super().on_obj_set()
-        obj = self.get_obj(type=Module)
+        obj = self.get_obj(type=fabll.Module)
 
         if hasattr(self, "mfr"):
             assert self.partno
@@ -99,7 +98,7 @@ class has_explicit_part(Module.TraitT.decless()):
         self.on_obj_set()
 
     @override
-    def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
+    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
         assert isinstance(old, has_explicit_part)
         old._merge(self)
         return False

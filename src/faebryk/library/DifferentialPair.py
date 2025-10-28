@@ -3,24 +3,23 @@
 
 from typing import Self
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class DifferentialPair(ModuleInterface):
+class DifferentialPair(fabll.Node):
     p: F.ElectricSignal
     n: F.ElectricSignal
 
-    impedance = L.p_field(
+    impedance = fabll.p_field(
         units=P.Ω,
         likely_constrained=True,
-        soft_set=L.Range(10 * P.Ω, 100 * P.Ω),
+        soft_set=fabll.Range(10 * P.Ω, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricSignal.connect_all_module_references(self)
@@ -50,7 +49,7 @@ class DifferentialPair(ModuleInterface):
         self.p.line.add(F.has_net_name_affix.suffix("_P"))
         self.n.line.add(F.has_net_name_affix.suffix("_N"))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import DifferentialPair, ElectricPower
 

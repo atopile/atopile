@@ -3,16 +3,15 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 # TODO: make generic (use Switch module, different switch models, bistable, etc.)
-class Relay(Module):
+class Relay(fabll.Node):
     switch_a_nc: F.Electrical
     switch_a_common: F.Electrical
     switch_a_no: F.Electrical
@@ -21,18 +20,18 @@ class Relay(Module):
     switch_b_nc: F.Electrical
     coil_power: F.ElectricPower
 
-    coil_max_voltage = L.p_field(units=P.V)
-    coil_max_current = L.p_field(units=P.A)
-    coil_resistance = L.p_field(units=P.ohm)
-    contact_max_switching_voltage = L.p_field(units=P.V)
-    contact_max_switching_current = L.p_field(units=P.A)
-    contact_max_current = L.p_field(units=P.A)
+    coil_max_voltage = fabll.p_field(units=P.V)
+    coil_max_current = fabll.p_field(units=P.A)
+    coil_resistance = fabll.p_field(units=P.ohm)
+    contact_max_switching_voltage = fabll.p_field(units=P.V)
+    contact_max_switching_current = fabll.p_field(units=P.A)
+    contact_max_current = fabll.p_field(units=P.A)
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.K
     )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Relay, ElectricPower, Diode, MOSFET, ElectricLogic
 

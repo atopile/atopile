@@ -3,9 +3,9 @@
 
 from abc import abstractmethod
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
 
 
-class has_overriden_name(Module.TraitT):
+class has_overriden_name(fabll.Node):
     @abstractmethod
     def get_name(self) -> str: ...

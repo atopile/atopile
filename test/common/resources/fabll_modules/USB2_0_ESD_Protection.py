@@ -3,16 +3,15 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 # TODO this seems like it should be doing more
-class USB2_0_ESD_Protection(Module):
+class USB2_0_ESD_Protection(fabll.Node):
     """
     USB 2.0 ESD protection
     """
@@ -20,19 +19,19 @@ class USB2_0_ESD_Protection(Module):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    usb = L.list_field(2, F.USB2_0)
+    usb = fabll.list_field(2, F.USB2_0)
 
-    vbus_esd_protection = L.p_field(domain=L.Domains.BOOL())
-    data_esd_protection = L.p_field(domain=L.Domains.BOOL())
+    vbus_esd_protection = fabll.p_field(domain=fabll.Domains.BOOL())
+    data_esd_protection = fabll.p_field(domain=fabll.Domains.BOOL())
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.usb[0], self.usb[1])
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -49,7 +48,7 @@ class USB2_0_ESD_Protection(Module):
         #          parametrization
         # ------------------------------------
         self.usb[0].usb_if.buspower.voltage.constrain_subset(
-            L.Range(4.75 * P.V, 5.25 * P.V)
+            fabll.Range(4.75 * P.V, 5.25 * P.V)
         )
 
     # TODO: remove @https://github.com/atopile/atopile/issues/727

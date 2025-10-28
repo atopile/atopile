@@ -5,9 +5,8 @@ import json
 import logging
 from enum import StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
@@ -30,16 +29,16 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
-def load_part_info_from_pcb(G: Graph):
+def load_part_info_from_pcb(G: fabll.Graph):
     """
     Load descriptive properties from footprints and saved parameters.
     """
-    nodes = GraphFunctions(G).nodes_with_trait(
+    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(
         PCB_Transformer.has_linked_kicad_footprint
     )
 
     for node, trait in nodes:
-        assert isinstance(node, Module)
+        assert isinstance(node, fabll.Module)
         if isinstance(node, F.Footprint):
             continue
         if node.has_trait(F.has_part_picked):
@@ -117,12 +116,12 @@ def load_part_info_from_pcb(G: Graph):
             param.alias_is(param_value)
 
 
-def save_part_info_to_pcb(G: Graph):
+def save_part_info_to_pcb(G: fabll.Graph):
     """
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
-    nodes = GraphFunctions(G).nodes_with_trait(F.has_part_picked)
+    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_part_picked)
 
     for node, _ in nodes:
         if t := node.try_get_trait(F.has_part_picked):

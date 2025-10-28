@@ -2,24 +2,23 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
-class Addressor(ModuleInterface):
-    address = L.p_field(domain=L.Domains.Numbers.NATURAL())
-    offset = L.p_field(domain=L.Domains.Numbers.NATURAL())
-    base = L.p_field(domain=L.Domains.Numbers.NATURAL())
+class Addressor(fabll.Node):
+    address = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
+    offset = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
+    base = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
 
-    @L.rt_field
+    @fabll.rt_field
     def address_lines(self):
         return times(self._address_bits, F.ElectricLogic)
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -52,7 +51,7 @@ class Addressor(ModuleInterface):
                 F.has_net_name(f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
             )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Addressor, I2C, ElectricPower
 

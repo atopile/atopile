@@ -3,9 +3,9 @@
 
 import logging
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.parameter import Add, ParameterOperatable
-from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
@@ -32,7 +32,7 @@ class MultiCapacitor(F.Capacitor):
 
     pickable = None  # type: ignore
 
-    @L.rt_field
+    @fabll.rt_field
     def capacitors(self) -> list[F.Capacitor]:
         return times(self._count, F.Capacitor)
 
@@ -80,7 +80,7 @@ class MultiCapacitor(F.Capacitor):
             c_new.specialize(c_old)
         return obj
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import MultiCapacitor
 

@@ -4,15 +4,14 @@
 import logging
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class Fuse(Module):
+class Fuse(fabll.Node):
     class FuseType(Enum):
         NON_RESETTABLE = auto()
         RESETTABLE = auto()
@@ -21,31 +20,31 @@ class Fuse(Module):
         SLOW = auto()
         FAST = auto()
 
-    unnamed = L.list_field(2, F.Electrical)
-    fuse_type = L.p_field(
-        domain=L.Domains.ENUM(FuseType),
+    unnamed = fabll.list_field(2, F.Electrical)
+    fuse_type = fabll.p_field(
+        domain=fabll.Domains.ENUM(FuseType),
     )
-    response_type = L.p_field(
-        domain=L.Domains.ENUM(ResponseType),
+    response_type = fabll.p_field(
+        domain=fabll.Domains.ENUM(ResponseType),
     )
-    trip_current = L.p_field(
+    trip_current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(100 * P.mA, 100 * P.A),
+        domain=fabll.Domains.Numbers.REAL(),
+        soft_set=fabll.Range(100 * P.mA, 100 * P.A),
     )
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.unnamed[0], self.unnamed[1])
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.F
     )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Fuse, ElectricPower
 

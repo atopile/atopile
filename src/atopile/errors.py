@@ -8,12 +8,11 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
+import faebryk.core.node as fabll
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 
 if TYPE_CHECKING:
     from rich.console import Console, ConsoleOptions, ConsoleRenderable
-
-    from faebryk.core.node import NodeException
 
 
 def _render_tokens(
@@ -365,7 +364,7 @@ class UserNodeException(UserException):
     @classmethod
     def from_node_exception(
         cls,
-        node_ex: "NodeException",
+        node_ex: "fabll.NodeException",
         origin: ParserRuleContext | None,
         traceback: Sequence[ParserRuleContext | None] | None,
         *args,

@@ -3,14 +3,13 @@
 
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P, quantity
 from faebryk.libs.util import assert_once
 
 
-class LDO(Module):
+class LDO(fabll.Node):
     @assert_once
     def enable_output(self):
         self.enable.set(True)
@@ -23,47 +22,47 @@ class LDO(Module):
         POSITIVE = auto()
         NEGATIVE = auto()
 
-    max_input_voltage = L.p_field(
+    max_input_voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,
-        soft_set=L.Range(1 * P.V, 100 * P.V),
+        soft_set=fabll.Range(1 * P.V, 100 * P.V),
     )
-    output_voltage = L.p_field(
+    output_voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,
-        soft_set=L.Range(1 * P.V, 100 * P.V),
+        soft_set=fabll.Range(1 * P.V, 100 * P.V),
     )
-    quiescent_current = L.p_field(
+    quiescent_current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(1 * P.mA, 100 * P.mA),
+        soft_set=fabll.Range(1 * P.mA, 100 * P.mA),
     )
-    dropout_voltage = L.p_field(
+    dropout_voltage = fabll.p_field(
         units=P.V,
         likely_constrained=True,
-        soft_set=L.Range(1 * P.mV, 100 * P.mV),
+        soft_set=fabll.Range(1 * P.mV, 100 * P.mV),
     )
-    ripple_rejection_ratio = L.p_field(
+    ripple_rejection_ratio = fabll.p_field(
         units=P.dB,
         likely_constrained=True,
-        soft_set=L.Range(quantity(1, P.dB), quantity(100, P.dB)),
+        soft_set=fabll.Range(quantity(1, P.dB), quantity(100, P.dB)),
     )
-    output_polarity = L.p_field(
-        domain=L.Domains.ENUM(OutputPolarity),
+    output_polarity = fabll.p_field(
+        domain=fabll.Domains.ENUM(OutputPolarity),
     )
-    output_type = L.p_field(
-        domain=L.Domains.ENUM(OutputType),
+    output_type = fabll.p_field(
+        domain=fabll.Domains.ENUM(OutputType),
     )
-    output_current = L.p_field(
+    output_current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(1 * P.mA, 100 * P.mA),
+        soft_set=fabll.Range(1 * P.mA, 100 * P.mA),
     )
     enable: F.EnablePin
     power_in: F.ElectricPower
-    power_out = L.d_field(lambda: F.ElectricPower().make_source())
+    power_out = fabll.d_field(lambda: F.ElectricPower().make_source())
 
-    # @L.rt_field
+    # @fabll.rt_field
     # def pickable(self) -> F.is_pickable_by_type:
     #     return F.is_pickable_by_type(
     #         F.is_pickable_by_type.Type.LDO,
@@ -91,21 +90,21 @@ class LDO(Module):
         # else:
         #    self.power_in.lv.connect(self.power_out.lv)
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def decoupled(self):
         return F.can_be_decoupled_rails(self.power_in, self.power_out)
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power_in, self.power_out)
 
-    @L.rt_field
+    @fabll.rt_field
     def simple_value_representation(self):
         S = F.has_simple_value_representation_based_on_params_chain.Spec
         return F.has_simple_value_representation_based_on_params_chain(
@@ -118,11 +117,11 @@ class LDO(Module):
             prefix="LDO",
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
@@ -135,7 +134,7 @@ class LDO(Module):
             case_sensitive=False,
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import LDO, ElectricPower, Capacitor
 

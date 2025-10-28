@@ -4,8 +4,8 @@
 import logging
 from typing import TYPE_CHECKING, Sequence
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.routing.util import (
     Path,
     Route,
@@ -23,7 +23,7 @@ class has_pcb_routing_strategy_manual(F.has_pcb_routing_strategy.impl()):
     def __init__(
         self,
         paths: Sequence[tuple[F.Net | Sequence[F.Electrical], Path]],
-        relative_to: Node | None = None,
+        relative_to: fabll.Node | None = None,
         absolute: bool = False,
     ):
         super().__init__()

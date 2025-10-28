@@ -7,23 +7,19 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import FBRKNetlist
-from faebryk.libs.library import L
 from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, once
 
 logger = logging.getLogger(__name__)
 
 
-class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
+class can_represent_kicad_footprint(fabll.Node):
     kicad_footprint = FBRKNetlist.Component
 
-    def __init__(self, component: Module, graph: Graph) -> None:
+    def __init__(self, component: fabll.Node, graph: fabll.Graph) -> None:
         """
         graph has to be electrically closed
         """
@@ -63,7 +59,7 @@ class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
         )
 
 
-def ensure_ref_and_value(c: Module):
+def ensure_ref_and_value(c: fabll.Node):
     value = (
         c.get_trait(F.has_simple_value_representation).get_value()
         if c.has_trait(F.has_simple_value_representation)
@@ -75,7 +71,7 @@ def ensure_ref_and_value(c: Module):
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
-    buses = ModuleInterface._group_into_buses(interfaces)
+    buses = fabll.ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
 
     # Iterate buses in a deterministic order by their string representation
@@ -106,9 +102,9 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets(G: Graph) -> set[F.Net]:
+def attach_nets(G: fabll.Graph) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
-    pad_mifs = [pad.net for pad in GraphFunctions(G).nodes_of_type(F.Pad)]
+    pad_mifs = [pad.net for pad in fabll.Node.bind_typegraph(G).nodes_of_type(F.Pad)]
     # Sort pad interfaces by stable node name to ensure deterministic bus grouping
     pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
     nets = add_or_get_nets(*pad_mifs)
@@ -201,7 +197,7 @@ def _name_shittiness(name: str | None) -> float:
 
 
 @once
-def _get_stable_node_name(mif: ModuleInterface) -> str:
+def _get_stable_node_name(mif: fabll.ModuleInterface) -> str:
     """Get a stable hierarchical name for a module interface."""
     return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
 
@@ -252,22 +248,22 @@ def _register_named_nets(
             )
 
 
-def _calculate_suggested_name_rank(mif: ModuleInterface, base_depth: int) -> int:
+def _calculate_suggested_name_rank(mif: fabll.ModuleInterface, base_depth: int) -> int:
     """Calculate rank for a suggested name based on hierarchy."""
     rank = base_depth
 
-    owner_iface = mif.get_parent_of_type(L.ModuleInterface)
+    owner_iface = mif.get_parent_of_type(fabll.ModuleInterface)
     if owner_iface and not isinstance(owner_iface, F.Electrical):
         rank -= 1
 
-    if L.Node.nearest_common_ancestor(mif):
+    if fabll.Node.nearest_common_ancestor(mif):
         rank -= 1
 
     return rank
 
 
 def _extract_net_name_info(
-    mif: ModuleInterface,
+    mif: fabll.ModuleInterface,
 ) -> tuple[set[str], list[tuple[str, int]], dict[str, float]]:
     """Extract naming information from an interface."""
     required_names: set[str] = set()
@@ -289,7 +285,7 @@ def _extract_net_name_info(
         for node, _name_in_parent in mif.get_hierarchy():
             if not node.get_parent():
                 continue
-            if not isinstance(node, L.ModuleInterface):
+            if not isinstance(node, fabll.ModuleInterface):
                 continue
             if not node.has_trait(F.has_net_name):
                 continue
@@ -300,17 +296,17 @@ def _extract_net_name_info(
             elif trait.level == F.has_net_name.Level.SUGGESTED:
                 rank = _calculate_suggested_name_rank(mif, node_depth)
                 suggested_names.append((trait.name, rank))
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         pass
 
     # Handle implicit names
     try:
         name = mif.get_name()
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         return required_names, suggested_names, implicit_candidates
 
     # Adjust depth for interfaces on the same level
-    if mif.get_parent_of_type(L.ModuleInterface):
+    if mif.get_parent_of_type(fabll.Node):
         depth -= 1
 
     # Calculate implicit name score
@@ -406,12 +402,12 @@ def _extract_interface_candidate(mif: F.Electrical) -> tuple[str, int] | None:
             if not node.get_parent():
                 continue
 
-            is_interface = isinstance(node, L.ModuleInterface)
+            is_interface = isinstance(node, fabll.ModuleInterface)
             is_not_electrical = not isinstance(node, F.Electrical)
 
             if is_interface and is_not_electrical:
                 return (name_in_parent, len(node.get_hierarchy()))
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         pass
 
     return None
@@ -485,9 +481,9 @@ def _apply_affixes(
 
 
 def _find_anchor_interface(hierarchy: list[tuple]) -> tuple[int, tuple] | None:
-    """Find the first non-Electrical ModuleInterface in hierarchy."""
+    """Find the first non-Electrical fabll.ModuleInterface in hierarchy."""
     for idx, (node, name) in enumerate(hierarchy):
-        is_interface = isinstance(node, L.ModuleInterface)
+        is_interface = isinstance(node, fabll.ModuleInterface)
         is_not_electrical = not isinstance(node, F.Electrical)
 
         if is_interface and is_not_electrical:
@@ -500,7 +496,7 @@ def _find_owner_module(hierarchy: list[tuple], before_idx: int) -> str | None:
     """Find the nearest owning Module before the given index."""
     for j in range(before_idx - 1, -1, -1):
         node, name = hierarchy[j]
-        if isinstance(node, Module):
+        if isinstance(node, fabll.Module):
             return name
     return None
 
@@ -546,7 +542,7 @@ def _process_single_interface(mif: F.Electrical) -> tuple[int, list[str]] | None
 
         return score, path
 
-    except NodeNoParent:
+    except fabll.NodeNoParent:
         return None
 
 
@@ -574,9 +570,9 @@ def _get_owner_module_name(net: F.Net) -> str | None:
         try:
             hierarchy = mif.get_hierarchy()
             for node, name_in_parent in hierarchy:
-                if node.get_parent() and isinstance(node, Module):
+                if node.get_parent() and isinstance(node, fabll.Module):
                     owner_names.add(name_in_parent)
-        except NodeNoParent:
+        except fabll.NodeNoParent:
             continue
     if not owner_names:
         return None
@@ -644,7 +640,7 @@ def _get_fallback_prefix(net: F.Net) -> str | None:
         return best
 
     # Try lowest common ancestor
-    if lcn := L.Node.nearest_common_ancestor(*interfaces):
+    if lcn := fabll.Node.nearest_common_ancestor(*interfaces):
         return lcn[0].get_full_name()
 
     return None
@@ -713,7 +709,7 @@ def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
 
             # Try to use lowest common ancestor
             interfaces = net.get_connected_interfaces()
-            lcn = L.Node.nearest_common_ancestor(*interfaces)
+            lcn = fabll.Node.nearest_common_ancestor(*interfaces)
 
             if lcn:
                 names[net].prefix = lcn[0].get_full_name()

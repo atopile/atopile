@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Sequence
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.cli.logging_ import ALERT
 from atopile.config import (
@@ -18,7 +19,6 @@ from atopile.config import (
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
 from atopile.layout import in_sub_pcb
-from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
@@ -380,7 +380,7 @@ class PartLifecycle:
             return out
 
         def get_part_from_footprint_identifier(
-            self, identifier: str, component: Module
+            self, identifier: str, component: fabll.Module
         ) -> Path:
             # TODO this is old code, avoid reading fp-lib-table
             fp_lib_path = Gcfg.build.paths.fp_lib_table
@@ -492,7 +492,7 @@ class PartLifecycle:
                 ).as_posix()
 
         def get_footprint_from_identifier(
-            self, identifier: str, component: Module
+            self, identifier: str, component: fabll.Module
         ) -> tuple[Path, kicad.footprint.FootprintFile]:
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
@@ -518,7 +518,7 @@ class PartLifecycle:
         def ingest_footprint(
             self,
             transformer: PCB_Transformer,
-            component: Module,
+            component: fabll.Node,
             logger: logging.Logger,
             insert_point: kicad.pcb.Xyr | None = None,
         ) -> tuple[kicad.pcb.Footprint, bool]:

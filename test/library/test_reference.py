@@ -1,14 +1,15 @@
 import pytest
 
-from faebryk.core.node import FieldError, Node
+import faebryk.core.node as fabll
+from faebryk.core.node import FieldError
 from faebryk.core.reference import Reference
 
 
 def test_points_to_correct_node():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
 
     a = A()
@@ -18,10 +19,10 @@ def test_points_to_correct_node():
 
 
 def test_immutable():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
 
     b = B()
@@ -33,10 +34,10 @@ def test_immutable():
 
 
 def test_unset():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
 
     b = B()
@@ -45,10 +46,10 @@ def test_unset():
 
 
 def test_wrong_type():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
 
     b = B()
@@ -57,10 +58,10 @@ def test_wrong_type():
 
 
 def test_set_value_before_constuction():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
 
         def __init__(self, x):
@@ -73,10 +74,10 @@ def test_set_value_before_constuction():
 
 
 def test_get_value_before_constuction():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
         y = Reference(A)
 
@@ -91,7 +92,7 @@ def test_get_value_before_constuction():
 
 
 def test_typed_construction_doesnt_work():
-    class B(Node):
+    class B(fabll.Node):
         x: Reference
 
     # check using the property directly that everything is working
@@ -111,10 +112,10 @@ def test_typed_construction_protection():
     missing these graph connections.
     """
 
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x: Reference[A]
 
     with pytest.raises(FieldError):
@@ -122,10 +123,10 @@ def test_typed_construction_protection():
 
 
 def test_underlying_property_explicitly():
-    class A(Node):
+    class A(fabll.Node):
         pass
 
-    class B(Node):
+    class B(fabll.Node):
         x = Reference(A)
 
     a = A()

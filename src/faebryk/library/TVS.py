@@ -3,17 +3,17 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 class TVS(F.Diode):
-    reverse_breakdown_voltage = L.p_field(units=P.V)
+    reverse_breakdown_voltage = fabll.p_field(units=P.V)
 
-    # @L.rt_field
+    # @fabll.rt_field
     # def pickable(self):
     #     return F.is_pickable_by_type(
     #         F.is_pickable_by_type.Type.TVS,
@@ -26,7 +26,7 @@ class TVS(F.Diode):
     #         },
     #     )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import TVS, ElectricPower, Electrical
 

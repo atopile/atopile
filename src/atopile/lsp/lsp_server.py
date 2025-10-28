@@ -18,15 +18,13 @@ from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
+import faebryk.core.node as fabll
 from atopile.compiler import front_end
 from atopile.compiler.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.compiler.parse_utils import get_src_info_from_token
 from atopile.compiler.parser import AtoParser as ap
 from atopile.config import find_project_dir
 from atopile.errors import UserException
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
@@ -150,7 +148,7 @@ def log(msg: Any):
 # Linting features start here
 # **********************************************************
 
-GRAPHS: dict[str, dict[TypeRef, Node]] = {}
+GRAPHS: dict[str, dict[TypeRef, fabll.Node]] = {}
 ACTIVE_BUILD_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "ACTIVE_BUILD_TARGET", default=None
 )
@@ -271,7 +269,7 @@ def _build_document(uri: str, text: str) -> None:
                 finally:
                     front_end.bob.reset()
 
-            case _:  # Node or ImportPlaceholder
+            case _:  # fabll.Node or ImportPlaceholder
                 try:
                     GRAPHS[uri][TypeRef.from_one(name="__import__" + str(ref))] = (
                         front_end.bob.build_node(text, file_path, ref)
@@ -488,7 +486,7 @@ def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | N
 
 def _get_available_types(
     uri: str, text: str, current_line: int | None, local_only: bool
-) -> dict[str, Node]:
+) -> dict[str, fabll.Node]:
     """
     Get available symbols in file
     """
@@ -509,7 +507,7 @@ def _get_available_types(
             typename: root
             for root in graphs.values()
             if not (typename := type(root).__name__).startswith("_")
-            and isinstance(root, Node)
+            and isinstance(root, fabll.Node)
         }
 
         if local_only:
@@ -597,20 +595,18 @@ def _extract_field_reference_before_dot(line: str, position: int) -> str | None:
     return field_ref if field_ref else None
 
 
-def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
+def _get_node_completions(node: fabll.Node) -> list[lsp.CompletionItem]:
     """
     Extract completion items from a faebryk node.
     Returns parameters, sub-modules, and interfaces as completion items.
     """
-    from faebryk.core.module import Module
-    from faebryk.core.moduleinterface import ModuleInterface
     from faebryk.core.parameter import Parameter
 
     completion_items = []
 
     try:
         # Get all child nodes using the node's get_children method
-        children = node.get_children(direct_only=True, types=Node)
+        children = node.get_children(direct_only=True, types=fabll.Node)
 
         for child in children:
             try:
@@ -627,10 +623,10 @@ def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
                     continue
 
                 # Determine the completion item kind based on the node type
-                if isinstance(child, Module):
+                if isinstance(child, fabll.Module):
                     kind = lsp.CompletionItemKind.Field
                     detail = f"Module: {class_name}"
-                elif isinstance(child, ModuleInterface):
+                elif isinstance(child, fabll.ModuleInterface):
                     kind = lsp.CompletionItemKind.Interface
                     detail = f"Interface: {class_name}"
                 elif isinstance(child, Parameter):
@@ -680,7 +676,7 @@ def _build_incomplete_document(
     _build_document(uri, text)
 
 
-def _get_node_from_row(uri: str, row: int) -> Node | None:
+def _get_node_from_row(uri: str, row: int) -> fabll.Node | None:
     """
     Get the node from the row of the document.
     """
@@ -697,7 +693,7 @@ def _get_node_from_row(uri: str, row: int) -> Node | None:
 
 def _find_field_reference_node(
     uri: str, text: str, field_ref_str: str, row: int
-) -> Node | None:
+) -> fabll.Node | None:
     """
     Find the node corresponding to a field reference string in the given document.
     Uses from_dsl trait to find the specific context node at the cursor position.
@@ -743,7 +739,7 @@ def _find_field_reference_node(
             resolved_field = bob_instance.resolve_node_field(context_node, field_ref)
 
             # If it's a node, return it
-            if isinstance(resolved_field, Node):
+            if isinstance(resolved_field, fabll.Node):
                 return resolved_field
 
         except (AttributeError, TypeError, ValueError) as e:
@@ -760,13 +756,13 @@ def _get_stdlib_types():
     import faebryk.library._F as F
 
     symbols = vars(F).values()
-    return [s for s in symbols if isinstance(s, type) and issubclass(s, Node)]
+    return [s for s in symbols if isinstance(s, type) and issubclass(s, fabll.Node)]
 
 
-def _node_type_to_completion_item(node_type: type[Node]) -> lsp.CompletionItem:
-    if issubclass(node_type, Module):
+def _node_type_to_completion_item(node_type: type[fabll.Node]) -> lsp.CompletionItem:
+    if issubclass(node_type, fabll.Module):
         kind = lsp.CompletionItemKind.Field
-    elif issubclass(node_type, ModuleInterface):
+    elif issubclass(node_type, fabll.ModuleInterface):
         kind = lsp.CompletionItemKind.Interface
     elif issubclass(node_type, Parameter):
         kind = lsp.CompletionItemKind.Unit
@@ -774,7 +770,7 @@ def _node_type_to_completion_item(node_type: type[Node]) -> lsp.CompletionItem:
         kind = lsp.CompletionItemKind.Operator
     elif issubclass(node_type, TraitImpl):
         kind = lsp.CompletionItemKind.Operator
-    elif issubclass(node_type, Node):
+    elif issubclass(node_type, fabll.Node):
         kind = lsp.CompletionItemKind.Class
     else:
         assert False, f"Unexpected node type: {node_type}"
@@ -898,7 +894,7 @@ def _handle_new_keyword_completion(
     completion_items = [
         _node_type_to_completion_item(type(node))
         for node in node_types.values()
-        if isinstance(node, (Module, ModuleInterface))
+        if isinstance(node, (fabll.Module, fabll.ModuleInterface))
     ]
 
     return lsp.CompletionList(is_incomplete=False, items=completion_items)

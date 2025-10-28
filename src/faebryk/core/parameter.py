@@ -18,9 +18,11 @@ from typing import (
     override,
 )
 
+import f_field
+
+import faebryk.core.node as fabll
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
 from faebryk.libs.sets.numeric_sets import NumberLike
 from faebryk.libs.sets.quantity_sets import (
@@ -71,7 +73,7 @@ class ParameterOperableHasNoLiteral(ParameterOperableException):
 # boolean: T == S == bool
 # enum: T == S == Enum
 # number: T == Number type, S == Range[Number]
-class ParameterOperatable(Node):
+class ParameterOperatable(fabll.Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 

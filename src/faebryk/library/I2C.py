@@ -5,11 +5,8 @@ from enum import Enum
 
 from more_itertools import first
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
-from faebryk.libs.library import L
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import P
 from faebryk.libs.util import invert_dict, md_list, partition_as_list
@@ -17,30 +14,32 @@ from faebryk.libs.util import invert_dict, md_list, partition_as_list
 logger = logging.getLogger(__name__)
 
 
-class I2C(ModuleInterface):
+class I2C(fabll.Node):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    address = L.p_field(within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL())
-    bus_addresses = L.p_field(
-        within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL()
+    address = fabll.p_field(
+        within=fabll.Range(0, 0x7F), domain=fabll.Domains.Numbers.NATURAL()
+    )
+    bus_addresses = fabll.p_field(
+        within=fabll.Range(0, 0x7F), domain=fabll.Domains.Numbers.NATURAL()
     )
 
-    frequency = L.p_field(
+    frequency = fabll.p_field(
         units=P.Hz,
         likely_constrained=True,
-        soft_set=L.Range(10 * P.kHz, 3.4 * P.MHz),
+        soft_set=fabll.Range(10 * P.kHz, 3.4 * P.MHz),
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def requires_pulls(self):
-        def pred(signal: F.ElectricSignal, bus: set[Node]):
+        def pred(signal: F.ElectricSignal, bus: set[fabll.Node]):
             interface = signal.get_parent_of_type(I2C)
 
             assert interface in bus
@@ -57,7 +56,7 @@ class I2C(ModuleInterface):
             self.scl,
             self.sda,
             pred=pred,
-            required_resistance=L.Range(
+            required_resistance=fabll.Range(
                 1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
             ),
         )
@@ -68,7 +67,7 @@ class I2C(ModuleInterface):
             or self.sda.line.net_crosses_pad_boundary()
         )
 
-    def terminate(self, owner: Module):
+    def terminate(self, owner: fabll.Node):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
         self.pull_up_sda = self.sda.pulled.pull(up=True, owner=owner)
@@ -82,7 +81,7 @@ class I2C(ModuleInterface):
 
     @staticmethod
     def define_max_frequency_capability(mode: SpeedMode):
-        return L.Range(I2C.SpeedMode.low_speed.value, mode.value)
+        return fabll.Range(I2C.SpeedMode.low_speed.value, mode.value)
 
     def __preinit__(self) -> None:
         self.frequency.add(F.is_bus_parameter())
@@ -119,7 +118,7 @@ class I2C(ModuleInterface):
 
         return bus_interfaces
 
-    class requires_unique_addresses(ModuleInterface.TraitT.decless()):
+    class requires_unique_addresses(fabll.Node):
         class DuplicateAddressException(
             F.implements_design_check.UnfulfilledCheckException
         ):
@@ -166,7 +165,7 @@ class I2C(ModuleInterface):
 
     address_check: requires_unique_addresses
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import I2C, ElectricPower
 

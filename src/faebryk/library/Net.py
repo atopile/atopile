@@ -5,14 +5,14 @@ import logging
 
 from more_itertools import first
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.libs.util import KeyErrorAmbiguous, groupby
 
 logger = logging.getLogger(__name__)
 
 
-class Net(Module):
+class Net(fabll.Node):
     part_of: F.Electrical
 
     def get_connected_pads(self) -> dict[F.Pad, F.Footprint]:

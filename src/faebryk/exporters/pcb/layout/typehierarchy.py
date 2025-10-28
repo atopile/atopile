@@ -4,9 +4,7 @@
 import logging
 from dataclasses import dataclass
 
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.util import find_or, groupby, not_none
 
@@ -17,14 +15,14 @@ logger = logging.getLogger(__name__)
 class LayoutTypeHierarchy(Layout):
     @dataclass(frozen=True, eq=True)
     class Level:
-        mod_type: type[Module] | tuple[type[Module], ...]
+        mod_type: type[fabll.Module] | tuple[type[fabll.Module], ...]
         layout: Layout
         children_layout: Layout | None = None
         direct_children_only: bool = True
 
     layouts: list[Level]
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """
@@ -52,7 +50,7 @@ class LayoutTypeHierarchy(Layout):
                 c
                 for n in nodes
                 for c in n.get_children(
-                    direct_only=True, types=(Module, ModuleInterface)
+                    direct_only=True, types=(fabll.Module, fabll.ModuleInterface)
                 )
             }
             logger.debug(
@@ -73,10 +71,10 @@ class LayoutTypeHierarchy(Layout):
                 children = {
                     c
                     for n in nodes
-                    for c in Module.get_children_modules(
+                    for c in fabll.Module.get_children_modules(
                         n,
                         direct_only=False,
-                        types=Module,
+                        types=fabll.Module,
                         f_filter=lambda c: c.has_trait(has_footprint),
                     )
                 }

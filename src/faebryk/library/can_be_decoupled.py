@@ -4,8 +4,8 @@
 import logging
 from abc import abstractmethod
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,6 @@ class can_be_decoupled(Trait):
     @abstractmethod
     def decouple(
         self,
-        owner: Module,
+        owner: fabll.Node,
         count: int = 1,
     ) -> F.MultiCapacitor: ...

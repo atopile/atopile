@@ -2,26 +2,25 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
-class HDMI(ModuleInterface):
+class HDMI(fabll.Node):
     """
     HDMI interface
     """
 
     power: F.ElectricPower
-    data = L.list_field(3, F.DifferentialPair)
+    data = fabll.list_field(3, F.DifferentialPair)
     clock: F.DifferentialPair
     i2c: F.I2C
     cec: F.ElectricLogic
     hotplug: F.ElectricLogic
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)

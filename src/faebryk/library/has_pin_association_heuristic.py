@@ -3,11 +3,11 @@
 
 from abc import abstractmethod
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 
 
-class has_pin_association_heuristic(Module.TraitT):
+class has_pin_association_heuristic(fabll.Node):
     class PinMatchException(Exception): ...
 
     """

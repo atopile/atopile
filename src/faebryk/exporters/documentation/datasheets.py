@@ -6,15 +6,15 @@ from pathlib import Path
 
 from httpx import RequestError
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.libs.http import http_client
 
 logger = logging.getLogger(__name__)
 
 
 def export_datasheets(
-    app: Module,
+    app: fabll.Node,
     path: Path = Path("build/documentation/datasheets"),
     overwrite: bool = False,
 ):
@@ -26,7 +26,7 @@ def export_datasheets(
     path.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Exporting datasheets to: {path}")
-    for m in app.get_children_modules(types=Module):
+    for m in app.get_children_modules(types=fabll.Module):
         if not m.has_trait(F.has_datasheet):
             continue
         url = m.get_trait(F.has_datasheet).get_datasheet()

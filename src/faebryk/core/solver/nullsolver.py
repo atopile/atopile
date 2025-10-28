@@ -1,7 +1,6 @@
 from typing import Any, override
 
-from faebryk.core.cpp import Graph
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -35,7 +34,7 @@ class NullSolver(Solver):
         return True
 
     @override
-    def update_superset_cache(self, *nodes: Node):
+    def update_superset_cache(self, *nodes: fabll.Node):
         pass
 
     @override
@@ -46,5 +45,5 @@ class NullSolver(Solver):
         return as_lit(lit)
 
     @override
-    def simplify(self, *gs: Graph | Node):
+    def simplify(self, *gs: fabll.Graph | fabll.Node):
         pass

@@ -3,9 +3,10 @@
 
 from abc import abstractmethod
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class has_equal_pins(F.Footprint.TraitT):
+class has_equal_pins(fabll.Node):
     @abstractmethod
     def get_pin_map(self) -> dict[F.Pad, str]: ...

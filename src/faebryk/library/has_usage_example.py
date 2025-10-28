@@ -8,17 +8,23 @@ logger = logging.getLogger(__name__)
 
 
 class has_usage_example(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     class Language(StrEnum):
         python = "python"
         fabll = "fabll"
         ato = "ato"
 
-    @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        cls.example = t.BoundChildOfType(nodetype=fabll.Parameter)
-        cls.language = t.BoundChildOfType(nodetype=fabll.Parameter)
+    example = fabll.ChildField(fabll.Parameter)
+    language = fabll.ChildField(fabll.Parameter)
 
-    # def __init__(self, example: str, language=Language.ato):
-    #     self._example = example
-    #     self._language = language
-    #     super().__init__()
+    @classmethod
+    def MakeChild(cls, example: str, language: Language) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.example], example)
+        )
+        out.add_dependant(
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.language], language)
+        )
+        return out

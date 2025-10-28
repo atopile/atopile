@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from textwrap import indent
 from typing import Callable, Iterable
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.parameter import (
     And,
     Is,
@@ -34,7 +34,7 @@ class PickerOption:
 
     Assumes specified params are narrowest possible value for this part
     """
-    filter: Callable[[Module], bool] | None = None
+    filter: Callable[[fabll.Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
     info: dict[str, str] | None = None
 
@@ -43,7 +43,7 @@ class PickerOption:
 
 
 class PickErrorParams(PickError):
-    def __init__(self, module: Module, options: list[PickerOption], solver: Solver):
+    def __init__(self, module: fabll.Node, options: list[PickerOption], solver: Solver):
         self.options = options
 
         MAX = 5
@@ -63,7 +63,7 @@ class PickErrorParams(PickError):
 
 
 def pick_module_by_params(
-    module: Module, solver: Solver, options: Iterable[PickerOption]
+    module: fabll.Node, solver: Solver, options: Iterable[PickerOption]
 ):
     if module.has_trait(F.has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")

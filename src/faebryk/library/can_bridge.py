@@ -1,25 +1,46 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-from typing import Any
-
 import faebryk.core.node as fabll
-from faebryk.library.Electrical import Electrical
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 
 class can_bridge(fabll.Node):
-    @classmethod
-    def create_type(cls, tg: fabll.TypeGraph) -> None:
-        cls._in = fabll.Child(nodetype=Electrical, tg=tg)
-        cls.out = fabll.Child(nodetype=Electrical, tg=tg)
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    in_ = fabll.ChildField(fabll.Node)
+    out_ = fabll.ChildField(fabll.Node)
 
     def bridge(self, _in, out):
         _in.connect(self.get_in())
         out.connect(self.get_out())
 
-    @abstractmethod
-    def get_in(self) -> Any: ...
+    def get_in(self) -> fabll.Node:
+        in_ = EdgePointer.get_referenced_node_from_node(node=self.in_.get().instance)
+        if in_ is None:
+            raise ValueError("in is None")
+        return fabll.Node.bind_instance(in_)
 
-    @abstractmethod
-    def get_out(self) -> Any: ...
+    def get_out(self) -> fabll.Node:
+        out = EdgePointer.get_referenced_node_from_node(node=self.out_.get().instance)
+        if out is None:
+            raise ValueError("out is None")
+        return fabll.Node.bind_instance(out)
+
+    @classmethod
+    def MakeChild(cls, in_: fabll.ChildField, out_: fabll.ChildField):
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            fabll.EdgeField(
+                [out, cls.in_],
+                [in_],
+                edge=EdgePointer.build(identifier="in", order=None),
+            )
+        )
+        out.add_dependant(
+            fabll.EdgeField(
+                [out, cls.out_],
+                [out_],
+                edge=EdgePointer.build(identifier="out", order=None),
+            )
+        )
+        return out

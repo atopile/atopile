@@ -2,40 +2,39 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class Inductor(Module):
-    unnamed = L.list_field(2, F.Electrical)
+class Inductor(fabll.Node):
+    unnamed = fabll.list_field(2, F.Electrical)
 
-    inductance = L.p_field(
+    inductance = fabll.p_field(
         units=P.H,
         likely_constrained=True,
-        soft_set=L.Range(100 * P.nH, 1 * P.H),
+        soft_set=fabll.Range(100 * P.nH, 1 * P.H),
         tolerance_guess=10 * P.percent,
     )
-    max_current = L.p_field(
+    max_current = fabll.p_field(
         units=P.A,
         likely_constrained=True,
-        soft_set=L.Range(1 * P.mA, 100 * P.A),
+        soft_set=fabll.Range(1 * P.mA, 100 * P.A),
     )
-    dc_resistance = L.p_field(
+    dc_resistance = fabll.p_field(
         units=P.Ω,
-        soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
+        soft_set=fabll.Range(10 * P.mΩ, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
     )
-    saturation_current = L.p_field(units=P.A)
-    self_resonant_frequency = L.p_field(
+    saturation_current = fabll.p_field(units=P.A)
+    self_resonant_frequency = fabll.p_field(
         units=P.Hz,
         likely_constrained=True,
-        soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
+        soft_set=fabll.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
@@ -48,13 +47,13 @@ class Inductor(Module):
             ],
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(*self.unnamed)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
-    @L.rt_field
+    @fabll.rt_field
     def simple_value_representation(self):
         S = F.has_simple_value_representation_based_on_params_chain.Spec
         return F.has_simple_value_representation_based_on_params_chain(
@@ -64,7 +63,7 @@ class Inductor(Module):
             S(self.dc_resistance),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.L
     )
 
@@ -79,7 +78,7 @@ class Inductor(Module):
         """Signal to the other side of the inductor."""
         return self.unnamed[1]
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import Inductor
 

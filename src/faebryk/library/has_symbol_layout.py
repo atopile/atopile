@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import faebryk.library._F as F
+import faebryk.core.node as fabll
 
 
-class has_symbol_layout(F.Symbol.TraitT):
+class has_symbol_layout(fabll.Node):
     translations: str

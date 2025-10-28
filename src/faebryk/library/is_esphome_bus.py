@@ -3,18 +3,18 @@
 
 from abc import abstractmethod
 
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 from faebryk.libs.util import cast_assert, find
 
 
-class is_esphome_bus(ModuleInterface.TraitT):
+class is_esphome_bus(fabll.Node):
     ...
 
     @abstractmethod
     def get_bus_id(self) -> str: ...
 
     @staticmethod
-    def find_connected_bus[T: ModuleInterface](bus: T) -> T:
+    def find_connected_bus[T: fabll.ModuleInterface](bus: T) -> T:
         connected_mifs = bus.get_connected()
         try:
             return cast_assert(

@@ -3,13 +3,12 @@
 
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class Filter(Module):
+class Filter(fabll.Node):
     class Response(Enum):
         LOWPASS = auto()
         HIGHPASS = auto()
@@ -17,19 +16,19 @@ class Filter(Module):
         BANDSTOP = auto()
         OTHER = auto()
 
-    cutoff_frequency = L.p_field(
+    cutoff_frequency = fabll.p_field(
         units=P.Hz,
         likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(0 * P.Hz, 1000 * P.Hz),
+        domain=fabll.Domains.Numbers.REAL(),
+        soft_set=fabll.Range(0 * P.Hz, 1000 * P.Hz),
     )
-    order = L.p_field(
-        domain=L.Domains.Numbers.NATURAL(),
-        soft_set=L.Range(2, 10),
+    order = fabll.p_field(
+        domain=fabll.Domains.Numbers.NATURAL(),
+        soft_set=fabll.Range(2, 10),
         guess=2,
     )
-    response = L.p_field(
-        domain=L.Domains.ENUM(Response),
+    response = fabll.p_field(
+        domain=fabll.Domains.ENUM(Response),
     )
 
     in_: F.Signal

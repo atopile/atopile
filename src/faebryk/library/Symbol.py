@@ -1,17 +1,16 @@
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 
 
-class Symbol(Module):
+class Symbol(fabll.Node):
     """
     Symbols represent a symbol instance and are bi-directionally
     linked with the module they represent via the `has_linked` trait.
     """
 
-    class Pin(ModuleInterface):
+    class Pin(fabll.Node):
         represents = reference(F.Electrical)
 
         class has_pin(F.has_reference.decless()):
@@ -30,7 +29,7 @@ class Symbol(Module):
 
         reference: "Symbol" = reference()
 
-    class has_kicad_symbol(TraitT.decless()):
+    class has_kicad_symbol(fabll.Node):
         """
         If a symbol has this trait, then the symbol has a matching KiCAD symbol
         :param symbol_name: The full name of the KiCAD symbol including the library name
@@ -41,10 +40,10 @@ class Symbol(Module):
             self.symbol_name = symbol_name
 
     pins: dict[str, Pin]
-    represents = reference(Module)
+    represents = reference(fabll.Module)
 
     @classmethod
-    def with_component(cls, component: Module, pin_map: dict[str, F.Electrical]):
+    def with_component(cls, component: fabll.Node, pin_map: dict[str, F.Electrical]):
         sym = cls()
         sym.represents = component
         component.add(cls.has_symbol(sym))

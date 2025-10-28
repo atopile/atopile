@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
@@ -33,14 +33,14 @@ class QFN(F.Footprint):
             and exposed_thermal_pad_dimensions[1] < size_xy[1]
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def pins(self):
         return times(self._pin_cnt, F.Pad)
 
     equal_pins: F.has_equal_pins_in_ifs
     attach_via_pinmap: F.can_attach_via_pinmap_equal
 
-    @L.rt_field
+    @fabll.rt_field
     def kicad_footprint(self):
         class _has_kicad_footprint(F.has_kicad_footprint_equal_ifs):
             @staticmethod

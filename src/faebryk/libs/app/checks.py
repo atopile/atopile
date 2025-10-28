@@ -3,15 +3,15 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
 
 logger = logging.getLogger(__name__)
 
 
 def check_design(
-    G: Graph,
+    G: fabll.Graph,
     stage: F.implements_design_check.CheckStage,
     exclude: tuple[str, ...] = tuple(),
 ):
@@ -23,7 +23,9 @@ def check_design(
     logger.info(f"Running design checks for stage {stage.name}")
 
     with accumulate(UserDesignCheckException) as accumulator:
-        for _, trait in GraphFunctions(G).nodes_with_trait(F.implements_design_check):
+        for _, trait in fabll.Node.bind_typegraph(G).nodes_with_trait(
+            F.implements_design_check
+        ):
             if trait.get_name_of_test() in exclude:
                 continue
 

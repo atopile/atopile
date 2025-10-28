@@ -4,8 +4,8 @@
 import logging
 from dataclasses import dataclass
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class LayoutAbsolute(Layout):
     pos: F.has_pcb_position.Point
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """

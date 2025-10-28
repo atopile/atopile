@@ -10,18 +10,18 @@ separates type-level descriptors from instance graph materialization.
 
 import pytest
 
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
+from faebryk.core.graph import InstanceGraphFunctions
 
 
 def test_closed_world_violation():
     """Verify error when connecting to external interface."""
 
-    class App1(Module):
-        mif: ModuleInterface
+    class App1(fabll.Node):
+        mif: fabll.ModuleInterface
 
-    class App2(Module):
-        mif: ModuleInterface
+    class App2(fabll.Node):
+        mif: fabll.ModuleInterface
 
     app1 = App1()
     app2 = App2()
@@ -35,14 +35,13 @@ def test_closed_world_violation():
 def test_self_connection_is_ignored():
     """Verify self-connection is silently ignored (existing behavior)."""
 
-    class App(Module):
-        mif: ModuleInterface
+    class App(fabll.Node):
+        mif: fabll.ModuleInterface
 
     app = App()
     app.mif.connect(app.mif)
 
     # Should not raise - self-connections filtered out in connect()
-    from faebryk.core.graph import InstanceGraphFunctions
 
     typegraph, _ = app.create_typegraph()
 
@@ -59,8 +58,8 @@ def test_self_connection_is_ignored():
 def test_double_build_raises_error():
     """Verify that TypeGraph can only be built once."""
 
-    class App(Module):
-        mif: ModuleInterface
+    class App(fabll.Node):
+        mif: fabll.ModuleInterface
 
     app = App()
     app.create_typegraph()
@@ -72,10 +71,10 @@ def test_double_build_raises_error():
 def test_post_build_specialization_raises_error():
     """Verify specialization must happen before create_typegraph()."""
 
-    class Base(Module):
+    class Base(fabll.Node):
         pass
 
-    class Special(Module):
+    class Special(fabll.Node):
         pass
 
     app = Base()
@@ -88,9 +87,9 @@ def test_post_build_specialization_raises_error():
 def test_runtime_queries_require_instantiation_and_binding():
     """Verify get_connected() fails before instantiation+binding."""
 
-    class App(Module):
-        mif1: ModuleInterface
-        mif2: ModuleInterface
+    class App(fabll.Node):
+        mif1: fabll.ModuleInterface
+        mif2: fabll.ModuleInterface
 
     app = App()
     app.mif1.connect(app.mif2)
@@ -102,7 +101,6 @@ def test_runtime_queries_require_instantiation_and_binding():
         app.mif1.get_connected()
 
     # AFTER instantiation and binding: should work
-    from faebryk.core.graph import InstanceGraphFunctions
 
     instance_root = InstanceGraphFunctions.create(typegraph, type(app).__qualname__)
     app._bind_instance_hierarchy(instance_root)
@@ -122,11 +120,10 @@ def test_runtime_queries_require_instantiation_and_binding():
 def test_double_bind_raises_error():
     """Verify binding fails if already bound."""
 
-    class App(Module):
-        mif: ModuleInterface
+    class App(fabll.Node):
+        mif: fabll.ModuleInterface
 
     app = App()
-    from faebryk.core.graph import InstanceGraphFunctions
 
     typegraph, _ = app.create_typegraph()
 
@@ -144,14 +141,12 @@ def test_double_bind_raises_error():
 def test_instantiation_creates_connections():
     """Verify EdgeInterfaceConnection created during instantiate()."""
 
-    class App(Module):
-        mif1: ModuleInterface
-        mif2: ModuleInterface
+    class App(fabll.Node):
+        mif1: fabll.ModuleInterface
+        mif2: fabll.ModuleInterface
 
     app = App()
     app.mif1.connect(app.mif2)
-
-    from faebryk.core.graph import InstanceGraphFunctions
 
     typegraph, _ = app.create_typegraph()
 

@@ -4,8 +4,8 @@
 
 from typing import Mapping
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.core.trait import TraitImpl
 
 
@@ -17,7 +17,7 @@ class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
     def get_properties(self) -> dict[str, str]:
         return self.properties
 
-    def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
+    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
         if not isinstance(old, has_descriptive_properties_defined):
             assert isinstance(old, F.has_descriptive_properties)
             self.properties.update(old.get_properties())

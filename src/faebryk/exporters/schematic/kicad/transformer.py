@@ -11,12 +11,11 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, List, Protocol
 
+import faebryk.core.node as fabll
+
 # import numpy as np
 # from shapely import Polygon
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
@@ -66,7 +65,7 @@ class _HasUUID(Protocol):
 
 # TODO: consider common transformer base
 class SchTransformer:
-    class has_linked_sch_symbol(Module.TraitT):
+    class has_linked_sch_symbol(fabll.Node):
         symbol: kicad.schematic.SymbolInstance
 
     class has_linked_sch_symbol_defined(has_linked_sch_symbol.impl()):
@@ -74,7 +73,7 @@ class SchTransformer:
             super().__init__()
             self.symbol = symbol
 
-    class has_linked_pins(F.Symbol.Pin.TraitT):
+    class has_linked_pins(fabll.Node):
         pins: list[kicad.schematic.InstancePin]
 
     class has_linked_pins_defined(has_linked_pins.impl()):
@@ -86,7 +85,7 @@ class SchTransformer:
             self.pins = pins
 
     def __init__(
-        self, sch: SCH, graph: Graph, app: Module, cleanup: bool = True
+        self, sch: SCH, graph: fabll.Graph, app: fabll.Node, cleanup: bool = True
     ) -> None:
         self.sch = sch
         self.graph = graph
@@ -117,7 +116,7 @@ class SchTransformer:
             (Property.get_property(f.propertys, "Reference"), f.lib_id): f
             for f in self.sch.symbols
         }
-        for node, sym_trait in GraphFunctions(self.graph).nodes_with_trait(
+        for node, sym_trait in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
             F.Symbol.has_symbol
         ):
             # FIXME: I believe this trait is used as a proxy for being a component
@@ -145,7 +144,7 @@ class SchTransformer:
         # Log what we were able to attach
         attached = {
             n: t.symbol
-            for n, t in GraphFunctions(self.graph).nodes_with_trait(
+            for n, t in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )
         }
@@ -161,7 +160,7 @@ class SchTransformer:
                 ],
             )
 
-    def attach_symbol(self, node: Node, symbol: kicad.schematic.SymbolInstance):
+    def attach_symbol(self, node: fabll.Node, symbol: kicad.schematic.SymbolInstance):
         """Bind the module and symbol together on the graph"""
         graph_sym = node.get_trait(F.Symbol.has_symbol).reference
 
@@ -234,13 +233,13 @@ class SchTransformer:
 
     # Getter ---------------------------------------------------------------------------
     @staticmethod
-    def get_symbol(cmp: Node) -> F.Symbol:
+    def get_symbol(cmp: fabll.Node) -> F.Symbol:
         return not_none(cmp.get_trait(SchTransformer.has_linked_sch_symbol)).symbol
 
-    def get_all_symbols(self) -> List[tuple[Module, F.Symbol]]:
+    def get_all_symbols(self) -> List[tuple[fabll.Module, F.Symbol]]:
         return [
-            (cast_assert(Module, cmp), t.symbol)
-            for cmp, t in GraphFunctions(self.graph).nodes_with_trait(
+            (cast_assert(fabll.Module, cmp), t.symbol)
+            for cmp, t in fabll.Node.bind_typegraph(self.graph).nodes_with_trait(
                 SchTransformer.has_linked_sch_symbol
             )
         ]
@@ -292,7 +291,7 @@ class SchTransformer:
     @get_lib_pin.register
     def _(self, pin: F.Symbol.Pin) -> kicad.schematic.SymbolPin:
         graph_symbol, _ = not_none(pin.get_parent())
-        assert isinstance(graph_symbol, Node)
+        assert isinstance(graph_symbol, fabll.Node)
         lib_sym = self.get_lib_symbol(graph_symbol)
         units = self.get_related_lib_sym_units(lib_sym)
         sym = graph_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
@@ -401,7 +400,7 @@ class SchTransformer:
 
     def insert_symbol(
         self,
-        module: Module,
+        module: fabll.Node,
         at: Point2D | None = None,
         rotation: int | None = None,
     ):

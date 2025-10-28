@@ -3,28 +3,27 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
-class TestPoint(Module):
+class TestPoint(fabll.Node):
     """
     Basic test point.
     """
 
     contact: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.TP
     )
 
     def __preinit__(self):
         self.contact.add(F.requires_external_usage())
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import TestPoint
 

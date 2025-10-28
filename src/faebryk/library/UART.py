@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class UART(ModuleInterface):
+class UART(fabll.Node):
     base_uart: F.UART_Base
     rts: F.ElectricLogic
     cts: F.ElectricLogic
@@ -16,7 +15,7 @@ class UART(ModuleInterface):
     ri: F.ElectricLogic
 
     # TODO: this creates too many connections in some projects
-    # @L.rt_field
+    # @fabll.rt_field
     # def single_electric_reference(self):
     #    return F.has_single_electric_reference_defined(
     #       F.ElectricLogic.connect_all_module_references(self)
@@ -31,7 +30,7 @@ class UART(ModuleInterface):
         self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
         self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = fabll.f_field(F.has_usage_example)(
         example="""
         import UART, ElectricPower
 

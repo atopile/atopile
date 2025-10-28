@@ -6,10 +6,8 @@ import math
 from dataclasses import dataclass
 from enum import IntEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import Node
-from faebryk.core.trait import TraitNotFound
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.kicad.fileformats import Property, kicad
@@ -190,7 +188,7 @@ def _next_to_pad(
 
 
 def place_next_to_pad(
-    module: Module,
+    module: fabll.Node,
     pad: F.Pad,
     params: Params,
 ):
@@ -202,7 +200,7 @@ def place_next_to_pad(
     nfp = module.get_trait(F.has_footprint).get_footprint()
     npad = find(
         nfp.get_children(direct_only=True, types=F.Pad),
-        lambda p: p.net.is_connected_to(pad.net),
+        lambda p: p.net.get_trait(fabll.is_interface).is_connected_to(pad.net),
     )
     nkfp, nkpad = npad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
     if len(nkpad) != 1:
@@ -223,13 +221,13 @@ def place_next_to_pad(
 
 def place_next_to(
     parent_intf: F.Electrical,
-    module: Module,
+    module: fabll.Node,
     params: Params,
     route: bool = False,
 ):
     try:
         pads_intf = parent_intf.get_trait(F.has_linked_pad).get_pads()
-    except TraitNotFound:
+    except fabll.TraitNotFound:
         logger.warning(
             f"No linked pads found for interface {parent_intf}."
             " Make sure the footprint is properly attached."
@@ -241,9 +239,9 @@ def place_next_to(
     if len(pads_intf) == 0:
         raise KeyErrorNotFound()
 
-    children = module.get_children_modules(
+    children = module.get_children(
         direct_only=False,
-        types=Module,
+        types=fabll.Node,
         f_filter=lambda m: m.has_trait(F.has_footprint)
         and not m.has_trait(F.has_pcb_position),
         include_root=True,
@@ -252,7 +250,7 @@ def place_next_to(
     for parent_pad, child in zip(pads_intf, children):
         intf = find(
             child.get_children(direct_only=True, types=F.Electrical),
-            lambda x: x.is_connected_to(parent_intf),
+            lambda x: x.get_trait(fabll.is_interface).is_connected_to(parent_intf),
         )
 
         logger.debug(f"Placing {intf} next to {parent_pad}")
@@ -271,7 +269,7 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
         super().__init__()
         self._params = params or Params()
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         # Remove nodes that have a position defined
         node = tuple(n for n in node if not n.has_trait(F.has_pcb_position))
 
@@ -282,9 +280,8 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
             place_next_to(power.hv, n, route=True, params=self._params)
 
     @staticmethod
-    def find_module_candidates(node: Node):
-        return Module.get_children_modules(
-            node,
+    def find_module_candidates(node: fabll.Node):
+        return node.get_children(
             direct_only=False,
             types=F.Capacitor,
             f_filter=lambda c: c.get_parent_of_type(
@@ -294,7 +291,9 @@ class LayoutHeuristicElectricalClosenessDecouplingCaps(Layout):
         )
 
     @classmethod
-    def add_to_all_suitable_modules(cls, node: Node, params: Params | None = None):
+    def add_to_all_suitable_modules(
+        cls, node: fabll.Node, params: Params | None = None
+    ):
         layout = cls(params)
         candidates = cls.find_module_candidates(node)
         for c in candidates:

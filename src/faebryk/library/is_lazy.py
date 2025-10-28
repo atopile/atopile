@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.trait import Trait
+import faebryk.core.node as fabll
 
 
-class is_lazy(Trait.TraitT.decless()):
+class is_lazy(fabll.Node):
     pass

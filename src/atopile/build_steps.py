@@ -10,6 +10,7 @@ from enum import StrEnum
 from pathlib import Path
 from textwrap import dedent
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import layout
 from atopile.cli.logging_ import LoggingStage
@@ -20,9 +21,6 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
-from faebryk.core.cpp import set_max_paths
-from faebryk.core.module import Module
-from faebryk.core.pathfinder import MAX_PATHS
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.documentation.i2c import export_i2c_tree
@@ -85,7 +83,7 @@ def _githash_layout(layout: Path) -> Generator[Path, None, None]:
         yield tmp_layout
 
 
-MusterFuncType = Callable[[Module, Solver, F.PCB, LoggingStage], None]
+MusterFuncType = Callable[[fabll.Module, Solver, F.PCB, LoggingStage], None]
 
 
 @dataclass
@@ -101,7 +99,7 @@ class MusterTarget:
     produces_artifact: bool = False  # TODO: as list of file paths
     success: bool | None = None
 
-    def __call__(self, app: Module, solver: Solver, pcb: F.PCB) -> None:
+    def __call__(self, app: fabll.Node, solver: Solver, pcb: F.PCB) -> None:
         if not self.virtual:
             try:
                 with LoggingStage(
@@ -208,17 +206,8 @@ muster = Muster()
 
 @muster.register("prepare-build", description="Preparing build")
 def prepare_build(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    # TODO remove hack
-    # Disables children pathfinding
-    # ```
-    # power1.lv ~ power2.lv
-    # power1.hv ~ power2.hv
-    # -> power1 is not connected power2
-    # ```
-    set_max_paths(int(MAX_PATHS), 0, 0)
-
     app.add(F.has_solver(solver))
     app.add(F.PCB.has_pcb(pcb))
 
@@ -245,7 +234,7 @@ def prepare_build(
     dependencies=[prepare_build],
 )
 def post_design_checks(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     check_design(
         app.get_graph(),
@@ -258,7 +247,7 @@ def post_design_checks(
     "load-pcb", description="Loading PCB", dependencies=[post_design_checks]
 )
 def load_pcb(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     pcb.load()
     if config.build.keep_designators:
@@ -267,7 +256,7 @@ def load_pcb(
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
 def pick_parts(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
         load_part_info_from_pcb(app.get_graph())
@@ -286,7 +275,7 @@ def pick_parts(
     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
 )
 def prepare_nets(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     attach_random_designators(app.get_graph())
     nets = attach_nets(app.get_graph())
@@ -311,7 +300,7 @@ def prepare_nets(
     dependencies=[prepare_nets],
 )
 def post_solve_checks(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     logger.info("Running checks")
     check_design(
@@ -325,7 +314,7 @@ def post_solve_checks(
     "update-pcb", description="Updating PCB", dependencies=[post_solve_checks]
 )
 def update_pcb(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     def _update_layout(
         pcb_file: kicad.pcb.PcbFile, original_pcb_file: kicad.pcb.PcbFile
@@ -465,7 +454,7 @@ def update_pcb(
     "post-pcb-checks", description="Running post-pcb checks", dependencies=[update_pcb]
 )
 def post_pcb_checks(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     pcb.add(F.PCB.requires_drc_check())
     try:
@@ -480,7 +469,7 @@ def post_pcb_checks(
 
 @muster.register("build-design", dependencies=[update_pcb], virtual=True)
 def build_design(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     pass
 
@@ -491,11 +480,11 @@ def build_design(
     produces_artifact=True,
 )
 def generate_bom(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
-        app.get_children_modules(types=Module),
+        app.get_children_modules(types=fabll.Module),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
 
@@ -506,7 +495,7 @@ def generate_bom(
     produces_artifact=True,
 )
 def generate_netlist(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a netlist for the project."""
     attach_kicad_info(app.get_graph())
@@ -527,7 +516,7 @@ def generate_netlist(
     produces_artifact=True,
 )
 def generate_glb(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -548,7 +537,7 @@ def generate_glb(
     produces_artifact=True,
 )
 def generate_step(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 3D model as STEP."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -569,7 +558,7 @@ def generate_step(
     produces_artifact=True,
 )
 def generate_3d_models(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 3D model as GLB and STEP."""
     pass
@@ -582,7 +571,7 @@ def generate_3d_models(
     produces_artifact=True,
 )
 def generate_3d_render(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 3D rendered image."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -603,7 +592,7 @@ def generate_3d_render(
     produces_artifact=True,
 )
 def generate_2d_render(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 2D rendered image."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -625,7 +614,7 @@ def generate_2d_render(
     produces_artifact=True,
 )
 def generate_manufacturing_data(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """
     Generate manufacturing artifacts for the project.
@@ -678,7 +667,7 @@ def generate_manufacturing_data(
     produces_artifact=True,
 )
 def generate_manifest(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a manifest for the project."""
     with accumulate() as accumulator:
@@ -707,7 +696,7 @@ def generate_manifest(
     produces_artifact=True,
 )
 def generate_variable_report(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a report of all the variable values in the design."""
     # TODO: support other file formats
@@ -722,7 +711,7 @@ def generate_variable_report(
     produces_artifact=True,
 )
 def generate_i2c_tree(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a Mermaid diagram of the I2C bus tree."""
     export_i2c_tree(
@@ -743,7 +732,7 @@ def generate_i2c_tree(
     virtual=True,
 )
 def generate_default(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     pass
 
@@ -759,7 +748,7 @@ def generate_default(
     virtual=True,
 )
 def generate_all(
-    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate all targets."""
     pass

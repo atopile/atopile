@@ -4,8 +4,8 @@
 import logging
 from dataclasses import dataclass
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.geometry.basic import Geometry
 
@@ -31,7 +31,7 @@ class LayoutExtrude(Layout):
     dynamic_rotation: bool = False
     reverse_order: bool = False
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """

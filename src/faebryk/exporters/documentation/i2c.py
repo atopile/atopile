@@ -4,10 +4,8 @@
 import logging
 from pathlib import Path
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import DAG, groupby, partition_as_list
 
@@ -15,15 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 def export_i2c_tree(
-    app: Module, solver: Solver, path: Path = Path("build/documentation/i2c_tree.md")
+    app: fabll.Node,
+    solver: Solver,
+    path: Path = Path("build/documentation/i2c_tree.md"),
 ):
     """
     Export the I2C tree of the given application to a file.
     """
 
     # Filter buses
-    mifs = GraphFunctions(app.get_graph()).nodes_of_type(F.I2C)
-    buses = ModuleInterface._group_into_buses(mifs)
+    mifs = app.bind_typegraph_from_self().nodes_of_type(F.I2C)
+    buses = fabll.ModuleInterface._group_into_buses(mifs)
     buses = {
         k: v for k, v in buses.items() if len(v) > 1 and k.bus_crosses_pad_boundary()
     }

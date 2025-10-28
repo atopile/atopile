@@ -1,86 +1,45 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-from typing import Any
 
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.library.can_attach_to_footprint_symmetrically import (
-    can_attach_to_footprint_symmetrically,
-)
-from faebryk.library.can_bridge import can_bridge
-from faebryk.library.Electrical import Electrical
-from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.library.has_simple_value_representation_based_on_params_chain import (
-    has_simple_value_representation_based_on_params_chain,
-)
-from faebryk.library.has_usage_example import has_usage_example
-from faebryk.library.is_pickable_by_type import is_pickable_by_type
-
-# from faebryk.libs.units import P
+import faebryk.library._F as F
 
 
 class Resistor(fabll.Node):
-    @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        # TODO: change to list_field
-        cls.p1 = t.Child(nodetype=Electrical)
-        cls.p2 = t.Child(nodetype=Electrical)
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-        # TODO: add units to parameters
-        cls.resistance = t.Child(nodetype=fabll.Parameter)
-        cls.max_power = t.Child(nodetype=fabll.Parameter)
-        cls.max_voltage = t.Child(nodetype=fabll.Parameter)
+    resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    max_power = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Watt)
+    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
 
-        cls.can_attach_to_footprint_symmetrically = t.Child(
-            nodetype=can_attach_to_footprint_symmetrically
-        )
+    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
-        cls.designator_prefix = t.BoundChildOfType(nodetype=has_designator_prefix)
-        cls.designator_prefix.get().prefix_param.get().constrain_to_literal(
-            g=t.tg.get_graph_view(), value=has_designator_prefix.Prefix.R
-        )
+    _is_pickable = F.is_pickable_by_type.MakeChild(
+        endpoint="resistors",
+        params={
+            "resistance": resistance,
+            "max_power": max_power,
+            "max_voltage": max_voltage,
+        },
+    )
 
-        cls.can_bridge = t.Child(nodetype=can_bridge)
+    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+        params={
+            "resistance": resistance,
+            "max_power": max_power,
+        }
+    )
 
-        # TODO: Constrain is_pickable_by_type.endpoint to 'resistors'
-        cls.is_pickable_by_type = t.Child(nodetype=is_pickable_by_type)
-        t.add_link_pointer(
-            lhs_reference_path=["is_pickable_by_type", "params_"],
-            rhs_reference_path=["resistance"],
-            identifier="resistance",
-        )
-        t.add_link_pointer(
-            lhs_reference_path=["is_pickable_by_type", "params_"],
-            rhs_reference_path=["max_power"],
-        )
-        t.add_link_pointer(
-            lhs_reference_path=["is_pickable_by_type", "params_"],
-            rhs_reference_path=["max_voltage"],
-        )
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.R
+    ).put_on_type()
 
-        cls.simple_value_representation = t.Child(
-            nodetype=has_simple_value_representation_based_on_params_chain
-        )
-        t.add_link_pointer(
-            lhs_reference_path=["simple_value_representation", "params"],
-            rhs_reference_path=["resistance"],
-            identifier="resistance",
-        )
-        t.add_link_pointer(
-            lhs_reference_path=["simple_value_representation", "params"],
-            rhs_reference_path=["max_power"],
-            identifier="max_power",
-        )
-
-        cls.usage_example = t.BoundChildOfType(nodetype=has_usage_example)
-        cls.usage_example.get().example.get().constrain_to_literal(
-            g=t.tg.get_graph_view(),
-            value="""
+    usage_example = F.has_usage_example.MakeChild(
+        """
             import Resistor
             resistor = new Resistor
             resistor.resistance = 10kohm +/- 5%
-            """,
-        )
-        cls.usage_example.get().language.get().constrain_to_literal(
-            g=t.tg.get_graph_view(), value=has_usage_example.Language.ato
-        )
+        """,
+        F.has_usage_example.Language.ato,
+    ).put_on_type()

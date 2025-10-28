@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
@@ -20,7 +20,7 @@ class SOIC(F.Footprint):
         self._size_xy = size_xy
         self._pitch = pitch
 
-    @L.rt_field
+    @fabll.rt_field
     def pins(self):
         return times(self._pin_cnt, F.Pad)
 

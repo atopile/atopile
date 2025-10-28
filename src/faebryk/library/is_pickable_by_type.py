@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any
 
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 
 class is_pickable_by_type(fabll.Node):
@@ -16,10 +17,9 @@ class is_pickable_by_type(fabll.Node):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
-    @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        cls.endpoint_ = t.Child(nodetype=fabll.Parameter)
-        cls.params_ = t.Child(nodetype=fabll.Node)  # TODO: change to list
+    endpoint_ = fabll.ChildField(fabll.Parameter)
+    params_ = fabll.ChildField(fabll.Node)  # TODO: change to list
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     # @property
     # def endpoint(self) -> Endpoint:
@@ -46,5 +46,20 @@ class is_pickable_by_type(fabll.Node):
     #     return self._params
 
     # @property
-    # def pick_type(self) -> type[L.Module]:
-    #     return type(self.get_obj(L.Module))
+    # def pick_type(self) -> type[fabll.Module]:
+    #     return type(self.get_obj(fabll.Module))
+
+    @classmethod
+    def MakeChild(cls, endpoint: str, params: dict[str, fabll.ChildField]):
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.endpoint_], endpoint)
+        )
+        for param_name, param_ref in params.items():
+            field = fabll.EdgeField(
+                [out, cls.params_],
+                [param_ref],
+                edge=EdgePointer.build(identifier=param_name, order=None),
+            )
+            out.add_dependant(field)
+        return out

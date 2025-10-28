@@ -5,9 +5,8 @@
 import pytest
 from pint import Quantity
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
@@ -24,7 +23,7 @@ from faebryk.libs.util import cast_assert
     ],
 )
 def test_decouple(capacitances: list[tuple[int, Quantity, float]]):
-    class App(Module):
+    class App(fabll.Node):
         power: F.ElectricPower
 
     app = App()
@@ -42,7 +41,7 @@ def test_decouple(capacitances: list[tuple[int, Quantity, float]]):
 
     expected = sorted(
         [
-            L.Range.from_center_rel(capacitance, tolerance)
+            fabll.Range.from_center_rel(capacitance, tolerance)
             for count, capacitance, tolerance in capacitances
             for _ in range(count)
         ],

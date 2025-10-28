@@ -9,8 +9,8 @@ from typing import Any
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
@@ -66,7 +66,7 @@ class BaseParams(Serializable):
 
 
 @once
-def make_params_for_type(module_type: type[Module]) -> type:
+def make_params_for_type(module_type: type[fabll.Module]) -> type:
     m = module_type()
     assert m.has_trait(F.is_pickable_by_type)
     pickable_trait = m.get_trait(F.is_pickable_by_type)
@@ -196,7 +196,7 @@ class Component:
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, module: Module, qty: int = 1):
+    def attach(self, module: fabll.Node, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
 
         module.add(

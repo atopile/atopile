@@ -3,15 +3,14 @@
 
 import logging
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
-class XtalIF(ModuleInterface):
+class XtalIF(fabll.Node):
     """
     TODO: Docstring describing your module
     """

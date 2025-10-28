@@ -1,14 +1,15 @@
 from typing import TYPE_CHECKING
 
+import faebryk.core.node as fabll
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import BuildType, config
 from faebryk.library import _F as F
 
 if TYPE_CHECKING:
-    from faebryk.core.module import Module
+    pass
 
 
-def init_app() -> "Module":
+def init_app() -> fabll.Module:
     with LoggingStage(name=f"init-{config.build.name}", description="Initializing app"):
         match config.build.build_type:
             case BuildType.ATO:
@@ -21,7 +22,7 @@ def init_app() -> "Module":
                 raise ValueError(f"Unknown build type: {config.build.build_type}")
 
 
-def _init_python_app() -> "Module":
+def _init_python_app() -> fabll.Module:
     """Initialize a specific .py build."""
 
     from atopile import errors
@@ -55,16 +56,16 @@ def _init_python_app() -> "Module":
     return app
 
 
-def _init_ato_app() -> "Module":
+def _init_ato_app() -> fabll.Module:
     """Initialize a specific .ato build."""
 
+    import faebryk.core.node as fabll
     from atopile.compiler import front_end
     from atopile.compiler.datatypes import TypeRef
-    from faebryk.libs.library import L
 
     node = front_end.bob.build_file(
         config.build.entry_file_path,
         TypeRef.from_path_str(config.build.entry_section),
     )
-    assert isinstance(node, L.Module)
+    assert isinstance(node, fabll.Module)
     return node

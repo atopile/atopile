@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import faebryk.core.node as fabll
 from atopile.mcp.util import (
     Language,
     MCPTools,
@@ -8,9 +9,6 @@ from atopile.mcp.util import (
     NodeInfoOverview,
     NodeType,
 )
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +16,7 @@ library_tools = MCPTools()
 
 
 def _get_library_nodes(
-    t: type[Node] | tuple[type[Node], ...],
+    t: type[fabll.Node] | tuple[type[fabll.Node], ...],
 ) -> list[NodeInfoOverview]:
     import faebryk.library._F as F
 
@@ -27,9 +25,9 @@ def _get_library_nodes(
             name=m.__name__,
             docstring=m.__doc__ or "",
             language=Language.FABLL,
-            type=NodeType.MODULE if issubclass(m, Module) else NodeType.INTERFACE,
+            type=NodeType.MODULE if issubclass(m, fabll.Module) else NodeType.INTERFACE,
             inherits=m.__bases__[0].__name__
-            if m.__bases__[0] not in [Module, ModuleInterface]
+            if m.__bases__[0] not in [fabll.Module, fabll.ModuleInterface]
             else None,
         )
         for m in F.__dict__.values()
@@ -41,7 +39,7 @@ def _locator_from_file_path(path: Path) -> str:
     return f"#file://{path.as_posix()}"
 
 
-def _get_library_node(name: str, t: type[Node] = Node) -> NodeInfo:
+def _get_library_node(name: str, t: type[fabll.Node] = fabll.Node) -> NodeInfo:
     import faebryk.library._F as F
 
     if name not in F.__dict__:
@@ -99,7 +97,7 @@ def get_library_modules_or_interfaces(
     """
     types = tuple()
     if include_modules:
-        types += (Module,)
+        types += (fabll.Module,)
     if include_interfaces:
-        types += (ModuleInterface,)
+        types += (fabll.ModuleInterface,)
     return _get_library_nodes(types)

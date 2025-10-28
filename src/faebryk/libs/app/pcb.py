@@ -7,10 +7,8 @@ from pathlib import Path
 
 import psutil
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.exceptions import UserResourceException, downgrade
@@ -30,7 +28,7 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-def apply_layouts(app: Module):
+def apply_layouts(app: fabll.Node):
     if not app.has_trait(F.has_pcb_position):
         app.add(
             F.has_pcb_position_defined(
@@ -38,16 +36,16 @@ def apply_layouts(app: Module):
             )
         )
 
-    for level in app.get_tree(types=Node).iter_by_depth():
+    for level in app.get_tree(types=fabll.Node).iter_by_depth():
         for n in level:
             if n.has_trait(F.has_pcb_layout):
                 n.get_trait(F.has_pcb_layout).apply()
 
 
-def apply_routing(app: Module, transformer: PCB_Transformer):
+def apply_routing(app: fabll.Node, transformer: PCB_Transformer):
     strategies: list[tuple[F.has_pcb_routing_strategy, int]] = []
 
-    for i, level in enumerate(app.get_tree(types=Node).iter_by_depth()):
+    for i, level in enumerate(app.get_tree(types=fabll.Node).iter_by_depth()):
         for n in level:
             if not n.has_trait(F.has_pcb_routing_strategy):
                 continue
@@ -105,14 +103,14 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def load_net_names(graph: Graph, raise_duplicates: bool = True) -> set[F.Net]:
+def load_net_names(graph: fabll.Graph, raise_duplicates: bool = True) -> set[F.Net]:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
 
     net_names: dict[F.Net, str] = {
         cast_assert(F.Net, net): not_none(pcb_net_t.get_net().name)
-        for net, pcb_net_t in GraphFunctions(graph).nodes_with_trait(
+        for net, pcb_net_t in fabll.Node.bind_typegraph(graph).nodes_with_trait(
             PCB_Transformer.has_linked_kicad_net
         )
     }
@@ -131,9 +129,9 @@ def load_net_names(graph: Graph, raise_duplicates: bool = True) -> set[F.Net]:
     return set(net_names.keys())
 
 
-def check_net_names(graph: Graph):
+def check_net_names(graph: fabll.Graph):
     """Raise an error if any nets have the same name."""
-    gf = GraphFunctions(graph)
+    gf = fabll.Node.bind_typegraph(graph)
     nets = gf.nodes_of_type(F.Net)
 
     named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}

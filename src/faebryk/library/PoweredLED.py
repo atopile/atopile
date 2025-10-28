@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 
 
-class PoweredLED(Module):
+class PoweredLED(fabll.Node):
     power: F.ElectricPower
     current_limiting_resistor: F.Resistor
     led: F.LED
@@ -37,10 +36,10 @@ class PoweredLED(Module):
             - self.led.current * self.current_limiting_resistor.resistance
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power.hv, self.power.lv)
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.power)

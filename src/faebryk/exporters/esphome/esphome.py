@@ -5,8 +5,8 @@ import logging
 
 import yaml
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.units import Quantity
@@ -15,8 +15,10 @@ from faebryk.libs.util import cast_assert, dict_value_visitor, merge_dicts
 logger = logging.getLogger(__name__)
 
 
-def make_esphome_config(G: Graph, solver: Solver) -> dict:
-    esphome_components = GraphFunctions(G).nodes_with_trait(F.has_esphome_config)
+def make_esphome_config(G: fabll.Graph, solver: Solver) -> dict:
+    esphome_components = fabll.Node.bind_typegraph(G).nodes_with_trait(
+        F.has_esphome_config
+    )
 
     esphome_config = merge_dicts(*[t.get_config() for _, t in esphome_components])
 

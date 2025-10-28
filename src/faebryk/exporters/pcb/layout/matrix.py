@@ -4,8 +4,8 @@
 import logging
 from dataclasses import dataclass
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
 from faebryk.exporters.pcb.layout.layout import Layout
 from faebryk.libs.geometry.basic import Geometry
 
@@ -29,7 +29,7 @@ class LayoutMatrix(Layout):
         (0, 0, 0, F.has_pcb_position.layer_type.NONE)
     )
 
-    def apply(self, *node: Node):
+    def apply(self, *node: fabll.Node):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """

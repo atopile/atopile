@@ -8,24 +8,23 @@ from typing import Any, Callable, Sequence
 
 from more_itertools import first
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import GraphFunctions
-from faebryk.core.node import Node
 from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
 
-class implements_design_check(Trait.TraitT.decless()):
+class implements_design_check(fabll.Node):
     class CheckStage(Enum):
         POST_DESIGN = auto()
         POST_SOLVE = auto()
         POST_PCB = auto()
 
     class UnfulfilledCheckException(Exception):
-        nodes: Sequence[Node]
+        nodes: Sequence[fabll.Node]
 
-        def __init__(self, message: str, nodes: Sequence[Node]):
+        def __init__(self, message: str, nodes: Sequence[fabll.Node]):
             self.nodes = nodes
             super().__init__(message)
 
@@ -53,7 +52,7 @@ class implements_design_check(Trait.TraitT.decless()):
     @staticmethod
     def register_post_pcb_check(func: Callable[[Any], None]):
         """
-        Guarantees PCB availability via Node in Graph
+        Guarantees PCB availability via fabll.Node in Graph
         """
         if not func.__name__ == "__check_post_pcb__":
             raise TypeError(f"Method {func.__name__} is not a post-pcb check name.")
@@ -65,7 +64,7 @@ class implements_design_check(Trait.TraitT.decless()):
     def get_pcb(self):
         from faebryk.library.PCB import PCB
 
-        matches = GraphFunctions(self.get_graph()).nodes_of_type(PCB)
+        matches = fabll.Node.bind_typegraph(self.get_graph()).nodes_of_type(PCB)
         assert len(matches) == 1
         return first(matches)
 
