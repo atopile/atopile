@@ -53,7 +53,7 @@ class is_pickable_by_type(fabll.Node):
     def MakeChild(cls, endpoint: str, params: dict[str, fabll.ChildField]):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.Parameter.ConstrainToLiteral.MakeChild([out, cls.endpoint_], endpoint)
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.endpoint_], endpoint)
         )
         for param_name, param_ref in params.items():
             field = fabll.EdgeField(

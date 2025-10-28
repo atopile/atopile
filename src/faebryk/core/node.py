@@ -1006,28 +1006,9 @@ class Parameter(Node):
         ExpressionAliasIs.alias_is(tg=tg, g=g, operands=[node, lit.instance])
 
     @classmethod
-    def MakeChild(cls, unit: type[Node[Any]]) -> ChildField[Any]:
+    # TODO domain
+    def MakeChild_Numeric(cls, unit: type[Node[Any]]) -> ChildField[Any]:
         pass
-
-    class ConstrainToLiteral:
-        @staticmethod
-        def MakeChild(
-            ref: list[str | ChildField[Any]],
-            value: LiteralT,
-        ) -> ChildField[Any]:
-            alias = ChildField(ExpressionAliasIs)
-            lit = ChildField(
-                LiteralNode,
-                attributes=LiteralNodeAttributes(value=value),
-            )
-            alias_edge = EdgeField(
-                ref,
-                [lit],
-                edge=EdgeOperand.build(operand_identifier=None),
-            )
-            alias.add_dependant(alias_edge)
-            alias.add_dependant(lit)
-            return alias
 
     def try_extract_constrained_literal(self) -> LiteralT | None:
         # TODO: solver? `only_proven=True` parameter?
@@ -1111,6 +1092,26 @@ class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
                 operand_identifier=None,
             )
         return expr.instance
+
+    @classmethod
+    def MakeChild_ToLiteral(
+        cls,
+        ref: list[str | ChildField[Any]],
+        value: LiteralT,
+    ) -> ChildField[Any]:
+        alias = ChildField(ExpressionAliasIs)
+        lit = ChildField(
+            LiteralNode,
+            attributes=LiteralNodeAttributes(value=value),
+        )
+        alias_edge = EdgeField(
+            ref,
+            [lit],
+            edge=EdgeOperand.build(operand_identifier=None),
+        )
+        alias.add_dependant(alias_edge)
+        alias.add_dependant(lit)
+        return alias
 
 
 # ------------------------------------------------------------

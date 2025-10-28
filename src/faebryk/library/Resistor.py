@@ -8,9 +8,9 @@ import faebryk.library._F as F
 class Resistor(fabll.Node):
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    resistance = fabll.Parameter.MakeChild(unit=fabll.Units.Ohm)
-    max_power = fabll.Parameter.MakeChild(unit=fabll.Units.Watt)
-    max_voltage = fabll.Parameter.MakeChild(unit=fabll.Units.Volt)
+    resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    max_power = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Watt)
+    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
 
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])

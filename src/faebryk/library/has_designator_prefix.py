@@ -232,7 +232,7 @@ class has_designator_prefix(fabll.Node):
     def MakeChild(cls, value: Prefix) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.Parameter.ConstrainToLiteral.MakeChild([out, cls.prefix_param], value)
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.prefix_param], value)
         )
         return out
 

@@ -22,9 +22,9 @@ class has_usage_example(fabll.Node):
     def MakeChild(cls, example: str, language: Language) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.Parameter.ConstrainToLiteral.MakeChild([out, cls.example], example)
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.example], example)
         )
         out.add_dependant(
-            fabll.Parameter.ConstrainToLiteral.MakeChild([out, cls.language], language)
+            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.language], language)
         )
         return out
