@@ -107,13 +107,13 @@ pub const TypeGraph = struct {
                 var it = self.node.node.attributes.dynamic.values.iterator();
                 while (it.next()) |e| {
                     const key = e.key_ptr.*;
+                    if (std.mem.eql(u8, key, "child_identifier")) {
+                        continue;
+                    }
                     dynamic.values.put(key, e.value_ptr.*) catch unreachable;
                 }
 
-                const attributes: NodeCreationAttributes = .{
-                    .dynamic = if (dynamic.values.count() > 0) dynamic else null,
-                };
-                return attributes;
+                return .{ .dynamic = if (dynamic.values.count() > 0) dynamic else null };
             }
         };
 
@@ -124,6 +124,17 @@ pub const TypeGraph = struct {
                 }
             }
             return EdgePointer.get_referenced_node_from_node(node);
+        }
+
+        pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
+            var dynamic: ?graph.DynamicAttributes = null;
+            if (value) |v| {
+                dynamic = graph.DynamicAttributes.init(allocator);
+                dynamic.?.values.put("value", .{ .String = v }) catch unreachable;
+            }
+            return .{
+                .dynamic = if (dynamic) |d| d else null,
+            };
         }
     };
 
@@ -351,17 +362,16 @@ pub const TypeGraph = struct {
         target_type: BoundNodeReference,
         child_type: BoundNodeReference,
         identifier: ?str,
-        node_attributes: ?NodeCreationAttributes,
+        node_attributes: ?*NodeCreationAttributes,
     ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
         MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
         if (node_attributes) |_node_attributes| {
-            MakeChildNode.Attributes.of(make_child).set_node_attributes(_node_attributes);
+            MakeChildNode.Attributes.of(make_child).set_node_attributes(_node_attributes.*);
+            if (_node_attributes.dynamic) |*d| {
+                d.*.deinit();
+            }
         }
-
-        // MakeChildNode.Attributes.of(make_child.node).set_child_literal_value(identifier);
-        // const result = MakeChildNode.Attributes.of(make_child.node).get_child_literal_value();
-        // std.debug.print("result: {s}\n", .{result.?});
 
         _ = EdgePointer.point_to(make_child, child_type.node, identifier, null);
         _ = EdgeComposition.add_child(target_type, make_child.node, null);
@@ -418,6 +428,14 @@ pub const TypeGraph = struct {
 
                 // 2.3) Attach child instance to parent instance with the reference name
                 _ = EdgeComposition.add_child(self.parent_instance, child.node, child_identifier);
+
+                // 2.4) Copy node attributes from MakeChild node to child instance
+                var node_attributes = MakeChildNode.Attributes.of(make_child).get_node_attributes();
+                if (node_attributes.dynamic) |d| {
+                    std.debug.print("copied dynamic attributes to child: {any}\n", .{d});
+                    d.copy_into(&child.node.attributes.dynamic);
+                    node_attributes.dynamic.?.deinit();
+                }
 
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -579,6 +597,16 @@ test "basic instantiation" {
     _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
     _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
     _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+
+    var node_attrs = TypeGraph.MakeChildNode.build(a, "test_string");
+    _ = try tg.add_make_child(
+        Capacitor,
+        Electrical,
+        "tp",
+        &node_attrs,
+    );
+    // node_attrs.deinit();
+    // a.destroy(node_attrs.dynamic.?); //TODO: Figure out one line allocation/deallocation
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);

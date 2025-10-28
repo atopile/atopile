@@ -674,6 +674,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         pass
 
+    @staticmethod
+    def get_bnode_name(bound_node: BoundNode) -> str | None:
+        parent_edge = EdgeComposition.get_parent_edge(bound_node=bound_node)
+        if parent_edge is None:
+            return None
+        return EdgeComposition.get_name(edge=parent_edge.edge())
+
 
 class BoundNodeType[N: Node[Any], A: NodeAttributes]:
     """
@@ -777,6 +784,20 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
             edge_attributes=edge,
         )
 
+    def add_make_link_pointer(
+        self,
+        *,
+        lhs_reference_path: list[str],
+        rhs_reference_path: list[str],
+        identifier: str | None = None,
+        order: int | None = None,
+    ) -> None:
+        self._add_link(
+            lhs_reference_path=lhs_reference_path,
+            rhs_reference_path=rhs_reference_path,
+            edge=EdgePointer.build(identifier=identifier, order=order),
+        )
+
     def add_link_pointer(
         self,
         *,
@@ -788,6 +809,64 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
             lhs_reference_path=lhs_reference_path,
             rhs_reference_path=rhs_reference_path,
             edge=EdgePointer.build(identifier=identifier, order=None),
+        )
+
+    def add_make_constrain_to_literal(
+        self,
+        child_to_constrain: list[str],
+        value: str,
+    ) -> None:
+        # TODO: add compatibility with any literal type
+        """
+        Adds a make child to boundnodetype for alias is
+        Adds literal to boundtypenode with value
+        Adds reference node for child to constrain
+        Adds make link for LHS(child to constrain) and RHS(literal) of alias is
+        """
+        type_node = self.get_or_create_type()
+        literal_identifier = "literal-" + "-".join(child_to_constrain)
+        aliasis_identifier = "aliasis-" + "-".join(child_to_constrain)
+
+        makechild_alias_is_bnode = self.tg.add_make_child(
+            type_node=type_node,
+            child_type_node=ExpressionAliasIs.bind_typegraph(
+                self.tg
+            ).get_or_create_type(),
+            identifier=aliasis_identifier,
+        )
+        makechild_literal_bnode = self.tg.add_make_child(
+            type_node=type_node,
+            child_type_node=LiteralNode.bind_typegraph(self.tg).get_or_create_type(),
+            identifier=literal_identifier,
+            node_attributes=TypeGraph.MakeChildNode.build(value=value),
+        )
+
+        # Add lhs edge between alias is (lhs) and child to constrain (rhs)
+        self.tg.add_make_link(
+            type_node=self.get_or_create_type(),
+            lhs_reference_node=self.tg.add_reference(
+                type_node=type_node,
+                path=[aliasis_identifier],
+            ).node(),
+            rhs_reference_node=self.tg.add_reference(
+                type_node=type_node,
+                path=child_to_constrain,
+            ).node(),
+            edge_attributes=EdgeOperand.build(operand_identifier="tochild"),
+        )
+
+        # Add rhs edge between alias is (lhs) and literal (rhs)
+        self.tg.add_make_link(
+            type_node=type_node,
+            lhs_reference_node=self.tg.add_reference(
+                type_node=type_node,
+                path=[aliasis_identifier],
+            ).node(),
+            rhs_reference_node=self.tg.add_reference(
+                type_node=type_node,
+                path=[literal_identifier],
+            ).node(),
+            edge_attributes=EdgeOperand.build(operand_identifier="toliteral"),
         )
 
 
@@ -917,6 +996,44 @@ class Set(Node):
             self.point_to(elem, self._elem_identifier, order=cur_len + i)
 
         return self
+
+    @staticmethod
+    def append_make_links(
+        t: BoundNodeType[Any, Any],
+        set_child: Child[Any],
+        children_to_append: list[Child[Any]],
+    ) -> None:
+        # TODO: make work with multiple levels of nesting
+        def to_ref_path(bound_t: BoundNodeType[Any, Any], ref: Child[Any]) -> list[str]:
+            """
+            Derive path from Child descriptor(s)
+            """
+            if ref.t.t is bound_t.t:
+                return [ref.identifier]
+            for name, attr in vars(bound_t.t).items():
+                if (
+                    isinstance(attr, (Child, BoundChildOfType))
+                    and getattr(attr, "nodetype", None) is ref.t.t
+                ):
+                    return [attr.identifier, ref.identifier]
+
+            raise FabLLException(
+                "Could not derive reference path for child '"
+                f"{getattr(ref, 'identifier', ref)}' from root type "
+                f"{bound_t.t.__name__}"
+            )
+
+        lhs_path = to_ref_path(t, set_child)
+        for child in children_to_append:
+            rhs_path = to_ref_path(t, child)
+
+            print(f"lhs_path: {lhs_path}, rhs_path: {rhs_path}")
+            t.add_make_link_pointer(
+                lhs_reference_path=lhs_path,
+                rhs_reference_path=rhs_path,
+                identifier=None,
+                order=None,
+            )
 
     def as_list(self) -> list[Node[Any]]:
         return self.get_references(self._elem_identifier)
@@ -1461,12 +1578,59 @@ def test_manual_resistor_def():
             child_identifier="params_",
         )
     )
-    resistance_node_from_pointer = not_none(
-        EdgePointer.get_pointed_node_by_identifier(
-            bound_node=ipbt_params, identifier="resistance"
+    variables: list[BoundNode] = []
+    ipbt_params.visit_edges_of_type(
+        edge_type=EdgePointer.get_tid(),
+        ctx=variables,
+        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+    )
+    print(
+        "ipbt_params:",
+        [
+            EdgeComposition.get_name(
+                edge=not_none(
+                    EdgeComposition.get_parent_edge(bound_node=variable)
+                ).edge()
+            )
+            for variable in variables
+        ],
+    )
+
+    ipbt_endpoint = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=ipbt,
+            child_identifier="endpoint_",
         )
     )
-    assert resistance.node().is_same(other=resistance_node_from_pointer.node())
+    alias_is_bnode = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=resistor_instance.instance,
+            child_identifier="aliasis-is_pickable_by_type-endpoint_",
+        )
+    )
+    lhs_node = not_none(
+        EdgeOperand.get_operand_by_identifier(
+            node=alias_is_bnode,
+            operand_identifier="tochild",
+        )
+    )
+    print("lhs_node name:", Node.get_bnode_name(bound_node=lhs_node))
+
+    rhs_node = not_none(
+        EdgeOperand.get_operand_by_identifier(
+            node=alias_is_bnode,
+            operand_identifier="toliteral",
+        )
+    )
+    print("rhs_node name:", Node.get_bnode_name(bound_node=rhs_node))
+
+    literal_ipbt_endpoint = not_none(
+        EdgeComposition.get_child_by_identifier(
+            node=resistor_instance.instance,
+            child_identifier="literal-is_pickable_by_type-endpoint_",
+        )
+    )
+    print("literal_ipbt_endpoint:", literal_ipbt_endpoint.node().get_dynamic_attrs())
 
 
 if __name__ == "__main__":

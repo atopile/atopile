@@ -15,4 +15,10 @@ pub const NodeCreationAttributes = struct {
             dynamic.copy_into(&node.attributes.dynamic);
         }
     }
+
+    pub fn deinit(self: *@This()) void {
+        if (self.dynamic) |dynamic| {
+            dynamic.deinit();
+        }
+    }
 };

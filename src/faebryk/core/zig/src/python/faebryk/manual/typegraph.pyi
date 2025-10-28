@@ -18,6 +18,9 @@ class TypeGraph:
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
     ) -> BoundNode: ...
+    class MakeChildNode:
+        @staticmethod
+        def build(*, value: str | None = ...) -> NodeCreationAttributes: ...
     def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
     def add_make_link(
         self,

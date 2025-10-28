@@ -32,6 +32,7 @@ var edge_pointer_type: ?*py.PyTypeObject = null;
 var edge_creation_attributes_type: ?*py.PyTypeObject = null;
 var node_creation_attributes_type: ?*py.PyTypeObject = null;
 var type_graph_type: ?*py.PyTypeObject = null;
+var make_child_node_type: ?*py.PyTypeObject = null;
 
 pub const method_descr = bind.method_descr;
 
@@ -2026,18 +2027,25 @@ fn wrap_nodebuilder_init() type {
             const dynamic_obj: *py.PyObject = if (kwarg_obj.dynamic) |obj| obj else py.Py_None();
 
             var dynamic_attrs = _unwrap_literal_str_dict(dynamic_obj, allocator) catch return null;
-            defer if (dynamic_attrs != null) dynamic_attrs.?.deinit();
 
             const attributes = allocator.create(faebryk.nodebuilder.NodeCreationAttributes) catch {
+                if (dynamic_attrs) |*attrs| attrs.deinit();
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
                 return null;
             };
-            attributes.* = .{
-                .dynamic = dynamic_attrs,
-            };
-
+            attributes.* = .{ .dynamic = dynamic_attrs };
             dynamic_attrs = null;
-            return bind.wrap_obj("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, attributes);
+
+            const wrapped = bind.wrap_obj("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, attributes);
+            if (wrapped == null) {
+                if (attributes.*.dynamic) |*dynamic_value| {
+                    dynamic_value.deinit();
+                }
+                allocator.destroy(attributes);
+                return null;
+            }
+
+            return wrapped;
         }
     };
 }
@@ -2313,6 +2321,56 @@ fn wrap_typegraph_add_type() type {
     };
 }
 
+fn wrap_typegraph_make_child_node_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return NodeCreationAttributes for a MakeChild node",
+            .args_def = struct {
+                value: ?*py.PyObject = null,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+
+            var value_copy: ?[]u8 = null;
+            if (kwarg_obj.value) |value_obj| {
+                if (value_obj != py.Py_None()) {
+                    value_copy = bind.unwrap_str_copy(value_obj) orelse return null;
+                }
+            }
+
+            const attributes = allocator.create(faebryk.nodebuilder.NodeCreationAttributes) catch {
+                if (value_copy) |copy| allocator.free(copy);
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+
+            attributes.* = faebryk.typegraph.TypeGraph.MakeChildNode.build(
+                allocator,
+                if (value_copy) |copy| @as([]const u8, copy) else null,
+            );
+
+            const wrapped = bind.wrap_obj("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, attributes);
+            if (wrapped == null) {
+                if (attributes.*.dynamic) |*dynamic_value| {
+                    dynamic_value.deinit();
+                }
+                allocator.destroy(attributes);
+                if (value_copy) |copy| allocator.free(copy);
+                return null;
+            }
+
+            value_copy = null;
+            return wrapped;
+        }
+    };
+}
+
 fn wrap_typegraph_add_make_child() type {
     return struct {
         pub const descr = method_descr{
@@ -2348,13 +2406,13 @@ fn wrap_typegraph_add_make_child() type {
             const resolved_child_type = kwarg_obj.child_type_node;
 
             const node_attrs_obj: *py.PyObject = if (kwarg_obj.node_attributes) |obj| obj else py.Py_None();
-            var node_attributes: ?faebryk.nodebuilder.NodeCreationAttributes = null;
+            var node_attributes: ?*faebryk.nodebuilder.NodeCreationAttributes = null;
             if (node_attrs_obj != py.Py_None()) {
                 const attrs_wrapper = bind.castWrapper("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, node_attrs_obj) orelse {
                     if (identifier_copy) |copy| allocator.free(copy);
                     return null;
                 };
-                node_attributes = attrs_wrapper.data.*;
+                node_attributes = attrs_wrapper.data;
             }
 
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
@@ -2725,6 +2783,14 @@ fn wrap_typegraph_get_or_create_type() type {
     };
 }
 
+fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
+    const extra_methods = [_]type{
+        wrap_typegraph_make_child_node_build(),
+    };
+    bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph.MakeChildNode, extra_methods);
+    make_child_node_type = type_registry.getRegisteredTypeObject("MakeChildNode");
+}
+
 fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
     const allocator = std.heap.c_allocator;
     const wrapper = @as(*TypeGraphWrapper, @ptrCast(@alignCast(self)));
@@ -2760,9 +2826,28 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_graph_view(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
+    wrap_typegraph_make_child_node(root);
+
     type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
     if (type_graph_type) |tg_type| {
         tg_type.tp_dealloc = @ptrCast(&typegraph_dealloc);
+        if (make_child_node_type == null) {
+            make_child_node_type = type_registry.getRegisteredTypeObject("MakeChildNode");
+        }
+        if (make_child_node_type) |mc_type| {
+            if (tg_type.tp_dict) |dict_obj| {
+                const mc_obj = @as(*py.PyObject, @ptrCast(@alignCast(mc_type)));
+                py.Py_INCREF(mc_obj);
+                if (py.PyDict_SetItemString(dict_obj, "MakeChildNode", mc_obj) != 0) {
+                    py.Py_DECREF(mc_obj);
+                    py.PyErr_Clear();
+                } else {
+                    py.Py_DECREF(mc_obj);
+                }
+            }
+        }
+    } else {
+        make_child_node_type = type_registry.getRegisteredTypeObject("MakeChildNode");
     }
 }
 
