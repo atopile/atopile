@@ -803,20 +803,19 @@ pub const GraphView = struct {
             current_path_via_conditional: bool,
 
             fn should_skip_node(self: *@This(), node: NodeReference) bool {
-                // Skip if node would create a cycle in the path
+                // if node is contained in current path, we should not add to the path
                 if (self.current_path.contains(node)) {
                     return true;
                 }
 
-                // Check visited tracking
                 if (self.visited_nodes.get(node)) |visit_info| {
-                    // Previous visit via conditional, current via conditional → skip (prevent loops)
-                    // Previous visit via conditional, current NOT via conditional → ALLOW (override with better path)
-                    // Previous visit NOT via conditional → always skip (already found best path)
-                    const can_revisit = visit_info.via_conditional and !self.current_path_via_conditional;
-                    return !can_revisit;
+                    // if node was visited via conditional, we should add to the path (we want to keep exploring)
+                    if (visit_info.via_conditional) {
+                        return false;
+                    }
+                    return true;
                 }
-                return false; // Not visited, don't skip
+                return false;
             }
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {

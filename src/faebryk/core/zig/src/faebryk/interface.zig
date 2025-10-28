@@ -265,13 +265,17 @@ test "down_connect" {
     var tg = TypeGraph.init(&g);
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
+    const LinkType = try tg.add_type("Link");
 
     _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV");
     _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV");
+    _ = try tg.add_make_child(ElectricalType, LinkType, "HV/LV Child");
 
     const EP_1 = try tg.instantiate_node(ElectricPowerType);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
     const LV_1 = EdgeComposition.get_child_by_identifier(EP_1, "LV").?;
+
+    const HV_1_Child = EdgeComposition.get_child_by_identifier(LV_1, "HV/LV Child").?;
 
     const EP_2 = try tg.instantiate_node(ElectricPowerType);
     const HV_2 = EdgeComposition.get_child_by_identifier(EP_2, "HV").?;
@@ -298,6 +302,26 @@ test "down_connect" {
     const paths_lv_hv = try EdgeInterfaceConnection.is_connected_to(a, LV_1, HV_2);
     defer paths_lv_hv.deinit();
     try std.testing.expect(paths_lv_hv.paths.items.len == 0);
+
+    const link_a = try tg.instantiate_node(LinkType);
+    const link_b = try tg.instantiate_node(LinkType);
+    const link_c = try tg.instantiate_node(LinkType);
+    _ = try EdgeInterfaceConnection.connect(HV_1, link_a);
+    _ = try EdgeInterfaceConnection.connect(link_a, link_b);
+    _ = try EdgeInterfaceConnection.connect(link_b, link_c);
+    _ = try EdgeInterfaceConnection.connect(link_c, LV_2);
+
+    const paths_hv_link_lv = try EdgeInterfaceConnection.is_connected_to(a, HV_1, LV_2);
+    defer paths_hv_link_lv.deinit();
+    std.debug.print("paths_hv_link_lv: {}\n", .{paths_hv_link_lv.paths.items.len});
+    try std.testing.expect(paths_hv_link_lv.paths.items.len == 1);
+
+    _ = try EdgeInterfaceConnection.connect_shallow(HV_1_Child, LV_2);
+
+    const second_conditional = try EdgeInterfaceConnection.is_connected_to(a, HV_1_Child, LV_2);
+    defer second_conditional.deinit();
+    std.debug.print("second_conditional: {}\n", .{second_conditional.paths.items.len});
+    try std.testing.expect(second_conditional.paths.items.len == 0);
 }
 
 test "no_connect_cases" {

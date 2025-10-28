@@ -409,12 +409,14 @@ pub const PathFinder = struct {
 
         if (!hierarchy_valid) {
             path.filtered = true;
+            path.via_conditional = true;
             return visitor.VisitResult(void){ .CONTINUE = {} };
         }
 
         if (!validate_shallow_edges(path)) {
             path.filtered = true;
             path.stop = true;
+            path.via_conditional = true;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
