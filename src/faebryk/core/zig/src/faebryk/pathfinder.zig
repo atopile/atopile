@@ -55,7 +55,6 @@ pub const PathFinder = struct {
 
     allocator: std.mem.Allocator,
     path_list: std.ArrayList(BFSPath),
-    end_nodes: std.ArrayList(BoundNodeReference),
     path_counter: u64,
     valid_path_counter: u64,
 
@@ -63,7 +62,6 @@ pub const PathFinder = struct {
         return .{
             .allocator = allocator,
             .path_list = std.ArrayList(BFSPath).init(allocator),
-            .end_nodes = std.ArrayList(BoundNodeReference).init(allocator),
             .path_counter = 0,
             .valid_path_counter = 0,
         };
@@ -74,23 +72,16 @@ pub const PathFinder = struct {
             path.deinit();
         }
         self.path_list.deinit();
-        self.end_nodes.deinit();
     }
 
-    // Find all valid paths between start and end nodes
+    // Find all valid paths from start node
     // Note: PathFinder is intended for single-use. Create a new instance for each search.
     pub fn find_paths(
         self: *Self,
         start_node: BoundNodeReference,
-        end_nodes: ?[]const BoundNodeReference,
     ) !graph.BFSPaths {
         self.path_list.clearRetainingCapacity();
         try self.path_list.ensureTotalCapacity(256);
-        self.end_nodes.clearRetainingCapacity();
-        if (end_nodes) |nodes| {
-            try self.end_nodes.ensureTotalCapacity(nodes.len);
-            self.end_nodes.appendSliceAssumeCapacity(nodes);
-        }
 
         const result = start_node.g.visit_paths_bfs(
             start_node,
@@ -140,25 +131,6 @@ pub const PathFinder = struct {
                 return visitor.VisitResult(void){ .ERROR = err };
             };
             self.valid_path_counter += 1;
-
-            // Remove end node from search if we found a valid path (not filtered/stopped)
-            // Continues searching for better paths (e.g., direct over sibling)
-            if (self.end_nodes.items.len > 0) {
-                const end_nodes = &self.end_nodes;
-                const path_end = path.get_last_node() orelse return visitor.VisitResult(void){ .CONTINUE = {} };
-
-                if (!path.stop) {
-                    for (end_nodes.items, 0..) |end_node, i| {
-                        if (Node.is_same(path_end.node, end_node.node)) {
-                            _ = end_nodes.swapRemove(i);
-                            if (end_nodes.items.len == 0) {
-                                return visitor.VisitResult(void){ .STOP = {} };
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
         }
 
         if (result == .STOP) {
@@ -188,7 +160,6 @@ pub const PathFinder = struct {
         func: *const fn (*Self, *BFSPath) visitor.VisitResult(void),
     }{
         .{ .name = "count_paths", .func = Self.count_paths },
-        .{ .name = "filter_only_end_nodes", .func = Self.filter_only_end_nodes },
         .{ .name = "filter_path_by_edge_type", .func = Self.filter_path_by_edge_type },
         .{ .name = "filter_path_by_same_node_type", .func = Self.filter_path_by_same_node_type },
         .{ .name = "filter_siblings", .func = Self.filter_siblings },
@@ -232,23 +203,6 @@ pub const PathFinder = struct {
             path.filtered = true;
         }
 
-        return visitor.VisitResult(void){ .CONTINUE = {} };
-    }
-
-    pub fn filter_only_end_nodes(self: *Self, path: *BFSPath) visitor.VisitResult(void) {
-        if (self.end_nodes.items.len == 0) {
-            return visitor.VisitResult(void){ .CONTINUE = {} };
-        }
-
-        const path_end = path.get_last_node() orelse return visitor.VisitResult(void){ .CONTINUE = {} };
-
-        for (self.end_nodes.items) |end_node| {
-            if (Node.is_same(path_end.node, end_node.node)) {
-                return visitor.VisitResult(void){ .CONTINUE = {} };
-            }
-        }
-
-        path.filtered = true;
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
 
@@ -478,9 +432,7 @@ test "visit_paths_bfs" {
     _ = bn2;
     _ = bn4;
 
-    const end_nodes = [_]BoundNodeReference{};
-
-    const paths1 = try pf1.find_paths(bn1, &end_nodes);
+    const paths1 = try pf1.find_paths(bn1);
     defer paths1.deinit();
 }
 

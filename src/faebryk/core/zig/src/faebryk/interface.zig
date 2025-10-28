@@ -95,7 +95,7 @@ pub const EdgeInterfaceConnection = struct {
         var pf = PathFinder.init(allocator);
         defer pf.deinit();
 
-        var paths = try pf.find_paths(source, null);
+        var paths = try pf.find_paths(source);
         defer paths.deinit();
 
         for (paths.paths.items, 0..) |path, i| {
@@ -113,7 +113,7 @@ pub const EdgeInterfaceConnection = struct {
         var pf = PathFinder.init(allocator);
         defer pf.deinit();
 
-        return try pf.find_paths(source, null);
+        return try pf.find_paths(source);
     }
 };
 
@@ -671,11 +671,9 @@ test "loooooong_chain" {
     // Start timer
     var timer = try std.time.Timer.start();
 
-    // Create pathfinder to access counters
-    var pf = PathFinder.init(g.allocator);
-    defer pf.deinit();
-    const paths = try pf.find_paths(nodes.items[0], &[_]graph.BoundNodeReference{nodes.items[chain_length - 1]});
-    defer paths.deinit();
+    // Test pathfinding from first to last node
+    var path = try EdgeInterfaceConnection.is_connected_to(g.allocator, nodes.items[0], nodes.items[chain_length - 1]);
+    defer path.deinit();
 
     // Stop timer
     const elapsed = timer.read();
@@ -683,20 +681,12 @@ test "loooooong_chain" {
     const elapsed_s = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(std.time.ns_per_s));
 
     std.debug.print("\nPathfinding completed!\n", .{});
-    std.debug.print("  Total paths explored: {}\n", .{pf.path_counter});
-    std.debug.print("  Valid paths found: {}\n", .{paths.paths.items.len});
+    std.debug.print("  Total paths explored: N/A (using is_connected_to)\n", .{});
+    std.debug.print("  Valid paths found: 1\n", .{});
     std.debug.print("  Time: {d:.3}s ({} ms)\n", .{ elapsed_s, elapsed_ms });
 
-    // Verify we found a path
-    var result = false;
-    for (paths.paths.items) |path| {
-        if (Node.is_same(path.get_last_node().?.node, nodes.items[chain_length - 1].node)) {
-            result = true;
-            break;
-        }
-    }
-
-    try std.testing.expect(paths.paths.items.len == 1);
+    // Verify we found a path to the correct target
+    try std.testing.expect(Node.is_same(path.get_last_node().?.node, nodes.items[chain_length - 1].node));
 }
 
 test "shallow_edges" {
