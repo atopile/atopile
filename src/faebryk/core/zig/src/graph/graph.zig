@@ -802,33 +802,31 @@ pub const GraphView = struct {
             g: *GraphView,
             current_path_via_conditional: bool,
 
-            fn should_skip_node(self: *@This(), node: NodeReference) bool {
+            fn valid_node_to_add_to_path(self: *@This(), node: NodeReference) bool {
                 // if node is contained in current path, we should not add to the path
                 if (self.current_path.contains(node)) {
-                    return true;
+                    return false;
                 }
 
                 if (self.visited_nodes.get(node)) |visit_info| {
                     // if node was visited via conditional, we should add to the path (we want to keep exploring)
                     if (visit_info.via_conditional) {
-                        return false;
+                        return true;
                     }
-                    return true;
+                    return false;
                 }
-                return false;
+
+                return true;
             }
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
                 const other_node = edge.edge.get_other_node(self.start_node.node);
-                const should_skip = self.should_skip_node(other_node);
 
-                if (should_skip) {
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                if (self.valid_node_to_add_to_path(other_node)) {
+                    const new_path = BFSPath.cloneAndExtend(self.current_path, self.start_node, edge.edge) catch @panic("OOM");
+                    self.open_path_queue.writeItem(new_path) catch @panic("OOM");
                 }
-
-                const new_path = BFSPath.cloneAndExtend(self.current_path, self.start_node, edge.edge) catch @panic("OOM");
-                self.open_path_queue.writeItem(new_path) catch @panic("OOM");
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
