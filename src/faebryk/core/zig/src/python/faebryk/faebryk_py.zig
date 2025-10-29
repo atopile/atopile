@@ -1121,7 +1121,7 @@ fn wrap_edge_interface_connection_is_connected_to() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            var paths = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
+            var path = faebryk.interface.EdgeInterfaceConnection.is_connected_to(
                 kwarg_obj.source.g.allocator,
                 kwarg_obj.source.*,
                 kwarg_obj.target.*,
@@ -1129,20 +1129,16 @@ fn wrap_edge_interface_connection_is_connected_to() type {
                 py.PyErr_SetString(py.PyExc_ValueError, "Failed to find paths");
                 return null;
             };
-            defer paths.deinit();
+            defer path.deinit();
 
-            // Convert paths to Python list
-            const list = py.PyList_New(@intCast(paths.paths.items.len));
+            // Currently surface path lengths as a simple list with one entry.
+            const list = py.PyList_New(1);
             if (list == null) return null;
 
-            for (paths.paths.items, 0..) |path, i| {
-                // For now, just return path length as an int
-                // TODO: wrap BFSPath properly
-                const path_len = py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
-                if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
-                    py.Py_DECREF(list.?);
-                    return null;
-                }
+            const path_len = py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
+            if (path_len == null or py.PyList_SetItem(list, 0, path_len) < 0) {
+                py.Py_DECREF(list.?);
+                return null;
             }
 
             return list;
