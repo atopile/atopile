@@ -403,6 +403,15 @@ pub const Edge = struct {
 pub const TraversedEdge = struct {
     edge: EdgeReference,
     forward: bool, // true if traversing source→target, false if target→source
+    // basically tracking if we traversed an edge in the same direction as the edge defined source/target
+
+    pub fn get_start_node(self: *const @This()) NodeReference {
+        return if (self.forward) self.edge.source else self.edge.target;
+    }
+
+    pub fn get_end_node(self: *const @This()) NodeReference {
+        return if (self.forward) self.edge.target else self.edge.source;
+    }
 };
 
 pub const BFSPath = struct {
@@ -477,24 +486,13 @@ pub const BFSPath = struct {
             return self.start_node;
         }
         const traversed_edge = self.traversed_edges.items[self.traversed_edges.items.len - 1];
-        const last_node = if (traversed_edge.forward) traversed_edge.edge.target else traversed_edge.edge.source;
+        const last_node = traversed_edge.get_end_node();
         return self.g.bind(last_node);
     }
 
     pub fn contains(self: *const @This(), node: NodeReference) bool {
-        // Check if start_node is in the path
-        if (Node.is_same(self.start_node.node, node)) {
-            return true;
-        }
-
-        // Check if any traversed edge touches the node by checking both edge endpoints
         for (self.traversed_edges.items) |traversed_edge| {
-            const edge_start = if (traversed_edge.forward) traversed_edge.edge.source else traversed_edge.edge.target;
-            if (Node.is_same(edge_start, node)) {
-                return true;
-            }
-            const edge_end = if (traversed_edge.forward) traversed_edge.edge.target else traversed_edge.edge.source;
-            if (Node.is_same(edge_end, node)) {
+            if (Node.is_same(traversed_edge.edge.source, node) or Node.is_same(traversed_edge.edge.target, node)) {
                 return true;
             }
         }

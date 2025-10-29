@@ -248,29 +248,29 @@ pub const PathFinder = struct {
         var depth: i32 = 0;
 
         // iterate through path
-        for (path.traversed_edges.items) |te| {
-            const e = te.edge;
-            const start = if (te.forward) e.source else e.target;
+        for (path.traversed_edges.items) |traversed_edge| {
+            const edge = traversed_edge.edge;
+            const start_node = traversed_edge.get_start_node();
 
             // hierarchical edge
-            if (EdgeComposition.is_instance(e)) {
+            if (EdgeComposition.is_instance(edge)) {
                 // determine traversal direction
                 var hierarchy_direction: HierarchyTraverseDirection = undefined;
-                if (Node.is_same(EdgeComposition.get_child_node(e), start)) {
+                if (Node.is_same(EdgeComposition.get_child_node(edge), start_node)) {
                     hierarchy_direction = .up;
                     depth += 1;
-                } else if (Node.is_same(EdgeComposition.get_parent_node(e), start)) {
+                } else if (Node.is_same(EdgeComposition.get_parent_node(edge), start_node)) {
                     hierarchy_direction = .down;
                     depth -= 1;
                 }
 
                 const hierarchy_element = HierarchyElement{
-                    .edge = e,
+                    .edge = edge,
                     .traverse_direction = hierarchy_direction,
-                    .parent_type_node = resolve_node_type(g, EdgeComposition.get_parent_node(e)) catch |err| {
+                    .parent_type_node = resolve_node_type(g, EdgeComposition.get_parent_node(edge)) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     },
-                    .child_type_node = resolve_node_type(g, EdgeComposition.get_child_node(e)) catch |err| {
+                    .child_type_node = resolve_node_type(g, EdgeComposition.get_child_node(edge)) catch |err| {
                         return visitor.VisitResult(void){ .ERROR = err };
                     },
                 };
@@ -287,8 +287,8 @@ pub const PathFinder = struct {
                 }
             }
 
-            if (EdgeInterfaceConnection.is_instance(e)) {
-                const shallow_edge = (e.attributes.dynamic.values.get(shallow) orelse continue).Bool;
+            if (EdgeInterfaceConnection.is_instance(edge)) {
+                const shallow_edge = (edge.attributes.dynamic.values.get(shallow) orelse continue).Bool;
                 if (shallow_edge and depth > 0) path.invalid_path = true;
             }
         }
