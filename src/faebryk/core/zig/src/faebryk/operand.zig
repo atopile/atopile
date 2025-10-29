@@ -91,6 +91,7 @@ pub const EdgeOperand = struct {
         return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
     }
 
+    //TODO not sure we want to advertise this, only in aliases interesting
     pub fn get_expression_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
         return Edge.get_single_edge(bound_node, tid, true);
     }
