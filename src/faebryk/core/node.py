@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, auto
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
@@ -1474,6 +1474,44 @@ class IsConstrained(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
 
+class IsExpression(Node):
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+    operands = Sequence.MakeChild()
+
+    @dataclass
+    class ReprStyle:
+        symbol: str | None = None
+
+        class Placement(Enum):
+            INFIX = auto()
+            """
+            A + B + C
+            """
+            INFIX_FIRST = auto()
+            """
+            A > (B, C)
+            """
+            PREFIX = auto()
+            """
+            ¬A
+            """
+            POSTFIX = auto()
+            """
+            A!
+            """
+            EMBRACE = auto()
+            """
+            |A|
+            """
+
+        placement: Placement = Placement.INFIX
+
+    @classmethod
+    def MakeChild(cls, symbol: str) -> ChildField[Any]:
+        out = ChildField(cls)
+        return out
+
+
 @dataclass(frozen=True)
 class LiteralNodeAttributes(NodeAttributes):
     value: Literal
@@ -1877,7 +1915,7 @@ def test_manual_resistor_def():
 
     # Electrical make child
     p1 = EdgeComposition.get_child_by_identifier(
-        node=resistor_instance.instance, child_identifier="unnamed[0]"
+        bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
     )
     assert p1 is not None
     p1_fab = resistor_instance.unnamed[0].get()
@@ -1886,7 +1924,7 @@ def test_manual_resistor_def():
 
     # unconstrained Parameter make child
     resistance = EdgeComposition.get_child_by_identifier(
-        node=resistor_instance.instance, child_identifier="resistance"
+        bound_node=resistor_instance.instance, child_identifier="resistance"
     )
     assert resistance is not None
     print(
@@ -1900,13 +1938,13 @@ def test_manual_resistor_def():
     # Constrained parameter type child
     designator_prefix = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
             child_identifier="designator_prefix",
         )
     )
     prefix_param = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=designator_prefix,
+            bound_node=designator_prefix,
             child_identifier="prefix_param",
         )
     )
@@ -1931,7 +1969,7 @@ def test_manual_resistor_def():
     # Constrained trait with type child parameters to be constrained to literals
     usage_example = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
             child_identifier="usage_example",
         )
     )
@@ -1962,13 +2000,13 @@ def test_manual_resistor_def():
     # Is pickable by type
     ipbt = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=resistor_instance.instance,
+            bound_node=resistor_instance.instance,
             child_identifier="is_pickable_by_type",
         )
     )
     ipbt_params = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=ipbt,
+            bound_node=ipbt,
             child_identifier="params_",
         )
     )
@@ -1992,13 +2030,13 @@ def test_manual_resistor_def():
 
     ipbt_endpoint = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=ipbt,
+            bound_node=ipbt,
             child_identifier="endpoint_",
         )
     )
     alias_is_bnode = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=resistor_instance.instance,
+            bound_node=resistor_instance.instance,
             child_identifier="aliasis-is_pickable_by_type-endpoint_",
         )
     )
@@ -2020,7 +2058,7 @@ def test_manual_resistor_def():
 
     literal_ipbt_endpoint = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=resistor_instance.instance,
+            bound_node=resistor_instance.instance,
             child_identifier="literal-is_pickable_by_type-endpoint_",
         )
     )
