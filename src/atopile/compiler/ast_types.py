@@ -366,6 +366,11 @@ class File(fabll.Node):
 
 
 class BlockDefinition(fabll.Node):
+    class BlockType(StrEnum):
+        MODULE = "module"
+        COMPONENT = "component"
+        INTERFACE = "interface"
+
     source = SourceChunk.MakeChild()
     block_type = fabll.Parameter.MakeChild()  # TODO: enum domain
     type_ref = TypeRef.MakeChild()
@@ -397,6 +402,9 @@ class BlockDefinition(fabll.Node):
         self.scope.get().setup(g=g, stmts=stmts)
 
         return self
+
+    def get_block_type(self) -> BlockType:
+        return self.BlockType(self.block_type.get().try_extract_constrained_literal())
 
 
 @dataclass(frozen=True)

@@ -13,22 +13,24 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from antlr4 import ParserRuleContext
 from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
+import faebryk.core.node as fabll
 from atopile.compiler.graph_mock import BoundNode
 from atopile.compiler.parse import parse_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.node import Node
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.library.Expressions import Is
 from faebryk.libs.util import cast_assert, not_none
 
 
@@ -46,7 +48,7 @@ class ANTLRVisitor(AtoParserVisitor):
         self._type_graph = type_graph
         self._file_path = file_path
 
-    def _new[T: Node](self, type: type[T]) -> T:
+    def _new[T: fabll.Node](self, type: type[T]) -> T:
         return type.bind_typegraph(self._type_graph).create_instance(g=self._graph)
 
     def _extract_source_info(self, ctx: ParserRuleContext) -> AST.SourceInfo:
@@ -1191,8 +1193,49 @@ class _TypeContextStack:
             type_node=type_node,
             lhs_reference_node=lhs_reference_node.node(),
             rhs_reference_node=rhs_reference_node.node(),
-            edge_attributes=EdgeInterfaceConnection.build(),
+            edge_attributes=EdgeInterfaceConnection.build(shallow=False),
         )
+
+
+class BlockType(StrEnum):
+    MODULE = "module"
+    COMPONENT = "component"
+    INTERFACE = "interface"
+
+
+class is_ato_block(fabll.Node):
+    """
+    Indicates type origin and originating block type (module, component, interface)
+    """
+
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    block_type = fabll.Parameter.MakeChild()  # TODO: enum domain
+
+    @classmethod
+    def MakeChild_Module(cls) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            Is.MakeChild_ConstrainToLiteral(
+                ref=[out, cls.block_type], value=BlockType.MODULE
+            )
+        )
+        return out
+
+    @classmethod
+    def MakeChild_Component(cls) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            Is.MakeChild_ConstrainToLiteral([out, cls.block_type], BlockType.COMPONENT)
+        )
+        return out
+
+    @classmethod
+    def MakeChild_Interface(cls) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            Is.MakeChild_ConstrainToLiteral([out, cls.block_type], BlockType.INTERFACE)
+        )
+        return out
 
 
 class ASTVisitor:
@@ -1279,7 +1322,7 @@ class ASTVisitor:
         self.visit(self._ast_root)
         return self._state
 
-    def visit(self, node: Node):
+    def visit(self, node: fabll.Node):
         # TODO: less magic dispatch
 
         node_type = cast_assert(str, node.get_type_name())
@@ -1351,31 +1394,49 @@ class ASTVisitor:
         )
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
-        match node.block_type.get().try_extract_constrained_literal():
-            # TODO: enum
-            case "module":
-                # TODO: attach "is_module" trait
-                module_name = cast_assert(
-                    str,
-                    node.type_ref.get().name.get().try_extract_constrained_literal(),
-                )
+        module_name = cast_assert(
+            str,
+            node.type_ref.get().name.get().try_extract_constrained_literal(),
+        )
 
-                type_node = self._type_graph.add_type(
-                    identifier=cast_assert(str, module_name)
-                )
-                self._state.type_roots[module_name] = type_node
+        match node.get_block_type():
+            case AST.BlockDefinition.BlockType.MODULE:
 
-                with self._scope_stack.enter():
-                    with self._type_stack.enter(type_node):
-                        for stmt in node.scope.get().stmts.get().as_list():
-                            self._type_stack.apply_action(self.visit(stmt))
+                class _Module(fabll.Node):
+                    is_ato_block = (
+                        is_ato_block.MakeChild_Module()
+                    )  # TODO: link from other typegraph
 
-                self._scope_stack.add_symbol(
-                    GenTypeGraphIR.Symbol(name=module_name, type_node=type_node)
-                )
+                _Block = _Module
 
-            case other_kind:
-                raise NotImplementedError(f"Block kind not supported: {other_kind}")
+            case AST.BlockDefinition.BlockType.COMPONENT:
+
+                class _Component(fabll.Node):
+                    is_ato_block = is_ato_block.MakeChild_Component()
+
+                _Block = _Component
+
+            case AST.BlockDefinition.BlockType.INTERFACE:
+
+                class _Interface(fabll.Node):
+                    is_ato_block = is_ato_block.MakeChild_Interface()
+
+                _Block = _Interface
+
+        _Block.__name__ = module_name
+        _Block.__qualname__ = module_name
+
+        type_node = _Block.bind_typegraph(self._type_graph).get_or_create_type()
+        self._state.type_roots[module_name] = type_node
+
+        with self._scope_stack.enter():
+            with self._type_stack.enter(type_node):
+                for stmt in node.scope.get().stmts.get().as_list():
+                    self._type_stack.apply_action(self.visit(stmt))
+
+        self._scope_stack.add_symbol(
+            GenTypeGraphIR.Symbol(name=module_name, type_node=type_node)
+        )
 
     def visit_PassStmt(self, node: AST.PassStmt):
         pass
