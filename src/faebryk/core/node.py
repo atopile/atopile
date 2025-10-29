@@ -15,12 +15,11 @@ from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, GraphView
+from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
 from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
-    cast_assert,
     dataclass_as_kwargs,
     not_none,
     zip_dicts_by_key,
@@ -1161,141 +1160,6 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
 
 
 # ------------------------------------------------------------
-# TODO move parameter stuff into own file (better into zig)
-
-
-class Parameter(Node):
-    # TODO consider making a NumericParameter
-    domain = ChildField(Node)
-
-    def constrain_to_literal(self, g: GraphView, value: LiteralT) -> None:
-        node = self.instance
-        tg = not_none(TypeGraph.of_instance(instance_node=node))
-        lit = LiteralNode.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=LiteralNodeAttributes(value=value)
-        )
-
-        ExpressionAliasIs.alias_is(tg=tg, g=g, operands=[node, lit.instance])
-
-    @classmethod
-    def MakeChild_Numeric(cls, unit: type[Node[Any]]) -> ChildField[Any]:
-        out = ChildField(Parameter)
-        unit_instance = ChildField(unit, identifier=None)
-        out.add_dependant(unit_instance)
-        out.add_dependant(
-            EdgeField(
-                [out],
-                [unit_instance],
-                edge=EdgePointer.build(identifier="unit", order=None),
-            )
-        )
-        return out
-
-    def try_extract_constrained_literal(self) -> LiteralT | None:
-        # TODO: solver? `only_proven=True` parameter?
-        node = self.instance
-
-        if (
-            inbound_expr_edge := EdgeOperand.get_expression_edge(bound_node=node)
-        ) is None:
-            return None
-
-        expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
-
-        class Ctx:
-            lit: LiteralNode | None = None
-
-        def visit(ctx: type[Ctx], edge: BoundEdge) -> None:
-            operand = Node[Any].bind_instance(edge.g().bind(node=edge.edge().target()))
-            tg = not_none(TypeGraph.of_instance(instance_node=operand.instance))
-            if LiteralNode.bind_typegraph(tg=tg).isinstance(instance=operand):
-                ctx.lit = LiteralNode.bind_instance(operand.instance)
-
-        EdgeOperand.visit_operand_edges(bound_node=expr, ctx=Ctx, f=visit)
-
-        if Ctx.lit is None:
-            return None
-        return LiteralNode.Attributes.of(node=Ctx.lit.instance).value
-
-    def force_extract_literal[T: LiteralT](self, t: type[T]) -> T:
-        lit = self.try_extract_constrained_literal()
-        if lit is None:
-            raise FabLLException(f"Parameter {self} has no literal")
-        if not isinstance(lit, t):
-            raise FabLLException(f"Parameter {self} has no literal of type {t}")
-        return lit
-
-
-class Units:
-    class Ampere(Node):
-        pass
-
-    class Ohm(Node):
-        pass
-
-    class Volt(Node):
-        pass
-
-    class Watt(Node):
-        pass
-
-
-@dataclass(frozen=True)
-class LiteralNodeAttributes(NodeAttributes):
-    value: Literal
-
-
-class LiteralNode(Node[LiteralNodeAttributes]):
-    Attributes = LiteralNodeAttributes
-
-
-@dataclass(frozen=True)
-class ExpressionAliasIsAttributes(NodeAttributes):
-    constrained: bool  # TODO: principled reason for this not being a Parameter
-
-
-class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
-    Attributes = ExpressionAliasIsAttributes
-
-    @classmethod
-    def alias_is(
-        cls, tg: TypeGraph, g: GraphView, operands: list[BoundNode]
-    ) -> BoundNode:
-        expr = cls.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=cls.Attributes(constrained=True)
-        )
-        for operand in operands:
-            EdgeOperand.add_operand(
-                bound_node=expr.instance,
-                operand=operand.node(),
-                operand_identifier=None,
-            )
-        return expr.instance
-
-    @classmethod
-    def MakeChild_ToLiteral(
-        cls,
-        ref: list[str | ChildField[Any]],
-        value: LiteralT,
-    ) -> ChildField[Any]:
-        alias = ChildField(
-            ExpressionAliasIs, attributes=ExpressionAliasIsAttributes(constrained=True)
-        )
-        lit = ChildField(
-            LiteralNode,
-            attributes=LiteralNodeAttributes(value=value),
-        )
-        alias_edge = EdgeField(
-            ref,
-            [lit],
-            edge=EdgeOperand.build(operand_identifier=None),
-        )
-        alias.add_dependant(alias_edge)
-        alias.add_dependant(lit)
-        return alias
-
-
-# ------------------------------------------------------------
 class Sequence(Node):
     """
     A sequence of (non-unique) elements.
@@ -1426,6 +1290,120 @@ class is_interface(Node):
         raise NotImplementedError()
 
 
+# ------------------------------------------------------------
+# TODO move parameter stuff into own file (better into zig)
+
+
+class Parameter(Node):
+    # TODO consider making a NumericParameter
+    domain = ChildField(Node)
+
+    def constrain_to_literal(self, g: GraphView, value: LiteralT) -> None:
+        node = self.instance
+        tg = not_none(TypeGraph.of_instance(instance_node=node))
+        lit = LiteralNode.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=LiteralNodeAttributes(value=value)
+        )
+        from faebryk.library.Expressions import Is
+
+        Is.constrain_is(tg=tg, g=g, operands=[node, lit.instance])
+
+    @classmethod
+    def MakeChild_Numeric(cls, unit: type[Node[Any]]) -> ChildField[Any]:
+        out = ChildField(Parameter)
+        unit_instance = ChildField(unit, identifier=None)
+        out.add_dependant(unit_instance)
+        out.add_dependant(
+            EdgeField(
+                [out],
+                [unit_instance],
+                edge=EdgePointer.build(identifier="unit", order=None),
+            )
+        )
+        return out
+
+    def try_extract_constrained_literal(self) -> LiteralT | None:
+        # TODO: solver? `only_proven=True` parameter?
+        node = self.instance
+
+        if (
+            inbound_expr_edge := EdgeOperand.get_expression_edge(bound_node=node)
+        ) is None:
+            return None
+
+        expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
+
+        class Ctx:
+            lit: LiteralNode | None = None
+
+        def visit(ctx: type[Ctx], edge: BoundEdge) -> None:
+            operand = Node[Any].bind_instance(edge.g().bind(node=edge.edge().target()))
+            tg = not_none(TypeGraph.of_instance(instance_node=operand.instance))
+            if LiteralNode.bind_typegraph(tg=tg).isinstance(instance=operand):
+                ctx.lit = LiteralNode.bind_instance(operand.instance)
+
+        EdgeOperand.visit_operand_edges(bound_node=expr, ctx=Ctx, f=visit)
+
+        if Ctx.lit is None:
+            return None
+        return LiteralNode.Attributes.of(node=Ctx.lit.instance).value
+
+    def force_extract_literal[T: LiteralT](self, t: type[T]) -> T:
+        lit = self.try_extract_constrained_literal()
+        if lit is None:
+            raise FabLLException(f"Parameter {self} has no literal")
+        if not isinstance(lit, t):
+            raise FabLLException(f"Parameter {self} has no literal of type {t}")
+        return lit
+
+
+class IsConstrainable(Node):
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+
+
+class IsConstrained(Node):
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+
+
+@dataclass(frozen=True)
+class LiteralNodeAttributes(NodeAttributes):
+    value: Literal
+
+
+class LiteralNode(Node[LiteralNodeAttributes]):
+    Attributes = LiteralNodeAttributes
+
+
+class IsBaseUnit(Node):
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+    symbol = Parameter.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, symbol: str) -> ChildField[Any]:
+        out = ChildField(cls)
+        out.add_dependant(
+            EdgeField(
+                [out],
+                [symbol],
+                edge=EdgePointer.build(identifier=None, order=None),
+            )
+        )
+        return out
+
+
+class IsUnit(Node):
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+    base_unit = ChildField(Node)
+
+    @classmethod
+    def MakeChild(
+        cls, symbol: str, base_units: list[tuple[type[Node[Any]], int]]
+    ) -> ChildField[Any]:
+        out = ChildField(cls)
+        # TODO
+        return out
+
+
 # --------------------------------------------------------------------------------------
 # TODO remove
 # re-export GraphView to be used from fabll namespace
@@ -1448,7 +1426,6 @@ RelaxedQuantity = None
 Expressions = None
 Domains = None
 Predicates = None
-
 
 # --------------------------------------------------------------------------------------
 

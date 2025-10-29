@@ -3,6 +3,7 @@ from enum import StrEnum
 from typing import Any
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +23,9 @@ class has_usage_example(fabll.Node):
     def MakeChild(cls, example: str, language: Language) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.example], example)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.example], example)
         )
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.language], language)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.language], language)
         )
         return out

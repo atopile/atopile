@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
-from typing import Any
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 
@@ -53,7 +53,9 @@ class is_pickable_by_type(fabll.Node):
     def MakeChild(cls, endpoint: str, params: dict[str, fabll.ChildField]):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.endpoint_], endpoint)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.endpoint_], endpoint
+            )
         )
         for param_name, param_ref in params.items():
             field = fabll.EdgeField(

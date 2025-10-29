@@ -15,6 +15,8 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
+import faebryk.library.Expressions as Expressions
+import faebryk.library.Units as Units
 # from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_usage_example import has_usage_example
 # from faebryk.library.can_bridge_defined import can_bridge_defined

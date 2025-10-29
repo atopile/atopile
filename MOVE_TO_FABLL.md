@@ -31,6 +31,9 @@
 - [ ] GraphInterface
 - [ ] CNode
 
+- [ ] Move all faebryk pyis into faebryk.pyi
+- [ ] Figure out how to convert ChildField to instance
+
 ##
 
 - node.get_children
