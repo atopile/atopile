@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
 class has_designator_prefix(fabll.Node):
@@ -232,7 +233,9 @@ class has_designator_prefix(fabll.Node):
     def MakeChild(cls, value: Prefix) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.prefix_param], value)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.prefix_param], value
+            )
         )
         return out
 

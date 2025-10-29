@@ -559,7 +559,6 @@ pub const TypeGraph = struct {
                 // 2.4) Copy node attributes from MakeChild node to child instance
                 var node_attributes = MakeChildNode.Attributes.of(make_child).get_node_attributes();
                 if (node_attributes.dynamic) |d| {
-                    std.debug.print("copied dynamic attributes to child: {any}\n", .{d});
                     d.copy_into(&child.node.attributes.dynamic);
                     node_attributes.dynamic.?.deinit();
                 }
