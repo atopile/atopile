@@ -70,137 +70,45 @@
   - Copies formatted `.pyi` outputs from `zig-out/lib/*.pyi` into this folder.
 - Manual: `zig build python-ext -Doptimize=ReleaseSafe -Dpython-include=... [-Dpython-lib=... -Dpython-lib-dir=...]`.
 
-## Memory Management
+## Memory and lifetimes
 
-### Zig-Python Memory Model
-- Parser duplicates token text into allocator-owned memory
-- Python `loads()` duplicates input strings to keep pointers valid after returning to Python
-- File wrappers have `free(allocator)`; Python wrappers retain data for process lifetime
-- Two construction patterns: `zig::loads()` (Zig owns) vs generated constructors (Python owns)
+- The parser duplicates token text; higher‑level `loads` for Python duplicates the input string into the C allocator to keep pointers valid after returning to Python.
+- File wrappers have `free(allocator)`; Python wrappers currently retain data for process lifetime unless explicitly freed from Zig. Avoid holding onto many large parsed files at once.
 
-### Critical: Defer Ordering
-**Zig `defer` executes LIFO (Last In, First Out)** — containers must be cleaned up before their children:
+Currently two ways of constructing structured sexp objects (e.g pcb).
+
+- zig::loads:
+  - zig will allocate and own memory for the structs
+  - if python gets an object it will run through obj prop which will allocate a pyobj wrapper that contains a pointer to the zig struct
+- generated python constructor
+  - since we generate a constructor for each struct (generated_init), python will allocate the memory the pyobj wrapper, onto which we then allocate a new zig struct and store the pointer in the pyobj wrapper
+
+### Defer and cleanup ordering (critical!)
+
+**Zig's `defer` statements execute in LIFO (Last In, First Out) order** — like a stack, the last defer added runs first.
+
+This matters when you have dependencies between resources:
 
 ```zig
 var graph = GraphView.init(allocator);
 const node1 = try Node.init(allocator);
 defer _ = node1.deinit() catch {};  // Runs 2nd
-defer graph.deinit();               // Runs 1st ← Graph cleanup BEFORE nodes
+const node2 = try Node.init(allocator);
+defer _ = node2.deinit() catch {};  // Runs 3rd
+defer graph.deinit();               // Runs 1st ← MUST clean up graph BEFORE nodes
 ```
 
-**Rule:** Place `defer` for parents **after** children are created, so cleanup happens in reverse dependency order.
+**Why:** If nodes are inserted into the graph, the graph holds references to them. You must:
+1. Clean up the parent/container first (releases references)
+2. Then clean up the children/contained objects
 
-### Ownership & Shallow Copies
-Zig performs shallow copies (bitwise copy of struct fields, not heap data). For `ArrayList`-like structs:
-- Only metadata (~24 bytes) is copied
-- Both copies point to same heap allocation
-- **Single deinit rule:** Only one owner calls `.deinit()`
-- Use `var mutable = param` to get mutable binding for cleanup
+**Wrong order causes memory leaks** because child `.deinit()` will fail with `error.InUse` when the reference count is still > 0.
 
-**BFS Example:**
-```zig
-var path = queue.orderedRemove(0);  // Ownership transfer
-visitor_fn(ctx, path);              // Another shallow copy
-if (!keep_path) {
-    var mutable = path;             // Need mutable for deinit
-    mutable.deinit();
-}
-```
-
-## Graph Pathfinder
-
-The pathfinder implements a filtered BFS algorithm to find valid connection paths through the component hierarchy graph.
-
-### Graph Structure
-- **`EdgeComposition`** — Parent/child hierarchy relationships (Module contains Interfaces)
-- **`EdgeInterfaceConnection`** — Electrical/logical connections between interfaces
-- **Directions**: UP (child→parent), DOWN (parent→child), HORIZONTAL (interface connections)
-
-### Path Filters
-1. **`count_paths`** — Safety limits (stops at 1M paths)
-2. **`filter_only_end_nodes`** — Only keep paths ending at target nodes
-3. **`filter_path_by_edge_type`** — Require paths to start and end on composition or interface connection edges
-4. **`filter_siblings`** — Reject child→parent→child through same parent (sibling jumps)
-5. **`filter_hierarchy_stack`** — **Critical filter** ensuring valid hierarchy traversal
-
-### Hierarchy Rules
-
-**Rule 1: Balanced traversal** — Paths must return to start hierarchy level
-- DOWN (parent→child): Push onto stack
-- UP (child→parent): Pop matching element from stack
-- Valid: Stack empty at end
-
-**Rule 2: No descent before ascent** — Cannot descend from starting level
-- Empty stack + DOWN edge → **Reject immediately**
-
-**Rule 3: Shallow link restrictions** — Shallow links only accessible from same/higher level
-- Track depth: starts at 0, UP+1, DOWN-1
-- Shallow link at depth > 0 → **Reject** (starting node is lower than link)
-
-**Example:**
-```
-Parent (EP_1)          AnotherParent (EP_2)
-  ├─ Child (LV_1)        ├─ Child (LV_2)  
-  └─ Child (HV_1)        └─ Child (HV_2)
-```
-
-✅ Valid: `LV_1 → EP_1 → EP_2 → LV_2` (UP then DOWN)  
-❌ Invalid: `EP_1 → LV_1` (DOWN from start)  
-❌ Invalid: `LV_1 → LV_2` without UP first
-
-**Key insight:** Valid connections go "up-then-across-then-down" through hierarchy. Shallow links prevent child components from accessing parent-level connections they shouldn't see.
-
-### Conditional Edge System
-
-Allows certain paths to be marked as "weak" and overridden by "strong" paths, enabling direct connections to take precedence over sibling connections.
-
-#### Core Concepts
-
-**1. Path Tracking** — Paths remember if they use conditional edges:
-```zig
-pub const BFSPath = struct {
-    via_conditional: bool = false,  // Uses conditional edges?
-};
-```
-
-**2. Smart Visited Tracking** — Nodes remember HOW they were reached:
-```zig
-pub const VisitInfo = struct {
-    via_conditional: bool,  // Previously visited via conditional path?
-};
-```
-
-**3. Override Logic** — Strong paths can override weak paths:
-```zig
-// Can revisit if: previous=conditional AND current=non-conditional
-const can_revisit = visit_info.via_conditional and !self.current_path_via_conditional;
-return !can_revisit; // Skip if we can't revisit
-```
-
-**4. Cycle Detection** — Prevents infinite loops:
-```zig
-// Never revisit nodes already in current path
-for (self.current_path.path.edges.items) |path_edge| {
-    if (Node.is_same(path_edge.source, other_node.?) or Node.is_same(path_edge.target, other_node.?)) {
-        return SKIP; // Would create cycle
-    }
-}
-```
-
-#### Use Cases
-
-- **Sibling vs Direct**: `A → Parent → B` (conditional) vs `A → B` (non-conditional) → Direct wins
-- **Shallow Links**: Regular connections override shallow connections when both available  
-- **Extensible**: Add new edge attributes (`"conditional"`, `"weak"`, `"temporary"`) with same override logic
-
-#### Implementation
-- **Memory**: `VisitInfo` in `NodeRefMap.T(VisitInfo)` for O(1) lookup
-- **Performance**: Minimal overhead (one boolean per path)
-- **Debugging**: Set `DEBUG = true` in `graph.zig` and `pathfinder.zig` for detailed BFS output
+**Rule of thumb:** Place `defer` for containers/parents **after** all their children are created, so cleanup happens in reverse dependency order.
 
 ## Relation to Python fileformats
 
-- `src/faebryk/libs/kicad/fileformats.py` defines Python dataclasses for KiCad JSON artifacts (e.g., DRC reports, project files). The Zig layer targets KiCad's S‑expression text formats and is accessed from Python via `faebryk.core.zig`.
+- `src/faebryk/libs/kicad/fileformats.py` defines Python dataclasses for KiCad JSON artifacts (e.g., DRC reports, project files). The Zig layer targets KiCad’s S‑expression text formats and is accessed from Python via `faebryk.core.zig`.
 
 ## Developing and tests
 
