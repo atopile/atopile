@@ -25,6 +25,7 @@ from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import Node
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
@@ -1058,9 +1059,14 @@ class GenTypeGraphIR:
         symbol: GenTypeGraphIR.Symbol
 
     @dataclass(frozen=True)
-    class AddChildAction:
+    class AddMakeChildAction:
         target_name: str
         child_spec: GenTypeGraphIR.NewChildSpec
+
+    @dataclass(frozen=True)
+    class AddMakeLinkAction:
+        lhs_ref: GenTypeGraphIR.Field
+        rhs_ref: GenTypeGraphIR.Field
 
     @dataclass
     class ScopeState:
@@ -1267,7 +1273,7 @@ class ASTVisitor:
 
         def handle_statement(stmt: Node, type_node: BoundNode) -> None:
             match maybe_spec := self.visit(stmt):
-                case GenTypeGraphIR.AddChildAction() as action:
+                case GenTypeGraphIR.AddMakeChildAction() as action:
                     make_child = self._type_graph.add_make_child(
                         type_node=type_node,
                         child_type_identifier=action.child_spec.symbol.name,
@@ -1299,6 +1305,21 @@ class ASTVisitor:
                         target_type_node=target,
                     )
 
+                case GenTypeGraphIR.AddMakeLinkAction() as action:
+                    lhs_reference_node = self._type_graph.add_reference(
+                        type_node=type_node,
+                        path=[action.lhs_ref.name],
+                    )
+                    rhs_reference_node = self._type_graph.add_reference(
+                        type_node=type_node,
+                        path=[action.rhs_ref.name],
+                    )
+                    self._type_graph.add_make_link(
+                        type_node=type_node,
+                        lhs_reference_node=lhs_reference_node.node(),
+                        rhs_reference_node=rhs_reference_node.node(),
+                        edge_attributes=EdgeInterfaceConnection.build(),
+                    )
                 case None:
                     pass
                 case _:
@@ -1338,13 +1359,8 @@ class ASTVisitor:
         # TODO: add docstring trait to preceding node
         pass
 
-    def visit_Assignment(self, node: AST.Assignment):
-        # TODO: handle nested field refs
-        # TODO: check if field ref chain head can be followed to a type node
-        # TODO: handle pin suffix
-        # TODO: handle keys in chain
-
-        target_parts = node.target.get().parts.get().as_list()
+    def visit_FieldRef(self, node: AST.FieldRef):
+        target_parts = node.parts.get().as_list()
 
         if len(target_parts) != 1:
             raise NotImplementedError(
@@ -1356,11 +1372,22 @@ class ASTVisitor:
             str, target_part.name.get().try_extract_constrained_literal()
         )
 
+        return target_name
+
+    def visit_Assignment(self, node: AST.Assignment):
+        # TODO: handle nested field refs
+        # TODO: check if field ref chain head can be followed to a type node
+        # TODO: handle pin suffix
+        # TODO: handle keys in chain
+
+        target_node = node.target.get()
+
+        target_name = self.visit_FieldRef(target_node)
         assignable = self.visit(node.assignable.get().get_value())
-        action: GenTypeGraphIR.AddChildAction | None = None
+        action: GenTypeGraphIR.AddMakeChildAction | None = None
 
         if isinstance(assignable, GenTypeGraphIR.NewChildSpec):
-            action = GenTypeGraphIR.AddChildAction(
+            action = GenTypeGraphIR.AddMakeChildAction(
                 target_name=target_name, child_spec=assignable
             )
 
@@ -1382,6 +1409,26 @@ class ASTVisitor:
 
         # TODO: handle template args
         # TODO: handle creating sequence
+
+    def visit_ConnectStmt(self, node: AST.ConnectStmt):
+        # TODO: handle connectables other than field refs
+        # TODO: handle non-local field refs
+
+        lhs, rhs = node.get_lhs(), node.get_rhs()
+
+        # TODO
+        if not isinstance(lhs, AST.FieldRef):
+            raise NotImplementedError(f"Unhandled connectable type: {type(lhs)}")
+        if not isinstance(rhs, AST.FieldRef):
+            raise NotImplementedError(f"Unhandled connectable type: {type(rhs)}")
+
+        lhs_name = self.visit_FieldRef(lhs)
+        rhs_name = self.visit_FieldRef(rhs)
+
+        return GenTypeGraphIR.AddMakeLinkAction(
+            lhs_ref=GenTypeGraphIR.Field(name=lhs_name),
+            rhs_ref=GenTypeGraphIR.Field(name=rhs_name),
+        )
 
 
 @dataclass

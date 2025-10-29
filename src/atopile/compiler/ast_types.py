@@ -685,11 +685,22 @@ class ConnectStmt(fabll.Node):
         self.rhs.get().setup(g=g, value=rhs)
         return self
 
+    def _get_operand(self, node: fabll.Node) -> "ConnectableT":
+        match node_type := fabll.Node.get_type_name(node):
+            case FieldRef.__name__:
+                return FieldRef.bind_instance(node.instance)
+            case SignaldefStmt.__name__:
+                return SignaldefStmt.bind_instance(node.instance)
+            case PinDeclaration.__name__:
+                return PinDeclaration.bind_instance(node.instance)
+            case _:
+                raise ValueError(f"Expected ConnectableT, got {node_type}")
+
     def get_lhs(self) -> "ConnectableT":
-        return self.lhs.get().get_value()
+        return self._get_operand(self.lhs.get().get_value())
 
     def get_rhs(self) -> "ConnectableT":
-        return self.rhs.get().get_value()
+        return self._get_operand(self.rhs.get().get_value())
 
 
 class DirectedConnectStmt(fabll.Node):

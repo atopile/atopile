@@ -5,6 +5,7 @@ import faebryk.core.node as fabll
 from atopile.compiler.ast_graph import build_file, link_imports
 from atopile.compiler.graph_mock import BoundNode, NodeHelpers
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView
 
 RENDER_SOURCE_CHUNKS = False
@@ -59,13 +60,38 @@ def typegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
     return f"{edge_label}: {type_name}{attrs_text}"
 
 
-def instancegraph_renderer(inbound_edge: BoundEdge | None, node: BoundNode) -> str:
+def instancegraph_renderer(
+    inbound_edge: BoundEdge | None, node: BoundNode, root: fabll.Node
+) -> str:
     edge_label = (
         EdgeComposition.get_name(edge=inbound_edge.edge()) if inbound_edge else None
     ) or "<anonymous>"
 
     type_name = fabll.Node.bind_instance(node).get_type_name()
-    return f".{edge_label}: {type_name}"
+
+    interface_edges: list[BoundEdge] = []
+    node.visit_edges_of_type(
+        edge_type=EdgeInterfaceConnection.get_tid(),
+        ctx=interface_edges,
+        f=lambda ctx, bound_edge: ctx.append(bound_edge),
+    )
+
+    extras = []
+    for bound_edge in interface_edges:
+        if bound_edge.edge().source().is_same(other=node.node()):
+            partner_ref = bound_edge.edge().target()
+        elif bound_edge.edge().target().is_same(other=node.node()):
+            partner_ref = bound_edge.edge().source()
+        else:
+            continue
+
+        partner_node = fabll.Node.bind_instance(bound_edge.g().bind(node=partner_ref))
+        # TODO: also directed
+        extras.append(f"~ {partner_node.relative_address(root=root)}")
+
+    extras_text = " (" + ", ".join(extras) + ")" if extras else ""
+
+    return f".{edge_label}: {type_name}{extras_text}"
 
 
 if __name__ == "__main__":
@@ -98,4 +124,9 @@ if __name__ == "__main__":
 
     _section("Instance Graph")
     app = result.state.type_graph.instantiate_node(type_node=app_type, attributes={})
-    NodeHelpers.print_tree(app, renderer=instancegraph_renderer)
+    NodeHelpers.print_tree(
+        app,
+        renderer=lambda inbound_edge, node: instancegraph_renderer(
+            inbound_edge, node, root=fabll.Node.bind_instance(app)
+        ),
+    )
