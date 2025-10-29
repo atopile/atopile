@@ -58,18 +58,15 @@ class NodeNoParent(NodeException):
 # Child Definitions --------------------------------------------------------------------
 
 
-class PLACEHOLDER: ...
+class PLACEHOLDER:
+    def __repr__(self) -> str:
+        return "<PLACEHOLDER>"
 
 
 class Field:
     def __init__(self, identifier: str | None | PLACEHOLDER = PLACEHOLDER()):
         self.identifier = identifier
         self.locator: str | None | PLACEHOLDER = PLACEHOLDER()
-
-    def _set_identifier_if_placeholder(self, identifier: str | None) -> None:
-        if not isinstance(self.identifier, PLACEHOLDER):
-            return
-        self.identifier = identifier
 
     def get_identifier(self) -> str | None:
         if isinstance(self.identifier, PLACEHOLDER):
@@ -87,6 +84,12 @@ class Field:
         self.locator = locator
         if isinstance(self.identifier, PLACEHOLDER):
             self.identifier = locator
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(identifier={self.identifier},"
+            f" locator={self.locator})"
+        )
 
 
 class ChildAccessor[T: Node[Any]](Protocol):
@@ -297,15 +300,19 @@ class EdgeField(Field):
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
     ):
         super().__init__(identifier=identifier)
+        for arg in [lhs, rhs]:
+            for r in arg:
+                if not isinstance(r, (ChildField, str)):
+                    raise FabLLException(
+                        f"Only ChildFields and strings are allowed, got {type(r)}"
+                    )
         self.lhs = lhs
         self.rhs = rhs
         self.edge = edge
 
     def _resolve_path(self, path: RefPath) -> list[str]:
         # TODO dont think we can assert here, raise FabLLException
-        return [
-            not_none(cast_assert(ChildField, field).get_identifier()) for field in path
-        ]
+        return [not_none(cast(ChildField, field).get_identifier()) for field in path]
 
     def lhs_resolved(self) -> list[str]:
         return self._resolve_path(self.lhs)
@@ -321,14 +328,14 @@ class ListField(Field, list[Field]):
         *,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
     ):
-        list.__init__(self, *fields)
+        list.__init__(self, fields)
         Field.__init__(self, identifier=identifier)
 
     def get_fields(self) -> list[Field]:
-        identifier = self.get_identifier()
+        locator = self.get_locator()
         for i, f in enumerate(self):
-            f_id = f"{identifier}[{i}]" if identifier is not None else None
-            f._set_identifier_if_placeholder(identifier=f_id)
+            f_id = f"{locator}[{i}]" if locator is not None else None
+            f._set_locator(locator=f_id)
         return self
 
 
@@ -379,7 +386,7 @@ class NodeAttributes:
 
 class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     Attributes = NodeAttributes
-    _fields: list[Field] = []
+    __fields: list[Field] = []
     # TODO do we need this?
     # _fields_bound_tg: dict[TypeGraph, list[InstanceChildBoundType]] = {}
 
@@ -388,8 +395,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         # setup instance accessors
         # overrides fields in instance
-        for field in type(self)._fields:
-            if field.identifier is None:
+        for field in type(self).__fields:
+            if field.locator is None:
                 continue
             if isinstance(field, ChildField):
                 child = InstanceChildBoundInstance(
@@ -421,6 +428,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 f"more than one level deep (found: {cls.__mro__})"
             )
         super().__init_subclass__()
+        cls.__fields = []
 
         # Scan through class fields and add handle ChildFields
         # e.g ```python
@@ -432,7 +440,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     @classmethod
     def _exec_field(cls, t: "TypeNodeBoundTG[Self, T]", field: Field) -> None:
-        # TODO field dependants
         if isinstance(field, ChildField):
             identifier = field.get_identifier()
             mc = t.MakeChild(
@@ -457,7 +464,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _create_type(cls, t: "TypeNodeBoundTG[Self, T]") -> None:
         # read out fields
         # construct typegraph
-        for field in cls._fields:
+        for field in cls.__fields:
             cls._exec_field(t=t, field=field)
         # TODO
         # call stage1
@@ -479,16 +486,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         Collect all fields (from class body and stage0 setattr)
         """
+        # TODO the __fields is a hack
+        if name.startswith("__") or name.endswith("__fields"):
+            return
         if isinstance(value, Field):
-            cls._add_field(identifier=name, field=value)
-        if isinstance(value, list) and all(isinstance(c, Field) for c in value):
-            cls._add_field(identifier=name, field=ListField(fields=value))
+            cls._add_field(locator=name, field=value)
+        if (
+            isinstance(value, list)
+            and len(value)
+            and all(isinstance(c, Field) for c in value)
+        ):
+            cls._add_field(locator=name, field=ListField(fields=value))
 
     @classmethod
-    def _add_field(cls, identifier: str, field: Field):
+    def _add_field(cls, locator: str, field: Field):
         # TODO check if identifier is already in use
-        field._set_identifier_if_placeholder(identifier=identifier)
-        cls._fields.append(field)
+        field._set_locator(locator=locator)
+        cls.__fields.append(field)
 
     @classmethod
     def _add_instance_child(
@@ -1254,7 +1268,9 @@ class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
         ref: list[str | ChildField[Any]],
         value: LiteralT,
     ) -> ChildField[Any]:
-        alias = ChildField(ExpressionAliasIs)
+        alias = ChildField(
+            ExpressionAliasIs, attributes=ExpressionAliasIsAttributes(constrained=True)
+        )
         lit = ChildField(
             LiteralNode,
             attributes=LiteralNodeAttributes(value=value),
@@ -1912,6 +1928,6 @@ def test_manual_resistor_def():
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_fabll_basic)
+    typer.run(test_manual_resistor_def)
 
     # test_manual_resistor_def()

@@ -2018,6 +2018,7 @@ fn wrap_nodebuilder_init() type {
             .args_def = struct {
                 dynamic: ?*py.PyObject = null,
             },
+            .static = true,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
