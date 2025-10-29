@@ -559,7 +559,7 @@ pub const BoundEdgeReference = struct {
     g: *GraphView,
 };
 
-pub const VisitStrength = enum { unvisited, weak, strong };
+pub const VisitStrength = enum { unvisited, strong };
 
 pub const VisitInfo = struct {
     visit_strength: VisitStrength,
