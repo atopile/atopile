@@ -113,6 +113,12 @@ pub const PathFinder = struct {
         if (result == .ERROR) return result;
         if (result == .STOP) return result;
 
+        if (!path.invalid_path) {
+            path.visit_strength = .strong;
+        } else {
+            path.visit_strength = .unvisited;
+        }
+
         // if path is invalid, don't save to path_list
         if (path.invalid_path) {
             return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -144,9 +150,6 @@ pub const PathFinder = struct {
             if (path.stop_new_path_discovery) {
                 break;
             }
-        }
-        if (!path.stop_new_path_discovery and !path.invalid_path) {
-            path.visit_strength = .strong;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -223,7 +226,7 @@ pub const PathFinder = struct {
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
             path.invalid_path = true;
-            path.stop_new_path_discovery = true;
+            // path.stop_new_path_discovery = true;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -289,7 +292,7 @@ pub const PathFinder = struct {
                 const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
                 if (shallow_val.Bool) {
                     if (depth > 0) {
-                        path.stop_new_path_discovery = true;
+                        // path.stop_new_path_discovery = true;
                         return false;
                     }
                 }
@@ -316,8 +319,7 @@ pub const PathFinder = struct {
 
         if (!ok) {
             path.invalid_path = true;
-            path.stop_new_path_discovery = true;
-            // path.stop already set for shallow violations inside validator
+            // path.stop_new_path_discovery = true;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
