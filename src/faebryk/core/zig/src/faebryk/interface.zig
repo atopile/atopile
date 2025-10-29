@@ -421,7 +421,6 @@ test "multiple_paths" {
 
     const all_paths = try EdgeInterfaceConnection.get_connected(a, bn1);
     defer all_paths.deinit();
-    std.debug.print("all_paths: {}\n", .{all_paths.paths.items.len});
     try std.testing.expect(all_paths.paths.items.len == 8);
 }
 

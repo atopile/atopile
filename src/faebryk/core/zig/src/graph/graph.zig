@@ -411,9 +411,6 @@ pub const BFSPath = struct {
     start_node: BoundNodeReference,
     invalid_path: bool = false, // invalid path (e.g., hierarchy violation, shallow link violation, etc.)
     stop_new_path_discovery: bool = false, // Do not keep going down this path (do not add to open_path_queue)
-
-    // Visit strength for this path (set by filters):
-    // .unvisited until evaluated, .weak for conditional paths, .strong otherwise.
     visit_strength: VisitStrength = .unvisited,
 
     fn is_consistent(self: *const @This()) bool {
@@ -562,12 +559,9 @@ pub const BoundEdgeReference = struct {
     g: *GraphView,
 };
 
-// Information about how a node was reached during graph traversal
-// Used to determine if a node can be revisited via a "better" path
 pub const VisitStrength = enum { unvisited, weak, strong };
 
 pub const VisitInfo = struct {
-    // How was this node last reached? Strong dominates weak.
     visit_strength: VisitStrength,
 };
 
@@ -778,7 +772,6 @@ pub const GraphView = struct {
             open_path_queue: *std.fifo.LinearFifo(*BFSPath, .Dynamic),
             visited_nodes: *NodeRefMap.T(VisitInfo),
             g: *GraphView,
-            // no per-path strength needed here; decisions rely on recorded VisitInfo
 
             fn valid_node_to_add_to_path(self: *@This(), node: NodeReference) bool {
                 // if node is contained in current path, we should not add to the path
@@ -786,26 +779,16 @@ pub const GraphView = struct {
                     return false;
                 }
 
-                // Determine prior visit strength (default: none)
-                const prior_strength: VisitStrength = blk: {
-                    if (self.visited_nodes.get(node)) |visit_info| break :blk visit_info.visit_strength;
-                    break :blk .unvisited;
-                };
+                var node_strength: VisitStrength = .unvisited;
+                if (self.visited_nodes.get(node)) |visit_info| {
+                    node_strength = visit_info.visit_strength;
+                }
 
-                const current_strength: VisitStrength = switch (self.current_path.visit_strength) {
-                    .unvisited => .strong,
-                    else => self.current_path.visit_strength,
-                };
+                if (node_strength == .strong) {
+                    return false;
+                }
 
-                // Revisit policy:
-                // - unvisited: always allow
-                // - weak: allow only if current path is effectively strong (upgrade weak→strong)
-                // - strong: disallow
-                return switch (prior_strength) {
-                    .unvisited => true,
-                    .weak => current_strength == .strong,
-                    .strong => false,
-                };
+                return true;
             }
 
             pub fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
@@ -833,18 +816,10 @@ pub const GraphView = struct {
                 g.allocator.destroy(path);
             }
 
-            // run BFS visitor
             const bfs_visitor_result = f(ctx, path);
-            const node_at_path_end = path.get_last_node();
 
-            // Record visited strength, upgrading from weak->strong when applicable
-            if (visited_nodes.get(node_at_path_end.node)) |prev| {
-                const prev_strength = prev.visit_strength;
-                const new_strength = if (prev_strength == .strong) .strong else path.visit_strength;
-                visited_nodes.put(node_at_path_end.node, VisitInfo{ .visit_strength = new_strength }) catch @panic("OOM");
-            } else {
-                visited_nodes.put(node_at_path_end.node, VisitInfo{ .visit_strength = path.visit_strength }) catch @panic("OOM");
-            }
+            // mark node with visited strength from BFS visitor
+            visited_nodes.put(path.get_last_node().node, VisitInfo{ .visit_strength = path.visit_strength }) catch @panic("OOM");
 
             switch (bfs_visitor_result) {
                 .STOP => return bfs_visitor_result,
@@ -859,14 +834,14 @@ pub const GraphView = struct {
             }
 
             var edge_visitor = EdgeVisitor{
-                .start_node = node_at_path_end,
+                .start_node = path.get_last_node(),
                 .visited_nodes = &visited_nodes,
                 .current_path = path,
                 .open_path_queue = &open_path_queue,
                 .g = g,
             };
 
-            const edge_visitor_result = g.visit_edges(node_at_path_end.node, void, &edge_visitor, EdgeVisitor.visit_fn);
+            const edge_visitor_result = g.visit_edges(path.get_last_node().node, void, &edge_visitor, EdgeVisitor.visit_fn);
             if (edge_visitor_result == .ERROR) return edge_visitor_result;
         }
 

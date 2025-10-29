@@ -113,11 +113,6 @@ pub const PathFinder = struct {
         if (result == .ERROR) return result;
         if (result == .STOP) return result;
 
-        // path survived all filters so gets upgraded to strong
-        if (path.visit_strength == .unvisited) {
-            path.visit_strength = .strong;
-        }
-
         // if path is invalid, don't save to path_list
         if (path.invalid_path) {
             return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -149,6 +144,9 @@ pub const PathFinder = struct {
             if (path.stop_new_path_discovery) {
                 break;
             }
+        }
+        if (!path.stop_new_path_discovery and !path.invalid_path) {
+            path.visit_strength = .strong;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -226,7 +224,6 @@ pub const PathFinder = struct {
         if (edge_1_and_edge_2_share_parent) {
             path.invalid_path = true;
             path.stop_new_path_discovery = true;
-            path.visit_strength = .weak;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -291,7 +288,6 @@ pub const PathFinder = struct {
             } else if (EdgeInterfaceConnection.is_instance(e)) {
                 const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
                 if (shallow_val.Bool) {
-                    path.visit_strength = .weak;
                     if (depth > 0) {
                         path.stop_new_path_discovery = true;
                         return false;
@@ -320,9 +316,8 @@ pub const PathFinder = struct {
 
         if (!ok) {
             path.invalid_path = true;
+            path.stop_new_path_discovery = true;
             // path.stop already set for shallow violations inside validator
-            // For pure hierarchy violations, mark as weak to prefer stronger revisits
-            if (!path.stop_new_path_discovery) path.visit_strength = .weak;
         }
 
         return visitor.VisitResult(void){ .CONTINUE = {} };
