@@ -27,4 +27,4 @@ class EdgeInterfaceConnection:
     @staticmethod
     def get_connected(
         *, source: BoundNode
-    ) -> list[int]: ...  # TODO: return proper BFSPath list
+    ) -> list[BoundNode]: ...

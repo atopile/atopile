@@ -1201,15 +1201,14 @@ fn wrap_edge_interface_connection_get_connected() type {
             };
             defer paths.deinit();
 
-            // Convert paths to Python list
+            // Convert paths to Python list of connected nodes
             const list = py.PyList_New(@intCast(paths.paths.items.len));
             if (list == null) return null;
 
             for (paths.paths.items, 0..) |path, i| {
-                // For now, just return path length as an int
-                // TODO: wrap BFSPath properly
-                const path_len = py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
-                if (path_len == null or py.PyList_SetItem(list, @intCast(i), path_len) < 0) {
+                const connected_node = path.get_last_node();
+                const py_node = graph_py.makeBoundNodePyObject(connected_node);
+                if (py_node == null or py.PyList_SetItem(list, @intCast(i), py_node) < 0) {
                     py.Py_DECREF(list.?);
                     return null;
                 }

@@ -7,6 +7,7 @@ from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.next import EdgeNext
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
@@ -1264,30 +1265,26 @@ class is_module(Node):
     def get_obj(self) -> Node[Any]:
         return Traits.get_obj(Traits.bind(self), Node)
 
-
 class is_interface(Node):
-    """
-    Placeholder till Ray is done.
-
-    Replacement guide:
-    - creation: instead of inherit of ModuleInterface
-        -> inherit of Node + add is_interface trait
-    - usage: blabla.<interface_function>(...)
-        -> blabla.get_trait(is_interface).<interface_function>(...)
-    - usage: isinstance(blabla, ModuleInterface)
-        -> blabla.has_trait(is_interface)
-    """
-
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     def get_obj(self) -> Node[Any]:
         return Traits.get_obj(Traits.bind(self), Node)
 
-    def connect(self, other: "Node[Any]") -> None:
-        raise NotImplementedError()
+    def connect_to(self, *others: "Node[Any]") -> None:
+        self_node = self.get_parent()[0]
+        for other in others:
+            EdgeInterfaceConnection.connect(bn1=self_node.instance, bn2=other.instance)
 
-    def is_connected_to(self, *other: "Node[Any]") -> bool:
-        raise NotImplementedError()
+    def is_connected_to(self, other: "Node[Any]") -> bool:
+        self_node = self.get_parent()[0]
+        path = EdgeInterfaceConnection.is_connected_to(source=self_node.instance, target=other.instance)
+        return len(path) > 0
+
+    def get_connected(self) -> list["Node[Any]"]:
+        self_node = self.get_parent()[0]
+        connected_nodes = EdgeInterfaceConnection.get_connected(source=self_node.instance)
+        return [Node[Any].bind_instance(instance=node) for node in connected_nodes]
 
 
 # ------------------------------------------------------------
