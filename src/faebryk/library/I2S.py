@@ -4,8 +4,6 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import R
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -15,10 +13,9 @@ class I2S(fabll.Node):
     ws: F.ElectricLogic  # Word Select (Left/Right Clock)
     sck: F.ElectricLogic  # Serial Clock
 
-    sample_rate = fabll.p_field(units=P.hertz, domain=R.Domains.Numbers.NATURAL())
-    bit_depth = fabll.p_field(units=P.bit, domain=R.Domains.Numbers.NATURAL())
+    sample_rate = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
+    bit_depth = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Bit)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -30,7 +27,7 @@ class I2S(fabll.Node):
         self.ws.line.add(F.has_net_name("WS", level=F.has_net_name.Level.SUGGESTED))
         self.sck.line.add(F.has_net_name("SCK", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import I2S, ElectricPower
 
@@ -61,4 +58,4 @@ class I2S(fabll.Node):
         # Common applications: digital audio, microphones, speakers
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

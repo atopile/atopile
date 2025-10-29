@@ -12,26 +12,30 @@ logger = logging.getLogger(__name__)
 
 # TODO: make generic (use Switch module, different switch models, bistable, etc.)
 class Relay(fabll.Node):
-    switch_a_nc: F.Electrical
-    switch_a_common: F.Electrical
-    switch_a_no: F.Electrical
-    switch_b_no: F.Electrical
-    switch_b_common: F.Electrical
-    switch_b_nc: F.Electrical
-    coil_power: F.ElectricPower
+    switch_a_nc = F.Electrical.MakeChild()
+    switch_a_common = F.Electrical.MakeChild()
+    switch_a_no = F.Electrical.MakeChild()
+    switch_b_no = F.Electrical.MakeChild()
+    switch_b_common = F.Electrical.MakeChild()
+    switch_b_nc = F.Electrical.MakeChild()
+    coil_power = F.ElectricPower.MakeChild()
 
-    coil_max_voltage = fabll.p_field(units=P.V)
-    coil_max_current = fabll.p_field(units=P.A)
-    coil_resistance = fabll.p_field(units=P.ohm)
-    contact_max_switching_voltage = fabll.p_field(units=P.V)
-    contact_max_switching_current = fabll.p_field(units=P.A)
-    contact_max_current = fabll.p_field(units=P.A)
-
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.K
+    coil_max_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    coil_max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    coil_resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    contact_max_switching_voltage = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Volt
     )
+    contact_max_switching_current = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Ampere
+    )
+    contact_max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.K
+    ).put_on_type()
+
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Relay, ElectricPower, Diode, MOSFET, ElectricLogic
 
@@ -68,4 +72,4 @@ class Relay(fabll.Node):
         relay.switch_a_common ~ high_voltage_supply
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

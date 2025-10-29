@@ -9,7 +9,9 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class can_be_surge_protected_defined(F.can_be_surge_protected.impl()):
+class can_be_surge_protected_defined(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     def __init__(self, low_potential: F.Electrical, *protect_if: F.Electrical) -> None:
         super().__init__()
         self.protect_if = protect_if

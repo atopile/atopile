@@ -8,77 +8,42 @@ from faebryk.libs.units import P
 
 
 class Inductor(fabll.Node):
-    unnamed = fabll.list_field(2, F.Electrical)
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    inductance = fabll.p_field(
-        units=P.H,
-        likely_constrained=True,
-        soft_set=fabll.Range(100 * P.nH, 1 * P.H),
-        tolerance_guess=10 * P.percent,
-    )
-    max_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.mA, 100 * P.A),
-    )
-    dc_resistance = fabll.p_field(
-        units=P.Ω,
-        soft_set=fabll.Range(10 * P.mΩ, 100 * P.Ω),
-        tolerance_guess=10 * P.percent,
-    )
-    saturation_current = fabll.p_field(units=P.A)
-    self_resonant_frequency = fabll.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        soft_set=fabll.Range(100 * P.kHz, 1 * P.GHz),
-        tolerance_guess=10 * P.percent,
+    inductance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Henry)
+    max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    dc_resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    saturation_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    self_resonant_frequency = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
+
+    _is_pickable = F.is_pickable_by_type.MakeChild(
+        endpoint="inductors",
+        params={
+            "inductance": inductance,
+            "max_current": max_current,
+            "dc_resistance": dc_resistance,
+            "saturation_current": saturation_current,
+            "self_resonant_frequency": self_resonant_frequency,
+        },
     )
 
-    @fabll.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
-            params=[
-                self.inductance,
-                self.max_current,
-                self.dc_resistance,
-                self.saturation_current,
-                self.self_resonant_frequency,
-            ],
-        )
+    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(*self.unnamed)
+    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+        params={
+            "inductance": inductance,
+            "self_resonant_frequency": self_resonant_frequency,
+            "max_current": max_current,
+            "dc_resistance": dc_resistance,
+        },
+    )
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
-
-    @fabll.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.inductance, tolerance=True),
-            S(self.self_resonant_frequency),
-            S(self.max_current),
-            S(self.dc_resistance),
-        )
-
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.L
-    )
+    ).put_on_type()
 
-    # TODO: remove @https://github.com/atopile/atopile/issues/727
-    @property
-    def p1(self) -> F.Electrical:
-        """Signal to one side of the inductor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """Signal to the other side of the inductor."""
-        return self.unnamed[1]
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Inductor
 
@@ -98,4 +63,4 @@ class Inductor(fabll.Node):
         power_input ~> inductor ~> filtered_output
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

@@ -6,12 +6,11 @@ import faebryk.library._F as F
 
 
 class SWD(fabll.Node):
-    clk: F.ElectricLogic
-    dio: F.ElectricLogic
-    swo: F.ElectricLogic
-    reset: F.ElectricLogic
+    clk = F.ElectricLogic.MakeChild()
+    dio = F.ElectricLogic.MakeChild()
+    swo = F.ElectricLogic.MakeChild()
+    reset = F.ElectricLogic.MakeChild()
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -32,7 +31,7 @@ class SWD(fabll.Node):
             F.has_net_name("SWD_RESET", level=F.has_net_name.Level.SUGGESTED)
         )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import SWD, ElectricPower, Resistor
 
@@ -66,4 +65,4 @@ class SWD(fabll.Node):
         # SWD is commonly used for ARM Cortex-M debugging and programming
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

@@ -6,7 +6,9 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class has_pcb_position_defined_relative(F.has_pcb_position.impl()):
+class has_pcb_position_defined_relative(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     def __init__(
         self,
         position_relative: F.has_pcb_position.Point,

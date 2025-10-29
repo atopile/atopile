@@ -4,43 +4,40 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
 
-class QFN(F.Footprint):
-    def __init__(
-        self,
-        pin_cnt: int,
-        exposed_thermal_pad_cnt: int,
-        size_xy: tuple[Quantity, Quantity],
-        pitch: Quantity,
-        exposed_thermal_pad_dimensions: tuple[Quantity, Quantity],
-        has_thermal_vias: bool,
-    ) -> None:
-        super().__init__()
+class QFN(fabll.Node):
+    # def __init__(
+    #     self,
+    #     pin_cnt: int,
+    #     exposed_thermal_pad_cnt: int,
+    #     size_xy: tuple[Quantity, Quantity],
+    #     pitch: Quantity,
+    #     exposed_thermal_pad_dimensions: tuple[Quantity, Quantity],
+    #     has_thermal_vias: bool,
+    # ) -> None:
+    #     super().__init__()
 
-        self._pin_cnt = pin_cnt
-        self._exposed_thermal_pad_cnt = exposed_thermal_pad_cnt
-        self._size_xy = size_xy
-        self._pitch = pitch
-        self._exposed_thermal_pad_dimensions = exposed_thermal_pad_dimensions
-        self._has_thermal_vias = has_thermal_vias
+    #     self._pin_cnt = pin_cnt
+    #     self._exposed_thermal_pad_cnt = exposed_thermal_pad_cnt
+    #     self._size_xy = size_xy
+    #     self._pitch = pitch
+    #     self._exposed_thermal_pad_dimensions = exposed_thermal_pad_dimensions
+    #     self._has_thermal_vias = has_thermal_vias
 
-        assert exposed_thermal_pad_cnt > 0 or not has_thermal_vias
-        assert (
-            exposed_thermal_pad_dimensions[0] < size_xy[0]
-            and exposed_thermal_pad_dimensions[1] < size_xy[1]
-        )
+    #     assert exposed_thermal_pad_cnt > 0 or not has_thermal_vias
+    #     assert (
+    #         exposed_thermal_pad_dimensions[0] < size_xy[0]
+    #         and exposed_thermal_pad_dimensions[1] < size_xy[1]
+    #     )
 
-    @fabll.rt_field
     def pins(self):
         return times(self._pin_cnt, F.Pad)
 
     equal_pins: F.has_equal_pins_in_ifs
     attach_via_pinmap: F.can_attach_via_pinmap_equal
 
-    @fabll.rt_field
     def kicad_footprint(self):
         class _has_kicad_footprint(F.has_kicad_footprint_equal_ifs):
             @staticmethod

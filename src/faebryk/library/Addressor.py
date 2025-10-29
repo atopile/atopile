@@ -10,15 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 class Addressor(fabll.Node):
-    address = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
-    offset = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
-    base = fabll.p_field(domain=fabll.Domains.Numbers.NATURAL())
+    address = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
+    offset = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
+    base = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
 
-    @fabll.rt_field
     def address_lines(self):
         return times(self._address_bits, F.ElectricLogic)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -51,7 +49,7 @@ class Addressor(fabll.Node):
                 F.has_net_name(f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
             )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Addressor, I2C, ElectricPower
 
@@ -74,4 +72,4 @@ class Addressor(fabll.Node):
         device.i2c ~ i2c_bus
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

@@ -10,12 +10,13 @@ from more_itertools import first
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
 
 class implements_design_check(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     class CheckStage(Enum):
         POST_DESIGN = auto()
         POST_SOLVE = auto()

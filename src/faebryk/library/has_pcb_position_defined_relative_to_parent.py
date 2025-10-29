@@ -3,12 +3,15 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
 
-class has_pcb_position_defined_relative_to_parent(F.has_pcb_position.impl()):
+class has_pcb_position_defined_relative_to_parent(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     def __init__(self, position_relative: F.has_pcb_position.Point):
         super().__init__()
         self.position_relative = position_relative

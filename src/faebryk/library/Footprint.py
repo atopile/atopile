@@ -4,12 +4,9 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.trait import Trait
 
 
 class Footprint(fabll.Node):
-    class TraitT(Trait): ...
-
     @staticmethod
     def get_footprint_of_parent(
         intf: fabll.ModuleInterface,

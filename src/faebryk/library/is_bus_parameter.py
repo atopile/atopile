@@ -5,7 +5,6 @@ import logging
 from typing import Callable, cast
 
 import faebryk.core.node as fabll
-from faebryk.core.parameter import Expression, Parameter
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     assert_once,
@@ -24,151 +23,153 @@ class is_bus_parameter(fabll.Node):
     This means that it's constraints are dependent on the bus connections.
     """
 
-    type KEY = Callable[[fabll.ModuleInterface], Parameter] | Parameter
-    type EXPR_FACTORY = Callable[[], Expression]
-    type REDUCE = tuple[KEY, EXPR_FACTORY]
+    pass
 
-    def __init__(self, key: KEY | None = None, reduce: REDUCE | None = None):
-        """
-        args:
-            key: name of the parameter to be reduced given as lambda: node.param
-            reduce: operation and 'name' of source parameters to be reduced
-        example:
-            See ElectricPower.py
-        """
-        super().__init__()
+    # type KEY = Callable[[fabll.ModuleInterface], Parameter] | Parameter
+    # type EXPR_FACTORY = Callable[[], Expression]
+    # type REDUCE = tuple[KEY, EXPR_FACTORY]
 
-        self._key = key
-        self._reduce = reduce
+    # def __init__(self, key: KEY | None = None, reduce: REDUCE | None = None):
+    #     """
+    #     args:
+    #         key: name of the parameter to be reduced given as lambda: node.param
+    #         reduce: operation and 'name' of source parameters to be reduced
+    #     example:
+    #         See ElectricPower.py
+    #     """
+    #     super().__init__()
 
-        self._guard = False
-        self._merged: set[int] = set()
+    #     self._key = key
+    #     self._reduce = reduce
 
-    @staticmethod
-    def _get_key_from_parameter(
-        obj: Parameter,
-    ) -> Callable[[fabll.ModuleInterface], Parameter]:
-        # TODO consider handling fields as obj
-        # e.g ElectricPower.max_current instead of self.max_current
+    #     self._guard = False
+    #     self._merged: set[int] = set()
 
-        p = obj.get_parent()
-        if not p:
-            raise fabll.NodeException(
-                obj, "Can't auto-detect key for non-parented parameter"
-            )
-        parent, name = p
-        if not isinstance(parent, fabll.ModuleInterface):
-            raise fabll.NodeException(
-                obj, "Can't auto-detect key for non-mif child parameter"
-            )
+    # @staticmethod
+    # def _get_key_from_parameter(
+    #     obj: Parameter,
+    # ) -> Callable[[fabll.ModuleInterface], Parameter]:
+    #     # TODO consider handling fields as obj
+    #     # e.g ElectricPower.max_current instead of self.max_current
 
-        return lambda mif: getattr(mif, name)
+    #     p = obj.get_parent()
+    #     if not p:
+    #         raise fabll.NodeException(
+    #             obj, "Can't auto-detect key for non-parented parameter"
+    #         )
+    #     parent, name = p
+    #     if not isinstance(parent, fabll.ModuleInterface):
+    #         raise fabll.NodeException(
+    #             obj, "Can't auto-detect key for non-mif child parameter"
+    #         )
 
-    def on_obj_set(self):
-        if isinstance(self._key, Callable):
-            return
+    #     return lambda mif: getattr(mif, name)
 
-        if self._key is None:
-            obj = self.get_obj(Parameter)
-        else:
-            obj = self._key
+    # def on_obj_set(self):
+    #     if isinstance(self._key, Callable):
+    #         return
 
-        self._key = self._get_key_from_parameter(obj)
+    #     if self._key is None:
+    #         obj = self.get_obj(Parameter)
+    #     else:
+    #         obj = self._key
 
-    @once
-    def mif_parent(self) -> fabll.ModuleInterface:
-        return cast_assert(fabll.ModuleInterface, not_none(self.obj.get_parent())[0])
+    #     self._key = self._get_key_from_parameter(obj)
 
-    @assert_once
-    def resolve(self, mifs: set[fabll.ModuleInterface]):
-        if self._guard:
-            return
+    # @once
+    # def mif_parent(self) -> fabll.ModuleInterface:
+    #     return cast_assert(fabll.ModuleInterface, not_none(self.obj.get_parent())[0])
 
-        assert isinstance(self._key, Callable)
+    # @assert_once
+    # def resolve(self, mifs: set[fabll.ModuleInterface]):
+    #     if self._guard:
+    #         return
 
-        mif_parent = self.mif_parent()
-        self_param = self.get_obj(Parameter)
-        if self._key(mif_parent) is not self_param:
-            raise fabll.NodeException(self, "Key not mapping to parameter")
+    #     assert isinstance(self._key, Callable)
 
-        params = [self._key(mif) for mif in mifs]
-        params_with_guard = [
-            (param, param.get_trait(is_bus_parameter)) for param in params
-        ]
+    #     mif_parent = self.mif_parent()
+    #     self_param = self.get_obj(Parameter)
+    #     if self._key(mif_parent) is not self_param:
+    #         raise fabll.NodeException(self, "Key not mapping to parameter")
 
-        # Disable guards to prevent infinite recursion
-        for param, guard in params_with_guard:
-            guard._guard = True
-            guard._merged.add(id(self_param))
+    #     params = [self._key(mif) for mif in mifs]
+    #     params_with_guard = [
+    #         (param, param.get_trait(is_bus_parameter)) for param in params
+    #     ]
 
-        new_merge = {p for p in params if id(p) not in self._merged}
+    #     # Disable guards to prevent infinite recursion
+    #     for param, guard in params_with_guard:
+    #         guard._guard = True
+    #         guard._merged.add(id(self_param))
 
-        # Alias bus parameters
-        for param in new_merge:
-            self._merged.add(id(param))
-            self_param.alias_is(param)
+    #     new_merge = {p for p in params if id(p) not in self._merged}
 
-        # Reduce
-        if self._reduce:
-            # TODO use new_merge, then we can get rid of assert_once
-            source_key, reducer = self._reduce
-            if not isinstance(source_key, Callable):
-                source_key = self._get_key_from_parameter(source_key)
-            source_params = [source_key(mif) for mif in mifs]
-            self_param.alias_is(reducer(*source_params))
+    #     # Alias bus parameters
+    #     for param in new_merge:
+    #         self._merged.add(id(param))
+    #         self_param.alias_is(param)
 
-        # Enable guards again
-        for _, guard in params_with_guard:
-            guard._guard = False
+    #     # Reduce
+    #     if self._reduce:
+    #         # TODO use new_merge, then we can get rid of assert_once
+    #         source_key, reducer = self._reduce
+    #         if not isinstance(source_key, Callable):
+    #             source_key = self._get_key_from_parameter(source_key)
+    #         source_params = [source_key(mif) for mif in mifs]
+    #         self_param.alias_is(reducer(*source_params))
 
-    @staticmethod
-    def resolve_bus_parameters(graph: fabll.Graph):
-        bus_parameters = cast(
-            list[tuple[Parameter, is_bus_parameter]],
-            fabll.Node.bind_typegraph(graph).nodes_with_trait(is_bus_parameter),
-        )
+    #     # Enable guards again
+    #     for _, guard in params_with_guard:
+    #         guard._guard = False
 
-        times = Times()
+    # @staticmethod
+    # def resolve_bus_parameters(graph: fabll.Graph):
+    #     bus_parameters = cast(
+    #         list[tuple[Parameter, is_bus_parameter]],
+    #         fabll.Node.bind_typegraph(graph).nodes_with_trait(is_bus_parameter),
+    #     )
 
-        busses: list[set[fabll.ModuleInterface]] = []
+    #     times = Times()
 
-        params_grouped_by_mif = groupby(bus_parameters, lambda p: p[1].mif_parent())
+    #     busses: list[set[fabll.ModuleInterface]] = []
 
-        # find for all busses a mif that represents it, and puts its dynamic params here
-        # we use the that connected mifs are the same type and thus have the same params
-        # TODO: limitation: specialization (need to subgroup by type) (see exception)
-        param_bus_representatives: set[tuple[Parameter, is_bus_parameter]] = set()
+    #     params_grouped_by_mif = groupby(bus_parameters, lambda p: p[1].mif_parent())
 
-        while params_grouped_by_mif:
-            bus_representative_mif, bus_representative_params = (
-                params_grouped_by_mif.popitem()
-            )
-            # expensive call
-            paths = bus_representative_mif.get_connected(include_self=True)
-            connections = set(paths.keys())
+    #     # find for all busses a mif that represents it, and puts its dynamic params here
+    #     # we use the that connected mifs are the same type and thus have the same params
+    #     # TODO: limitation: specialization (need to subgroup by type) (see exception)
+    #     param_bus_representatives: set[tuple[Parameter, is_bus_parameter]] = set()
 
-            busses.append(connections)
-            if len(set(map(type, connections))) > 1:
-                raise NotImplementedError(
-                    "No support for specialized bus with dynamic params"
-                )
+    #     while params_grouped_by_mif:
+    #         bus_representative_mif, bus_representative_params = (
+    #             params_grouped_by_mif.popitem()
+    #         )
+    #         # expensive call
+    #         paths = bus_representative_mif.get_connected(include_self=True)
+    #         connections = set(paths.keys())
 
-            for m in connections:
-                if m in params_grouped_by_mif:
-                    del params_grouped_by_mif[m]
-            param_bus_representatives |= set(bus_representative_params)
+    #         busses.append(connections)
+    #         if len(set(map(type, connections))) > 1:
+    #             raise NotImplementedError(
+    #                 "No support for specialized bus with dynamic params"
+    #             )
 
-        times.add("get parameter connections")
+    #         for m in connections:
+    #             if m in params_grouped_by_mif:
+    #                 del params_grouped_by_mif[m]
+    #         param_bus_representatives |= set(bus_representative_params)
 
-        # exec resolution
-        for _, trait in param_bus_representatives:
-            bus_representative_mif = trait.mif_parent()
-            # param_bus = find(busses, lambda bus: bus_representative_mif in bus)
-            # FIXME: dirty workaround for mif bug
-            param_busses = [bus for bus in busses if bus_representative_mif in bus]
-            param_bus = {m for bus in param_busses for m in bus}
-            trait.resolve(param_bus)
+    #     times.add("get parameter connections")
 
-        times.add("merge parameters")
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(times)
+    #     # exec resolution
+    #     for _, trait in param_bus_representatives:
+    #         bus_representative_mif = trait.mif_parent()
+    #         # param_bus = find(busses, lambda bus: bus_representative_mif in bus)
+    #         # FIXME: dirty workaround for mif bug
+    #         param_busses = [bus for bus in busses if bus_representative_mif in bus]
+    #         param_bus = {m for bus in param_busses for m in bus}
+    #         trait.resolve(param_bus)
+
+    #     times.add("merge parameters")
+    #     if logger.isEnabledFor(logging.DEBUG):
+    #         logger.debug(times)

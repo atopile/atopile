@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.impl()):
+class has_pcb_routing_strategy_greedy_direct_line(fabll.Node):
     class Topology(Enum):
         STAR = auto()
         DIRECT = auto()

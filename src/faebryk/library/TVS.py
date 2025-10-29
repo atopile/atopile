@@ -5,28 +5,15 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class TVS(F.Diode):
-    reverse_breakdown_voltage = fabll.p_field(units=P.V)
+# TODO: Deprecate, use Diode instead
+class TVS(fabll.Node):
+    reverse_breakdown_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
 
-    # @fabll.rt_field
-    # def pickable(self):
-    #     return F.is_pickable_by_type(
-    #         F.is_pickable_by_type.Type.TVS,
-    #         {
-    #             "forward_voltage": self.forward_voltage,
-    #             "reverse_working_voltage": self.reverse_working_voltage,
-    #             "reverse_leakage_current": self.reverse_leakage_current,
-    #             "max_current": self.max_current,
-    #             "reverse_breakdown_voltage": self.reverse_breakdown_voltage,
-    #         },
-    #     )
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import TVS, ElectricPower, Electrical
 

@@ -14,23 +14,22 @@ class TestPoint(fabll.Node):
     Basic test point.
     """
 
-    contact: F.Electrical
+    contact = F.Electrical.MakeChild()
+    contact.add_dependant(F.requires_external_usage.MakeChild())
 
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.TP
-    )
+    ).put_on_type()
 
-    def __preinit__(self):
-        self.contact.add(F.requires_external_usage())
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
-        import TestPoint
+        import TestPoint, ElectricSignal
 
         test_point = new TestPoint
+        signal_to_test = new ElectricSignal
 
         # Connect to signal you want to probe
-        signal_to_test ~ test_point.contact
+        signal_to_test.line ~ test_point.contact
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

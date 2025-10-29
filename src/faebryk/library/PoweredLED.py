@@ -6,9 +6,9 @@ import faebryk.library._F as F
 
 
 class PoweredLED(fabll.Node):
-    power: F.ElectricPower
-    current_limiting_resistor: F.Resistor
-    led: F.LED
+    power = F.ElectricPower.MakeChild()
+    current_limiting_resistor = F.Resistor.MakeChild()
+    led = F.LED.MakeChild()
 
     def __init__(self, low_side_resistor: bool = True):
         super().__init__()
@@ -36,10 +36,7 @@ class PoweredLED(fabll.Node):
             - self.led.current * self.current_limiting_resistor.resistance
         )
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.power.hv, self.power.lv)
+    _can_bridge = F.can_bridge.MakeChild(in_=power.nodetype.hv, out_=power.nodetype.lv)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.power)

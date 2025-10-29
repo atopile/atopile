@@ -12,29 +12,24 @@ logger = logging.getLogger(__name__)
 
 
 class ResistorArray(fabll.Node):
-    resistance = fabll.p_field(units=P.ohm)
-    rated_power = fabll.p_field(units=P.W)
-    rated_voltage = fabll.p_field(units=P.V)
+    resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    rated_power = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Watt)
+    rated_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
 
-    @fabll.rt_field
-    def resistors(self):
+    def resistors(self) -> list[F.Resistor]:
         return times(self._resistor_count, F.Resistor)
 
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.R
     )
 
-    def __init__(self, resistor_count: int = 4):
-        super().__init__()
-        self._resistor_count = resistor_count
-
     def __preinit__(self):
-        for resistor in self.resistors:
+        for resistor in self.resistors():
             resistor.resistance = self.resistance
             resistor.max_power = self.rated_power
             resistor.max_voltage = self.rated_voltage
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import ResistorArray, ElectricPower, ElectricLogic
 

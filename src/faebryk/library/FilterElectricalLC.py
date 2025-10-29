@@ -6,22 +6,21 @@ import math
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class FilterElectricalLC(F.Filter):
+class FilterElectricalLC(fabll.Node):
     """
     Basic Electrical LC filter
     """
 
-    in_: F.ElectricSignal
-    out: F.ElectricSignal
-    capacitor: F.Capacitor
-    inductor: F.Inductor
+    in_ = F.ElectricSignal.MakeChild()
+    out = F.ElectricSignal.MakeChild()
+    capacitor = F.Capacitor.MakeChild()
+    inductor = F.Inductor.MakeChild()
 
-    z0 = fabll.p_field(units=P.ohm)
+    z0 = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
 
     def __preinit__(self):
         self.order.alias_is(2)

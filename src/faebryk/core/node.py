@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
@@ -259,7 +260,7 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=self.instance, child_identifier=self.identifier
+                bound_node=self.instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
@@ -1159,6 +1160,105 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
         )
 
 
+class Units:
+    class Ampere(Node):
+        pass
+
+    class Ohm(Node):
+        pass
+
+    class Volt(Node):
+        pass
+
+    class Watt(Node):
+        pass
+
+    class Farad(Node):
+        pass
+
+    class Henry(Node):
+        pass
+
+    class Hertz(Node):
+        pass
+
+    class AmpereHour(Node):
+        pass
+
+    class Natural(Node):
+        pass
+
+    class Candela(Node):
+        pass
+
+    class Decibel(Node):
+        pass
+
+    class Second(Node):
+        pass
+
+    class Ppm(Node):
+        pass
+
+    class Dimensionless(Node):
+        pass
+
+    class BitPerSecond(Node):
+        pass
+
+    class Bit(Node):
+        pass
+
+    class Byte(Node):
+        pass
+
+
+@dataclass(frozen=True)
+class ExpressionAliasIsAttributes(NodeAttributes):
+    constrained: bool  # TODO: principled reason for this not being a Parameter
+
+
+class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
+    Attributes = ExpressionAliasIsAttributes
+
+    @classmethod
+    def alias_is(
+        cls, tg: TypeGraph, g: GraphView, operands: list[BoundNode]
+    ) -> BoundNode:
+        expr = cls.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=cls.Attributes(constrained=True)
+        )
+        for operand in operands:
+            EdgeOperand.add_operand(
+                bound_node=expr.instance,
+                operand=operand.node(),
+                operand_identifier=None,
+            )
+        return expr.instance
+
+    @classmethod
+    def MakeChild_ToLiteral(
+        cls,
+        ref: list[str | ChildField[Any]],
+        value: LiteralT,
+    ) -> ChildField[Any]:
+        alias = ChildField(
+            ExpressionAliasIs, attributes=ExpressionAliasIsAttributes(constrained=True)
+        )
+        lit = ChildField(
+            LiteralNode,
+            attributes=LiteralNodeAttributes(value=value),
+        )
+        alias_edge = EdgeField(
+            ref,
+            [lit],
+            edge=EdgeOperand.build(operand_identifier=None),
+        )
+        alias.add_dependant(alias_edge)
+        alias.add_dependant(lit)
+        return alias
+
+
 # ------------------------------------------------------------
 class Sequence(Node):
     """
@@ -1322,6 +1422,15 @@ class Parameter(Node):
         )
         return out
 
+    @classmethod
+    def MakeChild_String(cls) -> ChildField["Parameter"]:
+        pass
+
+    @classmethod
+    def MakeChild_Enum(cls, enum_t: type[Enum]) -> ChildField["Parameter"]:
+        # TODO: representation of enum values
+        pass
+
     def try_extract_constrained_literal(self) -> LiteralT | None:
         # TODO: solver? `only_proven=True` parameter?
         node = self.instance
@@ -1372,6 +1481,10 @@ class LiteralNodeAttributes(NodeAttributes):
 
 class LiteralNode(Node[LiteralNodeAttributes]):
     Attributes = LiteralNodeAttributes
+
+    @classmethod
+    def MakeChild(cls, value: LiteralT) -> ChildField[Any]:
+        return ChildField(cls, attributes=LiteralNodeAttributes(value=value))
 
 
 class IsBaseUnit(Node):
@@ -1914,9 +2027,27 @@ def test_manual_resistor_def():
     print("literal_ipbt_endpoint:", literal_ipbt_endpoint.node().get_dynamic_attrs())
 
 
+def test_lightweight():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
+    resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Test is pickable by type
+    ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
+    sorted_params = sorted(param.get_name() for param in ipbt.params)
+    assert sorted_params == ["max_power", "max_voltage", "resistance"]
+    endpoint = ipbt.endpoint_.get()
+    print(f"endpoint: {endpoint}")
+    # assert endpoint == "resistors"
+
+
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_manual_resistor_def)
+    # typer.run(test_fabll_basic)
 
     # test_manual_resistor_def()
+
+    test_lightweight()

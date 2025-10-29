@@ -8,35 +8,29 @@ from faebryk.libs.units import P
 
 
 class Battery(fabll.Node):
-    voltage = fabll.p_field(
-        units=P.V,
-        soft_set=fabll.Range(0 * P.V, 100 * P.V),
-        likely_constrained=True,
+    voltage = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Volt,
     )
-    capacity = fabll.p_field(
-        units=P.Ah,
-        soft_set=fabll.Range(100 * P.mAh, 100 * P.Ah),
-        likely_constrained=True,
+    capacity = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.AmpereHour,
     )
 
-    power: F.ElectricPower
+    power = F.ElectricPower.MakeChild()
 
-    def __preinit__(self) -> None:
-        self.power.voltage.constrain_subset(self.voltage)
+    _single_electric_reference = F.has_single_electric_reference_defined.MakeChild(
+        reference=power
+    )
 
-    @fabll.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.power)
+    # _net_name = F.has_net_name.MakeChild(
+    #     name="BAT_VCC",
+    #     level=F.has_net_name.Level.SUGGESTED,
+    # )
 
-    designator = fabll.f_field(F.has_designator_prefix)("BAT")
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.BAT
+    ).put_on_type()
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.power.hv.add(
-            F.has_net_name("BAT_VCC", level=F.has_net_name.Level.SUGGESTED)
-        )
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Battery, ElectricPower
 
@@ -57,4 +51,4 @@ class Battery(fabll.Node):
         battery_pack.capacity = 2000mAh +/- 5%
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

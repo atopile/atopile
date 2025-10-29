@@ -1,10 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class can_attach_via_pinmap_pinlist(F.can_attach_via_pinmap.impl()):
+class can_attach_via_pinmap_pinlist(fabll.Node):
     def __init__(self, pin_list: dict[str, F.Pad]) -> None:
         super().__init__()
         self.pin_list = pin_list
