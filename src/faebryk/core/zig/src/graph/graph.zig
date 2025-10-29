@@ -242,24 +242,6 @@ pub const EdgeAttributes = struct {
     directional: ?bool,
     name: ?str,
     dynamic: DynamicAttributes,
-
-    pub fn deinit(self: *@This()) !void {
-        if (self._ref_count.ref_count > 0) {
-            return error.InUse;
-        }
-        self.dynamic.deinit();
-        self._ref_count.allocator.destroy(self);
-    }
-
-    fn visit_attributes(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "source", Literal{ .Int = self.source.uuid }, false);
-        f(ctx, "target", Literal{ .Int = self.target.uuid }, false);
-        f(ctx, "type", Literal{ .Int = @intFromEnum(self.edge_type) }, false);
-        f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
-        f(ctx, "directional", Literal{ .Bool = self.directional.? }, false);
-        f(ctx, "name", Literal{ .String = self.name.? }, false);
-        self.dynamic.visit(ctx, f);
-    }
 };
 
 pub fn ComptimeIntSet(max_count: usize, int_type: type) type {

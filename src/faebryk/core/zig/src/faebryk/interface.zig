@@ -66,29 +66,9 @@ pub const EdgeInterfaceConnection = struct {
     pub fn visit_connected_edges(
         bound_node: graph.BoundNodeReference,
         ctx: *anyopaque,
-        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
+        f: fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
     ) visitor.VisitResult(void) {
-        const Visit = struct {
-            target: graph.BoundNodeReference,
-            cb_ctx: *anyopaque,
-            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
-
-            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                const self: *@This() = @ptrCast(@alignCast(self_ptr));
-                const connected = EdgeInterfaceConnection.get_other_connected_node(bound_edge.edge, self.target.node);
-                if (connected) |_| {
-                    const connected_result = self.cb(self.cb_ctx, bound_edge);
-                    switch (connected_result) {
-                        .CONTINUE => {},
-                        else => return connected_result,
-                    }
-                }
-                return visitor.VisitResult(void){ .CONTINUE = {} };
-            }
-        };
-
-        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
+        return bound_node.visit_edges_of_type(tid, void, ctx, f);
     }
 
     pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !graph.BFSPath {
