@@ -1074,6 +1074,127 @@ class GenTypeGraphIR:
         fields: dict[str, GenTypeGraphIR.Field] = field(default_factory=dict)
 
 
+class _ScopeStack:
+    stack: list[GenTypeGraphIR.ScopeState]
+
+    def __init__(self) -> None:
+        self.stack = []
+
+    @contextmanager
+    def enter(self) -> Generator[GenTypeGraphIR.ScopeState, None, None]:
+        state = GenTypeGraphIR.ScopeState()
+        self.stack.append(state)
+        try:
+            yield state
+        finally:
+            self.stack.pop()
+
+    def add_symbol(self, symbol: GenTypeGraphIR.Symbol) -> None:
+        current_state = self.stack[-1]
+        if symbol.name in current_state.symbols:
+            raise DslException(f"Symbol {symbol} already defined in scope")
+
+        current_state.symbols[symbol.name] = symbol
+
+        print(f"Added symbol {symbol} to scope")
+
+    def add_field(self, field: GenTypeGraphIR.Field) -> None:
+        current_state = self.stack[-1]
+        if field.name in current_state.fields:
+            raise DslException(f"Field {field} already defined in scope")
+
+        current_state.fields[field.name] = field
+
+        print(f"Added field {field} to scope")
+
+    def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
+        for state in reversed(self.stack):
+            if name in state.symbols:
+                return state.symbols[name]
+
+        raise DslException(f"Symbol `{name}` is not available in this scope")
+
+
+class _TypeContextStack:
+    def __init__(
+        self, graph: GraphView, type_graph: TypeGraph, state: BuildState
+    ) -> None:
+        self._stack: list[BoundNode] = []
+        self._graph = graph
+        self._type_graph = type_graph
+        self._state = state
+
+    @contextmanager
+    def enter(self, type_node: BoundNode) -> Generator[None, None, None]:
+        self._stack.append(type_node)
+        try:
+            yield
+        finally:
+            self._stack.pop()
+
+    def current(self) -> BoundNode:
+        if not self._stack:
+            raise DslException("Type context is not available")
+        return self._stack[-1]
+
+    def apply_action(self, action) -> None:
+        match action:
+            case GenTypeGraphIR.AddMakeChildAction() as action:
+                self._add_child(type_node=self.current(), action=action)
+            case GenTypeGraphIR.AddMakeLinkAction() as action:
+                self._add_link(type_node=self.current(), action=action)
+            case None:  # TODO: why would this be None?
+                return
+            case _:
+                raise NotImplementedError(f"Unhandled action: {action}")
+
+    def _add_child(
+        self, type_node: BoundNode, action: GenTypeGraphIR.AddMakeChildAction
+    ) -> None:
+        make_child = self._type_graph.add_make_child(
+            type_node=type_node,
+            child_type_identifier=action.child_spec.symbol.name,
+            identifier=action.target_name,
+        )
+
+        type_reference = not_none(
+            self._type_graph.get_make_child_type_reference(make_child=make_child)
+        )
+
+        symbol = action.child_spec.symbol
+
+        if symbol.import_ref:
+            self._state.external_type_refs.append((type_reference, symbol.import_ref))
+            return
+
+        if (target := symbol.type_node) is None:
+            raise DslException(f"Type `{symbol.name}` is not defined in scope")
+
+        Linker.link_type_reference(
+            g=self._graph,
+            type_reference=type_reference,
+            target_type_node=target,
+        )
+
+    def _add_link(
+        self, type_node: BoundNode, action: GenTypeGraphIR.AddMakeLinkAction
+    ) -> None:
+        lhs_reference_node = self._type_graph.add_reference(
+            type_node=type_node,
+            path=[action.lhs_ref.name],
+        )
+        rhs_reference_node = self._type_graph.add_reference(
+            type_node=type_node,
+            path=[action.rhs_ref.name],
+        )
+        self._type_graph.add_make_link(
+            type_node=type_node,
+            lhs_reference_node=lhs_reference_node.node(),
+            rhs_reference_node=rhs_reference_node.node(),
+            edge_attributes=EdgeInterfaceConnection.build(),
+        )
+
+
 class ASTVisitor:
     """
     Generates a TypeGraph from the AST.
@@ -1084,46 +1205,6 @@ class ASTVisitor:
 
     TODO: store graph references instead of reifying as IR?
     """
-
-    class _ScopeStack:
-        stack: list[GenTypeGraphIR.ScopeState]
-
-        def __init__(self) -> None:
-            self.stack = []
-
-        @contextmanager
-        def enter(self) -> Generator[GenTypeGraphIR.ScopeState, None, None]:
-            state = GenTypeGraphIR.ScopeState()
-            self.stack.append(state)
-            try:
-                yield state
-            finally:
-                self.stack.pop()
-
-        def add_symbol(self, symbol: GenTypeGraphIR.Symbol) -> None:
-            current_state = self.stack[-1]
-            if symbol.name in current_state.symbols:
-                raise DslException(f"Symbol {symbol} already defined in scope")
-
-            current_state.symbols[symbol.name] = symbol
-
-            print(f"Added symbol {symbol} to scope")
-
-        def add_field(self, field: GenTypeGraphIR.Field) -> None:
-            current_state = self.stack[-1]
-            if field.name in current_state.fields:
-                raise DslException(f"Field {field} already defined in scope")
-
-            current_state.fields[field.name] = field
-
-            print(f"Added field {field} to scope")
-
-        def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
-            for state in reversed(self.stack):
-                if name in state.symbols:
-                    return state.symbols[name]
-
-            raise DslException(f"Symbol `{name}` is not available in this scope")
 
     class _Pragma(StrEnum):
         EXPERIMENT = "experiment"
@@ -1139,14 +1220,16 @@ class ASTVisitor:
         self._ast_root = ast_root
         self._graph = graph
         self._type_graph = TypeGraph.create(g=graph)
-        self._scope_stack = ASTVisitor._ScopeStack()
-        self._experiments: set[ASTVisitor._Experiments] = set()
-
         self._state = BuildState(
             type_graph=self._type_graph,
             type_roots={},
             external_type_refs=[],
             file_path=file_path,
+        )
+        self._experiments: set[ASTVisitor._Experiments] = set()
+        self._scope_stack = _ScopeStack()
+        self._type_stack = _TypeContextStack(
+            graph=self._graph, type_graph=self._type_graph, state=self._state
         )
 
     @staticmethod
@@ -1268,65 +1351,6 @@ class ASTVisitor:
         )
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
-        # TODO: consider pushing this type_node to a current_type stack so
-        # child visitor can own this logic
-
-        def handle_statement(stmt: Node, type_node: BoundNode) -> None:
-            match maybe_spec := self.visit(stmt):
-                case GenTypeGraphIR.AddMakeChildAction() as action:
-                    make_child = self._type_graph.add_make_child(
-                        type_node=type_node,
-                        child_type_identifier=action.child_spec.symbol.name,
-                        identifier=action.target_name,
-                    )
-
-                    type_reference = not_none(
-                        self._type_graph.get_make_child_type_reference(
-                            make_child=make_child
-                        )
-                    )
-
-                    symbol = action.child_spec.symbol
-
-                    if symbol.import_ref:
-                        self._state.external_type_refs.append(
-                            (type_reference, symbol.import_ref)
-                        )
-                        return
-
-                    if (target := symbol.type_node) is None:
-                        raise DslException(
-                            f"Type `{symbol.name}` is not defined in scope"
-                        )
-
-                    Linker.link_type_reference(
-                        g=self._graph,
-                        type_reference=type_reference,
-                        target_type_node=target,
-                    )
-
-                case GenTypeGraphIR.AddMakeLinkAction() as action:
-                    lhs_reference_node = self._type_graph.add_reference(
-                        type_node=type_node,
-                        path=[action.lhs_ref.name],
-                    )
-                    rhs_reference_node = self._type_graph.add_reference(
-                        type_node=type_node,
-                        path=[action.rhs_ref.name],
-                    )
-                    self._type_graph.add_make_link(
-                        type_node=type_node,
-                        lhs_reference_node=lhs_reference_node.node(),
-                        rhs_reference_node=rhs_reference_node.node(),
-                        edge_attributes=EdgeInterfaceConnection.build(),
-                    )
-                case None:
-                    pass
-                case _:
-                    raise NotImplementedError(
-                        f"Unhandled statement type: {maybe_spec.get_type_name()}"
-                    )
-
         match node.block_type.get().try_extract_constrained_literal():
             # TODO: enum
             case "module":
@@ -1342,8 +1366,9 @@ class ASTVisitor:
                 self._state.type_roots[module_name] = type_node
 
                 with self._scope_stack.enter():
-                    for stmt in node.scope.get().stmts.get().as_list():
-                        handle_statement(stmt, type_node)
+                    with self._type_stack.enter(type_node):
+                        for stmt in node.scope.get().stmts.get().as_list():
+                            self._type_stack.apply_action(self.visit(stmt))
 
                 self._scope_stack.add_symbol(
                     GenTypeGraphIR.Symbol(name=module_name, type_node=type_node)
