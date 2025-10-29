@@ -10,6 +10,7 @@ import faebryk.libs.exceptions
 from atopile import front_end
 from atopile.address import AddressError, AddrStr
 from atopile.config import ProjectConfig, config
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import (
     DefaultFactoryDict,
     cast_assert,
@@ -169,6 +170,9 @@ def attach_subaddresses_to_modules(app: fabll.Node):
     g = app.instance.g()
     for module, _ in pcb_modules:
         for footprint_child, _ in module.iter_children_with_trait(F.has_footprint):
-            footprint_child.compose_with(
+            footprint_child.connect(
                 in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module),
+                edge_attrs=EdgeComposition.build(
+                    child_identifier=f"{id(footprint_child)}"
+                ),
             )

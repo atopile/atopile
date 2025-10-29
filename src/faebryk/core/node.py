@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
 from enum import Enum, auto
+from tkinter import N
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
@@ -17,7 +18,7 @@ from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
+from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, GraphView
 from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -297,16 +298,17 @@ class TypeChildBoundInstance[T: Node[Any]]:
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=instance, child_identifier=self.identifier
+                bound_node=instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
         return bound
 
 
-class EdgeField(Field):
-    RefPath = list[str | ChildField[Any]]
+RefPath = list[str | ChildField[Any]]
 
+
+class EdgeField(Field):
     def __init__(
         self,
         lhs: RefPath,
@@ -615,11 +617,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     # instance methods -----------------------------------------------------------------
     @deprecated("Use compose_with instead")
     def add(self, node: "Node[Any]"):
-        self.compose_with(node)
+        # TODO node name
+        self.connect(
+            to=node, edge_attrs=EdgeComposition.build(child_identifier=f"{id(node)}")
+        )
 
     def __setattr__(self, name: str, value: Any, /) -> None:
         if isinstance(value, Node) and not name.startswith("_"):
-            self.compose_with(value, name=name)
+            self.connect(
+                to=value, edge_attrs=EdgeComposition.build(child_identifier=name)
+            )
         return super().__setattr__(name, value)
 
     def attributes(self) -> T:
@@ -977,31 +984,20 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __hash__(self) -> int:
         return self.instance.node().get_uuid()
 
-    # instance edge sugar --------------------------------------------------------------
-    def compose_with(self, node: "Node[Any]", name: str | None = None):
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            # TODO None or empty?
-            child_identifier=name or "",
+    # instance edges -------------------------------------------------------------------
+    def connect(self, to: "Node[Any]", edge_attrs: EdgeCreationAttributes) -> None:
+        """
+        Low-level edge creation function.
+        """
+        edge_attrs.insert_edge(
+            g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
         )
 
-    # Get compositions with the get_children functions
-
-    def point_to(
-        self,
-        to_node: "Node[Any]",
-        identifier: str | None = None,
-        order: int | None = None,
-    ) -> None:
-        EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=to_node.instance.node(),
-            identifier=identifier,
-            order=order,
-        )
-
-    def get_references(self, identifier: str | None = None) -> "list[Node[Any]]":
+    # TODO this is at an ugly place
+    # we should be consistent with where we put these sugar methods
+    def get_pointer_references(
+        self, identifier: str | None = None
+    ) -> "list[Node[Any]]":
         references: list[tuple[int | None, BoundNode]] = []
 
         def _collect(
@@ -1034,19 +1030,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             Node(instance=instance)
             for _, instance in sorted(references, key=lambda x: x[0] or 0)
         ]
-
-    def chain_to(self, to_node: "Node[Any]") -> None:
-        EdgeNext.add_next(
-            previous_node=self.instance,
-            next_node=to_node.instance,
-        )
-
-    @staticmethod
-    def get_bnode_name(bound_node: BoundNode) -> str | None:
-        parent_edge = EdgeComposition.get_parent_edge(bound_node=bound_node)
-        if parent_edge is None:
-            return None
-        return EdgeComposition.get_name(edge=parent_edge.edge())
 
 
 class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
@@ -1272,11 +1255,14 @@ class Sequence(Node):
     def append(self, *elems: Node[Any]) -> Self:
         cur_len = len(self.as_list())
         for i, elem in enumerate(elems):
-            self.point_to(elem, self._elem_identifier, order=cur_len + i)
+            self.connect(
+                elem,
+                EdgePointer.build(identifier=self._elem_identifier, order=cur_len + i),
+            )
         return self
 
     def as_list(self) -> list[Node[Any]]:
-        return self.get_references(self._elem_identifier)
+        return self.get_pointer_references(self._elem_identifier)
 
 
 class Set(Node):
@@ -1295,12 +1281,15 @@ class Set(Node):
             by_uuid.pop(node.instance.node().get_uuid(), None)
 
         for i, elem in enumerate(by_uuid.values()):
-            self.point_to(elem, self._elem_identifier, order=cur_len + i)
+            self.connect(
+                elem,
+                EdgePointer.build(identifier=self._elem_identifier, order=cur_len + i),
+            )
 
         return self
 
     @classmethod
-    def MakeChild(cls, *elems: EdgeField.RefPath):
+    def MakeChild(cls, *elems: RefPath):
         out = ChildField(Set)
         for elem in elems:
             out.add_dependant(
@@ -1316,7 +1305,7 @@ class Set(Node):
         return out
 
     def as_list(self) -> list[Node[Any]]:
-        return self.get_references(self._elem_identifier)
+        return self.get_pointer_references(self._elem_identifier)
 
     def as_set(self) -> set[Node[Any]]:
         return set(self.as_list())
@@ -1473,7 +1462,6 @@ class IsConstrained(Node):
 
 class IsExpression(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
-    operands = Sequence.MakeChild()
 
     @dataclass
     class ReprStyle:
@@ -1504,7 +1492,7 @@ class IsExpression(Node):
         placement: Placement = Placement.INFIX
 
     @classmethod
-    def MakeChild(cls, symbol: str) -> ChildField[Any]:
+    def MakeChild(cls, repr_style: ReprStyle) -> ChildField[Any]:
         out = ChildField(cls)
         return out
 
@@ -1713,8 +1701,8 @@ def test_pointer_helpers():
     left_child = parent.left.get()
     right_child = parent.right.get()
 
-    parent.point_to(left_child, identifier="left_ptr")
-    parent.point_to(right_child, identifier="right_ptr")
+    parent.connect(left_child, EdgePointer.build(identifier="left_ptr", order=None))
+    parent.connect(right_child, EdgePointer.build(identifier="right_ptr", order=None))
 
     pointed_edges: list[str | None] = []
 
@@ -1743,8 +1731,8 @@ def test_pointer_helpers():
     assert right is not None
     assert right.node().is_same(other=right_child.instance.node())
 
-    parent.point_to(left_child, identifier="shared")
-    parent.point_to(right_child, identifier="shared")
+    parent.connect(left_child, EdgePointer.build(identifier="shared", order=None))
+    parent.connect(right_child, EdgePointer.build(identifier="shared", order=None))
 
     shared_edges: list[BoundEdge] = []
 
@@ -1759,7 +1747,7 @@ def test_pointer_helpers():
     )
     assert len(shared_edges) == 2
 
-    shared_nodes = parent.get_references(identifier="shared")
+    shared_nodes = parent.get_pointer_references(identifier="shared")
     uuids = {node.instance.node().get_uuid() for node in shared_nodes}
     assert uuids == {
         left_child.instance.node().get_uuid(),
@@ -2043,7 +2031,7 @@ def test_manual_resistor_def():
             operand_identifier="tochild",
         )
     )
-    print("lhs_node name:", Node.get_bnode_name(bound_node=lhs_node))
+    print("lhs_node name:", Node.bind_instance(lhs_node).get_name())
 
     rhs_node = not_none(
         EdgeOperand.get_operand_by_identifier(
@@ -2051,7 +2039,7 @@ def test_manual_resistor_def():
             operand_identifier="toliteral",
         )
     )
-    print("rhs_node name:", Node.get_bnode_name(bound_node=rhs_node))
+    print("rhs_node name:", Node.bind_instance(rhs_node).get_name())
 
     literal_ipbt_endpoint = not_none(
         EdgeComposition.get_child_by_identifier(

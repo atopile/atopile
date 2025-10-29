@@ -5,6 +5,9 @@ const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 const Edge = graph.Edge;
 const EdgeReference = graph.EdgeReference;
+const GraphView = graph.GraphView;
+const NodeReference = graph.NodeReference;
+const BoundEdgeReference = graph.BoundEdgeReference;
 const str = graph.str;
 
 pub const EdgeCreationAttributes = struct {
@@ -20,5 +23,16 @@ pub const EdgeCreationAttributes = struct {
         if (self.dynamic) |dynamic| {
             dynamic.copy_into(&edge.attributes.dynamic);
         }
+    }
+
+    pub fn create_edge(self: *const @This(), allocator: std.mem.Allocator, source: NodeReference, target: NodeReference) EdgeReference {
+        const edge = Edge.init(allocator, source, target, self.edge_type);
+        self.apply_to(edge);
+        return edge;
+    }
+
+    pub fn insert_edge(self: *const @This(), g: *GraphView, source: NodeReference, target: NodeReference) BoundEdgeReference {
+        const edge = self.create_edge(g.allocator, source, target);
+        return g.insert_edge(edge);
     }
 };
