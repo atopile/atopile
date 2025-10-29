@@ -46,7 +46,7 @@ class EdgeComposition:
     def get_tid() -> Edge.Type: ...
     @staticmethod
     def get_child_by_identifier(
-        *, node: BoundNode, child_identifier: str
+        *, bound_node: BoundNode, child_identifier: str
     ) -> BoundNode | None: ...
     @staticmethod
     def visit_children_of_type[T](
