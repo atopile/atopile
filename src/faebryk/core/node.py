@@ -1347,6 +1347,26 @@ class Set(Node):
         return set(self.as_list())
 
 
+class Optional(Node):
+    value = Node.MakeChild()
+
+    def setup(self, g: GraphView, value: Node) -> Self:
+        self.point_to(value, identifier="value")
+        return self
+
+    def get_value(self) -> Node | None:
+        values = self.get_references(identifier="value")
+
+        match len(values):
+            case 0:
+                return None
+            case 1:
+                (v,) = values
+                return v
+            case _:
+                raise FabLLException("Optional contains >1 values")
+
+
 class Traits:
     def __init__(self, node: Node[Any]):
         self.node = node
