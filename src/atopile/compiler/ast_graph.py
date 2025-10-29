@@ -1356,9 +1356,7 @@ class ASTVisitor:
             str, target_part.name.get().try_extract_constrained_literal()
         )
 
-        # TODO: record in schema so we can access node.assignable.get().value.get()
-        assignable_value = node.assignable.get().get_child(name="value")
-        assignable = self.visit(assignable_value)
+        assignable = self.visit(node.assignable.get().get_value())
         action: GenTypeGraphIR.AddChildAction | None = None
 
         if isinstance(assignable, GenTypeGraphIR.NewChildSpec):

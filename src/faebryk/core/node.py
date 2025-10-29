@@ -175,15 +175,24 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
-        self.t.tg.add_make_child(
+        make_child = self.t.tg.add_make_child(
             type_node=self.t.get_or_create_type(),
-            child_type_node=self.nodetype.bind_typegraph(
-                self.t.tg
-            ).get_or_create_type(),
+            child_type_identifier=self.nodetype._type_identifier(),
             identifier=identifier,
             node_attributes=self.attributes.to_node_attributes()
             if self.attributes is not None
             else None,
+        )
+
+        type_reference = not_none(
+            self.t.tg.get_make_child_type_reference(make_child=make_child)
+        )
+        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
+
+        Linker.link_type_reference(
+            g=self.t.tg.get_graph_view(),
+            type_reference=type_reference,
+            target_type_node=child_type_node,
         )
 
     def get(self) -> T:
@@ -522,11 +531,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             identifier=identifier,
         )
 
-        # TODO reconsider whether this should be here
-        if (
-            type_reference := tg.get_make_child_type_reference(make_child=make_child)
-        ) is None:
-            raise FaebrykApiException("MakeChild node missing TypeReference child")
+        type_reference = tg.get_make_child_type_reference(make_child=make_child)
+        assert type_reference is not None
 
         Linker.link_type_reference(
             g=parent_type_node.g(),
