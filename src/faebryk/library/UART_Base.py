@@ -7,12 +7,11 @@ from faebryk.libs.units import P
 
 
 class UART_Base(fabll.Node):
-    rx: F.ElectricLogic
-    tx: F.ElectricLogic
+    rx = F.ElectricLogic.MakeChild()
+    tx = F.ElectricLogic.MakeChild()
 
-    baud = fabll.p_field(units=P.baud)
+    baud = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.BitPerSecond)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)

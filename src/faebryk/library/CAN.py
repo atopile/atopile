@@ -3,7 +3,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class CAN(fabll.Node):
@@ -11,9 +10,9 @@ class CAN(fabll.Node):
     CAN bus interface
     """
 
-    diff_pair: F.DifferentialPair
+    diff_pair = F.DifferentialPair.MakeChild()
 
-    speed = fabll.p_field(units=P.bps)
+    speed = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.BitPerSecond)
 
     def __preinit__(self) -> None:
         self.speed.add(F.is_bus_parameter())
@@ -27,7 +26,7 @@ class CAN(fabll.Node):
             F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
         )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import CAN, ElectricPower, Resistor
 
@@ -55,4 +54,4 @@ class CAN(fabll.Node):
         # Common applications: automotive, industrial automation, IoT
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

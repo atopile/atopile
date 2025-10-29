@@ -6,18 +6,16 @@ import faebryk.library._F as F
 
 
 class Regulator(fabll.Node):
-    power_in: F.ElectricPower
-    power_out: F.ElectricPower
+    power_in = F.ElectricPower.MakeChild()
+    power_out = F.ElectricPower.MakeChild()
 
     def __preinit__(self):
         self.power_out.add(F.Power.is_power_source.impl()())
         self.power_in.add(F.Power.is_power_sink.impl()())
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.power_in, self.power_out)
+    _can_bridge = F.can_bridge.MakeChild(in_=power_in, out_=power_out)
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Regulator, ElectricPower
 
@@ -47,4 +45,4 @@ class Regulator(fabll.Node):
         # - Buck-boost for bidirectional conversion
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

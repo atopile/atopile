@@ -5,7 +5,6 @@ from enum import Enum, auto
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P, quantity
 
 
 class Comparator(fabll.Node):
@@ -14,60 +13,45 @@ class Comparator(fabll.Node):
         PushPull = auto()
         OpenDrain = auto()
 
-    common_mode_rejection_ratio = fabll.p_field(
-        units=P.dB,
-        likely_constrained=True,
-        soft_set=fabll.Range(quantity(60, P.dB), quantity(120, P.dB)),
-        tolerance_guess=10 * P.percent,
+    common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Decibel,
     )
-    input_bias_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.pA, 1 * P.µA),
-        tolerance_guess=20 * P.percent,
+    input_bias_current = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Ampere,
     )
-    input_hysteresis_voltage = fabll.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.mV, 100 * P.mV),
-        tolerance_guess=15 * P.percent,
+    input_hysteresis_voltage = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Volt,
     )
-    input_offset_voltage = fabll.p_field(
-        units=P.V,
-        soft_set=fabll.Range(10 * P.µV, 10 * P.mV),
-        tolerance_guess=20 * P.percent,
+    input_offset_voltage = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Volt,
     )
-    propagation_delay = fabll.p_field(
-        units=P.s,
-        soft_set=fabll.Range(10 * P.ns, 1 * P.ms),
-        tolerance_guess=15 * P.percent,
+    propagation_delay = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Second,
     )
-    output_type = fabll.p_field(
-        domain=fabll.Domains.ENUM(OutputType),
-        likely_constrained=True,
+    output_type = fabll.Parameter.MakeChild_Enum(
+        enum_t=OutputType,
     )
 
-    power: F.ElectricPower
-    inverting_input: F.Electrical
-    non_inverting_input: F.Electrical
-    output: F.Electrical
+    power = F.ElectricPower.MakeChild()
+    inverting_input = F.Electrical.MakeChild()
+    non_inverting_input = F.Electrical.MakeChild()
+    output = F.Electrical.MakeChild()
 
-    @fabll.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.common_mode_rejection_ratio, suffix="CMRR"),
-            S(self.input_bias_current, suffix="Ib"),
-            S(self.input_hysteresis_voltage, suffix="Vhys"),
-            S(self.input_offset_voltage, suffix="Vos"),
-            S(self.propagation_delay, suffix="tpd"),
-        )
+    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+        params={
+            "CMRR": common_mode_rejection_ratio,
+            "Ib": input_bias_current,
+            "Vhys": input_hysteresis_voltage,
+            "Vos": input_offset_voltage,
+            "tpd": propagation_delay,
+        }
+    ).put_on_type()
 
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
-    )
+    ).put_on_type()
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Comparator, Resistor, ElectricPower, Electrical
 
@@ -105,4 +89,4 @@ class Comparator(fabll.Node):
         # Output will be HIGH when input_signal > reference_voltage
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

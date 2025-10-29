@@ -9,7 +9,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class ElectricLogic(F.ElectricSignal):
+class ElectricLogic(fabll.Node):
     """
     ElectricLogic is a class that represents a logic signal.
     Logic signals only have two states: high and low.
@@ -20,7 +20,9 @@ class ElectricLogic(F.ElectricSignal):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
 
-    class has_pulls_defined(has_pulls.impl()):
+    class has_pulls_defined(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
         def __init__(self, up: F.Resistor | None, down: F.Resistor | None) -> None:
             super().__init__()
             self.up = up
@@ -33,7 +35,9 @@ class ElectricLogic(F.ElectricSignal):
         @abstractmethod
         def pull(self, up: bool, owner: fabll.Node) -> F.Resistor: ...
 
-    class can_be_pulled_defined(can_be_pulled.impl()):
+    class can_be_pulled_defined(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
         def __init__(self, line: F.Electrical, ref: F.ElectricPower) -> None:
             super().__init__()
             self.ref = ref
@@ -97,18 +101,17 @@ class ElectricLogic(F.ElectricSignal):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    push_pull = fabll.p_field(
-        domain=fabll.Domains.ENUM(PushPull),
-    )
+    # push_pull = fabll.p_field(
+    #     domain=fabll.Domains.ENUM(PushPull),
+    # )
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @fabll.rt_field
     def pulled(self):
         return ElectricLogic.can_be_pulled_defined(self.line, self.reference)
 
-    specializable_types = fabll.f_field(F.can_specialize_defined)([F.Logic])
+    # specializable_types = fabll.f_field(F.can_specialize_defined)([F.Logic])
 
     # ----------------------------------------
     #                functions
@@ -147,7 +150,7 @@ class ElectricLogic(F.ElectricSignal):
 
         return super().connect_shallow(other)
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import ElectricLogic
 
@@ -162,4 +165,4 @@ class ElectricLogic(F.ElectricSignal):
         logic_signal.line ~> example_resistor ~> electrical
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

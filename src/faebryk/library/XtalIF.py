@@ -18,9 +18,13 @@ class XtalIF(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    xin: F.Electrical
-    xout: F.Electrical
-    gnd: F.Electrical
+    xin = F.Electrical.MakeChild()
+    xout = F.Electrical.MakeChild()
+    gnd = F.Electrical.MakeChild()
+
+    @classmethod
+    def MakeChild(cls):
+        return fabll.ChildField(cls)
 
     # ----------------------------------------
     #                 traits

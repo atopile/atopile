@@ -1,106 +1,50 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from deprecated import deprecated
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import ParameterOperatable
-from faebryk.libs.units import P
 
 
 class Diode(fabll.Node):
-    forward_voltage = fabll.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=fabll.Range(0.1 * P.V, 1 * P.V),
-        tolerance_guess=10 * P.percent,
-    )
+    forward_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
     # Current at which the design is functional
-    current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(0.1 * P.mA, 10 * P.A),
-        tolerance_guess=10 * P.percent,
-    )
-    reverse_working_voltage = fabll.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=fabll.Range(10 * P.V, 100 * P.V),
-        tolerance_guess=10 * P.percent,
-    )
-    reverse_leakage_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(0.1 * P.nA, 1 * P.µA),
-        tolerance_guess=10 * P.percent,
-    )
+    current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    reverse_working_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    reverse_leakage_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
     # Current at which the design may be damaged
-    # In some cases, this is useful to know, e.g. to calculate the brightness of an LED
-    max_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(0.1 * P.mA, 10 * P.A),
-    )
+    max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
 
-    anode: F.Electrical
-    cathode: F.Electrical
+    anode = F.Electrical.MakeChild()
+    cathode = F.Electrical.MakeChild()
 
-    # @fabll.rt_field
-    # def pickable(self):
-    #     return F.is_pickable_by_type(
-    #         F.is_pickable_by_type.Type.Diode,
-    #         {
-    #             "forward_voltage": self.forward_voltage,
-    #             "reverse_working_voltage": self.reverse_working_voltage,
-    #             "reverse_leakage_current": self.reverse_leakage_current,
-    #             "max_current": self.max_current,
-    #         },
-    #     )
+    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.anode, self.cathode)
+    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+        params={"forward_voltage": forward_voltage},
+    ).put_on_type()
 
-    @fabll.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.forward_voltage),
-        )
-
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.D
+    ).put_on_type()
+
+    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+        mapping={
+            anode: ["A", "Anode", "+"],
+            cathode: ["K", "C", "Cathode", "-"],
+        },
+        accept_prefix=False,
+        case_sensitive=False,
     )
 
-    @fabll.rt_field
-    def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
-            mapping={
-                self.anode: ["A", "Anode", "+"],
-                self.cathode: ["K", "C", "Cathode", "-"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
+    # anode.add_dependant(
+    #     F.has_net_name.MakeChild(name="anode", level=F.has_net_name.Level.SUGGESTED)
+    # )
+    # cathode.add_dependant(
+    #     F.has_net_name.MakeChild(name="cathode", level=F.has_net_name.Level.SUGGESTED)
+    # )
 
-    def __preinit__(self):
-        self.current.constrain_le(self.max_current)
-
-    @deprecated(reason="Use parameter constraints instead")
-    def get_needed_series_resistance_for_current_limit(
-        self, input_voltage_V: ParameterOperatable
-    ):
-        return (input_voltage_V - self.forward_voltage) / self.current
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.anode.add(F.has_net_name("anode", level=F.has_net_name.Level.SUGGESTED))
-        self.cathode.add(
-            F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
-        )
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Diode, Resistor, ElectricPower
 
@@ -119,4 +63,4 @@ class Diode(fabll.Node):
         power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

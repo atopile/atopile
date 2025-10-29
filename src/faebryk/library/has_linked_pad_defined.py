@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.trait import TraitImpl
 
 if TYPE_CHECKING:
     from faebryk.library.Pad import Pad
 
 
-class has_linked_pad_defined(F.has_linked_pad.impl()):
+class has_linked_pad_defined(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     def __init__(self, pad: "Pad") -> None:
         super().__init__()
         self.pads = {pad}
@@ -20,10 +21,10 @@ class has_linked_pad_defined(F.has_linked_pad.impl()):
     def get_pads(self) -> set["Pad"]:
         return self.pads
 
-    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
-        if not isinstance(old, has_linked_pad_defined):
-            self.pads.update(old.get_pads())
-            return super().handle_duplicate(old, node)
+    # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
+    #     if not isinstance(old, has_linked_pad_defined):
+    #         self.pads.update(old.get_pads())
+    #         return super().handle_duplicate(old, node)
 
-        old.pads.update(self.pads)
-        return False
+    #     old.pads.update(self.pads)
+    #     return False

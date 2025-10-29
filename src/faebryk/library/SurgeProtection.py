@@ -5,15 +5,14 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P  # noqa: F401
 from faebryk.libs.util import partition
 
 logger = logging.getLogger(__name__)
 
 
 class SurgeProtection(fabll.Node):
-    tvs = fabll.list_f_field(0, F.TVS)()
-    nested = fabll.list_f_field(0, fabll.Module)()
+    tvs = [F.TVS.MakeChild() for _ in range(0)]
+    nested = [fabll.Module.MakeChild() for _ in range(0)]
 
     def __init__(self, tvs_count: int = 1):
         super().__init__()

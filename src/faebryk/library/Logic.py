@@ -5,7 +5,7 @@ import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F
 
 
-class Logic(F.Signal):
+class Logic(fabll.Node):
     """
     Acts as protocol, because multi inheritance is not supported
     """

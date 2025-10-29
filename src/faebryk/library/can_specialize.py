@@ -6,7 +6,6 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Iterable
 
 import faebryk.core.node as fabll
-from faebryk.core.trait import Trait
 
 if TYPE_CHECKING:
     pass
@@ -14,7 +13,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class can_specialize(Trait):
+class can_specialize(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
     """
     Marks that a module can specialize other modules next to its bases.
     """

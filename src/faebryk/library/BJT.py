@@ -20,34 +20,30 @@ class BJT(fabll.Node):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type = fabll.p_field(domain=fabll.Domains.ENUM(DopingType))
-    operation_region = fabll.p_field(domain=fabll.Domains.ENUM(OperationRegion))
+    doping_type = fabll.Parameter.MakeChild_Enum(enum_t=DopingType)
+    operation_region = fabll.Parameter.MakeChild_Enum(enum_t=OperationRegion)
 
-    emitter: F.Electrical
-    base: F.Electrical
-    collector: F.Electrical
+    emitter = F.Electrical.MakeChild()
+    base = F.Electrical.MakeChild()
+    collector = F.Electrical.MakeChild()
 
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.Q
+    _can_bridge = F.can_bridge.MakeChild(in_=collector, out_=emitter)
+
+    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+        mapping={
+            emitter: ["E", "Emitter"],
+            base: ["B", "Base"],
+            collector: ["C", "Collector"],
+        },
+        accept_prefix=False,
+        case_sensitive=False,
     )
 
-    @rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.collector, self.emitter)
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.Q
+    ).put_on_type()
 
-    @rt_field
-    def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
-            mapping={
-                self.emitter: ["E", "Emitter"],
-                self.base: ["B", "Base"],
-                self.collector: ["C", "Collector"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import BJT, Resistor, ElectricPower
 
@@ -67,4 +63,4 @@ class BJT(fabll.Node):
         output_signal ~ bjt.collector
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

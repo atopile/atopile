@@ -6,13 +6,13 @@ import faebryk.library._F as F
 
 
 class UART(fabll.Node):
-    base_uart: F.UART_Base
-    rts: F.ElectricLogic
-    cts: F.ElectricLogic
-    dtr: F.ElectricLogic
-    dsr: F.ElectricLogic
-    dcd: F.ElectricLogic
-    ri: F.ElectricLogic
+    base_uart = F.UART_Base.MakeChild()
+    rts = F.ElectricLogic.MakeChild()
+    cts = F.ElectricLogic.MakeChild()
+    dtr = F.ElectricLogic.MakeChild()
+    dsr = F.ElectricLogic.MakeChild()
+    dcd = F.ElectricLogic.MakeChild()
+    ri = F.ElectricLogic.MakeChild()
 
     # TODO: this creates too many connections in some projects
     # @fabll.rt_field
@@ -23,14 +23,14 @@ class UART(fabll.Node):
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
-        self.rts.line.add(F.has_net_name("RTS", level=F.has_net_name.Level.SUGGESTED))
-        self.cts.line.add(F.has_net_name("CTS", level=F.has_net_name.Level.SUGGESTED))
-        self.dtr.line.add(F.has_net_name("DTR", level=F.has_net_name.Level.SUGGESTED))
-        self.dsr.line.add(F.has_net_name("DSR", level=F.has_net_name.Level.SUGGESTED))
-        self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
-        self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))
+        # self.rts.line.add(F.has_net_name("RTS", level=F.has_net_name.Level.SUGGESTED))
+        # self.cts.line.add(F.has_net_name("CTS", level=F.has_net_name.Level.SUGGESTED))
+        # self.dtr.line.add(F.has_net_name("DTR", level=F.has_net_name.Level.SUGGESTED))
+        # self.dsr.line.add(F.has_net_name("DSR", level=F.has_net_name.Level.SUGGESTED))
+        # self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
+        # self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import UART, ElectricPower
 
@@ -59,4 +59,4 @@ class UART(fabll.Node):
         # Common baud rates: 9600, 38400, 115200, 230400, 460800
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

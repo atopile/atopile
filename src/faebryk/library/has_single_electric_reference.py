@@ -5,12 +5,12 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-from faebryk.core.trait import Trait
+import faebryk.core.node as fabll
 
 if TYPE_CHECKING:
     from faebryk.library.ElectricPower import ElectricPower
 
 
-class has_single_electric_reference(Trait):
+class has_single_electric_reference(fabll.Node):
     @abstractmethod
     def get_reference(self) -> "ElectricPower": ...

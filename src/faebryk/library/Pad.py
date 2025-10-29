@@ -8,8 +8,8 @@ from faebryk.libs.util import not_none
 
 
 class Pad(fabll.Node):
-    net: F.Electrical
-    pcb: fabll.ModuleInterface
+    net = F.Electrical.MakeChild()
+    pcb = fabll.ChildField(fabll.ModuleInterface)
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
@@ -45,7 +45,7 @@ class Pad(fabll.Node):
     def get_fp(self) -> F.Footprint:
         return not_none(self.get_parent_of_type(F.Footprint))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Pad
 

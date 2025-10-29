@@ -22,45 +22,18 @@ class LDO(fabll.Node):
         POSITIVE = auto()
         NEGATIVE = auto()
 
-    max_input_voltage = fabll.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.V, 100 * P.V),
-    )
-    output_voltage = fabll.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.V, 100 * P.V),
-    )
-    quiescent_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.mA, 100 * P.mA),
-    )
-    dropout_voltage = fabll.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.mV, 100 * P.mV),
-    )
-    ripple_rejection_ratio = fabll.p_field(
-        units=P.dB,
-        likely_constrained=True,
-        soft_set=fabll.Range(quantity(1, P.dB), quantity(100, P.dB)),
-    )
-    output_polarity = fabll.p_field(
-        domain=fabll.Domains.ENUM(OutputPolarity),
-    )
-    output_type = fabll.p_field(
-        domain=fabll.Domains.ENUM(OutputType),
-    )
-    output_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.mA, 100 * P.mA),
-    )
-    enable: F.EnablePin
-    power_in: F.ElectricPower
-    power_out = fabll.d_field(lambda: F.ElectricPower().make_source())
+    max_input_voltage = fabll.Parameter.MakeChild_Numeric(fabll.Units.Volt)
+    output_voltage = fabll.Parameter.MakeChild_Numeric(fabll.Units.Volt)
+    quiescent_current = fabll.Parameter.MakeChild_Numeric(fabll.Units.Ampere)
+    dropout_voltage = fabll.Parameter.MakeChild_Numeric(fabll.Units.Volt)
+    ripple_rejection_ratio = fabll.Parameter.MakeChild_Numeric(fabll.Units.Decibel)
+    output_polarity = fabll.Parameter.MakeChild_Enum(OutputPolarity)
+    output_type = fabll.Parameter.MakeChild_Enum(OutputType)
+    output_current = fabll.Parameter.MakeChild_Numeric(fabll.Units.Ampere)
+
+    enable = F.EnablePin.MakeChild()
+    power_in = F.ElectricPower.MakeChild()
+    power_out = F.ElectricPower.MakeChild()
 
     # @fabll.rt_field
     # def pickable(self) -> F.is_pickable_by_type:
@@ -90,21 +63,17 @@ class LDO(fabll.Node):
         # else:
         #    self.power_in.lv.connect(self.power_out.lv)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )
 
-    @fabll.rt_field
     def decoupled(self):
         return F.can_be_decoupled_rails(self.power_in, self.power_out)
 
-    @fabll.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power_in, self.power_out)
 
-    @fabll.rt_field
     def simple_value_representation(self):
         S = F.has_simple_value_representation_based_on_params_chain.Spec
         return F.has_simple_value_representation_based_on_params_chain(
@@ -117,11 +86,10 @@ class LDO(fabll.Node):
             prefix="LDO",
         )
 
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
     )
 
-    @fabll.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
@@ -134,7 +102,7 @@ class LDO(fabll.Node):
             case_sensitive=False,
         )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import LDO, ElectricPower, Capacitor
 
@@ -167,4 +135,4 @@ class LDO(fabll.Node):
         ldo.power_out.hv ~> output_cap ~> ldo.power_out.lv
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

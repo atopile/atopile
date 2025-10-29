@@ -6,11 +6,10 @@ import faebryk.library._F as F
 
 
 class SPI(fabll.Node):
-    sclk: F.ElectricLogic
-    miso: F.ElectricLogic
-    mosi: F.ElectricLogic
+    sclk = F.ElectricLogic.MakeChild()
+    miso = F.ElectricLogic.MakeChild()
+    mosi = F.ElectricLogic.MakeChild()
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -22,7 +21,7 @@ class SPI(fabll.Node):
         self.miso.line.add(F.has_net_name("MISO", level=F.has_net_name.Level.SUGGESTED))
         self.mosi.line.add(F.has_net_name("MOSI", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import SPI, ElectricPower, ElectricLogic
 
@@ -45,4 +44,4 @@ class SPI(fabll.Node):
         flash_memory.cs ~ chip_select
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

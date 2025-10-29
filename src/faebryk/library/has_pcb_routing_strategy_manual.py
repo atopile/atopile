@@ -19,7 +19,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class has_pcb_routing_strategy_manual(F.has_pcb_routing_strategy.impl()):
+class has_pcb_routing_strategy_manual(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     def __init__(
         self,
         paths: Sequence[tuple[F.Net | Sequence[F.Electrical], Path]],

@@ -1,13 +1,30 @@
 import faebryk.core.node as fabll
-from faebryk.core.reference import Reference
-from faebryk.core.trait import Trait
+
+# from faebryk.core.reference import Reference
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 
-class has_reference(Trait):
+class has_reference(fabll.Node):
     """Trait-attached reference"""
 
-    reference = Reference()
+    @classmethod
+    def MakeChild(cls, reference: fabll.ChildField[fabll.Node]):
+        out = fabll.ChildField(cls)
+        field = fabll.EdgeField(
+            [out],
+            [reference],
+            edge=EdgePointer.build(identifier="reference", order=None),
+        )
+        out.add_dependant(field)
+        return out
 
-    def __init__(self, reference: fabll.Node):
-        super().__init__()
-        self.reference = reference
+    @property
+    def reference(self) -> fabll.Node:
+        bound_node = EdgePointer.get_pointed_node_by_identifier(
+            bound_node=self.instance, identifier="reference"
+        )
+        if bound_node is None:
+            raise ValueError("has_reference is not bound")
+        return fabll.Node.bind_instance(
+            bound_node
+        )  # TODO: Change return to reference type

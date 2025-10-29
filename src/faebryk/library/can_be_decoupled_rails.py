@@ -9,7 +9,9 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-class can_be_decoupled_rails(F.can_be_decoupled.impl()):
+class can_be_decoupled_rails(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     def __init__(self, *rails: F.ElectricPower):
         super().__init__()
         assert rails

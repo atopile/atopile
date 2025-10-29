@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, override
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.reference import reference
-from faebryk.core.trait import Trait
+
+# from faebryk.core.reference import reference
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.units import to_si_str
 from faebryk.libs.util import find, groupby, md_list
@@ -48,7 +48,8 @@ class PCB(fabll.Node):
         assert self._pcb_file is not None
         return self._pcb_file
 
-    class requires_drc_check(Trait.decless()):
+    class requires_drc_check(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
         type Violation = kicad.drc.DrcFile.C_Violation
 
         class DrcException(F.implements_design_check.UnfulfilledCheckException):
@@ -128,8 +129,9 @@ class PCB(fabll.Node):
 
     # TODO use reference
     class has_pcb(fabll.Node):
-        class has_pcb_ref(F.has_reference.decless()):
-            reference: "PCB" = reference()
+        class has_pcb_ref(fabll.Node):
+            _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+            # reference: "PCB" = reference()
 
         def __init__(self, pcb: "PCB"):
             super().__init__()

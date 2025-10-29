@@ -14,13 +14,12 @@ class Ethernet(fabll.Node):
     """
 
     # Ethernet pairs
-    pairs = fabll.list_field(4, F.DifferentialPair)
+    pairs = [fabll.ChildField(fabll.Parameter) for _ in range(4)]
 
     # Status LEDs
     led_speed: F.ElectricLogic  # Speed LED
     led_link: F.ElectricLogic  # Link LED
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -42,7 +41,7 @@ class Ethernet(fabll.Node):
                 F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
             )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Ethernet, ElectricPower
 
@@ -65,4 +64,4 @@ class Ethernet(fabll.Node):
         ethernet.led_link ~ link_led_output
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

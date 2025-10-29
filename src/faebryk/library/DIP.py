@@ -4,23 +4,20 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
 
-class DIP(F.Footprint):
-    def __init__(self, pin_cnt: int, spacing: Quantity, long_pads: bool) -> None:
-        super().__init__()
+class DIP(fabll.Node):
+    # def __init__(self, pin_cnt: int, spacing: Quantity, long_pads: bool) -> None:
+    #     super().__init__()
 
-        self.spacing = spacing
-        self.long_pads = long_pads
-        self.pin_cnt = pin_cnt
+    #     self.spacing = spacing
+    #     self.long_pads = long_pads
+    #     self.pin_cnt = pin_cnt
 
-    @fabll.rt_field
     def pins(self):
         return times(self.pin_cnt, F.Pad)
 
-    @fabll.rt_field
     def kicad_footprint(self):
         class _has_kicad_footprint(F.has_kicad_footprint_equal_ifs):
             @staticmethod

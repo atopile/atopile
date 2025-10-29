@@ -8,7 +8,7 @@ from faebryk.libs.units import P, Quantity
 from faebryk.libs.util import times
 
 
-class SOIC(F.Footprint):
+class SOIC(fabll.Node):
     def __init__(
         self,
         pin_cnt: int,
@@ -20,11 +20,12 @@ class SOIC(F.Footprint):
         self._size_xy = size_xy
         self._pitch = pitch
 
-    @fabll.rt_field
     def pins(self):
         return times(self._pin_cnt, F.Pad)
 
-    class _has_kicad_footprint(F.has_kicad_footprint_equal_ifs):
+    class _has_kicad_footprint(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
         def get_kicad_footprint(self) -> str:
             obj = self.obj
             assert isinstance(obj, SOIC)

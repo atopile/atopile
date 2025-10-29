@@ -6,17 +6,16 @@ import faebryk.library._F as F
 
 
 class JTAG(fabll.Node):
-    dbgrq: F.ElectricLogic
-    tdo: F.ElectricLogic
-    tdi: F.ElectricLogic
-    tms: F.ElectricLogic
-    tck: F.ElectricLogic
-    rtck: F.ElectricLogic
-    n_trst: F.ElectricLogic
-    n_reset: F.ElectricLogic
-    vtref: F.ElectricPower
+    dbgrq = F.ElectricLogic.MakeChild()
+    tdo = F.ElectricLogic.MakeChild()
+    tdi = F.ElectricLogic.MakeChild()
+    tms = F.ElectricLogic.MakeChild()
+    tck = F.ElectricLogic.MakeChild()
+    rtck = F.ElectricLogic.MakeChild()
+    n_trst = F.ElectricLogic.MakeChild()
+    n_reset = F.ElectricLogic.MakeChild()
+    vtref = F.ElectricPower.MakeChild()
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -40,7 +39,7 @@ class JTAG(fabll.Node):
         )
         self.vtref.add(F.has_net_name("VTREF", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import JTAG, ElectricPower, Resistor
 
@@ -76,4 +75,4 @@ class JTAG(fabll.Node):
         jtag.n_reset.line ~> reset_pullup ~> jtag.n_reset.reference.hv
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

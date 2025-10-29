@@ -4,7 +4,7 @@
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
-from faebryk.core.trait import Trait
+import faebryk.core.node as fabll
 
 if TYPE_CHECKING:
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 
 
 # TODO remove transformer from here
-class has_pcb_routing_strategy(Trait):
+class has_pcb_routing_strategy(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     @abstractmethod
     def calculate(self, transformer: "PCB_Transformer") -> list["Route"]: ...
 

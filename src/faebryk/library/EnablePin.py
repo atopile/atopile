@@ -6,7 +6,7 @@ import faebryk.library._F as F
 
 
 class EnablePin(fabll.Node):
-    enable: F.ElectricLogic
+    enable = F.ElectricLogic.MakeChild()
 
     def _handle_optional(self, needed: bool):
         if not needed:
@@ -19,11 +19,9 @@ class EnablePin(fabll.Node):
     def set_weak(self, value: bool, owner: fabll.Node):
         return self.enable.set_weak(value, owner=owner)
 
-    @fabll.rt_field
     def has_single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.enable.reference)
 
-    @fabll.rt_field
     def is_optional(self):
         return F.is_optional_defined(False, self._handle_optional)
 

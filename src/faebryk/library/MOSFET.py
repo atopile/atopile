@@ -5,7 +5,6 @@ from enum import Enum, auto
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class MOSFET(fabll.Node):
@@ -17,24 +16,28 @@ class MOSFET(fabll.Node):
         ENHANCEMENT = auto()
         DEPLETION = auto()
 
-    channel_type = fabll.p_field(domain=fabll.Domains.ENUM(ChannelType))
-    saturation_type = fabll.p_field(domain=fabll.Domains.ENUM(SaturationType))
-    gate_source_threshold_voltage = fabll.p_field(units=P.V)
-    max_drain_source_voltage = fabll.p_field(units=P.V)
-    max_continuous_drain_current = fabll.p_field(units=P.A)
-    on_resistance = fabll.p_field(units=P.ohm)
-
-    source: F.Electrical
-    gate: F.Electrical
-    drain: F.Electrical
-
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.Q
+    channel_type = fabll.Parameter.MakeChild_Enum(enum_t=ChannelType)
+    saturation_type = fabll.Parameter.MakeChild_Enum(enum_t=SaturationType)
+    gate_source_threshold_voltage = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Volt
     )
+    max_drain_source_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    max_continuous_drain_current = fabll.Parameter.MakeChild_Numeric(
+        unit=fabll.Units.Ampere
+    )
+    on_resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+
+    source = F.Electrical.MakeChild()
+    gate = F.Electrical.MakeChild()
+    drain = F.Electrical.MakeChild()
+
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.Q
+    ).put_on_type()
 
     # @fabll.rt_field
     # def pickable(self) -> F.is_pickable_by_type:
-    #     return F.is_pickable_by_type(
+    #     return F.is_pickable_by_type(p
     #         F.is_pickable_by_type.Type.MOSFET,
     #         {
     #             "channel_type": self.channel_type,
@@ -48,29 +51,23 @@ class MOSFET(fabll.Node):
     #     )
 
     # TODO pretty confusing
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(in_if=self.source, out_if=self.drain)
+    can_bridge = F.can_bridge.MakeChild(in_=source, out_=drain)
 
-    @fabll.rt_field
-    def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
-            mapping={
-                self.source: ["S", "Source"],
-                self.gate: ["G", "Gate"],
-                self.drain: ["D", "Drain"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
+    pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+        mapping={
+            source: ["S", "Source"],
+            gate: ["G", "Gate"],
+            drain: ["D", "Drain"],
+        },
+        accept_prefix=False,
+        case_sensitive=False,
+    )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.source.add(F.has_net_name("source", level=F.has_net_name.Level.SUGGESTED))
-        self.gate.add(F.has_net_name("gate", level=F.has_net_name.Level.SUGGESTED))
-        self.drain.add(F.has_net_name("drain", level=F.has_net_name.Level.SUGGESTED))
+    # self.source.add(F.has_net_name("source", level=F.has_net_name.Level.SUGGESTED))
+    # self.gate.add(F.has_net_name("gate", level=F.has_net_name.Level.SUGGESTED))
+    # self.drain.add(F.has_net_name("drain", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import MOSFET, ElectricLogic, ElectricPower
 
