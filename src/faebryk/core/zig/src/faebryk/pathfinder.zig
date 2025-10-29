@@ -224,6 +224,7 @@ pub const PathFinder = struct {
         const edge_1_and_edge_2_share_parent = graph.Node.is_same(EdgeComposition.get_parent_node(last_edges[0]), EdgeComposition.get_parent_node(last_edges[1]));
         if (edge_1_and_edge_2_share_parent) {
             path.invalid_path = true;
+            path.stop_new_path_discovery = true;
         }
         return visitor.VisitResult(void){ .CONTINUE = {} };
     }
@@ -276,6 +277,7 @@ pub const PathFinder = struct {
 
                 if (stack.items.len == 0 and hierarchy_direction == .down) {
                     path.invalid_path = true;
+                    path.stop_new_path_discovery = true;
                 }
 
                 if (stack.items.len > 0 and stack.items[stack.items.len - 1].match(&hierarchy_element)) {
