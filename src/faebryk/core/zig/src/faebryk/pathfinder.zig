@@ -257,10 +257,10 @@ pub const PathFinder = struct {
                 var hierarchy_direction: HierarchyTraverseDirection = undefined;
                 if (Node.is_same(EdgeComposition.get_child_node(e), start)) {
                     hierarchy_direction = .up;
+                    depth += 1;
                 } else if (Node.is_same(EdgeComposition.get_parent_node(e), start)) {
                     hierarchy_direction = .down;
-                } else {
-                    return visitor.VisitResult(void){ .ERROR = error.InvalidEdge };
+                    depth -= 1;
                 }
 
                 const hierarchy_element = HierarchyElement{
@@ -274,12 +274,12 @@ pub const PathFinder = struct {
                     },
                 };
 
-                // build hierarchy stack
+                if (stack.items.len == 0 and hierarchy_direction == .down) {
+                    path.invalid_path = true;
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+
                 if (stack.items.len == 0) {
-                    if (hierarchy_direction == .down) {
-                        path.invalid_path = true;
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
-                    }
                     stack.append(hierarchy_element) catch @panic("OOM");
                 } else {
                     const top = &stack.items[stack.items.len - 1];
@@ -289,17 +289,11 @@ pub const PathFinder = struct {
                         stack.append(hierarchy_element) catch @panic("OOM");
                     }
                 }
+            }
 
-                depth += if (hierarchy_direction == .up) 1 else -1;
-            } else if (EdgeInterfaceConnection.is_instance(e)) {
-                // shallow interface edge
-                const shallow_val = e.attributes.dynamic.values.get(shallow) orelse continue;
-                if (shallow_val.Bool) {
-                    if (depth > 0) {
-                        path.invalid_path = true;
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
-                    }
-                }
+            if (EdgeInterfaceConnection.is_instance(e)) {
+                const shallow_edge = (e.attributes.dynamic.values.get(shallow) orelse continue).Bool;
+                if (shallow_edge and depth > 0) path.invalid_path = true;
             }
         }
 
