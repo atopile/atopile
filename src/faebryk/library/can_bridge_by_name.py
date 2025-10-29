@@ -1,13 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.fabll as fabll
 import faebryk.library._F as F
 from faebryk.core.module import Module
 
 
-class can_bridge_by_name(F.can_bridge.impl()):
+class can_bridge_by_name(fabll.Node):
     def __init__(self, input_name: str = "input", output_name: str = "output"):
-        super().__init__()
+        # super().__init__()
         self._input_name = input_name
         self._output_name = output_name
 

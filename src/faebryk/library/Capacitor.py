@@ -3,11 +3,17 @@
 
 import logging
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
+import faebryk.core.fabll as fabll
+from faebryk.library.can_attach_to_footprint_symmetrically import (
+    can_attach_to_footprint_symmetrically,
+)
+from faebryk.library.can_bridge import can_bridge
+from faebryk.library.Electrical import Electrical
+from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.library.has_usage_example import has_usage_example
+from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P, Quantity
 
@@ -18,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Capacitor(Module):
+class Capacitor(fabll.Node):
     class TemperatureCoefficient(Enum):
         Y5V = auto()
         Z5U = auto()
@@ -29,39 +35,65 @@ class Capacitor(Module):
         X8R = auto()
         C0G = auto()
 
-    unnamed = L.list_field(2, F.Electrical)
+    @classmethod
+    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
+        # TODO: Switch to list_field unnamed = L.list_field(2, F.Electrical)
+        cls.p1 = t.Child(nodetype=Electrical)
+        cls.p2 = t.Child(nodetype=Electrical)
 
-    capacitance = L.p_field(
-        units=P.F,
-        likely_constrained=True,
-        soft_set=L.Range(100 * P.pF, 1 * P.F),
-        tolerance_guess=10 * P.percent,
-    )
-    # Voltage at which the design may be damaged
-    max_voltage = L.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=L.Range(10 * P.V, 100 * P.V),
-    )
-    temperature_coefficient = L.p_field(
-        domain=L.Domains.ENUM(TemperatureCoefficient),
-    )
+        cls.capacitance = t.Child(nodetype=fabll.Parameter)
+        cls.max_voltage = t.Child(nodetype=fabll.Parameter)
+        cls.temperature_coefficient = t.Child(nodetype=fabll.Parameter)
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.C
-    )
-
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
-            params=[self.capacitance, self.max_voltage, self.temperature_coefficient],
+        cls.can_attach_to_footprint_symmetrically = t.Child(
+            nodetype=can_attach_to_footprint_symmetrically
         )
 
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(*self.unnamed)
+        # Child of the typegraph, not a make child that should be replicated in instances
+        cls.designator_prefix = t.BoundChildOfType(nodetype=has_designator_prefix)
+        cls.designator_prefix.get().prefix_param.get().constrain_to_literal(
+            g=t.tg.get_graph_view(), value=has_designator_prefix.Prefix.C
+        )
+
+        cls.is_pickable_by_type = t.Child(nodetype=is_pickable_by_type)
+        t.add_link_pointer(
+            lhs_reference_path=["is_pickable_by_type", "params"],
+            rhs_reference_path=["capacitance"],
+            identifier="capacitance",
+        )
+        t.add_link_pointer(
+            lhs_reference_path=["is_pickable_by_type", "params"],
+            rhs_reference_path=["max_voltage"],
+            identifier="max_voltage",
+        )
+        t.add_link_pointer(
+            lhs_reference_path=["is_pickable_by_type", "params"],
+            rhs_reference_path=["temperature_coefficient"],
+            identifier="temperature_coefficient",
+        )
+
+        cls.can_bridge = t.Child(nodetype=can_bridge)
+
+        cls.usage_example = t.BoundChildOfType(nodetype=has_usage_example)
+        cls.usage_example.get().example.get().constrain_to_literal(
+            g=t.tg.get_graph_view(),
+            value="""
+            import Capacitor
+
+            capacitor = new Capacitor
+            capacitor.capacitance = 100nF +/- 10%
+            assert capacitor.max_voltage within 25V to 50V
+            capacitor.package = "0603"
+
+            electrical1 ~ capacitor.unnamed[0]
+            electrical2 ~ capacitor.unnamed[1]
+            # OR
+            electrical1 ~> capacitor ~> electrical2
+            """,
+        )
+        cls.usage_example.get().language.get().constrain_to_literal(
+            g=t.tg.get_graph_view(), value=has_usage_example.Language.ato
+        )
 
     @L.rt_field
     def simple_value_representation(self):
@@ -86,17 +118,6 @@ class Capacitor(Module):
 
         if size is not None:
             self.add(F.has_package_requirements(size=size))
-
-    # TODO: remove @https://github.com/atopile/atopile/issues/727
-    @property
-    def p1(self) -> F.Electrical:
-        """One side of the capacitor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """The other side of the capacitor."""
-        return self.unnamed[1]
 
     class _has_power(L.Trait.decless()):
         """
@@ -126,20 +147,3 @@ class Capacitor(Module):
             self.add(self._has_power(power))
 
         return power
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import Capacitor
-
-        capacitor = new Capacitor
-        capacitor.capacitance = 100nF +/- 10%
-        assert capacitor.max_voltage within 25V to 50V
-        capacitor.package = "0603"
-
-        electrical1 ~ capacitor.unnamed[0]
-        electrical2 ~ capacitor.unnamed[1]
-        # OR
-        electrical1 ~> capacitor ~> electrical2
-        """,
-        language=F.has_usage_example.Language.ato,
-    )
