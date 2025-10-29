@@ -82,7 +82,9 @@ def test_visit_connected_edges_callback_receives_python_objects():
     def collect(ctx, bound_edge):
         ctx.append(bound_edge)
 
-    EdgeInterfaceConnection.visit_connected_edges(bound_node=n1, ctx=collected, f=collect)
+    EdgeInterfaceConnection.visit_connected_edges(
+        bound_node=n1, ctx=collected, f=collect
+    )
 
     assert len(collected) == 2
     for entry in collected:
