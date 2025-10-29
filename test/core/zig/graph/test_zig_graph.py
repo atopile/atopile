@@ -185,10 +185,10 @@ def test_typegraph_instantiate():
     assert collected == ["p1", "p2"]
 
     rp1 = EdgeComposition.get_child_by_identifier(
-        node=resistor_instance, child_identifier="p1"
+        bound_node=resistor_instance, child_identifier="p1"
     )
     rp2 = EdgeComposition.get_child_by_identifier(
-        node=resistor_instance, child_identifier="p2"
+        bound_node=resistor_instance, child_identifier="p2"
     )
     assert rp1 is not None
     assert rp2 is not None
