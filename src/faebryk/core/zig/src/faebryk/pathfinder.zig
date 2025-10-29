@@ -276,18 +276,12 @@ pub const PathFinder = struct {
 
                 if (stack.items.len == 0 and hierarchy_direction == .down) {
                     path.invalid_path = true;
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
 
-                if (stack.items.len == 0) {
-                    stack.append(hierarchy_element) catch @panic("OOM");
+                if (stack.items.len > 0 and stack.items[stack.items.len - 1].match(&hierarchy_element)) {
+                    _ = stack.pop();
                 } else {
-                    const top = &stack.items[stack.items.len - 1];
-                    if (top.match(&hierarchy_element)) {
-                        _ = stack.pop();
-                    } else {
-                        stack.append(hierarchy_element) catch @panic("OOM");
-                    }
+                    stack.append(hierarchy_element) catch @panic("OOM");
                 }
             }
 
