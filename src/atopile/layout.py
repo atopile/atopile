@@ -27,7 +27,7 @@ class SubPCB(fabll.Node):
     def __create_instance__(
         cls, tg: "fabll.TypeGraph", g: "fabll.GraphView", path: Path
     ) -> "SubPCB":
-        out = super().__create_instance__(tg, g)
+        out = super()._create_instance(tg, g)
         out.path.get().constrain_to_literal(g=g, value=str(path))
         return out
 
