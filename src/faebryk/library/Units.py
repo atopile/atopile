@@ -41,6 +41,11 @@ class Candela(fabll.Node):
     _is_unit = fabll.IsUnit.MakeChild("cd", [])
 
 
+class Bit(fabll.Node):
+    _is_base_unit = fabll.IsBaseUnit.MakeChild("bit")
+    _is_unit = fabll.IsUnit.MakeChild("bit", [])
+
+
 # Derived units ------------------------------------------------------------------------
 
 
@@ -82,6 +87,34 @@ class Lumen(fabll.Node):
 
 class Lux(fabll.Node):
     _is_unit = fabll.IsUnit.MakeChild("lx", [(Candela, 1), (Meter, -2)])
+
+
+class Dimensionless(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("dimensionless", [])
+
+
+class Ppm(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("ppm", [])
+
+
+class Natural(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("natural", [])
+
+
+class AmpereHour(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("Ah", [(Ampere, 1), (Second, 3600)])
+
+
+class Decibel(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("dB", [])
+
+
+class BitPerSecond(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("bps", [(Bit, 1), (Second, -1)])
+
+
+class Byte(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("B", [(Dimensionless, 8)])
 
 
 # Scalar units ------------------------------------------------------------------------
