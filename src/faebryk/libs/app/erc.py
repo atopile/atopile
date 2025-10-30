@@ -10,7 +10,6 @@ from more_itertools import first
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
-from faebryk.core.cpp import Path
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
@@ -26,7 +25,9 @@ class ModuleInterfacePath(list[fabll.ModuleInterface]):
     """A path of ModuleInterfaces."""
 
     @classmethod
-    def from_path(cls, path: Path) -> "ModuleInterfacePath":
+    # TODO(zig-migration): This used to accept C++ `Path` (GraphInterfaces).
+    # Keep it generic for now; migrate to a Zig path type once exposed.
+    def from_path(cls, path: Iterable[object]) -> "ModuleInterfacePath":
         """
         Convert a Path (of GraphInterfaces) to a ModuleInterfacePath.
         """

@@ -4,10 +4,16 @@ from typing import cast
 import constructed_field
 
 import faebryk.core.node as fabll
+# TODO(zig-migration): Legacy import – faebryk.core.graphinterface no longer exists.
+# Replace GraphInterfaceReference* usages with Zig equivalents or rework references
+# using EdgePointer from faebryk.core.zig.gen.faebryk.pointer.
 from faebryk.core.graphinterface import (
     GraphInterfaceReference,
     GraphInterfaceReferenceUnboundError,
 )
+
+# TODO(zig-migration): Legacy import – faebryk.core.link.LinkPointer does not exist.
+# Migrate to faebryk.core.zig.gen.faebryk.pointer.EdgePointer APIs.
 from faebryk.core.link import LinkPointer
 
 
