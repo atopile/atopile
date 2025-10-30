@@ -42,49 +42,14 @@ class Subtract(fabll.Node):
         )
     )
 
-    def get_minuend(self) -> fabll.Node[Any]:
-        return fabll.IsExpression.get_single_operand(node=self, identifier="minuend")
-
-    def get_subtrahends(self) -> list[fabll.Node[Any]]:
-        return fabll.IsExpression.get_operands(node=self, identifier="subtrahend")
-
-    @classmethod
-    def subtract(
-        cls,
-        tg: TypeGraph,
-        g: GraphView,
-        minuend: fabll.Node[Any],
-        *subtrahends: fabll.Node[Any],
-    ) -> fabll.Node[Any]:
-        out = cls.bind_typegraph(tg).create_instance(g=g)
-        out.connect(
-            to=minuend,
-            edge_attrs=EdgeOperand.build(operand_identifier="minuend"),
-        )
-        for subtrahend in subtrahends:
-            out.connect(
-                to=subtrahend,
-                edge_attrs=EdgeOperand.build(operand_identifier="subtrahend"),
-            )
-        return out
-
-
-class SubtractAlt(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
-            symbol="-",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
-        )
-    )
-
-    minuend = fabll.Node.MakeChild()
+    minuend = fabll.Pointer.MakeChild()
     subtrahends = fabll.Set.MakeChild()
 
     def get_minuend(self) -> fabll.Node[Any]:
-        return self.minuend.get().get_pointer_references()[0]
+        return self.minuend.get().deref()
 
-    def get_subtrahends(self) -> list[fabll.Node[Any]]:
-        return self.subtrahends.get().as_list()
+    def get_subtrahends(self) -> set[fabll.Node[Any]]:
+        return self.subtrahends.get().as_set()
 
     @classmethod
     def subtract(
@@ -95,15 +60,9 @@ class SubtractAlt(fabll.Node):
         *subtrahends: fabll.Node[Any],
     ) -> fabll.Node[Any]:
         out = cls.bind_typegraph(tg).create_instance(g=g)
-        out.minuend.get().connect(
-            to=minuend,
-            edge_attrs=EdgePointer.build(identifier=None, order=None),
-        )
+        out.minuend.get().point(minuend)
         for subtrahend in subtrahends:
-            out.subtrahends.get().connect(
-                to=subtrahend,
-                edge_attrs=EdgePointer.build(identifier=None, order=None),
-            )
+            out.subtrahends.get().append(subtrahend)
         return out
 
 
@@ -431,16 +390,17 @@ class Is(fabll.Node):
         )
     )
 
+    operands = fabll.Set.MakeChild()
+
+    def get_operands(self) -> set[fabll.Node[Any]]:
+        return self.operands.get().as_set()
+
     @classmethod
     def constrain_is(
         cls, tg: TypeGraph, g: GraphView, operands: list[fabll.Node[Any]]
     ) -> Self:
         out = cls.bind_typegraph(tg).create_instance(g=g)
-        for operand in operands:
-            out.connect(
-                to=operand,
-                edge_attrs=EdgeOperand.build(operand_identifier=None),
-            )
+        out.operands.get().append(*operands)
         return out
 
     @classmethod
@@ -449,13 +409,7 @@ class Is(fabll.Node):
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(fabll.IsConstrained.MakeChild())
-        for operand in operands:
-            edge = fabll.EdgeField(
-                [out],
-                operand,
-                edge=EdgeOperand.build(operand_identifier=None),
-            )
-            out.add_dependant(edge)
+        out.add_dependant(*fabll.Set.EdgeFields([out, cls.operands], operands))
         return out
 
     @classmethod

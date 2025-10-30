@@ -144,9 +144,10 @@ class ChildField[T: Node[Any]](Field, ChildAccessor[T]):
             f"{type(InstanceChildBoundInstance).__name__}"
         ) from None
 
-    def add_dependant(self, dependant: "ChildField[Any] | EdgeField"):
-        dependant._set_locator(None)
-        self._dependants.append(dependant)
+    def add_dependant(self, *dependant: "ChildField[Any] | EdgeField"):
+        for d in dependant:
+            d._set_locator(None)
+            self._dependants.append(d)
 
     def put_on_type(self) -> Self:
         super().put_on_type()
@@ -1145,6 +1146,21 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
 
 
 # ------------------------------------------------------------
+class Pointer(Node):
+    """
+    Node who's sole purpose is to point to another node.
+    """
+
+    def deref(self) -> Node[Any]:
+        return self.get_pointer_references()[0]
+
+    def point(self, node: Node[Any]) -> None:
+        self.connect(
+            node,
+            EdgePointer.build(identifier=None, order=None),
+        )
+
+
 class Sequence(Node):
     """
     A sequence of (non-unique) elements.
@@ -1188,6 +1204,18 @@ class Set(Node):
             )
 
         return self
+
+    @classmethod
+    def EdgeField(cls, set_ref: RefPath, elem_ref: RefPath) -> EdgeField:
+        return EdgeField(
+            set_ref,
+            elem_ref,
+            edge=EdgePointer.build(identifier=cls._elem_identifier, order=None),
+        )
+
+    @classmethod
+    def EdgeFields(cls, set_ref: RefPath, elem_ref: list[RefPath]) -> "list[EdgeField]":
+        return [cls.EdgeField(set_ref, elem) for elem in elem_ref]
 
     @classmethod
     def MakeChild(cls, *elems: RefPath):
