@@ -2,8 +2,10 @@ from typing import Any, Self
 
 import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.libs.util import not_none
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -19,6 +21,18 @@ class Add(fabll.Node):
         )
     )
 
+    @classmethod
+    def add(
+        cls, tg: TypeGraph, g: GraphView, *operands: fabll.Node[Any]
+    ) -> fabll.Node[Any]:
+        out = cls.bind_typegraph(tg).create_instance(g=g)
+        for operand in operands:
+            out.connect(
+                to=operand,
+                edge_attrs=EdgeOperand.build(operand_identifier=None),
+            )
+        return out
+
 
 class Subtract(fabll.Node):
     _is_expression = fabll.IsExpression.MakeChild(
@@ -27,6 +41,70 @@ class Subtract(fabll.Node):
             placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
         )
     )
+
+    def get_minuend(self) -> fabll.Node[Any]:
+        return fabll.IsExpression.get_single_operand(node=self, identifier="minuend")
+
+    def get_subtrahends(self) -> list[fabll.Node[Any]]:
+        return fabll.IsExpression.get_operands(node=self, identifier="subtrahend")
+
+    @classmethod
+    def subtract(
+        cls,
+        tg: TypeGraph,
+        g: GraphView,
+        minuend: fabll.Node[Any],
+        *subtrahends: fabll.Node[Any],
+    ) -> fabll.Node[Any]:
+        out = cls.bind_typegraph(tg).create_instance(g=g)
+        out.connect(
+            to=minuend,
+            edge_attrs=EdgeOperand.build(operand_identifier="minuend"),
+        )
+        for subtrahend in subtrahends:
+            out.connect(
+                to=subtrahend,
+                edge_attrs=EdgeOperand.build(operand_identifier="subtrahend"),
+            )
+        return out
+
+
+class SubtractAlt(fabll.Node):
+    _is_expression = fabll.IsExpression.MakeChild(
+        repr_style=fabll.IsExpression.ReprStyle(
+            symbol="-",
+            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+        )
+    )
+
+    minuend = fabll.Node.MakeChild()
+    subtrahends = fabll.Set.MakeChild()
+
+    def get_minuend(self) -> fabll.Node[Any]:
+        return self.minuend.get().get_pointer_references()[0]
+
+    def get_subtrahends(self) -> list[fabll.Node[Any]]:
+        return self.subtrahends.get().as_list()
+
+    @classmethod
+    def subtract(
+        cls,
+        tg: TypeGraph,
+        g: GraphView,
+        minuend: fabll.Node[Any],
+        *subtrahends: fabll.Node[Any],
+    ) -> fabll.Node[Any]:
+        out = cls.bind_typegraph(tg).create_instance(g=g)
+        out.minuend.get().connect(
+            to=minuend,
+            edge_attrs=EdgePointer.build(identifier=None, order=None),
+        )
+        for subtrahend in subtrahends:
+            out.subtrahends.get().connect(
+                to=subtrahend,
+                edge_attrs=EdgePointer.build(identifier=None, order=None),
+            )
+        return out
 
 
 class Multiply(fabll.Node):

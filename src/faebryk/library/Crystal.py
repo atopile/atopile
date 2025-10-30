@@ -16,31 +16,31 @@ class Crystal(fabll.Node):
     #               parameters
     # ----------------------------------------
     frequency = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Hertz,
+        unit=F.Units.Hertz,
     )
 
     frequency_tolerance = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ppm,
+        unit=F.Units.Ppm,
     )
 
     frequency_temperature_tolerance = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ppm,
+        unit=F.Units.Ppm,
     )
 
     frequency_ageing = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ppm,
+        unit=F.Units.Ppm,
     )
 
     equivalent_series_resistance = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ohm,
+        unit=F.Units.Ohm,
     )
 
     shunt_capacitance = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Farad,
+        unit=F.Units.Farad,
     )
 
     load_capacitance = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Farad,
+        unit=F.Units.Farad,
     )
 
     # ----------------------------------------

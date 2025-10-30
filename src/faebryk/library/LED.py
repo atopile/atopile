@@ -41,8 +41,8 @@ class LED(fabll.Node):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Candela)
-    max_brightness = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Candela)
+    brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
+    max_brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
     color = fabll.Parameter.MakeChild_Enum(enum_t=Color)
 
     # TODO: Implement math and constraints in typegraph

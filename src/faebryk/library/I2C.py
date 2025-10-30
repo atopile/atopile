@@ -18,9 +18,9 @@ class I2C(fabll.Node):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    address = fabll.Parameter.MakeChild_Numeric(fabll.Units.Natural)
-    bus_addresses = fabll.Parameter.MakeChild_Numeric(fabll.Units.Natural)
-    frequency = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
+    address = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
+    bus_addresses = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
+    frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(

@@ -2,6 +2,8 @@ from enum import IntEnum, auto
 from typing import Any
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
+from faebryk.libs.util import not_none
 
 
 class has_net_name(fabll.Node):
@@ -25,10 +27,10 @@ class has_net_name(fabll.Node):
     def MakeChild(cls, name: str, level: Level) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.name_], name)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.name_], name)
         )
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.level_],
                 str(level.value),  # TODO: Change to make literal Enum
             )
@@ -41,4 +43,4 @@ class has_net_name(fabll.Node):
 
     @property
     def level(self) -> Level:
-        return self.level_.get().try_extract_constrained_literal().value
+        return not_none(self.level_.get().try_extract_constrained_literal()).value

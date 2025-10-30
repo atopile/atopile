@@ -30,17 +30,17 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral(  # TODO: Change to make literal bool
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(  # TODO: Change to make literal bool
                 [out, cls.accept_prefix], str(accept_prefix)
             )
         )
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.case_sensitive], str(case_sensitive)
             )
         )
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral([out, cls.nc], nc)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.nc], nc)
         )
         for param_ref, param_names in mapping.items():
             # Add a set node for pin association table

@@ -12,7 +12,7 @@ class DifferentialPair(fabll.Node):
     p: F.ElectricSignal
     n: F.ElectricSignal
 
-    impedance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    impedance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(

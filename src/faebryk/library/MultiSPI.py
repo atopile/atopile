@@ -13,7 +13,7 @@ class MultiSPI(fabll.Node):
 
     clock = F.ElectricLogic.MakeChild()
     chip_select = F.ElectricLogic.MakeChild()
-    data_lanes = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
+    data_lanes = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
 
     def data(self):
         return times(self._data_lane_count, F.ElectricLogic)
@@ -38,7 +38,7 @@ class MultiSPI(fabll.Node):
     def MakeChild(cls, data_lane_count: int):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.data_lanes], data_lane_count
             )
         )

@@ -20,7 +20,7 @@ class FilterElectricalLC(fabll.Node):
     capacitor = F.Capacitor.MakeChild()
     inductor = F.Inductor.MakeChild()
 
-    z0 = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
+    z0 = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
 
     def __preinit__(self):
         self.order.alias_is(2)

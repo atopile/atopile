@@ -7,13 +7,13 @@ import faebryk.library._F as F
 
 
 class Diode(fabll.Node):
-    forward_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    forward_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     # Current at which the design is functional
-    current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
-    reverse_working_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
-    reverse_leakage_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    reverse_working_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    reverse_leakage_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     # Current at which the design may be damaged
-    max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
 
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()

@@ -1144,105 +1144,6 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
         )
 
 
-class Units:
-    class Ampere(Node):
-        pass
-
-    class Ohm(Node):
-        pass
-
-    class Volt(Node):
-        pass
-
-    class Watt(Node):
-        pass
-
-    class Farad(Node):
-        pass
-
-    class Henry(Node):
-        pass
-
-    class Hertz(Node):
-        pass
-
-    class AmpereHour(Node):
-        pass
-
-    class Natural(Node):
-        pass
-
-    class Candela(Node):
-        pass
-
-    class Decibel(Node):
-        pass
-
-    class Second(Node):
-        pass
-
-    class Ppm(Node):
-        pass
-
-    class Dimensionless(Node):
-        pass
-
-    class BitPerSecond(Node):
-        pass
-
-    class Bit(Node):
-        pass
-
-    class Byte(Node):
-        pass
-
-
-@dataclass(frozen=True)
-class ExpressionAliasIsAttributes(NodeAttributes):
-    constrained: bool  # TODO: principled reason for this not being a Parameter
-
-
-class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
-    Attributes = ExpressionAliasIsAttributes
-
-    @classmethod
-    def alias_is(
-        cls, tg: TypeGraph, g: GraphView, operands: list[BoundNode]
-    ) -> BoundNode:
-        expr = cls.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=cls.Attributes(constrained=True)
-        )
-        for operand in operands:
-            EdgeOperand.add_operand(
-                bound_node=expr.instance,
-                operand=operand.node(),
-                operand_identifier=None,
-            )
-        return expr.instance
-
-    @classmethod
-    def MakeChild_ToLiteral(
-        cls,
-        ref: list[str | ChildField[Any]],
-        value: LiteralT,
-    ) -> ChildField[Any]:
-        alias = ChildField(
-            ExpressionAliasIs, attributes=ExpressionAliasIsAttributes(constrained=True)
-        )
-        lit = ChildField(
-            LiteralNode,
-            attributes=LiteralNodeAttributes(value=value),
-        )
-        alias_edge = EdgeField(
-            ref,
-            [lit],
-            edge=EdgeOperand.build(operand_identifier=None),
-        )
-        alias.add_dependant(alias_edge)
-        alias.add_dependant(lit)
-        return alias
-
-
 # ------------------------------------------------------------
 class Sequence(Node):
     """
@@ -1354,6 +1255,7 @@ class is_module(Node):
     def get_obj(self) -> Node[Any]:
         return Traits.get_obj(Traits.bind(self), Node)
 
+
 class is_interface(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
@@ -1367,12 +1269,16 @@ class is_interface(Node):
 
     def is_connected_to(self, other: "Node[Any]") -> bool:
         self_node = self.get_parent()[0]
-        path = EdgeInterfaceConnection.is_connected_to(source=self_node.instance, target=other.instance)
+        path = EdgeInterfaceConnection.is_connected_to(
+            source=self_node.instance, target=other.instance
+        )
         return len(path) > 0
 
     def get_connected(self) -> list["Node[Any]"]:
         self_node = self.get_parent()[0]
-        connected_nodes = EdgeInterfaceConnection.get_connected(source=self_node.instance)
+        connected_nodes = EdgeInterfaceConnection.get_connected(
+            source=self_node.instance
+        )
         return [Node[Any].bind_instance(instance=node) for node in connected_nodes]
 
 
@@ -1495,6 +1401,37 @@ class IsExpression(Node):
     def MakeChild(cls, repr_style: ReprStyle) -> ChildField[Any]:
         out = ChildField(cls)
         return out
+
+    @staticmethod
+    def get_single_operand(node: Node[Any], identifier: str) -> Node[Any]:
+        return Node.bind_instance(
+            not_none(
+                EdgeOperand.get_operand_by_identifier(
+                    node=node.instance,
+                    operand_identifier=identifier,
+                )
+            )
+        )
+
+    @staticmethod
+    def get_operands(node: Node[Any], identifier: str | None = None) -> list[Node[Any]]:
+        class Ctx:
+            operands: list[Node[Any]] = []
+            search_identifier = identifier
+
+        def visit(ctx: type[Ctx], edge: BoundEdge) -> None:
+            if (
+                ctx.search_identifier is not None
+                and edge.edge().name() != ctx.search_identifier
+            ):
+                return
+            ctx.operands.append(
+                # TODO make interface for get operand
+                Node.bind_instance(edge.g().bind(node=edge.edge().target()))
+            )
+
+        EdgeOperand.visit_operand_edges(bound_node=node.instance, ctx=Ctx, f=visit)
+        return Ctx.operands
 
 
 @dataclass(frozen=True)

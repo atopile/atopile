@@ -27,8 +27,8 @@ class Capacitor(fabll.Node):
         C0G = auto()
 
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
-    capacitance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Farad)
-    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
+    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
     #     enum_t=TemperatureCoefficient
     # )

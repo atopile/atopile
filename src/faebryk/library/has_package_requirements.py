@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 # from faebryk.core.parameter import EnumDomain
 # from faebryk.core.solver.solver import Solver
@@ -30,7 +31,7 @@ class has_package_requirements(fabll.Node):
     def MakeChild(cls, size: SMDSize | EnumSet[SMDSize] | None = None):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.ExpressionAliasIs.MakeChild_ToLiteral(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.size],
                 size,
             )

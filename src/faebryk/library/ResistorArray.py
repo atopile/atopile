@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class ResistorArray(fabll.Node):
-    resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
-    rated_power = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Watt)
-    rated_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
+    rated_power = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Watt)
+    rated_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
 
     def resistors(self) -> list[F.Resistor]:
         return times(self._resistor_count, F.Resistor)
