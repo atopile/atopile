@@ -1,5 +1,6 @@
 from typing import Callable
 
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
 
 class EdgeInterfaceConnection:
@@ -28,3 +29,5 @@ class EdgeInterfaceConnection:
     def get_connected(
         *, source: BoundNode
     ) -> list[int]: ...  # TODO: return proper BFSPath list
+    @staticmethod
+    def build(*, shallow: bool = ...) -> EdgeCreationAttributes: ...

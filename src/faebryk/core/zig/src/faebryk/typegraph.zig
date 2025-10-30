@@ -138,6 +138,10 @@ pub const TypeGraph = struct {
         pub fn get_type_reference(node: BoundNodeReference) ?BoundNodeReference {
             return EdgeComposition.get_child_by_identifier(node, "type_ref");
         }
+
+        pub fn get_mount_reference(node: BoundNodeReference) ?BoundNodeReference {
+            return EdgeComposition.get_child_by_identifier(node, "mount");
+        }
     };
 
     pub const UnresolvedTypeReference = struct {
@@ -493,6 +497,7 @@ pub const TypeGraph = struct {
         child_type_identifier: str,
         identifier: ?str,
         node_attributes: ?*NodeCreationAttributes,
+        mount_reference: ?BoundNodeReference,
     ) !BoundNodeReference {
         const make_child = try self.instantiate_node(self.get_MakeChild());
         MakeChildNode.Attributes.of(make_child).set_child_identifier(identifier);
@@ -505,6 +510,9 @@ pub const TypeGraph = struct {
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
         _ = EdgeComposition.add_child(make_child, type_reference.node, "type_ref");
+        if (mount_reference) |_mount_reference| {
+            _ = EdgeComposition.add_child(make_child, _mount_reference.node, "mount");
+        }
         _ = EdgeComposition.add_child(target_type, make_child.node, null);
 
         return make_child;
@@ -548,13 +556,18 @@ pub const TypeGraph = struct {
                     return visitor.VisitResult(void){ .ERROR = error.UnresolvedTypeReference };
                 };
 
+                var attachment_parent = self.parent_instance;
+                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
+                    attachment_parent = ChildReferenceNode.resolve(mount_reference, attachment_parent);
+                }
+
                 // 2.2) Instantiate child
                 const child = self.type_graph.instantiate_node(referenced_type) catch |e| {
                     return visitor.VisitResult(void){ .ERROR = e };
                 };
 
                 // 2.3) Attach child instance to parent instance with the reference name
-                _ = EdgeComposition.add_child(self.parent_instance, child.node, child_identifier);
+                _ = EdgeComposition.add_child(attachment_parent, child.node, child_identifier);
 
                 // 2.4) Copy node attributes from MakeChild node to child instance
                 var node_attributes = MakeChildNode.Attributes.of(make_child).get_node_attributes();
@@ -717,16 +730,16 @@ test "basic instantiation" {
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, "Electrical", "p1");
-    _ = try tg.add_make_child(Capacitor, "Electrical", "p2");
+    _ = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
+    _ = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
 
-    _ = try tg.add_make_child(Resistor, "Electrical", "p1");
-    _ = try tg.add_make_child(Resistor, "Electrical", "p2");
-    _ = try tg.add_make_child(Resistor, "Capacitor", "cap1");
+    _ = try tg.add_make_child(Resistor, "Electrical", "p1", null, null);
+    _ = try tg.add_make_child(Resistor, "Electrical", "p2", null, null);
+    _ = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
 
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null);
 
     var node_attrs = TypeGraph.MakeChildNode.build(a, "test_string");
     _ = try tg.add_make_child(
@@ -734,6 +747,7 @@ test "basic instantiation" {
         Electrical,
         "tp",
         &node_attrs,
+        null,
     );
     // node_attrs.deinit();
     // a.destroy(node_attrs.dynamic.?); //TODO: Figure out one line allocation/deallocation

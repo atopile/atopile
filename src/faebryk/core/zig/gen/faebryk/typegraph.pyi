@@ -24,6 +24,7 @@ class TypeGraph:
         child_type_identifier: str,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
+        mount_reference: BoundNode | None = ...,
     ) -> BoundNode: ...
     def get_make_child_type_reference(
         self, *, make_child: BoundNode

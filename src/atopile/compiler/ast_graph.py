@@ -22,7 +22,6 @@ from antlr4.tree.Tree import TerminalNodeImpl
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler.graph_mock import BoundNode
 from atopile.compiler.parse import parse_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
@@ -30,7 +29,7 @@ from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 from faebryk.library.Expressions import Is
 from faebryk.libs.util import cast_assert, not_none
 
@@ -1059,8 +1058,31 @@ class GenTypeGraphIR:
             )
 
     @dataclass(frozen=True)
+    class FieldPath:
+        segments: tuple[str, ...]
+
+        def __post_init__(self) -> None:
+            if not self.segments:
+                raise ValueError("FieldPath cannot be empty")
+
+        @property
+        def parent_segments(self) -> tuple[str, ...]:
+            return self.segments[:-1]
+
+        @property
+        def leaf(self) -> str:
+            return self.segments[-1]
+
+        def is_singleton(self) -> bool:
+            return len(self.segments) == 1
+
+        def __str__(self) -> str:
+            return ".".join(self.segments)
+
+    @dataclass(frozen=True)
     class Field:
-        name: str
+        path: GenTypeGraphIR.FieldPath
+        reference_node: BoundNode
 
     @dataclass(frozen=True)
     class NewChildSpec:
@@ -1068,8 +1090,9 @@ class GenTypeGraphIR:
 
     @dataclass(frozen=True)
     class AddMakeChildAction:
-        target_name: str
+        target_path: GenTypeGraphIR.FieldPath
         child_spec: GenTypeGraphIR.NewChildSpec
+        parent_reference: BoundNode | None
 
     @dataclass(frozen=True)
     class AddMakeLinkAction:
@@ -1108,12 +1131,21 @@ class _ScopeStack:
 
     def add_field(self, field: GenTypeGraphIR.Field) -> None:
         current_state = self.stack[-1]
-        if field.name in current_state.fields:
-            raise DslException(f"Field {field} already defined in scope")
+        if (key := str(field.path)) in current_state.fields:
+            raise DslException(f"Field `{key}` already defined in scope")
 
-        current_state.fields[field.name] = field
+        current_state.fields[key] = field
 
-        print(f"Added field {field} to scope")
+        print(f"Added field {key} to scope")
+
+    def has_field(self, path: GenTypeGraphIR.FieldPath) -> bool:
+        return any(str(path) in state.fields for state in reversed(self.stack))
+
+    def require_field(self, path: GenTypeGraphIR.FieldPath) -> GenTypeGraphIR.Field:
+        for state in reversed(self.stack):
+            if str(path) in state.fields:
+                return state.fields[str(path)]
+        raise DslException(f"Field `{path}` is not defined in scope")
 
     def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
         for state in reversed(self.stack):
@@ -1162,7 +1194,9 @@ class _TypeContextStack:
         make_child = self._type_graph.add_make_child(
             type_node=type_node,
             child_type_identifier=action.child_spec.symbol.name,
-            identifier=action.target_name,
+            identifier=action.target_path.leaf,
+            node_attributes=None,
+            mount_reference=action.parent_reference,
         )
 
         type_reference = not_none(
@@ -1187,14 +1221,8 @@ class _TypeContextStack:
     def _add_link(
         self, type_node: BoundNode, action: GenTypeGraphIR.AddMakeLinkAction
     ) -> None:
-        lhs_reference_node = self._type_graph.add_reference(
-            type_node=type_node,
-            path=[action.lhs_ref.name],
-        )
-        rhs_reference_node = self._type_graph.add_reference(
-            type_node=type_node,
-            path=[action.rhs_ref.name],
-        )
+        lhs_reference_node = action.lhs_ref.reference_node
+        rhs_reference_node = action.rhs_ref.reference_node
         self._type_graph.add_make_link(
             type_node=type_node,
             lhs_reference_node=lhs_reference_node.node(),
@@ -1408,8 +1436,9 @@ class ASTVisitor:
 
                 class _Module(fabll.Node):
                     is_ato_block = (
+                        # TODO: link from other typegraph
                         is_ato_block.MakeChild_Module()
-                    )  # TODO: link from other typegraph
+                    )
 
                 _Block = _Module
 
@@ -1449,39 +1478,75 @@ class ASTVisitor:
         # TODO: add docstring trait to preceding node
         pass
 
-    def visit_FieldRef(self, node: AST.FieldRef):
-        target_parts = node.parts.get().as_list()
+    def visit_FieldRef(self, node: AST.FieldRef) -> GenTypeGraphIR.FieldPath:
+        def process_segment(part_node: AST.FieldRefPart) -> str:
+            part = part_node.cast(t=AST.FieldRefPart)
+            key_literal = part.key.get().try_extract_constrained_literal()
 
-        if len(target_parts) != 1:
+            if key_literal is not None:  # TODO
+                raise NotImplementedError(
+                    "Field references with keys are not supported yet"
+                )
+
+            name_literal = part.name.get().try_extract_constrained_literal()
+            return cast_assert(str, name_literal)
+
+        segments = [
+            process_segment(part_node) for part_node in node.parts.get().as_list()
+        ]
+
+        if node.pin.get().try_extract_constrained_literal() is not None:
             raise NotImplementedError(
-                f"Nested field refs not supported: {target_parts}"
+                "Field references with pin suffixes are not supported yet"
             )
 
-        target_part = target_parts[-1].cast(t=AST.FieldRefPart)
-        target_name = cast_assert(
-            str, target_part.name.get().try_extract_constrained_literal()
-        )
+        if not segments:
+            raise DslException("Empty field reference encountered")
 
-        return target_name
+        return GenTypeGraphIR.FieldPath(segments=tuple(segments))
 
     def visit_Assignment(self, node: AST.Assignment):
-        # TODO: handle nested field refs
-        # TODO: check if field ref chain head can be followed to a type node
-        # TODO: handle pin suffix
-        # TODO: handle keys in chain
+        # TODO: broaden assignable support and handle keyed/pin field references
 
-        target_node = node.target.get()
-
-        target_name = self.visit_FieldRef(target_node)
+        target_path = self.visit_FieldRef(node.target.get())
         assignable = self.visit(node.assignable.get().get_value())
+
         action: GenTypeGraphIR.AddMakeChildAction | None = None
+        parent_reference: BoundNode | None = None
 
-        if isinstance(assignable, GenTypeGraphIR.NewChildSpec):
-            action = GenTypeGraphIR.AddMakeChildAction(
-                target_name=target_name, child_spec=assignable
-            )
+        if target_path.parent_segments:
+            parent_path = GenTypeGraphIR.FieldPath(segments=target_path.parent_segments)
+            parent_field = self._scope_stack.require_field(parent_path)
+            parent_reference = parent_field.reference_node
 
-        self._scope_stack.add_field(GenTypeGraphIR.Field(name=target_name))
+        match assignable:
+            case GenTypeGraphIR.NewChildSpec():
+                if self._scope_stack.has_field(target_path):
+                    raise DslException(
+                        f"Field `{target_path}` is already defined in this scope"
+                    )
+
+                reference_node = self._type_graph.add_reference(
+                    type_node=self._type_stack.current(),
+                    path=list(target_path.segments),
+                )
+
+                self._scope_stack.add_field(
+                    GenTypeGraphIR.Field(
+                        path=target_path, reference_node=reference_node
+                    )
+                )
+
+                action = GenTypeGraphIR.AddMakeChildAction(
+                    target_path=target_path,
+                    child_spec=assignable,
+                    parent_reference=parent_reference,
+                )
+            case _:
+                if not self._scope_stack.has_field(target_path):
+                    raise DslException(
+                        f"Field `{target_path}` is not defined and cannot be assigned"
+                    )
 
         return action
 
@@ -1502,7 +1567,6 @@ class ASTVisitor:
 
     def visit_ConnectStmt(self, node: AST.ConnectStmt):
         # TODO: handle connectables other than field refs
-        # TODO: handle non-local field refs
 
         lhs, rhs = node.get_lhs(), node.get_rhs()
 
@@ -1512,13 +1576,13 @@ class ASTVisitor:
         if not isinstance(rhs, AST.FieldRef):
             raise NotImplementedError(f"Unhandled connectable type: {type(rhs)}")
 
-        lhs_name = self.visit_FieldRef(lhs)
-        rhs_name = self.visit_FieldRef(rhs)
+        lhs_path = self.visit_FieldRef(lhs)
+        rhs_path = self.visit_FieldRef(rhs)
 
-        return GenTypeGraphIR.AddMakeLinkAction(
-            lhs_ref=GenTypeGraphIR.Field(name=lhs_name),
-            rhs_ref=GenTypeGraphIR.Field(name=rhs_name),
-        )
+        lhs_field = self._scope_stack.require_field(lhs_path)
+        rhs_field = self._scope_stack.require_field(rhs_path)
+
+        return GenTypeGraphIR.AddMakeLinkAction(lhs_ref=lhs_field, rhs_ref=rhs_field)
 
 
 @dataclass

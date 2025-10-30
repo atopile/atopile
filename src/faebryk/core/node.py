@@ -21,6 +21,7 @@ from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
+    cast_assert,
     dataclass_as_kwargs,
     not_none,
     zip_dicts_by_key,
@@ -197,6 +198,7 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
             node_attributes=self.attributes.to_node_attributes()
             if self.attributes is not None
             else None,
+            mount_reference=None,
         )
 
         type_reference = not_none(
@@ -229,7 +231,7 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=instance, child_identifier=self.identifier
+                bound_node=instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
@@ -269,7 +271,7 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=self.instance, child_identifier=self.identifier
+                bound_node=self.instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
@@ -305,7 +307,7 @@ class TypeChildBoundInstance[T: Node[Any]]:
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=instance, child_identifier=self.identifier
+                bound_node=instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
@@ -575,6 +577,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             type_node=parent_type_node,
             child_type_identifier=nodetype._type_identifier(),
             identifier=identifier,
+            node_attributes=None,
+            mount_reference=None,
         )
 
         type_reference = tg.get_make_child_type_reference(make_child=make_child)

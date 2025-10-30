@@ -952,6 +952,32 @@ fn wrap_edge_operand(root: *py.PyObject) void {
     edge_operand_type = type_registry.getRegisteredTypeObject("EdgeOperand");
 }
 
+fn wrap_edge_interface_connection_build() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "build",
+            .doc = "Return creation attributes for an EdgeInterfaceConnection",
+            .args_def = struct {
+                shallow: ?*py.PyObject = null,
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const shallow = if (kwarg_obj.shallow) |shallow_obj| bind.unwrap_bool(shallow_obj) else false;
+            const allocator = std.heap.c_allocator;
+            const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
+                return null;
+            };
+
+            attributes.* = faebryk.interface.EdgeInterfaceConnection.build(allocator, shallow);
+            return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
+        }
+    };
+}
+
 fn wrap_edge_interface_connection_get_tid() type {
     return struct {
         pub const descr = method_descr{
@@ -1222,6 +1248,7 @@ fn wrap_edge_interface_connection_get_connected() type {
 
 fn wrap_interface(root: *py.PyObject) void {
     const extra_methods = [_]type{
+        wrap_edge_interface_connection_build(),
         wrap_edge_interface_connection_get_tid(),
         wrap_edge_interface_connection_is_instance(),
         wrap_edge_interface_connection_get_other_connected_node(),
@@ -2619,9 +2646,11 @@ fn wrap_typegraph_add_make_child() type {
                 child_type_identifier: *py.PyObject,
                 identifier: *py.PyObject,
                 node_attributes: ?*py.PyObject = null,
+                mount_reference: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .mount_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                 };
             },
             .static = false,
@@ -2656,12 +2685,25 @@ fn wrap_typegraph_add_make_child() type {
                 node_attributes = attrs_wrapper.data;
             }
 
+            var mount_reference: ?graph.BoundNodeReference = null;
+            if (kwarg_obj.mount_reference) |mount_obj| {
+                if (mount_obj != py.Py_None()) {
+                    const mount_wrapper = bind.castWrapper("BoundNodeReference", &graph_py.bound_node_type, BoundNodeWrapper, mount_obj) orelse {
+                        if (identifier_copy) |copy| allocator.free(copy);
+                        allocator.free(child_type_identifier_copy);
+                        return null;
+                    };
+                    mount_reference = mount_wrapper.data.*;
+                }
+            }
+
             const bnode = faebryk.typegraph.TypeGraph.add_make_child(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 child_type_identifier_copy,
                 if (identifier_copy) |copy| copy else null,
                 node_attributes,
+                mount_reference,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
                 return null;
