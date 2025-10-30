@@ -67,16 +67,16 @@ class ElectricPower(fabll.Node):
     lv = Electrical.MakeChild()
 
     voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Volt,
+        unit=F.Units.Volt,
     )
     max_current = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ampere,
+        unit=F.Units.Ampere,
     )
 
     # _has_single_electric_reference = F.has_single_electric_reference_defined.MakeChild()
 
     bus_max_current_consumption_sum = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ampere,
+        unit=F.Units.Ampere,
     )
 
     # _surge_protected: can_be_surge_protected_power

@@ -14,19 +14,19 @@ class Comparator(fabll.Node):
         OpenDrain = auto()
 
     common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Decibel,
+        unit=F.Units.Decibel,
     )
     input_bias_current = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ampere,
+        unit=F.Units.Ampere,
     )
     input_hysteresis_voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Volt,
+        unit=F.Units.Volt,
     )
     input_offset_voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Volt,
+        unit=F.Units.Volt,
     )
     propagation_delay = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Second,
+        unit=F.Units.Second,
     )
     output_type = fabll.Parameter.MakeChild_Enum(
         enum_t=OutputType,

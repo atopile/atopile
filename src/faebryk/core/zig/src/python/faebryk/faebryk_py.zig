@@ -2387,10 +2387,64 @@ fn wrap_edgebuilder_apply_to() type {
     };
 }
 
+fn wrap_edgebuilder_create_edge() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "create_edge",
+            .doc = "Create an edge with these attributes between source and target nodes",
+            .args_def = struct {
+                source: *graph.Node,
+                target: *graph.Node,
+
+                pub const fields_meta = .{
+                    .source = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                    .target = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const edge = attributes.data.create_edge(std.heap.c_allocator, kwarg_obj.source, kwarg_obj.target);
+            return bind.wrap_obj("Edge", &graph_py.edge_type, EdgeWrapper, edge);
+        }
+    };
+}
+
+fn wrap_edgebuilder_insert_edge() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "insert_edge",
+            .doc = "Create and insert an edge with these attributes into the graph",
+            .args_def = struct {
+                g: *graph.GraphView,
+                source: *graph.Node,
+                target: *graph.Node,
+
+                pub const fields_meta = .{
+                    .g = bind.ARG{ .Wrapper = graph_py.GraphViewWrapper, .storage = &graph_py.graph_view_type },
+                    .source = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                    .target = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            var edge = attributes.data.insert_edge(kwarg_obj.g, kwarg_obj.source, kwarg_obj.target);
+            return bind.wrap_obj("BoundEdge", &graph_py.bound_edge_type, BoundEdgeWrapper, &edge);
+        }
+    };
+}
+
 fn wrap_edgebuilder(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edgebuilder_init(),
         wrap_edgebuilder_apply_to(),
+        wrap_edgebuilder_create_edge(),
+        wrap_edgebuilder_insert_edge(),
     };
     bind.wrap_namespace_struct(root, faebryk.edgebuilder.EdgeCreationAttributes, extra_methods);
     edge_creation_attributes_type = type_registry.getRegisteredTypeObject("EdgeCreationAttributes");

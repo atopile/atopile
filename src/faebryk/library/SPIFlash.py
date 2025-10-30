@@ -10,7 +10,7 @@ class SPIFlash(fabll.Node):
     power = F.ElectricPower.MakeChild()
     qspi = F.MultiSPI.MakeChild(4)
 
-    memory_size = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Byte)
+    memory_size = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Byte)
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
     ).put_on_type()

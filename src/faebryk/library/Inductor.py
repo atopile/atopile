@@ -10,11 +10,11 @@ from faebryk.libs.units import P
 class Inductor(fabll.Node):
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    inductance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Henry)
-    max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
-    dc_resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
-    saturation_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
-    self_resonant_frequency = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
+    inductance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Henry)
+    max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    dc_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
+    saturation_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    self_resonant_frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
 
     _is_pickable = F.is_pickable_by_type.MakeChild(
         endpoint="inductors",

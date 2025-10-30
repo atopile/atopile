@@ -7,16 +7,16 @@ from faebryk.libs.units import P
 
 
 class OpAmp(fabll.Node):
-    bandwidth = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
+    bandwidth = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
     common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Decibel
+        unit=F.Units.Decibel
     )
-    input_bias_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
-    input_offset_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
-    gain_bandwidth_product = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
-    output_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    input_bias_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    input_offset_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    gain_bandwidth_product = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
+    output_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     # slew_rate = fabll.Parameter.MakeChild_Numeric(
-    #     unit=fabll.Units.Volt / fabll.Units.Second
+    #     unit=F.Units.Volt / F.Units.Second
     # )
 
     power = F.ElectricPower.MakeChild()

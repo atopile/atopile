@@ -23,7 +23,7 @@ class Fuse(fabll.Node):
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
     fuse_type = fabll.Parameter.MakeChild_Enum(enum_t=FuseType)
     response_type = fabll.Parameter.MakeChild_Enum(enum_t=ResponseType)
-    trip_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    trip_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
 
     attach_to_footprint = F.can_attach_to_footprint_symmetrically.MakeChild()
 

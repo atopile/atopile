@@ -13,8 +13,8 @@ class I2S(fabll.Node):
     ws: F.ElectricLogic  # Word Select (Left/Right Clock)
     sck: F.ElectricLogic  # Serial Clock
 
-    sample_rate = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Hertz)
-    bit_depth = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Bit)
+    sample_rate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
+    bit_depth = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Bit)
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(

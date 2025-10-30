@@ -16,10 +16,10 @@ class Filter(fabll.Node):
         OTHER = auto()
 
     cutoff_frequency = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Hertz,
+        unit=F.Units.Hertz,
     )
     order = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Natural,
+        unit=F.Units.Natural,
     )
     response = fabll.Parameter.MakeChild_Enum(enum_t=Response)
 

@@ -9,10 +9,10 @@ from faebryk.libs.units import P
 
 class Battery(fabll.Node):
     voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Volt,
+        unit=F.Units.Volt,
     )
     capacity = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.AmpereHour,
+        unit=F.Units.AmpereHour,
     )
 
     power = F.ElectricPower.MakeChild()

@@ -20,16 +20,14 @@ class Relay(fabll.Node):
     switch_b_nc = F.Electrical.MakeChild()
     coil_power = F.ElectricPower.MakeChild()
 
-    coil_max_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
-    coil_max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
-    coil_resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
-    contact_max_switching_voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Volt
-    )
+    coil_max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    coil_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    coil_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
+    contact_max_switching_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     contact_max_switching_current = fabll.Parameter.MakeChild_Numeric(
-        unit=fabll.Units.Ampere
+        unit=F.Units.Ampere
     )
-    contact_max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
+    contact_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.K

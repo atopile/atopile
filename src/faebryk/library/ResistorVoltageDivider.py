@@ -29,11 +29,11 @@ class ResistorVoltageDivider(fabll.Node):
     r_top: F.Resistor
 
     # Variables
-    v_in = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
-    v_out = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
-    max_current = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ampere)
-    total_resistance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Ohm)
-    ratio = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Dimensionless)
+    v_in = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    v_out = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    total_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
+    ratio = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Dimensionless)
 
     def can_bridge(self):
         return F.can_bridge_defined(self.power.hv, self.output.line)

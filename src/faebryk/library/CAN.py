@@ -12,7 +12,7 @@ class CAN(fabll.Node):
 
     diff_pair = F.DifferentialPair.MakeChild()
 
-    speed = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.BitPerSecond)
+    speed = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
 
     def __preinit__(self) -> None:
         self.speed.add(F.is_bus_parameter())

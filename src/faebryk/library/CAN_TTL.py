@@ -10,7 +10,7 @@ class CAN_TTL(fabll.Node):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 
-    speed = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.BitPerSecond)
+    speed = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(

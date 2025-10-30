@@ -37,12 +37,12 @@ class MultiCapacitor(fabll.Node):
         C0G = auto()
 
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
-    capacitance = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Farad)
-    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Volt)
+    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
+    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
     #     enum_t=TemperatureCoefficient
     # )
-    count = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
+    count = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
 
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])

@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class Addressor(fabll.Node):
-    address = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
-    offset = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
-    base = fabll.Parameter.MakeChild_Numeric(unit=fabll.Units.Natural)
+    address = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
+    offset = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
+    base = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
 
     def address_lines(self):
         return times(self._address_bits, F.ElectricLogic)
