@@ -9,7 +9,7 @@ from faebryk.libs.util import not_none
 
 class Pad(fabll.Node):
     net = F.Electrical.MakeChild()
-    pcb = fabll.ChildField(fabll.ModuleInterface)
+    pcb = fabll.GenericNodeWithInterface.MakeChild()
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
@@ -38,7 +38,7 @@ class Pad(fabll.Node):
         pads = [
             pad
             for pad in footprint.get_children(direct_only=True, types=Pad)
-            if pad.net.is_connected_to(intf)
+            if pad.net.get_trait(fabll.is_interface).is_connected_to(intf)
         ]
         return pads
 

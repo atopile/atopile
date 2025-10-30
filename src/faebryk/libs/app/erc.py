@@ -10,7 +10,7 @@ from more_itertools import first
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
-from faebryk.core.trait import Trait
+from faebryk.core.node import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
 
@@ -71,7 +71,7 @@ class ModuleInterfacePath(list[fabll.ModuleInterface]):
         Return a ModuleInterfacePath between two ModuleInterfaces, if it exists,
         else None.
         """
-        if paths := a.is_connected_to(b):
+        if paths := a.get_trait(fabll.is_interface).is_connected_to(b):
             # FIXME: Notes: from the master of graphs:
             #  - iterate through all paths
             #  - make a helper function

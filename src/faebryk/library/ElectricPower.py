@@ -5,6 +5,8 @@
 import faebryk.core.node as fabll
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_usage_example import has_usage_example
+import faebryk.library._F as F
+
 
 
 class ElectricPower(fabll.Node):

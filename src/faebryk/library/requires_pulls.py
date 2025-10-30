@@ -84,7 +84,7 @@ class requires_pulls(fabll.Node):
     def _get_bus(self, signal: F.ElectricSignal):
         return {
             parent
-            for node in signal.get_connected(include_self=True)
+            for node in signal.get_trait(fabll.is_interface).get_connected()
             if (
                 parent := node.get_parent_f(lambda node: node.has_trait(requires_pulls))
             )
