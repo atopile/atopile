@@ -22,7 +22,7 @@ from antlr4.tree.Tree import TerminalNodeImpl
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.compiler.parse import parse_file
+from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
@@ -45,7 +45,7 @@ class ANTLRVisitor(AtoParserVisitor):
     """
 
     def __init__(
-        self, graph: GraphView, type_graph: TypeGraph, file_path: Path
+        self, graph: GraphView, type_graph: TypeGraph, file_path: Path | None
     ) -> None:
         super().__init__()
         self._graph = graph
@@ -153,7 +153,7 @@ class ANTLRVisitor(AtoParserVisitor):
         return self._new(AST.File).setup(
             g=self._graph,
             source_info=self._extract_source_info(ctx),
-            path=str(self._file_path),
+            path=str(self._file_path) if self._file_path is not None else "",
             stmts=self.visitStmts(ctx.stmt()),
         )
 
@@ -1032,7 +1032,7 @@ class BuildState:
     type_graph: TypeGraph
     type_roots: dict[str, BoundNode]
     external_type_refs: list[tuple[BoundNode, GenTypeGraphIR.ImportRef]]
-    file_path: Path
+    file_path: Path | None
 
 
 class GenTypeGraphIR:
@@ -1293,7 +1293,9 @@ class ASTVisitor:
         MODULE_TEMPLATING = "MODULE_TEMPLATING"
         INSTANCE_TRAITS = "INSTANCE_TRAITS"
 
-    def __init__(self, ast_root: AST.File, graph: GraphView, file_path: Path) -> None:
+    def __init__(
+        self, ast_root: AST.File, graph: GraphView, file_path: Path | None
+    ) -> None:
         self._ast_root = ast_root
         self._graph = graph
         self._type_graph = TypeGraph.create(g=graph)
@@ -1591,21 +1593,37 @@ class BuildFileResult:
     state: BuildState
 
 
+def _build_from_ast(
+    graph: GraphView,
+    ast_root: AST.File,
+    file_path: Path | None,
+) -> BuildFileResult:
+    build_state = ASTVisitor(ast_root, graph, file_path).build()
+    return BuildFileResult(ast_root=ast_root, state=build_state)
+
+
 def build_file(graph: GraphView, path: Path) -> BuildFileResult:
     # TODO: per-file caching
     ast_type_graph = TypeGraph.create(g=graph)
     parsed = parse_file(path)
     ast_root = ANTLRVisitor(graph, ast_type_graph, path).visit(parsed)
     assert isinstance(ast_root, AST.File)
-    build_state = ASTVisitor(ast_root, graph, path).build()
-    return BuildFileResult(ast_root=ast_root, state=build_state)
+    return _build_from_ast(graph, ast_root, path)
 
 
-def _resolve_import_path(base_file: Path, raw_path: str) -> Path:
+def build_source(graph: GraphView, source: str) -> BuildFileResult:
+    ast_type_graph = TypeGraph.create(g=graph)
+    parsed = parse_text_as_file(source)
+    ast_root = ANTLRVisitor(graph, ast_type_graph, None).visit(parsed)
+    assert isinstance(ast_root, AST.File)
+    return _build_from_ast(graph, ast_root, None)
+
+
+def _resolve_import_path(base_file: Path | None, raw_path: str) -> Path:
     # TODO: include all search paths
     # TODO: get base dirs from config
     search_paths = [
-        base_file.parent,
+        *([base_file.parent] if base_file is not None else []),
         Path(".ato/modules"),
     ]
 
