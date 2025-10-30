@@ -21,6 +21,7 @@ from antlr4.tree.Tree import TerminalNodeImpl
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from atopile.compiler.graph_mock import BoundNode
 from atopile.compiler.parse import parse_file
 from atopile.compiler.parse_utils import AtoRewriter
@@ -32,6 +33,10 @@ from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 from faebryk.library.Expressions import Is
 from faebryk.libs.util import cast_assert, not_none
+
+STDLIB_ALLOWLIST = {
+    "Resistor": F.Resistor,
+}
 
 
 class ANTLRVisitor(AtoParserVisitor):
@@ -1035,10 +1040,11 @@ class GenTypeGraphIR:
     @dataclass(frozen=True)
     class ImportRef:
         name: str
-        path: str
+        path: str | None = None
 
         def __repr__(self) -> str:
-            return f'ImportRef(name={self.name}, path="{self.path}")'
+            path_part = f', path="{self.path}"' if self.path else ""
+            return f"ImportRef(name={self.name}{path_part})"
 
     @dataclass(frozen=True)
     class Symbol:
@@ -1381,14 +1387,12 @@ class ASTVisitor:
         )
 
         path_literal = node.path.get().path.get().try_extract_constrained_literal()
+        path = cast_assert(str, path_literal) if path_literal is not None else None
+        import_ref = GenTypeGraphIR.ImportRef(name=type_ref_name, path=path)
 
-        # TODO
-        if path_literal is None:
-            raise NotImplementedError("stdlib imports not supported yet")
+        if path is None and type_ref_name not in STDLIB_ALLOWLIST:
+            raise DslException(f"Standard library import not found: {type_ref_name}")
 
-        import_ref = GenTypeGraphIR.ImportRef(
-            name=type_ref_name, path=cast_assert(str, path_literal)
-        )
         self._scope_stack.add_symbol(
             GenTypeGraphIR.Symbol(name=type_ref_name, import_ref=import_ref)
         )
@@ -1548,22 +1552,44 @@ def _resolve_import_path(base_file: Path, raw_path: str) -> Path:
     raise DslException(f"Import path not found: `{raw_path}`")
 
 
-def link_imports(graph: GraphView, build_state: BuildState) -> None:
+def link_imports(
+    graph: GraphView,
+    build_state: BuildState,
+    stdlib_registry: dict[str, BoundNode],
+    stdlib_tg: TypeGraph,
+) -> None:
     # TODO: handle cycles
 
     for type_reference, import_ref in build_state.external_type_refs:
-        source_path = _resolve_import_path(
-            base_file=build_state.file_path, raw_path=import_ref.path
-        )
-        assert source_path.exists()
+        if import_ref.path is None:
+            target_type_node = stdlib_registry[import_ref.name]
 
-        child_result = build_file(graph, source_path)
-        link_imports(graph, child_result.state)
+        else:
+            source_path = _resolve_import_path(
+                base_file=build_state.file_path, raw_path=import_ref.path
+            )
+            assert source_path.exists()
+
+            child_result = build_file(graph, source_path)
+            link_imports(graph, child_result.state, stdlib_registry, stdlib_tg)
+            target_type_node = child_result.state.type_roots[import_ref.name]
+
         Linker.link_type_reference(
             g=graph,
             type_reference=type_reference,
-            target_type_node=child_result.state.type_roots[import_ref.name],
+            target_type_node=target_type_node,
         )
 
     if build_state.type_graph.collect_unresolved_type_references():
         raise DslException("Unresolved type references remaining after linking")
+
+
+def build_stdlib(graph: GraphView) -> tuple[TypeGraph, dict[str, BoundNode]]:
+    tg = TypeGraph.create(g=graph)
+    registry: dict[str, BoundNode] = {}
+
+    for name, obj in STDLIB_ALLOWLIST.items():
+        type_node = obj.bind_typegraph(tg).get_or_create_type()
+        registry[name] = type_node
+
+    return tg, registry

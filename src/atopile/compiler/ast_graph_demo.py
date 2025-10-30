@@ -2,7 +2,7 @@ from pathlib import Path
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
-from atopile.compiler.ast_graph import build_file, link_imports
+from atopile.compiler.ast_graph import build_file, build_stdlib, link_imports
 from atopile.compiler.graph_mock import BoundNode, NodeHelpers
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
@@ -102,6 +102,9 @@ if __name__ == "__main__":
 
     _section("Build logs", sep="")
     graph = GraphView.create()
+
+    stdlib_tg, stdlib_registry = build_stdlib(graph)
+
     result = build_file(graph, source_path.resolve())
 
     _section("AST Graph")
@@ -116,7 +119,7 @@ if __name__ == "__main__":
         NodeHelpers.print_tree(type_root, renderer=typegraph_renderer)
 
     _section("Linking", sep="\n\n")
-    link_imports(graph, result.state)
+    link_imports(graph, result.state, stdlib_registry, stdlib_tg)
 
     _section("Post-Link Type Graph: ESP32_MINIMAL")
     app_type = result.state.type_roots["ESP32_MINIMAL"]
