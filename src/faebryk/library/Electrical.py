@@ -9,6 +9,7 @@ import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 
+
 class Electrical(fabll.Node):
     """
     Electrical interface.

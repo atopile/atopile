@@ -223,7 +223,7 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=instance, child_identifier=self.identifier
+                bound_node=instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
@@ -1160,6 +1160,14 @@ class Pointer(Node):
             EdgePointer.build(identifier=None, order=None),
         )
 
+    @staticmethod
+    def EdgeField(ptr_ref: RefPath, elem_ref: RefPath) -> EdgeField:
+        return EdgeField(
+            ptr_ref,
+            elem_ref,
+            edge=EdgePointer.build(identifier=None, order=None),
+        )
+
 
 class Sequence(Node):
     """
@@ -1238,6 +1246,39 @@ class Set(Node):
 
     def as_set(self) -> set[Node[Any]]:
         return set(self.as_list())
+
+
+class Tuple(Node):
+    pointer = ChildField(Pointer)
+    literals = ChildField(Set)
+
+    @classmethod
+    def SetPointer(cls, tup_ref: RefPath, elem_ref: RefPath) -> EdgeField:
+        ptr_ref = tup_ref
+        ptr_ref.append(cls.pointer)
+        return Pointer.EdgeField(
+            ptr_ref,
+            elem_ref,
+        )
+
+    @classmethod
+    def AppendLiteral(cls, tup_ref: RefPath, elem_ref: RefPath) -> EdgeField:
+        set_ref = tup_ref  # TODO: Can this be done in a more elegant way?
+        set_ref.append(cls.literals)
+        return Set.EdgeField(
+            tup_ref,
+            elem_ref,
+        )
+
+    def deref_pointer(self) -> Node:
+        electrical_ptr = self.pointer.get()
+        return electrical_ptr.deref()
+
+    def get_literals_as_list(self) -> list[LiteralT]:
+        return [
+            LiteralNode.bind_instance(instance=lit.instance).get_value()
+            for lit in self.literals.get().as_list()
+        ]
 
 
 class Traits:
@@ -1473,6 +1514,9 @@ class LiteralNode(Node[LiteralNodeAttributes]):
     @classmethod
     def MakeChild(cls, value: LiteralT) -> ChildField[Any]:
         return ChildField(cls, attributes=LiteralNodeAttributes(value=value))
+
+    def get_value(self) -> LiteralT:
+        return self.instance.node().get_dynamic_attrs().get("value", "")
 
 
 class IsBaseUnit(Node):
@@ -2022,13 +2066,50 @@ def test_lightweight():
     resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
     resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
+    # Test list fields
+    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
+    assert resistor_instance.unnamed[1].get().get_name() == "unnamed[1]"
+
     # Test is pickable by type
     ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
     sorted_params = sorted(param.get_name() for param in ipbt.params)
     assert sorted_params == ["max_power", "max_voltage", "resistance"]
-    endpoint = ipbt.endpoint_.get()
-    print(f"endpoint: {endpoint}")
+    # TODO: test endpoint extraction from endpoint property
     # assert endpoint == "resistors"
+
+    # Test has_simple_value_representation_based_on_params_chain
+    # hsvprp = resistor_instance.get_trait(
+    #     F.has_simple_value_representation_based_on_params_chain
+    # )
+    # print(hsvprp.get_value())
+
+    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
+    # pat = not_none(
+    #     EdgePointer.get_pointed_node_by_identifier(
+    #         bound_node=bjt_instance.emitter.get().instance,
+    #         identifier="pin_association_table_set",
+    #     )
+    # )
+    # for lit in Set.bind_instance(instance=pat).as_list():
+    #     lit = LiteralNode.bind_instance(instance=lit.instance)
+    #     print(lit.get_value())
+
+    # print(pah.get_nc_literals())
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    bjt_instance = F.BJT.bind_typegraph(tg=tg).create_instance(g=g)
+    pah = bjt_instance.get_trait(F.has_pin_association_heuristic_lookup_table)
+    #
+    # print(nc_set)
+    # print(pah.nc.get())
+    # print(pah.nc.get().as_list())
+    # print(pah.get_nc_literals())
+    print(pah.get_mapping_as_dict())
+    print(pah.get_pins(pins=[("1", "E"), ("2", "Collector"), ("3", "B")]))
+
+    # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
+    # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
+    # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
 
 
 if __name__ == "__main__":

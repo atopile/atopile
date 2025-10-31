@@ -240,4 +240,4 @@ class has_designator_prefix(fabll.Node):
         return out
 
     def get_prefix(self) -> str:
-        return self.prefix_param.get().try_extract_constrained_literal()
+        return str(self.prefix_param.get().try_extract_constrained_literal())

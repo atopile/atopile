@@ -20,8 +20,8 @@ class BJT(fabll.Node):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type = fabll.Parameter.MakeChild_Enum(enum_t=DopingType)
-    operation_region = fabll.Parameter.MakeChild_Enum(enum_t=OperationRegion)
+    # doping_type = fabll.Parameter.MakeChild_Enum(enum_t=DopingType)
+    # operation_region = fabll.Parameter.MakeChild_Enum(enum_t=OperationRegion)
 
     emitter = F.Electrical.MakeChild()
     base = F.Electrical.MakeChild()

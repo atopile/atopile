@@ -28,10 +28,6 @@ class is_pickable_by_type(fabll.Node):
         CAPACITORS = "capacitors"
         INDUCTORS = "inductors"
 
-    # @property
-    # def endpoint(self) -> Endpoint:
-    #     return self.endpoint_.get().try_extract_constrained_literal()
-
     @property
     def params(self) -> list[fabll.Parameter]:
         parameters: list[fabll.Parameter] = []

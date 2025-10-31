@@ -4,8 +4,13 @@
 import logging
 from typing import Any
 
+from numpy import isin
+
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 import faebryk.library._F as F
+from faebryk.core.node import EdgeField
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.libs.util import KeyErrorNotFound, not_none
 
@@ -13,12 +18,35 @@ logger = logging.getLogger(__name__)
 
 
 class has_pin_association_heuristic_lookup_table(fabll.Node):
-    mapping = fabll.ChildField(fabll.Parameter)
-    accept_prefix = fabll.ChildField(fabll.Parameter)
-    case_sensitive = fabll.ChildField(fabll.Parameter)
-    nc = fabll.ChildField(fabll.Parameter)
+    # TODO: Implement case sensitive get literal and accept prefix get literal
+    """
+    All literals, sets and tuples are children of the
+    "out" parent node.
+    nc_set
+    |- nc_literal1
+    |- nc_literal2
+
+    mapping_set
+    |- pat_tuple1
+    |  |- pointer
+    |  |  |- electrical1
+    |  |- literals
+    |  |  |- literal1
+    |  |  |- literal2
+    |- pat_tuple2
+    |  |- pointer
+    |  |  |- electrical2
+    |  |- literals
+    |  |  |- literal1
+    |  |  |- literal2
+    """
 
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+    mapping = fabll.Set.MakeChild()
+    accept_prefix = fabll.ChildField(fabll.Parameter)
+    case_sensitive = fabll.ChildField(fabll.Parameter)
+    nc = fabll.ChildField(fabll.Set)
 
     @classmethod
     def MakeChild(
@@ -26,11 +54,11 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
         mapping: dict[fabll.ChildField, list[str]],
         accept_prefix: bool,
         case_sensitive: bool,
-        nc: list[str] = ["NC", "nc"],
+        nc_in: list[str] = ["NC", "nc"],
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(  # TODO: Change to make literal bool
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.accept_prefix], str(accept_prefix)
             )
         )
@@ -39,44 +67,54 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
                 [out, cls.case_sensitive], str(case_sensitive)
             )
         )
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.nc], nc)
-        )
-        for param_ref, param_names in mapping.items():
-            # Add a set node for pin association table
-            pin_association_table_set = fabll.Set.MakeChild()
-            out.add_dependant(pin_association_table_set)
-            for param_name in param_names:
-                # Add an edge to the pin association table for each alternate name
-                field = fabll.EdgeField(
-                    [pin_association_table_set],
-                    [fabll.LiteralNode.MakeChild(value=param_name)],
-                    edge=EdgePointer.build(identifier=param_name, order=None),
+        nc_makechilds = []
+        for nc_literal in nc_in:
+            nc_lit = fabll.LiteralNode.MakeChild(value=nc_literal)
+            out.add_dependant(nc_lit)
+            nc_makechilds.append([nc_lit])
+        nc_set_fields = fabll.Set.EdgeFields([out, cls.nc], nc_makechilds)
+        out.add_dependant(*nc_set_fields)
+
+        pat_tuples = []
+        # Make literals and sets
+        for child_field, param_names in mapping.items():
+            pat_tuple = fabll.Tuple.MakeChild()
+            out.add_dependant(pat_tuple)
+            out.add_dependant(
+                fabll.Tuple.SetPointer(tup_ref=[pat_tuple], elem_ref=[child_field])
+            )
+            for param_literal in param_names:
+                param_lit = fabll.LiteralNode.MakeChild(value=param_literal)
+                out.add_dependant(param_lit)
+                out.add_dependant(
+                    fabll.Tuple.AppendLiteral(tup_ref=[pat_tuple], elem_ref=[param_lit])
                 )
-                out.add_dependant(field)
+
+            pat_tuples.append([pat_tuple])
+
+        # Populate mapping set with pat sets
+        pat_set_edges = fabll.Set.EdgeFields([out, cls.mapping], pat_tuples)
+        out.add_dependant(*pat_set_edges)
+
         return out
 
+    def get_nc_literals(self) -> list[fabll.LiteralT]:
+        nc_list = self.nc.get().as_list()
+        nc_literals = [
+            fabll.LiteralNode.bind_instance(instance=nc_lit.instance).get_value()
+            for nc_lit in nc_list
+        ]
+        return nc_literals
+
     def get_mapping_as_dict(self) -> dict[F.Electrical, list[str]]:
-        mapping = {}
-        pin_association_table_sets = self.get_children(
-            direct_only=True, types=fabll.Set
-        )
-        for pin_association_table_set in pin_association_table_sets:
-            electrical_bnode = not_none(
-                EdgePointer.get_pointed_node_by_identifier(
-                    bound_node=pin_association_table_set.instance,
-                    identifier="electrical",
-                )
-            )
-            associated_names: list[str] = []
-            EdgePointer.visit_pointed_edges(
-                bound_node=electrical_bnode,
-                ctx=associated_names,
-                f=lambda ctx, edge: ctx.append(
-                    str(edge.edge().target().get_dynamic_attrs().get("value", ""))
-                ),
-            )
-            mapping[F.Electrical.bind_instance(electrical_bnode)] = associated_names
+        mapping: dict[F.Electrical, list[str]] = {}
+        mapping_set = self.mapping.get()
+        pat_tuples = mapping_set.as_list()
+        for pat_tuple in pat_tuples:
+            tuple_instance = fabll.Tuple.bind_instance(instance=pat_tuple.instance)
+            elements = tuple_instance.get_literals_as_list()
+            electrical = tuple_instance.deref_pointer()
+            mapping[electrical] = elements  # type: ignore
         return mapping
 
     def get_pins(
@@ -90,15 +128,15 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
         :return: A dictionary with the pin name as key and the module interface as value
         """
         mapping = self.get_mapping_as_dict()
-        accept_prefix = not_none(
-            self.accept_prefix.get().try_extract_constrained_literal()
-        )
-        case_sensitive = not_none(
-            self.case_sensitive.get().try_extract_constrained_literal()
-        )
-        nc = [
-            not_none(self.nc.get().try_extract_constrained_literal())
-        ]  # TODO: convert nc to list of str
+        accept_prefix = False
+        # accept_prefix = not_none(
+        #     self.accept_prefix.get().try_extract_constrained_literal()
+        # )
+        case_sensitive = False
+        # case_sensitive = not_none(
+        #     self.case_sensitive.get().try_extract_constrained_literal()
+        # )
+        nc = self.get_nc_literals()
 
         pinmap = {}
         for mif, alt_names in mapping.items():
