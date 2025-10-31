@@ -33,6 +33,7 @@
 
 - [ ] Move all faebryk pyis into faebryk.pyi
 - [ ] Figure out how to convert ChildField to instance
+- [ ] composition name optional? (currently id() hack)
 
 ##
 

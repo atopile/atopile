@@ -35,4 +35,8 @@ pub const EdgeCreationAttributes = struct {
         const edge = self.create_edge(g.allocator, source, target);
         return g.insert_edge(edge);
     }
+
+    pub fn get_tid(self: *const @This()) Edge.EdgeType {
+        return self.edge_type;
+    }
 };

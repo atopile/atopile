@@ -1,49 +1,141 @@
-from typing import Any, Self
+from dataclasses import dataclass
+from enum import auto
+from typing import Any, Self, cast
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import GraphView
-from faebryk.libs.util import not_none
+from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView
 
 # TODO complete signatures
 # TODO consider moving to zig
 # TODO handle constrained attribute
-# TODO consider EdgeOperand vs Operand Nodes + Pointer
+
+
+def _retrieve_operands(
+    node: fabll.Node[Any], identifier: str | None
+) -> list[fabll.Node[Any]]:
+    class Ctx:
+        operands: list[fabll.Node[Any]] = []
+        _identifier = identifier
+
+    def visit(ctx: type[Ctx], edge: BoundEdge):
+        if ctx._identifier is not None and edge.edge().name() != ctx._identifier:
+            return
+        ctx.operands.append(
+            fabll.Node[Any].bind_instance(edge.g().bind(node=edge.edge().target()))
+        )
+
+    EdgeOperand.visit_operand_edges(bound_node=node.instance, ctx=Ctx, f=visit)
+    return Ctx.operands
+
+
+OperandPointer = F.Collections.AbstractPointer(
+    edge_factory=lambda identifier: EdgeOperand.build(operand_identifier=identifier),
+    retrieval_function=lambda node: _retrieve_operands(node, None)[0],
+)
+
+OperandSequence = F.Collections.AbstractSequence(
+    edge_factory=lambda identifier, order: EdgeOperand.build(
+        operand_identifier=identifier
+    ),
+    retrieval_function=_retrieve_operands,
+)
+
+OperandSet = F.Collections.AbstractSet(
+    edge_factory=lambda identifier, order: EdgeOperand.build(
+        operand_identifier=identifier
+    ),
+    retrieval_function=_retrieve_operands,
+)
+
+
+class IsExpression(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    @dataclass(frozen=True)
+    class ReprStyle(fabll.NodeAttributes):
+        symbol: str | None = None
+
+        class Placement(fabll.Enum):
+            INFIX = auto()
+            """
+            A + B + C
+            """
+            INFIX_FIRST = auto()
+            """
+            A > (B, C)
+            """
+            PREFIX = auto()
+            """
+            ¬A
+            """
+            POSTFIX = auto()
+            """
+            A!
+            """
+            EMBRACE = auto()
+            """
+            |A|
+            """
+
+        placement: Placement = Placement.INFIX
+
+    @classmethod
+    def MakeChild(cls, repr_style: ReprStyle) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        return out
+
+    @staticmethod
+    def get_all_operands(node: fabll.Node[Any]) -> set[fabll.Node[Any]]:
+        operands: set[fabll.Node[Any]] = set()
+        for child in node.get_children(
+            direct_only=True,
+            types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
+        ):
+            child = cast(F.Collections.PointerProtocol, child)
+            operands.update(child.as_list())
+
+        return operands
+
+    @staticmethod
+    def get_all_expressions_involved_in(node: fabll.Node[Any]) -> set[fabll.Node[Any]]:
+        # 1. Find all EdgeOperand edges
+        # 2. Get their source nodes
+        # 3. Get their parents
+        # TODO requires EdgeOperand to support multi expression edges
+        raise NotImplementedError("Not implemented")
+
+
+# --------------------------------------------------------------------------------------
 
 
 class Add(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="+",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
-    @classmethod
-    def add(
-        cls, tg: TypeGraph, g: GraphView, *operands: fabll.Node[Any]
-    ) -> fabll.Node[Any]:
-        out = cls.bind_typegraph(tg).create_instance(g=g)
-        for operand in operands:
-            out.connect(
-                to=operand,
-                edge_attrs=EdgeOperand.build(operand_identifier=None),
-            )
-        return out
+    operands = OperandSequence.MakeChild()
+
+    def setup(self, *operands: fabll.Node[Any]) -> Self:
+        self.operands.get().append(*operands)
+        return self
 
 
 class Subtract(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="-",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
-    minuend = fabll.Pointer.MakeChild()
-    subtrahends = fabll.Set.MakeChild()
+    minuend = OperandPointer.MakeChild()
+    subtrahends = OperandSequence.MakeChild()
 
     def get_minuend(self) -> fabll.Node[Any]:
         return self.minuend.get().deref()
@@ -51,202 +143,215 @@ class Subtract(fabll.Node):
     def get_subtrahends(self) -> set[fabll.Node[Any]]:
         return self.subtrahends.get().as_set()
 
-    @classmethod
-    def subtract(
-        cls,
-        tg: TypeGraph,
-        g: GraphView,
-        minuend: fabll.Node[Any],
-        *subtrahends: fabll.Node[Any],
-    ) -> fabll.Node[Any]:
-        out = cls.bind_typegraph(tg).create_instance(g=g)
-        out.minuend.get().point(minuend)
+    def setup(self, minuend: fabll.Node[Any], *subtrahends: fabll.Node[Any]) -> Self:
+        self.minuend.get().point(minuend)
         for subtrahend in subtrahends:
-            out.subtrahends.get().append(subtrahend)
-        return out
+            self.subtrahends.get().append(subtrahend)
+        return self
 
 
 class Multiply(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="*",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
+
+    operands = OperandSet.MakeChild()
+
+    def setup(self, *operands: fabll.Node[Any]) -> Self:
+        self.operands.get().append(*operands)
+        return self
 
 
 class Divide(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="/",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
+    numerator = OperandPointer.MakeChild()
+    denominator = OperandSequence.MakeChild()
+
+    def get_numerator(self) -> fabll.Node[Any]:
+        return self.numerator.get().deref()
+
+    def get_denominator(self) -> set[fabll.Node[Any]]:
+        return self.denominator.get().as_set()
+
+    def setup(self, numerator: fabll.Node[Any], *denominators: fabll.Node[Any]) -> Self:
+        self.numerator.get().point(numerator)
+        for denominator in denominators:
+            self.denominator.get().append(denominator)
+        return self
+
 
 class Sqrt(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="√",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Power(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="^",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class Log(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="log",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Sin(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="sin",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Cos(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="cos",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Abs(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="|",
-            placement=fabll.IsExpression.ReprStyle.Placement.EMBRACE,
+            placement=IsExpression.ReprStyle.Placement.EMBRACE,
         )
     )
 
 
 class Round(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="round",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Floor(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="⌊",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Ceil(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="⌈",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Min(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="min",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Max(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="max",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Integrate(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="∫",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Differentiate(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="d",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class And(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="∧",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class Or(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="∨",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class Not(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="¬",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Xor(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="⊕",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class Implies(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="⇒",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
@@ -256,152 +361,147 @@ class IfThenElse(fabll.Node):
 
 
 class Union(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="∪",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class Intersection(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="∩",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class Difference(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="−",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class SymmetricDifference(fabll.Node):
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="△",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class LessThan(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="<",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class GreaterThan(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol=">",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class LessOrEqual(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="≤",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class GreaterOrEqual(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="≥",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class NotEqual(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="≠",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class IsBitSet(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="b[]",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX,
+            placement=IsExpression.ReprStyle.Placement.INFIX,
         )
     )
 
 
 class IsSubset(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="⊆",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class IsSuperset(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="⊇",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
 
 class Cardinality(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="||",
-            placement=fabll.IsExpression.ReprStyle.Placement.PREFIX,
+            placement=IsExpression.ReprStyle.Placement.PREFIX,
         )
     )
 
 
 class Is(fabll.Node):
     _is_constrainable = fabll.IsConstrainable.MakeChild()
-    _is_expression = fabll.IsExpression.MakeChild(
-        repr_style=fabll.IsExpression.ReprStyle(
+    _is_expression = IsExpression.MakeChild(
+        repr_style=IsExpression.ReprStyle(
             symbol="=",
-            placement=fabll.IsExpression.ReprStyle.Placement.INFIX_FIRST,
+            placement=IsExpression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
 
-    operands = fabll.Set.MakeChild()
+    operands = OperandSet.MakeChild()
 
-    def get_operands(self) -> set[fabll.Node[Any]]:
-        return self.operands.get().as_set()
-
-    @classmethod
-    def constrain_is(
-        cls, tg: TypeGraph, g: GraphView, operands: list[fabll.Node[Any]]
-    ) -> Self:
-        out = cls.bind_typegraph(tg).create_instance(g=g)
-        out.operands.get().append(*operands)
-        return out
+    def setup(self, operands: list[fabll.Node[Any]], constrain: bool) -> Self:
+        self.operands.get().append(*operands)
+        if constrain:
+            self._is_constrainable.get().constrain()
+        return self
 
     @classmethod
     def MakeChild_Constrain(
@@ -409,7 +509,7 @@ class Is(fabll.Node):
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(fabll.IsConstrained.MakeChild())
-        out.add_dependant(*fabll.Set.EdgeFields([out, cls.operands], operands))
+        out.add_dependant(*OperandSet.EdgeFields([out, cls.operands], operands))
         return out
 
     @classmethod

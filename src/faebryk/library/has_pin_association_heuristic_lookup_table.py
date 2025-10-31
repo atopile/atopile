@@ -4,15 +4,9 @@
 import logging
 from typing import Any
 
-from numpy import isin
-
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 import faebryk.library._F as F
-from faebryk.core.node import EdgeField
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.libs.util import KeyErrorNotFound, not_none
+from faebryk.libs.util import KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +37,10 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
 
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    mapping = fabll.Set.MakeChild()
+    mapping = F.Collections.PointerSet.MakeChild()
     accept_prefix = fabll.ChildField(fabll.Parameter)
     case_sensitive = fabll.ChildField(fabll.Parameter)
-    nc = fabll.ChildField(fabll.Set)
+    nc = F.Collections.PointerSet.MakeChild()
 
     @classmethod
     def MakeChild(
@@ -72,28 +66,36 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
             nc_lit = fabll.LiteralNode.MakeChild(value=nc_literal)
             out.add_dependant(nc_lit)
             nc_makechilds.append([nc_lit])
-        nc_set_fields = fabll.Set.EdgeFields([out, cls.nc], nc_makechilds)
+        nc_set_fields = F.Collections.PointerSet.EdgeFields(
+            [out, cls.nc], nc_makechilds
+        )
         out.add_dependant(*nc_set_fields)
 
         pat_tuples = []
         # Make literals and sets
         for child_field, param_names in mapping.items():
-            pat_tuple = fabll.Tuple.MakeChild()
+            pat_tuple = F.Collections.PointerTuple.MakeChild()
             out.add_dependant(pat_tuple)
             out.add_dependant(
-                fabll.Tuple.SetPointer(tup_ref=[pat_tuple], elem_ref=[child_field])
+                F.Collections.PointerTuple.SetPointer(
+                    tup_ref=[pat_tuple], elem_ref=[child_field]
+                )
             )
             for param_literal in param_names:
                 param_lit = fabll.LiteralNode.MakeChild(value=param_literal)
                 out.add_dependant(param_lit)
                 out.add_dependant(
-                    fabll.Tuple.AppendLiteral(tup_ref=[pat_tuple], elem_ref=[param_lit])
+                    F.Collections.PointerTuple.AppendLiteral(
+                        tup_ref=[pat_tuple], elem_ref=[param_lit]
+                    )
                 )
 
             pat_tuples.append([pat_tuple])
 
         # Populate mapping set with pat sets
-        pat_set_edges = fabll.Set.EdgeFields([out, cls.mapping], pat_tuples)
+        pat_set_edges = F.Collections.PointerSet.EdgeFields(
+            [out, cls.mapping], pat_tuples
+        )
         out.add_dependant(*pat_set_edges)
 
         return out
@@ -111,7 +113,9 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
         mapping_set = self.mapping.get()
         pat_tuples = mapping_set.as_list()
         for pat_tuple in pat_tuples:
-            tuple_instance = fabll.Tuple.bind_instance(instance=pat_tuple.instance)
+            tuple_instance = F.Collections.PointerTuple.bind_instance(
+                instance=pat_tuple.instance
+            )
             elements = tuple_instance.get_literals_as_list()
             electrical = tuple_instance.deref_pointer()
             mapping[electrical] = elements  # type: ignore

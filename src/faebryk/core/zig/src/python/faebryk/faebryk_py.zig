@@ -2446,12 +2446,30 @@ fn wrap_edgebuilder_insert_edge() type {
     };
 }
 
+fn wrap_edgebuilder_get_tid() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_tid",
+            .doc = "Return the edge type identifier",
+            .args_def = struct {},
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const attributes = bind.castWrapper("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, self) orelse return null;
+            _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const tid = attributes.data.get_tid();
+            return py.PyLong_FromLongLong(@intCast(tid));
+        }
+    };
+}
+
 fn wrap_edgebuilder(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edgebuilder_init(),
         wrap_edgebuilder_apply_to(),
         wrap_edgebuilder_create_edge(),
         wrap_edgebuilder_insert_edge(),
+        wrap_edgebuilder_get_tid(),
     };
     bind.wrap_namespace_struct(root, faebryk.edgebuilder.EdgeCreationAttributes, extra_methods);
     edge_creation_attributes_type = type_registry.getRegisteredTypeObject("EdgeCreationAttributes");
