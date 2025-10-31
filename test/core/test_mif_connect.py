@@ -1063,6 +1063,8 @@ def test_basic_i2c():
     assert i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get())
     assert i2c1.sda.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
 
+    assert ~i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+
     # Electricals connected
     assert i2c1.scl.get().line.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().line.get())
     assert i2c1.sda.get().line.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().line.get())
@@ -1070,6 +1072,17 @@ def test_basic_i2c():
     # Electric powers connected
     assert i2c1.scl.get().reference.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get())
     assert i2c1.sda.get().reference.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get())
+
+    # Electric powers electricals connected
+    assert i2c1.scl.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    assert i2c1.scl.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    assert i2c1.sda.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().hv.get())
+    assert i2c1.sda.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+
+    assert ~i2c1.scl.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    assert ~i2c1.scl.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    assert ~i2c1.sda.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    assert ~i2c1.sda.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().hv.get())
 
 
 def test_isolated_connect_erc():

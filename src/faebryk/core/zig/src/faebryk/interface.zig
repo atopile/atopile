@@ -91,7 +91,8 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        return error.PathNotFound;
+        // return empty path
+        return graph.BFSPath.init(source);
     }
 
     // TODO - A visitor would be nice instead of just returning a list don't ya think?
