@@ -378,11 +378,11 @@ class EdgeFactoryField(Field, EdgeFactoryAccessor):
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
         single: bool = False,
     ):
-        raise NotImplementedError("Not sure whether we want to keep this")
         super().__init__(identifier=identifier)
         self.edge_factory = edge_factory
         self.edge_attrs = self.edge_factory(self.get_identifier())
         self.single = single
+        raise NotImplementedError("Not sure whether we want to keep this")
 
     def _connect(self, source: "Node[Any]", target: "Node[Any]"):
         source.connect(target, self.edge_attrs)
@@ -1556,83 +1556,17 @@ def test_trait_mark_as_trait():
     assert node.try_get_trait(ExampleTrait) is not None
 
 
-def test_pointer_helpers():
-    g, tg = _make_graph_and_typegraph()
-
-    class Leaf(Node):
-        pass
-
-    class Parent(Node):
-        left = Leaf.MakeChild()
-        right = Leaf.MakeChild()
-
-    parent = Parent.bind_typegraph(tg).create_instance(g=g)
-    left_child = parent.left.get()
-    right_child = parent.right.get()
-
-    parent.connect(left_child, EdgePointer.build(identifier="left_ptr", order=None))
-    parent.connect(right_child, EdgePointer.build(identifier="right_ptr", order=None))
-
-    pointed_edges: list[str | None] = []
-
-    def _collect(names: list[str | None], edge: BoundEdge):
-        names.append(edge.edge().name())
-
-    EdgePointer.visit_pointed_edges(
-        bound_node=parent.instance,
-        ctx=pointed_edges,
-        f=_collect,
-    )
-    assert pointed_edges.count("left_ptr") == 1
-    assert pointed_edges.count("right_ptr") == 1
-
-    left = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=parent.instance,
-        identifier="left_ptr",
-    )
-    assert left is not None
-    assert left.node().is_same(other=left_child.instance.node())
-
-    right = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=parent.instance,
-        identifier="right_ptr",
-    )
-    assert right is not None
-    assert right.node().is_same(other=right_child.instance.node())
-
-    parent.connect(left_child, EdgePointer.build(identifier="shared", order=None))
-    parent.connect(right_child, EdgePointer.build(identifier="shared", order=None))
-
-    shared_edges: list[BoundEdge] = []
-
-    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
-        ctx.append(edge)
-
-    EdgePointer.visit_pointed_edges_with_identifier(
-        bound_node=parent.instance,
-        identifier="shared",
-        ctx=shared_edges,
-        f=_collect_shared,
-    )
-    assert len(shared_edges) == 2
-
-    shared_nodes = parent.get_pointer_references(identifier="shared")
-    uuids = {node.instance.node().get_uuid() for node in shared_nodes}
-    assert uuids == {
-        left_child.instance.node().get_uuid(),
-        right_child.instance.node().get_uuid(),
-    }
-
-
 def test_set_basic():
     """Test basic Set functionality: append, as_list, as_set."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
     # Create a Set and some elements
-    set_node = PointerSet.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1663,12 +1597,14 @@ def test_set_basic():
 
 def test_set_deduplication():
     """Test that Set correctly deduplicates elements by UUID."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = PointerSet.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
 
@@ -1693,12 +1629,15 @@ def test_set_deduplication():
 
 def test_set_order_preservation():
     """Test that Set preserves insertion order of unique elements."""
+
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = PointerSet.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1726,12 +1665,14 @@ def test_set_order_preservation():
 
 def test_set_chaining():
     """Test that Set.append returns self for method chaining."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = PointerSet.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1748,21 +1689,19 @@ def test_set_chaining():
 
 
 def test_manual_resistor_def():
-    from faebryk.library.Electrical import Electrical
-    from faebryk.library.has_usage_example import has_usage_example
-    from faebryk.library.Resistor import Resistor
+    import faebryk.library._F as F
 
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
 
     # create electrical type node and insert into type graph
-    _ = Electrical.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.Electrical.bind_typegraph(tg=tg).get_or_create_type()
 
     # create resistor type node and insert into type graph
     # add make child nodes for p1 and p2, insert into type graph
-    _ = Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
 
-    resistor_instance = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
     assert resistor_instance
     print("resistor_instance:", resistor_instance.instance.node().get_dynamic_attrs())
     print(resistor_instance._type_identifier())
@@ -1792,7 +1731,7 @@ def test_manual_resistor_def():
     # Constrained parameter type child
     designator_prefix = not_none(
         EdgeComposition.get_child_by_identifier(
-            bound_node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=F.Resistor.bind_typegraph(tg=tg).get_or_create_type(),
             child_identifier="designator_prefix",
         )
     )
@@ -1823,13 +1762,13 @@ def test_manual_resistor_def():
     # Constrained trait with type child parameters to be constrained to literals
     usage_example = not_none(
         EdgeComposition.get_child_by_identifier(
-            bound_node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=F.Resistor.bind_typegraph(tg=tg).get_or_create_type(),
             child_identifier="usage_example",
         )
     )
     example_bnode = g.bind(
-        node=has_usage_example.bind_instance(usage_example)
-        .example.get()
+        node=F.has_usage_example.bind_instance(usage_example)
+        .example_.get()
         .instance.node()
     )
     expression_edge = not_none(

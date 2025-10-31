@@ -311,3 +311,72 @@ class PointerTuple(fabll.Node):
             fabll.LiteralNode.bind_instance(instance=lit.instance).get_value()
             for lit in self.literals.get().as_list()
         ]
+
+
+# TESTS --------------------------------------------------------------------------------
+def test_pointer_helpers():
+    g, tg = fabll._make_graph_and_typegraph()
+
+    class Leaf(fabll.Node):
+        pass
+
+    class Parent(fabll.Node):
+        left = Leaf.MakeChild()
+        right = Leaf.MakeChild()
+
+    parent = Parent.bind_typegraph(tg).create_instance(g=g)
+    left_child = parent.left.get()
+    right_child = parent.right.get()
+
+    parent.connect(left_child, EdgePointer.build(identifier="left_ptr", order=None))
+    parent.connect(right_child, EdgePointer.build(identifier="right_ptr", order=None))
+
+    pointed_edges: list[str | None] = []
+
+    def _collect(names: list[str | None], edge: BoundEdge):
+        names.append(edge.edge().name())
+
+    EdgePointer.visit_pointed_edges(
+        bound_node=parent.instance,
+        ctx=pointed_edges,
+        f=_collect,
+    )
+    assert pointed_edges.count("left_ptr") == 1
+    assert pointed_edges.count("right_ptr") == 1
+
+    left = EdgePointer.get_pointed_node_by_identifier(
+        bound_node=parent.instance,
+        identifier="left_ptr",
+    )
+    assert left is not None
+    assert left.node().is_same(other=left_child.instance.node())
+
+    right = EdgePointer.get_pointed_node_by_identifier(
+        bound_node=parent.instance,
+        identifier="right_ptr",
+    )
+    assert right is not None
+    assert right.node().is_same(other=right_child.instance.node())
+
+    parent.connect(left_child, EdgePointer.build(identifier="shared", order=None))
+    parent.connect(right_child, EdgePointer.build(identifier="shared", order=None))
+
+    shared_edges: list[BoundEdge] = []
+
+    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
+        ctx.append(edge)
+
+    EdgePointer.visit_pointed_edges_with_identifier(
+        bound_node=parent.instance,
+        identifier="shared",
+        ctx=shared_edges,
+        f=_collect_shared,
+    )
+    assert len(shared_edges) == 2
+
+    shared_nodes = _get_pointer_references(parent, identifier="shared")
+    uuids = {node.instance.node().get_uuid() for node in shared_nodes}
+    assert uuids == {
+        left_child.instance.node().get_uuid(),
+        right_child.instance.node().get_uuid(),
+    }

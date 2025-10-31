@@ -9,15 +9,15 @@ import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.libs.util import not_none
 
-# if TYPE_CHECKING:
-from faebryk.library.ElectricPower import ElectricPower
+if TYPE_CHECKING:
+    from faebryk.library.ElectricPower import ElectricPower
 
 
 class has_single_electric_reference_defined(fabll.Node):
     # reference = fabll.ChildField(ElectricPower)
 
     @classmethod
-    def MakeChild(cls, reference: fabll.ChildField[ElectricPower]):
+    def MakeChild(cls, reference: fabll.ChildField["ElectricPower"]):
         out = fabll.ChildField(cls)
         field = fabll.EdgeField(
             [out],
