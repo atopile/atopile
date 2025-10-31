@@ -44,12 +44,15 @@ class is_pickable_by_type(fabll.Node):
     def endpoint(self) -> str:
         return str(self.endpoint_.get().try_extract_constrained_literal())
 
-    @property
-    def pick_type(self) -> type[fabll.Node]:
-        return self.__class__
+    @property  # TODO: make this return Resistor Class
+    def pick_type(self):  # -> type[fabll.Node]:
+        parent = self.get_parent()
+        if parent is None:
+            raise Exception("is_pickable_by_type has no parent")
+        return parent[0]
 
     @classmethod
-    def MakeChild(cls, endpoint: str, params: dict[str, fabll.ChildField]):
+    def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll.ChildField]):
         out = fabll.ChildField(cls)
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral(

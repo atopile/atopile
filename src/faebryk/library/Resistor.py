@@ -16,7 +16,7 @@ class Resistor(fabll.Node):
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
     _is_pickable = F.is_pickable_by_type.MakeChild(
-        endpoint="resistors",
+        endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
         params={
             "resistance": resistance,
             "max_power": max_power,

@@ -38,8 +38,8 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     mapping = F.Collections.PointerSet.MakeChild()
-    accept_prefix = fabll.ChildField(fabll.Parameter)
-    case_sensitive = fabll.ChildField(fabll.Parameter)
+    accept_prefix_ = fabll.ChildField(fabll.Parameter)
+    case_sensitive_ = fabll.ChildField(fabll.Parameter)
     nc = F.Collections.PointerSet.MakeChild()
 
     @classmethod
@@ -53,12 +53,12 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
         out = fabll.ChildField(cls)
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.accept_prefix], str(accept_prefix)
+                [out, cls.accept_prefix_], accept_prefix
             )
         )
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.case_sensitive], str(case_sensitive)
+                [out, cls.case_sensitive_], case_sensitive
             )
         )
         nc_makechilds = []
@@ -132,14 +132,8 @@ class has_pin_association_heuristic_lookup_table(fabll.Node):
         :return: A dictionary with the pin name as key and the module interface as value
         """
         mapping = self.get_mapping_as_dict()
-        accept_prefix = False
-        # accept_prefix = not_none(
-        #     self.accept_prefix.get().try_extract_constrained_literal()
-        # )
-        case_sensitive = False
-        # case_sensitive = not_none(
-        #     self.case_sensitive.get().try_extract_constrained_literal()
-        # )
+        accept_prefix = self.accept_prefix_.get().try_extract_constrained_literal()
+        case_sensitive = self.case_sensitive_.get().try_extract_constrained_literal()
         nc = self.get_nc_literals()
 
         pinmap = {}

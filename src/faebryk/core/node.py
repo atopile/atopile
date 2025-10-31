@@ -1908,7 +1908,8 @@ def test_lightweight():
 
     # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
     # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
-    # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
+    print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
+    print(resistor_instance.get_trait(F.has_usage_example).language)
 
 
 if __name__ == "__main__":
