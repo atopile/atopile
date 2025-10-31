@@ -1187,8 +1187,11 @@ class Traits:
     def bind(cls, node: Node[Any]) -> Self:
         return cls(node)
 
+    def get_obj_raw(self) -> Node[Any]:
+        return self.node.get_parent_force()[0]
+
     def get_obj[N: Node[Any]](self, t: type[N]) -> N:
-        return self.node.get_parent_force()[0].cast(t)
+        return self.get_obj_raw().cast(t)
 
     @staticmethod
     def add_to(node: Node[Any], trait: Node[Any]) -> None:
@@ -1220,36 +1223,36 @@ class is_module(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     def get_obj(self) -> Node[Any]:
-        return Traits.get_obj(Traits.bind(self), Node)
+        return Traits.get_obj_raw(Traits.bind(self))
 
 
 class is_interface(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     def get_obj(self) -> Node[Any]:
-        return Traits.get_obj(Traits.bind(self), Node)
+        return Traits.get_obj_raw(Traits.bind(self))
 
     def connect_to(self, *others: "Node[Any]") -> None:
-        self_node = Traits.get_obj(Traits.bind(self), Node)
+        self_node = self.get_obj()
         for other in others:
             EdgeInterfaceConnection.connect(bn1=self_node.instance, bn2=other.instance)
 
     def connect_shallow_to(self, *others: "Node[Any]") -> None:
-        self_node = Traits.get_obj(Traits.bind(self), Node)
+        self_node = self.get_obj()
         for other in others:
             EdgeInterfaceConnection.connect_shallow(
                 bn1=self_node.instance, bn2=other.instance
             )
 
     def is_connected_to(self, other: "Node[Any]") -> bool:
-        self_node = Traits.get_obj(Traits.bind(self), Node)
+        self_node = self.get_obj()
         path = EdgeInterfaceConnection.is_connected_to(
             source=self_node.instance, target=other.instance
         )
         return len(path) > 0
 
     def get_connected(self) -> set["Node[Any]"]:
-        self_node = Traits.get_obj(Traits.bind(self), Node)
+        self_node = self.get_obj()
         connected_nodes = EdgeInterfaceConnection.get_connected(
             source=self_node.instance
         )
@@ -1374,13 +1377,13 @@ class IsBaseUnit(Node):
     @classmethod
     def MakeChild(cls, symbol: str) -> ChildField[Any]:
         out = ChildField(cls)
-        out.add_dependant(
-            EdgeField(
-                [out],
-                [symbol],
-                edge=EdgePointer.build(identifier=None, order=None),
-            )
-        )
+        # out.add_dependant(
+        #     EdgeField(
+        #         [out],
+        #         [symbol],
+        #         edge=EdgePointer.build(identifier=None, order=None),
+        #     )
+        # )
         return out
 
 

@@ -16,10 +16,21 @@ class ElectricPower(fabll.Node):
     higher potential (hv), and lower potential (lv) Electrical.
     """
 
-    @classmethod
-    def MakeChild(cls):
-        out = fabll.ChildField(cls)
-        return out
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    hv = Electrical.MakeChild()
+    lv = Electrical.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     # class can_be_decoupled_power(F.can_be_decoupled.impl()):
     #     def decouple(
@@ -66,8 +77,7 @@ class ElectricPower(fabll.Node):
     #         obj.add(F.is_surge_protected_defined(surge_protection))
     #         return surge_protection
 
-    hv = Electrical.MakeChild()
-    lv = Electrical.MakeChild()
+
 
     voltage = fabll.Parameter.MakeChild_Numeric(
         unit=F.Units.Volt,

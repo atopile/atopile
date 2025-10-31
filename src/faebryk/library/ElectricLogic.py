@@ -16,6 +16,23 @@ class ElectricLogic(fabll.Node):
     For more states / continuous signals check ElectricSignal.
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    line = F.Electrical.MakeChild()
+    reference = F.ElectricPower.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+
     class has_pulls(fabll.Node):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...

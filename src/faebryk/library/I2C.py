@@ -15,8 +15,23 @@ logger = logging.getLogger(__name__)
 
 
 class I2C(fabll.Node):
-    scl: F.ElectricLogic
-    sda: F.ElectricLogic
+
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    scl = F.ElectricLogic.MakeChild()
+    sda = F.ElectricLogic.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+
+
+    # ----------------------------------------
+    #                 WIP
+    # ----------------------------------------
 
     address = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
     bus_addresses = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
@@ -92,6 +107,8 @@ class I2C(fabll.Node):
 
         # Get all nodes connected electrically to the line
         connected_nodes = self.scl.line.get_connected()
+        self.scl
+
         # Get all nodes connected logically to the line
         connected_nodes |= self.sda.get_connected()
 

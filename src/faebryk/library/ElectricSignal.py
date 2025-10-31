@@ -19,6 +19,26 @@ class ElectricSignal(fabll.Node):
     by the voltage between the reference.hv and reference.lv.
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    line = F.Electrical.MakeChild()
+    reference = F.ElectricPower.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(self.reference)
+
+
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
     # class LinkIsolatedReference(LinkDirectConditional):
     #     def test(self, node: CNode):
     #         return not isinstance(node, F.ElectricPower)
@@ -31,23 +51,6 @@ class ElectricSignal(fabll.Node):
     #             needs_only_first_in_path=True,
     #         )
 
-    # ----------------------------------------
-    #     modules, interfaces, parameters
-    # ----------------------------------------
-    line: F.Electrical
-    reference: F.ElectricPower
-
-    # ----------------------------------------
-    #                 traits
-    # ----------------------------------------
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.reference)
-
-    _is_interface = fabll.is_interface.MakeChild()
-
-    # ----------------------------------------
-    #                functions
-    # ----------------------------------------
     @staticmethod
     def connect_all_node_references(
         nodes: Iterable[fabll.Node], gnd_only=False
