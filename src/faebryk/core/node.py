@@ -1336,6 +1336,11 @@ class is_interface(Node):
         for other in others:
             EdgeInterfaceConnection.connect(bn1=self_node.instance, bn2=other.instance)
 
+    def connect_shallow_to(self, *others: "Node[Any]") -> None:
+        self_node = self.get_parent()[0]
+        for other in others:
+            EdgeInterfaceConnection.connect_shallow(bn1=self_node.instance, bn2=other.instance)
+
     def is_connected_to(self, other: "Node[Any]") -> bool:
         self_node = self.get_parent()[0]
         path = EdgeInterfaceConnection.is_connected_to(
@@ -1343,12 +1348,12 @@ class is_interface(Node):
         )
         return len(path) > 0
 
-    def get_connected(self) -> list["Node[Any]"]:
+    def get_connected(self) -> set["Node[Any]"]:
         self_node = self.get_parent()[0]
         connected_nodes = EdgeInterfaceConnection.get_connected(
             source=self_node.instance
         )
-        return [Node[Any].bind_instance(instance=node) for node in connected_nodes]
+        return {Node[Any].bind_instance(instance=node) for node in connected_nodes}
 
 
 # ------------------------------------------------------------
@@ -1555,7 +1560,13 @@ class IsUnit(Node):
 Graph = TypeGraph
 # Node type aliases
 Module = Node
-ModuleInterface = Node
+
+# Going to replace MIF usages
+class GenericNodeWithInterface(Node):
+    _is_interface = is_interface.MakeChild()
+ModuleInterface = GenericNodeWithInterface
+IMPLIED_PATHS = False
+
 # lib fields
 rt_field = None
 f_field = None

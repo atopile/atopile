@@ -33,13 +33,7 @@ class Net(fabll.Node):
 
     # TODO should this be here?
     def get_connected_interfaces(self):
-        return {
-            mif
-            for mif in self.part_of.get_connected()
-            # TODO: this should be removable since,
-            # only mifs of the same type can connect
-            if isinstance(mif, type(self.part_of))
-        }
+        return self.part_of.get_trait(fabll.is_interface).get_connected()
 
     def __repr__(self) -> str:
         up = super().__repr__()
@@ -69,7 +63,7 @@ class Net(fabll.Node):
         """Return all nets that are connected to this mif"""
         return {
             net
-            for net_mif in mif.get_connected()
+            for net_mif in mif.get_trait(fabll.is_interface).get_connected()
             if (net := cls.find_from_part_of_mif(net_mif))
         }
 

@@ -43,6 +43,8 @@ class ElectricSignal(fabll.Node):
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.reference)
 
+    _is_interface = fabll.is_interface.MakeChild()
+
     # ----------------------------------------
     #                functions
     # ----------------------------------------
@@ -98,7 +100,7 @@ class ElectricSignal(fabll.Node):
 
     @property
     def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
-        if (connected_to := self.line.get_connected()) is None:
+        if (connected_to := self.line.get_trait(fabll.is_interface).get_connected()) is None:
             return None
 
         parallel_resistors: list[F.Resistor] = []
@@ -113,7 +115,7 @@ class ElectricSignal(fabll.Node):
             other_side = [x for x in parent.unnamed if x is not mif]
             assert len(other_side) == 1, "Resistors are bilateral"
 
-            if self.reference.hv not in other_side[0].get_connected():
+            if self.reference.hv not in other_side[0].get_trait(fabll.is_interface).get_connected():
                 # cannot trivially determine effective resistance
                 return None
 

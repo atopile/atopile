@@ -1201,20 +1201,27 @@ fn wrap_edge_interface_connection_get_connected() type {
             };
             defer paths.deinit();
 
-            // Convert paths to Python list of connected nodes
-            const list = py.PyList_New(@intCast(paths.paths.items.len));
-            if (list == null) return null;
+            // Convert paths to Python set of connected nodes
+            const set_obj = py.PySet_New(null);
+            if (set_obj == null) return null;
 
-            for (paths.paths.items, 0..) |path, i| {
+            for (paths.paths.items) |path| {
                 const connected_node = path.get_last_node();
                 const py_node = graph_py.makeBoundNodePyObject(connected_node);
-                if (py_node == null or py.PyList_SetItem(list, @intCast(i), py_node) < 0) {
-                    py.Py_DECREF(list.?);
+                if (py_node == null) {
+                    py.Py_DECREF(set_obj.?);
                     return null;
                 }
+                if (py.PySet_Add(set_obj, py_node) != 0) {
+                    py.Py_DECREF(py_node.?);
+                    py.Py_DECREF(set_obj.?);
+                    return null;
+                }
+                // PySet_Add does not steal a reference; decref our temporary
+                py.Py_DECREF(py_node.?);
             }
 
-            return list;
+            return set_obj;
         }
     };
 }
