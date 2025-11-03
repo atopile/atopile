@@ -1731,7 +1731,7 @@ def test_manual_resistor_def():
     # Constrained parameter type child
     designator_prefix = not_none(
         EdgeComposition.get_child_by_identifier(
-            bound_node=F.Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=resistor_instance.instance,
             child_identifier="designator_prefix",
         )
     )
@@ -1759,24 +1759,6 @@ def test_manual_resistor_def():
         ).get_dynamic_attrs()
         print(f"{attrs} {operand.node().get_dynamic_attrs()}")
 
-    # Constrained trait with type child parameters to be constrained to literals
-    usage_example = not_none(
-        EdgeComposition.get_child_by_identifier(
-            bound_node=F.Resistor.bind_typegraph(tg=tg).get_or_create_type(),
-            child_identifier="usage_example",
-        )
-    )
-    example_bnode = g.bind(
-        node=F.has_usage_example.bind_instance(usage_example)
-        .example_.get()
-        .instance.node()
-    )
-    expression_edge = not_none(
-        EdgeOperand.get_expression_edge(bound_node=example_bnode)
-    )
-    expression_node = not_none(
-        EdgeOperand.get_expression_node(edge=expression_edge.edge())
-    )
     expression_bnode = g.bind(node=expression_node)
     operands2: list[BoundNode] = []
     EdgeOperand.visit_operand_edges(
@@ -1794,7 +1776,7 @@ def test_manual_resistor_def():
     ipbt = not_none(
         EdgeComposition.get_child_by_identifier(
             bound_node=resistor_instance.instance,
-            child_identifier="is_pickable_by_type",
+            child_identifier="_is_pickable",
         )
     )
     ipbt_params = not_none(
@@ -1820,42 +1802,6 @@ def test_manual_resistor_def():
             for variable in variables
         ],
     )
-
-    ipbt_endpoint = not_none(
-        EdgeComposition.get_child_by_identifier(
-            bound_node=ipbt,
-            child_identifier="endpoint_",
-        )
-    )
-    alias_is_bnode = not_none(
-        EdgeComposition.get_child_by_identifier(
-            bound_node=resistor_instance.instance,
-            child_identifier="aliasis-is_pickable_by_type-endpoint_",
-        )
-    )
-    lhs_node = not_none(
-        EdgeOperand.get_operand_by_identifier(
-            node=alias_is_bnode,
-            operand_identifier="tochild",
-        )
-    )
-    print("lhs_node name:", Node.bind_instance(lhs_node).get_name())
-
-    rhs_node = not_none(
-        EdgeOperand.get_operand_by_identifier(
-            node=alias_is_bnode,
-            operand_identifier="toliteral",
-        )
-    )
-    print("rhs_node name:", Node.bind_instance(rhs_node).get_name())
-
-    literal_ipbt_endpoint = not_none(
-        EdgeComposition.get_child_by_identifier(
-            bound_node=resistor_instance.instance,
-            child_identifier="literal-is_pickable_by_type-endpoint_",
-        )
-    )
-    print("literal_ipbt_endpoint:", literal_ipbt_endpoint.node().get_dynamic_attrs())
 
 
 def test_lightweight():
