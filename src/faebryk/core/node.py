@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
+from enum import Enum
+from tkinter import N
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
@@ -8,8 +10,8 @@ from typing_extensions import Callable, deprecated
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.linker import Linker
-from faebryk.core.zig.gen.faebryk.next import EdgeNext
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
@@ -143,9 +145,10 @@ class ChildField[T: Node[Any]](Field, ChildAccessor[T]):
             f"{type(InstanceChildBoundInstance).__name__}"
         ) from None
 
-    def add_dependant(self, dependant: "ChildField[Any] | EdgeField"):
-        dependant._set_locator(None)
-        self._dependants.append(dependant)
+    def add_dependant(self, *dependant: "ChildField[Any] | EdgeField"):
+        for d in dependant:
+            d._set_locator(None)
+            self._dependants.append(d)
 
     def put_on_type(self) -> Self:
         super().put_on_type()
@@ -314,9 +317,10 @@ class TypeChildBoundInstance[T: Node[Any]]:
         return bound
 
 
-class EdgeField(Field):
-    RefPath = list[str | ChildField[Any]]
+RefPath = list[str | ChildField[Any]]
 
+
+class EdgeField(Field):
     def __init__(
         self,
         lhs: RefPath,
@@ -370,6 +374,70 @@ class ListField(Field, list[Field]):
             f_id = f"{locator}[{i}]" if locator is not None else None
             f._set_locator(locator=f_id)
         return self
+
+
+class EdgeFactoryAccessor(Protocol):
+    def connect(self, target: "Node[Any]") -> None: ...
+    def get_single(self) -> "Node[Any]": ...
+    def get_all(self) -> list["Node[Any]"]: ...
+
+
+class EdgeFactoryField(Field, EdgeFactoryAccessor):
+    def __init__(
+        self,
+        edge_factory: Callable[[str], EdgeCreationAttributes],
+        *,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+        single: bool = False,
+    ):
+        super().__init__(identifier=identifier)
+        self.edge_factory = edge_factory
+        self.edge_attrs = self.edge_factory(self.get_identifier())
+        self.single = single
+        raise NotImplementedError("Not sure whether we want to keep this")
+
+    def _connect(self, source: "Node[Any]", target: "Node[Any]"):
+        source.connect(target, self.edge_attrs)
+
+    def _get_single(self, source: "Node[Any]") -> "Node[Any]":
+        return self._get_all(source)[0]
+
+    def _get_all(self, source: "Node[Any]") -> list["Node[Any]"]:
+        class Ctx:
+            nodes: list[BoundNode] = []
+
+        source.instance.visit_edges_of_type(
+            edge_type=self.edge_attrs.get_tid(),
+            ctx=Ctx,
+            f=lambda ctx, bound_edge: ctx.nodes.append(
+                bound_edge.g().bind(node=bound_edge.edge().target())
+            ),
+        )
+        return [Node.bind_instance(instance=node) for node in Ctx.nodes]
+
+    def connect(self, target: "Node[Any]") -> None:
+        raise FabLLException("Wrong stage")
+
+    def get_single(self) -> "Node[Any]":
+        raise FabLLException("Wrong stage")
+
+    def get_all(self) -> list["Node[Any]"]:
+        raise FabLLException("Wrong stage")
+
+
+class InstanceBoundEdgeFactory(EdgeFactoryField):
+    def __init__(self, instance: "Node[Any]", edge_factory_field: EdgeFactoryField):
+        self.instance = instance
+        self.edge_factory_field = edge_factory_field
+
+    def connect(self, target: "Node[Any]") -> None:
+        self.edge_factory_field._connect(source=self.instance, target=target)
+
+    def get_single(self) -> "Node[Any]":
+        return self.edge_factory_field._get_single(source=self.instance)
+
+    def get_all(self) -> list["Node[Any]"]:
+        return self.edge_factory_field._get_all(source=self.instance)
 
 
 # --------------------------------------------------------------------------------------
@@ -449,6 +517,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                         )
                         list_attr.append(child)
                 setattr(self, field.get_locator(), list_attr)
+            if isinstance(field, EdgeFactoryField):
+                edge_factory_field = InstanceBoundEdgeFactory(
+                    instance=self,
+                    edge_factory_field=field,
+                )
+                setattr(self, field.get_locator(), edge_factory_field)
 
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
@@ -476,7 +550,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if isinstance(field, ChildField):
             identifier = field.get_identifier()
             if field._type_child:
-                child_nodetype: type[Node[Any]] = field.nodetype
+                child_nodetype: type[Node[Any]] = cast(type[Node[Any]], field.nodetype)
                 child_instance = child_nodetype.bind_typegraph(tg=t.tg).create_instance(
                     g=t.tg.get_graph_view(),
                     attributes=field.attributes,
@@ -490,7 +564,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 mc = t.MakeChild(
                     nodetype=field.nodetype,
                     identifier=identifier,
-                    attributes=field.attributes,
+                    attributes=cast(NodeAttributes, field.attributes),
                 )
                 mc._add_to_typegraph()
             for dependant in field._dependants:
@@ -640,11 +714,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     # instance methods -----------------------------------------------------------------
     @deprecated("Use compose_with instead")
     def add(self, node: "Node[Any]"):
-        self.compose_with(node)
+        # TODO node name
+        self.connect(
+            to=node, edge_attrs=EdgeComposition.build(child_identifier=f"{id(node)}")
+        )
 
     def __setattr__(self, name: str, value: Any, /) -> None:
         if isinstance(value, Node) and not name.startswith("_"):
-            self.compose_with(value, name=name)
+            self.connect(
+                to=value, edge_attrs=EdgeComposition.build(child_identifier=name)
+            )
         return super().__setattr__(name, value)
 
     def attributes(self) -> T:
@@ -1034,76 +1113,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __hash__(self) -> int:
         return self.instance.node().get_uuid()
 
-    # instance edge sugar --------------------------------------------------------------
-    def compose_with(self, node: "Node[Any]", name: str | None = None):
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            # TODO None or empty?
-            child_identifier=name or "",
+    # instance edges -------------------------------------------------------------------
+    def connect(self, to: "Node[Any]", edge_attrs: EdgeCreationAttributes) -> None:
+        """
+        Low-level edge creation function.
+        """
+        edge_attrs.insert_edge(
+            g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
         )
-
-    # Get compositions with the get_children functions
-
-    def point_to(
-        self,
-        to_node: "Node[Any]",
-        identifier: str | None = None,
-        order: int | None = None,
-    ) -> None:
-        EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=to_node.instance.node(),
-            identifier=identifier,
-            order=order,
-        )
-
-    def get_references(self, identifier: str | None = None) -> "list[Node[Any]]":
-        references: list[tuple[int | None, BoundNode]] = []
-
-        def _collect(
-            ctx: list[tuple[int | None, BoundNode]], bound_edge: BoundEdge
-        ) -> None:
-            edge_name = bound_edge.edge().name()
-            if identifier is not None and edge_name != identifier:
-                return
-            target = EdgePointer.get_referenced_node(edge=bound_edge.edge())
-            if target is None:
-                return
-            edge_order = EdgePointer.get_order(edge=bound_edge.edge())
-            node = bound_edge.g().bind(node=target)
-            ctx.append((edge_order, node))
-
-        if identifier is None:
-            EdgePointer.visit_pointed_edges(
-                bound_node=self.instance,
-                ctx=references,
-                f=_collect,
-            )
-        else:
-            EdgePointer.visit_pointed_edges_with_identifier(
-                bound_node=self.instance,
-                identifier=identifier,
-                ctx=references,
-                f=_collect,
-            )
-        return [
-            Node(instance=instance)
-            for _, instance in sorted(references, key=lambda x: x[0] or 0)
-        ]
-
-    def chain_to(self, to_node: "Node[Any]") -> None:
-        EdgeNext.add_next(
-            previous_node=self.instance,
-            next_node=to_node.instance,
-        )
-
-    @staticmethod
-    def get_bnode_name(bound_node: BoundNode) -> str | None:
-        parent_edge = EdgeComposition.get_parent_edge(bound_node=bound_node)
-        if parent_edge is None:
-            return None
-        return EdgeComposition.get_name(edge=parent_edge.edge())
 
 
 class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
@@ -1217,85 +1234,25 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
 
 
 # ------------------------------------------------------------
-class Sequence(Node):
-    """
-    A sequence of (non-unique) elements.
-    Sorted by insertion order.
-    """
-
-    _elem_identifier = "e"
-
-    def append(self, *elems: Node[Any]) -> Self:
-        cur_len = len(self.as_list())
-        for i, elem in enumerate(elems):
-            self.point_to(elem, self._elem_identifier, order=cur_len + i)
-        return self
-
-    def as_list(self) -> list[Node[Any]]:
-        return self.get_references(self._elem_identifier)
-
-
-class Set(Node):
-    """
-    A set of unique elements.
-    Sorted by insertion order.
-    """
-
-    _elem_identifier = "e"
-
-    def append(self, *elems: Node[Any]) -> Self:
-        by_uuid = {elem.instance.node().get_uuid(): elem for elem in elems}
-        cur = self.as_list()
-        cur_len = len(cur)
-        for node in cur:
-            by_uuid.pop(node.instance.node().get_uuid(), None)
-
-        for i, elem in enumerate(by_uuid.values()):
-            self.point_to(elem, self._elem_identifier, order=cur_len + i)
-
-        return self
-
-    @classmethod
-    def MakeChild(cls, *elems: EdgeField.RefPath):
-        out = ChildField(Set)
-        for elem in elems:
-            out.add_dependant(
-                EdgeField(
-                    [out],
-                    elem,
-                    edge=EdgePointer.build(
-                        identifier=cls._elem_identifier,
-                        order=None,
-                    ),
-                )
-            )
-        return out
-
-    def as_list(self) -> list[Node[Any]]:
-        return self.get_references(self._elem_identifier)
-
-    def as_set(self) -> set[Node[Any]]:
-        return set(self.as_list())
 
 
 class Optional(Node):
     value = Node.MakeChild()
 
     def setup(self, g: GraphView, value: Node) -> Self:
-        self.point_to(value, identifier="value")
+        EdgePointer.point_to(
+            bound_node=self.instance,
+            target_node=value.instance.node(),
+            identifier="value",
+            order=None,
+        )
         return self
 
     def get_value(self) -> Node | None:
-        values = self.get_references(identifier="value")
-
-        match len(values):
-            case 0:
-                return None
-            case 1:
-                (v,) = values
-                return v
-            case _:
-                raise FabLLException("Optional contains >1 values")
+        value = EdgePointer.get_pointed_node_by_identifier(
+            bound_node=self.instance, identifier="value"
+        )
+        return Node.bind_instance(instance=value) if value else None
 
 
 class Traits:
@@ -1306,8 +1263,11 @@ class Traits:
     def bind(cls, node: Node[Any]) -> Self:
         return cls(node)
 
+    def get_obj_raw(self) -> Node[Any]:
+        return self.node.get_parent_force()[0]
+
     def get_obj[N: Node[Any]](self, t: type[N]) -> N:
-        return self.node.get_parent_force()[0].cast(t)
+        return self.get_obj_raw().cast(t)
 
     @staticmethod
     def add_to(node: Node[Any], trait: Node[Any]) -> None:
@@ -1339,32 +1299,40 @@ class is_module(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     def get_obj(self) -> Node[Any]:
-        return Traits.get_obj(Traits.bind(self), Node)
+        return Traits.get_obj_raw(Traits.bind(self))
 
 
 class is_interface(Node):
-    """
-    Placeholder till Ray is done.
-
-    Replacement guide:
-    - creation: instead of inherit of ModuleInterface
-        -> inherit of Node + add is_interface trait
-    - usage: blabla.<interface_function>(...)
-        -> blabla.get_trait(is_interface).<interface_function>(...)
-    - usage: isinstance(blabla, ModuleInterface)
-        -> blabla.has_trait(is_interface)
-    """
-
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     def get_obj(self) -> Node[Any]:
-        return Traits.get_obj(Traits.bind(self), Node)
+        return Traits.get_obj_raw(Traits.bind(self))
 
-    def connect(self, other: "Node[Any]") -> None:
-        raise NotImplementedError()
+    def connect_to(self, *others: "Node[Any]") -> None:
+        self_node = self.get_obj()
+        for other in others:
+            EdgeInterfaceConnection.connect(bn1=self_node.instance, bn2=other.instance)
 
-    def is_connected_to(self, *other: "Node[Any]") -> bool:
-        raise NotImplementedError()
+    def connect_shallow_to(self, *others: "Node[Any]") -> None:
+        self_node = self.get_obj()
+        for other in others:
+            EdgeInterfaceConnection.connect_shallow(
+                bn1=self_node.instance, bn2=other.instance
+            )
+
+    def is_connected_to(self, other: "Node[Any]") -> bool:
+        self_node = self.get_obj()
+        path = EdgeInterfaceConnection.is_connected_to(
+            source=self_node.instance, target=other.instance
+        )
+        return len(path) > 0
+
+    def get_connected(self) -> set["Node[Any]"]:
+        self_node = self.get_obj()
+        connected_nodes = EdgeInterfaceConnection.get_connected(
+            source=self_node.instance
+        )
+        return {Node[Any].bind_instance(instance=node) for node in connected_nodes}
 
 
 # ------------------------------------------------------------
@@ -1383,7 +1351,9 @@ class Parameter(Node):
         )
         from faebryk.library.Expressions import Is
 
-        Is.constrain_is(tg=tg, g=g, operands=[node, lit.instance])
+        Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
+            operands=[self, lit], constrain=True
+        )
 
     @classmethod
     def MakeChild_Numeric(cls, unit: type[Node[Any]]) -> ChildField[Any]:
@@ -1398,6 +1368,15 @@ class Parameter(Node):
             )
         )
         return out
+
+    @classmethod
+    def MakeChild_String(cls) -> ChildField["Parameter"]:
+        pass
+
+    @classmethod
+    def MakeChild_Enum(cls, enum_t: type[Enum]) -> ChildField["Parameter"]:
+        # TODO: representation of enum values
+        pass
 
     def try_extract_constrained_literal(self) -> LiteralT | None:
         # TODO: solver? `only_proven=True` parameter?
@@ -1437,6 +1416,15 @@ class Parameter(Node):
 class IsConstrainable(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
+    def constrain(self) -> None:
+        parent = Traits.get_obj(Traits.bind(self), Node)
+        Traits.add_to(
+            parent,
+            IsConstrained.bind_typegraph_from_instance(self.instance).create_instance(
+                g=self.instance.g()
+            ),
+        )
+
 
 class IsConstrained(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
@@ -1450,6 +1438,13 @@ class LiteralNodeAttributes(NodeAttributes):
 class LiteralNode(Node[LiteralNodeAttributes]):
     Attributes = LiteralNodeAttributes
 
+    @classmethod
+    def MakeChild(cls, value: LiteralT) -> ChildField[Any]:
+        return ChildField(cls, attributes=LiteralNodeAttributes(value=value))
+
+    def get_value(self) -> LiteralT:
+        return self.instance.node().get_dynamic_attrs().get("value", "")
+
 
 class IsBaseUnit(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
@@ -1458,13 +1453,13 @@ class IsBaseUnit(Node):
     @classmethod
     def MakeChild(cls, symbol: str) -> ChildField[Any]:
         out = ChildField(cls)
-        out.add_dependant(
-            EdgeField(
-                [out],
-                [symbol],
-                edge=EdgePointer.build(identifier=None, order=None),
-            )
-        )
+        # out.add_dependant(
+        #     EdgeField(
+        #         [out],
+        #         [symbol],
+        #         edge=EdgePointer.build(identifier=None, order=None),
+        #     )
+        # )
         return out
 
 
@@ -1487,7 +1482,16 @@ class IsUnit(Node):
 Graph = TypeGraph
 # Node type aliases
 Module = Node
-ModuleInterface = Node
+
+
+# Going to replace MIF usages
+class GenericNodeWithInterface(Node):
+    _is_interface = is_interface.MakeChild()
+
+
+ModuleInterface = GenericNodeWithInterface
+IMPLIED_PATHS = False
+
 # lib fields
 rt_field = None
 f_field = None
@@ -1628,83 +1632,17 @@ def test_trait_mark_as_trait():
     assert node.try_get_trait(ExampleTrait) is not None
 
 
-def test_pointer_helpers():
-    g, tg = _make_graph_and_typegraph()
-
-    class Leaf(Node):
-        pass
-
-    class Parent(Node):
-        left = Leaf.MakeChild()
-        right = Leaf.MakeChild()
-
-    parent = Parent.bind_typegraph(tg).create_instance(g=g)
-    left_child = parent.left.get()
-    right_child = parent.right.get()
-
-    parent.point_to(left_child, identifier="left_ptr")
-    parent.point_to(right_child, identifier="right_ptr")
-
-    pointed_edges: list[str | None] = []
-
-    def _collect(names: list[str | None], edge: BoundEdge):
-        names.append(edge.edge().name())
-
-    EdgePointer.visit_pointed_edges(
-        bound_node=parent.instance,
-        ctx=pointed_edges,
-        f=_collect,
-    )
-    assert pointed_edges.count("left_ptr") == 1
-    assert pointed_edges.count("right_ptr") == 1
-
-    left = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=parent.instance,
-        identifier="left_ptr",
-    )
-    assert left is not None
-    assert left.node().is_same(other=left_child.instance.node())
-
-    right = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=parent.instance,
-        identifier="right_ptr",
-    )
-    assert right is not None
-    assert right.node().is_same(other=right_child.instance.node())
-
-    parent.point_to(left_child, identifier="shared")
-    parent.point_to(right_child, identifier="shared")
-
-    shared_edges: list[BoundEdge] = []
-
-    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
-        ctx.append(edge)
-
-    EdgePointer.visit_pointed_edges_with_identifier(
-        bound_node=parent.instance,
-        identifier="shared",
-        ctx=shared_edges,
-        f=_collect_shared,
-    )
-    assert len(shared_edges) == 2
-
-    shared_nodes = parent.get_references(identifier="shared")
-    uuids = {node.instance.node().get_uuid() for node in shared_nodes}
-    assert uuids == {
-        left_child.instance.node().get_uuid(),
-        right_child.instance.node().get_uuid(),
-    }
-
-
 def test_set_basic():
     """Test basic Set functionality: append, as_list, as_set."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
     # Create a Set and some elements
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1735,12 +1673,14 @@ def test_set_basic():
 
 def test_set_deduplication():
     """Test that Set correctly deduplicates elements by UUID."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
 
@@ -1765,12 +1705,15 @@ def test_set_deduplication():
 
 def test_set_order_preservation():
     """Test that Set preserves insertion order of unique elements."""
+
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1798,12 +1741,14 @@ def test_set_order_preservation():
 
 def test_set_chaining():
     """Test that Set.append returns self for method chaining."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1820,28 +1765,26 @@ def test_set_chaining():
 
 
 def test_manual_resistor_def():
-    from faebryk.library.Electrical import Electrical
-    from faebryk.library.has_usage_example import has_usage_example
-    from faebryk.library.Resistor import Resistor
+    import faebryk.library._F as F
 
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
 
     # create electrical type node and insert into type graph
-    _ = Electrical.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.Electrical.bind_typegraph(tg=tg).get_or_create_type()
 
     # create resistor type node and insert into type graph
     # add make child nodes for p1 and p2, insert into type graph
-    _ = Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
 
-    resistor_instance = Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
     assert resistor_instance
     print("resistor_instance:", resistor_instance.instance.node().get_dynamic_attrs())
     print(resistor_instance._type_identifier())
 
     # Electrical make child
     p1 = EdgeComposition.get_child_by_identifier(
-        node=resistor_instance.instance, child_identifier="unnamed[0]"
+        bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
     )
     assert p1 is not None
     p1_fab = resistor_instance.unnamed[0].get()
@@ -1850,7 +1793,7 @@ def test_manual_resistor_def():
 
     # unconstrained Parameter make child
     resistance = EdgeComposition.get_child_by_identifier(
-        node=resistor_instance.instance, child_identifier="resistance"
+        bound_node=resistor_instance.instance, child_identifier="resistance"
     )
     assert resistance is not None
     print(
@@ -1864,13 +1807,13 @@ def test_manual_resistor_def():
     # Constrained parameter type child
     designator_prefix = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=F.Resistor.bind_typegraph(tg=tg).get_or_create_type(),
             child_identifier="designator_prefix",
         )
     )
     prefix_param = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=designator_prefix,
+            bound_node=designator_prefix,
             child_identifier="prefix_param",
         )
     )
@@ -1895,13 +1838,13 @@ def test_manual_resistor_def():
     # Constrained trait with type child parameters to be constrained to literals
     usage_example = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=Resistor.bind_typegraph(tg=tg).get_or_create_type(),
+            bound_node=F.Resistor.bind_typegraph(tg=tg).get_or_create_type(),
             child_identifier="usage_example",
         )
     )
     example_bnode = g.bind(
-        node=has_usage_example.bind_instance(usage_example)
-        .example.get()
+        node=F.has_usage_example.bind_instance(usage_example)
+        .example_.get()
         .instance.node()
     )
     expression_edge = not_none(
@@ -1926,13 +1869,13 @@ def test_manual_resistor_def():
     # Is pickable by type
     ipbt = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=resistor_instance.instance,
+            bound_node=resistor_instance.instance,
             child_identifier="is_pickable_by_type",
         )
     )
     ipbt_params = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=ipbt,
+            bound_node=ipbt,
             child_identifier="params_",
         )
     )
@@ -1956,13 +1899,13 @@ def test_manual_resistor_def():
 
     ipbt_endpoint = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=ipbt,
+            bound_node=ipbt,
             child_identifier="endpoint_",
         )
     )
     alias_is_bnode = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=resistor_instance.instance,
+            bound_node=resistor_instance.instance,
             child_identifier="aliasis-is_pickable_by_type-endpoint_",
         )
     )
@@ -1972,7 +1915,7 @@ def test_manual_resistor_def():
             operand_identifier="tochild",
         )
     )
-    print("lhs_node name:", Node.get_bnode_name(bound_node=lhs_node))
+    print("lhs_node name:", Node.bind_instance(lhs_node).get_name())
 
     rhs_node = not_none(
         EdgeOperand.get_operand_by_identifier(
@@ -1980,20 +1923,76 @@ def test_manual_resistor_def():
             operand_identifier="toliteral",
         )
     )
-    print("rhs_node name:", Node.get_bnode_name(bound_node=rhs_node))
+    print("rhs_node name:", Node.bind_instance(rhs_node).get_name())
 
     literal_ipbt_endpoint = not_none(
         EdgeComposition.get_child_by_identifier(
-            node=resistor_instance.instance,
+            bound_node=resistor_instance.instance,
             child_identifier="literal-is_pickable_by_type-endpoint_",
         )
     )
     print("literal_ipbt_endpoint:", literal_ipbt_endpoint.node().get_dynamic_attrs())
 
 
+def test_lightweight():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
+    resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Test list fields
+    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
+    assert resistor_instance.unnamed[1].get().get_name() == "unnamed[1]"
+
+    # Test is pickable by type
+    ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
+    sorted_params = sorted(param.get_name() for param in ipbt.params)
+    assert sorted_params == ["max_power", "max_voltage", "resistance"]
+    # TODO: test endpoint extraction from endpoint property
+    # assert endpoint == "resistors"
+
+    # Test has_simple_value_representation_based_on_params_chain
+    # hsvprp = resistor_instance.get_trait(
+    #     F.has_simple_value_representation_based_on_params_chain
+    # )
+    # print(hsvprp.get_value())
+
+    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
+    # pat = not_none(
+    #     EdgePointer.get_pointed_node_by_identifier(
+    #         bound_node=bjt_instance.emitter.get().instance,
+    #         identifier="pin_association_table_set",
+    #     )
+    # )
+    # for lit in Set.bind_instance(instance=pat).as_list():
+    #     lit = LiteralNode.bind_instance(instance=lit.instance)
+    #     print(lit.get_value())
+
+    # print(pah.get_nc_literals())
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    bjt_instance = F.BJT.bind_typegraph(tg=tg).create_instance(g=g)
+    pah = bjt_instance.get_trait(F.has_pin_association_heuristic_lookup_table)
+    #
+    # print(nc_set)
+    # print(pah.nc.get())
+    # print(pah.nc.get().as_list())
+    # print(pah.get_nc_literals())
+    print(pah.get_mapping_as_dict())
+    print(pah.get_pins(pins=[("1", "E"), ("2", "Collector"), ("3", "B")]))
+
+    # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
+    # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
+    print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
+    print(resistor_instance.get_trait(F.has_usage_example).language)
+
+
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_manual_resistor_def)
+    # typer.run(test_fabll_basic)
 
     # test_manual_resistor_def()
+
+    test_lightweight()

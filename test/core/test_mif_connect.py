@@ -7,25 +7,27 @@ from itertools import chain, pairwise
 import pytest
 
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import GraphView
 import faebryk.library._F as F
-from faebryk.core.link import (
-    LinkDirect,
-    LinkDirectConditional,
-    LinkDirectConditionalFilterResult,
-    LinkDirectDerived,
-)
-from faebryk.core.moduleinterface import IMPLIED_PATHS
-from faebryk.libs.app.erc import (
-    ERCFaultShortedModuleInterfaces,
-    ERCPowerSourcesShortedError,
-    simple_erc,
-)
+# from faebryk.core.link import (
+#     LinkDirect,
+#     LinkDirectConditional,
+#     LinkDirectConditionalFilterResult,
+#     LinkDirectDerived,
+# )
+from faebryk.core.node import IMPLIED_PATHS
+# from faebryk.libs.app.erc import (
+#     ERCFaultShortedModuleInterfaces,
+#     ERCPowerSourcesShortedError,
+#     simple_erc,
+# )
 from faebryk.libs.util import cast_assert, times
-from test.common.resources.fabll_modules.ButtonCell import ButtonCell
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
+# from test.common.resources.fabll_modules.ButtonCell import ButtonCell
+# from test.common.resources.fabll_modules.RP2040 import RP2040
+# from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
+#     RP2040_ReferenceDesign,
+# )
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +56,9 @@ def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
 
 
 def test_self():
-    mif = fabll.ModuleInterface()
-    assert mif.is_connected_to(mif)
+    g = GraphView.create()
+    mif = fabll.ModuleInterface._create_instance(TypeGraph.create(g=g), g)
+    assert mif.get_trait(fabll.is_interface).is_connected_to(mif)
 
 
 def test_up_connect_simple_single():
@@ -936,7 +939,7 @@ def test_shallow_bridge_full():
 class Specialized(fabll.Node): ...
 
 
-class DoubleSpecialized(Specialized): ...
+# class DoubleSpecialized(Specialized): ...
 
 
 def test_specialize_general_to_special():
@@ -1042,6 +1045,44 @@ def test_isolated_connect_simple():
 
     assert not x1.reference.is_connected_to(x2.reference)
     assert not x1.reference.hv.is_connected_to(x2.reference.hv)
+
+def test_basic_i2c():
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    I2CType = F.I2C.bind_typegraph(tg)
+    i2c1 = I2CType.create_instance(g=g)
+    i2c2 = I2CType.create_instance(g=g)
+
+    i2c1.get_trait(fabll.is_interface).connect_to(i2c2)
+
+    # I2C's connected
+    assert i2c1.get_trait(fabll.is_interface).is_connected_to(i2c2)
+
+    # Electric signals connected
+    assert i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get())
+    assert i2c1.sda.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+
+    assert ~i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+
+    # Electricals connected
+    assert i2c1.scl.get().line.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().line.get())
+    assert i2c1.sda.get().line.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().line.get())
+
+    # Electric powers connected
+    assert i2c1.scl.get().reference.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get())
+    assert i2c1.sda.get().reference.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get())
+
+    # Electric powers electricals connected
+    assert i2c1.scl.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    assert i2c1.scl.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    assert i2c1.sda.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().hv.get())
+    assert i2c1.sda.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+
+    assert ~i2c1.scl.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    assert ~i2c1.scl.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    assert ~i2c1.sda.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    assert ~i2c1.sda.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().hv.get())
 
 
 def test_isolated_connect_erc():

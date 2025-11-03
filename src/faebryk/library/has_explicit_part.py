@@ -5,7 +5,6 @@ from typing import Self, override
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.trait import TraitImpl
 
 
 class has_explicit_part(fabll.Node):
@@ -97,8 +96,8 @@ class has_explicit_part(fabll.Node):
 
         self.on_obj_set()
 
-    @override
-    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
-        assert isinstance(old, has_explicit_part)
-        old._merge(self)
-        return False
+    # @override
+    # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
+    #     assert isinstance(old, has_explicit_part)
+    #     old._merge(self)
+    #     return False

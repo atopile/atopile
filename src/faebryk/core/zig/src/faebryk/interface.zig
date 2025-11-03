@@ -30,19 +30,29 @@ pub const EdgeInterfaceConnection = struct {
 
     pub fn init(allocator: std.mem.Allocator, N1: NodeReference, N2: NodeReference, shallow: bool) !EdgeReference {
         const edge = Edge.init(allocator, N1, N2, tid);
-        build(allocator, shallow).apply_to(edge);
+        var attrs = try build(allocator, shallow);
+        defer if (attrs.dynamic) |*dyn| dyn.values.deinit();
+        attrs.apply_to(edge);
         return edge;
     }
 
-    pub fn build(allocator: std.mem.Allocator, shallow: bool) EdgeCreationAttributes {
+    pub fn build(allocator: std.mem.Allocator, shallow: bool) !EdgeCreationAttributes {
         var dynamic = graph.DynamicAttributes.init(allocator);
-        dynamic.values.put(shallow_attribute, graph.Literal{ .Bool = shallow }) catch unreachable;
+        try dynamic.values.put(shallow_attribute, .{ .Bool = shallow });
         return .{
             .edge_type = tid,
             .directional = false,
             .name = null,
             .dynamic = dynamic,
         };
+    }
+
+    pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
+        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, false));
+    }
+
+    pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
+        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
     }
 
     pub fn is_instance(E: EdgeReference) bool {
@@ -57,14 +67,6 @@ pub const EdgeInterfaceConnection = struct {
         } else {
             return null;
         }
-    }
-
-    pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, false));
-    }
-
-    pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
     }
 
     pub fn visit_connected_edges(
@@ -89,7 +91,8 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        return error.PathNotFound;
+        // return empty path
+        return graph.BFSPath.init(source);
     }
 
     // TODO - A visitor would be nice instead of just returning a list don't ya think?
@@ -259,9 +262,9 @@ test "down_connect" {
     const ElectricalType = try tg.add_type("Electrical");
     const LinkType = try tg.add_type("Link");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, null);
-    _ = try tg.add_make_child(ElectricalType, LinkType, "HV/LV Child", null, null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    _ = try tg.add_make_child(ElectricalType, LinkType, "HV/LV Child", null);
 
     const EP_1 = try tg.instantiate_node(ElectricPowerType);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
@@ -440,8 +443,8 @@ test "hierarchy_short" {
     const ElectricalType = try tg.add_type("Electrical");
     const LinkType = try tg.add_type("Link");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
 
     const electric_power = try tg.instantiate_node(ElectricPowerType);
     const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
@@ -472,8 +475,8 @@ test "shallow_filter_allows_alternative_route" {
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null, null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null, null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
 
     const start_parent = try tg.instantiate_node(ElectricPowerType);
     const start_child = EdgeComposition.get_child_by_identifier(start_parent, "HV").?;
@@ -510,10 +513,10 @@ test "chains_mixed_shallow_nested" {
     const HVType = try tg.add_type("HV");
     const LVType = try tg.add_type("LV");
 
-    _ = try tg.add_make_child(ElType, LineType, "line", null, null);
-    _ = try tg.add_make_child(ElType, RefType, "reference", null, null);
-    _ = try tg.add_make_child(RefType, HVType, "hv", null, null);
-    _ = try tg.add_make_child(RefType, LVType, "lv", null, null);
+    _ = try tg.add_make_child(ElType, LineType, "line", null);
+    _ = try tg.add_make_child(ElType, RefType, "reference", null);
+    _ = try tg.add_make_child(RefType, HVType, "hv", null);
+    _ = try tg.add_make_child(RefType, LVType, "lv", null);
 
     var el: [3]graph.BoundNodeReference = undefined;
     for (&el) |*slot| slot.* = try tg.instantiate_node(ElType);
@@ -577,8 +580,8 @@ test "split_flip_negative" {
     const Lower1Type = try tg.add_type("Lower1");
     const Lower2Type = try tg.add_type("Lower2");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null, null);
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null, null);
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null);
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -608,8 +611,8 @@ test "up_connect_simple_two_negative" {
     const Lower1Type = try tg.add_type("Lower1");
     const Lower2Type = try tg.add_type("Lower2");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null, null);
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null, null);
+    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null);
+    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -741,11 +744,11 @@ test "type_graph_pathfinder" {
     const I2C_SDA = try tg.add_type("I2C_SDA");
 
     // I2C has dedicated SCL and SDA child types
-    _ = try tg.add_make_child(I2C, I2C_SCL, null, null, null);
-    _ = try tg.add_make_child(I2C, I2C_SDA, null, null, null);
+    _ = try tg.add_make_child(I2C, I2C_SCL, null, null);
+    _ = try tg.add_make_child(I2C, I2C_SDA, null, null);
 
     // Sensor has an I2C interface
-    _ = try tg.add_make_child(Sensor, I2C, null, null, null);
+    _ = try tg.add_make_child(Sensor, I2C, null, null);
 
     // Create sensor instances
     const sensor1 = try tg.instantiate_node(Sensor);

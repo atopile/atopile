@@ -8,11 +8,9 @@ from deprecated import deprecated
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import ParameterOperatable
-from faebryk.libs.units import P
 
 
-class LED(F.Diode):
+class LED(fabll.Node):
     class Color(Enum):
         # Primary Colors
         RED = auto()
@@ -43,68 +41,19 @@ class LED(F.Diode):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness = fabll.p_field(units=P.candela)
-    max_brightness = fabll.p_field(units=P.candela)
-    color = fabll.p_field(domain=fabll.Domains.ENUM(Color))
+    brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
+    max_brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
+    color = fabll.Parameter.MakeChild_Enum(enum_t=Color)
 
-    # @fabll.rt_field
-    # def pickable(self):
-    #     return F.is_pickable_by_type(
-    #         F.is_pickable_by_type.Type.LED,
-    #         {
-    #             # Diode
-    #             "forward_voltage": self.forward_voltage,
-    #             "reverse_working_voltage": self.reverse_working_voltage,
-    #             "reverse_leakage_current": self.reverse_leakage_current,
-    #             # LED
-    #             "max_current": self.max_current,
-    #             "max_brightness": self.max_brightness,
-    #             "color": self.color,
-    #         },
-    #     )
+    # TODO: Implement math and constraints in typegraph
+    # def __preinit__(self):
+    #     self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
+    #     self.brightness.constrain_le(self.max_brightness)
 
-    def __preinit__(self):
-        self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
-        self.brightness.constrain_le(self.max_brightness)
+    # def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
+    #     self.brightness.alias_is(intensity * self.max_brightness)
 
-    def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
-        self.brightness.alias_is(intensity * self.max_brightness)
-
-    @deprecated(reason="Use PoweredLED instead")
-    def connect_via_current_limiting_resistor(
-        self,
-        input_voltage: ParameterOperatable.NumberLike,
-        resistor: F.Resistor,
-        target: F.Electrical,
-        low_side: bool,
-    ):
-        if low_side:
-            self.cathode.connect_via(resistor, target)
-        else:
-            self.anode.connect_via(resistor, target)
-
-        resistor.resistance.alias_is(
-            self.get_needed_series_resistance_for_current_limit(input_voltage),
-        )
-        resistor.allow_removal_if_zero()
-
-    @deprecated(reason="Use PoweredLED instead")
-    def connect_via_current_limiting_resistor_to_power(
-        self, resistor: F.Resistor, power: F.ElectricPower, low_side: bool
-    ):
-        if low_side:
-            self.anode.connect(power.hv)
-        else:
-            self.cathode.connect(power.lv)
-
-        self.connect_via_current_limiting_resistor(
-            power.voltage,
-            resistor,
-            power.lv if low_side else power.hv,
-            low_side,
-        )
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import LED, Resistor, ElectricPower
 
@@ -126,4 +75,4 @@ class LED(F.Diode):
         power.hv ~> res ~> led ~> power.lv
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

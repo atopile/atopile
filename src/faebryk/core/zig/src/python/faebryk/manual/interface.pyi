@@ -26,8 +26,6 @@ class EdgeInterfaceConnection:
         *, source: BoundNode, target: BoundNode
     ) -> list[int]: ...  # TODO: return proper BFSPath list
     @staticmethod
-    def get_connected(
-        *, source: BoundNode
-    ) -> list[int]: ...  # TODO: return proper BFSPath list
+    def get_connected(*, source: BoundNode) -> set[BoundNode]: ...
     @staticmethod
     def build(*, shallow: bool = ...) -> EdgeCreationAttributes: ...

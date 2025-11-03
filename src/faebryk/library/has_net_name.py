@@ -1,7 +1,9 @@
 from enum import IntEnum, auto
+from typing import Any
 
 import faebryk.core.node as fabll
-from faebryk.core.trait import TraitImpl
+import faebryk.library._F as F
+from faebryk.libs.util import not_none
 
 
 class has_net_name(fabll.Node):
@@ -16,20 +18,29 @@ class has_net_name(fabll.Node):
         SUGGESTED = auto()
         EXPECTED = auto()
 
-    def __init__(self, name: str, level: Level = Level.SUGGESTED):
-        super().__init__()
-        self.name = name
-        self.level = level
+    name_ = fabll.Parameter.MakeChild_String()
+    level_ = fabll.Parameter.MakeChild_Enum(enum_t=Level)
+
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     @classmethod
-    def suggested(cls, name: str) -> "has_net_name":
-        return cls(name, cls.Level.SUGGESTED)
+    def MakeChild(cls, name: str, level: Level) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.name_], name)
+        )
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.level_],
+                str(level.value),  # TODO: Change to make literal Enum
+            )
+        )
+        return out
 
-    @classmethod
-    def expected(cls, name: str) -> "has_net_name":
-        return cls(name, cls.Level.EXPECTED)
+    @property
+    def name(self) -> str:
+        return str(self.name_.get().try_extract_constrained_literal())
 
-    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
-        assert isinstance(old, has_net_name)  # Asserting trait, not impl
-        # FIXME: gracefully handle hitting this multiple times
-        return super().handle_duplicate(old, node)
+    @property
+    def level(self) -> Level:
+        return not_none(self.level_.get().try_extract_constrained_literal()).value

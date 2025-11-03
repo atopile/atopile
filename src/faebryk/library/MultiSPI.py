@@ -11,14 +11,13 @@ class MultiSPI(fabll.Node):
         super().__init__()
         self._data_lane_count = data_lane_count
 
-    clock: F.ElectricLogic
-    chip_select: F.ElectricLogic
+    clock = F.ElectricLogic.MakeChild()
+    chip_select = F.ElectricLogic.MakeChild()
+    data_lanes = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
 
-    @fabll.rt_field
     def data(self):
         return times(self._data_lane_count, F.ElectricLogic)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -35,10 +34,20 @@ class MultiSPI(fabll.Node):
         for i, line in enumerate(self.data):
             line.add(F.has_net_name(f"data_{i}", level=F.has_net_name.Level.SUGGESTED))
 
+    @classmethod
+    def MakeChild(cls, data_lane_count: int):
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.data_lanes], data_lane_count
+            )
+        )
+        return out
+
     # ----------------------------------------
     #              usage example
     # ----------------------------------------
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import MultiSPI, SPI
 
@@ -52,4 +61,4 @@ class MultiSPI(fabll.Node):
         mcu_spi ~ qspi
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

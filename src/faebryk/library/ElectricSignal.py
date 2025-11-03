@@ -6,50 +6,51 @@ from typing import Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.link import LinkDirectConditional, LinkDirectConditionalFilterResult
-from faebryk.core.node import CNode
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
 
-class ElectricSignal(F.Signal):
+class ElectricSignal(fabll.Node):
     """
     ElectricSignal is a class that represents a signal that is represented
     by the voltage between the reference.hv and reference.lv.
     """
 
-    class LinkIsolatedReference(LinkDirectConditional):
-        def test(self, node: CNode):
-            return not isinstance(node, F.ElectricPower)
-
-        def __init__(self) -> None:
-            super().__init__(
-                lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
-                if all(self.test(dst.node) for dst in path)
-                else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE,
-                needs_only_first_in_path=True,
-            )
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    line: F.Electrical
-    reference: F.ElectricPower
+    line = F.Electrical.MakeChild()
+    reference = F.ElectricPower.MakeChild()
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @fabll.rt_field
+    _is_interface = fabll.is_interface.MakeChild()
+
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.reference)
 
+
+
     # ----------------------------------------
-    #                functions
+    #                WIP
     # ----------------------------------------
+
+    # class LinkIsolatedReference(LinkDirectConditional):
+    #     def test(self, node: CNode):
+    #         return not isinstance(node, F.ElectricPower)
+
+    #     def __init__(self) -> None:
+    #         super().__init__(
+    #             lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
+    #             if all(self.test(dst.node) for dst in path)
+    #             else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE,
+    #             needs_only_first_in_path=True,
+    #         )
+
     @staticmethod
     def connect_all_node_references(
         nodes: Iterable[fabll.Node], gnd_only=False
@@ -90,7 +91,6 @@ class ElectricSignal(F.Signal):
     def connect_all_references(ifs: Iterable["ElectricSignal"]) -> F.ElectricPower:
         return F.ElectricPower.connect(*[x.reference for x in ifs])
 
-    @fabll.rt_field
     def surge_protected(self):
         class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
             def protect(_self, owner: fabll.Node):
@@ -103,7 +103,7 @@ class ElectricSignal(F.Signal):
 
     @property
     def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
-        if (connected_to := self.line.get_connected()) is None:
+        if (connected_to := self.line.get_trait(fabll.is_interface).get_connected()) is None:
             return None
 
         parallel_resistors: list[F.Resistor] = []
@@ -118,7 +118,7 @@ class ElectricSignal(F.Signal):
             other_side = [x for x in parent.unnamed if x is not mif]
             assert len(other_side) == 1, "Resistors are bilateral"
 
-            if self.reference.hv not in other_side[0].get_connected():
+            if self.reference.hv not in other_side[0].get_trait(fabll.is_interface).get_connected():
                 # cannot trivially determine effective resistance
                 return None
 
@@ -158,7 +158,7 @@ class ElectricSignal(F.Signal):
             except ZeroDivisionError:
                 return None
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import ElectricSignal, ElectricPower
 
@@ -180,4 +180,4 @@ class ElectricSignal(F.Signal):
         diff_neg.reference ~ power_3v3
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

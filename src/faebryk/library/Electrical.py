@@ -6,13 +6,16 @@ import faebryk.core.node as fabll
 
 # import faebryk.core.node as fabll
 
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import GraphView
+
 
 class Electrical(fabll.Node):
     """
     Electrical interface.
     """
 
-    pass
+    _is_interface = fabll.is_interface.MakeChild()
 
     # def get_net(self):
     #     from faebryk.library.Net import Net
@@ -77,3 +80,19 @@ class Electrical(fabll.Node):
 #     """,
 #     language=F.has_usage_example.Language.ato,
 # )
+
+if __name__ == "__main__":
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+    electricalType = Electrical.bind_typegraph(tg)
+    e1 = electricalType.create_instance(g=g)
+    e2 = electricalType.create_instance(g=g)
+    e3 = electricalType.create_instance(g=g)
+
+    e1.get_trait(fabll.is_interface).connect_to(e2, e3)
+
+    print(e1.get_trait(fabll.is_interface).is_connected_to(e1))
+    print(e1.get_trait(fabll.is_interface).is_connected_to(e2))
+    print(e1.get_trait(fabll.is_interface).is_connected_to(e3))
+
+    print(e1.get_trait(fabll.is_interface).get_connected())

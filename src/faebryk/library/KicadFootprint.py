@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from faebryk.libs.kicad.fileformats import kicad
 
 
-class KicadFootprint(F.Footprint):
+class KicadFootprint(fabll.Node):
     class has_file(fabll.Node):
         """
         Direct reference to a KiCAD footprint file
@@ -46,11 +46,9 @@ class KicadFootprint(F.Footprint):
         unique_pin_names = sorted(set(pin_names))
         self.pin_names_sorted = list(enumerate(unique_pin_names))
 
-    @fabll.rt_field
     def pins(self):
         return times(len(self.pin_names_sorted), F.Pad)
 
-    @fabll.rt_field
     def attach_via_pinmap(self):
         return F.can_attach_via_pinmap_pinlist(
             {pin_name: self.pins[i] for i, pin_name in self.pin_names_sorted}

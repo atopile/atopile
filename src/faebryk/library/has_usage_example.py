@@ -16,16 +16,26 @@ class has_usage_example(fabll.Node):
         fabll = "fabll"
         ato = "ato"
 
-    example = fabll.ChildField(fabll.Parameter)
-    language = fabll.ChildField(fabll.Parameter)
+    example_ = fabll.ChildField(fabll.Parameter)
+    language_ = fabll.ChildField(fabll.Parameter)
+
+    @property
+    def example(self) -> str:
+        return str(self.example_.get().try_extract_constrained_literal())
+
+    @property  # TODO: fix to work with enum
+    def language(self) -> str:
+        return str(self.language_.get().try_extract_constrained_literal())
 
     @classmethod
     def MakeChild(cls, example: str, language: Language) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.example], example)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.example_], example)
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.language], language)
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.language_], language
+            )
         )
         return out

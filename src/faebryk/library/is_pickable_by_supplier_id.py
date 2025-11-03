@@ -3,10 +3,13 @@
 
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class is_pickable_by_supplier_id(F.is_pickable.decless()):
+class is_pickable_by_supplier_id(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     class Supplier(Enum):
         LCSC = auto()
 

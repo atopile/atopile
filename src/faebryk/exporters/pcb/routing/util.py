@@ -176,7 +176,7 @@ def get_internal_nets_of_node(
     from faebryk.libs.util import groupby
 
     if isinstance(node, F.Net):
-        return {node: node.part_of.get_connected()}
+        return {node: node.part_of.get_trait(fabll.is_interface).get_connected()}
 
     mifs = node.get_children(include_root=True, direct_only=False, types=F.Electrical)
     nets = groupby(mifs, lambda mif: mif.get_net())
@@ -206,7 +206,7 @@ def group_pads_that_are_connected_already(
     for pad in pads:
         for group in out:
             # Only need to check first, because transitively connected
-            if pad.pcb.is_connected_to(next(iter(group)).pcb):
+            if pad.pcb.get_trait(fabll.is_interface).is_connected_to(next(iter(group)).pcb):
                 group.add(pad)
                 break
         else:
@@ -217,6 +217,6 @@ def group_pads_that_are_connected_already(
 def get_routes_of_pad(pad: F.Pad):
     return {
         route
-        for mif in pad.pcb.get_connected()
+        for mif in pad.pcb.get_trait(fabll.is_interface).get_connected()
         if (route := mif.get_parent_of_type(Route))
     }

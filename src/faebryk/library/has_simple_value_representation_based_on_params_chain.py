@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 # from faebryk.core.parameter import (
 #     Boolean,
@@ -138,3 +139,37 @@ class has_simple_value_representation_based_on_params_chain(fabll.Node):
             *[s.get_value() for s in self.specs],
             self.suffix,
         )
+
+
+class Spec:
+    param = F.Collections.Pointer.MakeChild()
+    unit = F.Collections.Pointer.MakeChild()
+    tolerance = fabll.Parameter.MakeChild()
+    prefix = fabll.Parameter.MakeChild()
+    suffix = fabll.Parameter.MakeChild()
+    default = fabll.Parameter.MakeChild()
+
+    @classmethod
+    def MakeChild(
+        cls,
+        param: fabll.ChildField,
+        unit: fabll.Node | None = None,
+        tolerance: bool = False,
+        prefix: str = "",
+        suffix: str = "",
+        default: str | None = None,
+    ):
+        out = fabll.ChildField(cls)
+        # out.add_dependant(param)
+        # if unit is not None:
+        #     out.add_dependant(F.Collections.Pointer.)
+        # if tolerance:
+        #     out.add_dependant(F.Expressions.Is.MakeChild_ConstrainToLiteral())
+        # if prefix:
+        #     out.add_dependant(prefix)
+        # if suffix:
+        #     out.add_dependant(suffix)
+        # if default is not None:
+        #     out.add_dependant(default)
+        # return out
+        return out

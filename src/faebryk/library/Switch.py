@@ -45,7 +45,7 @@ def Switch[T: fabll.ModuleInterface](interface_type: type[T]):
 
 
 # Usage example for the Switch factory
-usage_example = fabll.f_field(F.has_usage_example)(
+usage_example = F.has_usage_example.MakeChild(
     example="""
     import Switch, Electrical, ElectricLogic, ElectricPower
 
@@ -73,4 +73,4 @@ usage_example = fabll.f_field(F.has_usage_example)(
     # Common uses: user buttons, reed switches, micro switches
     """,
     language=F.has_usage_example.Language.ato,
-)
+).put_on_type()

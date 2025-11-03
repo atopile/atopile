@@ -4,9 +4,10 @@
 from abc import abstractmethod
 
 import faebryk.core.node as fabll
-from faebryk.core.parameter import Parameter
 
 
 class has_capacitance(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     @abstractmethod
-    def get_capacitance(self) -> Parameter: ...
+    def get_capacitance(self) -> fabll.Parameter: ...

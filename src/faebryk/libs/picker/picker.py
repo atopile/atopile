@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING, Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.cpp import Graph
+# TODO(zig-migration): `Graph` is currently an alias via Python.
+# Consider migrating call sites to Zig GraphView/TypeGraph directly.
+from faebryk.core.node import Graph
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Is,

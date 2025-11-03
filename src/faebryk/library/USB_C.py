@@ -6,13 +6,13 @@ import faebryk.library._F as F
 
 
 class USB_C(fabll.Node):
-    usb3: F.USB3
-    cc1: F.Electrical
-    cc2: F.Electrical
-    sbu1: F.Electrical
-    sbu2: F.Electrical
-    rx: F.DifferentialPair
-    tx: F.DifferentialPair
+    usb3 = F.USB3.MakeChild()
+    cc1 = F.Electrical.MakeChild()
+    cc2 = F.Electrical.MakeChild()
+    sbu1 = F.Electrical.MakeChild()
+    sbu2 = F.Electrical.MakeChild()
+    rx = F.DifferentialPair.MakeChild()
+    tx = F.DifferentialPair.MakeChild()
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
@@ -25,7 +25,7 @@ class USB_C(fabll.Node):
         self.tx.p.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
         self.tx.n.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import USB_C, ElectricPower, Resistor
 
@@ -58,4 +58,4 @@ class USB_C(fabll.Node):
         usb_controller.usb_c ~ usb_c
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

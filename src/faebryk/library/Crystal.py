@@ -3,81 +3,55 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class Crystal(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    gnd: F.Electrical
-    unnamed = fabll.list_field(2, F.Electrical)
+    gnd = F.Electrical.MakeChild()
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
     # ----------------------------------------
     #               parameters
     # ----------------------------------------
-    frequency = fabll.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        soft_set=fabll.Range(32.768 * P.kHz, 100 * P.MHz),
-        tolerance_guess=50 * P.ppm,
+    frequency = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Hertz,
     )
 
-    frequency_tolerance = fabll.p_field(
-        units=P.ppm,
-        likely_constrained=True,
-        soft_set=fabll.Range(10 * P.ppm, 100 * P.ppm),
-        tolerance_guess=10 * P.percent,
+    frequency_tolerance = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Ppm,
     )
 
-    frequency_temperature_tolerance = fabll.p_field(
-        units=P.ppm,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.ppm, 50 * P.ppm),
-        tolerance_guess=10 * P.percent,
+    frequency_temperature_tolerance = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Ppm,
     )
 
-    frequency_ageing = fabll.p_field(
-        units=P.ppm,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.ppm, 10 * P.ppm),
-        tolerance_guess=20 * P.percent,
+    frequency_ageing = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Ppm,
     )
 
-    equivalent_series_resistance = fabll.p_field(
-        units=P.Ω,
-        likely_constrained=True,
-        soft_set=fabll.Range(10 * P.Ω, 200 * P.Ω),
-        tolerance_guess=10 * P.percent,
+    equivalent_series_resistance = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Ohm,
     )
 
-    shunt_capacitance = fabll.p_field(
-        units=P.F,
-        likely_constrained=True,
-        soft_set=fabll.Range(1 * P.pF, 10 * P.pF),
-        tolerance_guess=20 * P.percent,
+    shunt_capacitance = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Farad,
     )
 
-    load_capacitance = fabll.p_field(
-        units=P.F,
-        likely_constrained=True,
-        soft_set=fabll.Range(8 * P.pF, 30 * P.pF),
-        tolerance_guess=10 * P.percent,
+    load_capacitance = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Farad,
     )
 
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    designator = fabll.f_field(F.has_designator_prefix)(
+    footprint = F.can_attach_to_footprint_symmetrically.MakeChild()
+    designator = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.XTAL
-    )
-    footprint: F.can_attach_to_footprint_symmetrically
+    ).put_on_type()
 
-    # ----------------------------------------
-    #                connections
-    # ----------------------------------------
-
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Crystal, Capacitor
 
@@ -101,4 +75,4 @@ class Crystal(fabll.Node):
         crystal.gnd ~ power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

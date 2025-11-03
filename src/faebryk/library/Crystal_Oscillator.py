@@ -11,20 +11,21 @@ class Crystal_Oscillator(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    crystal: F.Crystal
-    capacitors = fabll.list_field(2, F.Capacitor)
-    current_limiting_resistor: F.Resistor
+    crystal = F.Crystal.MakeChild()
+    capacitors = [F.Capacitor.MakeChild() for _ in range(2)]
+    current_limiting_resistor = F.Resistor.MakeChild()
 
-    xtal_if: F.XtalIF
+    xtal_if = F.XtalIF.MakeChild()
 
     # ----------------------------------------
     #               parameters
     # ----------------------------------------
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
-    _STRAY_CAPACITANCE = fabll.Range(1 * P.pF, 5 * P.pF)
+    _STRAY_CAPACITANCE = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Farad,
+    )
 
-    @fabll.rt_field
     def capacitance(self):
         return (self.crystal.load_capacitance - self._STRAY_CAPACITANCE) * 2
 
@@ -42,11 +43,11 @@ class Crystal_Oscillator(fabll.Node):
         )
         self.crystal.unnamed[1].connect(self.xtal_if.xin)
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
+        _can_bridge = F.can_bridge.MakeChild(
+            in_=self.xtal_if.get().xin, out_=self.xtal_if.get().xout
+        )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Crystal_Oscillator, ElectricPower
 

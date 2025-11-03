@@ -10,6 +10,7 @@ import faebryk.libs.exceptions
 from atopile.address import AddressError, AddrStr
 from atopile.compiler import front_end
 from atopile.config import ProjectConfig, config
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import (
     DefaultFactoryDict,
     cast_assert,
@@ -36,7 +37,7 @@ class SubPCB(fabll.Node):
 
 
 class has_subpcb(fabll.Node):
-    subpcb_ = fabll.ChildField(fabll.Set)
+    subpcb_ = fabll.ChildField(F.Collections.PointerSet)
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, subpcb: "SubPCB") -> "has_subpcb":
@@ -72,7 +73,7 @@ class SubAddress:
 
 class in_sub_pcb(fabll.Node):
     _sub_root_module_identifier = "sub_root_module"
-    sub_root_modules = fabll.ChildField(fabll.Set)
+    sub_root_modules = fabll.ChildField(F.Collections.PointerSet)
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, sub_root_module: fabll.Node[Any]) -> "in_sub_pcb":
@@ -169,6 +170,9 @@ def attach_subaddresses_to_modules(app: fabll.Node):
     g = app.instance.g()
     for module, _ in pcb_modules:
         for footprint_child, _ in module.iter_children_with_trait(F.has_footprint):
-            footprint_child.compose_with(
+            footprint_child.connect(
                 in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module),
+                edge_attrs=EdgeComposition.build(
+                    child_identifier=f"{id(footprint_child)}"
+                ),
             )

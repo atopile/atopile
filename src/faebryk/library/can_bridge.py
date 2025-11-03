@@ -10,9 +10,9 @@ class can_bridge(fabll.Node):
     in_ = fabll.ChildField(fabll.Node)
     out_ = fabll.ChildField(fabll.Node)
 
-    def bridge(self, _in, out):
-        _in.connect(self.get_in())
-        out.connect(self.get_out())
+    def bridge(self, _in: fabll.Node, out: fabll.Node):
+        _in.get_trait(fabll.is_interface).connect_to(self.get_in())
+        out.get_trait(fabll.is_interface).connect_to(self.get_out())
 
     def get_in(self) -> fabll.Node:
         in_ = EdgePointer.get_referenced_node_from_node(node=self.in_.get().instance)

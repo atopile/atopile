@@ -20,31 +20,20 @@ class Fuse(fabll.Node):
         SLOW = auto()
         FAST = auto()
 
-    unnamed = fabll.list_field(2, F.Electrical)
-    fuse_type = fabll.p_field(
-        domain=fabll.Domains.ENUM(FuseType),
-    )
-    response_type = fabll.p_field(
-        domain=fabll.Domains.ENUM(ResponseType),
-    )
-    trip_current = fabll.p_field(
-        units=P.A,
-        likely_constrained=True,
-        domain=fabll.Domains.Numbers.REAL(),
-        soft_set=fabll.Range(100 * P.mA, 100 * P.A),
-    )
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
+    fuse_type = fabll.Parameter.MakeChild_Enum(enum_t=FuseType)
+    response_type = fabll.Parameter.MakeChild_Enum(enum_t=ResponseType)
+    trip_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
+    attach_to_footprint = F.can_attach_to_footprint_symmetrically.MakeChild()
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.unnamed[0], self.unnamed[1])
+    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.F
-    )
+    ).put_on_type()
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Fuse, ElectricPower
 
@@ -71,4 +60,4 @@ class Fuse(fabll.Node):
         # Common applications: USB power protection, battery protection
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.node as fabll
-from faebryk.core.trait import TraitImpl
 
 
 class has_net_name_affix(fabll.Node):
@@ -34,27 +33,27 @@ class has_net_name_affix(fabll.Node):
     def both(cls, prefix: str, suffix: str) -> "has_net_name_affix":
         return cls(required_prefix=prefix, required_suffix=suffix)
 
-    def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
-        # If re-added, keep the more specific (non-None) values; error on conflicts
-        assert isinstance(old, has_net_name_affix)
-        # Merge if compatible
-        if (
-            self.required_prefix
-            and old.required_prefix
-            and self.required_prefix != old.required_prefix
-        ):
-            # Different required prefixes are incompatible; let caller decide
-            return super().handle_duplicate(old, node)
-        if (
-            self.required_suffix
-            and old.required_suffix
-            and self.required_suffix != old.required_suffix
-        ):
-            return super().handle_duplicate(old, node)
+    # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
+    #     # If re-added, keep the more specific (non-None) values; error on conflicts
+    #     assert isinstance(old, has_net_name_affix)
+    #     # Merge if compatible
+    #     if (
+    #         self.required_prefix
+    #         and old.required_prefix
+    #         and self.required_prefix != old.required_prefix
+    #     ):
+    #         # Different required prefixes are incompatible; let caller decide
+    #         return super().handle_duplicate(old, node)
+    #     if (
+    #         self.required_suffix
+    #         and old.required_suffix
+    #         and self.required_suffix != old.required_suffix
+    #     ):
+    #         return super().handle_duplicate(old, node)
 
-        # Prefer new non-None values
-        if self.required_prefix is not None:
-            old.required_prefix = self.required_prefix
-        if self.required_suffix is not None:
-            old.required_suffix = self.required_suffix
-        return False
+    #     # Prefer new non-None values
+    #     if self.required_prefix is not None:
+    #         old.required_prefix = self.required_prefix
+    #     if self.required_suffix is not None:
+    #         old.required_suffix = self.required_suffix
+    #     return False

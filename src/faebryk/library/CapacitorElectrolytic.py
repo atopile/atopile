@@ -5,44 +5,58 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+# from faebryk.core.zig.gen.faebryk.interface import EdgeInterface
 
 logger = logging.getLogger(__name__)
 
 
-class CapacitorElectrolytic(F.Capacitor):
-    pickable = None  # type: ignore
-    can_attach_to_footprint_symmetrically = None  # type: ignore
+class CapacitorElectrolytic(fabll.Node):
+    anode = F.Electrical.MakeChild()
+    cathode = F.Electrical.MakeChild()
 
-    anode: F.Electrical
-    cathode: F.Electrical
+    power = F.ElectricPower.MakeChild()
 
-    def __preinit__(self):
-        self.power.hv.connect(self.anode)
-        self.power.lv.connect(self.cathode)
+    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    @fabll.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.anode, self.cathode)
+    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
+    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
+    #     enum_t=TemperatureCoefficient
+    # )
 
-    @fabll.rt_field
-    def has_pin_association_heuristic_lookup_table(self):
-        return F.has_pin_association_heuristic_lookup_table(
-            mapping={
-                self.power.hv: ["anode", "a"],
-                self.power.lv: ["cathode", "c"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
+    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+        params={
+            "capacitance": capacitance,
+            "max_voltage": max_voltage,
+            # "temperature_coefficient": temperature_coefficient,
+        }
+    )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.anode.add(F.has_net_name("anode", level=F.has_net_name.Level.SUGGESTED))
-        self.cathode.add(
-            F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
-        )
+    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+        mapping={
+            anode: ["anode", "a"],
+            cathode: ["cathode", "c"],
+        },
+        accept_prefix=False,
+        case_sensitive=False,
+    )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    # anode_edge = fabll.EdgeField(
+    #     [anode],
+    #     [power, "hv"],
+    #     edge=EdgePointer.build(
+    #         identifier="anode", order=None
+    #     ),  # TODO: Change to electrical connect
+    # )
+    # cathode_edge = fabll.EdgeField(
+    #     [cathode],
+    #     [power, "lv"],
+    #     edge=EdgePointer.build(
+    #         identifier="cathode", order=None
+    #     ),  # TODO: Change to electrical connect
+    # )
+
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import CapacitorElectrolytic, ElectricPower
 

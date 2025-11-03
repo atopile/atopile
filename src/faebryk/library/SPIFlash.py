@@ -7,24 +7,20 @@ from faebryk.libs.units import P
 
 
 class SPIFlash(fabll.Node):
-    power: F.ElectricPower
-    qspi = fabll.f_field(F.MultiSPI)(4)
+    power = F.ElectricPower.MakeChild()
+    qspi = F.MultiSPI.MakeChild(4)
 
-    memory_size = fabll.p_field(
-        units=P.byte,
-        domain=fabll.Domains.Numbers.NATURAL(),
-    )
-    designator_prefix = fabll.f_field(F.has_designator_prefix)(
+    memory_size = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Byte)
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
-    )
+    ).put_on_type()
 
-    @fabll.rt_field
     def single_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import SPIFlash, ElectricPower, ElectricLogic
 
@@ -57,4 +53,4 @@ class SPIFlash(fabll.Node):
         # Common applications: firmware storage, data logging, file systems
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

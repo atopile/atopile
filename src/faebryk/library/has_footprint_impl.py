@@ -3,11 +3,12 @@
 
 from more_itertools import first
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 
-class has_footprint_impl(F.has_footprint.impl()):
+class has_footprint_impl(fabll.Node):
     def set_footprint(self, fp: F.Footprint):
         self.obj.add(fp, name="footprint")
 

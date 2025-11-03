@@ -296,6 +296,10 @@ pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c
 pub extern fn PyList_Size(list: ?*PyObject) isize;
 pub extern fn PyList_GetItem(list: ?*PyObject, index: isize) ?*PyObject;
 
+// Set API
+pub extern fn PySet_New(iterable: ?*PyObject) ?*PyObject;
+pub extern fn PySet_Add(set: ?*PyObject, key: ?*PyObject) c_int;
+
 // PyList_Check is a macro in Python's C API, we need to implement it ourselves
 // We can use PyObject_IsInstance or just check with PyList_Size
 pub fn PyList_Check(obj: ?*PyObject) c_int {

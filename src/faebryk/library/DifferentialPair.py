@@ -12,14 +12,8 @@ class DifferentialPair(fabll.Node):
     p: F.ElectricSignal
     n: F.ElectricSignal
 
-    impedance = fabll.p_field(
-        units=P.Ω,
-        likely_constrained=True,
-        soft_set=fabll.Range(10 * P.Ω, 100 * P.Ω),
-        tolerance_guess=10 * P.percent,
-    )
+    impedance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
 
-    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricSignal.connect_all_module_references(self)
@@ -49,7 +43,7 @@ class DifferentialPair(fabll.Node):
         self.p.line.add(F.has_net_name_affix.suffix("_P"))
         self.n.line.add(F.has_net_name_affix.suffix("_N"))
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import DifferentialPair, ElectricPower
 
@@ -75,4 +69,4 @@ class DifferentialPair(fabll.Node):
         usb_dp_dn.impedance = 90ohm +/- 10%
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

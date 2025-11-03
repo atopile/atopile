@@ -54,7 +54,7 @@ class Pinmux(fabll.Node):
             function = not_none(self._function_matrix[pin][function])
 
         if pin in self.configured:
-            if self.configured[pin].is_connected_to(function):
+            if self.configured[pin].get_trait(fabll.is_interface).is_connected_to(function):
                 return
             raise ValueError(f"Pin {pin} already configured")
         self.configured[pin] = function

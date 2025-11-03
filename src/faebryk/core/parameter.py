@@ -22,6 +22,9 @@ import f_field
 
 import faebryk.core.node as fabll
 from faebryk.core.core import Namespace
+# TODO(zig-migration): Legacy import – faebryk.core.graphinterface no longer exists.
+# Replace GraphInterface with the Zig graph API equivalent (e.g., BoundNode/BoundEdge
+# or appropriate interface wrapper from faebryk.core.zig.gen.*).
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.trait import Trait
 from faebryk.libs.sets.numeric_sets import NumberLike

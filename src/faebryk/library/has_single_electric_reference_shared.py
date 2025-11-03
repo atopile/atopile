@@ -6,8 +6,10 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class has_single_electric_reference_shared(F.has_single_electric_reference.impl()):
-    lazy: F.is_lazy
+class has_single_electric_reference_shared(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+    lazy = F.is_lazy.MakeChild()
 
     def __init__(self, gnd_only: bool = False):
         super().__init__()

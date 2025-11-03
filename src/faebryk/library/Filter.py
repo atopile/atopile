@@ -5,7 +5,6 @@ from enum import Enum, auto
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class Filter(fabll.Node):
@@ -16,20 +15,13 @@ class Filter(fabll.Node):
         BANDSTOP = auto()
         OTHER = auto()
 
-    cutoff_frequency = fabll.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        domain=fabll.Domains.Numbers.REAL(),
-        soft_set=fabll.Range(0 * P.Hz, 1000 * P.Hz),
+    cutoff_frequency = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Hertz,
     )
-    order = fabll.p_field(
-        domain=fabll.Domains.Numbers.NATURAL(),
-        soft_set=fabll.Range(2, 10),
-        guess=2,
+    order = fabll.Parameter.MakeChild_Numeric(
+        unit=F.Units.Natural,
     )
-    response = fabll.p_field(
-        domain=fabll.Domains.ENUM(Response),
-    )
+    response = fabll.Parameter.MakeChild_Enum(enum_t=Response)
 
-    in_: F.Signal
-    out: F.Signal
+    in_: fabll.ChildField[F.Electrical]
+    out: fabll.ChildField[F.Electrical]

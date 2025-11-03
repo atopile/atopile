@@ -1,7 +1,7 @@
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.reference import reference
-from faebryk.core.trait import Trait
+
+# from faebryk.core.reference import reference
 
 
 class Symbol(fabll.Node):
@@ -10,49 +10,51 @@ class Symbol(fabll.Node):
     linked with the module they represent via the `has_linked` trait.
     """
 
-    class Pin(fabll.Node):
-        represents = reference(F.Electrical)
+    pass
 
-        class has_pin(F.has_reference.decless()):
-            """
-            Attach to an ElectricalInterface to point back at the pin
-            """
+    # class Pin(fabll.Node):
+    #     represents = reference(F.Electrical)
 
-            reference: "Symbol.Pin" = reference()
+    #     class has_pin(F.has_reference.decless()):
+    #         """
+    #         Attach to an ElectricalInterface to point back at the pin
+    #         """
 
-    class TraitT(Trait): ...
+    #         reference: "Symbol.Pin" = reference()
 
-    class has_symbol(F.has_reference.decless()):
-        """
-        Attach to an Module to point back at the pin
-        """
+    # class TraitT(Trait): ...
 
-        reference: "Symbol" = reference()
+    # class has_symbol(F.has_reference.decless()):
+    #     """
+    #     Attach to an Module to point back at the pin
+    #     """
 
-    class has_kicad_symbol(fabll.Node):
-        """
-        If a symbol has this trait, then the symbol has a matching KiCAD symbol
-        :param symbol_name: The full name of the KiCAD symbol including the library name
-        """
+    #     reference: "Symbol" = reference()
 
-        def __init__(self, symbol_name: str):
-            super().__init__()
-            self.symbol_name = symbol_name
+    # class has_kicad_symbol(fabll.Node):
+    #     """
+    #     If a symbol has this trait, then the symbol has a matching KiCAD symbol
+    #     :param symbol_name: The full name of the KiCAD symbol including the library name
+    #     """
 
-    pins: dict[str, Pin]
-    represents = reference(fabll.Module)
+    #     def __init__(self, symbol_name: str):
+    #         super().__init__()
+    #         self.symbol_name = symbol_name
 
-    @classmethod
-    def with_component(cls, component: fabll.Node, pin_map: dict[str, F.Electrical]):
-        sym = cls()
-        sym.represents = component
-        component.add(cls.has_symbol(sym))
+    # pins: dict[str, Pin]
+    # represents = reference(fabll.Module)
 
-        sym.pins = {}
-        for pin_name, e_pin in pin_map.items():
-            pin = cls.Pin()
-            pin.represents = e_pin
-            e_pin.add(cls.Pin.has_pin(pin))
-            sym.pins[pin_name] = pin
+    # @classmethod
+    # def with_component(cls, component: fabll.Node, pin_map: dict[str, F.Electrical]):
+    #     sym = cls()
+    #     sym.represents = component
+    #     component.add(cls.has_symbol(sym))
 
-        return sym
+    #     sym.pins = {}
+    #     for pin_name, e_pin in pin_map.items():
+    #         pin = cls.Pin()
+    #         pin.represents = e_pin
+    #         e_pin.add(cls.Pin.has_pin(pin))
+    #         sym.pins[pin_name] = pin
+
+    #     return sym

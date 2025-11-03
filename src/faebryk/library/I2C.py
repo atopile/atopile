@@ -15,29 +15,33 @@ logger = logging.getLogger(__name__)
 
 
 class I2C(fabll.Node):
-    scl: F.ElectricLogic
-    sda: F.ElectricLogic
 
-    address = fabll.p_field(
-        within=fabll.Range(0, 0x7F), domain=fabll.Domains.Numbers.NATURAL()
-    )
-    bus_addresses = fabll.p_field(
-        within=fabll.Range(0, 0x7F), domain=fabll.Domains.Numbers.NATURAL()
-    )
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    scl = F.ElectricLogic.MakeChild()
+    sda = F.ElectricLogic.MakeChild()
 
-    frequency = fabll.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        soft_set=fabll.Range(10 * P.kHz, 3.4 * P.MHz),
-    )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
-    @fabll.rt_field
+
+
+    # ----------------------------------------
+    #                 WIP
+    # ----------------------------------------
+
+    address = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
+    bus_addresses = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
+    frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
+
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    @fabll.rt_field
     def requires_pulls(self):
         def pred(signal: F.ElectricSignal, bus: set[fabll.Node]):
             interface = signal.get_parent_of_type(I2C)
@@ -103,6 +107,8 @@ class I2C(fabll.Node):
 
         # Get all nodes connected electrically to the line
         connected_nodes = self.scl.line.get_connected()
+        self.scl
+
         # Get all nodes connected logically to the line
         connected_nodes |= self.sda.get_connected()
 
@@ -163,9 +169,9 @@ class I2C(fabll.Node):
             # TODO: Consider raising MaybeUnfulfilled if there are unresolved addresses?
             # For now, we only raise if we find concrete duplicates.
 
-    address_check: requires_unique_addresses
+    address_check = requires_unique_addresses.MakeChild()
 
-    usage_example = fabll.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import I2C, ElectricPower
 
@@ -186,4 +192,4 @@ class I2C(fabll.Node):
         sensor.i2c ~ i2c_bus
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

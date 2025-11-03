@@ -3,13 +3,15 @@
 
 from abc import abstractmethod
 
-from faebryk.core.trait import Trait
+import faebryk.core.node as fabll
 
 
 # TODO this is still very early phase
 #  need to write somewhere the auto construct logic
 #  either trigger it by param merge or at pick time or so
-class has_construction_dependency(Trait):
+class has_construction_dependency(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     class NotConstructable(Exception): ...
 
     class NotConstructableYet(NotConstructable): ...

@@ -6,12 +6,11 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
 
-class requires_external_usage(Trait.decless()):
+class requires_external_usage(fabll.Node):
     class RequiresExternalUsageNotFulfilled(
         F.implements_design_check.UnfulfilledCheckException
     ):

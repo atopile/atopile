@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.smd import SMDSize
 
 
-class SMDTwoPin(F.Footprint):
+class SMDTwoPin(fabll.Node):
     class Type(StrEnum):
         Resistor = "R"
         Capacitor = "C"
@@ -19,9 +19,11 @@ class SMDTwoPin(F.Footprint):
         self._size = size
         self._type = type
 
-    pins = fabll.list_field(2, F.Pad)
+    pins = [F.Pad.MakeChild() for _ in range(2)]
 
-    class _has_kicad_footprint(F.has_kicad_footprint_equal_ifs):
+    class _has_kicad_footprint(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
         def get_kicad_footprint(self) -> str:
             obj = self.get_obj(SMDTwoPin)
             return "{typename}_SMD:{type}_{imperial}_{metric}Metric".format(
