@@ -27,13 +27,125 @@ class RenderNodeContext:
     from_optional: bool
 
 
+def _type_name(node: BoundNode) -> str | None:
+    return fabll.Node.bind_instance(node).get_type_name()
+
+
+def _format_edge_label(
+    edge: BoundEdge | None,
+    *,
+    prefix_on_name: bool = True,
+    prefix_on_anonymous: bool = True,
+) -> str:
+    edge_name = EdgeComposition.get_name(edge=edge.edge()) if edge else None
+    if edge_name:
+        return f".{edge_name}" if prefix_on_name else edge_name
+    return ".<anonymous>" if prefix_on_anonymous else "<anonymous>"
+
+
+def _flatten_optional(node: BoundNode) -> tuple[BoundNode, bool]:
+    current = node
+    from_optional = False
+
+    while _type_name(current) == "Optional":
+        optional_bound = fabll.Optional.bind_instance(current)
+        value_node = optional_bound.get_value()
+        if value_node is None:
+            raise ValueError("Optional node without value encountered during rendering")
+        current = value_node.instance
+        from_optional = True
+
+    return current, from_optional
+
+
+def _collect_interface_extras(node: BoundNode, root: fabll.Node) -> str:
+    interface_edges: list[BoundEdge] = []
+    node.visit_edges_of_type(
+        edge_type=EdgeInterfaceConnection.get_tid(),
+        ctx=interface_edges,
+        f=lambda acc, bound_edge: acc.append(bound_edge),
+    )
+
+    extras = []
+    for bound_edge in interface_edges:
+        if bound_edge.edge().source().is_same(other=node.node()):
+            partner_ref = bound_edge.edge().target()
+        elif bound_edge.edge().target().is_same(other=node.node()):
+            partner_ref = bound_edge.edge().source()
+        else:
+            continue
+
+        partner_node = fabll.Node.bind_instance(bound_edge.g().bind(node=partner_ref))
+        extras.append(f"~ {partner_node.relative_address(root=root)}")
+
+    return " (" + ", ".join(extras) + ")" if extras else ""
+
+
+def _edge_type_ids(edge_types: Sequence[type]) -> list[int]:
+    ids: list[int] = []
+    for edge_type_cls in edge_types:
+        get_tid = getattr(edge_type_cls, "get_tid", None)
+        if not callable(get_tid):
+            raise AttributeError(f"{edge_type_cls!r} must expose a callable get_tid()")
+        ids.append(get_tid())
+    return ids
+
+
+def _excluded_names(exclude_node_types: Sequence[type] | None) -> frozenset[str]:
+    if not exclude_node_types:
+        return frozenset()
+    return frozenset(t.__qualname__ for t in exclude_node_types)
+
+
+def _is_excluded(node: BoundNode, excluded: frozenset[str]) -> bool:
+    if not excluded:
+        return False
+    type_name = _type_name(node)
+    return type_name is not None and type_name in excluded
+
+
+def _child_contexts(
+    parent: BoundNode,
+    *,
+    edge_type_ids: Sequence[int],
+    excluded: frozenset[str],
+) -> list[RenderNodeContext]:
+    children: list[RenderNodeContext] = []
+
+    def add_child(acc: list[RenderNodeContext], bound_edge: BoundEdge) -> None:
+        edge = bound_edge.edge()
+        if not edge.source().is_same(other=parent.node()):
+            return
+
+        child_node = parent.g().bind(node=edge.target())
+        flattened_node, from_optional = _flatten_optional(child_node)
+        if _is_excluded(flattened_node, excluded):
+            return
+
+        acc.append(
+            RenderNodeContext(
+                inbound_edge=bound_edge,
+                node=flattened_node,
+                from_optional=from_optional,
+            )
+        )
+
+    for edge_type_id in edge_type_ids:
+        parent.visit_edges_of_type(
+            edge_type=edge_type_id,
+            ctx=children,
+            f=add_child,
+        )
+
+    return children
+
+
 def describe_node(
     ctx: RenderNodeContext,
     *,
     include_parameter_literal: bool = False,
 ) -> str:
-    bound = fabll.Node.bind_instance(ctx.node)
-    type_name = bound.get_type_name() or "<anonymous>"
+    type_name = _type_name(ctx.node) or "<anonymous>"
 
     attrs = ctx.node.node().get_attrs()
     attrs_parts = [
@@ -56,62 +168,22 @@ def describe_node(
 
 
 def ast_renderer(ctx: RenderNodeContext) -> str:
-    edge_label = (
-        EdgeComposition.get_name(edge=ctx.inbound_edge.edge())
-        if ctx.inbound_edge
-        else None
-    ) or "<anonymous>"
-
+    edge_label = _format_edge_label(ctx.inbound_edge)
     type_description = describe_node(ctx, include_parameter_literal=True)
-
-    return f".{edge_label}: {type_description}"
+    return f"{edge_label}: {type_description}"
 
 
 def typegraph_renderer(ctx: RenderNodeContext) -> str:
-    edge_name = (
-        EdgeComposition.get_name(edge=ctx.inbound_edge.edge())
-        if ctx.inbound_edge
-        else None
-    )
-    edge_label = f".{edge_name}" if edge_name else "<anonymous>"
-
+    edge_label = _format_edge_label(ctx.inbound_edge, prefix_on_anonymous=False)
     type_description = describe_node(ctx, include_parameter_literal=True)
-
     return f"{edge_label}: {type_description}"
 
 
 def instancegraph_renderer(ctx: RenderNodeContext, root: fabll.Node) -> str:
-    edge_label = (
-        EdgeComposition.get_name(edge=ctx.inbound_edge.edge())
-        if ctx.inbound_edge
-        else None
-    ) or "<anonymous>"
-
-    interface_edges: list[BoundEdge] = []
-    ctx.node.visit_edges_of_type(
-        edge_type=EdgeInterfaceConnection.get_tid(),
-        ctx=interface_edges,
-        f=lambda acc, bound_edge: acc.append(bound_edge),
-    )
-
-    extras = []
-    for bound_edge in interface_edges:
-        if bound_edge.edge().source().is_same(other=ctx.node.node()):
-            partner_ref = bound_edge.edge().target()
-        elif bound_edge.edge().target().is_same(other=ctx.node.node()):
-            partner_ref = bound_edge.edge().source()
-        else:
-            continue
-
-        partner_node = fabll.Node.bind_instance(bound_edge.g().bind(node=partner_ref))
-        # TODO: also directed
-        extras.append(f"~ {partner_node.relative_address(root=root)}")
-
-    extras_text = " (" + ", ".join(extras) + ")" if extras else ""
-
+    edge_label = _format_edge_label(ctx.inbound_edge)
     type_description = describe_node(ctx, include_parameter_literal=True)
-
-    return f".{edge_label}: {type_description}{extras_text}"
+    extras_text = _collect_interface_extras(ctx.node, root)
+    return f"{edge_label}: {type_description}{extras_text}"
 
 
 def print_tree(
@@ -121,111 +193,44 @@ def print_tree(
     edge_types: Sequence[type] = (EdgeComposition,),
     exclude_node_types: Sequence[type] | None = None,
 ) -> None:
-    edge_type_ids: list[int] = []
-    for edge_type_cls in edge_types:
-        get_tid = getattr(edge_type_cls, "get_tid", None)
-        if not callable(get_tid):
-            raise AttributeError(f"{edge_type_cls!r} must expose a callable get_tid()")
-        edge_type_ids.append(get_tid())
+    edge_type_ids = _edge_type_ids(edge_types)
+    excluded = _excluded_names(exclude_node_types)
 
-    exclude_types = frozenset([t.__qualname__ for t in exclude_node_types or ()])
-
-    root_type = fabll.Node.bind_instance(bound_node).get_type_name()
-    if exclude_types and root_type is not None and root_type in exclude_types:
+    root_node, root_from_optional = _flatten_optional(bound_node)
+    if _is_excluded(root_node, excluded):
         return
 
-    def gather_children(ctx: RenderNodeContext) -> list[RenderNodeContext]:
-        children: list[RenderNodeContext] = []
+    visited: set[int] = set()
 
-        def add_child(acc: list[RenderNodeContext], bound_edge: BoundEdge) -> None:
-            edge = bound_edge.edge()
-            if not edge.source().is_same(other=ctx.node.node()):
-                return
-
-            child_node = ctx.node.g().bind(node=edge.target())
-            child_type = fabll.Node.bind_instance(child_node).get_type_name()
-            if exclude_types and child_type is not None and child_type in exclude_types:
-                return
-
-            if child_type == "Optional":
-                optional_bound = fabll.Optional.bind_instance(child_node)
-                value_node = optional_bound.get_value()
-                if value_node is None:
-                    raise ValueError(
-                        "Optional node without value encountered during rendering"
-                    )
-                value_bound = value_node.instance
-                value_type = fabll.Node.bind_instance(value_bound).get_type_name()
-                if (
-                    exclude_types
-                    and value_type is not None
-                    and value_type in exclude_types
-                ):
-                    return
-
-                acc.append(
-                    RenderNodeContext(
-                        inbound_edge=bound_edge,
-                        node=value_bound,
-                        from_optional=True,
-                    )
-                )
-                return
-
-            acc.append(
-                RenderNodeContext(
-                    inbound_edge=bound_edge,
-                    node=child_node,
-                    from_optional=False,
-                )
-            )
-
-        for edge_type_id in edge_type_ids:
-            ctx.node.visit_edges_of_type(
-                edge_type=edge_type_id,
-                ctx=children,
-                f=add_child,
-            )
-
-        return children
-
-    def traverse(
-        ctx: RenderNodeContext,
-        ancestors: list,
-        prefix: str,
-        is_last: bool,
-    ) -> None:
-        label = renderer(ctx)
+    def walk(ctx: RenderNodeContext, prefix: str, is_last: bool) -> None:
+        line = renderer(ctx)
         if prefix:
-            branch = "└─ " if is_last else "├─ "
-            print(f"{prefix}{branch}{label}")
+            connector = "└─ " if is_last else "├─ "
+            print(f"{prefix}{connector}{line}")
         else:
-            print(label)
+            print(line)
 
-        next_prefix = prefix + ("   " if is_last else "│  ")
-        next_ancestors = list(ancestors)
-
-        current_node = ctx.node.node()
-        if any(ancestor.is_same(other=current_node) for ancestor in ancestors):
+        node_uuid = ctx.node.node().get_uuid()
+        if node_uuid in visited:
             return
 
-        next_ancestors.append(current_node)
+        visited.add(node_uuid)
 
-        children = gather_children(ctx)
+        child_prefix = prefix + ("   " if is_last else "│  ")
+        children = _child_contexts(
+            ctx.node, edge_type_ids=edge_type_ids, excluded=excluded
+        )
         for index, child_ctx in enumerate(children):
-            traverse(
-                child_ctx,
-                next_ancestors,
-                next_prefix,
-                index == len(children) - 1,
-            )
+            walk(child_ctx, child_prefix, index == len(children) - 1)
+
+        visited.remove(node_uuid)
 
     root_ctx = RenderNodeContext(
         inbound_edge=None,
-        node=bound_node,
-        from_optional=False,
+        node=root_node,
+        from_optional=root_from_optional,
     )
-    traverse(root_ctx, [], "", True)
+    walk(root_ctx, prefix="", is_last=True)
 
 
 def main():
@@ -248,7 +253,7 @@ def main():
         exclude_node_types=[AST.SourceChunk] if not RENDER_SOURCE_CHUNKS else None,
     )
 
-    for i, (type_name, type_root) in enumerate(result.state.type_roots.items()):
+    for type_name, type_root in result.state.type_roots.items():
         _section(f"Pre-Link Type Graph {type_name}")
         print_tree(type_root, renderer=typegraph_renderer)
 
