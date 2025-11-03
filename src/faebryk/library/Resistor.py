@@ -24,11 +24,10 @@ class Resistor(fabll.Node):
         },
     )
 
+    S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "resistance": resistance,
-            "max_power": max_power,
-        }
+        S(resistance, tolerance=True),
+        S(max_power),
     )
 
     designator_prefix = F.has_designator_prefix.MakeChild(

@@ -37,14 +37,13 @@ class Comparator(fabll.Node):
     non_inverting_input = F.Electrical.MakeChild()
     output = F.Electrical.MakeChild()
 
+    S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "CMRR": common_mode_rejection_ratio,
-            "Ib": input_bias_current,
-            "Vhys": input_hysteresis_voltage,
-            "Vos": input_offset_voltage,
-            "tpd": propagation_delay,
-        }
+        S(common_mode_rejection_ratio, suffix="CMRR"),
+        S(input_bias_current, suffix="Ib"),
+        S(input_hysteresis_voltage, suffix="Vhys"),
+        S(input_offset_voltage, suffix="Vos"),
+        S(propagation_delay, suffix="tpd"),
     ).put_on_type()
 
     designator_prefix = F.has_designator_prefix.MakeChild(

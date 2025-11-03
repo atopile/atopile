@@ -24,16 +24,15 @@ class OpAmp(fabll.Node):
     non_inverting_input = F.Electrical.MakeChild()
     output = F.Electrical.MakeChild()
 
+    S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "BW": bandwidth,
-            "CMRR": common_mode_rejection_ratio,
-            "Ib": input_bias_current,
-            "Vos": input_offset_voltage,
-            "GBW": gain_bandwidth_product,
-            "Iout": output_current,
-            # "SR": slew_rate,
-        }
+        S(bandwidth, suffix="BW"),
+        S(common_mode_rejection_ratio, suffix="CMRR"),
+        S(input_bias_current, suffix="Ib"),
+        S(input_offset_voltage, suffix="Vos"),
+        S(gain_bandwidth_product, suffix="GBW"),
+        S(output_current, suffix="Iout"),
+        # S(slew_rate, suffix="SR"),
     )
 
     _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(

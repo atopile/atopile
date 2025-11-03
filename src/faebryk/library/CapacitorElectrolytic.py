@@ -24,12 +24,11 @@ class CapacitorElectrolytic(fabll.Node):
     #     enum_t=TemperatureCoefficient
     # )
 
+    S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "capacitance": capacitance,
-            "max_voltage": max_voltage,
-            # "temperature_coefficient": temperature_coefficient,
-        }
+        S(capacitance, tolerance=True),
+        S(max_voltage),
+        # S(temperature_coefficient),
     )
 
     _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(

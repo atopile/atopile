@@ -17,7 +17,7 @@ class Inductor(fabll.Node):
     self_resonant_frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
 
     _is_pickable = F.is_pickable_by_type.MakeChild(
-        endpoint="inductors",
+        endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
         params={
             "inductance": inductance,
             "max_current": max_current,
@@ -30,13 +30,12 @@ class Inductor(fabll.Node):
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
+    S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "inductance": inductance,
-            "self_resonant_frequency": self_resonant_frequency,
-            "max_current": max_current,
-            "dc_resistance": dc_resistance,
-        },
+        S(inductance, tolerance=True),
+        S(self_resonant_frequency, tolerance=True),
+        S(max_current, tolerance=False),
+        S(dc_resistance, tolerance=False),
     )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
