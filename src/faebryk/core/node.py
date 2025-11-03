@@ -1352,7 +1352,8 @@ class Parameter(Node):
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            operands=[self, lit], constrain=True
+            operands=[self, lit],
+            constrain=False,  # FIXME
         )
 
     @classmethod

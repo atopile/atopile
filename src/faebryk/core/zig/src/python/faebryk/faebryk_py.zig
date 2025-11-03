@@ -972,7 +972,11 @@ fn wrap_edge_interface_connection_build() type {
                 return null;
             };
 
-            attributes.* = faebryk.interface.EdgeInterfaceConnection.build(allocator, shallow);
+            attributes.* = faebryk.interface.EdgeInterfaceConnection.build(allocator, shallow) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "Failed to build interface connection edge creation attributes");
+                allocator.destroy(attributes);
+                return null;
+            };
             return bind.wrap_obj("EdgeCreationAttributes", &edge_creation_attributes_type, EdgeCreationAttributesWrapper, attributes);
         }
     };
@@ -2858,7 +2862,7 @@ fn _unwrap_literal(value_obj: *py.PyObject) !graph.Literal {
 fn _copy_string_sequence(
     seq_obj: *py.PyObject,
     out: *std.ArrayList([]const u8),
-) error{MemoryError, TypeError}!void {
+) error{ MemoryError, TypeError }!void {
     const length = py.PySequence_Size(seq_obj);
     if (length < 0) {
         return error.TypeError;

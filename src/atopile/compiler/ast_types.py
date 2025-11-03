@@ -12,7 +12,9 @@ from enum import StrEnum
 from typing import Iterable, Self
 
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.library import Collections
 
 
 @dataclass(frozen=True)
@@ -100,7 +102,7 @@ class FieldRefPart(fabll.Node):
 class FieldRef(fabll.Node):
     source = SourceChunk.MakeChild()
     pin = fabll.Parameter.MakeChild()
-    parts = fabll.Sequence.MakeChild()  # TODO: specify child type
+    parts = Collections.PointerSequence.MakeChild()  # TODO: specify child type
 
     def setup(
         self, g: GraphView, source_info: SourceInfo, parts: Iterable[FieldRefPart.Info]
@@ -111,7 +113,12 @@ class FieldRef(fabll.Node):
             part = FieldRefPart.bind_typegraph(self.tg).create_instance(g=g)
             part.setup(g=g, info=part_info)
 
-            self.compose_with(part)
+            EdgeComposition.add_child(
+                bound_node=self.instance,
+                child=part.instance.node(),
+                child_identifier=str(id(part)),
+            )
+
             self.parts.get().append(part)
 
         return self
@@ -232,7 +239,7 @@ class ComparisonClause(fabll.Node):
 class ComparisonExpression(fabll.Node):
     source = SourceChunk.MakeChild()
     lhs = fabll.Optional.MakeChild()
-    rhs_clauses = fabll.Sequence.MakeChild()
+    rhs_clauses = Collections.PointerSequence.MakeChild()
 
     def setup(
         self,
@@ -245,7 +252,11 @@ class ComparisonExpression(fabll.Node):
         self.lhs.get().setup(g=g, value=lhs)
 
         for clause in rhs_clauses:
-            self.compose_with(clause)
+            EdgeComposition.add_child(
+                bound_node=self.instance,
+                child=clause.instance.node(),
+                child_identifier=str(id(clause)),
+            )
             self.rhs_clauses.get().append(clause)
 
         return self
@@ -333,12 +344,17 @@ class BoundedQuantity(fabll.Node):
 
 
 class Scope(fabll.Node):
-    stmts = fabll.Set.MakeChild()
+    stmts = Collections.PointerSet.MakeChild()
 
     def setup(self, g: GraphView, stmts: Iterable["StatementT"]) -> Self:
         for stmt in stmts:
             self.stmts.get().append(stmt)
-            self.compose_with(stmt)
+
+            EdgeComposition.add_child(
+                bound_node=self.instance,
+                child=stmt.instance.node(),
+                child_identifier=str(id(stmt)),
+            )
 
         return self
 
@@ -490,7 +506,7 @@ class IterableFieldRef(fabll.Node):
 
 class FieldRefList(fabll.Node):
     source = SourceChunk.MakeChild()
-    items = fabll.Sequence.MakeChild()
+    items = Collections.PointerSequence.MakeChild()
 
     def setup(
         self, g: GraphView, source_info: SourceInfo, items: Iterable[FieldRef]
@@ -499,7 +515,11 @@ class FieldRefList(fabll.Node):
 
         for item in items:
             self.items.get().append(item)
-            self.compose_with(item)
+            EdgeComposition.add_child(
+                bound_node=self.instance,
+                child=item.instance.node(),
+                child_identifier=str(id(item)),
+            )
 
         return self
 
@@ -579,7 +599,7 @@ class TemplateArg(fabll.Node):
 
 class Template(fabll.Node):
     source = SourceChunk.MakeChild()
-    args = fabll.Sequence.MakeChild()
+    args = Collections.PointerSequence.MakeChild()
 
     def setup(
         self, g: GraphView, source_info: SourceInfo, args: Iterable[TemplateArg]
@@ -588,7 +608,11 @@ class Template(fabll.Node):
 
         for arg in args:
             self.args.get().append(arg)
-            self.compose_with(arg)
+            EdgeComposition.add_child(
+                bound_node=self.instance,
+                child=arg.instance.node(),
+                child_identifier=str(id(arg)),
+            )
 
         return self
 

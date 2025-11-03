@@ -15,14 +15,12 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-import faebryk.library.Collections as Collections
-import faebryk.library.Expressions as Expressions
 import faebryk.library.Units as Units
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
-from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain
+import faebryk.library.Collections as Collections
 from faebryk.library.Logic import Logic
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.can_be_surge_protected import can_be_surge_protected
@@ -78,6 +76,7 @@ from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.is_representable_by_single_value_defined import is_representable_by_single_value_defined
+import faebryk.library.Expressions as Expressions
 from faebryk.library.Footprint import Footprint
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_defined_relative
@@ -87,6 +86,7 @@ from faebryk.library.has_descriptive_properties_defined import has_descriptive_p
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_package_requirements import has_package_requirements
+from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
