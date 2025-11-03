@@ -6,7 +6,7 @@ import typer
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
-from atopile.compiler.ast_graph import build_file, build_stdlib, link_imports
+from atopile.compiler.ast_graph import Linker, build_file, build_stdlib
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
@@ -253,7 +253,7 @@ def main():
         print_tree(type_root, renderer=typegraph_renderer)
 
     _section("Linking", sep="\n\n")
-    link_imports(graph, result.state, stdlib_registry, stdlib_tg)
+    Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
 
     _section("Post-Link Type Graph: ESP32_MINIMAL")
     app_type = result.state.type_roots["ESP32_MINIMAL"]

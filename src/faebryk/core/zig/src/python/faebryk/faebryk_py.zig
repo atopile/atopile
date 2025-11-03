@@ -2777,6 +2777,29 @@ fn _unwrap_literal(value_obj: *py.PyObject) !graph.Literal {
     return error.UnsupportedValue;
 }
 
+fn _copy_string_sequence(
+    seq_obj: *py.PyObject,
+    out: *std.ArrayList([]const u8),
+) error{MemoryError, TypeError}!void {
+    const length = py.PySequence_Size(seq_obj);
+    if (length < 0) {
+        return error.TypeError;
+    }
+
+    var idx: usize = 0;
+    const len_usize: usize = @intCast(length);
+    while (idx < len_usize) : (idx += 1) {
+        const item = py.PySequence_GetItem(seq_obj, @intCast(idx));
+        if (item == null) {
+            return error.TypeError;
+        }
+        defer py.Py_DECREF(item.?);
+
+        const segment = bind.unwrap_str_copy(item) orelse return error.TypeError;
+        out.append(segment) catch return error.MemoryError;
+    }
+}
+
 fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator) !?graph.DynamicAttributes {
     if (dict_obj == py.Py_None()) {
         return null;
@@ -2827,14 +2850,14 @@ fn wrap_typegraph_add_make_link() type {
             .doc = "Create a MakeLink node",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
-                lhs_reference_node: *graph.Node,
-                rhs_reference_node: *graph.Node,
+                lhs_reference: *graph.BoundNodeReference,
+                rhs_reference: *graph.BoundNodeReference,
                 edge_attributes: *faebryk.edgebuilder.EdgeCreationAttributes,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
-                    .lhs_reference_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
-                    .rhs_reference_node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                    .lhs_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .rhs_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
                     .edge_attributes = bind.ARG{ .Wrapper = EdgeCreationAttributesWrapper, .storage = &edge_creation_attributes_type },
                 };
             },
@@ -2845,21 +2868,80 @@ fn wrap_typegraph_add_make_link() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const type_node = kwarg_obj.type_node.*;
-            const edge_attributes = kwarg_obj.edge_attributes.*;
-
             const make_link = faebryk.typegraph.TypeGraph.add_make_link(
                 wrapper.data,
-                type_node,
-                kwarg_obj.lhs_reference_node,
-                kwarg_obj.rhs_reference_node,
-                edge_attributes,
+                kwarg_obj.type_node.*,
+                kwarg_obj.lhs_reference.*,
+                kwarg_obj.rhs_reference.*,
+                kwarg_obj.edge_attributes.*,
             ) catch {
                 py.PyErr_SetString(py.PyExc_ValueError, "add_make_link failed");
                 return null;
             };
 
             return graph_py.makeBoundNodePyObject(make_link);
+        }
+    };
+}
+
+fn wrap_typegraph_resolve_child_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "resolve_child_type",
+            .doc = "Resolve the type reached by a child path",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+                path: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const type_node = kwarg_obj.type_node.*;
+            const path_obj = kwarg_obj.path;
+            if (py.PySequence_Check(path_obj) != 1) {
+                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence of strings");
+                return null;
+            }
+
+            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            defer segments.deinit();
+
+            if (_copy_string_sequence(path_obj, &segments)) |_| {} else |err| {
+                switch (err) {
+                    error.MemoryError => py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path"),
+                    error.TypeError => py.PyErr_SetString(py.PyExc_TypeError, "path must contain only strings"),
+                }
+                return null;
+            }
+
+            const resolved_type = faebryk.typegraph.TypeGraph.resolve_child_type(
+                wrapper.data,
+                type_node,
+                segments.items,
+            ) catch |err| switch (err) {
+                error.ChildNotFound => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "child path not found");
+                    return null;
+                },
+                error.UnresolvedTypeReference => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "child path type is unresolved");
+                    return null;
+                },
+                error.OutOfMemory => {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "resolve_child_type failed");
+                    return null;
+                },
+            };
+
+            return graph_py.makeBoundNodePyObject(resolved_type);
         }
     };
 }
@@ -3130,6 +3212,8 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_make_child_type_reference(),
         wrap_typegraph_collect_unresolved_type_references(),
         wrap_typegraph_add_make_link(),
+        wrap_typegraph_ensure_child_reference(),
+        wrap_typegraph_resolve_child_type(),
         wrap_typegraph_instantiate(),
         wrap_typegraph_instantiate_node(),
         wrap_typegraph_reference_create(),
@@ -3668,4 +3752,57 @@ pub fn make_python_module() ?*py.PyObject {
     _ = wrap_trait_file(module.?);
     _ = wrap_operand_file(module.?);
     return module;
+}
+
+fn wrap_typegraph_ensure_child_reference() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "ensure_child_reference",
+            .doc = "Return a ChildReferenceNode for the given path, validating it against the type graph",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+                path: *py.PyObject,
+                validate: *py.PyObject = py.Py_True(),
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const path_obj = kwarg_obj.path;
+            if (py.PySequence_Check(path_obj) != 1) {
+                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence of strings");
+                return null;
+            }
+
+            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            defer segments.deinit();
+
+            if (_copy_string_sequence(path_obj, &segments)) |_| {} else |err| {
+                switch (err) {
+                    error.MemoryError => py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path"),
+                    error.TypeError => py.PyErr_SetString(py.PyExc_TypeError, "path must contain only strings"),
+                }
+                return null;
+            }
+
+            const reference = faebryk.typegraph.TypeGraph.ensure_child_reference(
+                wrapper.data,
+                kwarg_obj.type_node.*,
+                segments.items,
+                py.PyObject_IsTrue(kwarg_obj.validate) == 1,
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "child path not found");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(reference);
+        }
+    };
 }

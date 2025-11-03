@@ -7,7 +7,7 @@
 
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
-from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView, Literal, Node
+from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView, Literal
 
 class TypeGraph:
     @staticmethod
@@ -42,9 +42,22 @@ class TypeGraph:
         self,
         *,
         type_node: BoundNode,
-        lhs_reference_node: Node,
-        rhs_reference_node: Node,
+        lhs_reference: BoundNode,
+        rhs_reference: BoundNode,
         edge_attributes: EdgeCreationAttributes,
+    ) -> BoundNode: ...
+    def ensure_child_reference(
+        self,
+        *,
+        type_node: BoundNode,
+        path: list[str],
+        validate: bool = ...,
+    ) -> BoundNode: ...
+    def resolve_child_type(
+        self,
+        *,
+        type_node: BoundNode,
+        path: list[str],
     ) -> BoundNode: ...
     def instantiate(
         self, *, type_identifier: str, attributes: dict[str, Literal]

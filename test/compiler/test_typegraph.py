@@ -5,10 +5,10 @@ import pytest
 
 from atopile.compiler.ast_graph import (
     DslException,
+    Linker,
     build_file,
     build_source,
     build_stdlib,
-    link_imports,
 )
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.next import EdgeNext
@@ -148,7 +148,7 @@ def test_make_child_and_linking():
     unresolved = result.state.type_graph.collect_unresolved_type_references()
     assert not unresolved
 
-    link_imports(graph, result.state, stdlib_registry, stdlib_tg)
+    Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
 
     type_ref = EdgeComposition.get_child_by_identifier(
         bound_node=res_node, child_identifier="type_ref"
@@ -281,6 +281,73 @@ def test_nested_connects_across_child_fields():
     assert rhs_path == ["right", "connection"]
 
 
+def test_deep_nested_connects_across_child_fields():
+    _, _, _, result = _build_snippet(
+        """
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Level2:
+            branch = new Resistor
+
+        module Level1:
+            intermediate = new Level2
+
+        module App:
+            left = new Level1
+            right = new Level1
+            left.intermediate.branch ~ right.intermediate.branch
+        """
+    )
+    app_type = result.state.type_roots["App"]
+
+    make_links = _collect_make_links(app_type)
+    assert len(make_links) == 1
+
+    (_, lhs_path, rhs_path) = make_links[0]
+    assert lhs_path == ["left", "intermediate", "branch"]
+    assert rhs_path == ["right", "intermediate", "branch"]
+
+
+def test_nested_connect_missing_prefix_raises():
+    with pytest.raises(DslException, match="Failed to create reference"):
+        _build_snippet(
+            """
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Level2:
+            branch = new Resistor
+
+        module Level1:
+            intermediate = new Level2
+
+        module App:
+            left = new Level1
+            left.missing.branch ~ left.intermediate.branch
+            """
+        )
+
+
+def test_nested_block_definition_disallowed():
+    with pytest.raises(DslException, match="not permitted"):
+        _build_snippet(
+            """
+        import Resistor
+
+        module Root:
+            module Resistor:
+                pass
+        """
+        )
+
+
 def test_external_import_linking(tmp_path: Path):
     child_path = tmp_path / "child.ato"
     child_path.write_text(
@@ -316,7 +383,7 @@ def test_external_import_linking(tmp_path: Path):
     unresolved = result.state.type_graph.collect_unresolved_type_references()
     assert unresolved
 
-    link_imports(graph, result.state, stdlib_registry, stdlib_tg)
+    Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
 
     type_ref = EdgeComposition.get_child_by_identifier(
         bound_node=child_node, child_identifier="type_ref"

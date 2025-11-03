@@ -27,7 +27,7 @@ from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
-from faebryk.core.zig.gen.faebryk.linker import Linker
+from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 from faebryk.library.Expressions import Is
@@ -1080,11 +1080,6 @@ class GenTypeGraphIR:
             return ".".join(self.segments)
 
     @dataclass(frozen=True)
-    class Field:
-        path: GenTypeGraphIR.FieldPath
-        reference_node: BoundNode
-
-    @dataclass(frozen=True)
     class NewChildSpec:
         symbol: GenTypeGraphIR.Symbol
 
@@ -1093,16 +1088,17 @@ class GenTypeGraphIR:
         target_path: GenTypeGraphIR.FieldPath
         child_spec: GenTypeGraphIR.NewChildSpec
         parent_reference: BoundNode | None
+        parent_path: GenTypeGraphIR.FieldPath | None
 
     @dataclass(frozen=True)
     class AddMakeLinkAction:
-        lhs_ref: GenTypeGraphIR.Field
-        rhs_ref: GenTypeGraphIR.Field
+        lhs_ref: BoundNode
+        rhs_ref: BoundNode
 
     @dataclass
     class ScopeState:
         symbols: dict[str, GenTypeGraphIR.Symbol] = field(default_factory=dict)
-        fields: dict[str, GenTypeGraphIR.Field] = field(default_factory=dict)
+        fields: set[str] = field(default_factory=set)
 
 
 class _ScopeStack:
@@ -1123,29 +1119,23 @@ class _ScopeStack:
     def add_symbol(self, symbol: GenTypeGraphIR.Symbol) -> None:
         current_state = self.stack[-1]
         if symbol.name in current_state.symbols:
-            raise DslException(f"Symbol {symbol} already defined in scope")
+            raise DslException(f"Symbol `{symbol.name}` already defined in scope")
 
         current_state.symbols[symbol.name] = symbol
 
         print(f"Added symbol {symbol} to scope")
 
-    def add_field(self, field: GenTypeGraphIR.Field) -> None:
+    def add_field(self, path: GenTypeGraphIR.FieldPath) -> None:
         current_state = self.stack[-1]
-        if (key := str(field.path)) in current_state.fields:
+        if (key := str(path)) in current_state.fields:
             raise DslException(f"Field `{key}` already defined in scope")
 
-        current_state.fields[key] = field
+        current_state.fields.add(key)
 
         print(f"Added field {key} to scope")
 
     def has_field(self, path: GenTypeGraphIR.FieldPath) -> bool:
         return any(str(path) in state.fields for state in reversed(self.stack))
-
-    def require_field(self, path: GenTypeGraphIR.FieldPath) -> GenTypeGraphIR.Field:
-        for state in reversed(self.stack):
-            if str(path) in state.fields:
-                return state.fields[str(path)]
-        raise DslException(f"Field `{path}` is not defined in scope")
 
     def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
         for state in reversed(self.stack):
@@ -1153,6 +1143,13 @@ class _ScopeStack:
                 return state.symbols[name]
 
         raise DslException(f"Symbol `{name}` is not available in this scope")
+
+    @property
+    def depth(self) -> int:
+        return len(self.stack)
+
+    def is_symbol_defined(self, name: str) -> bool:
+        return any(name in state.symbols for state in self.stack)
 
 
 class _TypeContextStack:
@@ -1212,7 +1209,7 @@ class _TypeContextStack:
         if (target := symbol.type_node) is None:
             raise DslException(f"Type `{symbol.name}` is not defined in scope")
 
-        Linker.link_type_reference(
+        _Linker.link_type_reference(
             g=self._graph,
             type_reference=type_reference,
             target_type_node=target,
@@ -1221,12 +1218,10 @@ class _TypeContextStack:
     def _add_link(
         self, type_node: BoundNode, action: GenTypeGraphIR.AddMakeLinkAction
     ) -> None:
-        lhs_reference_node = action.lhs_ref.reference_node
-        rhs_reference_node = action.rhs_ref.reference_node
         self._type_graph.add_make_link(
             type_node=type_node,
-            lhs_reference_node=lhs_reference_node.node(),
-            rhs_reference_node=rhs_reference_node.node(),
+            lhs_reference=action.lhs_ref,
+            rhs_reference=action.rhs_ref,
             edge_attributes=EdgeInterfaceConnection.build(shallow=False),
         )
 
@@ -1279,6 +1274,17 @@ class ASTVisitor:
     Error handling strategy:
     - Fail early (TODO: revisit — return list of errors and let caller decide impact)
     - Use DslException for errors arising from code contents
+
+    Responsibilities & boundaries:
+    - Translate parsed AST nodes into high-level TypeGraph actions (e.g.
+      creating fields, wiring connections, recording imports) without peeking
+      into fabll/node semantics or mutating the TypeGraph directly.
+    - Maintain only minimal lexical bookkeeping (detecting redeclarations,
+      ensuring names are declared before reuse); structural validation and path
+      resolution are delegated to the TypeGraph.
+    - Defer cross-file linkage, stdlib loading, and part selection to the
+      surrounding build/linker code. The visitor produces a `BuildState` that
+      higher layers consume to finish linking.
 
     TODO: store graph references instead of reifying as IR?
     """
@@ -1428,10 +1434,16 @@ class ASTVisitor:
         )
 
     def visit_BlockDefinition(self, node: AST.BlockDefinition):
+        if self._scope_stack.depth != 1:
+            raise DslException("Nested block definitions are not permitted")
+
         module_name = cast_assert(
             str,
             node.type_ref.get().name.get().try_extract_constrained_literal(),
         )
+
+        if self._scope_stack.is_symbol_defined(module_name):
+            raise DslException(f"Symbol `{module_name}` already defined in scope")
 
         match node.get_block_type():
             case AST.BlockDefinition.BlockType.MODULE:
@@ -1514,12 +1526,22 @@ class ASTVisitor:
         assignable = self.visit(node.assignable.get().get_value())
 
         action: GenTypeGraphIR.AddMakeChildAction | None = None
+        parent_path: GenTypeGraphIR.FieldPath | None = None
         parent_reference: BoundNode | None = None
 
         if target_path.parent_segments:
             parent_path = GenTypeGraphIR.FieldPath(segments=target_path.parent_segments)
-            parent_field = self._scope_stack.require_field(parent_path)
-            parent_reference = parent_field.reference_node
+            if not self._scope_stack.has_field(parent_path):
+                raise DslException(f"Field `{parent_path}` is not defined in scope")
+
+            try:
+                parent_reference = self._type_graph.ensure_child_reference(
+                    type_node=self._type_stack.current(),
+                    path=list(parent_path.segments),
+                    validate=True,
+                )
+            except ValueError:
+                raise DslException(f"Failed to create parent reference: {parent_path}")
 
         match assignable:
             case GenTypeGraphIR.NewChildSpec():
@@ -1528,21 +1550,13 @@ class ASTVisitor:
                         f"Field `{target_path}` is already defined in this scope"
                     )
 
-                reference_node = self._type_graph.add_reference(
-                    type_node=self._type_stack.current(),
-                    path=list(target_path.segments),
-                )
-
-                self._scope_stack.add_field(
-                    GenTypeGraphIR.Field(
-                        path=target_path, reference_node=reference_node
-                    )
-                )
+                self._scope_stack.add_field(target_path)
 
                 action = GenTypeGraphIR.AddMakeChildAction(
                     target_path=target_path,
                     child_spec=assignable,
                     parent_reference=parent_reference,
+                    parent_path=parent_path,
                 )
             case _:
                 if not self._scope_stack.has_field(target_path):
@@ -1568,23 +1582,36 @@ class ASTVisitor:
         # TODO: handle creating sequence
 
     def visit_ConnectStmt(self, node: AST.ConnectStmt):
-        # TODO: handle connectables other than field refs
-
         lhs, rhs = node.get_lhs(), node.get_rhs()
 
-        # TODO
+        # TODO: handle connectables other than field refs
         if not isinstance(lhs, AST.FieldRef):
             raise NotImplementedError(f"Unhandled connectable type: {type(lhs)}")
         if not isinstance(rhs, AST.FieldRef):
             raise NotImplementedError(f"Unhandled connectable type: {type(rhs)}")
 
+        current_type = self._type_stack.current()
         lhs_path = self.visit_FieldRef(lhs)
         rhs_path = self.visit_FieldRef(rhs)
 
-        lhs_field = self._scope_stack.require_field(lhs_path)
-        rhs_field = self._scope_stack.require_field(rhs_path)
+        def _ensure_reference(path: GenTypeGraphIR.FieldPath) -> BoundNode:
+            (root, *_) = path.segments
+            root_path = GenTypeGraphIR.FieldPath(segments=(root,))
 
-        return GenTypeGraphIR.AddMakeLinkAction(lhs_ref=lhs_field, rhs_ref=rhs_field)
+            if not self._scope_stack.has_field(root_path):
+                raise DslException(f"Field `{root_path}` is not defined in scope")
+
+            try:
+                return self._type_graph.ensure_child_reference(
+                    type_node=current_type, path=list(path.segments), validate=True
+                )
+            except ValueError:
+                raise DslException(f"Failed to create reference: {path}")
+
+        lhs_ref = _ensure_reference(lhs_path)
+        rhs_ref = _ensure_reference(rhs_path)
+
+        return GenTypeGraphIR.AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
 
 
 @dataclass
@@ -1593,77 +1620,74 @@ class BuildFileResult:
     state: BuildState
 
 
-def _build_from_ast(
-    graph: GraphView,
-    ast_root: AST.File,
-    file_path: Path | None,
+def _build_from_ctx(
+    graph: GraphView, root_ctx: AtoParser.File_inputContext, file_path: Path | None
 ) -> BuildFileResult:
+    ast_type_graph = TypeGraph.create(g=graph)
+    ast_root = ANTLRVisitor(graph, ast_type_graph, file_path).visit(root_ctx)
+    assert isinstance(ast_root, AST.File)
     build_state = ASTVisitor(ast_root, graph, file_path).build()
     return BuildFileResult(ast_root=ast_root, state=build_state)
 
 
 def build_file(graph: GraphView, path: Path) -> BuildFileResult:
     # TODO: per-file caching
-    ast_type_graph = TypeGraph.create(g=graph)
-    parsed = parse_file(path)
-    ast_root = ANTLRVisitor(graph, ast_type_graph, path).visit(parsed)
-    assert isinstance(ast_root, AST.File)
-    return _build_from_ast(graph, ast_root, path)
+    return _build_from_ctx(graph, parse_file(path), path)
 
 
 def build_source(graph: GraphView, source: str) -> BuildFileResult:
-    ast_type_graph = TypeGraph.create(g=graph)
-    parsed = parse_text_as_file(source)
-    ast_root = ANTLRVisitor(graph, ast_type_graph, None).visit(parsed)
-    assert isinstance(ast_root, AST.File)
-    return _build_from_ast(graph, ast_root, None)
+    return _build_from_ctx(graph, parse_text_as_file(source), file_path=None)
 
 
-def _resolve_import_path(base_file: Path | None, raw_path: str) -> Path:
-    # TODO: include all search paths
-    # TODO: get base dirs from config
-    search_paths = [
-        *([base_file.parent] if base_file is not None else []),
-        Path(".ato/modules"),
-    ]
+class Linker:
+    @staticmethod
+    def _resolve_import_path(base_file: Path | None, raw_path: str) -> Path:
+        # TODO: include all search paths
+        # TODO: get base dirs from config
+        search_paths = [
+            *([base_file.parent] if base_file is not None else []),
+            Path(".ato/modules"),
+        ]
 
-    for search_path in search_paths:
-        if (candidate := search_path / raw_path).exists():
-            return candidate
+        for search_path in search_paths:
+            if (candidate := search_path / raw_path).exists():
+                return candidate
 
-    raise DslException(f"Import path not found: `{raw_path}`")
+        raise DslException(f"Import path not found: `{raw_path}`")
 
+    @staticmethod
+    def link_imports(
+        graph: GraphView,
+        build_state: BuildState,
+        stdlib_registry: dict[str, BoundNode],
+        stdlib_tg: TypeGraph,
+    ) -> None:
+        # TODO: handle cycles
 
-def link_imports(
-    graph: GraphView,
-    build_state: BuildState,
-    stdlib_registry: dict[str, BoundNode],
-    stdlib_tg: TypeGraph,
-) -> None:
-    # TODO: handle cycles
+        for type_reference, import_ref in build_state.external_type_refs:
+            if import_ref.path is None:
+                target_type_node = stdlib_registry[import_ref.name]
 
-    for type_reference, import_ref in build_state.external_type_refs:
-        if import_ref.path is None:
-            target_type_node = stdlib_registry[import_ref.name]
+            else:
+                source_path = Linker._resolve_import_path(
+                    base_file=build_state.file_path, raw_path=import_ref.path
+                )
+                assert source_path.exists()
 
-        else:
-            source_path = _resolve_import_path(
-                base_file=build_state.file_path, raw_path=import_ref.path
+                child_result = build_file(graph, source_path)
+                Linker.link_imports(
+                    graph, child_result.state, stdlib_registry, stdlib_tg
+                )
+                target_type_node = child_result.state.type_roots[import_ref.name]
+
+            _Linker.link_type_reference(
+                g=graph,
+                type_reference=type_reference,
+                target_type_node=target_type_node,
             )
-            assert source_path.exists()
 
-            child_result = build_file(graph, source_path)
-            link_imports(graph, child_result.state, stdlib_registry, stdlib_tg)
-            target_type_node = child_result.state.type_roots[import_ref.name]
-
-        Linker.link_type_reference(
-            g=graph,
-            type_reference=type_reference,
-            target_type_node=target_type_node,
-        )
-
-    if build_state.type_graph.collect_unresolved_type_references():
-        raise DslException("Unresolved type references remaining after linking")
+        if build_state.type_graph.collect_unresolved_type_references():
+            raise DslException("Unresolved type references remaining after linking")
 
 
 def build_stdlib(graph: GraphView) -> tuple[TypeGraph, dict[str, BoundNode]]:

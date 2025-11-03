@@ -1206,14 +1206,12 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
 
         tg.add_make_link(
             type_node=type_node,
-            lhs_reference_node=tg.add_reference(
-                type_node=type_node,
-                path=lhs_reference_path,
-            ).node(),
-            rhs_reference_node=tg.add_reference(
-                type_node=type_node,
-                path=rhs_reference_path,
-            ).node(),
+            lhs_reference=tg.ensure_child_reference(
+                type_node=type_node, path=lhs_reference_path, validate=False
+            ),
+            rhs_reference=tg.ensure_child_reference(
+                type_node=type_node, path=rhs_reference_path, validate=False
+            ),
             edge_attributes=edge,
         )
 

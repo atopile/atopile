@@ -521,18 +521,106 @@ pub const TypeGraph = struct {
     pub fn add_make_link(
         self: *@This(),
         target_type: BoundNodeReference,
-        lhs_reference: NodeReference,
-        rhs_reference: NodeReference,
+        lhs_reference: BoundNodeReference,
+        rhs_reference: BoundNodeReference,
         edge_attributes: EdgeCreationAttributes,
     ) !BoundNodeReference {
         const make_link = try self.instantiate_node(self.get_MakeLink());
         MakeLinkNode.Attributes.of(make_link).set_edge_attributes(edge_attributes);
 
-        _ = EdgeComposition.add_child(make_link, lhs_reference, "lhs");
-        _ = EdgeComposition.add_child(make_link, rhs_reference, "rhs");
+        _ = EdgeComposition.add_child(make_link, lhs_reference.node, "lhs");
+        _ = EdgeComposition.add_child(make_link, rhs_reference.node, "rhs");
         _ = EdgeComposition.add_child(target_type, make_link.node, null);
 
         return make_link;
+    }
+
+    fn find_make_child_node(
+        self: *@This(),
+        type_node: BoundNodeReference,
+        identifier: []const u8,
+    ) error{ ChildNotFound, OutOfMemory }!BoundNodeReference {
+        const FindCtx = struct {
+            target: []const u8,
+
+            pub fn visit(
+                self_ptr: *anyopaque,
+                edge: graph.BoundEdgeReference,
+            ) visitor.VisitResult(BoundNodeReference) {
+                const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
+                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+                const child_identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
+                    return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+                };
+
+                if (std.mem.eql(u8, child_identifier, ctx.target)) {
+                    return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
+                }
+
+                return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+            }
+        };
+
+        var ctx = FindCtx{ .target = identifier };
+        const visit_result = EdgeComposition.visit_children_of_type(
+            type_node,
+            self.get_MakeChild().node,
+            BoundNodeReference,
+            &ctx,
+            FindCtx.visit,
+        );
+
+        switch (visit_result) {
+            .OK => |make_child| return make_child,
+            .ERROR => |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => unreachable,
+            },
+            else => return error.ChildNotFound,
+        }
+    }
+
+    pub fn resolve_child_type(
+        self: *@This(),
+        type_node: BoundNodeReference,
+        path: []const []const u8,
+    ) !BoundNodeReference {
+        var current_type = type_node;
+
+        for (path) |segment| {
+            const make_child = self.find_make_child_node(current_type, segment) catch |err|
+                switch (err) {
+                    error.ChildNotFound => return error.ChildNotFound,
+                    else => return err,
+                };
+
+            const child_type = MakeChildNode.get_child_type(make_child) orelse {
+                return error.UnresolvedTypeReference;
+            };
+
+            current_type = child_type;
+        }
+
+        return current_type;
+    }
+
+    pub fn ensure_child_reference(
+        self: *@This(),
+        type_node: BoundNodeReference,
+        path: []const str,
+        validate: bool,
+    ) !BoundNodeReference {
+        if (path.len == 0) {
+            return error.ChildNotFound;
+        }
+
+        if (validate) {
+            _ = self.resolve_child_type(type_node, path) catch {
+                return error.ChildNotFound;
+            };
+        }
+
+        return try ChildReferenceNode.create_and_insert(self, path);
     }
 
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
@@ -788,7 +876,7 @@ test "basic instantiation" {
 
     // Build make link
     // TODO: use interface link
-    _ = try tg.add_make_link(Resistor, cap1p1_reference.node, cap1p2_reference.node, .{
+    _ = try tg.add_make_link(Resistor, cap1p1_reference, cap1p2_reference, .{
         .edge_type = EdgePointer.tid,
         .directional = true,
         .name = null,

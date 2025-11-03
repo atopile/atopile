@@ -194,8 +194,8 @@ def test_typegraph_instantiate():
 
     type_graph.add_make_link(
         type_node=Resistor,
-        lhs_reference_node=rp1_ref.node(),
-        rhs_reference_node=rp2_ref.node(),
+        lhs_reference=rp1_ref,
+        rhs_reference=rp2_ref,
         edge_attributes=edge_attrs,
     )
 
