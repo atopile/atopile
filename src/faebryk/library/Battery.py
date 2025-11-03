@@ -21,10 +21,10 @@ class Battery(fabll.Node):
         reference=power
     )
 
-    # _net_name = F.has_net_name.MakeChild(
-    #     name="BAT_VCC",
-    #     level=F.has_net_name.Level.SUGGESTED,
-    # )
+    _net_name = F.has_net_name.MakeChild(
+        name="BAT_VCC",
+        level=F.has_net_name.Level.SUGGESTED,
+    )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.BAT
