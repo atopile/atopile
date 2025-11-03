@@ -8,6 +8,7 @@ import faebryk.library._F as F
 from faebryk.libs.util import once
 
 
+# TODO: Do we need this? Is this used other than rp2040 example?
 class _TSwitch(fabll.Node):
     T = fabll.ModuleInterface
 

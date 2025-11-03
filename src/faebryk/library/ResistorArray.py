@@ -12,22 +12,36 @@ logger = logging.getLogger(__name__)
 
 
 class ResistorArray(fabll.Node):
+    resistors_ = F.Collections.PointerSet.MakeChild()
     resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
     rated_power = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Watt)
     rated_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-
-    def resistors(self) -> list[F.Resistor]:
-        return times(self._resistor_count, F.Resistor)
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.R
     )
 
-    def __preinit__(self):
-        for resistor in self.resistors():
-            resistor.resistance = self.resistance
-            resistor.max_power = self.rated_power
-            resistor.max_voltage = self.rated_voltage
+    @classmethod
+    def MakeChild(cls, resistor_count: int):
+        out = fabll.ChildField(cls)
+        for i in range(resistor_count):
+            resistor_child_field = F.Resistor.MakeChild()
+            out.add_dependant(resistor_child_field)
+            out.add_dependant(
+                F.Collections.PointerSet.EdgeField(
+                    [out, cls.resistors_],
+                    [resistor_child_field],
+                )
+            )
+        return out
+
+    @property
+    def resistors(self) -> list[F.Resistor]:
+        print(self.resistors_.get())
+        return [
+            F.Resistor.bind_instance(resistor.instance)
+            for resistor in self.resistors_.get().as_list()
+        ]
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
