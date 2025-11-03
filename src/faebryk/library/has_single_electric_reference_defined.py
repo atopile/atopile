@@ -4,9 +4,7 @@
 from typing import TYPE_CHECKING
 
 import faebryk.core.node as fabll
-
-# import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
@@ -14,29 +12,21 @@ if TYPE_CHECKING:
 
 
 class has_single_electric_reference_defined(fabll.Node):
-    # reference = fabll.ChildField(ElectricPower)
+    reference_ptr = F.Collections.Pointer.MakeChild()
 
     @classmethod
     def MakeChild(cls, reference: fabll.ChildField["ElectricPower"]):
         out = fabll.ChildField(cls)
-        field = fabll.EdgeField(
-            [out],
-            [reference],
-            edge=EdgePointer.build(identifier="reference", order=None),
+        out.add_dependant(
+            F.Collections.Pointer.EdgeField([out, cls.reference_ptr], [reference])
         )
-        out.add_dependant(field)
         return out
 
-    def get_reference(self) -> "ElectricPower":
-        reference_node = not_none(
-            EdgePointer.get_pointed_node_by_identifier(
-                identifier="reference",
-                bound_node=self.instance,
-            )
-        )
-        if not isinstance(reference_node, ElectricPower):
+    def get_reference(self) -> "F.ElectricPower":
+        reference_node = self.reference_ptr.get().deref()
+        if not (reference_node.isinstance(F.ElectricPower)):
             raise TypeError(
                 f"has_single_electric_reference_defined can only be used on "
                 f"ElectricPower, got {reference_node}"
             )
-        return reference_node
+        return reference_node  # type: ignore
