@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 def _render_tokens(
     token_stream: CommonTokenStream, start_token: Token, stop_token: Token
 ) -> list["ConsoleRenderable"]:
-    from atopile.parse_utils import (
+    from atopile.compiler.parse_utils import (
         PygmentsLexerReconstructor,
         get_src_info_from_token,
     )
@@ -135,7 +135,7 @@ class _BaseUserException(_BaseBaseUserException):
         return instance
 
     def get_frozen(self) -> tuple:
-        from atopile.parse_utils import get_src_info_from_token
+        from atopile.compiler.parse_utils import get_src_info_from_token
 
         if self.origin_start and self.origin_stop:
             return (

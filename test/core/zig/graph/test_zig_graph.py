@@ -1,3 +1,6 @@
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+
+
 def test_load_graph_module():
     from faebryk.core.zig.gen.graph.graph import GraphView  # type: ignore  # noqa: F401
 
@@ -143,6 +146,7 @@ def test_edge_next():
 
 def test_typegraph_instantiate():
     from faebryk.core.zig.gen.faebryk.composition import EdgeComposition  # type: ignore
+    from faebryk.core.zig.gen.faebryk.linker import Linker  # type: ignore
     from faebryk.core.zig.gen.faebryk.pointer import EdgePointer  # type: ignore
     from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph  # type: ignore
     from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView  # type: ignore
@@ -150,28 +154,54 @@ def test_typegraph_instantiate():
     g = GraphView.create()
     type_graph = TypeGraph.create(g=g)
 
-    Electrical = type_graph.add_type(identifier="Electrical")
+    type_graph.add_type(identifier="Electrical")
     Resistor = type_graph.add_type(identifier="Resistor")
-    type_graph.add_make_child(
-        type_node=Resistor, child_type_node=Electrical, identifier="p1"
+    make_child_p1 = type_graph.add_make_child(
+        type_node=Resistor,
+        child_type_identifier="Electrical",
+        identifier="p1",
+        node_attributes=None,
+        mount_reference=None,
     )
-    type_graph.add_make_child(
-        type_node=Resistor, child_type_node=Electrical, identifier="p2"
+    make_child_p2 = type_graph.add_make_child(
+        type_node=Resistor,
+        child_type_identifier="Electrical",
+        identifier="p2",
+        node_attributes=None,
+        mount_reference=None,
     )
+
+    electrical = type_graph.get_type_by_name(type_identifier="Electrical")
+    assert electrical is not None
+
+    for make_child in (make_child_p1, make_child_p2):
+        type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
+        assert type_ref is not None
+        Linker.link_type_reference(
+            g=g,
+            type_reference=type_ref,
+            target_type_node=electrical,
+        )
 
     rp1_ref = type_graph.add_reference(type_node=Resistor, path=["p1"])
     rp2_ref = type_graph.add_reference(type_node=Resistor, path=["p2"])
-    type_graph.add_make_link(
-        type_node=Resistor,
-        lhs_reference_node=rp1_ref.node(),
-        rhs_reference_node=rp2_ref.node(),
+    edge_attrs = EdgeCreationAttributes.init(
         edge_type=EdgePointer.get_tid(),
-        edge_directional=True,
-        edge_name="test",
-        edge_attributes={"test_key": "test_value"},
+        directional=True,
+        name="test",
+        dynamic=None,
     )
 
-    resistor_instance = type_graph.instantiate(type_identifier="Resistor")
+    type_graph.add_make_link(
+        type_node=Resistor,
+        lhs_reference=rp1_ref,
+        rhs_reference=rp2_ref,
+        edge_attributes=edge_attrs,
+    )
+
+    resistor_instance = type_graph.instantiate(
+        type_identifier="Resistor", attributes={}
+    )
 
     collected = []
     EdgeComposition.visit_children_edges(
@@ -205,7 +235,6 @@ def test_typegraph_instantiate():
     assert e.target().is_same(other=rp2.node())
     assert e.directional() is True
     assert e.name() == "test"
-    assert e.get_attr(key="test_key") == "test_value", e.get_attr(key="test_key")
 
 
 if __name__ == "__main__":

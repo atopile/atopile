@@ -191,7 +191,7 @@ pub const NodeAttributes = struct {
     uuid: UUID.T,
     dynamic: DynamicAttributes,
     pub fn visit(self: *@This(), ctx: *anyopaque, f: fn (*anyopaque, str, Literal, bool) void) void {
-        f(ctx, "uuid", Literal{ .Int = self.uuid }, false);
+        f(ctx, "uuid", Literal{ .Uint = self.uuid }, false);
         self.dynamic.visit(ctx, f);
     }
 

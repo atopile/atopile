@@ -59,11 +59,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#dep_import_stmt.
-    def visitDep_import_stmt(self, ctx:AtoParser.Dep_import_stmtContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#import_stmt.
     def visitImport_stmt(self, ctx:AtoParser.Import_stmtContext):
         return self.visitChildren(ctx)
@@ -81,26 +76,6 @@ class AtoParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtoParser#assign_stmt.
     def visitAssign_stmt(self, ctx:AtoParser.Assign_stmtContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#cum_assign_stmt.
-    def visitCum_assign_stmt(self, ctx:AtoParser.Cum_assign_stmtContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#set_assign_stmt.
-    def visitSet_assign_stmt(self, ctx:AtoParser.Set_assign_stmtContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#cum_operator.
-    def visitCum_operator(self, ctx:AtoParser.Cum_operatorContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#cum_assignable.
-    def visitCum_assignable(self, ctx:AtoParser.Cum_assignableContext):
         return self.visitChildren(ctx)
 
 
@@ -279,16 +254,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#functional.
-    def visitFunctional(self, ctx:AtoParser.FunctionalContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#bound.
-    def visitBound(self, ctx:AtoParser.BoundContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#slice.
     def visitSlice(self, ctx:AtoParser.SliceContext):
         return self.visitChildren(ctx)
@@ -376,11 +341,6 @@ class AtoParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtoParser#unit.
     def visitUnit(self, ctx:AtoParser.UnitContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#type_info.
-    def visitType_info(self, ctx:AtoParser.Type_infoContext):
         return self.visitChildren(ctx)
 
 

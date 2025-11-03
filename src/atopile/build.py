@@ -60,8 +60,8 @@ def _init_ato_app() -> fabll.Module:
     """Initialize a specific .ato build."""
 
     import faebryk.core.node as fabll
-    from atopile import front_end
-    from atopile.datatypes import TypeRef
+    from atopile.compiler import front_end
+    from atopile.compiler.datatypes import TypeRef
 
     node = front_end.bob.build_file(
         config.build.entry_file_path,

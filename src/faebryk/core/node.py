@@ -11,6 +11,7 @@ from typing_extensions import Callable, deprecated
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
+from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
@@ -22,6 +23,7 @@ from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
+    cast_assert,
     dataclass_as_kwargs,
     not_none,
     zip_dicts_by_key,
@@ -192,15 +194,25 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
-        self.t.tg.add_make_child(
+        make_child = self.t.tg.add_make_child(
             type_node=self.t.get_or_create_type(),
-            child_type_node=self.nodetype.bind_typegraph(
-                self.t.tg
-            ).get_or_create_type(),
+            child_type_identifier=self.nodetype._type_identifier(),
             identifier=identifier,
             node_attributes=self.attributes.to_node_attributes()
             if self.attributes is not None
             else None,
+            mount_reference=None,
+        )
+
+        type_reference = not_none(
+            self.t.tg.get_make_child_type_reference(make_child=make_child)
+        )
+        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
+
+        Linker.link_type_reference(
+            g=self.t.tg.get_graph_view(),
+            type_reference=type_reference,
+            target_type_node=child_type_node,
         )
 
     def get(self) -> T:
@@ -538,7 +550,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if isinstance(field, ChildField):
             identifier = field.get_identifier()
             if field._type_child:
-                child_nodetype: type[Node[Any]] = field.nodetype
+                child_nodetype: type[Node[Any]] = cast(type[Node[Any]], field.nodetype)
                 child_instance = child_nodetype.bind_typegraph(tg=t.tg).create_instance(
                     g=t.tg.get_graph_view(),
                     attributes=field.attributes,
@@ -552,7 +564,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 mc = t.MakeChild(
                     nodetype=field.nodetype,
                     identifier=identifier,
-                    attributes=field.attributes,
+                    attributes=cast(NodeAttributes, field.attributes),
                 )
                 mc._add_to_typegraph()
             for dependant in field._dependants:
@@ -632,12 +644,27 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         identifier = child.get_identifier()
         nodetype = child.nodetype
 
+        parent_type_node = cls.bind_typegraph(tg).get_or_create_type()
         child_type_node = nodetype.bind_typegraph(tg).get_or_create_type()
-        return tg.add_make_child(
-            type_node=cls.bind_typegraph(tg).get_or_create_type(),
-            child_type_node=child_type_node,
+
+        make_child = tg.add_make_child(
+            type_node=parent_type_node,
+            child_type_identifier=nodetype._type_identifier(),
             identifier=identifier,
+            node_attributes=None,
+            mount_reference=None,
         )
+
+        type_reference = tg.get_make_child_type_reference(make_child=make_child)
+        assert type_reference is not None
+
+        Linker.link_type_reference(
+            g=parent_type_node.g(),
+            type_reference=type_reference,
+            target_type_node=child_type_node,
+        )
+
+        return make_child
 
     @classmethod
     def _add_type_child(
@@ -713,6 +740,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 return self.get_root_id()
             raise FabLLException("Node has no parent")
         return parent[1]
+
+    def get_type_name(self) -> str | None:
+        # TODO: move to EdgeType
+
+        if (type_edge := EdgeType.get_type_edge(bound_node=self.instance)) is None:
+            return None
+
+        type_node = EdgeType.get_type_node(edge=type_edge.edge())
+        type_bound = type_edge.g().bind(node=type_node)
+        type_name = type_bound.node().get_attr(key="type_identifier")
+        return cast_assert(str, type_name)
 
     def get_parent(self) -> tuple["Node", str] | None:
         parent_edge = EdgeComposition.get_parent_edge(bound_node=self.instance)
@@ -821,6 +859,27 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             ),
         )
         return children
+
+    def get_child(self, name: str) -> "Node[Any]":
+        # TODO: improve this implementation
+        children: list["Node[Any]"] = []
+
+        def collect(ctx: list["Node[Any]"], edge: BoundEdge) -> None:
+            if edge.edge().name() == name:
+                ctx.append(
+                    Node(
+                        instance=edge.g().bind(
+                            node=EdgeComposition.get_child_node(edge=edge.edge())
+                        )
+                    )
+                )
+
+        EdgeComposition.visit_children_edges(
+            bound_node=self.instance, ctx=children, f=collect
+        )
+
+        (child,) = children
+        return child
 
     # TODO: convert to visitor pattern
     # TODO: implement in zig
@@ -1164,19 +1223,36 @@ class TypeNodeBoundTG[N: Node[Any], A: NodeAttributes]:
 
         tg.add_make_link(
             type_node=type_node,
-            lhs_reference_node=tg.add_reference(
-                type_node=type_node,
-                path=lhs_reference_path,
-            ).node(),
-            rhs_reference_node=tg.add_reference(
-                type_node=type_node,
-                path=rhs_reference_path,
-            ).node(),
+            lhs_reference=tg.ensure_child_reference(
+                type_node=type_node, path=lhs_reference_path, validate=False
+            ),
+            rhs_reference=tg.ensure_child_reference(
+                type_node=type_node, path=rhs_reference_path, validate=False
+            ),
             edge_attributes=edge,
         )
 
 
 # ------------------------------------------------------------
+
+
+class Optional(Node):
+    value = Node.MakeChild()
+
+    def setup(self, g: GraphView, value: Node) -> Self:
+        EdgePointer.point_to(
+            bound_node=self.instance,
+            target_node=value.instance.node(),
+            identifier="value",
+            order=None,
+        )
+        return self
+
+    def get_value(self) -> Node | None:
+        value = EdgePointer.get_pointed_node_by_identifier(
+            bound_node=self.instance, identifier="value"
+        )
+        return Node.bind_instance(instance=value) if value else None
 
 
 class Traits:
@@ -1276,7 +1352,8 @@ class Parameter(Node):
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            operands=[self, lit], constrain=True
+            operands=[self, lit],
+            constrain=False,  # FIXME
         )
 
     @classmethod

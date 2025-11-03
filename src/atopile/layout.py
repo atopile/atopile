@@ -7,8 +7,8 @@ from typing import Any, override
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import front_end
 from atopile.address import AddressError, AddrStr
+from atopile.compiler import front_end
 from atopile.config import ProjectConfig, config
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import (
