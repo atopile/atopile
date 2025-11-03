@@ -1024,7 +1024,16 @@ class ANTLRVisitor(AtoParserVisitor):
         )
 
 
-class DslException(Exception): ...
+class DslException(Exception):
+    """
+    Exceptions arising from user's DSL code.
+    """
+
+
+class CompilerException(Exception):
+    """
+    Exceptions arising from internal compiler failures.
+    """
 
 
 @dataclass
@@ -1099,6 +1108,10 @@ class GenTypeGraphIR:
     class ScopeState:
         symbols: dict[str, GenTypeGraphIR.Symbol] = field(default_factory=dict)
         fields: set[str] = field(default_factory=set)
+        # Aliases allow temporarily binding a loop variable name to a concrete
+        # field path during `for` iteration. Only used within the current
+        # lexical scope and intended to be short-lived.
+        aliases: dict[str, GenTypeGraphIR.FieldPath] = field(default_factory=dict)
 
 
 class _ScopeStack:
@@ -1116,8 +1129,12 @@ class _ScopeStack:
         finally:
             self.stack.pop()
 
+    @property
+    def current(self) -> GenTypeGraphIR.ScopeState:
+        return self.stack[-1]
+
     def add_symbol(self, symbol: GenTypeGraphIR.Symbol) -> None:
-        current_state = self.stack[-1]
+        current_state = self.current
         if symbol.name in current_state.symbols:
             raise DslException(f"Symbol `{symbol.name}` already defined in scope")
 
@@ -1126,7 +1143,7 @@ class _ScopeStack:
         print(f"Added symbol {symbol} to scope")
 
     def add_field(self, path: GenTypeGraphIR.FieldPath) -> None:
-        current_state = self.stack[-1]
+        current_state = self.current
         if (key := str(path)) in current_state.fields:
             raise DslException(f"Field `{key}` already defined in scope")
 
@@ -1143,6 +1160,31 @@ class _ScopeStack:
                 return state.symbols[name]
 
         raise DslException(f"Symbol `{name}` is not available in this scope")
+
+    @contextmanager
+    def temporary_alias(self, name: str, path: GenTypeGraphIR.FieldPath):
+        assert self.stack, "Alias cannot be installed without an active scope"
+
+        if self.is_symbol_defined(name):
+            raise DslException(
+                f"Alias `{name}` would shadow an existing symbol in scope"
+            )
+
+        state = self.current
+        had_existing = name in state.aliases
+        previous = state.aliases.get(name)
+        state.aliases[name] = path
+        try:
+            yield
+        finally:
+            if had_existing:
+                assert previous is not None
+                state.aliases[name] = previous
+            else:
+                state.aliases.pop(name, None)
+
+    def resolve_alias(self, name: str) -> GenTypeGraphIR.FieldPath | None:
+        return self.current.aliases.get(name)
 
     @property
     def depth(self) -> int:
@@ -1354,9 +1396,13 @@ class ASTVisitor:
         ]
         return name, arguments
 
-    def _enable_experiment(self, experiment: ASTVisitor._Experiments) -> None:
+    def enable_experiment(self, experiment: ASTVisitor._Experiments) -> None:
         print(f"Enabling experiment: {experiment}")
         self._experiments.add(experiment)
+
+    def ensure_experiment(self, experiment: ASTVisitor._Experiments) -> None:
+        if experiment not in self._experiments:
+            raise DslException(f"Experiment {experiment} is not enabled")
 
     def build(self) -> BuildState:
         # must start with a File (for now)
@@ -1399,17 +1445,17 @@ class ASTVisitor:
             case ASTVisitor._Pragma.EXPERIMENT.value:
                 match pragma_args:
                     case [ASTVisitor._Experiments.BRIDGE_CONNECT]:
-                        self._enable_experiment(ASTVisitor._Experiments.BRIDGE_CONNECT)
+                        self.enable_experiment(ASTVisitor._Experiments.BRIDGE_CONNECT)
                     case [ASTVisitor._Experiments.FOR_LOOP]:
-                        self._enable_experiment(ASTVisitor._Experiments.FOR_LOOP)
+                        self.enable_experiment(ASTVisitor._Experiments.FOR_LOOP)
                     case [ASTVisitor._Experiments.TRAITS]:
-                        self._enable_experiment(ASTVisitor._Experiments.TRAITS)
+                        self.enable_experiment(ASTVisitor._Experiments.TRAITS)
                     case [ASTVisitor._Experiments.MODULE_TEMPLATING]:
-                        self._enable_experiment(
+                        self.enable_experiment(
                             ASTVisitor._Experiments.MODULE_TEMPLATING
                         )
                     case [ASTVisitor._Experiments.INSTANCE_TRAITS]:
-                        self._enable_experiment(ASTVisitor._Experiments.INSTANCE_TRAITS)
+                        self.enable_experiment(ASTVisitor._Experiments.INSTANCE_TRAITS)
                     case _:
                         raise DslException(
                             f"Experiment not recognized: `{pragma_text}`"
@@ -1517,6 +1563,12 @@ class ASTVisitor:
         if not segments:
             raise DslException("Empty field reference encountered")
 
+        # Alias rewrite (for-loop variable): if the root segment is an alias,
+        # expand it to the aliased field path.
+        if (aliased := self._scope_stack.resolve_alias(segments[0])) is not None:
+            # Replace root with alias path
+            segments = list(aliased.segments) + segments[1:]
+
         return GenTypeGraphIR.FieldPath(segments=tuple(segments))
 
     def visit_Assignment(self, node: AST.Assignment):
@@ -1541,7 +1593,9 @@ class ASTVisitor:
                     validate=True,
                 )
             except ValueError:
-                raise DslException(f"Failed to create parent reference: {parent_path}")
+                raise CompilerException(
+                    f"Failed to create parent reference: {parent_path}"
+                ) from None
 
         match assignable:
             case GenTypeGraphIR.NewChildSpec():
@@ -1585,14 +1639,14 @@ class ASTVisitor:
         lhs, rhs = node.get_lhs(), node.get_rhs()
 
         # TODO: handle connectables other than field refs
-        if not isinstance(lhs, AST.FieldRef):
-            raise NotImplementedError(f"Unhandled connectable type: {type(lhs)}")
-        if not isinstance(rhs, AST.FieldRef):
-            raise NotImplementedError(f"Unhandled connectable type: {type(rhs)}")
+        if not lhs.isinstance(AST.FieldRef):
+            raise NotImplementedError("Unhandled connectable type for LHS")
+        if not rhs.isinstance(AST.FieldRef):
+            raise NotImplementedError("Unhandled connectable type for RHS")
 
         current_type = self._type_stack.current()
-        lhs_path = self.visit_FieldRef(lhs)
-        rhs_path = self.visit_FieldRef(rhs)
+        lhs_path = self.visit_FieldRef(lhs.cast(t=AST.FieldRef))
+        rhs_path = self.visit_FieldRef(rhs.cast(t=AST.FieldRef))
 
         def _ensure_reference(path: GenTypeGraphIR.FieldPath) -> BoundNode:
             (root, *_) = path.segments
@@ -1603,15 +1657,37 @@ class ASTVisitor:
 
             try:
                 return self._type_graph.ensure_child_reference(
-                    type_node=current_type, path=list(path.segments), validate=True
+                    type_node=current_type, path=list(path.segments), validate=False
                 )
             except ValueError:
-                raise DslException(f"Failed to create reference: {path}")
+                raise CompilerException(f"Failed to create reference: {path}") from None
 
         lhs_ref = _ensure_reference(lhs_path)
         rhs_ref = _ensure_reference(rhs_path)
 
         return GenTypeGraphIR.AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
+
+    def visit_ForStmt(self, node: AST.ForStmt):
+        self.ensure_experiment(ASTVisitor._Experiments.FOR_LOOP)
+
+        iterable_node = node.iterable.get().get_value()
+
+        # TODO: support IterableFieldRef (containers, slices)
+        if not iterable_node.isinstance(AST.FieldRefList):
+            raise NotImplementedError("FOR: non-list iterable not supported yet")
+
+        list_node = iterable_node.cast(t=AST.FieldRefList)
+        items = list_node.items.get().as_list()
+
+        target_literal = node.target.get().try_extract_constrained_literal()
+        loop_var = cast_assert(str, target_literal)
+
+        # Execute body for each item by aliasing the loop var to the item's path
+        for item_ref in items:
+            item_path = self.visit_FieldRef(item_ref.cast(t=AST.FieldRef))
+            with self._scope_stack.temporary_alias(loop_var, item_path):
+                for stmt in node.scope.get().stmts.get().as_list():
+                    self._type_stack.apply_action(self.visit(stmt))
 
 
 @dataclass

@@ -89,6 +89,24 @@ def _build_snippet(source: str):
     return graph, stdlib_tg, stdlib_registry, result
 
 
+def _collect_children_by_name(type_node, name: str):
+    results: list = []
+
+    def _collector(ctx: list, bound_edge):
+        child_node = EdgeComposition.get_child_node(edge=bound_edge.edge())
+        bound = bound_edge.g().bind(node=child_node)
+        identifier = bound.node().get_attr(key="child_identifier")
+        if identifier == name:
+            ctx.append(bound)
+
+    EdgeComposition.visit_children_edges(
+        bound_node=type_node,
+        ctx=results,
+        f=_collector,
+    )
+    return results
+
+
 def test_block_definitions_recorded():
     _, _, _, result = _build_snippet(
         """
@@ -158,6 +176,214 @@ def test_make_child_and_linking():
         bound_node=type_ref, identifier="resolved"
     )
     assert resolved is not None
+
+
+def test_for_loop_connects_twice():
+    _, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module App:
+            left = new Resistor
+            right = new Resistor
+            sink = new Resistor
+
+            for r in [left, right]:
+                r ~ sink
+        """
+    )
+    app_type = result.state.type_roots["App"]
+
+    make_links = _collect_make_links(app_type)
+    assert len(make_links) == 2
+
+    paths = sorted([(tuple(lhs), tuple(rhs)) for (_, lhs, rhs) in make_links])
+    assert paths == [(("left",), ("sink",)), (("right",), ("sink",))]
+
+
+def test_for_loop_requires_experiment():
+    with pytest.raises(DslException, match="experiment"):
+        _build_snippet(
+            """
+            module Electrical:
+                pass
+
+            module Resistor:
+                unnamed = new Electrical[2]
+
+            module App:
+                left = new Resistor
+                right = new Resistor
+                sink = new Resistor
+
+                for r in [left, right]:
+                    r ~ sink
+            """
+        )
+
+
+def test_for_iterable_not_list_unsupported():
+    with pytest.raises(NotImplementedError, match="Unhandled iterable type"):
+        _build_snippet(
+            """
+            #pragma experiment("FOR_LOOP")
+
+            module Electrical:
+                pass
+
+            module Resistor:
+                unnamed = new Electrical[2]
+
+            module Inner:
+                connection = new Resistor
+
+            module App:
+                items = new Inner[2]
+                sink = new Resistor
+
+                for it in items:
+                    it.connection ~ sink
+            """
+        )
+
+
+def test_for_loop_alias_does_not_leak():
+    with pytest.raises(DslException, match="not defined"):
+        _build_snippet(
+            """
+            #pragma experiment("FOR_LOOP")
+
+            module Electrical:
+                pass
+
+            module Resistor:
+                unnamed = new Electrical[2]
+
+            module App:
+                left = new Resistor
+                for r in [left]:
+                    pass
+                r ~ left
+            """
+        )
+
+
+def test_for_loop_nested_field_paths():
+    _, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Inner:
+            connection = new Resistor
+
+        module App:
+            left = new Inner
+            sink = new Resistor
+            for i in [left]:
+                i.connection ~ sink
+        """
+    )
+    app_type = result.state.type_roots["App"]
+    make_links = _collect_make_links(app_type)
+    assert len(make_links) == 1
+    (_, lhs, rhs) = make_links[0]
+    assert lhs == ["left", "connection"]
+    assert rhs == ["sink"]
+
+
+def test_for_loop_assignment_creates_children():
+    _, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Inner:
+            pass
+
+        module App:
+            left = new Inner
+            right = new Inner
+            for i in [left, right]:
+                i.extra = new Resistor
+        """
+    )
+    app_type = result.state.type_roots["App"]
+    extras = _collect_children_by_name(app_type, "extra")
+    assert len(extras) == 2
+    # Each created extra should have a non-null mount reference
+    for extra in extras:
+        mount_ref = EdgeComposition.get_child_by_identifier(
+            bound_node=extra, child_identifier="mount"
+        )
+        assert mount_ref is not None
+
+
+def test_two_for_loops_same_var_accumulates_links():
+    _, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module App:
+            a = new Resistor
+            b = new Resistor
+            c = new Resistor
+            sink = new Resistor
+
+            for r in [a, b]:
+                r ~ sink
+            for r in [c]:
+                r ~ sink
+        """
+    )
+    app_type = result.state.type_roots["App"]
+    make_links = _collect_make_links(app_type)
+    assert len(make_links) == 3
+    pairs = sorted([(tuple(lhs), tuple(rhs)) for (_, lhs, rhs) in make_links])
+    assert pairs == [(("a",), ("sink",)), (("b",), ("sink",)), (("c",), ("sink",))]
+
+
+def test_for_loop_alias_shadow_symbol_raises():
+    with pytest.raises(DslException, match="shadow"):
+        _build_snippet(
+            """
+            #pragma experiment("FOR_LOOP")
+            import Resistor
+
+            module Electrical:
+                pass
+
+            module Resistor2:
+                unnamed = new Electrical[2]
+
+            module App:
+                left = new Resistor2
+                for Resistor in [left]:
+                    pass
+            """
+        )
 
 
 def test_nested_make_child_uses_mount_reference():
