@@ -31,25 +31,9 @@ class MOSFET(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.Q
-    ).put_on_type()
+    )
 
-    # @fabll.rt_field
-    # def pickable(self) -> F.is_pickable_by_type:
-    #     return F.is_pickable_by_type(p
-    #         F.is_pickable_by_type.Type.MOSFET,
-    #         {
-    #             "channel_type": self.channel_type,
-    #             # TODO: add support in backend
-    #             # "saturation_type": self.saturation_type,
-    #             "gate_source_threshold_voltage": self.gate_source_threshold_voltage,
-    #             "max_drain_source_voltage": self.max_drain_source_voltage,
-    #             "max_continuous_drain_current": self.max_continuous_drain_current,
-    #             "on_resistance": self.on_resistance,
-    #         },
-    #     )
-
-    # TODO pretty confusing
-    can_bridge = F.can_bridge.MakeChild(in_=source, out_=drain)
+    _can_bridge = F.can_bridge.MakeChild(in_=source, out_=drain)
 
     pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
         mapping={

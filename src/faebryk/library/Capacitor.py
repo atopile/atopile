@@ -53,7 +53,7 @@ class Capacitor(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.C
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         """
@@ -70,4 +70,4 @@ class Capacitor(fabll.Node):
             electrical1 ~> capacitor ~> electrical2
         """,
         F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

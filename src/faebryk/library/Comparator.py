@@ -44,11 +44,11 @@ class Comparator(fabll.Node):
         S(input_hysteresis_voltage, suffix="Vhys"),
         S(input_offset_voltage, suffix="Vos"),
         S(propagation_delay, suffix="tpd"),
-    ).put_on_type()
+    )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
@@ -88,4 +88,4 @@ class Comparator(fabll.Node):
         # Output will be HIGH when input_signal > reference_voltage
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

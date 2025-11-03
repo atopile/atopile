@@ -46,10 +46,11 @@ class Crystal(fabll.Node):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    footprint = F.can_attach_to_footprint_symmetrically.MakeChild()
-    designator = F.has_designator_prefix.MakeChild(
+    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.XTAL
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

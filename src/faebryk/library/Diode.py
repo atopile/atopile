@@ -23,11 +23,11 @@ class Diode(fabll.Node):
     S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
         S(forward_voltage, tolerance=True),
-    ).put_on_type()
+    )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.D
-    ).put_on_type()
+    )
 
     _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
         mapping={
@@ -64,4 +64,4 @@ class Diode(fabll.Node):
         power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

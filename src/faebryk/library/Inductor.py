@@ -33,14 +33,14 @@ class Inductor(fabll.Node):
     S = F.has_simple_value_representation_based_on_params_chain.Spec
     _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
         S(inductance, tolerance=True),
-        S(self_resonant_frequency, tolerance=True),
-        S(max_current, tolerance=False),
-        S(dc_resistance, tolerance=False),
+        S(self_resonant_frequency),
+        S(max_current),
+        S(dc_resistance),
     )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.L
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
@@ -62,4 +62,4 @@ class Inductor(fabll.Node):
         power_input ~> inductor ~> filtered_output
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

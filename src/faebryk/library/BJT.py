@@ -41,7 +41,7 @@ class BJT(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.Q
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

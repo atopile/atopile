@@ -56,7 +56,7 @@ class MultiCapacitor(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.C
-    ).put_on_type()
+    )
 
     def capacitors(self) -> list[F.Capacitor]:
         count = self.count
@@ -109,4 +109,4 @@ class MultiCapacitor(fabll.Node):
         electrical2 ~ multicapacitor.unnamed[1]
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

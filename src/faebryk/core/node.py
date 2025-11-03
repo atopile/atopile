@@ -1908,8 +1908,39 @@ def test_lightweight():
 
     # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
     # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
-    print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
-    print(resistor_instance.get_trait(F.has_usage_example).language)
+
+    # TODO: Fix this to pull traits from the type node
+    # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
+    # print(resistor_instance.get_trait(F.has_usage_example).language)
+
+    simple_repr = resistor_instance.get_trait(
+        F.has_simple_value_representation_based_on_params_chain
+    )
+    print(simple_repr.get_specs())
+    specs_set = simple_repr.specs_set_.get()
+    assert isinstance(specs_set, F.Collections.PointerSet)
+    print(simple_repr.get_params())
+    print(simple_repr.get_value())
+
+    _ = F.Battery.bind_typegraph(tg=tg).get_or_create_type()
+    battery_instance = F.Battery.bind_typegraph(tg=tg).create_instance(g=g)
+    ref = battery_instance.get_trait(
+        F.has_single_electric_reference_defined
+    ).get_reference()
+    print(ref)
+    assert (
+        battery_instance.get_trait(F.has_net_name).level
+        == F.has_net_name.Level.SUGGESTED
+    )
+    assert battery_instance.get_trait(F.has_net_name).name == "BAT_VCC"
+
+    _ = F.OpAmp.bind_typegraph(tg=tg).get_or_create_type()
+    op_amp_instance = F.OpAmp.bind_typegraph(tg=tg).create_instance(g=g)
+    print(
+        op_amp_instance.get_trait(
+            F.has_pin_association_heuristic_lookup_table
+        ).get_mapping_as_dict()
+    )
 
 
 if __name__ == "__main__":

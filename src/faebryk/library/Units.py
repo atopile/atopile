@@ -117,6 +117,10 @@ class Byte(fabll.Node):
     _is_unit = fabll.IsUnit.MakeChild("B", [(Dimensionless, 8)])
 
 
+class VoltsPerSecond(fabll.Node):
+    _is_unit = fabll.IsUnit.MakeChild("V/s", [(Volt, 1), (Second, -1)])
+
+
 # Scalar units ------------------------------------------------------------------------
 
 # dB, %, ppm

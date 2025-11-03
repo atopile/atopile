@@ -32,7 +32,7 @@ class Resistor(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.R
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         """
@@ -41,4 +41,4 @@ class Resistor(fabll.Node):
             resistor.resistance = 10kohm +/- 5%
         """,
         F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

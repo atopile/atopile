@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 import faebryk.library._F as F
 from faebryk.libs.units import P
 
@@ -15,11 +16,23 @@ class OpAmp(fabll.Node):
     input_offset_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     gain_bandwidth_product = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
     output_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    # slew_rate = fabll.Parameter.MakeChild_Numeric(
-    #     unit=F.Units.Volt / F.Units.Second
+    slew_rate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.VoltsPerSecond)
+
+    # TODO: Refactor pin association heuristic to use ref paths insted of child field
+    power = fabll.ChildField(F.ElectricPower)
+    power_hv = fabll.ChildField(F.Electrical)
+    # fabll.EdgeField(
+    #     [power],
+    #     [power_hv],
+    #     edge=EdgeInterfaceConnection.build(identifier="power_hv", order=None),
+    # )
+    power_lv = fabll.ChildField(F.Electrical)
+    # fabll.EdgeField(
+    #     [power],
+    #     [power_lv],
+    #     edge=EdgeInterfaceConnection.build(identifier="power_hv", order=None),
     # )
 
-    power = F.ElectricPower.MakeChild()
     inverting_input = F.Electrical.MakeChild()
     non_inverting_input = F.Electrical.MakeChild()
     output = F.Electrical.MakeChild()
@@ -32,13 +45,13 @@ class OpAmp(fabll.Node):
         S(input_offset_voltage, suffix="Vos"),
         S(gain_bandwidth_product, suffix="GBW"),
         S(output_current, suffix="Iout"),
-        # S(slew_rate, suffix="SR"),
+        S(slew_rate, suffix="SR"),
     )
 
     _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
         mapping={
-            power.nodetype.hv: ["V+", "Vcc", "Vdd", "Vcc+"],
-            power.nodetype.lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
+            power_hv: ["V+", "Vcc", "Vdd", "Vcc+"],
+            power_lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
             inverting_input: ["-", "IN-"],
             non_inverting_input: ["+", "IN+"],
             output: ["OUT"],
@@ -91,4 +104,4 @@ class OpAmp(fabll.Node):
         output_signal ~ opamp.output
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

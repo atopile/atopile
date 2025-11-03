@@ -25,13 +25,13 @@ class Fuse(fabll.Node):
     response_type = fabll.Parameter.MakeChild_Enum(enum_t=ResponseType)
     trip_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
 
-    attach_to_footprint = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
 
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.F
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

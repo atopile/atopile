@@ -13,7 +13,7 @@ class SPIFlash(fabll.Node):
     memory_size = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Byte)
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
-    ).put_on_type()
+    )
 
     def single_reference(self):
         return F.has_single_electric_reference_defined(
