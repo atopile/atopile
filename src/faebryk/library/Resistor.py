@@ -25,8 +25,8 @@ class Resistor(fabll.Node):
         },
     )
 
-    S = F.has_simple_value_representation_based_on_params_chain.Spec
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
         S(resistance, tolerance=True),
         S(max_power),
     )

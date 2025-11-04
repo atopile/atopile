@@ -36,7 +36,7 @@ class ResistorVoltageDivider(fabll.Node):
     ratio = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Dimensionless)
 
     def can_bridge(self):
-        return F.can_bridge_defined(self.power.hv, self.output.line)
+        return F.can_bridge(self.power.hv, self.output.line)
 
     def __preinit__(self):
         # Connections

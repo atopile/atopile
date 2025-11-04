@@ -56,7 +56,7 @@ class FilterElectricalRC(fabll.Node):
         )
 
     def can_bridge(self):
-        return F.can_bridge_defined(self.in_.line, self.out.line)
+        return F.can_bridge(self.in_.line, self.out.line)
 
     @classmethod
     def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):

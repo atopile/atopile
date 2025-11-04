@@ -7,6 +7,7 @@ from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 class can_bridge(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
     in_ = fabll.ChildField(fabll.Node)
     out_ = fabll.ChildField(fabll.Node)
 

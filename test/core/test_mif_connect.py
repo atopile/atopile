@@ -10,6 +10,7 @@ import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 import faebryk.library._F as F
+
 # from faebryk.core.link import (
 #     LinkDirect,
 #     LinkDirectConditional,
@@ -17,6 +18,7 @@ import faebryk.library._F as F
 #     LinkDirectDerived,
 # )
 from faebryk.core.node import IMPLIED_PATHS
+
 # from faebryk.libs.app.erc import (
 #     ERCFaultShortedModuleInterfaces,
 #     ERCPowerSourcesShortedError,
@@ -769,7 +771,7 @@ def test_shallow_bridge_simple():
 
         @fabll.rt_field
         def can_bridge(self):
-            return F.can_bridge_defined(self.high_in, self.high_out)
+            return F.can_bridge(self.high_in, self.high_out)
 
     bridge = ShallowBridge()
     high1 = High()
@@ -1046,6 +1048,7 @@ def test_isolated_connect_simple():
     assert not x1.reference.is_connected_to(x2.reference)
     assert not x1.reference.hv.is_connected_to(x2.reference.hv)
 
+
 def test_basic_i2c():
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
@@ -1066,23 +1069,75 @@ def test_basic_i2c():
     assert ~i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
 
     # Electricals connected
-    assert i2c1.scl.get().line.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().line.get())
-    assert i2c1.sda.get().line.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().line.get())
+    assert (
+        i2c1.scl.get()
+        .line.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().line.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .line.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().line.get())
+    )
 
     # Electric powers connected
-    assert i2c1.scl.get().reference.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get())
-    assert i2c1.sda.get().reference.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get())
+    assert (
+        i2c1.scl.get()
+        .reference.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().reference.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .reference.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().reference.get())
+    )
 
     # Electric powers electricals connected
-    assert i2c1.scl.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().hv.get())
-    assert i2c1.scl.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().lv.get())
-    assert i2c1.sda.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().hv.get())
-    assert i2c1.sda.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    assert (
+        i2c1.scl.get()
+        .reference.get()
+        .hv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    )
+    assert (
+        i2c1.scl.get()
+        .reference.get()
+        .lv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .reference.get()
+        .hv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().reference.get().hv.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .reference.get()
+        .lv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    )
 
-    assert ~i2c1.scl.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().lv.get())
-    assert ~i2c1.scl.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get().reference.get().hv.get())
-    assert ~i2c1.sda.get().reference.get().hv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().lv.get())
-    assert ~i2c1.sda.get().reference.get().lv.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get().reference.get().hv.get())
+    assert ~i2c1.scl.get().reference.get().hv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    assert ~i2c1.scl.get().reference.get().lv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    assert ~i2c1.sda.get().reference.get().hv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    assert ~i2c1.sda.get().reference.get().lv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.sda.get().reference.get().hv.get())
 
 
 def test_isolated_connect_erc():

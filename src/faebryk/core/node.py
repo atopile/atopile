@@ -1890,9 +1890,9 @@ def test_lightweight():
     # TODO: test endpoint extraction from endpoint property
     # assert endpoint == "resistors"
 
-    # Test has_simple_value_representation_based_on_params_chain
+    # Test has_simple_value_representation
     # hsvprp = resistor_instance.get_trait(
-    #     F.has_simple_value_representation_based_on_params_chain
+    #     F.has_simple_value_representation
     # )
     # print(hsvprp.get_value())
 
@@ -1927,9 +1927,7 @@ def test_lightweight():
     # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
     # print(resistor_instance.get_trait(F.has_usage_example).language)
 
-    simple_repr = resistor_instance.get_trait(
-        F.has_simple_value_representation_based_on_params_chain
-    )
+    simple_repr = resistor_instance.get_trait(F.has_simple_value_representation)
     print(simple_repr.get_specs())
     specs_set = simple_repr.specs_set_.get()
     assert isinstance(specs_set, F.Collections.PointerSet)

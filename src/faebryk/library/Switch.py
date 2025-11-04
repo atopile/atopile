@@ -36,7 +36,7 @@ def Switch[T: fabll.ModuleInterface](interface_type: type[T]):
 
         @fabll.rt_field
         def can_bridge(self):
-            return F.can_bridge_defined(*self.unnamed)
+            return F.can_bridge(*self.unnamed)
 
         @staticmethod
         def is_instance(obj: fabll.Node) -> "TypeGuard[_Switch]":

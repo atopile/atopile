@@ -20,8 +20,8 @@ class Diode(fabll.Node):
 
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    S = F.has_simple_value_representation_based_on_params_chain.Spec
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
         S(forward_voltage, tolerance=True),
     )
 

@@ -33,8 +33,6 @@ class ElectricSignal(fabll.Node):
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.reference)
 
-
-
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
@@ -91,19 +89,11 @@ class ElectricSignal(fabll.Node):
     def connect_all_references(ifs: Iterable["ElectricSignal"]) -> F.ElectricPower:
         return F.ElectricPower.connect(*[x.reference for x in ifs])
 
-    def surge_protected(self):
-        class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
-            def protect(_self, owner: fabll.Node):
-                out = super().protect(owner)
-                for tvs in out.get_children(direct_only=False, types=F.TVS):
-                    tvs.reverse_working_voltage.alias_is(self.reference.voltage)
-                return out
-
-        return _can_be_surge_protected_defined(self.reference.lv, self.line)
-
     @property
     def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
-        if (connected_to := self.line.get_trait(fabll.is_interface).get_connected()) is None:
+        if (
+            connected_to := self.line.get_trait(fabll.is_interface).get_connected()
+        ) is None:
             return None
 
         parallel_resistors: list[F.Resistor] = []
@@ -118,7 +108,10 @@ class ElectricSignal(fabll.Node):
             other_side = [x for x in parent.unnamed if x is not mif]
             assert len(other_side) == 1, "Resistors are bilateral"
 
-            if self.reference.hv not in other_side[0].get_trait(fabll.is_interface).get_connected():
+            if (
+                self.reference.hv
+                not in other_side[0].get_trait(fabll.is_interface).get_connected()
+            ):
                 # cannot trivially determine effective resistance
                 return None
 

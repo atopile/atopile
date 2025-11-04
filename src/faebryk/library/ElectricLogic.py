@@ -27,11 +27,9 @@ class ElectricLogic(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-
 
     class has_pulls(fabll.Node):
         @abstractmethod
@@ -127,8 +125,6 @@ class ElectricLogic(fabll.Node):
     # ----------------------------------------
     def pulled(self):
         return ElectricLogic.can_be_pulled_defined(self.line, self.reference)
-
-    # specializable_types = fabll.f_field(F.can_specialize_defined)([F.Logic])
 
     # ----------------------------------------
     #                functions

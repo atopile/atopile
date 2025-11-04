@@ -47,8 +47,8 @@ class MultiCapacitor(fabll.Node):
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
-    S = F.has_simple_value_representation_based_on_params_chain.Spec
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
         S(capacitance, tolerance=True),
         S(max_voltage),
         # S(temperature_coefficient),

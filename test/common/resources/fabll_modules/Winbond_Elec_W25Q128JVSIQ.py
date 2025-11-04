@@ -49,10 +49,6 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
             case_sensitive=False,
         )
 
-    @fabll.rt_field
-    def decoupled(self):
-        return F.can_be_decoupled_rails(self.power)
-
     def __preinit__(self):
         # ------------------------------------
         #           connections

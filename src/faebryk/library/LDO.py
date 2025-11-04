@@ -68,15 +68,12 @@ class LDO(fabll.Node):
             F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )
 
-    def decoupled(self):
-        return F.can_be_decoupled_rails(self.power_in, self.power_out)
-
     def can_bridge(self):
-        return F.can_bridge_defined(self.power_in, self.power_out)
+        return F.can_bridge(self.power_in, self.power_out)
 
     def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
+        S = F.has_simple_value_representation.Spec
+        return F.has_simple_value_representation(
             S(self.output_voltage, tolerance=True),
             S(self.output_current),
             S(self.ripple_rejection_ratio),

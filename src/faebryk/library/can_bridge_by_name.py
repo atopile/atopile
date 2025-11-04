@@ -5,6 +5,10 @@ import faebryk.core.node as fabll
 
 
 class can_bridge_by_name(fabll.Node):
+    """
+    Only keeping for ato v1 compatibility.
+    """
+
     def __init__(self, input_name: str = "input", output_name: str = "output"):
         # super().__init__()
         self._input_name = input_name

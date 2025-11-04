@@ -42,29 +42,6 @@ def apply_layouts(app: fabll.Node):
                 n.get_trait(F.has_pcb_layout).apply()
 
 
-def apply_routing(app: fabll.Node, transformer: PCB_Transformer):
-    strategies: list[tuple[F.has_pcb_routing_strategy, int]] = []
-
-    for i, level in enumerate(app.get_tree(types=fabll.Node).iter_by_depth()):
-        for n in level:
-            if not n.has_trait(F.has_pcb_routing_strategy):
-                continue
-
-            strategies.append((n.get_trait(F.has_pcb_routing_strategy), i))
-
-    logger.info("Applying routes")
-
-    # sort by (prio, level)
-    for strategy, level in sorted(
-        strategies, key=lambda x: (x[0].priority, x[1]), reverse=True
-    ):
-        logger.debug(f"{strategy} | {level=}")
-
-        routes = strategy.calculate(transformer)
-        for route in routes:
-            apply_route_in_pcb(route, transformer)
-
-
 def open_pcb(pcb_path: os.PathLike):
     import subprocess
 

@@ -48,7 +48,7 @@ class RP2040(fabll.Node):
 
         @fabll.rt_field
         def bridge(self):
-            return F.can_bridge_defined(self.power_in, self.power_out)
+            return F.can_bridge(self.power_in, self.power_out)
 
     class SPI(F.SPI):
         cs: F.ElectricLogic
@@ -155,10 +155,6 @@ class RP2040(fabll.Node):
     @fabll.rt_field
     def pinmux(self):
         return RP2040Pinmux(self)
-
-    @fabll.rt_field
-    def decoupled(self):
-        return F.can_be_decoupled_rails(self.power_io, self.power_core)
 
     designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U

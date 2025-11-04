@@ -430,10 +430,6 @@ def update_pcb(
     pcb.transformer.apply_design()
     pcb.transformer.check_unattached_fps()
 
-    if transform_trait := app.try_get_trait(F.has_layout_transform):
-        logger.info("Transforming PCB")
-        transform_trait.transform(pcb.transformer)
-
     # set layout
     apply_layouts(app)
     pcb.transformer.move_footprints()
