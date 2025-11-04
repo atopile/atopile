@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -225,6 +226,7 @@ class EasyEDAFootprint:
                 m.path = Path(m.path).parent.as_posix()
 
         new_fp = kicad.convert(fp)
+        cls._attach_via_nets(new_fp)
         return cls(new_fp)
 
     def dump(self, path: Path):
@@ -245,6 +247,61 @@ class EasyEDAFootprint:
             self.footprint,
             other.footprint,
         )
+
+    @staticmethod
+    def _attach_via_nets(footprint: kicad.footprint.FootprintFile):
+        pads = footprint.footprint.pads
+
+        smd_pads = [
+            p
+            for p in pads
+            if getattr(p, "type", None) == "smd" and getattr(p, "name", "")
+        ]
+        if not smd_pads:
+            return
+
+        for via in pads:
+            if getattr(via, "type", None) != "thru_hole":
+                continue
+            if getattr(via, "name", ""):
+                continue
+
+            via_center = via.at
+            for pad in smd_pads:
+                if EasyEDAFootprint._point_in_pad(via_center, pad):
+                    via.name = pad.name
+                    break
+
+    @staticmethod
+    def _point_in_pad(point, pad) -> bool:
+        size = getattr(pad, "size", None)
+        if size is None:
+            return False
+
+        x, y = point.x, point.y
+        px, py = pad.at.x, pad.at.y
+        angle = (pad.at.r or 0) * math.pi / 180
+
+        dx = x - px
+        dy = y - py
+        if angle:
+            cos_a = math.cos(-angle)
+            sin_a = math.sin(-angle)
+            dx, dy = dx * cos_a - dy * sin_a, dx * sin_a + dy * cos_a
+
+        sx = (getattr(size, "w", 0) or 0) / 2
+        sy = (getattr(size, "h", 0) or 0) / 2
+
+        if sx == 0 or sy == 0:
+            return False
+
+        shape = getattr(pad, "shape", "")
+        if shape == "rect":
+            return -sx <= dx <= sx and -sy <= dy <= sy
+        if shape == "oval":
+            return (dx * dx) / (sx * sx) + (dy * dy) / (sy * sy) <= 1
+
+        return False
 
 
 class EasyEDASymbol:
