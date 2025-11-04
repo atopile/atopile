@@ -1956,6 +1956,12 @@ def test_lightweight():
         ).get_mapping_as_dict()
     )
 
+    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
+    footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
+    # print(footprint_instance.get_trait(F.has_footprint_impl).get_footprint())
+
+    print(resistor_instance.has_trait(F.has_footprint))
+
 
 if __name__ == "__main__":
     import typer
@@ -1964,4 +1970,4 @@ if __name__ == "__main__":
 
     # test_manual_resistor_def()
 
-    typer.run(test_manual_resistor_def)
+    typer.run(test_lightweight)

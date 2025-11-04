@@ -13,6 +13,7 @@ class Resistor(fabll.Node):
     max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
 
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _footprint = fabll.ChildField(F.has_footprint)
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
     _is_pickable = F.is_pickable_by_type.MakeChild(

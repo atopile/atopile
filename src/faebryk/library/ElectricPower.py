@@ -3,7 +3,7 @@
 
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.library._F import Electrical, Units, has_usage_example
 
 
 class ElectricPower(fabll.Node):
@@ -15,8 +15,8 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    hv = F.Electrical.MakeChild()
-    lv = F.Electrical.MakeChild()
+    hv = Electrical.MakeChild()
+    lv = Electrical.MakeChild()
 
     # ----------------------------------------
     #                 traits
@@ -73,16 +73,16 @@ class ElectricPower(fabll.Node):
     #         return surge_protection
 
     voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Volt,
+        unit=Units.Volt,
     )
     max_current = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Ampere,
+        unit=Units.Ampere,
     )
 
     # _has_single_electric_reference = F.has_single_electric_reference_defined.MakeChild()
 
     bus_max_current_consumption_sum = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Ampere,
+        unit=Units.Ampere,
     )
 
     # _surge_protected: can_be_surge_protected_power
@@ -136,7 +136,7 @@ class ElectricPower(fabll.Node):
     #     self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
     #     self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = F.has_usage_example.MakeChild(
+    usage_example = has_usage_example.MakeChild(
         example="""
         import ElectricPower
 
@@ -150,5 +150,5 @@ class ElectricPower(fabll.Node):
         # Connect an example bypass capacitor
         power_5v.hv ~> example_capacitor ~> power_5v.lv
         """,
-        language=F.has_usage_example.Language.ato,
+        language=has_usage_example.Language.ato,
     )
