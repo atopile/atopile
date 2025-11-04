@@ -116,6 +116,23 @@ class has_implicit_constraints(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
 
+class IsConstrainable(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    def constrain(self) -> None:
+        parent = fabll.Traits.get_obj(fabll.Traits.bind(self), fabll.Node)
+        fabll.Traits.add_to(
+            parent,
+            IsConstrained.bind_typegraph_from_instance(self.instance).create_instance(
+                g=self.instance.g()
+            ),
+        )
+
+
+class IsConstrained(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
 # --------------------------------------------------------------------------------------
 
 # TODO distribute
@@ -437,7 +454,7 @@ class Differentiate(fabll.Node):
 
 
 class And(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="∧",
@@ -455,7 +472,7 @@ class And(fabll.Node):
 
 
 class Or(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="∨",
@@ -473,7 +490,7 @@ class Or(fabll.Node):
 
 
 class Not(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="¬",
@@ -491,7 +508,7 @@ class Not(fabll.Node):
 
 
 class Xor(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⊕",
@@ -509,7 +526,7 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⇒",
@@ -622,7 +639,7 @@ class SymmetricDifference(fabll.Node):
 
 
 class LessThan(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="<",
@@ -644,7 +661,7 @@ class LessThan(fabll.Node):
 
 
 class GreaterThan(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol=">",
@@ -666,7 +683,7 @@ class GreaterThan(fabll.Node):
 
 
 class LessOrEqual(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="≤",
@@ -688,7 +705,7 @@ class LessOrEqual(fabll.Node):
 
 
 class GreaterOrEqual(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="≥",
@@ -710,7 +727,7 @@ class GreaterOrEqual(fabll.Node):
 
 
 class NotEqual(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="≠",
@@ -732,7 +749,7 @@ class NotEqual(fabll.Node):
 
 
 class IsBitSet(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="b[]",
@@ -757,7 +774,7 @@ class IsBitSet(fabll.Node):
 
 
 class IsSubset(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⊆",
@@ -782,7 +799,7 @@ class IsSubset(fabll.Node):
 
 
 class IsSuperset(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⊇",
@@ -807,7 +824,7 @@ class IsSuperset(fabll.Node):
 
 
 class Cardinality(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="||",
@@ -832,7 +849,7 @@ class Cardinality(fabll.Node):
 
 
 class Is(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="=",
@@ -853,8 +870,11 @@ class Is(fabll.Node):
         cls, operands: list[fabll.RefPath]
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
-        out.add_dependant(fabll.IsConstrained.MakeChild())
-        out.add_dependant(*OperandSet.EdgeFields([out, cls.operands], operands))
+        out.add_dependant(IsConstrained.MakeChild(), identifier="constrain")
+        out.add_dependant(
+            *OperandSet.EdgeFields([out, cls.operands], operands),
+            identifier="connect_operands",
+        )
         return out
 
     @classmethod
@@ -863,10 +883,7 @@ class Is(fabll.Node):
         ref: list[str | fabll.ChildField[Any]],
         value: fabll.LiteralT,
     ) -> fabll.ChildField[Any]:
-        lit = fabll.ChildField(
-            fabll.LiteralNode,
-            attributes=fabll.LiteralNodeAttributes(value=value),
-        )
+        lit = fabll.LiteralNode.MakeChild(value=value)
         out = cls.MakeChild_Constrain([ref, [lit]])
-        out.add_dependant(lit)
+        out.add_dependant(lit, identifier="lit", before=True)
         return out

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
 from enum import Enum
+from textwrap import indent
 from tkinter import N
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
@@ -22,7 +23,9 @@ from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
+    cast_assert,
     dataclass_as_kwargs,
+    indented_container,
     not_none,
     zip_dicts_by_key,
 )
@@ -51,6 +54,36 @@ class NodeException(FabLLException):
 class NodeNoParent(NodeException):
     def __init__(self, node: "Node[Any]"):
         super().__init__(node, "Node has no parent")
+
+
+class ChildNotFound(NodeException):
+    def __init__(self, node: "Node[Any]", identifier: str):
+        super().__init__(node, f"Child with identifier {identifier} not found")
+
+
+class PathNotResolvable(NodeException):
+    def __init__(
+        self,
+        node: "Node[Any]",
+        path: "list[str] | RefPath",
+        error_node: "Node[Any]",
+        error_identifier: str,
+    ):
+        # get all children of error_node
+        try:
+            children = error_node.get_children(
+                direct_only=True, include_root=False, types=Node
+            )
+            children_str = "\n".join(f"- {c}" for c in children)
+        except Exception as e:
+            children_str = f"Error getting children of '{error_node}': {e}"
+
+        super().__init__(
+            node,
+            f"Path {path} not resolvable from '{node}'.\n"
+            f" No child found at '{error_node}' with identifier '{error_identifier}'.\n"
+            f"Available children: {indented_container(children_str)}",
+        )
 
 
 # --------------------------------------------------------------------------------------
@@ -129,6 +162,7 @@ class ChildField[T: Node[Any]](Field, ChildAccessor[T]):
     ):
         self.nodetype = nodetype
         self._dependants: list["ChildField[Any] | EdgeField"] = []
+        self._prepend_dependants: list["ChildField[Any] | EdgeField"] = []
         self.attributes = attributes
         super().__init__(identifier=identifier)
 
@@ -143,22 +177,29 @@ class ChildField[T: Node[Any]](Field, ChildAccessor[T]):
             f"{type(InstanceChildBoundInstance).__name__}"
         ) from None
 
-    def add_dependant(self, *dependant: "ChildField[Any] | EdgeField"):
+    def add_dependant(
+        self,
+        *dependant: "ChildField[Any] | EdgeField",
+        identifier: str | None = None,
+        before: bool = False,
+    ):
         for d in dependant:
-            d._set_locator(None)
-            self._dependants.append(d)
-
-    def put_on_type(self) -> Self:
-        super().put_on_type()
-        for dependant in self._dependants:
-            dependant.put_on_type()
-        return self
+            if identifier is not None:
+                d._set_locator(f"{identifier}_{id(d):04x}")
+            else:
+                d._set_locator(None)
+            if before:
+                self._prepend_dependants.append(d)
+            else:
+                self._dependants.append(d)
 
     def __repr__(self) -> str:
         return (
             f"ChildField(nodetype={self.nodetype.__qualname__},"
             f" identifier={self.identifier}, attributes={self.attributes})"
-            f" dependants={self._dependants})"
+            f" dependants={indented_container(self._dependants)}, "
+            f"prepend_dependants={indented_container(self._prepend_dependants)})"
+            f" type_child={self._type_child})"
         )
 
 
@@ -328,15 +369,47 @@ class EdgeField(Field):
         self.rhs = rhs
         self.edge = edge
 
-    def _resolve_path(self, path: RefPath) -> list[str]:
+    @staticmethod
+    def _resolve_path(path: RefPath) -> list[str]:
         # TODO dont think we can assert here, raise FabLLException
-        return [not_none(cast(ChildField, field).get_identifier()) for field in path]
+        return [
+            not_none(field.get_identifier()) if isinstance(field, ChildField) else field
+            for field in path
+        ]
+
+    @staticmethod
+    def _resolve_path_from_node(
+        path: list[str] | RefPath, instance: BoundNode
+    ) -> BoundNode:
+        target = instance
+
+        for segment in path:
+            if not isinstance(segment, str):
+                segment = segment.get_identifier()
+            child = EdgeComposition.get_child_by_identifier(
+                bound_node=target, child_identifier=segment
+            )
+            if child is None:
+                raise PathNotResolvable(
+                    node=Node.bind_instance(instance),
+                    path=path,
+                    error_node=Node.bind_instance(target),
+                    error_identifier=segment,
+                )
+            target = child
+        return target
 
     def lhs_resolved(self) -> list[str]:
         return self._resolve_path(self.lhs)
 
+    def lhs_resolved_on_node(self, instance: BoundNode) -> BoundNode:
+        return self._resolve_path_from_node(self.lhs_resolved(), instance)
+
     def rhs_resolved(self) -> list[str]:
         return self._resolve_path(self.rhs)
+
+    def rhs_resolved_on_node(self, instance: BoundNode) -> BoundNode:
+        return self._resolve_path_from_node(self.rhs_resolved(), instance)
 
     def __repr__(self) -> str:
         return (
@@ -534,10 +607,15 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             cls._handle_cls_attr(name, child)
 
     @classmethod
-    def _exec_field(cls, t: "TypeNodeBoundTG[Self, T]", field: Field) -> None:
+    def _exec_field(
+        cls, t: "TypeNodeBoundTG[Self, T]", field: Field, type_field: bool = False
+    ) -> None:
+        type_field = type_field or field._type_child
         if isinstance(field, ChildField):
             identifier = field.get_identifier()
-            if field._type_child:
+            for dependant in field._prepend_dependants:
+                cls._exec_field(t=t, field=dependant, type_field=type_field)
+            if type_field:
                 child_nodetype: type[Node[Any]] = field.nodetype
                 child_instance = child_nodetype.bind_typegraph(tg=t.tg).create_instance(
                     g=t.tg.get_graph_view(),
@@ -556,22 +634,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 )
                 mc._add_to_typegraph()
             for dependant in field._dependants:
-                cls._exec_field(t=t, field=dependant)
+                cls._exec_field(t=t, field=dependant, type_field=type_field)
         elif isinstance(field, ListField):
             for nested_field in field.get_fields():
-                cls._exec_field(t=t, field=nested_field)
+                cls._exec_field(t=t, field=nested_field, type_field=type_field)
         elif isinstance(field, EdgeField):
-            if field._type_child:
-                # TODO
-                pass
-                # edge = Edge.create(
-                #    source=field.lhs_resolved(),
-                #    target=field.rhs_resolved(),
-                #    edge_type=field.edge.edge_type,
-                #    name=field.edge.name,
-                #    **field.edge.to_dict(),
-                # )
-                # t.get_or_create_type().g().insert_edge(edge)
+            if type_field:
+                type_node = t.get_or_create_type()
+                edge_instance = field.edge.create_edge(
+                    source=field.lhs_resolved_on_node(instance=type_node).node(),
+                    target=field.rhs_resolved_on_node(instance=type_node).node(),
+                )
+                type_node.g().insert_edge(edge=edge_instance)
             else:
                 t.MakeEdge(
                     lhs_reference_path=field.lhs_resolved(),
@@ -931,7 +1005,28 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_graph(self) -> TypeGraph:
         return self.tg
 
+    def get_type_node(self) -> BoundNode | None:
+        type_edge = EdgeType.get_type_edge(bound_node=self.instance)
+        if type_edge is None:
+            return None
+        return type_edge.g().bind(node=EdgeType.get_type_node(edge=type_edge.edge()))
+
+    def get_type_name(self) -> str | None:
+        type_node = self.get_type_node()
+        if type_node is None:
+            return None
+        # TODO make zig api for this
+        type_identifier = type_node.node().get_attr(key="type_identifier")
+        if type_identifier is None:
+            return None
+        return cast_assert(str, type_identifier)
+
     def isinstance(self, *type_node: "type[Node]") -> bool:
+        """
+        Wildcard: Node
+        """
+        if Node in type_node:
+            return True
         bound_type_nodes = [
             tn.bind_typegraph_from_instance(self.instance) for tn in type_node
         ]
@@ -963,7 +1058,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         base = ".".join(filter(None, parts))
         if types:
-            type_name = self.__class__.__qualname__
+            type_name = self.get_type_name() or "<NOTYPE>"
             return f"{base}|{type_name}" if base else type_name
         return base
 
@@ -1205,6 +1300,13 @@ class ImplementsTrait(Node):
     """
 
 
+class ImplementsType(Node):
+    """
+    Wrapper around zig type.
+    Matched automatically because of name.
+    """
+
+
 class is_module(Node):
     """
     Replaces Module type.
@@ -1337,23 +1439,6 @@ class Parameter(Node):
         return lit
 
 
-class IsConstrainable(Node):
-    _is_trait = ImplementsTrait.MakeChild().put_on_type()
-
-    def constrain(self) -> None:
-        parent = Traits.get_obj(Traits.bind(self), Node)
-        Traits.add_to(
-            parent,
-            IsConstrained.bind_typegraph_from_instance(self.instance).create_instance(
-                g=self.instance.g()
-            ),
-        )
-
-
-class IsConstrained(Node):
-    _is_trait = ImplementsTrait.MakeChild().put_on_type()
-
-
 @dataclass(frozen=True)
 class LiteralNodeAttributes(NodeAttributes):
     value: Literal
@@ -1368,36 +1453,6 @@ class LiteralNode(Node[LiteralNodeAttributes]):
 
     def get_value(self) -> LiteralT:
         return self.instance.node().get_dynamic_attrs().get("value", "")
-
-
-class IsBaseUnit(Node):
-    _is_trait = ImplementsTrait.MakeChild().put_on_type()
-    symbol = Parameter.MakeChild()
-
-    @classmethod
-    def MakeChild(cls, symbol: str) -> ChildField[Any]:
-        out = ChildField(cls)
-        # out.add_dependant(
-        #     EdgeField(
-        #         [out],
-        #         [symbol],
-        #         edge=EdgePointer.build(identifier=None, order=None),
-        #     )
-        # )
-        return out
-
-
-class IsUnit(Node):
-    _is_trait = ImplementsTrait.MakeChild().put_on_type()
-    base_unit = ChildField(Node)
-
-    @classmethod
-    def MakeChild(
-        cls, symbol: str, base_units: list[tuple[type[Node[Any]], int]]
-    ) -> ChildField[Any]:
-        out = ChildField(cls)
-        # TODO
-        return out
 
 
 # --------------------------------------------------------------------------------------
@@ -1688,6 +1743,19 @@ def test_set_chaining():
     assert len(elems) == 3
 
 
+def test_type_children():
+    import faebryk.library._F as F
+
+    g, tg = _make_graph_and_typegraph()
+    Resistor = F.Resistor.bind_typegraph(tg=tg)
+
+    children = Node.bind_instance(Resistor.get_or_create_type()).get_children(
+        direct_only=True,
+        types=Node,
+    )
+    print(indented_container([c.get_full_name(types=True) for c in children]))
+
+
 def test_manual_resistor_def():
     import faebryk.library._F as F
 
@@ -1699,9 +1767,9 @@ def test_manual_resistor_def():
 
     # create resistor type node and insert into type graph
     # add make child nodes for p1 and p2, insert into type graph
-    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    Resistor = F.Resistor.bind_typegraph(tg=tg)
 
-    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    resistor_instance = Resistor.create_instance(g=g)
     assert resistor_instance
     print("resistor_instance:", resistor_instance.instance.node().get_dynamic_attrs())
     print(resistor_instance._type_identifier())
@@ -1896,4 +1964,4 @@ if __name__ == "__main__":
 
     # test_manual_resistor_def()
 
-    test_lightweight()
+    typer.run(test_manual_resistor_def)
