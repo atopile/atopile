@@ -12,7 +12,7 @@
   - [ ] isinstance checks
   - [x] rename to fabll.Node
   - [ ] deal with modules vs node
-    - [ ] get_children_modules
+    - [x] get_children_modules
   - [ ] deal with specializations
 - [ ] ModuleInterface
   - [ ] isinstance checks
@@ -24,7 +24,8 @@
 - [ ] Traits
   - [ ] for usage change constructor call to setup()
   - [ ] refactor all traits
-  - [ ] handle_duplicate
+  - [ ] replace <node>.add(<trait>) with Traits.add_to(<node>, <trait>)
+  - [ ] handle_duplicate 
 - [ ] Parameter
   - [ ] literals (fabll.Range...)
 - [ ] Links

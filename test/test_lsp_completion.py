@@ -226,7 +226,7 @@ class TestFieldReferenceResolution:
             """)
         with mock_file(ato) as uri:
             result = _find_field_reference_node(str(uri), ato, "resistor", 5)
-            assert isinstance(result, fabll.Module)
+            assert result.has_trait(fabll.is_module)
             result2 = _find_field_reference_node(str(uri), ato, "resistor", 8)
             assert isinstance(result2, Parameter)
 

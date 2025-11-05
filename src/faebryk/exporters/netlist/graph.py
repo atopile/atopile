@@ -496,7 +496,7 @@ def _find_owner_module(hierarchy: list[tuple], before_idx: int) -> str | None:
     """Find the nearest owning Module before the given index."""
     for j in range(before_idx - 1, -1, -1):
         node, name = hierarchy[j]
-        if isinstance(node, fabll.Module):
+        if node.has_trait(fabll.is_module):
             return name
     return None
 
@@ -570,7 +570,7 @@ def _get_owner_module_name(net: F.Net) -> str | None:
         try:
             hierarchy = mif.get_hierarchy()
             for node, name_in_parent in hierarchy:
-                if node.get_parent() and isinstance(node, fabll.Module):
+                if node.get_parent() and node.has_trait(fabll.is_module):
                     owner_names.add(name_in_parent)
         except fabll.NodeNoParent:
             continue

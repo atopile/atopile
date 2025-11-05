@@ -138,7 +138,7 @@ class does_not_require_picker_check(fabll.Node):
 
 
 def get_pick_tree(module: fabll.Node | fabll.ModuleInterface) -> Tree[fabll.Module]:
-    if isinstance(module, fabll.Module):
+    if module.has_trait(fabll.is_module):
         module = module.get_most_special()
 
     tree = Tree()
@@ -282,7 +282,7 @@ def find_independent_groups(
                 m
                 for p in p_eq
                 if (parent := p.get_parent()) is not None
-                and isinstance(m := parent[0], fabll.Module)
+                and (m := parent[0]).has_trait(fabll.is_module)
                 and m in modules
             }
             module_eqs.add_eq(*p_modules)

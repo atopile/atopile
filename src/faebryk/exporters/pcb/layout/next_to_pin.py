@@ -27,7 +27,7 @@ class LayoutNextToPin(Layout):
         node = tuple(n for n in node if not n.has_trait(F.has_pcb_position))
 
         for n in node:
-            assert isinstance(n, fabll.Module)
+            assert n.has_trait(fabll.is_module)
             electrical = not_none(self.interface)
             logger.debug(f"Placing {n} next to {electrical}")
             place_next_to(

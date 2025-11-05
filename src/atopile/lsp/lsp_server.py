@@ -623,7 +623,7 @@ def _get_node_completions(node: fabll.Node) -> list[lsp.CompletionItem]:
                     continue
 
                 # Determine the completion item kind based on the node type
-                if isinstance(child, fabll.Module):
+                if child.has_trait(fabll.is_module):
                     kind = lsp.CompletionItemKind.Field
                     detail = f"Module: {class_name}"
                 elif isinstance(child, fabll.ModuleInterface):

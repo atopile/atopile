@@ -73,7 +73,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     timings.add("get_all_nodes_graph")
 
     for n in [app, app.resistors[0]]:  # type: ignore
-        assert isinstance(n, fabll.Module)
+        assert n.has_trait(fabll.is_module)
         name = type(n).__name__[0]
 
         n.get_children(direct_only=False, types=fabll.Node)

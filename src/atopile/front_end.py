@@ -1168,7 +1168,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 params_with_definitions, key=lambda p: p.get_parent_force()[0]
             )
             for assignee_node, assigned_params in params_by_node.items():
-                is_part_module = isinstance(assignee_node, fabll.Module) and (
+                is_part_module = assignee_node.has_trait(fabll.is_module) and (
                     assignee_node.has_trait(F.is_pickable_by_supplier_id)
                     or assignee_node.has_trait(F.is_pickable_by_part_number)
                 )
@@ -1480,7 +1480,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         field = self.resolve_node_field(src_node, ref)
         if not isinstance(field, fabll.Node):
             raise TypeError(field, f"{ref} is not a node")
-        if isinstance(field, fabll.Module):
+        if field.has_trait(fabll.is_module):
             return field.get_most_special()
         return field
 
@@ -2218,7 +2218,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         bridgeables = bridgeables[1:]
 
         for b in bridgeables:
-            if not isinstance(b, fabll.Module):
+            if not b.has_trait(fabll.is_module):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
                     f"Can't bridge via `{b}` because it is not a `Module`",
@@ -2244,7 +2244,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ref = self.visitFieldReference(field_ref)
             node = self._get_referenced_node(ref, field_ref)
             if not isinstance(node, fabll.ModuleInterface) and not (
-                isinstance(node, fabll.Module) and node.has_trait(F.can_bridge)
+                node.has_trait(fabll.is_module) and node.has_trait(F.can_bridge)
             ):
                 raise TypeError(
                     node,
@@ -2281,7 +2281,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return self.visitConnectable(ctx.connectable())
         except TypeError as ex:
             node = ex.args[0]
-            if isinstance(node, fabll.Module):
+            if node.has_trait(fabll.is_module):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
                     f"Can't connect `{node}` because it's not bridgeable "
@@ -2305,7 +2305,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # Only Modules can be specialized (since they're the only
         # ones with specialization gifs).
         # TODO: consider duck-typing this
-        if not isinstance(from_node, fabll.Module):
+        if not from_node.has_trait(fabll.is_module):
             raise errors.UserTypeError.from_ctx(
                 ctx,
                 f"Can't specialize `{from_node}` because it's not a `Module`",
@@ -2319,7 +2319,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             with self._init_node(class_) as specialized_node:
                 pass
 
-        if not isinstance(specialized_node, fabll.Module):
+        if not specialized_node.has_trait(fabll.is_module):
             raise errors.UserTypeError.from_ctx(
                 ctx,
                 f"Can't specialize with `{specialized_node}`"
@@ -2344,7 +2344,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
             parent, _ = parent_deets
             from_node.parent.disconnect_parent()
-            assert isinstance(parent, fabll.Module)
+            assert parent.has_trait(fabll.is_module)
 
             # We have to make sure the from_node was part of the runtime attrs
             if not any(r is from_node for r in parent.runtime.values()):

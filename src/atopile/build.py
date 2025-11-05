@@ -67,5 +67,5 @@ def _init_ato_app() -> fabll.Module:
         config.build.entry_file_path,
         TypeRef.from_path_str(config.build.entry_section),
     )
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     return node
