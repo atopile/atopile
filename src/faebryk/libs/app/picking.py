@@ -130,13 +130,13 @@ def save_part_info_to_pcb(G: fabll.Graph):
                 continue
             if isinstance(part, PickedPartLCSC):
                 node.add(
-                    F.has_descriptive_properties_defined(
+                    F.has_descriptive_properties.MakeChild(
                         {Properties.lcsc: part.lcsc_id}
                     )
                 )
                 # TODO save info?
             node.add(
-                F.has_descriptive_properties_defined(
+                F.has_descriptive_properties.MakeChild(
                     {
                         Properties.manufacturer: part.manufacturer,
                         Properties.partno: part.partno,
@@ -151,4 +151,4 @@ def save_part_info_to_pcb(G: fabll.Graph):
             lit = P_Set.from_value(lit)
             key = f"{Properties.param_prefix}{p.get_name()}"
             value = json.dumps(lit.serialize())
-            node.add(F.has_descriptive_properties_defined({key: value}))
+            node.add(F.has_descriptive_properties.MakeChild({key: value}))

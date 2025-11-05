@@ -25,7 +25,7 @@ class Pad(fabll.Node):
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
-        intf.add(F.has_linked_pad_defined(self))
+        intf.add(F.has_linked_pad(self))
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(

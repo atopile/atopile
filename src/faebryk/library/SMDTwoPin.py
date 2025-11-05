@@ -35,4 +35,4 @@ class SMDTwoPin(fabll.Node):
 
     kicad_footprint: _has_kicad_footprint
     equal_pins: F.has_equal_pins_in_ifs
-    attach_via_pinmap: F.can_attach_via_pinmap_equal
+    attach_via_pinmap: F.can_attach_via_pinmap

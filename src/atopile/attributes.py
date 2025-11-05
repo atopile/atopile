@@ -30,7 +30,7 @@ def _register_shim(addr: str | address.AddrStr, preferred: str):
     return _wrapper
 
 
-class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
+class _has_local_kicad_footprint_named_defined(F.has_footprint):
     """
     This trait defers footprint creation until it's needed,
     which means we can construct the underlying pin map

@@ -27,7 +27,6 @@ from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.has_linked_pad import has_linked_pad
-from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Power import Power
 from faebryk.library.Signal import Signal
 from faebryk.library.has_pcb_position import has_pcb_position
@@ -42,7 +41,7 @@ from faebryk.library.has_designator import has_designator
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
+from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.has_pcb_layout import has_pcb_layout
@@ -54,13 +53,10 @@ from faebryk.library import Expressions
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.has_footprint import has_footprint
-from faebryk.library.has_footprint_defined import has_footprint_defined
-from faebryk.library.has_footprint_impl import has_footprint_impl
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_defined_relative
 from faebryk.library.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
 from faebryk.library.implements_design_check import implements_design_check
-from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_package_requirements import has_package_requirements
@@ -93,7 +89,6 @@ from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
 from faebryk.library.Resistor import Resistor
 from faebryk.library.Switch import Switch
-from faebryk.library.can_attach_via_pinmap_equal import can_attach_via_pinmap_equal
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode

@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+from curses import meta
 from dataclasses import dataclass
 from enum import Enum
 from textwrap import indent
@@ -1956,9 +1957,16 @@ def test_lightweight():
 
     _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
     footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
-    # print(footprint_instance.get_trait(F.has_footprint_impl).get_footprint())
 
-    print(resistor_instance.has_trait(F.has_footprint))
+    # print(resistor_instance.get_trait(F.has_footprint))
+    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
+    metadata = resistor_instance.get_children(
+        direct_only=True, types=F.SerializableMetadata
+    )
+    print(F.SerializableMetadata.get_properties(node=resistor_instance))
+    # print(F.SerializableMetadata.get_properties(node=resistor_instance))
+
+    print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
 
 
 if __name__ == "__main__":

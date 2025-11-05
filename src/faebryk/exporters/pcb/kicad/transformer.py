@@ -260,7 +260,7 @@ class PCB_Transformer:
             )
             # node takes precedence over fp
             merged = fp_props | node_props
-            node.add(F.has_descriptive_properties_defined(merged))
+            node.add(F.has_descriptive_properties(merged))
 
         for f_net, pcb_net in self.map_nets().items():
             self.bind_net(pcb_net, f_net)
@@ -658,8 +658,9 @@ class PCB_Transformer:
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
-            lambda pad_and_name:
-                intf.get_trait(fabll.is_interface).is_connected_to(pad_and_name[0].net),
+            lambda pad_and_name: intf.get_trait(fabll.is_interface).is_connected_to(
+                pad_and_name[0].net
+            ),
         )[1]
 
         fp = PCB_Transformer.get_fp(ffp)
