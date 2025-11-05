@@ -7,9 +7,9 @@ Exists as a stop-gap until we move away from the ANTLR4 compiler front-end.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
@@ -22,6 +22,7 @@ from antlr4.tree.Tree import TerminalNodeImpl
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+import faebryk.library.Collections as Collections
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
@@ -1068,29 +1069,50 @@ class GenTypeGraphIR:
 
     @dataclass(frozen=True)
     class FieldPath:
-        segments: tuple[str, ...]
+        @dataclass(frozen=True)
+        class Segment:
+            identifier: str
+            is_index: bool = False
+
+        segments: tuple["GenTypeGraphIR.FieldPath.Segment", ...]
 
         def __post_init__(self) -> None:
             if not self.segments:
                 raise ValueError("FieldPath cannot be empty")
 
         @property
-        def parent_segments(self) -> tuple[str, ...]:
-            return self.segments[:-1]
+        def parent_segments(self) -> Sequence["GenTypeGraphIR.FieldPath.Segment"]:
+            *head, _ = self.segments
+            return head
 
         @property
-        def leaf(self) -> str:
-            return self.segments[-1]
+        def leaf(self) -> "GenTypeGraphIR.FieldPath.Segment":
+            *_, tail = self.segments
+            return tail
 
         def is_singleton(self) -> bool:
             return len(self.segments) == 1
 
         def __str__(self) -> str:
-            return ".".join(self.segments)
+            parts: list[str] = []
+
+            for segment in self.segments:
+                if segment.is_index:
+                    parts[-1] = f"{parts[-1]}[{segment.identifier}]"
+                else:
+                    parts.append(segment.identifier)
+
+            return ".".join(parts)
+
+        def identifiers(self) -> tuple[str, ...]:
+            return tuple(segment.identifier for segment in self.segments)
 
     @dataclass(frozen=True)
     class NewChildSpec:
-        symbol: GenTypeGraphIR.Symbol
+        symbol: GenTypeGraphIR.Symbol | None = None
+        type_identifier: str | None = None
+        type_node: BoundNode | None = None
+        count: int | None = None
 
     @dataclass(frozen=True)
     class AddMakeChildAction:
@@ -1112,6 +1134,9 @@ class GenTypeGraphIR:
         # field path during `for` iteration. Only used within the current
         # lexical scope and intended to be short-lived.
         aliases: dict[str, GenTypeGraphIR.FieldPath] = field(default_factory=dict)
+        sequences: dict[str, list[GenTypeGraphIR.FieldPath]] = field(
+            default_factory=dict
+        )
 
 
 class _ScopeStack:
@@ -1153,6 +1178,22 @@ class _ScopeStack:
 
     def has_field(self, path: GenTypeGraphIR.FieldPath) -> bool:
         return any(str(path) in state.fields for state in reversed(self.stack))
+
+    def add_sequence(
+        self,
+        container: GenTypeGraphIR.FieldPath,
+        elements: Iterable[GenTypeGraphIR.FieldPath],
+    ) -> None:
+        self.current.sequences[str(container)] = list(elements)
+
+    def get_sequence_elements(
+        self, container: GenTypeGraphIR.FieldPath
+    ) -> list[GenTypeGraphIR.FieldPath] | None:
+        key = str(container)
+        for state in reversed(self.stack):
+            if key in state.sequences:
+                return state.sequences[key]
+        return None
 
     def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
         for state in reversed(self.stack):
@@ -1222,34 +1263,66 @@ class _TypeContextStack:
                 self._add_child(type_node=self.current(), action=action)
             case GenTypeGraphIR.AddMakeLinkAction() as action:
                 self._add_link(type_node=self.current(), action=action)
+            case list() | tuple() as actions:
+                for a in actions:
+                    self.apply_action(a)
+                return
             case None:  # TODO: why would this be None?
                 return
             case _:
                 raise NotImplementedError(f"Unhandled action: {action}")
 
+    def resolve_reference(
+        self, path: GenTypeGraphIR.FieldPath, validate: bool = True
+    ) -> BoundNode:
+        try:
+            return self._type_graph.ensure_child_reference(
+                type_node=self.current(),
+                path=list(path.identifiers()),
+                validate=validate,
+            )
+        except ValueError as exc:
+            raise DslException(f"Field `{path}` is not defined in scope") from exc
+
     def _add_child(
         self, type_node: BoundNode, action: GenTypeGraphIR.AddMakeChildAction
     ) -> None:
+        if (parent_reference := action.parent_reference) is None and (
+            parent_path := action.parent_path
+        ) is not None:
+            parent_reference = self.resolve_reference(parent_path)
+
+        child_spec = action.child_spec
+        symbol = child_spec.symbol
+
+        if (
+            child_type_identifier := child_spec.type_identifier
+        ) is None and symbol is not None:
+            child_type_identifier = symbol.name
+
+        assert child_type_identifier is not None
+
         make_child = self._type_graph.add_make_child(
             type_node=type_node,
-            child_type_identifier=action.child_spec.symbol.name,
-            identifier=action.target_path.leaf,
+            child_type_identifier=child_type_identifier,
+            identifier=action.target_path.leaf.identifier,
             node_attributes=None,
-            mount_reference=action.parent_reference,
+            mount_reference=parent_reference,
         )
 
         type_reference = not_none(
             self._type_graph.get_make_child_type_reference(make_child=make_child)
         )
 
-        symbol = action.child_spec.symbol
-
-        if symbol.import_ref:
+        if symbol is not None and symbol.import_ref:
             self._state.external_type_refs.append((type_reference, symbol.import_ref))
             return
 
-        if (target := symbol.type_node) is None:
-            raise DslException(f"Type `{symbol.name}` is not defined in scope")
+        target = symbol.type_node if symbol is not None else child_spec.type_node
+        if target is None:
+            raise DslException(
+                f"Type `{child_type_identifier}` is not defined in scope"
+            )
 
         _Linker.link_type_reference(
             g=self._graph,
@@ -1353,6 +1426,13 @@ class ASTVisitor:
             external_type_refs=[],
             file_path=file_path,
         )
+
+        # TODO: from "system" type graph
+        pointer_sequence_type = Collections.PointerSequence.bind_typegraph(
+            self._type_graph
+        ).get_or_create_type()
+        self._pointer_sequence_type = pointer_sequence_type
+        self._pointer_sequence_type_identifier = Collections.PointerSequence.__name__
         self._experiments: set[ASTVisitor._Experiments] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
@@ -1539,21 +1619,29 @@ class ASTVisitor:
         pass
 
     def visit_FieldRef(self, node: AST.FieldRef) -> GenTypeGraphIR.FieldPath:
-        def process_segment(part_node: AST.FieldRefPart) -> str:
+        segments: list[GenTypeGraphIR.FieldPath.Segment] = []
+
+        for part_node in node.parts.get().as_list():
             part = part_node.cast(t=AST.FieldRefPart)
-            key_literal = part.key.get().try_extract_constrained_literal()
-
-            if key_literal is not None:  # TODO
-                raise NotImplementedError(
-                    "Field references with keys are not supported yet"
-                )
-
             name_literal = part.name.get().try_extract_constrained_literal()
-            return cast_assert(str, name_literal)
+            segments.append(
+                GenTypeGraphIR.FieldPath.Segment(
+                    identifier=cast_assert(str, name_literal)
+                )
+            )
 
-        segments = [
-            process_segment(part_node) for part_node in node.parts.get().as_list()
-        ]
+            if (
+                key_literal := part.key.get().try_extract_constrained_literal()
+            ) is not None:
+                if isinstance(key_literal, float):
+                    assert key_literal.is_integer()
+                    key_literal = int(key_literal)
+
+                segments.append(
+                    GenTypeGraphIR.FieldPath.Segment(
+                        identifier=str(key_literal), is_index=True
+                    )
+                )
 
         if node.pin.get().try_extract_constrained_literal() is not None:
             raise NotImplementedError(
@@ -1565,11 +1653,87 @@ class ASTVisitor:
 
         # Alias rewrite (for-loop variable): if the root segment is an alias,
         # expand it to the aliased field path.
-        if (aliased := self._scope_stack.resolve_alias(segments[0])) is not None:
+        if (
+            aliased := self._scope_stack.resolve_alias(segments[0].identifier)
+        ) is not None:
             # Replace root with alias path
             segments = list(aliased.segments) + segments[1:]
 
         return GenTypeGraphIR.FieldPath(segments=tuple(segments))
+
+    def _handle_new_child(
+        self,
+        target_path: GenTypeGraphIR.FieldPath,
+        new_spec: GenTypeGraphIR.NewChildSpec,
+        parent_reference: BoundNode | None,
+        parent_path: GenTypeGraphIR.FieldPath | None,
+    ) -> list[GenTypeGraphIR.AddMakeChildAction] | GenTypeGraphIR.AddMakeChildAction:
+        self._scope_stack.add_field(target_path)
+
+        if new_spec.count is None:
+            # TODO: review
+            if (
+                target_path.leaf.is_index
+                and parent_path is not None
+                and (
+                    seq_elements := self._scope_stack.get_sequence_elements(parent_path)
+                )
+                is not None
+                and all(
+                    tuple(element.identifiers()) != tuple(target_path.identifiers())
+                    for element in seq_elements
+                )
+            ):
+                raise DslException(
+                    f"Field `{target_path}` is not part of sequence `{parent_path}`"
+                )
+
+            return GenTypeGraphIR.AddMakeChildAction(
+                target_path=target_path,
+                child_spec=new_spec,
+                parent_reference=parent_reference,
+                parent_path=parent_path,
+            )
+
+        pointer_action = GenTypeGraphIR.AddMakeChildAction(
+            target_path=target_path,
+            child_spec=GenTypeGraphIR.NewChildSpec(
+                type_identifier=self._pointer_sequence_type_identifier,
+                type_node=self._pointer_sequence_type,
+            ),
+            parent_reference=parent_reference,
+            parent_path=parent_path,
+        )
+
+        element_spec = replace(new_spec, count=None)
+
+        element_paths: list[GenTypeGraphIR.FieldPath] = []
+        element_actions: list[GenTypeGraphIR.AddMakeChildAction] = []
+
+        for idx in range(new_spec.count):
+            element_path = GenTypeGraphIR.FieldPath(
+                segments=(
+                    *target_path.segments,
+                    GenTypeGraphIR.FieldPath.Segment(
+                        identifier=str(idx), is_index=True
+                    ),
+                )
+            )
+
+            self._scope_stack.add_field(element_path)
+            element_paths.append(element_path)
+            element_actions.append(
+                GenTypeGraphIR.AddMakeChildAction(
+                    target_path=element_path,
+                    child_spec=element_spec,
+                    parent_reference=None,
+                    parent_path=GenTypeGraphIR.FieldPath(segments=target_path.segments),
+                )
+            )
+
+        self._scope_stack.add_sequence(container=target_path, elements=element_paths)
+
+        return [pointer_action, *element_actions]
 
     def visit_Assignment(self, node: AST.Assignment):
         # TODO: broaden assignable support and handle keyed/pin field references
@@ -1577,40 +1741,37 @@ class ASTVisitor:
         target_path = self.visit_FieldRef(node.target.get())
         assignable = self.visit(node.assignable.get().get_value())
 
-        action: GenTypeGraphIR.AddMakeChildAction | None = None
+        action: (
+            list[GenTypeGraphIR.AddMakeChildAction]
+            | GenTypeGraphIR.AddMakeChildAction
+            | None
+        ) = None
         parent_path: GenTypeGraphIR.FieldPath | None = None
         parent_reference: BoundNode | None = None
 
         if target_path.parent_segments:
-            parent_path = GenTypeGraphIR.FieldPath(segments=target_path.parent_segments)
+            parent_path = GenTypeGraphIR.FieldPath(
+                segments=tuple(target_path.parent_segments)
+            )
+
             if not self._scope_stack.has_field(parent_path):
                 raise DslException(f"Field `{parent_path}` is not defined in scope")
 
-            try:
-                parent_reference = self._type_graph.ensure_child_reference(
-                    type_node=self._type_stack.current(),
-                    path=list(parent_path.segments),
-                    validate=True,
-                )
-            except ValueError:
-                raise CompilerException(
-                    f"Failed to create parent reference: {parent_path}"
-                ) from None
+            parent_reference = self._type_graph.ensure_child_reference(
+                type_node=self._type_stack.current(),
+                path=list(parent_path.identifiers()),
+                validate=True,
+            )
+
+        if self._scope_stack.has_field(target_path):
+            raise DslException(
+                f"Field `{target_path}` is already defined in this scope"
+            )
 
         match assignable:
-            case GenTypeGraphIR.NewChildSpec():
-                if self._scope_stack.has_field(target_path):
-                    raise DslException(
-                        f"Field `{target_path}` is already defined in this scope"
-                    )
-
-                self._scope_stack.add_field(target_path)
-
-                action = GenTypeGraphIR.AddMakeChildAction(
-                    target_path=target_path,
-                    child_spec=assignable,
-                    parent_reference=parent_reference,
-                    parent_path=parent_path,
+            case GenTypeGraphIR.NewChildSpec() as new_spec:
+                return self._handle_new_child(
+                    target_path, new_spec, parent_reference, parent_path
                 )
             case _:
                 if not self._scope_stack.has_field(target_path):
@@ -1625,15 +1786,24 @@ class ASTVisitor:
             str, node.type_ref.get().name.get().try_extract_constrained_literal()
         )
         symbol = self._scope_stack.resolve_symbol(type_name)
-        return GenTypeGraphIR.NewChildSpec(symbol=symbol)
+        count: int | None = None
 
-        # TODO: check type ref is valid:
-        # - exists in a containing scope
+        if (
+            count_literal := node.new_count.get()
+            .value.get()
+            .try_extract_constrained_literal()
+        ) is not None:
+            assert count_literal.is_integer()
+            count = int(count_literal)
 
-        # TODO: return enough info for the blockdef to add a child to the type
+        return GenTypeGraphIR.NewChildSpec(
+            symbol=symbol,
+            type_identifier=symbol.name,
+            type_node=symbol.type_node,
+            count=count,
+        )
 
         # TODO: handle template args
-        # TODO: handle creating sequence
 
     def visit_ConnectStmt(self, node: AST.ConnectStmt):
         lhs, rhs = node.get_lhs(), node.get_rhs()
@@ -1644,7 +1814,6 @@ class ASTVisitor:
         if not rhs.isinstance(AST.FieldRef):
             raise NotImplementedError("Unhandled connectable type for RHS")
 
-        current_type = self._type_stack.current()
         lhs_path = self.visit_FieldRef(lhs.cast(t=AST.FieldRef))
         rhs_path = self.visit_FieldRef(rhs.cast(t=AST.FieldRef))
 
@@ -1655,36 +1824,76 @@ class ASTVisitor:
             if not self._scope_stack.has_field(root_path):
                 raise DslException(f"Field `{root_path}` is not defined in scope")
 
-            try:
-                return self._type_graph.ensure_child_reference(
-                    type_node=current_type, path=list(path.segments), validate=False
-                )
-            except ValueError:
-                raise CompilerException(f"Failed to create reference: {path}") from None
+            return self._type_stack.resolve_reference(path)
 
         lhs_ref = _ensure_reference(lhs_path)
         rhs_ref = _ensure_reference(rhs_path)
 
         return GenTypeGraphIR.AddMakeLinkAction(lhs_ref=lhs_ref, rhs_ref=rhs_ref)
 
+    @staticmethod
+    def _select_elements(
+        iterable_field: AST.IterableFieldRef,
+        sequence_elements: list[GenTypeGraphIR.FieldPath],
+    ) -> list[GenTypeGraphIR.FieldPath]:
+        def _extract_slice_value(attr: fabll.ChildField[AST.Number]) -> int | None:
+            if (
+                value_literal := attr.get()
+                .value.get()
+                .try_extract_constrained_literal()
+            ) is None:
+                return None
+
+            return int(value_literal)
+
+        if (slice_node := iterable_field.slice.get()) is None:
+            return sequence_elements
+
+        start_idx, stop_idx, step_idx = (
+            _extract_slice_value(slice_node.start),
+            _extract_slice_value(slice_node.stop),
+            _extract_slice_value(slice_node.step),
+        )
+
+        if step_idx == 0:
+            raise DslException("Slice step cannot be zero")
+
+        return sequence_elements[slice(start_idx, stop_idx, step_idx)]
+
     def visit_ForStmt(self, node: AST.ForStmt):
         self.ensure_experiment(ASTVisitor._Experiments.FOR_LOOP)
 
         iterable_node = node.iterable.get().get_value()
+        item_paths: list[GenTypeGraphIR.FieldPath]
 
-        # TODO: support IterableFieldRef (containers, slices)
-        if not iterable_node.isinstance(AST.FieldRefList):
-            raise NotImplementedError("FOR: non-list iterable not supported yet")
+        if iterable_node.isinstance(AST.FieldRefList):
+            list_node = iterable_node.cast(t=AST.FieldRefList)
+            items = list_node.items.get().as_list()
+            item_paths = [
+                self.visit_FieldRef(item_ref.cast(t=AST.FieldRef)) for item_ref in items
+            ]
 
-        list_node = iterable_node.cast(t=AST.FieldRefList)
-        items = list_node.items.get().as_list()
+        elif iterable_node.isinstance(AST.IterableFieldRef):
+            iterable_field = iterable_node.cast(t=AST.IterableFieldRef)
+            container_path = self.visit_FieldRef(iterable_field.field.get())
+
+            if (
+                sequence_elements := self._scope_stack.get_sequence_elements(
+                    container_path
+                )
+            ) is None:
+                raise DslException(f"Field `{container_path}` is not iterable")
+
+            selected = self._select_elements(iterable_field, sequence_elements)
+            item_paths = list(selected)
+        else:
+            raise DslException("Unexpected iterable type")
 
         target_literal = node.target.get().try_extract_constrained_literal()
         loop_var = cast_assert(str, target_literal)
 
         # Execute body for each item by aliasing the loop var to the item's path
-        for item_ref in items:
-            item_path = self.visit_FieldRef(item_ref.cast(t=AST.FieldRef))
+        for item_path in item_paths:
             with self._scope_stack.temporary_alias(loop_var, item_path):
                 for stmt in node.scope.get().stmts.get().as_list():
                     self._type_stack.apply_action(self.visit(stmt))

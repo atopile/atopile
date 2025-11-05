@@ -80,18 +80,28 @@ def _collect_make_links(type_node):
     return results
 
 
-def _has_make_links(
+def _check_make_links(
     type_node,
-    expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]],
+    *,
+    expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]]
+    | None = None,
+    not_expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]]
+    | None = None,
 ) -> bool:
     paths = {
         (tuple(lhs_path), tuple(rhs_path))
         for _, lhs_path, rhs_path in _collect_make_links(type_node)
     }
 
-    for lhs_expected, rhs_expected in expected:
-        if (tuple(lhs_expected), tuple(rhs_expected)) not in paths:
-            return False
+    if expected:
+        for lhs_expected, rhs_expected in expected:
+            if (tuple(lhs_expected), tuple(rhs_expected)) not in paths:
+                return False
+
+    if not_expected:
+        for lhs_forbidden, rhs_forbidden in not_expected:
+            if (tuple(lhs_forbidden), tuple(rhs_forbidden)) in paths:
+                return False
 
     return True
 
@@ -192,6 +202,97 @@ def test_make_child_and_linking():
     assert resolved is not None
 
 
+def test_new_with_count_creates_pointer_sequence():
+    _, _, _, result = _build_snippet(
+        """
+        module Inner:
+            pass
+
+        module App:
+            members = new Inner[3]
+        """
+    )
+
+    app_type = result.state.type_roots["App"]
+    members_node = _get_make_child(app_type, "members")
+
+    type_ref = EdgeComposition.get_child_by_identifier(
+        bound_node=members_node, child_identifier="type_ref"
+    )
+    assert type_ref is not None
+    resolved = EdgePointer.get_pointed_node_by_identifier(
+        bound_node=type_ref, identifier="resolved"
+    )
+    assert resolved is not None
+
+    type_graph = result.state.type_graph
+    element_nodes = []
+    for idx in ["0", "1", "2"]:
+        element_nodes.append(_get_make_child(app_type, idx))
+        ref = type_graph.ensure_child_reference(
+            type_node=app_type,
+            path=["members", idx],
+            validate=True,
+        )
+        assert ref is not None
+    assert len(element_nodes) == 3
+
+
+def test_new_with_count_children_have_mounts():
+    _, _, _, result = _build_snippet(
+        """
+        module Inner:
+            pass
+
+        module App:
+            members = new Inner[2]
+        """
+    )
+
+    app_type = result.state.type_roots["App"]
+    members_node = _get_make_child(app_type, "members")
+
+    # PointerSequence root is top-level, so it should not have a mount reference.
+    assert (
+        EdgeComposition.get_child_by_identifier(
+            bound_node=members_node, child_identifier="mount"
+        )
+        is None
+    )
+
+    for idx in ["0", "1"]:
+        elem_node = _get_make_child(app_type, idx)
+        mount_ref = EdgeComposition.get_child_by_identifier(
+            bound_node=elem_node, child_identifier="mount"
+        )
+        assert mount_ref is not None
+        assert (
+            EdgePointer.get_pointed_node_by_identifier(
+                bound_node=mount_ref, identifier="resolved"
+            )
+            is None
+        )
+        assert mount_ref.node().get_attr(key="child_identifier") == "members"
+        assert EdgeNext.get_next_node_from_node(node=mount_ref) is None
+
+
+def test_new_with_count_rejects_out_of_range_index():
+    with pytest.raises(
+        DslException,
+        match=r"members\[2\]",
+    ):
+        _build_snippet(
+            """
+            module Inner:
+                pass
+
+            module App:
+                members = new Inner[2]
+                members[2] = new Inner
+            """
+        )
+
+
 def test_for_loop_connects_twice():
     _, _, _, result = _build_snippet(
         """
@@ -215,7 +316,11 @@ def test_for_loop_connects_twice():
     app_type = result.state.type_roots["App"]
 
     assert (
-        _has_make_links(app_type, [(["left"], ["sink"]), (["right"], ["sink"])]) is True
+        _check_make_links(
+            app_type,
+            expected=[(["left"], ["sink"]), (["right"], ["sink"])],
+        )
+        is True
     )
 
 
@@ -240,29 +345,128 @@ def test_for_loop_requires_experiment():
         )
 
 
-def test_for_iterable_not_list_unsupported():
-    with pytest.raises(NotImplementedError, match="non-list iterable"):
+def test_for_loop_over_sequence():
+    _, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Inner:
+            connection = new Resistor
+
+        module App:
+            items = new Inner[2]
+            sink = new Resistor
+
+            for it in items:
+                it.connection ~ sink
+        """
+    )
+
+    app_type = result.state.type_roots["App"]
+    assert (
+        _check_make_links(
+            app_type,
+            expected=[
+                (["items", "0", "connection"], ["sink"]),
+                (["items", "1", "connection"], ["sink"]),
+            ],
+        )
+        is True
+    )
+
+
+def test_for_loop_over_sequence_slice():
+    _, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Inner:
+            connection = new Resistor
+
+        module App:
+            items = new Inner[3]
+            sink = new Resistor
+
+            for it in items[1:]:
+                it.connection ~ sink
+        """
+    )
+
+    app_type = result.state.type_roots["App"]
+    assert _check_make_links(
+        app_type,
+        expected=[
+            (["items", "1", "connection"], ["sink"]),
+            (["items", "2", "connection"], ["sink"]),
+        ],
+    )
+
+
+def test_for_loop_over_sequence_slice_zero_step_errors():
+    with pytest.raises(DslException, match="Slice step cannot be zero"):
         _build_snippet(
             """
             #pragma experiment("FOR_LOOP")
 
-            module Electrical:
-                pass
-
-            module Resistor:
-                unnamed = new Electrical[2]
-
             module Inner:
-                connection = new Resistor
+                pass
 
             module App:
                 items = new Inner[2]
-                sink = new Resistor
 
-                for it in items:
-                    it.connection ~ sink
+                for it in items[::0]:
+                    pass
             """
         )
+
+
+def test_for_loop_over_sequence_stride():
+    graph, _, _, result = _build_snippet(
+        """
+        #pragma experiment("FOR_LOOP")
+
+        module Electrical:
+            pass
+
+        module Resistor:
+            unnamed = new Electrical[2]
+
+        module Inner:
+            connection = new Resistor
+
+        module App:
+            items = new Inner[4]
+            sink = new Resistor
+
+            for it in items[0:4:2]:
+                it.connection ~ sink
+        """
+    )
+
+    app_type = result.state.type_roots["App"]
+    assert _check_make_links(
+        app_type,
+        expected=[
+            (["items", "0", "connection"], ["sink"]),
+            (["items", "2", "connection"], ["sink"]),
+        ],
+        not_expected=[
+            (["items", "1", "connection"], ["sink"]),
+            (["items", "3", "connection"], ["sink"]),
+        ],
+    )
 
 
 def test_for_loop_alias_does_not_leak():
@@ -308,7 +512,14 @@ def test_for_loop_nested_field_paths():
         """
     )
     app_type = result.state.type_roots["App"]
-    assert _has_make_links(app_type, [(["left", "connection"], ["sink"])]) is True
+    assert (
+        _check_make_links(
+            app_type,
+            expected=[(["left", "connection"], ["sink"])],
+            not_expected=[(["right", "connection"], ["sink"])],
+        )
+        is True
+    )
 
 
 def test_for_loop_assignment_creates_children():
@@ -368,8 +579,9 @@ def test_two_for_loops_same_var_accumulates_links():
     )
     app_type = result.state.type_roots["App"]
     assert (
-        _has_make_links(
-            app_type, [(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])]
+        _check_make_links(
+            app_type,
+            expected=[(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])],
         )
         is True
     )
@@ -452,7 +664,14 @@ def test_connects_between_top_level_fields():
     )
     app_type = result.state.type_roots["App"]
 
-    assert _has_make_links(app_type, [(["left"], ["right"])]) is True
+    assert (
+        _check_make_links(
+            app_type,
+            expected=[(["left"], ["right"])],
+            not_expected=[(["left"], ["left"]), (["right"], ["right"])],
+        )
+        is True
+    )
 
 
 def test_assignment_requires_existing_field():
@@ -509,7 +728,9 @@ def test_nested_connects_across_child_fields():
     app_type = result.state.type_roots["App"]
 
     assert (
-        _has_make_links(app_type, [(["left", "connection"], ["right", "connection"])])
+        _check_make_links(
+            app_type, expected=[(["left", "connection"], ["right", "connection"])]
+        )
         is True
     )
 
@@ -538,16 +759,23 @@ def test_deep_nested_connects_across_child_fields():
     app_type = result.state.type_roots["App"]
 
     assert (
-        _has_make_links(
+        _check_make_links(
             app_type,
-            [(["left", "intermediate", "branch"], ["right", "intermediate", "branch"])],
+            expected=[
+                (
+                    ["left", "intermediate", "branch"],
+                    ["right", "intermediate", "branch"],
+                )
+            ],
         )
         is True
     )
 
 
 def test_nested_connect_missing_prefix_raises():
-    with pytest.raises(DslException, match="Failed to create reference"):
+    with pytest.raises(
+        DslException, match=r"Field `left\.missing\.branch` is not defined in scope"
+    ):
         _build_snippet(
             """
         module Electrical:

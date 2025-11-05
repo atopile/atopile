@@ -580,6 +580,106 @@ pub const TypeGraph = struct {
         }
     }
 
+    fn reference_matches_path(
+        self: *@This(),
+        reference: BoundNodeReference,
+        expected_path: []const []const u8,
+    ) bool {
+        _ = self;
+        if (expected_path.len == 0) {
+            return false;
+        }
+
+        var current = reference;
+        var index: usize = 0;
+
+        while (true) {
+            if (index >= expected_path.len) {
+                return false;
+            }
+
+            const identifier = ChildReferenceNode.Attributes.of(current.node).get_child_identifier();
+            if (!std.mem.eql(u8, identifier, expected_path[index])) {
+                return false;
+            }
+
+            index += 1;
+
+            const next_node = EdgeNext.get_next_node_from_node(current);
+            if (next_node) |_next_node| {
+                current = reference.g.bind(_next_node);
+            } else {
+                break;
+            }
+        }
+
+        return index == expected_path.len;
+    }
+
+    fn find_make_child_node_with_mount(
+        self: *@This(),
+        root_type: BoundNodeReference,
+        identifier: []const u8,
+        parent_path: []const []const u8,
+    ) error{ ChildNotFound, OutOfMemory }!BoundNodeReference {
+        const FindCtx = struct {
+            identifier: []const u8,
+            parent_path: []const []const u8,
+            type_graph: *TypeGraph,
+
+            pub fn visit(
+                self_ptr: *anyopaque,
+                edge: graph.BoundEdgeReference,
+            ) visitor.VisitResult(BoundNodeReference) {
+                const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
+                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+
+                const child_identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
+                    return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+                };
+
+                if (!std.mem.eql(u8, child_identifier, ctx.identifier)) {
+                    return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+                }
+
+                if (ctx.parent_path.len == 0) {
+                    return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
+                }
+
+                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
+                    if (ctx.type_graph.reference_matches_path(mount_reference, ctx.parent_path)) {
+                        return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
+                    }
+                }
+
+                return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
+            }
+        };
+
+        var ctx = FindCtx{
+            .identifier = identifier,
+            .parent_path = parent_path,
+            .type_graph = self,
+        };
+
+        const visit_result = EdgeComposition.visit_children_of_type(
+            root_type,
+            self.get_MakeChild().node,
+            BoundNodeReference,
+            &ctx,
+            FindCtx.visit,
+        );
+
+        switch (visit_result) {
+            .OK => |make_child| return make_child,
+            .ERROR => |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => unreachable,
+            },
+            else => return error.ChildNotFound,
+        }
+    }
+
     pub fn resolve_child_type(
         self: *@This(),
         type_node: BoundNodeReference,
@@ -587,12 +687,18 @@ pub const TypeGraph = struct {
     ) !BoundNodeReference {
         var current_type = type_node;
 
-        for (path) |segment| {
-            const make_child = self.find_make_child_node(current_type, segment) catch |err|
-                switch (err) {
-                    error.ChildNotFound => return error.ChildNotFound,
-                    else => return err,
-                };
+        for (path, 0..) |segment, idx| {
+            const make_child = self.find_make_child_node(current_type, segment) catch |err| switch (err) {
+                error.ChildNotFound => blk: {
+                    const parent_path = path[0..idx];
+                    break :blk try self.find_make_child_node_with_mount(
+                        type_node,
+                        segment,
+                        parent_path,
+                    );
+                },
+                else => return err,
+            };
 
             const child_type = MakeChildNode.get_child_type(make_child) orelse {
                 return error.UnresolvedTypeReference;
