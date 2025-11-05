@@ -480,7 +480,9 @@ def generate_bom(
 ) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
-        app.get_children_modules(types=fabll.Module),
+        app.get_children(
+            direct_only=False, types=fabll.Node, required_trait=fabll.is_module
+        ),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
 

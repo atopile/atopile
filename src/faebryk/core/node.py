@@ -1462,6 +1462,7 @@ class LiteralNode(Node[LiteralNodeAttributes]):
 Graph = TypeGraph
 # Node type aliases
 Module = Node
+type Module = Node
 
 
 # Going to replace MIF usages

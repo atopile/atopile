@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+
 # TODO(zig-migration): `Graph` is currently an alias via Python.
 # Consider migrating call sites to Zig GraphView/TypeGraph directly.
 from faebryk.core.node import Graph
@@ -183,15 +184,17 @@ def check_missing_picks(module: fabll.Node):
     # - no module children
     # - no parent with picker
 
-    missing = module.get_children_modules(
-        types=fabll.Module,
+    missing = module.get_children(
+        types=fabll.Node,
+        required_trait=fabll.is_module,
         direct_only=False,
         include_root=True,
-        # not specialized
-        most_special=True,
         # leaf == no children
-        f_filter=lambda m: not m.get_children_modules(
-            types=fabll.Module, f_filter=lambda x: not isinstance(x, F.Footprint)
+        f_filter=lambda m: not m.get_children(
+            types=fabll.Node,
+            required_trait=fabll.is_module,
+            direct_only=False,
+            f_filter=lambda x: not isinstance(x, F.Footprint),
         )
         and not isinstance(m, F.Footprint)
         # no parent with part picked

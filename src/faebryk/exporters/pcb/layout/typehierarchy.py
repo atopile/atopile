@@ -71,10 +71,11 @@ class LayoutTypeHierarchy(Layout):
                 children = {
                     c
                     for n in nodes
-                    for c in fabll.Module.get_children_modules(
+                    for c in fabll.Node.get_children(
                         n,
                         direct_only=False,
-                        types=fabll.Module,
+                        types=fabll.Node,
+                        required_trait=fabll.is_module,
                         f_filter=lambda c: c.has_trait(has_footprint),
                     )
                 }

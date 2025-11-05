@@ -223,7 +223,9 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    r1, r2 = node.get_children_modules(direct_only=True, types=fabll.Module)
+    r1, r2 = node.get_children(
+        direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+    )
     assert r1.has_trait(F.has_part_picked)
     assert r2.has_trait(F.has_part_picked)
 
@@ -256,7 +258,9 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    rs = node.get_children(
+        direct_only=False, types=F.Resistor, required_trait=fabll.is_module
+    )
     for r in rs:
         assert r.has_trait(F.has_part_picked)
 
@@ -289,6 +293,8 @@ def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    rs = node.get_children(
+        direct_only=False, types=F.Resistor, required_trait=fabll.is_module
+    )
     for r in rs:
         assert r.has_trait(F.has_part_picked)

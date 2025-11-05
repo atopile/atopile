@@ -118,7 +118,9 @@ def test_performance_pick_rc_formulas():
         logger.error(f"Error picking: {e.args[0]}")
         params = {
             m.get_full_name(): "\n" + indent(m.pretty_params(solver), prefix="  ")
-            for m in app.get_children_modules(direct_only=True, types=fabll.Module)
+            for m in app.get_children(
+                direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+            )
         }
         params = {k: v for k, v in sorted(params.items(), key=lambda t: t[0])}
         logger.info(f"Params:{indented_container(params, use_repr=False)}")

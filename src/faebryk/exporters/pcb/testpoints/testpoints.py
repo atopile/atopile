@@ -15,8 +15,9 @@ logger = logging.getLogger(__name__)
 def _get_testpoints(app: fabll.Node) -> list[F.TestPoint]:
     return [
         testpoint
-        for testpoint in app.get_children_modules(
+        for testpoint in app.get_children(
             types=F.TestPoint,
+            direct_only=False,
             include_root=True,
         )
         if testpoint.has_trait(F.has_footprint)
