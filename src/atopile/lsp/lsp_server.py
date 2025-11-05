@@ -67,7 +67,8 @@ update_sys_path(
 # pylint: disable=wrong-import-position,import-error
 
 import lsprotocol.types as lsp  # noqa: E402
-from pygls import server, uris, workspace  # noqa: E402
+from pygls import uris, workspace  # noqa: E402
+from pygls.lsp.server import LanguageServer  # noqa: E402
 
 import atopile.lsp.lsp_jsonrpc as jsonrpc  # noqa: E402
 import atopile.lsp.lsp_utils as utils  # noqa: E402
@@ -79,7 +80,7 @@ DISTRIBUTION_NAME = "atopile"
 
 MAX_WORKERS = 5
 # TODO: Update the language server name and version.
-LSP_SERVER = server.LanguageServer(
+LSP_SERVER = LanguageServer(
     name=DISTRIBUTION_NAME,
     version=get_package_version(DISTRIBUTION_NAME),
     max_workers=MAX_WORKERS,
@@ -308,7 +309,7 @@ def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None: ...
 )
 def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
     """Handle document diagnostic request."""
-    LSP_SERVER.publish_diagnostics(
+    LSP_SERVER.text_document_publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
@@ -317,7 +318,7 @@ def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
 def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     """Handle document open request."""
     _build_document(params.text_document.uri, params.text_document.text)
-    LSP_SERVER.publish_diagnostics(
+    LSP_SERVER.text_document_publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
@@ -330,7 +331,7 @@ def _handle_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None
             params.text_document.uri,
             LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
         )
-        LSP_SERVER.publish_diagnostics(
+        LSP_SERVER.text_document_publish_diagnostics(
             params.text_document.uri, _get_diagnostics(params.text_document.uri)
         )
     except Exception:
@@ -350,7 +351,7 @@ def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
         params.text_document.uri,
         LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
     )
-    LSP_SERVER.publish_diagnostics(
+    LSP_SERVER.text_document_publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
@@ -795,7 +796,7 @@ def _node_type_to_completion_item(node_type: type[Node]) -> lsp.CompletionItem:
     )
 
 
-def _resolve_import_path(document: workspace.Document, path: str) -> Path:
+def _resolve_import_path(document: workspace.TextDocument, path: str) -> Path:
     """
     Resolve the import path for a given document and path.
     """
@@ -836,7 +837,7 @@ def _resolve_import_path(document: workspace.Document, path: str) -> Path:
 
 
 def _handle_dot_completion(
-    params: lsp.CompletionParams, line: str, document: workspace.Document
+    params: lsp.CompletionParams, line: str, document: workspace.TextDocument
 ) -> lsp.CompletionList | None:
     # Extract field reference before the dot
     field_ref_str = _extract_field_reference_before_dot(line, params.position.character)
@@ -886,7 +887,7 @@ def _handle_dot_completion(
 
 
 def _handle_new_keyword_completion(
-    params: lsp.CompletionParams, line: str, document: workspace.Document
+    params: lsp.CompletionParams, line: str, document: workspace.TextDocument
 ) -> lsp.CompletionList | None:
     node_types = _get_available_types(
         params.text_document.uri,
@@ -905,7 +906,7 @@ def _handle_new_keyword_completion(
 
 
 def _handle_stdlib_import_keyword_completion(
-    params: lsp.CompletionParams, line: str, document: workspace.Document
+    params: lsp.CompletionParams, line: str, document: workspace.TextDocument
 ) -> lsp.CompletionList | None:
     node_types = _get_stdlib_types()
 
@@ -920,7 +921,7 @@ def _handle_stdlib_import_keyword_completion(
 
 
 def _handle_from_keyword_completion(
-    params: lsp.CompletionParams, line: str, document: workspace.Document
+    params: lsp.CompletionParams, line: str, document: workspace.TextDocument
 ) -> lsp.CompletionList | None:
     paths = _get_importable_paths(params.text_document.uri)
     completion_items = [
@@ -935,7 +936,7 @@ def _handle_from_keyword_completion(
 
 
 def _handle_from_import_keyword_completion(
-    params: lsp.CompletionParams, line: str, document: workspace.Document
+    params: lsp.CompletionParams, line: str, document: workspace.TextDocument
 ) -> lsp.CompletionList | None:
     match = re.match(r"from\s+['\"](.*)['\"]", line)
     if not match:
@@ -1100,7 +1101,7 @@ def _get_settings_by_path(file_path: pathlib.Path):
     return setting_values[0]
 
 
-def _get_document_key(document: workspace.Document):
+def _get_document_key(document: workspace.TextDocument):
     if WORKSPACE_SETTINGS:
         document_workspace = pathlib.Path(document.path)
         workspaces = {s["workspaceFS"] for s in WORKSPACE_SETTINGS.values()}
@@ -1114,7 +1115,7 @@ def _get_document_key(document: workspace.Document):
     return None
 
 
-def _get_settings_by_document(document: workspace.Document | None):
+def _get_settings_by_document(document: workspace.TextDocument | None):
     if document is None or document.path is None:
         return list(WORKSPACE_SETTINGS.values())[0]
 
@@ -1136,7 +1137,7 @@ def _get_settings_by_document(document: workspace.Document | None):
 # Internal execution APIs.
 # *****************************************************
 def _run_tool_on_document(
-    document: workspace.Document,
+    document: workspace.TextDocument,
     use_stdin: bool = False,
     extra_args: Optional[Sequence[str]] = None,
 ) -> utils.RunResult | None:
