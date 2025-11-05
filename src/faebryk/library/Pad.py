@@ -8,8 +8,20 @@ from faebryk.libs.util import not_none
 
 
 class Pad(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     net = F.Electrical.MakeChild()
     pcb = fabll.GenericNodeWithInterface.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)

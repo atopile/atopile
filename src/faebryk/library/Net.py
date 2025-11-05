@@ -13,7 +13,19 @@ logger = logging.getLogger(__name__)
 
 
 class Net(fabll.Node):
-    part_of: F.Electrical
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    part_of = F.Electrical.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def get_connected_pads(self) -> dict[F.Pad, F.Footprint]:
         """Return a dict of pads connected to this net"""

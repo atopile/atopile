@@ -13,17 +13,32 @@ class Ethernet(fabll.Node):
     1000BASE-T Gigabit Ethernet Interface
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+
     # Ethernet pairs
-    pairs = [fabll.ChildField(fabll.Parameter) for _ in range(4)]
+    pairs = [F.ElectricSignal.MakeChild() for _ in range(4)]
 
     # Status LEDs
-    led_speed: F.ElectricLogic  # Speed LED
-    led_link: F.ElectricLogic  # Link LED
+    led_speed = F.ElectricLogic.MakeChild()  # Speed LED
+    led_link = F.ElectricLogic.MakeChild()  # Link LED
+
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

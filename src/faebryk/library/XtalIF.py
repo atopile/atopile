@@ -29,6 +29,7 @@ class XtalIF(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
     def __preinit__(self):
         # ------------------------------------

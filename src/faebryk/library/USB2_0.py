@@ -7,7 +7,10 @@ from faebryk.libs.units import P
 
 
 class USB2_0(fabll.Node):
-    usb_if: F.USB2_0_IF
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    usb_if = F.USB2_0_IF.MakeChild()
 
     def __preinit__(self):
         self.usb_if.buspower.voltage.constrain_subset(

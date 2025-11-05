@@ -7,13 +7,25 @@ from faebryk.libs.util import times
 
 
 class MultiSPI(fabll.Node):
-    def __init__(self, data_lane_count: int) -> None:
-        super().__init__()
-        self._data_lane_count = data_lane_count
-
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     clock = F.ElectricLogic.MakeChild()
     chip_select = F.ElectricLogic.MakeChild()
     data_lanes = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+    def __init__(self, data_lane_count: int) -> None:
+        super().__init__()
+        self._data_lane_count = data_lane_count
 
     def data(self):
         return times(self._data_lane_count, F.ElectricLogic)

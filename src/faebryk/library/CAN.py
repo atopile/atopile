@@ -10,12 +10,30 @@ class CAN(fabll.Node):
     CAN bus interface
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     diff_pair = F.DifferentialPair.MakeChild()
 
-    speed = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
+    baudrate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
+    # TODO constrain CAN baudrate between 10kbps to 1Mbps
+    # F.Expressions.Is.MakeChild_Constrain()
+
+    impedance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
+    F.Expressions.Is.MakeChild_ConstrainToLiteral([impedance], 120.0)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                 WIP
+    # ----------------------------------------
+
 
     def __preinit__(self) -> None:
-        self.speed.add(F.is_bus_parameter())
+        self.baudrate.add(F.is_bus_parameter())
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

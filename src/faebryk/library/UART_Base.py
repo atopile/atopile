@@ -7,15 +7,28 @@ from faebryk.libs.units import P
 
 
 class UART_Base(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     rx = F.ElectricLogic.MakeChild()
     tx = F.ElectricLogic.MakeChild()
 
     baud = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
 
     def __preinit__(self) -> None:
         self.baud.add(F.is_bus_parameter())

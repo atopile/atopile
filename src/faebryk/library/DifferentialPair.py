@@ -9,11 +9,22 @@ from faebryk.libs.units import P
 
 
 class DifferentialPair(fabll.Node):
-    p: F.ElectricSignal
-    n: F.ElectricSignal
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    p = F.ElectricSignal.MakeChild()
+    n = F.ElectricSignal.MakeChild()
 
     impedance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                 WIP
+    # ----------------------------------------
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricSignal.connect_all_module_references(self)

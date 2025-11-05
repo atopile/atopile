@@ -6,6 +6,9 @@ import faebryk.library._F as F
 
 
 class RS232(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     tx = F.ElectricLogic.MakeChild()
     rx = F.ElectricLogic.MakeChild()
     dtr = F.ElectricLogic.MakeChild()
@@ -15,7 +18,17 @@ class RS232(fabll.Node):
     rts = F.ElectricLogic.MakeChild()
     cts = F.ElectricLogic.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+

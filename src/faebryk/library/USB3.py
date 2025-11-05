@@ -7,7 +7,7 @@ from faebryk.libs.units import P
 
 
 class USB3(fabll.Node):
-    usb3_if: F.USB3_IF
+    usb3_if = F.USB3_IF.MakeChild()
 
     def __preinit__(self):
         self.usb3_if.gnd_drain.connect(self.usb3_if.usb_if.buspower.lv)

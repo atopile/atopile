@@ -22,25 +22,25 @@ class I2C(fabll.Node):
     scl = F.ElectricLogic.MakeChild()
     sda = F.ElectricLogic.MakeChild()
 
+    address = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
+    bus_addresses = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
+    frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
+
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
+        )
 
     # ----------------------------------------
     #                 WIP
     # ----------------------------------------
 
-    address = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
-    bus_addresses = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
-    frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
 
     def requires_pulls(self):
         def pred(signal: F.ElectricSignal, bus: set[fabll.Node]):

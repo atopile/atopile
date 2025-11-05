@@ -6,6 +6,9 @@ import faebryk.library._F as F
 
 
 class UART(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     base_uart = F.UART_Base.MakeChild()
     rts = F.ElectricLogic.MakeChild()
     cts = F.ElectricLogic.MakeChild()
@@ -14,12 +17,22 @@ class UART(fabll.Node):
     dcd = F.ElectricLogic.MakeChild()
     ri = F.ElectricLogic.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
     # TODO: this creates too many connections in some projects
     # @fabll.rt_field
     # def single_electric_reference(self):
     #    return F.has_single_electric_reference_defined(
     #       F.ElectricLogic.connect_all_module_references(self)
     #   )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

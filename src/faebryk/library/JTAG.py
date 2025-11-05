@@ -6,6 +6,9 @@ import faebryk.library._F as F
 
 
 class JTAG(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     dbgrq = F.ElectricLogic.MakeChild()
     tdo = F.ElectricLogic.MakeChild()
     tdi = F.ElectricLogic.MakeChild()
@@ -16,10 +19,19 @@ class JTAG(fabll.Node):
     n_reset = F.ElectricLogic.MakeChild()
     vtref = F.ElectricPower.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

@@ -5,6 +5,8 @@ import faebryk.core.node as fabll
 
 
 class Power(fabll.Node):
+    _is_interface = fabll.is_interface.MakeChild()
+
     class is_power_source(fabll.Node): ...
 
     class is_power_sink(fabll.Node): ...

@@ -9,17 +9,30 @@ logger = logging.getLogger(__name__)
 
 
 class I2S(fabll.Node):
-    sd: F.ElectricLogic  # Serial Data
-    ws: F.ElectricLogic  # Word Select (Left/Right Clock)
-    sck: F.ElectricLogic  # Serial Clock
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    sd = F.ElectricLogic.MakeChild()  # Serial Data
+    ws = F.ElectricLogic.MakeChild()  # Word Select (Left/Right Clock)
+    sck = F.ElectricLogic.MakeChild()  # Serial Clock
 
     sample_rate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
     bit_depth = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Bit)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

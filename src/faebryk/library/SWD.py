@@ -6,15 +6,27 @@ import faebryk.library._F as F
 
 
 class SWD(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     clk = F.ElectricLogic.MakeChild()
     dio = F.ElectricLogic.MakeChild()
     swo = F.ElectricLogic.MakeChild()
     reset = F.ElectricLogic.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

@@ -7,10 +7,23 @@ from faebryk.libs.units import P
 
 
 class CAN_TTL(fabll.Node):
-    rx: F.ElectricLogic
-    tx: F.ElectricLogic
 
-    speed = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    rx = F.ElectricLogic.MakeChild()
+    tx = F.ElectricLogic.MakeChild()
+
+    baudrate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                 WIP
+    # ----------------------------------------
 
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
@@ -18,4 +31,4 @@ class CAN_TTL(fabll.Node):
         )
 
     def __preinit__(self) -> None:
-        self.speed.add(F.is_bus_parameter())
+        self.baudrate.add(F.is_bus_parameter())
