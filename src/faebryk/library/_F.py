@@ -94,7 +94,6 @@ from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.MultiCapacitor import MultiCapacitor
-from faebryk.library.is_decoupled import is_decoupled
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.SMDTwoPin import SMDTwoPin
