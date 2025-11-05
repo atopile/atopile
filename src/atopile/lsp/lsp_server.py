@@ -1366,7 +1366,9 @@ def log_error(message: str) -> None:
 
 
 def log_warning(message: str) -> None:
-    LSP_SERVER.window_log_message(lsp.LogMessageParams(lsp.MessageType.Warning, message))
+    LSP_SERVER.window_log_message(
+        lsp.LogMessageParams(lsp.MessageType.Warning, message)
+    )
     if os.getenv("LS_SHOW_NOTIFICATION", "off") in ["onWarning", "always"]:
         LSP_SERVER.show_message(message, lsp.MessageType.Warning)
 
