@@ -310,7 +310,9 @@ def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None: ...
 def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
     """Handle document diagnostic request."""
     LSP_SERVER.text_document_publish_diagnostics(
-        params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        lsp.PublishDiagnosticsParams(
+            params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        )
     )
 
 
@@ -319,7 +321,9 @@ def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     """Handle document open request."""
     _build_document(params.text_document.uri, params.text_document.text)
     LSP_SERVER.text_document_publish_diagnostics(
-        params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        lsp.PublishDiagnosticsParams(
+            params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        )
     )
 
 
@@ -332,7 +336,9 @@ def _handle_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None
             LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
         )
         LSP_SERVER.text_document_publish_diagnostics(
-            params.text_document.uri, _get_diagnostics(params.text_document.uri)
+            lsp.PublishDiagnosticsParams(
+                params.text_document.uri, _get_diagnostics(params.text_document.uri)
+            )
         )
     except Exception:
         pass
@@ -352,7 +358,9 @@ def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
         LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
     )
     LSP_SERVER.text_document_publish_diagnostics(
-        params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        lsp.PublishDiagnosticsParams(
+            params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        )
     )
 
 
@@ -1348,23 +1356,23 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
 def log_to_output(
     message: str, msg_type: lsp.MessageType = lsp.MessageType.Log
 ) -> None:
-    LSP_SERVER.show_message_log("LSP: " + message, msg_type)
+    LSP_SERVER.window_log_message(lsp.LogMessageParams(msg_type, "LSP: " + message))
 
 
 def log_error(message: str) -> None:
-    LSP_SERVER.show_message_log(message, lsp.MessageType.Error)
+    LSP_SERVER.window_log_message(lsp.LogMessageParams(lsp.MessageType.Error, message))
     if os.getenv("LS_SHOW_NOTIFICATION", "off") in ["onError", "onWarning", "always"]:
         LSP_SERVER.show_message(message, lsp.MessageType.Error)
 
 
 def log_warning(message: str) -> None:
-    LSP_SERVER.show_message_log(message, lsp.MessageType.Warning)
+    LSP_SERVER.window_log_message(lsp.LogMessageParams(lsp.MessageType.Warning, message))
     if os.getenv("LS_SHOW_NOTIFICATION", "off") in ["onWarning", "always"]:
         LSP_SERVER.show_message(message, lsp.MessageType.Warning)
 
 
 def log_always(message: str) -> None:
-    LSP_SERVER.show_message_log(message, lsp.MessageType.Info)
+    LSP_SERVER.window_log_message(lsp.LogMessageParams(lsp.MessageType.Info, message))
     if os.getenv("LS_SHOW_NOTIFICATION", "off") in ["always"]:
         LSP_SERVER.show_message(message, lsp.MessageType.Info)
 
