@@ -30,7 +30,18 @@ set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.build.stamp")
 set(ZIG_ENV_PREFIX "")
 set(ZIG_TARGET_ARG "")
 if (APPLE)
-  if (CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+  # Prefer the active build architecture; fall back to the host CPU when
+  # CMAKE_OSX_ARCHITECTURES is unspecified (the default on local dev
+  # machines).
+  set(_CM_ARCH "")
+  if (CMAKE_OSX_ARCHITECTURES)
+    list(GET CMAKE_OSX_ARCHITECTURES 0 _CM_ARCH)
+  else()
+    set(_CM_ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+  endif()
+
+  string(TOLOWER "${_CM_ARCH}" _CM_ARCH_LOWER)
+  if (_CM_ARCH_LOWER MATCHES "arm64" OR _CM_ARCH_LOWER MATCHES "aarch64")
     set(_ZIG_ARCH "aarch64")
     set(_MAC_DEPLOY "11.0")      # first macOS with arm64
   else()
