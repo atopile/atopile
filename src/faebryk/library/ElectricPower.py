@@ -27,40 +27,6 @@ class ElectricPower(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-    # class can_be_decoupled_power(F.can_be_decoupled.impl()):
-    #     def decouple(
-    #         self,
-    #         owner: fabll.Node,
-    #         count: int = 1,
-    #     ):
-    #         obj = self.get_obj(ElectricPower)
-
-    #         capacitor = F.MultiCapacitor(count)
-
-    #         # FIXME seems to cause contradictions
-    #         capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
-
-    #         obj.hv.connect_via(capacitor, obj.lv)
-
-    #         name = f"decoupling_{obj.get_name(accept_no_parent=True)}"
-    #         new_capacitor = capacitor
-    #         # Merge
-    #         if obj.has_trait(F.is_decoupled):
-    #             old_capacitor = obj.get_trait(F.is_decoupled).capacitor
-    #             capacitor = F.MultiCapacitor.from_capacitors(
-    #                 old_capacitor,
-    #                 new_capacitor,
-    #             )
-    #             name = old_capacitor.get_name(accept_no_parent=True) + "'"
-
-    #         # TODO improve
-    #         if name in owner.runtime:
-    #             name += "_"
-    #         owner.add(capacitor, name=name)
-    #         obj.add(F.is_decoupled(capacitor))
-
-    #         return new_capacitor
-
     # class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
     #     def protect(self, owner: fabll.Node):
     #         obj = self.get_obj(ElectricPower)
