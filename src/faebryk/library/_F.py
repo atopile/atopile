@@ -77,7 +77,6 @@ from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
-from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_pinlist
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
@@ -94,7 +93,6 @@ from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.MultiCapacitor import MultiCapacitor
-from faebryk.library.is_decoupled import is_decoupled
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.SMDTwoPin import SMDTwoPin

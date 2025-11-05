@@ -1964,9 +1964,12 @@ def test_lightweight():
         direct_only=True, types=F.SerializableMetadata
     )
     print(F.SerializableMetadata.get_properties(node=resistor_instance))
-    # print(F.SerializableMetadata.get_properties(node=resistor_instance))
 
     print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
+
+    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
+    hfp = resistor_instance.get_trait(F.has_footprint)
+    # print(hfp.get_footprint())
 
 
 if __name__ == "__main__":

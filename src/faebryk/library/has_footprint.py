@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class has_footprint(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    footprint_pointer = F.Collections.Pointer.MakeChild()
+    footprint_pointer_ = F.Collections.Pointer.MakeChild()
 
     def set_footprint(self, fp: F.Footprint):
         EdgePointer.point_to(
@@ -27,7 +27,7 @@ class has_footprint(fabll.Node):
         )
 
     def try_get_footprint(self) -> F.Footprint | None:
-        if fps := self.footprint_pointer.get().as_list():
+        if fps := self.footprint_pointer_.get().deref():
             assert len(fps) == 1, f"In node: {self}: footprint candidates: {fps}"
             return F.Footprint.bind_instance(fps[0].instance)
         else:
@@ -40,10 +40,9 @@ class has_footprint(fabll.Node):
     def MakeChild(cls, fp: fabll.ChildField[F.Footprint]):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.EdgeField(
-                [out, cls.footprint_pointer],
+            F.Collections.Pointer.EdgeField(
+                [out, cls.footprint_pointer_],
                 [fp],
-                edge=EdgePointer.build(identifier=None, order=None),
             )
         )
         return out
