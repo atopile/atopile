@@ -183,8 +183,8 @@ def test_typegraph_instantiate():
             target_type_node=electrical,
         )
 
-    rp1_ref = type_graph.add_reference(type_node=Resistor, path=["p1"])
-    rp2_ref = type_graph.add_reference(type_node=Resistor, path=["p2"])
+    rp1_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p1"])
+    rp2_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p2"])
     edge_attrs = EdgeCreationAttributes.init(
         edge_type=EdgePointer.get_tid(),
         directional=True,

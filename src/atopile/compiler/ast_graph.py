@@ -29,7 +29,7 @@ from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
 from faebryk.library.Expressions import Is
 from faebryk.libs.util import cast_assert, not_none
@@ -1134,9 +1134,6 @@ class GenTypeGraphIR:
         # field path during `for` iteration. Only used within the current
         # lexical scope and intended to be short-lived.
         aliases: dict[str, GenTypeGraphIR.FieldPath] = field(default_factory=dict)
-        sequences: dict[str, list[GenTypeGraphIR.FieldPath]] = field(
-            default_factory=dict
-        )
 
 
 class _ScopeStack:
@@ -1179,22 +1176,6 @@ class _ScopeStack:
     def has_field(self, path: GenTypeGraphIR.FieldPath) -> bool:
         return any(str(path) in state.fields for state in reversed(self.stack))
 
-    def add_sequence(
-        self,
-        container: GenTypeGraphIR.FieldPath,
-        elements: Iterable[GenTypeGraphIR.FieldPath],
-    ) -> None:
-        self.current.sequences[str(container)] = list(elements)
-
-    def get_sequence_elements(
-        self, container: GenTypeGraphIR.FieldPath
-    ) -> list[GenTypeGraphIR.FieldPath] | None:
-        key = str(container)
-        for state in reversed(self.stack):
-            if key in state.sequences:
-                return state.sequences[key]
-        return None
-
     def resolve_symbol(self, name: str) -> GenTypeGraphIR.Symbol:
         for state in reversed(self.stack):
             if name in state.symbols:
@@ -1236,6 +1217,16 @@ class _ScopeStack:
 
 
 class _TypeContextStack:
+    """
+    Maintains the current TypeGraph context while emitting IR.
+
+    All structural lookups are delegated back to the TypeGraph so mounts, pointer
+    sequences, and other graph semantics are resolved in one place.
+
+    Translates any `TypeGraphPathError` into a user-facing `DslException` that
+    preserves the enriched error metadata.
+    """
+
     def __init__(
         self, graph: GraphView, type_graph: TypeGraph, state: BuildState
     ) -> None:
@@ -1275,14 +1266,51 @@ class _TypeContextStack:
     def resolve_reference(
         self, path: GenTypeGraphIR.FieldPath, validate: bool = True
     ) -> BoundNode:
+        return self._ensure_field_path(
+            type_node=self.current(), field_path=path, validate=validate
+        )
+
+    @staticmethod
+    def _format_path_error(
+        field_path: GenTypeGraphIR.FieldPath, error: TypeGraphPathError
+    ) -> str:
+        full_path = ".".join(error.path) if error.path else str(field_path)
+
+        match error.kind:
+            # FIXME: enum or different types or format on Zig side
+            case "missing_parent":
+                prefix = error.path[: error.failing_segment_index]
+                joined = ".".join(prefix) if prefix else full_path
+                return f"Field `{joined}` is not defined in scope"
+            case "invalid_index":
+                container_segments = error.path[: error.failing_segment_index]
+                container = ".".join(container_segments)
+                index_value = (
+                    error.index_value
+                    if error.index_value is not None
+                    else error.failing_segment
+                )
+                if container:
+                    return f"Field `{container}[{index_value}]` is not defined in scope"
+                return f"Field `[ {index_value} ]` is not defined in scope"
+            case _:
+                return f"Field `{full_path}` is not defined in scope"
+
+    def _ensure_field_path(
+        self,
+        type_node: BoundNode,
+        field_path: GenTypeGraphIR.FieldPath,
+        validate: bool = True,
+    ) -> BoundNode:
+        identifiers = list(field_path.identifiers())
         try:
             return self._type_graph.ensure_child_reference(
-                type_node=self.current(),
-                path=list(path.identifiers()),
+                type_node=type_node,
+                path=identifiers,
                 validate=validate,
             )
-        except ValueError as exc:
-            raise DslException(f"Field `{path}` is not defined in scope") from exc
+        except TypeGraphPathError as exc:
+            raise DslException(self._format_path_error(field_path, exc)) from exc
 
     def _add_child(
         self, type_node: BoundNode, action: GenTypeGraphIR.AddMakeChildAction
@@ -1290,7 +1318,9 @@ class _TypeContextStack:
         if (parent_reference := action.parent_reference) is None and (
             parent_path := action.parent_path
         ) is not None:
-            parent_reference = self.resolve_reference(parent_path)
+            parent_reference = self._ensure_field_path(
+                type_node=type_node, field_path=parent_path
+            )
 
         child_spec = action.child_spec
         symbol = child_spec.symbol
@@ -1436,7 +1466,9 @@ class ASTVisitor:
         self._experiments: set[ASTVisitor._Experiments] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
-            graph=self._graph, type_graph=self._type_graph, state=self._state
+            graph=self._graph,
+            type_graph=self._type_graph,
+            state=self._state,
         )
 
     @staticmethod
@@ -1672,21 +1704,25 @@ class ASTVisitor:
 
         if new_spec.count is None:
             # TODO: review
-            if (
-                target_path.leaf.is_index
-                and parent_path is not None
-                and (
-                    seq_elements := self._scope_stack.get_sequence_elements(parent_path)
-                )
-                is not None
-                and all(
-                    tuple(element.identifiers()) != tuple(target_path.identifiers())
-                    for element in seq_elements
-                )
-            ):
-                raise DslException(
-                    f"Field `{target_path}` is not part of sequence `{parent_path}`"
-                )
+            if target_path.leaf.is_index and parent_path is not None:
+                try:
+                    pointer_members = self._type_graph.iter_pointer_members(
+                        type_node=self._type_stack.current(),
+                        container_path=list(parent_path.identifiers()),
+                    )
+                except TypeGraphPathError as exc:
+                    raise DslException(
+                        self._type_stack._format_path_error(parent_path, exc)
+                    ) from exc
+
+                member_identifiers = {
+                    identifier
+                    for identifier, _ in pointer_members
+                    if identifier is not None
+                }
+
+                if target_path.leaf.identifier not in member_identifiers:
+                    raise DslException(f"Field `{target_path}` is not defined in scope")
 
             return GenTypeGraphIR.AddMakeChildAction(
                 target_path=target_path,
@@ -1707,7 +1743,6 @@ class ASTVisitor:
 
         element_spec = replace(new_spec, count=None)
 
-        element_paths: list[GenTypeGraphIR.FieldPath] = []
         element_actions: list[GenTypeGraphIR.AddMakeChildAction] = []
 
         for idx in range(new_spec.count):
@@ -1721,7 +1756,6 @@ class ASTVisitor:
             )
 
             self._scope_stack.add_field(element_path)
-            element_paths.append(element_path)
             element_actions.append(
                 GenTypeGraphIR.AddMakeChildAction(
                     target_path=element_path,
@@ -1730,8 +1764,6 @@ class ASTVisitor:
                     parent_path=GenTypeGraphIR.FieldPath(segments=target_path.segments),
                 )
             )
-
-        self._scope_stack.add_sequence(container=target_path, elements=element_paths)
 
         return [pointer_action, *element_actions]
 
@@ -1757,11 +1789,7 @@ class ASTVisitor:
             if not self._scope_stack.has_field(parent_path):
                 raise DslException(f"Field `{parent_path}` is not defined in scope")
 
-            parent_reference = self._type_graph.ensure_child_reference(
-                type_node=self._type_stack.current(),
-                path=list(parent_path.identifiers()),
-                validate=True,
-            )
+            parent_reference = self._type_stack.resolve_reference(parent_path)
 
         if self._scope_stack.has_field(target_path):
             raise DslException(
@@ -1860,6 +1888,36 @@ class ASTVisitor:
 
         return sequence_elements[slice(start_idx, stop_idx, step_idx)]
 
+    def _pointer_member_paths(
+        self, container_path: GenTypeGraphIR.FieldPath
+    ) -> list[GenTypeGraphIR.FieldPath]:
+        try:
+            pointer_members = self._type_graph.iter_pointer_members(
+                type_node=self._type_stack.current(),
+                container_path=list(container_path.identifiers()),
+            )
+        except TypeGraphPathError as exc:
+            raise DslException(
+                self._type_stack._format_path_error(container_path, exc)
+            ) from exc
+
+        return [
+            GenTypeGraphIR.FieldPath(
+                segments=(
+                    *container_path.segments,
+                    GenTypeGraphIR.FieldPath.Segment(
+                        identifier=identifier,
+                        is_index=identifier.isdigit(),
+                    ),
+                )
+            )
+            for identifier in [
+                identifier
+                for identifier, _ in pointer_members
+                if identifier is not None
+            ]
+        ]
+
     def visit_ForStmt(self, node: AST.ForStmt):
         self.ensure_experiment(ASTVisitor._Experiments.FOR_LOOP)
 
@@ -1876,15 +1934,9 @@ class ASTVisitor:
         elif iterable_node.isinstance(AST.IterableFieldRef):
             iterable_field = iterable_node.cast(t=AST.IterableFieldRef)
             container_path = self.visit_FieldRef(iterable_field.field.get())
+            member_paths = self._pointer_member_paths(container_path)
 
-            if (
-                sequence_elements := self._scope_stack.get_sequence_elements(
-                    container_path
-                )
-            ) is None:
-                raise DslException(f"Field `{container_path}` is not iterable")
-
-            selected = self._select_elements(iterable_field, sequence_elements)
+            selected = self._select_elements(iterable_field, member_paths)
             item_paths = list(selected)
         else:
             raise DslException("Unexpected iterable type")

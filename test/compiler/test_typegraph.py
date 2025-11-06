@@ -10,77 +10,29 @@ from atopile.compiler.ast_graph import (
     build_source,
     build_stdlib,
 )
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.next import EdgeNext
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraphPathError
 from faebryk.core.zig.gen.graph.graph import GraphView
 
 
-def _get_make_child(type_node, name: str):
-    matches: list = []
-
-    def _collector(ctx: list, bound_edge):
-        child_node = EdgeComposition.get_child_node(edge=bound_edge.edge())
-        child_bound = bound_edge.g().bind(node=child_node)
-        identifier = child_bound.node().get_attr(key="child_identifier")
+def _get_make_child(type_graph, type_node, name: str):
+    for identifier, make_child in type_graph.iter_make_children(type_node=type_node):
         if identifier == name:
-            ctx.append(child_bound)
-
-    EdgeComposition.visit_children_edges(
-        bound_node=type_node,
-        ctx=matches,
-        f=_collector,
-    )
-
-    assert matches, f"expected make child `{name}`"
-    return matches[0]
+            return make_child
+    raise AssertionError(f"expected make child `{name}`")
 
 
-def _collect_make_links(type_node):
-    results: list = []
-
-    def _collector(ctx: list, bound_edge):
-        child_node = bound_edge.g().bind(
-            node=EdgeComposition.get_child_node(edge=bound_edge.edge())
+def _collect_make_links(type_graph, type_node):
+    return [
+        (make_link, list(lhs_path), list(rhs_path))
+        for make_link, lhs_path, rhs_path in type_graph.debug_iter_make_links(
+            type_node=type_node
         )
-        lhs_ref = EdgeComposition.get_child_by_identifier(
-            bound_node=child_node, child_identifier="lhs"
-        )
-        rhs_ref = EdgeComposition.get_child_by_identifier(
-            bound_node=child_node, child_identifier="rhs"
-        )
-        if lhs_ref is None or rhs_ref is None:
-            return
-
-        def path(ref) -> list[str]:
-            segments: list[str] = []
-            current = ref
-            while True:
-                identifier = current.node().get_attr(key="child_identifier")
-                if identifier is None:
-                    return []
-                segments.append(str(identifier))
-                next_node = EdgeNext.get_next_node_from_node(node=current)
-                if next_node is None:
-                    break
-                current = current.g().bind(node=next_node)
-            return segments
-
-        lhs_path = path(lhs_ref)
-        rhs_path = path(rhs_ref)
-        if not lhs_path or not rhs_path:
-            return
-        ctx.append((child_node, lhs_path, rhs_path))
-
-    EdgeComposition.visit_children_edges(
-        bound_node=type_node,
-        ctx=results,
-        f=_collector,
-    )
-    return results
+    ]
 
 
 def _check_make_links(
+    type_graph,
     type_node,
     *,
     expected: list[tuple[list[str] | tuple[str, ...], list[str] | tuple[str, ...]]]
@@ -90,7 +42,7 @@ def _check_make_links(
 ) -> bool:
     paths = {
         (tuple(lhs_path), tuple(rhs_path))
-        for _, lhs_path, rhs_path in _collect_make_links(type_node)
+        for _, lhs_path, rhs_path in _collect_make_links(type_graph, type_node)
     }
 
     if expected:
@@ -113,22 +65,12 @@ def _build_snippet(source: str):
     return graph, stdlib_tg, stdlib_registry, result
 
 
-def _collect_children_by_name(type_node, name: str):
-    results: list = []
-
-    def _collector(ctx: list, bound_edge):
-        child_node = EdgeComposition.get_child_node(edge=bound_edge.edge())
-        bound = bound_edge.g().bind(node=child_node)
-        identifier = bound.node().get_attr(key="child_identifier")
-        if identifier == name:
-            ctx.append(bound)
-
-    EdgeComposition.visit_children_edges(
-        bound_node=type_node,
-        ctx=results,
-        f=_collector,
-    )
-    return results
+def _collect_children_by_name(type_graph, type_node, name: str):
+    return [
+        child
+        for identifier, child in type_graph.iter_make_children(type_node=type_node)
+        if identifier == name
+    ]
 
 
 def test_block_definitions_recorded():
@@ -170,31 +112,20 @@ def test_make_child_and_linking():
         """
     )
     app_type = result.state.type_roots["App"]
+    type_graph = result.state.type_graph
 
-    child_node = _get_make_child(app_type, "child")
-    assert (
-        EdgeComposition.get_child_by_identifier(
-            bound_node=child_node, child_identifier="mount"
-        )
-        is None
-    )
+    child_node = _get_make_child(type_graph, app_type, "child")
+    assert type_graph.debug_get_mount_chain(make_child=child_node) == []
 
-    res_node = _get_make_child(app_type, "res")
-    assert (
-        EdgeComposition.get_child_by_identifier(
-            bound_node=res_node, child_identifier="mount"
-        )
-        is None
-    )
+    res_node = _get_make_child(type_graph, app_type, "res")
+    assert type_graph.debug_get_mount_chain(make_child=res_node) == []
 
     unresolved = result.state.type_graph.collect_unresolved_type_references()
     assert not unresolved
 
     Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
 
-    type_ref = EdgeComposition.get_child_by_identifier(
-        bound_node=res_node, child_identifier="type_ref"
-    )
+    type_ref = type_graph.get_make_child_type_reference(make_child=res_node)
     assert type_ref is not None
     resolved = EdgePointer.get_pointed_node_by_identifier(
         bound_node=type_ref, identifier="resolved"
@@ -214,11 +145,10 @@ def test_new_with_count_creates_pointer_sequence():
     )
 
     app_type = result.state.type_roots["App"]
-    members_node = _get_make_child(app_type, "members")
+    type_graph = result.state.type_graph
+    members_node = _get_make_child(type_graph, app_type, "members")
 
-    type_ref = EdgeComposition.get_child_by_identifier(
-        bound_node=members_node, child_identifier="type_ref"
-    )
+    type_ref = type_graph.get_make_child_type_reference(make_child=members_node)
     assert type_ref is not None
     resolved = EdgePointer.get_pointed_node_by_identifier(
         bound_node=type_ref, identifier="resolved"
@@ -228,7 +158,7 @@ def test_new_with_count_creates_pointer_sequence():
     type_graph = result.state.type_graph
     element_nodes = []
     for idx in ["0", "1", "2"]:
-        element_nodes.append(_get_make_child(app_type, idx))
+        element_nodes.append(_get_make_child(type_graph, app_type, idx))
         ref = type_graph.ensure_child_reference(
             type_node=app_type,
             path=["members", idx],
@@ -250,36 +180,20 @@ def test_new_with_count_children_have_mounts():
     )
 
     app_type = result.state.type_roots["App"]
-    members_node = _get_make_child(app_type, "members")
+    type_graph = result.state.type_graph
+    members_node = _get_make_child(type_graph, app_type, "members")
 
-    # PointerSequence root is top-level, so it should not have a mount reference.
-    assert (
-        EdgeComposition.get_child_by_identifier(
-            bound_node=members_node, child_identifier="mount"
-        )
-        is None
-    )
+    assert type_graph.debug_get_mount_chain(make_child=members_node) == []
 
     for idx in ["0", "1"]:
-        elem_node = _get_make_child(app_type, idx)
-        mount_ref = EdgeComposition.get_child_by_identifier(
-            bound_node=elem_node, child_identifier="mount"
-        )
-        assert mount_ref is not None
-        assert (
-            EdgePointer.get_pointed_node_by_identifier(
-                bound_node=mount_ref, identifier="resolved"
-            )
-            is None
-        )
-        assert mount_ref.node().get_attr(key="child_identifier") == "members"
-        assert EdgeNext.get_next_node_from_node(node=mount_ref) is None
+        elem_node = _get_make_child(type_graph, app_type, idx)
+        assert type_graph.debug_get_mount_chain(make_child=elem_node) == ["members"]
 
 
 def test_new_with_count_rejects_out_of_range_index():
     with pytest.raises(
         DslException,
-        match=r"members\[2\]",
+        match=r"Field `members\[(2|2\.0)\]` is not defined in scope",
     ):
         _build_snippet(
             """
@@ -291,6 +205,46 @@ def test_new_with_count_rejects_out_of_range_index():
                 members[2] = new Inner
             """
         )
+
+
+def test_typegraph_path_error_metadata():
+    _, _, _, result = _build_snippet(
+        """
+        module Inner:
+            pass
+
+        module App:
+            members = new Inner[2]
+        """
+    )
+
+    type_graph = result.state.type_graph
+    app_type = result.state.type_roots["App"]
+
+    with pytest.raises(TypeGraphPathError) as excinfo:
+        type_graph.ensure_child_reference(
+            type_node=app_type,
+            path=["members", "5"],
+            validate=True,
+        )
+    err = excinfo.value
+    assert err.kind == "invalid_index"
+    assert err.path == ["members", "5"]
+    assert err.failing_segment == "5"
+    assert err.failing_segment_index == 1
+    assert err.index_value is None
+
+    with pytest.raises(TypeGraphPathError) as excinfo_missing:
+        type_graph.ensure_child_reference(
+            type_node=app_type,
+            path=["missing", "child"],
+            validate=True,
+        )
+
+    err_missing = excinfo_missing.value
+    assert err_missing.kind in {"missing_parent", "missing_child"}
+    assert err_missing.path == ["missing", "child"]
+    assert err_missing.failing_segment_index == 0
 
 
 def test_for_loop_connects_twice():
@@ -314,9 +268,11 @@ def test_for_loop_connects_twice():
         """
     )
     app_type = result.state.type_roots["App"]
+    type_graph = result.state.type_graph
 
     assert (
         _check_make_links(
+            type_graph,
             app_type,
             expected=[(["left"], ["sink"]), (["right"], ["sink"])],
         )
@@ -367,10 +323,11 @@ def test_for_loop_over_sequence():
                 it.connection ~ sink
         """
     )
-
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
+            type_graph,
             app_type,
             expected=[
                 (["items", "0", "connection"], ["sink"]),
@@ -404,8 +361,10 @@ def test_for_loop_over_sequence_slice():
         """
     )
 
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
     assert _check_make_links(
+        type_graph,
         app_type,
         expected=[
             (["items", "1", "connection"], ["sink"]),
@@ -455,8 +414,10 @@ def test_for_loop_over_sequence_stride():
         """
     )
 
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
     assert _check_make_links(
+        type_graph,
         app_type,
         expected=[
             (["items", "0", "connection"], ["sink"]),
@@ -511,9 +472,11 @@ def test_for_loop_nested_field_paths():
                 i.connection ~ sink
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
+            type_graph,
             app_type,
             expected=[(["left", "connection"], ["sink"])],
             not_expected=[(["right", "connection"], ["sink"])],
@@ -543,15 +506,15 @@ def test_for_loop_assignment_creates_children():
                 i.extra = new Resistor
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
-    extras = _collect_children_by_name(app_type, "extra")
+    extras = _collect_children_by_name(type_graph, app_type, "extra")
     assert len(extras) == 2
-    # Each created extra should have a non-null mount reference
     for extra in extras:
-        mount_ref = EdgeComposition.get_child_by_identifier(
-            bound_node=extra, child_identifier="mount"
-        )
-        assert mount_ref is not None
+        chain = type_graph.debug_get_mount_chain(make_child=extra)
+        assert chain, "expected extra to have mount chain"
+        assert chain[-1] == "extra"
+        assert chain[0] in {"left", "right"}
 
 
 def test_two_for_loops_same_var_accumulates_links():
@@ -577,9 +540,11 @@ def test_two_for_loops_same_var_accumulates_links():
                 r ~ sink
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
     assert (
         _check_make_links(
+            type_graph,
             app_type,
             expected=[(["a"], ["sink"]), (["b"], ["sink"]), (["c"], ["sink"])],
         )
@@ -625,24 +590,15 @@ def test_nested_make_child_uses_mount_reference():
             base.extra = new Resistor
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
 
-    base_node = _get_make_child(app_type, "base")
-    assert (
-        EdgeComposition.get_child_by_identifier(
-            bound_node=base_node, child_identifier="mount"
-        )
-        is None
-    )
+    base_node = _get_make_child(type_graph, app_type, "base")
+    assert type_graph.debug_get_mount_chain(make_child=base_node) == []
 
-    extra_node = _get_make_child(app_type, "extra")
-    mount_ref = EdgeComposition.get_child_by_identifier(
-        bound_node=extra_node, child_identifier="mount"
-    )
-    assert mount_ref is not None
-    # No user-intended links should exist involving top-level roots like 'base' or
-    # the nested 'extra'. Internal operand links may exist; ignore those.
-    for _, lhs_path, rhs_path in _collect_make_links(app_type):
+    extra_node = _get_make_child(type_graph, app_type, "extra")
+    assert type_graph.debug_get_mount_chain(make_child=extra_node) == ["base", "extra"]
+    for _, lhs_path, rhs_path in _collect_make_links(type_graph, app_type):
         assert not lhs_path or lhs_path[0] not in ("base", "extra")
         assert not rhs_path or rhs_path[0] not in ("base", "extra")
 
@@ -662,10 +618,12 @@ def test_connects_between_top_level_fields():
             left ~ right
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
 
     assert (
         _check_make_links(
+            type_graph,
             app_type,
             expected=[(["left"], ["right"])],
             not_expected=[(["left"], ["left"]), (["right"], ["right"])],
@@ -725,11 +683,14 @@ def test_nested_connects_across_child_fields():
             left.connection ~ right.connection
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
 
     assert (
         _check_make_links(
-            app_type, expected=[(["left", "connection"], ["right", "connection"])]
+            type_graph,
+            app_type,
+            expected=[(["left", "connection"], ["right", "connection"])],
         )
         is True
     )
@@ -756,10 +717,12 @@ def test_deep_nested_connects_across_child_fields():
             left.intermediate.branch ~ right.intermediate.branch
         """
     )
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
 
     assert (
         _check_make_links(
+            type_graph,
             app_type,
             expected=[
                 (
@@ -839,17 +802,16 @@ def test_external_import_linking(tmp_path: Path):
     stdlib_tg, stdlib_registry = build_stdlib(graph)
 
     result = build_file(graph, main_path)
+    type_graph = result.state.type_graph
     app_type = result.state.type_roots["App"]
-    child_node = _get_make_child(app_type, "child")
+    child_node = _get_make_child(type_graph, app_type, "child")
 
     unresolved = result.state.type_graph.collect_unresolved_type_references()
     assert unresolved
 
     Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
 
-    type_ref = EdgeComposition.get_child_by_identifier(
-        bound_node=child_node, child_identifier="type_ref"
-    )
+    type_ref = type_graph.get_make_child_type_reference(make_child=child_node)
     assert type_ref is not None
     resolved = EdgePointer.get_pointed_node_by_identifier(
         bound_node=type_ref, identifier="resolved"

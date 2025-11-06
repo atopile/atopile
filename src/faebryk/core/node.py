@@ -17,7 +17,7 @@ from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import Trait
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
 from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
@@ -232,10 +232,20 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
         if self.identifier is None:
             raise FabLLException("Can only be called on named children")
 
-        child_instance = not_none(
-            EdgeComposition.get_child_by_identifier(
-                bound_node=instance, child_identifier=self.identifier
+        try:
+            reference = self.t.tg.ensure_child_reference(
+                type_node=self.t.get_or_create_type(),
+                path=[self.identifier],
+                validate=True,
             )
+        except TypeGraphPathError as exc:
+            raise FabLLException(
+                f"Child `{self.identifier}` is not defined on type"
+            ) from exc
+
+        child_instance = self.t.tg.reference_resolve(
+            reference_node=reference,
+            base_node=instance,
         )
         bound = self.nodetype(instance=child_instance)
         return bound
@@ -250,6 +260,8 @@ class InstanceChildBoundType[T: Node[Any]](ChildAccessor[T]):
             nodetype=self.nodetype,
             identifier=self.get_identifier(),
             instance=instance,
+            type_graph=self.t.tg,
+            type_node=self.t.get_or_create_type(),
         )
 
 
@@ -259,11 +271,28 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
     """
 
     def __init__(
-        self, nodetype: type[T], identifier: str | None, instance: BoundNode
+        self,
+        nodetype: type[T],
+        identifier: str | None,
+        instance: BoundNode,
+        *,
+        type_graph: TypeGraph | None = None,
+        type_node: BoundNode | None = None,
     ) -> None:
         self.nodetype = nodetype
         self.identifier = identifier
         self.instance = instance
+        self._tg = type_graph or not_none(TypeGraph.of_instance(instance_node=instance))
+
+        if type_node is not None:
+            self._type_node = type_node
+        else:
+            type_edge = EdgeType.get_type_edge(bound_node=instance)
+            if type_edge is None:
+                raise FabLLException("Instance is not bound to a type")
+            self._type_node = type_edge.g().bind(
+                node=EdgeType.get_type_node(edge=type_edge.edge())
+            )
 
     def get(self) -> T:
         """
@@ -272,10 +301,20 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
         if self.identifier is None:
             raise FabLLException("Can only be called on named children")
 
-        child_instance = not_none(
-            EdgeComposition.get_child_by_identifier(
-                bound_node=self.instance, child_identifier=self.identifier
+        try:
+            reference = self._tg.ensure_child_reference(
+                type_node=self._type_node,
+                path=[self.identifier],
+                validate=True,
             )
+        except TypeGraphPathError as exc:
+            raise FabLLException(
+                f"Child `{self.identifier}` is not defined on instance"
+            ) from exc
+
+        child_instance = self._tg.reference_resolve(
+            reference_node=reference,
+            base_node=self.instance,
         )
         bound = self.nodetype(instance=child_instance)
         return bound
@@ -308,13 +347,11 @@ class TypeChildBoundInstance[T: Node[Any]]:
     def get_unbound(self, instance: BoundNode) -> T:
         assert self.identifier is not None, "Bug: Needs to be set on setattr"
 
-        child_instance = not_none(
-            EdgeComposition.get_child_by_identifier(
-                bound_node=instance, child_identifier=self.identifier
-            )
-        )
-        bound = self.nodetype(instance=child_instance)
-        return bound
+        for identifier, make_child in self.t.tg.iter_make_children(type_node=instance):
+            if identifier == self.identifier:
+                return self.nodetype(instance=make_child)
+
+        raise FabLLException(f"Child `{self.identifier}` is not defined on type")
 
 
 RefPath = list[str | ChildField[Any]]
@@ -494,6 +531,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __init__(self, instance: BoundNode) -> None:
         self.instance = instance
 
+        self_type_graph = not_none(TypeGraph.of_instance(instance_node=instance))
+        type_edge = EdgeType.get_type_edge(bound_node=instance)
+        if type_edge is None:
+            raise FabLLException("Instance is not bound to a type node")
+        instance_type_node = type_edge.g().bind(
+            node=EdgeType.get_type_node(edge=type_edge.edge())
+        )
+
         # setup instance accessors
         # overrides fields in instance
         for field in type(self).__fields:
@@ -504,6 +549,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     nodetype=field.nodetype,
                     identifier=field.get_identifier(),
                     instance=instance,
+                    type_graph=self_type_graph,
+                    type_node=instance_type_node,
                 )
                 setattr(self, field.get_locator(), child)
             if isinstance(field, ListField):
@@ -514,6 +561,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                             nodetype=nested_field.nodetype,
                             identifier=nested_field.get_identifier(),
                             instance=instance,
+                            type_graph=self_type_graph,
+                            type_node=instance_type_node,
                         )
                         list_attr.append(child)
                 setattr(self, field.get_locator(), list_attr)

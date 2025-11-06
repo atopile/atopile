@@ -32,6 +32,7 @@ var edge_pointer_type: ?*py.PyTypeObject = null;
 var edge_creation_attributes_type: ?*py.PyTypeObject = null;
 var node_creation_attributes_type: ?*py.PyTypeObject = null;
 var type_graph_type: ?*py.PyTypeObject = null;
+var typegraph_path_error_type: ?*py.PyObject = null;
 var make_child_node_type: ?*py.PyTypeObject = null;
 
 pub const method_descr = bind.method_descr;
@@ -2882,6 +2883,249 @@ fn _copy_string_sequence(
     }
 }
 
+fn _make_py_string(value: []const u8) ?*py.PyObject {
+    return py.PyUnicode_FromStringAndSize(@ptrCast(value.ptr), @as(isize, @intCast(value.len)));
+}
+
+fn _path_segments_to_tuple(path: []const []const u8) ?*py.PyObject {
+    const tuple_obj = py.PyTuple_New(@as(isize, @intCast(path.len)));
+    if (tuple_obj == null) {
+        return null;
+    }
+
+    var idx: usize = 0;
+    while (idx < path.len) : (idx += 1) {
+        const segment = path[idx];
+        const py_str = _make_py_string(segment) orelse {
+            py.Py_DECREF(tuple_obj.?);
+            return null;
+        };
+        if (py.PyTuple_SetItem(tuple_obj, @as(isize, @intCast(idx)), py_str) != 0) {
+            py.Py_DECREF(py_str);
+            py.Py_DECREF(tuple_obj.?);
+            return null;
+        }
+    }
+
+    return tuple_obj;
+}
+
+fn _path_segments_to_list(segments: []const []const u8) ?*py.PyObject {
+    const list_len = @as(isize, @intCast(segments.len));
+    const list_obj = py.PyList_New(list_len);
+    if (list_obj == null) {
+        return null;
+    }
+
+    var i: usize = 0;
+    while (i < segments.len) : (i += 1) {
+        const seg = segments[i];
+        const str_obj = _make_py_string(seg);
+        if (str_obj == null) {
+            return null;
+        }
+        if (py.PyList_SetItem(list_obj, @as(isize, @intCast(i)), str_obj) != 0) {
+            return null;
+        }
+    }
+
+    return list_obj;
+}
+
+fn _path_error_kind_to_str(kind: faebryk.typegraph.TypeGraph.PathErrorKind) []const u8 {
+    return switch (kind) {
+        .missing_parent => "missing_parent",
+        .missing_child => "missing_child",
+        .invalid_index => "invalid_index",
+    };
+}
+
+const PathErrorMessages = struct {
+    fallback: [:0]const u8,
+    unresolved: [:0]const u8 = "child path type is unresolved",
+    out_of_memory: [:0]const u8 = "operation ran out of memory",
+};
+
+fn raise_typegraph_path_exception(
+    err: anyerror,
+    failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure,
+    path_segments: []const []const u8,
+    comptime messages: PathErrorMessages,
+) void {
+    switch (err) {
+        error.ChildNotFound => _raise_path_error(failure, path_segments, messages.fallback),
+        error.UnresolvedTypeReference => py.PyErr_SetString(py.PyExc_ValueError, messages.unresolved),
+        error.OutOfMemory => py.PyErr_SetString(py.PyExc_MemoryError, messages.out_of_memory),
+        else => py.PyErr_SetString(py.PyExc_ValueError, messages.fallback),
+    }
+}
+
+fn _init_typegraph_path_error(module: *py.PyObject) void {
+    if (typegraph_path_error_type != null) return;
+
+    const exc_name = "faebryk.core.zig.TypeGraphPathError";
+    const exc = py.PyErr_NewException(exc_name, py.PyExc_ValueError, null);
+    if (exc == null) {
+        py.PyErr_Clear();
+        return;
+    }
+
+    const doc =
+        "Raised when a mount-aware TypeGraph path lookup fails. " ++
+        "Captures failing segment metadata so callers can format rich errors " ++
+        "without duplicating Zig traversal logic.";
+    const doc_obj = py.PyUnicode_FromStringAndSize(
+        @ptrCast(doc.ptr),
+        @as(isize, @intCast(doc.len)),
+    );
+    if (doc_obj != null) {
+        if (py.PyObject_SetAttrString(exc, "__doc__", doc_obj) != 0) {
+            py.PyErr_Clear();
+        }
+        py.Py_DECREF(doc_obj.?);
+    }
+
+    if (py.PyModule_AddObject(module, "TypeGraphPathError", exc) != 0) {
+        py.Py_DECREF(exc.?);
+        py.PyErr_Clear();
+        return;
+    }
+
+    typegraph_path_error_type = exc;
+    py.Py_INCREF(exc.?);
+}
+
+fn _raise_path_error(
+    failure_opt: ?faebryk.typegraph.TypeGraph.PathResolutionFailure,
+    segments: []const []const u8,
+    fallback_message: [:0]const u8,
+) void {
+    const fallback_bytes = fallback_message[0..fallback_message.len];
+
+    if (typegraph_path_error_type == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const failure = failure_opt orelse faebryk.typegraph.TypeGraph.PathResolutionFailure{
+        .kind = faebryk.typegraph.TypeGraph.PathErrorKind.missing_child,
+        .failing_segment_index = if (segments.len == 0) 0 else segments.len - 1,
+        .failing_segment = if (segments.len == 0) &.{} else segments[segments.len - 1],
+        .has_index_value = false,
+        .index_value = 0,
+    };
+
+    const args = py.PyTuple_New(1);
+    if (args == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const message_obj = _make_py_string(fallback_bytes) orelse {
+        py.Py_DECREF(args.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error message");
+        return;
+    };
+
+    if (py.PyTuple_SetItem(args, 0, message_obj) != 0) {
+        py.Py_DECREF(message_obj);
+        py.Py_DECREF(args.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const exc_instance = py.PyObject_Call(typegraph_path_error_type.?, args, null);
+    py.Py_DECREF(args.?);
+    if (exc_instance == null) {
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+
+    const kind_bytes = _path_error_kind_to_str(failure.kind);
+    const kind_obj = _make_py_string(kind_bytes) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate error kind");
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "kind", kind_obj) != 0) {
+        py.Py_DECREF(kind_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(kind_obj);
+
+    const path_list = _path_segments_to_list(segments) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate path list");
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "path", path_list) != 0) {
+        py.Py_DECREF(path_list);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(path_list);
+
+    var segment_buf: [32]u8 = undefined;
+    const failing_segment_slice = if (failure.has_index_value)
+        std.fmt.bufPrint(&segment_buf, "{d}", .{failure.index_value}) catch &.{}
+    else
+        failure.failing_segment;
+
+    const failing_segment_obj = _make_py_string(failing_segment_slice) orelse {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate failing segment");
+        return;
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "failing_segment", failing_segment_obj) != 0) {
+        py.Py_DECREF(failing_segment_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(failing_segment_obj);
+
+    const index_pos_tmp = py.PyLong_FromUnsignedLongLong(@intCast(failure.failing_segment_index));
+    if (index_pos_tmp == null) {
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate segment index");
+        return;
+    }
+    const index_pos_obj = index_pos_tmp.?;
+    if (py.PyObject_SetAttrString(exc_instance.?, "failing_segment_index", index_pos_obj) != 0) {
+        py.Py_DECREF(index_pos_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(index_pos_obj);
+
+    const index_value_obj = if (failure.has_index_value) blk: {
+        const value_tmp = py.PyLong_FromUnsignedLongLong(@intCast(failure.index_value));
+        if (value_tmp == null) {
+            py.Py_DECREF(exc_instance.?);
+            py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate index value");
+            return;
+        }
+        break :blk value_tmp.?;
+    } else blk: {
+        py.Py_INCREF(py.Py_None());
+        break :blk py.Py_None();
+    };
+    if (py.PyObject_SetAttrString(exc_instance.?, "index_value", index_value_obj) != 0) {
+        py.Py_DECREF(index_value_obj);
+        py.Py_DECREF(exc_instance.?);
+        py.PyErr_SetString(py.PyExc_ValueError, fallback_message);
+        return;
+    }
+    py.Py_DECREF(index_value_obj);
+
+    py.PyErr_SetObject(typegraph_path_error_type.?, exc_instance.?);
+    py.Py_DECREF(exc_instance.?);
+}
+
 fn _unwrap_literal_str_dict(dict_obj: *py.PyObject, allocator: std.mem.Allocator) !?graph.DynamicAttributes {
     if (dict_obj == py.Py_None()) {
         return null;
@@ -2966,14 +3210,13 @@ fn wrap_typegraph_add_make_link() type {
     };
 }
 
-fn wrap_typegraph_resolve_child_type() type {
+fn wrap_typegraph_iter_make_children() type {
     return struct {
         pub const descr = method_descr{
-            .name = "resolve_child_type",
-            .doc = "Resolve the type reached by a child path",
+            .name = "iter_make_children",
+            .doc = "Return a list of (identifier, make_child) pairs without filtering so tests can observe the exact Zig TypeGraph structure.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
-                path: *py.PyObject,
 
                 pub const fields_meta = .{
                     .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -2986,44 +3229,82 @@ fn wrap_typegraph_resolve_child_type() type {
             const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const type_node = kwarg_obj.type_node.*;
-            const path_obj = kwarg_obj.path;
-            if (py.PySequence_Check(path_obj) != 1) {
-                py.PyErr_SetString(py.PyExc_TypeError, "path must be a sequence of strings");
+            const allocator = std.heap.c_allocator;
+            const children = faebryk.typegraph.TypeGraph.iter_make_children(wrapper.data, allocator, kwarg_obj.type_node.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "iter_make_children failed");
+                return null;
+            };
+            defer allocator.free(children);
+
+            const list_obj = py.PyList_New(@as(isize, @intCast(children.len)));
+            if (list_obj == null) {
                 return null;
             }
 
-            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
-            defer segments.deinit();
-
-            if (_copy_string_sequence(path_obj, &segments)) |_| {} else |err| {
-                switch (err) {
-                    error.MemoryError => py.PyErr_SetString(py.PyExc_MemoryError, "failed to build path"),
-                    error.TypeError => py.PyErr_SetString(py.PyExc_TypeError, "path must contain only strings"),
+            var i: usize = 0;
+            while (i < children.len) : (i += 1) {
+                const info = children[i];
+                const tuple_obj = py.PyTuple_New(2);
+                if (tuple_obj == null) {
+                    return null;
                 }
-                return null;
+
+                const identifier_obj = if (info.identifier) |ident| blk: {
+                    const value = _make_py_string(ident);
+                    if (value == null) return null;
+                    break :blk value;
+                } else blk: {
+                    py.Py_INCREF(py.Py_None());
+                    break :blk py.Py_None();
+                };
+
+                const make_child_obj = graph_py.makeBoundNodePyObject(info.make_child) orelse return null;
+
+                if (py.PyTuple_SetItem(tuple_obj, 0, identifier_obj) != 0) return null;
+                if (py.PyTuple_SetItem(tuple_obj, 1, make_child_obj) != 0) return null;
+
+                if (py.PyList_SetItem(list_obj, @as(isize, @intCast(i)), tuple_obj) != 0) {
+                    return null;
+                }
             }
 
-            const resolved_type = faebryk.typegraph.TypeGraph.resolve_child_type(
-                wrapper.data,
-                type_node,
-                segments.items,
-            ) catch |err| switch (err) {
-                error.ChildNotFound => {
-                    py.PyErr_SetString(py.PyExc_ValueError, "child path not found");
-                    return null;
-                },
-                error.UnresolvedTypeReference => {
-                    py.PyErr_SetString(py.PyExc_ValueError, "child path type is unresolved");
-                    return null;
-                },
-                error.OutOfMemory => {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "resolve_child_type failed");
-                    return null;
-                },
+            return list_obj;
+        }
+    };
+}
+
+fn wrap_typegraph_debug_get_mount_chain() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "debug_get_mount_chain",
+            .doc = "Test helper: Return the ordered mount reference chain for a make-child, exposing how pointer-sequence elements attach to their containers.",
+            .args_def = struct {
+                make_child: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .make_child = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+            const chain = faebryk.typegraph.TypeGraph.get_mount_chain(wrapper.data, allocator, kwarg_obj.make_child.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "debug_get_mount_chain failed");
+                return null;
+            };
+            defer allocator.free(chain);
+
+            const list_obj = _path_segments_to_list(chain) orelse {
+                py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate mount chain");
+                return null;
             };
 
-            return graph_py.makeBoundNodePyObject(resolved_type);
+            return list_obj;
         }
     };
 }
@@ -3032,7 +3313,7 @@ fn wrap_typegraph_instantiate() type {
     return struct {
         pub const descr = method_descr{
             .name = "instantiate",
-            .doc = "Instantiate the given type node into a graph",
+            .doc = "Instantiate the given type into the graph",
             .args_def = struct {
                 type_identifier: *py.PyObject,
             },
@@ -3059,7 +3340,7 @@ fn wrap_typegraph_instantiate_node() type {
     return struct {
         pub const descr = method_descr{
             .name = "instantiate_node",
-            .doc = "Instantiate the given type node into a graph",
+            .doc = "Instantiate the given type node into the graph",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 attributes: *py.PyObject,
@@ -3092,11 +3373,11 @@ fn wrap_typegraph_instantiate_node() type {
     };
 }
 
-fn wrap_typegraph_reference_create() type {
+fn wrap_typegraph_debug_add_reference() type {
     return struct {
         pub const descr = method_descr{
-            .name = "add_reference",
-            .doc = "Create a Reference node chain from a sequence of child identifiers",
+            .name = "debug_add_reference",
+            .doc = "Test helper: build a Reference node chain from child identifiers",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 path: *py.PyObject,
@@ -3143,7 +3424,7 @@ fn wrap_typegraph_reference_create() type {
             }
 
             const bnode = faebryk.typegraph.TypeGraph.ChildReferenceNode.create_and_insert(wrapper.data, segments.items) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "add_reference failed");
+                py.PyErr_SetString(py.PyExc_ValueError, "debug_add_reference failed");
                 return null;
             };
 
@@ -3232,32 +3513,6 @@ fn wrap_typegraph_get_type_by_name() type {
     };
 }
 
-fn wrap_typegraph_get_or_create_type() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "get_or_create_type",
-            .args_def = struct {
-                type_identifier: *py.PyObject,
-            },
-            .doc = "Get or create a type node by name",
-        };
-
-        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
-            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
-
-            const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
-
-            const bnode = faebryk.typegraph.TypeGraph.get_or_create_type(wrapper.data, identifier) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "get_or_create_type failed");
-                return null;
-            };
-
-            return graph_py.makeBoundNodePyObject(bnode);
-        }
-    };
-}
-
 fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_make_child_node_build(),
@@ -3294,18 +3549,22 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_make_child_type_reference(),
         wrap_typegraph_collect_unresolved_type_references(),
         wrap_typegraph_add_make_link(),
+        wrap_typegraph_iter_make_children(),
+        wrap_typegraph_debug_iter_make_links(),
+        wrap_typegraph_get_reference_path(),
+        wrap_typegraph_debug_get_mount_chain(),
+        wrap_typegraph_iter_pointer_members(),
         wrap_typegraph_ensure_child_reference(),
-        wrap_typegraph_resolve_child_type(),
         wrap_typegraph_instantiate(),
         wrap_typegraph_instantiate_node(),
-        wrap_typegraph_reference_create(),
+        wrap_typegraph_debug_add_reference(),
         wrap_typegraph_reference_resolve(),
         wrap_typegraph_get_type_by_name(),
-        wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);
+    _init_typegraph_path_error(root);
 
     type_graph_type = type_registry.getRegisteredTypeObject("TypeGraph");
     if (type_graph_type) |tg_type| {
@@ -3799,6 +4058,151 @@ fn wrap_operand_file(root: *py.PyObject) ?*py.PyObject {
 
     return module;
 }
+
+fn wrap_typegraph_debug_iter_make_links() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "debug_iter_make_links",
+            .doc = "Test helper: enumerate MakeLink nodes together with their lhs/rhs reference paths.",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+            const infos = faebryk.typegraph.TypeGraph.iter_make_links_detailed(wrapper.data, allocator, kwarg_obj.type_node.*) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "debug_iter_make_links ran out of memory");
+                    return null;
+                },
+                error.InvalidReference => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "MakeLink node has an invalid reference chain");
+                    return null;
+                },
+            };
+            defer {
+                for (infos) |info| {
+                    allocator.free(info.lhs_path);
+                    allocator.free(info.rhs_path);
+                }
+                allocator.free(infos);
+            }
+
+            const list_obj = py.PyList_New(@as(isize, @intCast(infos.len)));
+            if (list_obj == null) {
+                return null;
+            }
+
+            var idx: usize = 0;
+            while (idx < infos.len) : (idx += 1) {
+                const info = infos[idx];
+                const make_link_obj = graph_py.makeBoundNodePyObject(info.make_link) orelse {
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                };
+
+                const lhs_tuple = _path_segments_to_tuple(info.lhs_path) orelse {
+                    py.Py_DECREF(make_link_obj);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                };
+                const rhs_tuple = _path_segments_to_tuple(info.rhs_path) orelse {
+                    py.Py_DECREF(make_link_obj);
+                    py.Py_DECREF(lhs_tuple);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                };
+
+                const tuple_obj = py.PyTuple_New(3);
+                if (tuple_obj == null) {
+                    py.Py_DECREF(make_link_obj);
+                    py.Py_DECREF(lhs_tuple);
+                    py.Py_DECREF(rhs_tuple);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+
+                if (py.PyTuple_SetItem(tuple_obj, 0, make_link_obj) != 0) {
+                    py.Py_DECREF(make_link_obj);
+                    py.Py_DECREF(lhs_tuple);
+                    py.Py_DECREF(rhs_tuple);
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+                if (py.PyTuple_SetItem(tuple_obj, 1, lhs_tuple) != 0) {
+                    py.Py_DECREF(lhs_tuple);
+                    py.Py_DECREF(rhs_tuple);
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+                if (py.PyTuple_SetItem(tuple_obj, 2, rhs_tuple) != 0) {
+                    py.Py_DECREF(rhs_tuple);
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+
+                if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), tuple_obj) != 0) {
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+            }
+
+            return list_obj;
+        }
+    };
+}
+
+fn wrap_typegraph_get_reference_path() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_reference_path",
+            .doc = "Return the identifier sequence for a Reference chain (lhs/rhs).",
+            .args_def = struct {
+                reference: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+            const path = faebryk.typegraph.TypeGraph.get_reference_path(wrapper.data, allocator, kwarg_obj.reference.*) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "get_reference_path ran out of memory");
+                    return null;
+                },
+                error.InvalidReference => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "reference does not contain any identifiers");
+                    return null;
+                },
+            };
+            defer allocator.free(path);
+
+            const tuple_obj = _path_segments_to_tuple(path) orelse return null;
+            return tuple_obj;
+        }
+    };
+}
+
 // ====================================================================================================================
 
 // Main module methods
@@ -3840,7 +4244,7 @@ fn wrap_typegraph_ensure_child_reference() type {
     return struct {
         pub const descr = method_descr{
             .name = "ensure_child_reference",
-            .doc = "Return a ChildReferenceNode for the given path, validating it against the type graph",
+            .doc = "Return a ChildReferenceNode for the given path. Delegates to the mount-aware resolver in the Zig TypeGraph so Python never mirrors structural logic.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 path: *py.PyObject,
@@ -3874,17 +4278,149 @@ fn wrap_typegraph_ensure_child_reference() type {
                 return null;
             }
 
-            const reference = faebryk.typegraph.TypeGraph.ensure_child_reference(
+            var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
+
+            const reference = faebryk.typegraph.TypeGraph.ensure_path_reference_mountaware(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 segments.items,
                 py.PyObject_IsTrue(kwarg_obj.validate) == 1,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "child path not found");
+                &failure,
+            ) catch |err| {
+                raise_typegraph_path_exception(
+                    err,
+                    failure,
+                    segments.items,
+                    .{
+                        .fallback = "child path not found",
+                        .unresolved = "child path type is unresolved",
+                        .out_of_memory = "child path resolution ran out of memory",
+                    },
+                );
                 return null;
             };
 
             return graph_py.makeBoundNodePyObject(reference);
+        }
+    };
+}
+
+fn wrap_typegraph_iter_pointer_members() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "iter_pointer_members",
+            .doc = "Return the pointer-sequence elements mounted under container_path as (identifier, make_child) tuples.",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+                container_path: *py.PyObject,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (py.PySequence_Check(kwarg_obj.container_path) != 1) {
+                py.PyErr_SetString(py.PyExc_TypeError, "container_path must be a sequence of strings");
+                return null;
+            }
+
+            var segments = std.ArrayList([]const u8).init(std.heap.c_allocator);
+            defer segments.deinit();
+
+            if (_copy_string_sequence(kwarg_obj.container_path, &segments)) |_| {} else |err| {
+                switch (err) {
+                    error.MemoryError => py.PyErr_SetString(py.PyExc_MemoryError, "failed to build container_path"),
+                    error.TypeError => py.PyErr_SetString(py.PyExc_TypeError, "container_path must contain only strings"),
+                }
+                return null;
+            }
+
+            var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
+
+            const allocator = std.heap.c_allocator;
+            const members = faebryk.typegraph.TypeGraph.iter_pointer_members(
+                wrapper.data,
+                allocator,
+                kwarg_obj.type_node.*,
+                segments.items,
+                &failure,
+            ) catch |err| {
+                raise_typegraph_path_exception(
+                    err,
+                    failure,
+                    segments.items,
+                    .{
+                        .fallback = "pointer sequence member not found",
+                        .unresolved = "pointer sequence member type is unresolved",
+                        .out_of_memory = "iter_pointer_members ran out of memory",
+                    },
+                );
+                return null;
+            };
+            defer allocator.free(members);
+
+            const list_obj = py.PyList_New(@as(isize, @intCast(members.len)));
+            if (list_obj == null) {
+                return null;
+            }
+
+            var idx: usize = 0;
+            while (idx < members.len) : (idx += 1) {
+                const info = members[idx];
+
+                const identifier_obj = if (info.identifier) |id_slice| blk: {
+                    const py_str = _make_py_string(id_slice) orelse {
+                        py.Py_DECREF(list_obj.?);
+                        return null;
+                    };
+                    break :blk py_str;
+                } else blk: {
+                    py.Py_INCREF(py.Py_None());
+                    break :blk py.Py_None();
+                };
+
+                const make_child_obj = graph_py.makeBoundNodePyObject(info.make_child) orelse {
+                    py.Py_DECREF(identifier_obj);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                };
+
+                const tuple_obj = py.PyTuple_New(2);
+                if (tuple_obj == null) {
+                    py.Py_DECREF(identifier_obj);
+                    py.Py_DECREF(make_child_obj);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+
+                if (py.PyTuple_SetItem(tuple_obj, 0, identifier_obj) != 0) {
+                    py.Py_DECREF(identifier_obj);
+                    py.Py_DECREF(make_child_obj);
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+                if (py.PyTuple_SetItem(tuple_obj, 1, make_child_obj) != 0) {
+                    py.Py_DECREF(make_child_obj);
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+
+                if (py.PyList_SetItem(list_obj, @as(isize, @intCast(idx)), tuple_obj) != 0) {
+                    py.Py_DECREF(tuple_obj.?);
+                    py.Py_DECREF(list_obj.?);
+                    return null;
+                }
+            }
+
+            return list_obj;
         }
     };
 }

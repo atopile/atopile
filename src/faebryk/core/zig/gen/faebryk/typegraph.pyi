@@ -9,6 +9,15 @@ from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView, Literal
 
+class TypeGraphPathError(ValueError):
+    """Raised when mount-aware path resolution fails inside the Zig TypeGraph."""
+
+    kind: str
+    path: list[str]
+    failing_segment: str
+    failing_segment_index: int
+    index_value: int | None
+
 class TypeGraph:
     @staticmethod
     def create(*, g: GraphView) -> "TypeGraph": ...
@@ -37,7 +46,9 @@ class TypeGraph:
         @staticmethod
         def build(*, value: str | None = ...) -> NodeCreationAttributes: ...
 
-    def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
+    def debug_add_reference(
+        self, *, type_node: BoundNode, path: list[str]
+    ) -> BoundNode: ...
     def add_make_link(
         self,
         *,
@@ -53,12 +64,32 @@ class TypeGraph:
         path: list[str],
         validate: bool = ...,
     ) -> BoundNode: ...
-    def resolve_child_type(
+    def iter_pointer_members(
         self,
         *,
         type_node: BoundNode,
-        path: list[str],
-    ) -> BoundNode: ...
+        container_path: list[str],
+    ) -> list[tuple[str | None, BoundNode]]: ...
+    def iter_make_children(
+        self,
+        *,
+        type_node: BoundNode,
+    ) -> list[tuple[str | None, BoundNode]]: ...
+    def debug_iter_make_links(
+        self,
+        *,
+        type_node: BoundNode,
+    ) -> list[tuple[BoundNode, tuple[str, ...], tuple[str, ...]]]: ...
+    def debug_get_mount_chain(
+        self,
+        *,
+        make_child: BoundNode,
+    ) -> list[str]: ...
+    def get_reference_path(
+        self,
+        *,
+        reference: BoundNode,
+    ) -> tuple[str, ...]: ...
     def instantiate(
         self, *, type_identifier: str, attributes: dict[str, Literal]
     ) -> BoundNode: ...
@@ -70,4 +101,3 @@ class TypeGraph:
     ) -> BoundNode: ...
     def get_graph_view(self) -> GraphView: ...
     def get_type_by_name(self, *, type_identifier: str) -> BoundNode | None: ...
-    def get_or_create_type(self, *, type_identifier: str) -> BoundNode: ...
