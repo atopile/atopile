@@ -15,10 +15,10 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-from faebryk.library.Units import Units
+from faebryk.library import Units
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.is_bus_parameter import is_bus_parameter
-from faebryk.library.Collections import Collections
+from faebryk.library import Collections
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
@@ -38,7 +38,7 @@ from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
 from faebryk.library.is_pickable import is_pickable
-from faebryk.library.Expressions import Expressions
+from faebryk.library import Expressions
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
