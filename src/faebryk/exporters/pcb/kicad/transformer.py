@@ -1131,57 +1131,6 @@ class PCB_Transformer:
         )
 
     # Positioning ----------------------------------------------------------------------
-    def move_footprints(self):
-        import faebryk.library._F as F
-
-        # position modules with defined positions
-        pos_mods = fabll.Node.bind_typegraph(self.graph).nodes_with_traits(
-            (F.has_pcb_position, self.has_linked_kicad_footprint)
-        )
-
-        logger.info(f"Positioning {len(pos_mods)} footprints")
-
-        for module, _ in pos_mods:
-            fp = module.get_trait(self.has_linked_kicad_footprint).get_fp()
-            coord = module.get_trait(F.has_pcb_position).get_position()
-            layer_names = {
-                F.has_pcb_position.layer_type.TOP_LAYER: "F.Cu",
-                F.has_pcb_position.layer_type.BOTTOM_LAYER: "B.Cu",
-            }
-
-            match coord[3]:
-                case F.has_pcb_position.layer_type.NONE:
-                    logger.warning(
-                        f"Assigning default layer for component `{module}({fp.name})`",
-                        extra={"markdown": True},
-                    )
-                    layer = layer_names[F.has_pcb_position.layer_type.TOP_LAYER]
-                case _:
-                    layer = layer_names[coord[3]]
-
-            logger.debug(f"Placing {fp.name} at {coord} layer {layer}")
-            to = kicad.pcb.Xyr(x=coord[0], y=coord[1], r=coord[2])
-            self.move_fp(fp, to, layer)
-
-            # Label
-            if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
-                rot_angle = ((to.r or 0) - (fp.at.r or 0)) % 360
-                fp.fp_texts.append(
-                    kicad.pcb.FpText(
-                        type=kicad.pcb.E_fp_text_type.USER,
-                        text="FBRK:autoplaced",
-                        at=kicad.pcb.Xyr(x=0, y=0, r=rot_angle),
-                        effects=kicad.pcb.Effects(
-                            font=self.font, hide=False, justify=None
-                        ),
-                        uuid=self.gen_uuid(mark=True),
-                        layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
-                        # TODO
-                        # layer=kicad.pcb.TextLayer(layer="User.5", knockout=None),
-                        hide=None,
-                    )
-                )
-
     @staticmethod
     def move_fp(fp: Footprint, coord: kicad.pcb.Xyr, layer: str):
         if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):

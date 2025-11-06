@@ -10,7 +10,6 @@ import psutil
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
@@ -26,21 +25,6 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def apply_layouts(app: fabll.Node):
-    if not app.has_trait(F.has_pcb_position):
-        app.add(
-            F.has_pcb_position_defined(
-                F.has_pcb_position.Point((0, 0, 0, F.has_pcb_position.layer_type.NONE))
-            )
-        )
-
-    for level in app.get_tree(types=fabll.Node).iter_by_depth():
-        for n in level:
-            raise NotImplementedError("has_pcb_layout trait has been removed")
-            # if n.has_trait(F.has_pcb_layout):
-            #     n.get_trait(F.has_pcb_layout).apply()
 
 
 def open_pcb(pcb_path: os.PathLike):
