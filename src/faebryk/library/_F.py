@@ -71,7 +71,6 @@ from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.BJT import BJT
 from faebryk.library.Diode import Diode
@@ -83,7 +82,6 @@ from faebryk.library.Inductor import Inductor
 from faebryk.library.Resistor import Resistor
 from faebryk.library.Switch import Switch
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
-from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.ElectricPower import ElectricPower

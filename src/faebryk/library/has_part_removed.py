@@ -10,6 +10,3 @@ logger = logging.getLogger(__name__)
 
 class has_part_removed(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
-
-    def __init__(self):
-        super().__init__(None)
