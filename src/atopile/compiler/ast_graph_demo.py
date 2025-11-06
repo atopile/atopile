@@ -28,7 +28,10 @@ class RenderNodeContext:
 
 
 def _type_name(node: BoundNode) -> str | None:
-    return fabll.Node.bind_instance(node).get_type_name()
+    try:
+        return fabll.Node.bind_instance(node).get_type_name()
+    except Exception:
+        return None
 
 
 def _format_edge_label(

@@ -648,6 +648,53 @@ def test_assignment_requires_existing_field():
         )
 
 
+def test_simple_connect():
+    _, _, _, result = _build_snippet(
+        """
+        module A:
+            pass
+
+        module App:
+            left = new A
+            right = new A
+            left ~ right
+        """
+    )
+    type_graph = result.state.type_graph
+    app_type = result.state.type_roots["App"]
+    assert (
+        _check_make_links(
+            type_graph,
+            app_type,
+            expected=[(["left"], ["right"])],
+        )
+        is True
+    )
+
+
+def test_connect_unlinked_types():
+    _, _, _, result = _build_snippet(
+        """
+        from "A.ato" import A
+
+        module App:
+            left = new A
+            right = new A
+            left ~ right
+        """
+    )
+    type_graph = result.state.type_graph
+    app_type = result.state.type_roots["App"]
+    assert (
+        _check_make_links(
+            type_graph,
+            app_type,
+            expected=[(["left"], ["right"])],
+        )
+        is True
+    )
+
+
 def test_connect_requires_existing_fields():
     with pytest.raises(DslException, match="not defined"):
         _build_snippet(

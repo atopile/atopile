@@ -1348,8 +1348,9 @@ class _TypeContextStack:
             self._state.external_type_refs.append((type_reference, symbol.import_ref))
             return
 
-        target = symbol.type_node if symbol is not None else child_spec.type_node
-        if target is None:
+        if (
+            target := symbol.type_node if symbol is not None else child_spec.type_node
+        ) is None:
             raise DslException(
                 f"Type `{child_type_identifier}` is not defined in scope"
             )
@@ -1773,11 +1774,6 @@ class ASTVisitor:
         target_path = self.visit_FieldRef(node.target.get())
         assignable = self.visit(node.assignable.get().get_value())
 
-        action: (
-            list[GenTypeGraphIR.AddMakeChildAction]
-            | GenTypeGraphIR.AddMakeChildAction
-            | None
-        ) = None
         parent_path: GenTypeGraphIR.FieldPath | None = None
         parent_reference: BoundNode | None = None
 
@@ -1802,12 +1798,7 @@ class ASTVisitor:
                     target_path, new_spec, parent_reference, parent_path
                 )
             case _:
-                if not self._scope_stack.has_field(target_path):
-                    raise DslException(
-                        f"Field `{target_path}` is not defined and cannot be assigned"
-                    )
-
-        return action
+                raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 
     def visit_NewExpression(self, node: AST.NewExpression):
         type_name = cast_assert(
@@ -1852,7 +1843,7 @@ class ASTVisitor:
             if not self._scope_stack.has_field(root_path):
                 raise DslException(f"Field `{root_path}` is not defined in scope")
 
-            return self._type_stack.resolve_reference(path)
+            return self._type_stack.resolve_reference(path, validate=False)
 
         lhs_ref = _ensure_reference(lhs_path)
         rhs_ref = _ensure_reference(rhs_path)
