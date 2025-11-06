@@ -502,6 +502,53 @@ class InstanceBoundEdgeFactory(EdgeFactoryField):
         return self.edge_factory_field._get_all(source=self.instance)
 
 
+class Path:
+    """
+    Wrapper around Zig's BFSPath object.
+
+    This is a lightweight Python wrapper around a path object that lives in Zig memory.
+    The underlying BFSPath is automatically freed when this Python object is garbage collected.
+
+    Access path information via properties that call back into Zig:
+    - length: Number of edges in the path
+    - start_node: Starting node (BoundNode)
+    - end_node: Ending node (BoundNode)
+    - edges: List of edges (creates Python objects, use sparingly for long paths)
+    """
+
+    def __init__(self, bfs_path: "BFSPath"):  # type: ignore
+        self._bfs_path = bfs_path
+
+    @property
+    def length(self) -> int:
+        return self._bfs_path.get_length()
+
+    @property
+    def start_node(self) -> BoundNode:
+        return self._bfs_path.get_start_node()
+
+    @property
+    def end_node(self) -> BoundNode:
+        return self._bfs_path.get_end_node()
+
+    @property
+    def edges(self) -> list[BoundEdge]:
+        return self._bfs_path.get_edges()
+
+    def get_start_node(self) -> "Node[Any]":
+        return Node[Any].bind_instance(instance=self.start_node)
+
+    def get_end_node(self) -> "Node[Any]":
+        return Node[Any].bind_instance(instance=self.end_node)
+
+    def __repr__(self) -> str:
+        start = self.start_node
+        end = self.end_node
+        start_str = f"BoundNode({start.node().get_uuid()})"
+        end_str = f"BoundNode({end.node().get_uuid()})"
+        return f"Path(start={start_str}, end={end_str}, length={self.length})"
+
+
 # --------------------------------------------------------------------------------------
 
 LiteralT = float | int | str | bool
@@ -1354,12 +1401,31 @@ class is_interface(Node):
         )
         return len(path) > 0
 
-    def get_connected(self) -> set["Node[Any]"]:
+    def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
+        """Get all nodes connected to this node via interface connections.
+
+        Args:
+            include_self: If True, include the source node itself in the result
+                         with an empty path.
+
+        Returns:
+            Dictionary mapping connected nodes to Path objects. The Path objects
+            wrap Zig BFSPath objects and provide access to path information via
+            properties (length, start_node, end_node, edges).
+        """
         self_node = self.get_obj()
-        connected_nodes = EdgeInterfaceConnection.get_connected(
-            source=self_node.instance
+        connected_nodes_map = EdgeInterfaceConnection.get_connected(
+            source=self_node.instance, include_self=include_self
         )
-        return {Node[Any].bind_instance(instance=node) for node in connected_nodes}
+
+        # Zig returns dict[BoundNode, BFSPath]
+        # Wrap each BFSPath in a Python Path object
+        result = {
+            Node[Any].bind_instance(instance=node): Path(bfs_path)
+            for node, bfs_path in connected_nodes_map.items()
+        }
+
+        return result
 
 
 # ------------------------------------------------------------

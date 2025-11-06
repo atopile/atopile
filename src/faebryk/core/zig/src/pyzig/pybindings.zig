@@ -285,6 +285,7 @@ pub extern fn PyTuple_SetItem(tuple: ?*PyObject, pos: isize, item: ?*PyObject) c
 pub extern fn PyTuple_GetItem(tuple: ?*PyObject, pos: isize) ?*PyObject;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
 pub extern fn PyDict_New() ?*PyObject;
+pub extern fn PyDict_SetItem(dict: ?*PyObject, key: ?*PyObject, value: ?*PyObject) c_int;
 pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyDict_Next(dict: ?*PyObject, pos: *isize, key: *?*PyObject, value: *?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
@@ -320,6 +321,7 @@ pub extern fn PyObject_Call(callable: ?*PyObject, args: ?*PyObject, kwargs: ?*Py
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;
+pub extern var _Py_NotImplementedStruct: PyObject;
 
 pub fn Py_True() *PyObject {
     return &_Py_TrueStruct;
@@ -327,6 +329,10 @@ pub fn Py_True() *PyObject {
 
 pub fn Py_False() *PyObject {
     return &_Py_FalseStruct;
+}
+
+pub fn Py_NotImplemented() *PyObject {
+    return &_Py_NotImplementedStruct;
 }
 
 // Exception types

@@ -7,7 +7,7 @@
 
 from typing import Callable
 
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node
+from faebryk.core.zig.gen.graph.graph import BFSPath, BoundEdge, BoundNode, Edge, Node
 
 class EdgeInterfaceConnection:
     @staticmethod
@@ -32,4 +32,6 @@ class EdgeInterfaceConnection:
         *, source: BoundNode, target: BoundNode
     ) -> list[int]: ...  # TODO: return proper BFSPath list
     @staticmethod
-    def get_connected(*, source: BoundNode) -> set[BoundNode]: ...
+    def get_connected(
+        *, source: BoundNode, include_self: bool = True
+    ) -> dict[BoundNode, BFSPath]: ...  # Returns dict mapping nodes to BFSPath objects
