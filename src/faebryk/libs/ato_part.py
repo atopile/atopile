@@ -130,7 +130,7 @@ class AtoPart:
             return sanitize_name(pin_name, warn_prefix=f"{self.identifier}")
 
         # Collect and sort pins first
-        unsorted_pins = []
+        unsorted_pins: list[tuple[str | None, str]] = []
         for unit in symbol.symbols:
             for pin in unit.pins:
                 pin_num = pin.number.number
@@ -143,25 +143,32 @@ class AtoPart:
         # Sort pins by name using natsort
         sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
 
-        defined_signals = set()
+        all_pin_nums = {pin_num for _, pin_num in sorted_pins}
+
+        defined_signals: set[str] = set()
 
         # Process sorted pins
         for pin_name, pin_num in sorted_pins:
             if pin_name is None:
                 build.add_stmt(AtoCodeGen.PinDeclaration(pin_num))
             else:
+                # Add prefix if pin_name conflicts with any pin_num
+                signal_name = (
+                    f"SIG_{pin_name}" if pin_name in all_pin_nums else pin_name
+                )
+
                 build.add_stmt(
                     AtoCodeGen.Connect(
                         left=AtoCodeGen.Connect.Connectable(
-                            pin_name,
+                            signal_name,
                             declare="signal"
-                            if pin_name not in defined_signals
+                            if signal_name not in defined_signals
                             else None,
                         ),
                         right=AtoCodeGen.Connect.Connectable(pin_num, declare="pin"),
                     )
                 )
-                defined_signals.add(pin_name)
+                defined_signals.add(signal_name)
 
     def dump(self):
         assert self.auto_generated is not None
