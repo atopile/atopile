@@ -271,9 +271,9 @@ class ProjectDependencies:
             (None, dep) for dep in self.direct_deps
         ]
 
-        acc_errors = []
+        acc_errors: list[BrokenDependencyError] = []
         while deps_to_process:
-            to_add = []
+            to_add: list[tuple[ProjectDependency, ProjectDependency]] = []
             for parent, dep in deps_to_process:
                 try:
                     dups = all_deps.intersection({dep})
