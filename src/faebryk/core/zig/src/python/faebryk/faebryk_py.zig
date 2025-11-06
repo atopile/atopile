@@ -1181,6 +1181,7 @@ fn wrap_edge_interface_connection_get_connected() type {
             .doc = "Get all nodes connected to the source node",
             .args_def = struct {
                 source: *graph.BoundNodeReference,
+                include_self: ?*py.PyObject = null,
 
                 pub const fields_meta = .{
                     .source = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
@@ -1192,36 +1193,37 @@ fn wrap_edge_interface_connection_get_connected() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            var paths = faebryk.interface.EdgeInterfaceConnection.get_connected(
+            // Parse include_self parameter (default to true for backwards compatibility)
+            const include_self = if (kwarg_obj.include_self) |obj|
+                if (obj == py.Py_None()) true else py.PyObject_IsTrue(obj) == 1
+            else
+                true;
+
+            var paths_map = faebryk.interface.EdgeInterfaceConnection.get_connected(
                 kwarg_obj.source.g.allocator,
                 kwarg_obj.source.*,
-            ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "Failed to get connected nodes");
-                return null;
-            };
-            defer paths.deinit();
+                include_self,
+            ) catch @panic("OOM");
+            defer paths_map.deinit(); // Only clean up the HashMap structure, not the paths (Python takes ownership)
 
-            // Convert paths to Python set of connected nodes
-            const set_obj = py.PySet_New(null);
-            if (set_obj == null) return null;
+            const dict_obj = py.PyDict_New() orelse @panic("OOM");
 
-            for (paths.paths.items) |path| {
-                const connected_node = path.get_last_node();
-                const py_node = graph_py.makeBoundNodePyObject(connected_node);
-                if (py_node == null) {
-                    py.Py_DECREF(set_obj.?);
-                    return null;
-                }
-                if (py.PySet_Add(set_obj, py_node) != 0) {
-                    py.Py_DECREF(py_node.?);
-                    py.Py_DECREF(set_obj.?);
-                    return null;
-                }
-                // PySet_Add does not steal a reference; decref our temporary
-                py.Py_DECREF(py_node.?);
+            var iter = paths_map.iterator();
+            while (iter.next()) |entry| {
+                const node = entry.key_ptr.*;
+                const path = entry.value_ptr.*;
+
+                const bound_node = kwarg_obj.source.g.bind(node);
+                const py_node = graph_py.makeBoundNodePyObject(bound_node) orelse @panic("OOM");
+                const py_path = graph_py.makeBFSPathPyObject(path) orelse @panic("OOM");
+
+                _ = py.PyDict_SetItem(dict_obj, py_node, py_path);
+
+                py.Py_DECREF(py_path);
+                py.Py_DECREF(py_node);
             }
 
-            return set_obj;
+            return dict_obj;
         }
     };
 }

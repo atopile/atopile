@@ -77,7 +77,7 @@ pub const EdgeInterfaceConnection = struct {
         return bound_node.visit_edges_of_type(tid, void, ctx, f);
     }
 
-    pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !graph.BFSPath {
+    pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !*graph.BFSPath {
         var pf = PathFinder.init(allocator);
         defer pf.deinit();
 
@@ -91,16 +91,39 @@ pub const EdgeInterfaceConnection = struct {
             }
         }
 
-        // return empty path
-        return graph.BFSPath.init(source);
+        // No path found - return empty path
+        return try graph.BFSPath.init(source);
     }
 
     // TODO - A visitor would be nice instead of just returning a list don't ya think?
-    pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference) !graph.BFSPaths {
+    pub fn get_connected(allocator: std.mem.Allocator, source: BoundNodeReference, include_self: bool) !graph.NodeRefMap.T(*graph.BFSPath) {
         var pf = PathFinder.init(allocator);
         defer pf.deinit();
 
-        return try pf.find_paths(source);
+        var paths = try pf.find_paths(source);
+        defer paths.paths.deinit(); // Clean up the ArrayList, but not the paths themselves (transferred to map)
+
+        var paths_map = graph.NodeRefMap.T(*graph.BFSPath).init(allocator);
+
+        for (paths.paths.items) |path| {
+            const end_node = path.get_last_node().node;
+
+            // Skip self-path if include_self is false
+            if (!include_self and Node.is_same(end_node, source.node)) {
+                path.deinit();
+                continue;
+            }
+
+            // Only add the first path to each destination node
+            if (!paths_map.contains(end_node)) {
+                paths_map.put(end_node, path) catch @panic("OOM");
+            } else {
+                // Skip duplicate path and clean it up
+                path.deinit();
+            }
+        }
+
+        return paths_map;
     }
 };
 
@@ -214,6 +237,13 @@ test "basic" {
     try std.testing.expect(found_n3);
 }
 
+// Helper function for tests to check that no path exists
+fn expectNoPath(allocator: std.mem.Allocator, source: graph.BoundNodeReference, target: graph.BoundNodeReference) !void {
+    const path = try EdgeInterfaceConnection.is_connected_to(allocator, source, target);
+    defer path.deinit();
+    try std.testing.expectEqual(@as(usize, 0), path.traversed_edges.items.len);
+}
+
 test "self_connect" {
     // N1 (self-connect implied)
     var g = graph.GraphView.init(a);
@@ -222,8 +252,8 @@ test "self_connect" {
     const bn1 = g.create_and_insert_node();
     const bn2 = g.create_and_insert_node();
 
-    // expect not connected
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn2));
+    // expect not connected (empty path)
+    try expectNoPath(a, bn1, bn2);
 
     // expect connected
     var path = try EdgeInterfaceConnection.is_connected_to(a, bn1, bn1);
@@ -290,9 +320,8 @@ test "down_connect" {
     defer path_lv.deinit();
     try std.testing.expect(Node.is_same(path_lv.get_last_node().node, LV_2.node));
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, HV_1, LV_2));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, LV_1, HV_2));
+    try expectNoPath(a, HV_1, LV_2);
+    try expectNoPath(a, LV_1, HV_2);
 
     const link_a = try tg.instantiate_node(LinkType);
     const link_b = try tg.instantiate_node(LinkType);
@@ -308,7 +337,7 @@ test "down_connect" {
 
     _ = try EdgeInterfaceConnection.connect_shallow(HV_1_Child, LV_2);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, HV_1_Child, LV_2));
+    try expectNoPath(a, HV_1_Child, LV_2);
 }
 
 test "no_connect_cases" {
@@ -339,11 +368,9 @@ test "no_connect_cases" {
     _ = EdgeComposition.add_child(bn6, bn1.node, null);
     _ = EdgeComposition.add_child(bn6, bn3.node, null);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn2));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn3));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn1, bn5));
+    try expectNoPath(a, bn1, bn2);
+    try expectNoPath(a, bn1, bn3);
+    try expectNoPath(a, bn1, bn5);
 }
 
 test "chains_direct" {
@@ -426,9 +453,17 @@ test "multiple_paths" {
     defer path.deinit();
     try std.testing.expect(Node.is_same(path.get_last_node().node, bn4.node));
 
-    const all_paths = try EdgeInterfaceConnection.get_connected(a, bn1);
-    defer all_paths.deinit();
-    try std.testing.expect(all_paths.paths.items.len == 8);
+    var all_paths = try EdgeInterfaceConnection.get_connected(a, bn1, true);
+
+    defer {
+        var it = all_paths.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.*.deinit();
+        }
+        all_paths.deinit();
+    }
+
+    try std.testing.expect(all_paths.count() == 7);
 }
 
 test "hierarchy_short" {
@@ -450,7 +485,7 @@ test "hierarchy_short" {
     const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
     const lv_pin = EdgeComposition.get_child_by_identifier(electric_power, "LV").?;
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, electric_power, lv_pin));
+    try expectNoPath(a, electric_power, lv_pin);
 
     const link_a = try tg.instantiate_node(LinkType);
     const link_b = try tg.instantiate_node(LinkType);
@@ -548,13 +583,10 @@ test "chains_mixed_shallow_nested" {
     defer ref_path.deinit();
     try std.testing.expect(Node.is_same(ref_path.get_last_node().node, reference[2].node));
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, line[0], line[1]));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, reference[0], reference[1]));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, line[0], line[2]));
-
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, reference[0], reference[2]));
+    try expectNoPath(a, line[0], line[1]);
+    try expectNoPath(a, reference[0], reference[1]);
+    try expectNoPath(a, line[0], line[2]);
+    try expectNoPath(a, reference[0], reference[2]);
 
     _ = try EdgeInterfaceConnection.connect(line[0], line[1]);
     _ = try EdgeInterfaceConnection.connect(reference[0], reference[1]);
@@ -596,7 +628,7 @@ test "split_flip_negative" {
     _ = try EdgeInterfaceConnection.connect(lower1[0], lower2[1]);
     _ = try EdgeInterfaceConnection.connect(lower2[0], lower1[1]);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, high[0], high[1]));
+    try expectNoPath(a, high[0], high[1]);
 }
 
 test "up_connect_simple_two_negative" {
@@ -626,7 +658,7 @@ test "up_connect_simple_two_negative" {
 
     _ = try EdgeInterfaceConnection.connect(lower1[0], lower1[1]);
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, high[0], high[1]));
+    try expectNoPath(a, high[0], high[1]);
 }
 
 test "loooooong_chain" {
@@ -724,7 +756,7 @@ test "shallow_edges" {
     defer shallow_path.deinit();
     try std.testing.expect(Node.is_same(shallow_path.get_last_node().node, bn5.node));
 
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, bn3, bn6));
+    try expectNoPath(a, bn3, bn6);
 }
 
 test "type_graph_pathfinder" {
@@ -781,7 +813,7 @@ test "type_graph_pathfinder" {
     std.debug.print("✓ I2C SCL lines connected\n", .{});
 
     // Test 2: Different signal types should not connect (scl ≠ sda)
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor1_sda));
+    try expectNoPath(a, sensor1_scl, sensor1_sda);
     std.debug.print("✓ SCL ≠ SDA (no crosstalk)\n", .{});
 
     // Test 3: Shallow link behavior
@@ -797,11 +829,11 @@ test "type_graph_pathfinder" {
     // Test 3b: Cannot traverse from child (SCL) up through parent and across shallow link
     // sensor2.scl -> sensor2.i2c ~(shallow)~ sensor3.i2c -> sensor3.scl
     // This should be filtered because we start at SCL (child level) and the shallow link is at I2C (parent level)
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor2_scl, sensor3_scl));
+    try expectNoPath(a, sensor2_scl, sensor3_scl);
     std.debug.print("✓ Shallow link blocks child->parent->shallow\n", .{});
 
     // Test 4: Type mismatch - I2C to I2C_SCL
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_i2c, sensor1_scl));
+    try expectNoPath(a, sensor1_i2c, sensor1_scl);
     std.debug.print("✓ Type mismatch filtered (I2C ≠ I2C_SCL)\n", .{});
 
     // Test 5: Multi-hop on same bus (sensor1.scl -> sensor2.scl, sensor2.sda -> sensor3.sda via shallow)
@@ -810,7 +842,7 @@ test "type_graph_pathfinder" {
 
     // Since there's a shallow link at I2C level, we can't reach sensor3.sda from sensor1.sda
     // because the path would be: sensor1.sda -> sensor2.sda -> (up to sensor2.i2c) -> (shallow to sensor3.i2c) -> sensor3.sda
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_sda, sensor3_sda));
+    try expectNoPath(a, sensor1_sda, sensor3_sda);
     std.debug.print("✓ Shallow link prevents bus chaining from child\n", .{});
 
     // Test 6: Normal (non-shallow) I2C connection allows child traversal
@@ -838,6 +870,6 @@ test "type_graph_pathfinder" {
     std.debug.print("✓ Normal I2C link allows SDA->I2C->I2C->SDA\n", .{});
 
     // Test 6c: But SCL should NOT connect to SDA (different child types, even through hierarchy)
-    try std.testing.expectError(error.PathNotFound, EdgeInterfaceConnection.is_connected_to(a, sensor1_scl, sensor4_sda));
+    try expectNoPath(a, sensor1_scl, sensor4_sda);
     std.debug.print("✓ SCL ≠ SDA even through I2C hierarchy\n", .{});
 }

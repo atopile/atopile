@@ -38,6 +38,16 @@ pub fn makeBoundEdgePyObject(value: graph.graph.BoundEdgeReference) ?*py.PyObjec
     return pyobj;
 }
 
+pub fn makeBFSPathPyObject(path: *graph.graph.BFSPath) ?*py.PyObject {
+    // Transfer ownership of the BFSPath to Python
+    // Python will call deinit() when the object is garbage collected
+    const pyobj = bind.wrap_obj("BFSPath", &bfs_path_type, BFSPathWrapper, path);
+    if (pyobj == null) {
+        path.deinit();
+    }
+    return pyobj;
+}
+
 const VisitResultVoid = visitor.VisitResult(void);
 
 pub const BoundEdgeVisitor = struct {
@@ -93,12 +103,14 @@ pub const NodeWrapper = bind.PyObjectWrapper(graph.graph.Node);
 pub const EdgeWrapper = bind.PyObjectWrapper(graph.graph.Edge);
 pub const BoundNodeWrapper = bind.PyObjectWrapper(graph.graph.BoundNodeReference);
 pub const BoundEdgeWrapper = bind.PyObjectWrapper(graph.graph.BoundEdgeReference);
+pub const BFSPathWrapper = bind.PyObjectWrapper(graph.graph.BFSPath);
 
 pub var graph_view_type: ?*py.PyTypeObject = null;
 pub var node_type: ?*py.PyTypeObject = null;
 pub var edge_type: ?*py.PyTypeObject = null;
 pub var bound_node_type: ?*py.PyTypeObject = null;
 pub var bound_edge_type: ?*py.PyTypeObject = null;
+pub var bfs_path_type: ?*py.PyTypeObject = null;
 
 const Literal = graph.graph.Literal;
 
@@ -650,6 +662,39 @@ fn wrap_bound_node_visit_edges_of_type() type {
     };
 }
 
+fn bound_node_hash(self: *py.PyObject) callconv(.C) isize {
+    const wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
+    const bound_node = wrapper.data;
+    // Use the node's UUID as the hash
+    const uuid: usize = bound_node.node.attributes.uuid;
+    return @intCast(uuid);
+}
+
+fn bound_node_richcompare(self: *py.PyObject, other: *py.PyObject, op: c_int) callconv(.C) ?*py.PyObject {
+    // Only support equality (op == Py_EQ = 2) and inequality (op == Py_NE = 3)
+    if (op != 2 and op != 3) {
+        py.Py_INCREF(py.Py_NotImplemented());
+        return py.Py_NotImplemented();
+    }
+
+    const self_wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(self)));
+
+    // Check if other is also a BoundNodeReference
+    if (py.Py_TYPE(other) != py.Py_TYPE(self)) {
+        const result = if (op == 2) py.Py_False() else py.Py_True();
+        py.Py_INCREF(result);
+        return result;
+    }
+
+    const other_wrapper = @as(*BoundNodeWrapper, @ptrCast(@alignCast(other)));
+
+    // Use the same comparison logic as Node.is_same()
+    const same = graph.graph.Node.is_same(self_wrapper.data.node, other_wrapper.data.node);
+    const result = if ((op == 2 and same) or (op == 3 and !same)) py.Py_True() else py.Py_False();
+    py.Py_INCREF(result);
+    return result;
+}
+
 fn wrap_bound_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_bound_node_get_node(),
@@ -660,6 +705,10 @@ fn wrap_bound_node(root: *py.PyObject) void {
     bound_node_type = type_registry.getRegisteredTypeObject("BoundNodeReference");
 
     if (bound_node_type) |typ| {
+        // Add hash and comparison support for dictionary keys
+        typ.tp_hash = @ptrCast(@constCast(&bound_node_hash));
+        typ.tp_richcompare = @ptrCast(@constCast(&bound_node_richcompare));
+
         typ.ob_base.ob_base.ob_refcnt += 1;
         if (py.PyModule_AddObject(root, "BoundNode", @ptrCast(typ)) < 0) {
             typ.ob_base.ob_base.ob_refcnt -= 1;
@@ -710,6 +759,127 @@ fn wrap_bound_edge(root: *py.PyObject) void {
     if (bound_edge_type) |typ| {
         typ.ob_base.ob_base.ob_refcnt += 1;
         if (py.PyModule_AddObject(root, "BoundEdge", @ptrCast(typ)) < 0) {
+            typ.ob_base.ob_base.ob_refcnt -= 1;
+        }
+    }
+}
+
+fn wrap_bfs_path_get_length() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_length",
+            .doc = "Get the number of edges in the path",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
+            const path = wrapper.data;
+            return py.PyLong_FromLongLong(@intCast(path.traversed_edges.items.len));
+        }
+    };
+}
+
+fn wrap_bfs_path_get_start_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_start_node",
+            .doc = "Get the start node of the path",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
+            const path = wrapper.data;
+            return makeBoundNodePyObject(path.start_node);
+        }
+    };
+}
+
+fn wrap_bfs_path_get_end_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_end_node",
+            .doc = "Get the end node of the path",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
+            const path = wrapper.data;
+            return makeBoundNodePyObject(path.get_last_node());
+        }
+    };
+}
+
+fn wrap_bfs_path_get_edges() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_edges",
+            .doc = "Get the list of edges in the path",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("BFSPath", &bfs_path_type, BFSPathWrapper, self) orelse return null;
+            const path = wrapper.data;
+
+            const edges_list = py.PyList_New(@intCast(path.traversed_edges.items.len));
+            if (edges_list == null) return null;
+
+            for (path.traversed_edges.items, 0..) |traversed_edge, i| {
+                const bound_edge = graph.graph.BoundEdgeReference{
+                    .edge = traversed_edge.edge,
+                    .g = path.g,
+                };
+                const py_edge = makeBoundEdgePyObject(bound_edge);
+                if (py_edge == null or py.PyList_SetItem(edges_list, @intCast(i), py_edge) < 0) {
+                    if (py_edge != null) py.Py_DECREF(py_edge.?);
+                    py.Py_DECREF(edges_list.?);
+                    return null;
+                }
+            }
+
+            return edges_list;
+        }
+    };
+}
+
+fn bfs_path_dealloc(self: *py.PyObject) callconv(.C) void {
+    const wrapper = @as(*BFSPathWrapper, @ptrCast(@alignCast(self)));
+    const path = wrapper.data;
+
+    // Clean up the BFSPath
+    path.deinit();
+
+    if (py.Py_TYPE(self)) |type_obj| {
+        if (type_obj.tp_free) |free_fn_any| {
+            const free_fn = @as(*const fn (?*py.PyObject) callconv(.C) void, @ptrCast(@alignCast(free_fn_any)));
+            free_fn(self);
+            return;
+        }
+    }
+    py._Py_Dealloc(self);
+}
+
+fn wrap_bfs_path(root: *py.PyObject) void {
+    const extra_methods = [_]type{
+        wrap_bfs_path_get_length(),
+        wrap_bfs_path_get_start_node(),
+        wrap_bfs_path_get_end_node(),
+        wrap_bfs_path_get_edges(),
+    };
+    bind.wrap_namespace_struct(root, graph.graph.BFSPath, extra_methods);
+    bfs_path_type = type_registry.getRegisteredTypeObject("BFSPath");
+
+    if (bfs_path_type) |typ| {
+        typ.tp_dealloc = @ptrCast(&bfs_path_dealloc);
+        typ.ob_base.ob_base.ob_refcnt += 1;
+        if (py.PyModule_AddObject(root, "BFSPath", @ptrCast(typ)) < 0) {
             typ.ob_base.ob_base.ob_refcnt -= 1;
         }
     }
@@ -845,6 +1015,7 @@ fn wrap_graph_module(root: *py.PyObject) ?*py.PyObject {
     wrap_edge(module.?);
     wrap_bound_node(module.?);
     wrap_bound_edge(module.?);
+    wrap_bfs_path(module.?);
     wrap_graphview(module.?);
 
     if (py.PyModule_AddObject(root, "graph", module) < 0) {
