@@ -231,7 +231,7 @@ class RP2040(fabll.Node):
 
     @fabll.rt_field
     def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
+        return F.has_pin_association_heuristic(
             mapping={
                 self.power_adc.hv: ["ADC_AVDD"],
                 self.power_core.hv: ["DVDD"],

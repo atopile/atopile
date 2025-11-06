@@ -29,7 +29,7 @@ class BJT(fabll.Node):
 
     _can_bridge = F.can_bridge.MakeChild(in_=collector, out_=emitter)
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             emitter: ["E", "Emitter"],
             base: ["B", "Base"],

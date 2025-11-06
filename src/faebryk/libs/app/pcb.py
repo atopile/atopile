@@ -38,8 +38,9 @@ def apply_layouts(app: fabll.Node):
 
     for level in app.get_tree(types=fabll.Node).iter_by_depth():
         for n in level:
-            if n.has_trait(F.has_pcb_layout):
-                n.get_trait(F.has_pcb_layout).apply()
+            raise NotImplementedError("has_pcb_layout trait has been removed")
+            # if n.has_trait(F.has_pcb_layout):
+            #     n.get_trait(F.has_pcb_layout).apply()
 
 
 def open_pcb(pcb_path: os.PathLike):

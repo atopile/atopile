@@ -48,7 +48,7 @@ class OpAmp(fabll.Node):
         S(slew_rate, suffix="SR"),
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             power_hv: ["V+", "Vcc", "Vdd", "Vcc+"],
             power_lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],

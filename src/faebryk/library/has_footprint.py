@@ -19,17 +19,11 @@ class has_footprint(fabll.Node):
     footprint_pointer_ = F.Collections.Pointer.MakeChild()
 
     def set_footprint(self, fp: F.Footprint):
-        EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=fp.instance.node(),
-            identifier="footprint",
-            order=None,
-        )
+        self.footprint_pointer_.get().point(fp)
 
     def try_get_footprint(self) -> F.Footprint | None:
-        if fps := self.footprint_pointer_.get().deref():
-            assert len(fps) == 1, f"In node: {self}: footprint candidates: {fps}"
-            return F.Footprint.bind_instance(fps[0].instance)
+        if fp := self.footprint_pointer_.get().deref():
+            return F.Footprint.bind_instance(fp.instance)
         else:
             return None
 

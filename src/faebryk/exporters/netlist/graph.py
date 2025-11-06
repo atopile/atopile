@@ -366,7 +366,7 @@ def _process_unnamed_nets(
                 raise UserException(
                     f"Multiple conflicting required net names: {required}"
                 )
-            net.add(F.has_overriden_name_defined(required.pop()))
+            net.add(F.has_overriden_name(required.pop()))
             continue
 
         # Create net name entry and determine base name
@@ -667,7 +667,7 @@ def _assign_prefix_for_net(
         and not net_name.required_suffix
     )
 
-    if should_use_owner:
+    if should_use_owner
         if owner_name := _get_owner_module_name(net):
             net_name.prefix = owner_name
             return
@@ -737,7 +737,7 @@ def _apply_names_to_nets(names: FuncDict[F.Net, _NetName]) -> None:
     """Apply the computed names to nets, with length limiting."""
     for net, net_name in names.items():
         final_name = _truncate_long_name(net_name.name)
-        net.add(F.has_overriden_name_defined(final_name))
+        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(name=final_name)
 
 
 def attach_net_names(nets: Iterable[F.Net]) -> None:

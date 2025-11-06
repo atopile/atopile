@@ -31,7 +31,7 @@ class CapacitorElectrolytic(fabll.Node):
         # S(temperature_coefficient),
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             anode: ["anode", "a"],
             cathode: ["cathode", "c"],

@@ -40,7 +40,6 @@ class Battery(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-
     usage_example = F.has_usage_example.MakeChild(
         example="""
         import Battery, ElectricPower

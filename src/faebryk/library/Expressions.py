@@ -3,6 +3,7 @@ from enum import auto
 from typing import Any, Self, cast
 
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.graph.graph import BoundEdge
@@ -120,13 +121,8 @@ class IsConstrainable(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def constrain(self) -> None:
-        parent = fabll.Traits.get_obj(fabll.Traits.bind(self), fabll.Node)
-        fabll.Traits.add_to(
-            parent,
-            IsConstrained.bind_typegraph_from_instance(self.instance).create_instance(
-                g=self.instance.g()
-            ),
-        )
+        parent = self.get_parent_force()[0]
+        fabll.Traits.create_and_add_instance_to(node=parent, trait=IsConstrained)
 
 
 class IsConstrained(fabll.Node):
@@ -849,7 +845,7 @@ class Cardinality(fabll.Node):
 
 
 class Is(fabll.Node):
-    _is_constrainable = IsConstrainable.MakeChild()
+    _is_constrainable = fabll.ChildField(IsConstrainable)
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="=",

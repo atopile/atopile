@@ -8,5 +8,5 @@ import faebryk.library._F as F
 
 
 class can_attach_to_footprint(fabll.Node):
-    @abstractmethod
-    def attach(self, footprint: F.Footprint): ...
+    # Marker trait
+    pass

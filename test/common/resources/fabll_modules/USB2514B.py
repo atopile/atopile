@@ -193,8 +193,8 @@ class USB2514B(fabll.Node):
 
     @fabll.rt_field
     def can_attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap(
-            {
+        return F.can_attach_to_footprint_via_pinmap.MakeChild(
+            pinmap={
                 "1": self.configurable_downstream_usb[0].usb.n.line,
                 "2": self.configurable_downstream_usb[0].usb.p.line,
                 "3": self.configurable_downstream_usb[1].usb.n.line,
@@ -237,7 +237,7 @@ class USB2514B(fabll.Node):
 
     @fabll.rt_field
     def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
+        return F.has_pin_association_heuristic(
             mapping={
                 self.power_core.hv: ["CRFILT"],
                 self.power_core.lv: ["EP"],

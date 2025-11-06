@@ -10,12 +10,17 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     # TODO: Forward this trait to parent
-    _has_footprint = fabll.ChildField(F.has_footprint)
+    _can_attach_to_footprint = fabll.ChildField(F.can_attach_to_footprint)
 
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
     def attach(self, footprint: F.Footprint):
-        self._has_footprint.get().set_footprint(footprint)
+        # TODO: Forward this trait to parent*2
+        has_footprint = fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_footprint
+        )
+        has_footprint.set_footprint(footprint)
+
         footprint.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)
 
     @property

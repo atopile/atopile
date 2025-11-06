@@ -29,7 +29,7 @@ class Diode(fabll.Node):
         F.has_designator_prefix.Prefix.D
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             anode: ["A", "Anode", "+"],
             cathode: ["K", "C", "Cathode", "-"],

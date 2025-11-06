@@ -35,7 +35,7 @@ class MOSFET(fabll.Node):
 
     _can_bridge = F.can_bridge.MakeChild(in_=source, out_=drain)
 
-    pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             source: ["S", "Source"],
             gate: ["G", "Gate"],

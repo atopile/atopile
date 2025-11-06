@@ -25,7 +25,7 @@ class Pad(fabll.Node):
 
     def attach(self, intf: F.Electrical):
         self.net.connect(intf)
-        intf.add(F.has_linked_pad(self))
+        # intf.add(F.has_lnked_pad(self))
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
@@ -42,8 +42,8 @@ class Pad(fabll.Node):
     ) -> list["Pad"]:
         # This only finds directly attached pads
         # -> misses from parents / children nodes
-        # if intf.has_trait(F.has_linked_pad):
-        #     return list(intf.get_trait(F.has_linked_pad).get_pads())
+        # if intf.has_trait(F.has_lnked_pad):
+        #     return list(intf.get_trait(F.has_lnked_pad).get_pads())
 
         # This is a bit slower, but finds them all
         _, footprint = F.Footprint.get_footprint_of_parent(intf)

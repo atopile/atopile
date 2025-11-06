@@ -1293,6 +1293,15 @@ class Traits:
     def add_to(node: Node[Any], trait: Node[Any]) -> None:
         Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
 
+    @staticmethod
+    def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
+        trait_bound = trait.bind_typegraph_from_instance(
+            node.instance
+        ).get_or_create_type()
+        trait_node = Node.bind_instance(instance=trait_bound)
+        Traits.add_to(node=node, trait=trait_node)
+        return node  # type: ignore
+
 
 class ImplementsTrait(Node):
     """
@@ -1395,10 +1404,6 @@ class Parameter(Node):
             )
         )
         return out
-
-    @classmethod
-    def MakeChild_String(cls) -> ChildField["Parameter"]:
-        pass
 
     @classmethod
     def MakeChild_Enum(cls, enum_t: type[Enum]) -> ChildField["Parameter"]:
@@ -1889,6 +1894,8 @@ def test_lightweight():
     ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
     sorted_params = sorted(param.get_name() for param in ipbt.params)
     assert sorted_params == ["max_power", "max_voltage", "resistance"]
+    assert ipbt.get_param("resistance").get_name() == "resistance"
+
     # TODO: test endpoint extraction from endpoint property
     # assert endpoint == "resistors"
 
@@ -1913,7 +1920,7 @@ def test_lightweight():
     # print(pah.get_nc_literals())
     resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
     bjt_instance = F.BJT.bind_typegraph(tg=tg).create_instance(g=g)
-    pah = bjt_instance.get_trait(F.has_pin_association_heuristic_lookup_table)
+    pah = bjt_instance.get_trait(F.has_pin_association_heuristic)
     #
     # print(nc_set)
     # print(pah.nc.get())
@@ -1951,9 +1958,7 @@ def test_lightweight():
     _ = F.OpAmp.bind_typegraph(tg=tg).get_or_create_type()
     op_amp_instance = F.OpAmp.bind_typegraph(tg=tg).create_instance(g=g)
     print(
-        op_amp_instance.get_trait(
-            F.has_pin_association_heuristic_lookup_table
-        ).get_mapping_as_dict()
+        op_amp_instance.get_trait(F.has_pin_association_heuristic).get_mapping_as_dict()
     )
 
     _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
@@ -1966,11 +1971,24 @@ def test_lightweight():
     )
     print(F.SerializableMetadata.get_properties(node=resistor_instance))
 
-    print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
+    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
 
     _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
-    hfp = resistor_instance.get_trait(F.has_footprint)
-    # print(hfp.get_footprint())
+    sym = resistor_instance.get_trait(F.can_attach_to_footprint_symmetrically)
+    print(sym.electricals_.get().as_list())
+
+    _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
+    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+
+    _ = F.has_kicad_footprint.bind_typegraph(tg=tg).get_or_create_type()
+    kicad_footprint = F.has_kicad_footprint.bind_typegraph(tg=tg).create_instance(g=g)
+    kicad_footprint = kicad_footprint.setup(
+        kicad_identifier="libR_0402_1005Metric",
+        pinmap={pad1: "P1", pad2: "P2"},
+    )
+    print(kicad_footprint.get_kicad_footprint())
+    print(kicad_footprint.get_pin_names())
 
 
 if __name__ == "__main__":

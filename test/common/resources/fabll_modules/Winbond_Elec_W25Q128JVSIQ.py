@@ -34,7 +34,7 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
 
     @fabll.rt_field
     def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
+        return F.has_pin_association_heuristic(
             mapping={
                 self.qspi.chip_select.line: ["CS#", "~{CS}"],
                 self.qspi.data[0].line: ["DO"],

@@ -33,11 +33,13 @@ class KicadFootprint(fabll.Node):
             # If this changes, create_footprint_library will need to be updated
             fp = self.get_obj(KicadFootprint)
             if not fp.has_trait(F.has_kicad_footprint):
-                fp.add(
-                    F.has_kicad_manual_footprint(
-                        self.kicad_identifier,
-                        {fp.pins[i]: pin_name for i, pin_name in fp.pin_names_sorted},
-                    )
+                fabll.Traits.create_and_add_instance_to(
+                    node=fp, trait=F.has_kicad_footprint
+                ).setup(
+                    kicad_identifier=self.kicad_identifier,
+                    pinmap={
+                        fp.pins[i]: pin_name for i, pin_name in fp.pin_names_sorted
+                    },
                 )
 
     def __init__(self, pin_names: list[str]) -> None:

@@ -88,7 +88,7 @@ class LDO(fabll.Node):
     )
 
     def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
+        return F.has_pin_association_heuristic(
             mapping={
                 self.power_in.hv: ["Vin", "Vi", "in"],
                 self.power_out.hv: ["Vout", "Vo", "out", "output"],

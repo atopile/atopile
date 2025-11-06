@@ -312,6 +312,12 @@ class PointerTuple(fabll.Node):
             for lit in self.literals.get().as_list()
         ]
 
+    def append_literal(self, literal: fabll.LiteralT) -> None:
+        lit = fabll.LiteralNode.bind_typegraph(tg=self.tg).create_instance(
+            g=self.instance.g(), attributes=fabll.LiteralNodeAttributes(value=literal)
+        )
+        self.literals.get().append(lit)
+
 
 # TESTS --------------------------------------------------------------------------------
 def test_pointer_helpers():
