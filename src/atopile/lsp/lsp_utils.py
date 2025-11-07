@@ -17,14 +17,14 @@ import threading
 from typing import Any, Callable, List, Sequence, Tuple, Union
 
 import lsprotocol.types as lsp_types
-from pygls.workspace import Document
+from pygls.workspace import TextDocument
 
 # Save the working directory used when loading this module
 SERVER_CWD = os.getcwd()
 CWD_LOCK = threading.Lock()
 
 
-def document_line(document: Document, line: int, keepends: bool = False) -> str:
+def document_line(document: TextDocument, line: int, keepends: bool = False) -> str:
     """Return the line of the document."""
     try:
         line_str = document.source.splitlines(keepends)[line]
@@ -44,14 +44,14 @@ def range_from_coords(x: tuple[int, int], y: tuple[int, int]) -> lsp_types.Range
 
 
 def cursor_line(
-    document: Document, position: lsp_types.Position, keepends: bool = False
+    document: TextDocument, position: lsp_types.Position, keepends: bool = False
 ) -> str:
     """Return the line the cursor is on."""
     return document_line(document, position.line, keepends=keepends)
 
 
 def cursor_word(
-    document: Document, position: lsp_types.Position, include_all: bool = True
+    document: TextDocument, position: lsp_types.Position, include_all: bool = True
 ) -> str | None:
     """Return the word under the cursor."""
     res = cursor_word_and_range(document, position, include_all=include_all)
@@ -61,7 +61,7 @@ def cursor_word(
 
 
 def cursor_word_and_range(
-    document: Document, position: lsp_types.Position, include_all: bool = True
+    document: TextDocument, position: lsp_types.Position, include_all: bool = True
 ) -> tuple[str, lsp_types.Range] | None:
     """Return the word and its range under the cursor."""
     line = cursor_line(document, position)
