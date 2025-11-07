@@ -19,7 +19,7 @@ from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
+from faebryk.core.zig.gen.graph.graph import BFSPath, BoundEdge, BoundNode, GraphView
 from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -1385,6 +1385,7 @@ class is_module(Node):
         return Traits.get_obj_raw(Traits.bind(self))
 
 
+# wraps the raw EdgeInterfaceConnection functions into fabll nodes
 class is_interface(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
@@ -1408,33 +1409,18 @@ class is_interface(Node):
         path = EdgeInterfaceConnection.is_connected_to(
             source=self_node.instance, target=other.instance
         )
-        return len(path) > 0
+
+        return path[0] > 0 if path else False
 
     def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
-        """Get all nodes connected to this node via interface connections.
-
-        Args:
-            include_self: If True, include the source node itself in the result
-                         with an empty path.
-
-        Returns:
-            Dictionary mapping connected nodes to Path objects. The Path objects
-            wrap Zig BFSPath objects and provide access to path information via
-            properties (length, start_node, end_node, edges).
-        """
         self_node = self.get_obj()
         connected_nodes_map = EdgeInterfaceConnection.get_connected(
             source=self_node.instance, include_self=include_self
         )
-
-        # Zig returns dict[BoundNode, BFSPath]
-        # Wrap each BFSPath in a Python Path object
-        result = {
+        return {
             Node[Any].bind_instance(instance=node): Path(bfs_path)
             for node, bfs_path in connected_nodes_map.items()
         }
-
-        return result
 
 
 # ------------------------------------------------------------
@@ -1537,11 +1523,11 @@ type Module = Node
 
 
 # Going to replace MIF usages
-class GenericNodeWithInterface(Node):
+class NodeWithInterface(Node):
     _is_interface = is_interface.MakeChild()
 
 
-ModuleInterface = GenericNodeWithInterface
+ModuleInterface = NodeWithInterface
 IMPLIED_PATHS = False
 
 # lib fields

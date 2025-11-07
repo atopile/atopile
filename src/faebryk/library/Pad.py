@@ -12,7 +12,7 @@ class Pad(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     net = F.Electrical.MakeChild()
-    pcb = fabll.GenericNodeWithInterface.MakeChild()
+    pcb = fabll.NodeWithInterface.MakeChild()
 
     # ----------------------------------------
     #                 traits
