@@ -1,13 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from ast import Or
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.units import P
 
 
 class CAN_TTL(fabll.Node):
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -25,10 +25,4 @@ class CAN_TTL(fabll.Node):
     #                 WIP
     # ----------------------------------------
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
-
-    def __preinit__(self) -> None:
-        self.baudrate.add(F.is_bus_parameter())
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)

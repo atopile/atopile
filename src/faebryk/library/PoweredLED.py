@@ -38,5 +38,4 @@ class PoweredLED(fabll.Node):
 
     _can_bridge = F.can_bridge.MakeChild(in_=power.nodetype.hv, out_=power.nodetype.lv)
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.power)
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)

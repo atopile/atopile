@@ -51,8 +51,6 @@ from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import attach_random_designators, load_designators
 from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.pcb import (
-    apply_layouts,
-    apply_routing,
     check_net_names,
     load_net_names,
 )
@@ -431,9 +429,6 @@ def update_pcb(
     pcb.transformer.check_unattached_fps()
 
     # set layout
-    apply_layouts(app)
-    pcb.transformer.move_footprints()
-    apply_routing(app, pcb.transformer)
     if config.build.hide_designators:
         pcb.transformer.hide_all_designators()
 

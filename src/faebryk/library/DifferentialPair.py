@@ -25,10 +25,7 @@ class DifferentialPair(fabll.Node):
     # ----------------------------------------
     #                 WIP
     # ----------------------------------------
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricSignal.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     def terminated(self) -> Self:
         terminated_bus = type(self)()

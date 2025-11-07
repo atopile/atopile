@@ -23,9 +23,7 @@ class Battery(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _single_electric_reference = F.has_single_electric_reference_defined.MakeChild(
-        reference=power
-    )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     _net_name = F.has_net_name.MakeChild(
         name="BAT_VCC",
