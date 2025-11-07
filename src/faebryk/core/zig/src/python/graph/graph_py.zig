@@ -626,6 +626,7 @@ fn wrap_bound_node_visit_edges_of_type() type {
                 edge_type: *py.PyObject,
                 ctx: *py.PyObject,
                 f: *py.PyObject,
+                directed: ?*py.PyObject = null,
             },
             .static = false,
         };
@@ -636,11 +637,18 @@ fn wrap_bound_node_visit_edges_of_type() type {
 
             const edge_type_value: graph.graph.Edge.EdgeType = bind.unwrap_int(graph.graph.Edge.EdgeType, kwarg_obj.edge_type) orelse return null;
 
+            var directed_value: ?bool = null;
+            if (kwarg_obj.directed) |directed_obj| {
+                if (directed_obj != py.Py_None()) {
+                    directed_value = bind.unwrap_bool(directed_obj);
+                }
+            }
+
             py.Py_INCREF(kwarg_obj.ctx);
             py.Py_INCREF(kwarg_obj.f);
 
             var visit_ctx = BoundEdgeVisitor{ .py_ctx = kwarg_obj.ctx, .callable = kwarg_obj.f };
-            const result = wrapper.data.visit_edges_of_type(edge_type_value, void, @ptrCast(&visit_ctx), BoundEdgeVisitor.call);
+            const result = wrapper.data.visit_edges_of_type(edge_type_value, void, @ptrCast(&visit_ctx), BoundEdgeVisitor.call, directed_value);
 
             py.Py_DECREF(kwarg_obj.ctx);
             py.Py_DECREF(kwarg_obj.f);

@@ -94,7 +94,7 @@ pub const EdgeInterfaceConnection = struct {
         ctx: *anyopaque,
         f: fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(void),
     ) visitor.VisitResult(void) {
-        return bound_node.visit_edges_of_type(tid, void, ctx, f);
+        return bound_node.visit_edges_of_type(tid, void, ctx, f, null);
     }
 
     pub fn is_connected_to(allocator: std.mem.Allocator, source: BoundNodeReference, target: BoundNodeReference) !*graph.BFSPath {

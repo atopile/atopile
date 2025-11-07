@@ -87,7 +87,8 @@ pub const EdgeComposition = struct {
         };
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: parent is source, child is target
+        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
     }
 
     pub fn get_parent_edge(bound_node: graph.BoundNodeReference) ?graph.BoundEdgeReference {
@@ -165,7 +166,8 @@ pub const EdgeComposition = struct {
         };
 
         var visit = Visit{ .parent = parent, .child_type = child_type, .cb_ctx = ctx, .cb = f };
-        return parent.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: parent is source, child is target
+        return parent.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
     }
 
     pub fn try_get_single_child_of_type(bound_node: graph.BoundNodeReference, child_type: graph.NodeReference) ?graph.BoundNodeReference {

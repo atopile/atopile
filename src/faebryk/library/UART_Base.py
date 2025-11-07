@@ -29,7 +29,6 @@ class UART_Base(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-
     def __preinit__(self) -> None:
         self.baud.add(F.is_bus_parameter())
 

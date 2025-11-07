@@ -31,7 +31,6 @@ class CAN(fabll.Node):
     #                 WIP
     # ----------------------------------------
 
-
     def __preinit__(self) -> None:
         self.baudrate.add(F.is_bus_parameter())
 

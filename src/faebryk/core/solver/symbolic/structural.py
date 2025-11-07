@@ -1,27 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-
 import logging
 import math
 from itertools import combinations
 from typing import cast
 
-from faebryk.core.parameter import (
-    Add,
-    CanonicalExpression,
-    ConstrainableExpression,
-    Domain,
-    Expression,
-    GreaterOrEqual,
-    HasSideEffects,
-    Is,
-    IsSubset,
-    Multiply,
-    Parameter,
-    ParameterOperatable,
-    Power,
-)
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
@@ -30,11 +17,6 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     make_lit,
 )
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-)
-from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     EquivalenceClasses,
     cast_assert,
@@ -43,6 +25,12 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
+Add = F.Expressions.Add
+GreaterOrEqual = F.Expressions.GreaterOrEqual
+Is = F.Expressions.Is
+IsSubset = F.Expressions.IsSubset
+Multiply = F.Expressions.Multiply
+Power = F.Expressions.Power
 
 # TODO: mark terminal=False where applicable
 
@@ -70,11 +58,10 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
     ge_exprs = {
         e
-        for e in mutator.nodes_of_type(GreaterOrEqual, sort_by_depth=True)
+        for e in mutator.get_expressions(GreaterOrEqual, sort_by_depth=True)
         # Look for expressions with only one non-literal operand
         if e.constrained
-        and len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
-        == 1
+        and len([op for op in e.operands if fabll.isparameteroperable(op)]) == 1
     }
 
     for ge in ge_exprs:
@@ -123,14 +110,14 @@ def remove_unconstrained(mutator: Mutator):
     or expressions with side effects
     Note: Not possible for Parameters, want to keep those around for REPR
     """
-    objs = mutator.nodes_of_type(Expression)
+    objs = mutator.get_expressions()
     for obj in objs:
         if obj.constrained:
             continue
-        if isinstance(obj, HasSideEffects):
+        if obj.has_trait(Expressions.has_side_effects):
             continue
         if any(
-            e.constrained or isinstance(e, HasSideEffects)
+            e.constrained or e.has_trait(Expressions.has_side_effects)
             for e in mutator.utils.get_expressions_involved_in(obj)
         ):
             continue
@@ -150,7 +137,7 @@ def remove_congruent_expressions(mutator: Mutator):
     # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
     # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
 
-    all_exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
+    all_exprs = mutator.get_expressions(sort_by_depth=True)
     # optimization: can't be congruent if they have uncorrelated literals
     all_exprs = [e for e in all_exprs if not e.get_uncorrelatable_literals()]
     # TODO is this fully correct?
@@ -159,7 +146,9 @@ def remove_congruent_expressions(mutator: Mutator):
         e
         for e in all_exprs
         if not (
-            isinstance(e, (Is, IsSubset)) and e.constrained and e.get_operand_literals()
+            Expressions.isinstance_any(e, Expressions.Is, Expressions.IsSubset)
+            and e.constrained
+            and e.get_operand_literals()
         )
     ]
     exprs_by_type = groupby(
@@ -167,7 +156,7 @@ def remove_congruent_expressions(mutator: Mutator):
         lambda e: (
             type(e),
             len(e.operands),
-            None if not isinstance(e, ConstrainableExpression) else e.constrained,
+            None if not Expressions.is_constrainable_node(e) else e.constrained,
         ),
     )
     full_eq = EquivalenceClasses[Expression](all_exprs)
@@ -187,13 +176,14 @@ def remove_congruent_expressions(mutator: Mutator):
         if len(eq_class) <= 1:
             continue
 
+        return
         eq_id = id(eq_class)
         if eq_id not in repres:
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
 
             # propagate constrained & terminate
-            if isinstance(representative, ConstrainableExpression):
+            if Expressions.is_constrainable_node(representative):
                 eq_class = cast(set[ConstrainableExpression], eq_class)
                 representative.constrained = any(e.constrained for e in eq_class)
                 if any(mutator.is_predicate_terminated(e) for e in eq_class):
@@ -228,7 +218,7 @@ def resolve_alias_classes(mutator: Mutator):
 
     # A is B, B is C, D is E, F, G is (A+B)
     # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
-    param_ops = mutator.nodes_of_type(ParameterOperatable)
+    param_ops = mutator.get_parameter_operatables()
     full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
     is_exprs = mutator.utils.get_all_aliases()
     for is_expr in is_exprs:
@@ -244,8 +234,10 @@ def resolve_alias_classes(mutator: Mutator):
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes:
-        eq_class_params = [p for p in eq_class if isinstance(p, Parameter)]
-        eq_class_exprs = {p for p in eq_class if isinstance(p, Expression)}
+        eq_class_params = [
+            p for p in eq_class if Expressions.isinstance_node(p, fabll.Parameter)
+        ]
+        eq_class_exprs = {p for p in eq_class if Expressions.is_expression_node(p)}
 
         if not eq_class_params:
             continue
@@ -259,7 +251,7 @@ def resolve_alias_classes(mutator: Mutator):
                 o
                 for e in iss
                 for o in e.operatable_operands
-                if isinstance(o, Expression)
+                if Expressions.is_expression_node(o)
             }
             if eq_class_exprs.issubset(iss_exprs):
                 # check if all predicates are already propagated
@@ -269,10 +261,12 @@ def resolve_alias_classes(mutator: Mutator):
                     for e in operand.get_operations()
                     # skip POps Is, because they create the alias classes
                     # or literal aliases (done by distribute algo)
-                    if not (isinstance(e, Is) and e.constrained)
+                    if not (
+                        Expressions.isinstance_node(e, Expressions.Is) and e.constrained
+                    )
                     # skip literal subsets (done by distribute algo)
                     and not (
-                        isinstance(e, IsSubset)
+                        Expressions.isinstance_node(e, Expressions.IsSubset)
                         and e.get_operand_literals()
                         and e.constrained
                     )
@@ -290,8 +284,10 @@ def resolve_alias_classes(mutator: Mutator):
             mutator._mutate(p, representative)
 
     for eq_class in p_eq_classes:
-        eq_class_params = [p for p in eq_class if isinstance(p, Parameter)]
-        eq_class_exprs = [p for p in eq_class if isinstance(p, Expression)]
+        eq_class_params = [
+            p for p in eq_class if Expressions.isinstance_node(p, fabll.Parameter)
+        ]
+        eq_class_exprs = [p for p in eq_class if Expressions.is_expression_node(p)]
 
         # single domain
         domain = Domain.get_shared_domain(*(op.domain for op in eq_class))
@@ -338,7 +334,7 @@ def merge_intersect_subsets(mutator: Mutator):
     # this merge is already done implicitly by try_extract_literal
     # but it's still needed to create the explicit subset op
 
-    params = mutator.nodes_of_type(ParameterOperatable, sort_by_depth=True)
+    params = mutator.get_parameter_operatables(sort_by_depth=True)
 
     for param in params:
         ss_lits = {
@@ -367,7 +363,9 @@ def merge_intersect_subsets(mutator: Mutator):
             target = ss_lits[intersected][0]
         else:
             target = mutator.utils.subset_to(param, intersected, from_ops=old_ss)
-            assert isinstance(target, (IsSubset, Is))
+            assert Expressions.isinstance_any(
+                target, Expressions.IsSubset, Expressions.Is
+            )
 
         # Merge
         for old_ss in old_ss:
@@ -382,7 +380,7 @@ def empty_set(mutator: Mutator):
     """
 
     # A is {} -> False
-    for e in mutator.nodes_of_type(Is):
+    for e in mutator.get_expressions(Is):
         lits = cast(dict[int, SolverLiteral], e.get_operand_literals())
         if not lits:
             continue
@@ -404,7 +402,7 @@ def transitive_subset(mutator: Mutator):
     # for all A ss! B | B not lit
     for ss_op in mutator.utils.get_all_subsets():
         A, B = ss_op.operands
-        if not isinstance(B, ParameterOperatable):
+        if not fabll.isparameteroperable(B):
             continue
 
         # all B ss! C | C not A
@@ -431,12 +429,12 @@ def predicate_flat_terminate(mutator: Mutator):
 
     Terminates all (dis)proven predicates that contain no expressions.
     """
-    predicates = mutator.nodes_of_type(ConstrainableExpression)
+    predicates = mutator.get_expressions(ConstrainableExpression)
     for p in predicates:
         if not p.constrained:
             continue
 
-        if any(isinstance(po, Expression) for po in p.operatable_operands):
+        if any(Expressions.is_expression_node(po) for po in p.operatable_operands):
             continue
 
         # only (dis)proven
@@ -452,7 +450,7 @@ def predicate_terminated_is_true(mutator: Mutator):
     P!! is! True -> P!! is!! True
     """
 
-    for p in mutator.nodes_of_type(Is):
+    for p in mutator.get_expressions(Is):
         if not p.constrained:
             continue
         if mutator.is_predicate_terminated(p):
@@ -475,7 +473,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     A is [True], A ^ B -> [True] ^ B
     """
 
-    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
+    exprs = mutator.get_expressions(Expression, sort_by_depth=True)
     for e in exprs:
         if mutator.utils.is_pure_literal_expression(e):
             continue
@@ -484,7 +482,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
             continue
         # not handling here
         if (
-            isinstance(e, (Is, IsSubset))
+            Expressions.isinstance_any(e, Expressions.Is, Expressions.IsSubset)
             and e.constrained
             and any(mutator.utils.is_constrained(op) for op in e.operatable_operands)
         ):
@@ -526,7 +524,7 @@ def isolate_lone_params(mutator: Mutator):
         op_without_param: ParameterOperatable,
         from_expr: Expression,
     ) -> tuple[ParameterOperatable.All, ParameterOperatable.All]:
-        if not isinstance(op_with_param, Expression):
+        if not Expressions.is_expression_node(op_with_param):
             return op_with_param, op_without_param
 
         def op_or_create_expr(
@@ -626,7 +624,7 @@ def isolate_lone_params(mutator: Mutator):
 
             # TODO: check for no further progress
 
-    exprs = mutator.nodes_of_type(Is, sort_by_depth=True)
+    exprs = mutator.get_expressions(Is, sort_by_depth=True)
     for expr in exprs:
         if mutator.utils.try_extract_literal(expr) is None:
             continue
@@ -670,7 +668,7 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
     E is A, A ss Lit -> E ss Lit
 
     """
-    for p in mutator.nodes_of_type():
+    for p in mutator.get_parameter_operatables():
         lit, is_alias = mutator.utils.try_extract_literal_info(p)
         if lit is None:
             continue
@@ -698,7 +696,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     A op! B | A or B unconstrained -> A op!! B
     """
 
-    preds = mutator.nodes_of_type(ConstrainableExpression)
+    preds = mutator.get_expressions(ConstrainableExpression)
     for p in preds:
         if not p.constrained:
             continue
@@ -746,9 +744,8 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     exprs = ParameterOperatable.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
-        assert isinstance(expr, CanonicalExpression)
         # In Is automatically by eq classes
-        if isinstance(expr, Is):
+        if Expressions.isinstance_node(expr, Expressions.Is):
             continue
         # Taken care of by singleton fold
         if any(
@@ -765,7 +762,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         ):
             continue
         # In subset useless to look at subset lits
-        no_allow_subset_lit = isinstance(expr, IsSubset)
+        no_allow_subset_lit = Expressions.isinstance_node(expr, Expressions.IsSubset)
 
         operands, any_lit = mutator.utils.map_extract_literals(
             expr, allow_subset=not no_allow_subset_lit
@@ -819,14 +816,13 @@ def uncorrelated_alias_fold(mutator: Mutator):
     exprs = ParameterOperatable.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
-        assert isinstance(expr, CanonicalExpression)
         # Taken care of by singleton fold
         if any(
             mutator.utils.is_replacable_by_literal(op) is not None
             for op in expr.operands
         ):
             continue
-        if isinstance(expr, Is) and expr.constrained:
+        if Expressions.isinstance_node(expr, Expressions.Is) and expr.constrained:
             # TODO: definitely need to do something
             # just not the same what we do with the other types
             continue

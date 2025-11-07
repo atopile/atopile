@@ -359,37 +359,19 @@ pub const Edge = struct {
     /// No guarantee that there is only one
     pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: EdgeType, is_target: ?bool) ?BoundEdgeReference {
         const Visit = struct {
-            bound_node: BoundNodeReference,
-            is_target: ?bool,
-
             pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
-                const self: *@This() = @ptrCast(@alignCast(ctx));
-                if (self.is_target) |d| {
-                    if (d) {
-                        const target = bound_edge.edge.get_target();
-                        if (target) |t| {
-                            if (Node.is_same(t, self.bound_node.node)) {
-                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
-                            }
-                        }
-                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
-                    } else {
-                        const source = bound_edge.edge.get_source();
-                        if (source) |s| {
-                            if (Node.is_same(s, self.bound_node.node)) {
-                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
-                            }
-                        }
-                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
-                    }
-                }
+                _ = ctx;
                 return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
             }
         };
 
-        var visit = Visit{ .bound_node = bound_node, .is_target = is_target };
-
-        const result = bound_node.visit_edges_of_type(edge_type, BoundEdgeReference, &visit, Visit.visit);
+        var visit = Visit{};
+        // Convert is_target to directed parameter:
+        // is_target = true -> directed = false (node is target)
+        // is_target = false -> directed = true (node is source)
+        // is_target = null -> directed = null (any direction)
+        const directed: ?bool = if (is_target) |d| !d else null;
+        const result = bound_node.visit_edges_of_type(edge_type, BoundEdgeReference, &visit, Visit.visit, directed);
         switch (result) {
             .OK => return result.OK,
             .EXHAUSTED => return null,
@@ -550,8 +532,8 @@ pub const BoundNodeReference = struct {
         return self.g.visit_edges(self.node, T, ctx, f);
     }
 
-    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
-        return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f);
+    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
+        return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f, directed);
     }
 };
 
@@ -722,7 +704,7 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
         const edges = g.get_edges_of_type(node, edge_type);
         if (edges == null) {
@@ -730,6 +712,22 @@ pub const GraphView = struct {
         }
 
         for (edges.?.items) |edge| {
+            // Filter by direction if specified
+            if (directed) |d| {
+                if (d) {
+                    // directed = true: node must be source
+                    if (!Node.is_same(edge.source, node)) {
+                        continue;
+                    }
+                } else {
+                    // directed = false: node must be target
+                    if (!Node.is_same(edge.target, node)) {
+                        continue;
+                    }
+                }
+            }
+            // directed = null: ignore direction (process all edges)
+
             const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
             const result = f(ctx, bound_edge);
             switch (result) {

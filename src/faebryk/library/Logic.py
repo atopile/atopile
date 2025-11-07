@@ -9,6 +9,7 @@ class Logic(fabll.Node):
     """
     Acts as protocol, because multi inheritance is not supported
     """
+
     _is_interface = fabll.is_interface.MakeChild()
 
     # state = fabll.p_field(domain=fabll.Domains.BOOL())

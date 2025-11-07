@@ -530,6 +530,7 @@ pub const TypeGraph = struct {
             NodeReference,
             &finder,
             FindTypeByName.visitTypeEdge,
+            null,
         );
         switch (result) {
             .OK => |parent_type_node| {
@@ -676,6 +677,6 @@ test "basic instantiation" {
         }
     };
     var _visit = _EdgeVisitor{ .seek = instantiated_cap_p2 };
-    const result = instantiated_cap_p1.visit_edges_of_type(EdgePointer.tid, void, &_visit, _EdgeVisitor.visit);
+    const result = instantiated_cap_p1.visit_edges_of_type(EdgePointer.tid, void, &_visit, _EdgeVisitor.visit, null);
     try std.testing.expect(result == .OK);
 }

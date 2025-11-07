@@ -25,6 +25,7 @@
   - [ ] for usage change constructor call to setup()
   - [ ] refactor all traits
   - [ ] replace <node>.add(<trait>) with Traits.add_to(<node>, <trait>)
+  - [ ] replace all trait inits `<trait>()`
   - [ ] handle_duplicate 
 - [ ] Parameter
   - [ ] literals (fabll.Range...)
@@ -41,3 +42,8 @@
 - node.get_children
 
 ## Strategy
+
+## Notes
+- rename node.py to fabll.py
+- use graph.py as graph 
+- use faebrykpy.py as fbrk (consider renaming to fbrk)

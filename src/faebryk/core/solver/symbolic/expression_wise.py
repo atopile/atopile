@@ -7,6 +7,8 @@ from collections import Counter
 from collections.abc import Sequence
 from typing import Callable, cast
 
+import faebryk.core.node as fabll
+import faebryk.library.Expressions as Expressions
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -30,16 +32,10 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.algorithm import SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
-    CanonicalExpression,
-    CanonicalNumber,
     Contradiction,
     make_lit,
 )
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-)
-from faebryk.libs.sets.sets import BoolSet, as_lit
-from faebryk.libs.util import cast_assert, groupby, partition_as_list
+from faebryk.libs.util import cast_assert, partition_as_list
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +71,7 @@ def fold_literals[T: CanonicalExpression](
     Not(Not(A)) -> neutralize=replace: A
     ```
     """
-    exprs = mutator.nodes_of_type(expr_type, sort_by_depth=True, new_only=False)
+    exprs = mutator.get_expressions(expr_type, sort_by_depth=True, new_only=False)
     for expr in exprs:
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
@@ -89,11 +85,8 @@ def fold_literals[T: CanonicalExpression](
 
 @algorithm("Expression-wise", terminal=False)
 def expression_wise(mutator: Mutator):
-    exprs = mutator.nodes_of_types(
-        tuple(expr_wise_algos.keys()), sort_by_depth=True, new_only=False
-    )
-    exprs_by_type = groupby(exprs, lambda e: type(e))
-    for expr_type, exprs in exprs_by_type.items():
+    for expr_type, algo in expr_wise_algos.items():
+        exprs = mutator.get_expressions(expr_type, sort_by_depth=True, new_only=False)
         for expr in exprs:
             if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
                 continue
@@ -101,7 +94,7 @@ def expression_wise(mutator: Mutator):
             # covered by pure literal folding
             if mutator.utils.is_pure_literal_expression(expr):
                 continue
-            expr_wise_algos[expr_type](expr, mutator)  # type: ignore
+            algo(expr, mutator)  # type: ignore
 
 
 def expression_wise_algorithm[T: CanonicalExpression](expr_type: type[T]):
@@ -186,7 +179,7 @@ def fold_add(expr: Add, mutator: Mutator):
         return
 
     # unpack if single operand (operatable)
-    if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
+    if len(new_operands) == 1 and fabll.isparameteroperable(new_operands[0]):
         new_operands = cast(list[ParameterOperatable], new_operands)
         mutator.mutate_unpack_expression(expr, new_operands)
         return
@@ -250,7 +243,7 @@ def fold_multiply(expr: Multiply, mutator: Mutator):
             # convert_operable_aliased_to_single_into_literal takes care of rest
 
         # unpack if single operand (operatable)
-        if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
+        if len(new_operands) == 1 and fabll.isparameteroperable(new_operands[0]):
             new_operands = cast(list[ParameterOperatable], new_operands)
             mutator.mutate_unpack_expression(expr, new_operands)
             return
@@ -462,10 +455,10 @@ def fold_not(expr: Not, mutator: Mutator):
 
     assert len(expr.operands) == 1
     op = expr.operands[0]
-    assert isinstance(op, ParameterOperatable)
+    assert fabll.isparameteroperable(op)
 
     # ¬P | P constrained -> False
-    if isinstance(op, ConstrainableExpression) and op.constrained:
+    if Expressions.is_constrainable_node(op) and op.constrained:
         # ¬!P! | P constrained -> Contradiction
         if expr.constrained:
             raise Contradiction("¬!P!", involved=[expr], mutator=mutator)
@@ -477,7 +470,7 @@ def fold_not(expr: Not, mutator: Mutator):
         # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
         if expr.constrained:
             # ¬( v )
-            if isinstance(op, Or):
+            if Expressions.isinstance_node(op, Expressions.Or):
                 # FIXME remove this shortcut
                 # should be handle in more general way
                 # maybe we need to terminate non-predicates too
@@ -485,10 +478,10 @@ def fold_not(expr: Not, mutator: Mutator):
                     mutator.utils.alias_is_literal_and_check_predicate_eval(expr, True)
                 for inner_op in op.operands:
                     # ¬(¬A v ...)
-                    if isinstance(inner_op, Not):
+                    if Expressions.isinstance_node(inner_op, Expressions.Not):
                         for not_op in inner_op.operands:
                             if (
-                                isinstance(not_op, ConstrainableExpression)
+                                Expressions.is_constrainable_node(not_op)
                                 and not not_op.constrained
                             ):
                                 mutator.constrain(
@@ -498,7 +491,7 @@ def fold_not(expr: Not, mutator: Mutator):
                                     )
                                 )
                     # ¬(A v ...)
-                    elif isinstance(inner_op, ConstrainableExpression):
+                    elif Expressions.is_constrainable_node(inner_op):
                         parent_nots = inner_op.get_operations(Not)
                         if parent_nots:
                             for n in parent_nots:
@@ -560,16 +553,12 @@ def fold_subset(expr: IsSubset, mutator: Mutator):
     if expr.constrained:
         # P1 ss! True -> P1!
         # P1 ss! P2!  -> P1!
-        if (
-            B == BoolSet(True)
-            or isinstance(B, ConstrainableExpression)
-            and B.constrained
-        ):
-            assert isinstance(A, ConstrainableExpression)
+        if B == BoolSet(True) or Expressions.is_constrainable_node(B) and B.constrained:
+            assert Expressions.is_constrainable_node(A)
             mutator.constrain(A)
         # P ss! False -> ¬!P
         if B == BoolSet(False):
-            assert isinstance(A, ConstrainableExpression)
+            assert Expressions.is_constrainable_node(A)
             mutator.create_expression(Not, A, from_ops=[expr], constrain=True)
 
 

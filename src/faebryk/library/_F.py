@@ -16,9 +16,13 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 from faebryk.library import Units
+import faebryk.library.Literals as Literals
+import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library import Collections
+from faebryk.library.NumberDomain import NumberDomain
+from faebryk.library.Logic import Logic
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic

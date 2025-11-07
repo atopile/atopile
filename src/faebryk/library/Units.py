@@ -1,6 +1,7 @@
 from typing import Any
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 # TODO add all si units
 # TODO decide whether base units require unit trait
@@ -8,7 +9,7 @@ import faebryk.core.node as fabll
 
 class IsBaseUnit(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    symbol = fabll.Parameter.MakeChild()
+    symbol = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(cls, symbol: str) -> fabll.ChildField[Any]:
@@ -29,11 +30,26 @@ class IsUnit(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, symbol: str, base_units: list[tuple[type[fabll.Node[Any]], int]]
+        cls, symbol: str, base_units: list[tuple[type[fabll.NodeT], int]]
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         # TODO
         return out
+
+    @staticmethod
+    def is_compatible_with(unit: "fabll.NodeT", other: "fabll.NodeT") -> bool:
+        # TODO
+        raise NotImplementedError
+
+    @staticmethod
+    def get_units(obj: "fabll.NodeT") -> "fabll.NodeT":
+        # TODO
+        raise NotImplementedError
+
+    @staticmethod
+    def get_units_or_dimensionless(obj: "fabll.NodeT") -> "fabll.NodeT":
+        # TODO
+        raise NotImplementedError
 
 
 # Base units ---------------------------------------------------------------------------

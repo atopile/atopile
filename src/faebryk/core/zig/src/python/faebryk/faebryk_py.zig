@@ -740,6 +740,56 @@ fn wrap_edge_operand_visit_operand_edges() type {
     };
 }
 
+fn wrap_edge_operand_visit_expression_edges() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_expression_edges",
+            .doc = "Visit the expression edges attached to an operand node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.operand.EdgeOperand.visit_expression_edges(
+                kwarg_obj.bound_node.*,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_expression_edges failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
 fn wrap_edge_operand_get_expression_edge() type {
     return struct {
         pub const descr = method_descr{
@@ -886,6 +936,59 @@ fn wrap_edge_operand_get_name() type {
     };
 }
 
+fn wrap_edge_operand_visit_expression_edges_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_expression_edges_of_type",
+            .doc = "Visit expression edges of the given type attached to an operand node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                expression_type: *graph.Node,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .expression_type = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.operand.EdgeOperand.visit_expression_edges_of_type(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.expression_type,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_expression_edges_of_type failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
 fn wrap_edge_operand_get_tid() type {
     return struct {
         pub const descr = method_descr{
@@ -941,6 +1044,8 @@ fn wrap_edge_operand(root: *py.PyObject) void {
         wrap_edge_operand_build(),
         wrap_edge_operand_is_instance(),
         wrap_edge_operand_visit_operand_edges(),
+        wrap_edge_operand_visit_expression_edges(),
+        wrap_edge_operand_visit_expression_edges_of_type(),
         wrap_edge_operand_get_expression_edge(),
         wrap_edge_operand_get_expression_node(),
         wrap_edge_operand_add_operand(),
