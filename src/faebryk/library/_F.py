@@ -39,7 +39,6 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library import Expressions
-from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.SerializableMetadata import SerializableMetadata
@@ -115,7 +114,6 @@ from faebryk.library.Ethernet import Ethernet
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
-from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.LDO import LDO
 from faebryk.library.SPIFlash import SPIFlash

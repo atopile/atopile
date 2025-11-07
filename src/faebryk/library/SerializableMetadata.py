@@ -1,13 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Any
-
-from _pytest.hookspec import pytest_assertion_pass
+from typing import Any, Self
 
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 import faebryk.library._F as F
 
 
@@ -16,8 +12,8 @@ class SerializableMetadata(fabll.Node):
     Attribute that will be written to PCB footprint
     """
 
-    key_ = fabll.Parameter.MakeChild()
-    value_ = fabll.Parameter.MakeChild()
+    key_ = fabll.ChildField(fabll.Parameter)
+    value_ = fabll.ChildField(fabll.Parameter)
 
     @classmethod
     def get_properties(cls, node: fabll.Node) -> dict[str, str]:
@@ -29,12 +25,12 @@ class SerializableMetadata(fabll.Node):
         return properties
 
     @classmethod
-    def get_property(cls, node: fabll.Node, key: str) -> fabll.LiteralT | None:
+    def get_property(cls, node: fabll.Node, key: str) -> str | None:
         metadata_nodes = node.get_children(direct_only=True, types=cls)
         for meta in metadata_nodes:
             meta = SerializableMetadata.bind_instance(meta.instance)
             if meta.key == key:
-                return meta.value
+                return None if meta.value is None else str(meta.value)
         return None
 
     @property
@@ -55,10 +51,8 @@ class SerializableMetadata(fabll.Node):
     #     return False
 
     @staticmethod
-    def get_from(obj: fabll.Node, key: str) -> str | None:
-        if not obj.has_trait(has_descriptive_properties):
-            return None
-        return obj.get_trait(has_descriptive_properties).get_properties().get(key)
+    def get_from(node: fabll.Node, key: str) -> str | None:
+        return SerializableMetadata.get_property(node, key)
 
     @classmethod
     def MakeChild(cls, key: str, value: str) -> fabll.ChildField[Any]:
@@ -70,3 +64,8 @@ class SerializableMetadata(fabll.Node):
             F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.value_], value)
         )
         return out
+
+    def setup(self, key: str, value: str) -> Self:
+        self.key_.get().constrain_to_literal(g=self.instance.g(), value=key)
+        self.value_.get().constrain_to_literal(g=self.instance.g(), value=value)
+        return self

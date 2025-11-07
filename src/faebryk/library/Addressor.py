@@ -17,10 +17,7 @@ class Addressor(fabll.Node):
     def address_lines(self):
         return times(self._address_bits, F.ElectricLogic)
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     def __init__(self, address_bits: int):
         self._address_bits = address_bits

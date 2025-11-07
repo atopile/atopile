@@ -16,6 +16,7 @@ from typing import (
     Mapping,
     Optional,
     Protocol,
+    Self,
     Sequence,
     TypeVar,
 )
@@ -27,7 +28,7 @@ from shapely import Polygon
 
 # import faebryk.library._F as F
 import faebryk.core.node as fabll
-from faebryk.core.trait import TraitNotFound
+from faebryk.core.node import TraitNotFound
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats import UUID, Property, kicad
@@ -170,12 +171,15 @@ class PCB_Transformer:
         - F.Footprint which are represented in the PCB
         """
 
-        def __init__(self, fp: Footprint, transformer: "PCB_Transformer") -> None:
-            super().__init__()
+        fp: Footprint
+        transformer: "PCB_Transformer"
+
+        def setup(self, fp: Footprint, transformer: "PCB_Transformer") -> Self:
             self.fp = fp
             self.transformer = transformer
+            return self
 
-        def get_fp(self):
+        def get_fp(self) -> Footprint:
             return self.fp
 
         def get_transformer(self):
@@ -244,7 +248,9 @@ class PCB_Transformer:
             if node.has_trait(F.has_footprint):
                 self.bind_footprint(fp, node)
             else:
-                node.add(self.has_linked_kicad_footprint(fp, self))
+                _ = fabll.Traits.create_and_add_instance_to(
+                    node=node, trait=PCB_Transformer.has_linked_kicad_footprint
+                ).setup(fp, self)
 
             fp_props = {
                 v.name: v.value
@@ -253,14 +259,15 @@ class PCB_Transformer:
                     v.name, PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB()
                 )
             }
-            node_props = (
-                t.get_properties()
-                if (t := node.try_get_trait(F.has_descriptive_properties))
-                else {}
-            )
-            # node takes precedence over fp
-            merged = fp_props | node_props
-            node.add(F.has_descriptive_properties(merged))
+            node_props = F.SerializableMetadata.get_properties(node)
+            unique_fp_props = dict(fp_props.items() - node_props.items())
+            for key, value in unique_fp_props.items():
+                F.SerializableMetadata.bind_typegraph(node.tg).create_instance(
+                    g=node.tg.get_graph_view()
+                ).setup(
+                    key=key,
+                    value=value,
+                )
 
         for f_net, pcb_net in self.map_nets().items():
             self.bind_net(pcb_net, f_net)
@@ -318,11 +325,15 @@ class PCB_Transformer:
         """
         import faebryk.library._F as F
 
-        module.add(self.has_linked_kicad_footprint(pcb_fp, self))
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=PCB_Transformer.has_linked_kicad_footprint
+        ).setup(pcb_fp, self)
 
         # By now, the node being bound MUST have a footprint
         g_fp = module.get_trait(F.has_footprint).get_footprint()
-        g_fp.add(self.has_linked_kicad_footprint(pcb_fp, self))
+        fabll.Traits.create_and_add_instance_to(
+            node=g_fp, trait=PCB_Transformer.has_linked_kicad_footprint
+        ).setup(pcb_fp, self)
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
         # F.Pad is a fabll.ModuleInterface - don't be tricked
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)

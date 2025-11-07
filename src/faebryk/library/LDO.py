@@ -63,10 +63,7 @@ class LDO(fabll.Node):
         # else:
         #    self.power_in.lv.connect(self.power_out.lv)
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     def can_bridge(self):
         return F.can_bridge(self.power_in, self.power_out)

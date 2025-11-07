@@ -15,10 +15,7 @@ class SPIFlash(fabll.Node):
         F.has_designator_prefix.Prefix.U
     )
 
-    def single_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

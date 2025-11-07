@@ -24,21 +24,16 @@ class Ethernet(fabll.Node):
     led_speed = F.ElectricLogic.MakeChild()  # Speed LED
     led_link = F.ElectricLogic.MakeChild()  # Link LED
 
-
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

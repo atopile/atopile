@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class I2C(fabll.Node):
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -31,16 +30,11 @@ class I2C(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     # ----------------------------------------
     #                 WIP
     # ----------------------------------------
-
-
 
     def requires_pulls(self):
         def pred(signal: F.ElectricSignal, bus: set[fabll.Node]):
