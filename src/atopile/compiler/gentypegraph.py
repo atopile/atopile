@@ -1,0 +1,104 @@
+"""
+Shared data structures and helpers for the TypeGraph-generation IR.
+"""
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+
+from faebryk.core.zig.gen.graph.graph import BoundNode
+
+
+@dataclass(frozen=True)
+class ImportRef:
+    name: str
+    path: str | None = None
+
+    def __repr__(self) -> str:
+        path_part = f', path="{self.path}"' if self.path else ""
+        return f"ImportRef(name={self.name}{path_part})"
+
+
+@dataclass(frozen=True)
+class Symbol:
+    name: str
+    import_ref: ImportRef | None = None
+    type_node: BoundNode | None = None
+
+    def __repr__(self) -> str:
+        return (
+            f"Symbol(name={self.name}, import_ref={self.import_ref}, "
+            f"type_node={self.type_node})"
+        )
+
+
+@dataclass(frozen=True)
+class FieldPath:
+    @dataclass(frozen=True)
+    class Segment:
+        identifier: str
+        is_index: bool = False
+
+    segments: tuple["FieldPath.Segment", ...]
+
+    def __post_init__(self) -> None:
+        if not self.segments:
+            raise ValueError("FieldPath cannot be empty")
+
+    @property
+    def parent_segments(self) -> Sequence["FieldPath.Segment"]:
+        *head, _ = self.segments
+        return head
+
+    @property
+    def leaf(self) -> "FieldPath.Segment":
+        *_, tail = self.segments
+        return tail
+
+    def is_singleton(self) -> bool:
+        return len(self.segments) == 1
+
+    def __str__(self) -> str:
+        parts: list[str] = []
+
+        for segment in self.segments:
+            if segment.is_index:
+                parts[-1] = f"{parts[-1]}[{segment.identifier}]"
+            else:
+                parts.append(segment.identifier)
+
+        return ".".join(parts)
+
+    def identifiers(self) -> tuple[str, ...]:
+        return tuple(segment.identifier for segment in self.segments)
+
+
+@dataclass(frozen=True)
+class NewChildSpec:
+    symbol: Symbol | None = None
+    type_identifier: str | None = None
+    type_node: BoundNode | None = None
+    count: int | None = None
+
+
+@dataclass(frozen=True)
+class AddMakeChildAction:
+    target_path: FieldPath
+    child_spec: NewChildSpec
+    parent_reference: BoundNode | None
+    parent_path: FieldPath | None
+
+
+@dataclass(frozen=True)
+class AddMakeLinkAction:
+    lhs_ref: BoundNode
+    rhs_ref: BoundNode
+
+
+@dataclass
+class ScopeState:
+    symbols: dict[str, Symbol] = field(default_factory=dict)
+    fields: set[str] = field(default_factory=set)
+    # Aliases allow temporarily binding a loop variable name to a concrete
+    # field path during `for` iteration. Only used within the current
+    # lexical scope and intended to be short-lived.
+    aliases: dict[str, FieldPath] = field(default_factory=dict)

@@ -1,6 +1,6 @@
 # ato DSL compiler
 
-The ato DSL compiler is responsible for converting the ato DSL into a faebryk design-type graph.
+The ato DSL compiler is responsible for converting the ato DSL into a faebryk TypeGraph.
 
 ## Overview of stages
 
@@ -9,7 +9,7 @@ As currently implemented — pending bespoke lexer/parser.
 - ANTLR4 lexer + parser (`parser/`)
   Converts DSL into an ANTLR4 AST.
 
-- faebryk graph AST (`ast_graph.py`)
+- faebryk graph AST (`antlr_visitor.py`, `ast_visitor.py`, `gentypegraph.py`)
   Generates a faebryk graph AST from the ANTLR4 AST.
 
 - faebryk type graph (TODO)

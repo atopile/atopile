@@ -6,7 +6,7 @@ import typer
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
-from atopile.compiler.ast_graph import Linker, build_file, build_stdlib
+from atopile.compiler.build import Linker, build_file, build_stdlib
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
