@@ -2,12 +2,15 @@ const std = @import("std");
 const graph_mod = @import("graph");
 const GraphView = graph_mod.graph.GraphView;
 const BoundNodeReference = graph_mod.graph.BoundNodeReference;
-const Trait = @import("faebryk/trait.zig").Trait;
-const EdgeComposition = @import("faebryk/composition.zig").EdgeComposition;
-const TypeGraph = @import("faebryk/typegraph.zig").TypeGraph;
-const EdgeOperand = @import("faebryk/operand.zig").EdgeOperand;
-const Numeric = @import("numeric_sets.zig").Numeric;
-const EdgeType = @import("faebryk/node_type.zig").EdgeType;
+
+const faebryk = @import("faebryk");
+const Trait = faebryk.trait.Trait;
+const EdgeComposition = faebryk.composition.EdgeComposition;
+const TypeGraph = faebryk.typegraph.TypeGraph;
+const EdgeOperand = faebryk.operand.EdgeOperand;
+const EdgeType = faebryk.node_type.EdgeType;
+
+const Numeric = @import("magnitude_sets.zig").Numeric;
 const visitor = graph_mod.visitor;
 
 // ato units example
@@ -82,13 +85,13 @@ pub const Parameter = struct {
         const Finder = struct {
             target: *?Numeric,
             pub fn visit(self_ptr: *anyopaque, operand_edge: graph_mod.graph.BoundEdgeReference) visitor.VisitResult(void) {
-                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                const finder: *@This() = @ptrCast(@alignCast(self_ptr));
                 const operand_ref = EdgeOperand.get_operand_node(operand_edge.edge);
                 const operand_graph = operand_edge.g;
                 const bound_operand = graph_mod.graph.BoundNodeReference{ .g = operand_graph, .node = operand_ref };
                 const numeric = Numeric.of(bound_operand);
                 _ = numeric.get_value() catch return visitor.VisitResult(void){ .CONTINUE = {} };
-                self.target.* = numeric;
+                finder.target.* = numeric;
                 return visitor.VisitResult(void){ .STOP = {} };
             }
         };

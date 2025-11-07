@@ -4,9 +4,10 @@ const graph_mod = @import("graph");
 const GraphView = graph_mod.graph.GraphView;
 const BoundNodeReference = graph_mod.graph.BoundNodeReference;
 
-const Bool_Node = @import("bool_sets.zig").Bool_Node;
-const Bool_Set = @import("bool_sets.zig").Bool_Set;
-const faebryk = @import("faebryk/lib.zig");
+const BoolNode = @import("bool_sets.zig").BoolNode;
+const BoolSet = @import("bool_sets.zig").BoolSet;
+
+const faebryk = @import("faebryk");
 const EdgeComposition = faebryk.composition.EdgeComposition;
 const EdgeNext = faebryk.next.EdgeNext;
 
@@ -39,13 +40,10 @@ pub const _Continuous = struct {
     const max_identifier = "max";
 
     pub const Error = error{
-        InvalidBounds,
         NaNMin,
         NaNMax,
-        InfiniteMin,
-        InfiniteMax,
+        InvalidBounds,
         Empty,
-        NonPositiveLog,
     };
 
     pub const OperationError = error{
@@ -54,10 +52,10 @@ pub const _Continuous = struct {
         FractionalExponentRequiresIntegerExponent,
     };
 
-    pub fn init(g: *GraphView, min: f64, max: f64) Error!_Continuous {
-        if (std.math.isNan(min)) return error.NaNMin;
-        if (std.math.isNan(max)) return error.NaNMax;
-        if (min > max) return error.InvalidBounds;
+    pub fn init(g: *GraphView, min: f64, max: f64) !_Continuous {
+        if (std.math.isNan(min)) return Error.NaNMin;
+        if (std.math.isNan(max)) return Error.NaNMax;
+        if (min > max) return Error.InvalidBounds;
 
         const node = g.create_and_insert_node();
         const min_node = Numeric.init(g, min);
@@ -69,12 +67,22 @@ pub const _Continuous = struct {
         return of(node);
     }
 
+    fn loadEndpoint(self: _Continuous, identifier: []const u8) f64 {
+        const bound = EdgeComposition.get_child_by_identifier(self.node, identifier) orelse unreachable;
+        const numeric = Numeric.of(bound);
+        // Interval endpoints are always materialised during construction; treat
+        // missing numeric values as an internal logic bug.
+        return numeric.get_value() catch |err| switch (err) {
+            error.ValueNotFound => @panic("continuous interval node missing numeric value"),
+        };
+    }
+
     pub fn get_min(self: _Continuous) f64 {
-        return Numeric.of(EdgeComposition.get_child_by_identifier(self.node, min_identifier).?).get_value();
+        return self.loadEndpoint(min_identifier);
     }
 
     pub fn get_max(self: _Continuous) f64 {
-        return Numeric.of(EdgeComposition.get_child_by_identifier(self.node, max_identifier).?).get_value();
+        return self.loadEndpoint(max_identifier);
     }
 
     pub fn of(node: BoundNodeReference) _Continuous {
@@ -88,7 +96,9 @@ pub const _Continuous = struct {
     }
 
     pub fn is_unbounded(self: _Continuous) bool {
-        return self.min == -std.math.inf(f64) and self.max == std.math.inf(f64);
+        const min = self.get_min();
+        const max = self.get_max();
+        return min == -std.math.inf(f64) and max == std.math.inf(f64);
     }
 
     pub fn is_finite(self: _Continuous) bool {
@@ -96,7 +106,9 @@ pub const _Continuous = struct {
             return true;
         }
 
-        return self.min != -std.math.inf(f64) and self.max != std.math.inf(f64);
+        const min = self.get_min();
+        const max = self.get_max();
+        return min != -std.math.inf(f64) and max != std.math.inf(f64);
     }
 
     pub fn is_integer(self: _Continuous) bool {
@@ -107,10 +119,10 @@ pub const _Continuous = struct {
         const min = self.get_min();
         const max = self.get_max();
         if (self.is_single_element()) {
-            return .{ .center = self.min, .relative = 0.0 };
+            return .{ .center = min, .relative = 0.0 };
         }
         if (!self.is_finite()) {
-            return .{ .center = self.min, .relative = std.math.inf(f64) };
+            return .{ .center = min, .relative = std.math.inf(f64) };
         }
         const center = (min + max) / 2.0;
         const rel = (max - min) / (2.0 * center);
@@ -123,7 +135,11 @@ pub const _Continuous = struct {
     };
 
     pub fn is_subset_of(self: _Continuous, other: _Continuous) bool {
-        return self.min >= other.min and self.max <= other.max;
+        const self_min = self.get_min();
+        const self_max = self.get_max();
+        const other_min = other.get_min();
+        const other_max = other.get_max();
+        return self_min >= other_min and self_max <= other_max;
     }
 
     pub fn op_add(self: _Continuous, g: *GraphView, other: _Continuous) !_Continuous {
@@ -178,9 +194,9 @@ pub const _Continuous = struct {
         g: *GraphView,
         allocator: std.mem.Allocator,
         exponent: _Continuous,
-    ) !Numeric_Set {
+    ) !MagnitudeSet {
         if (exponent.get_max() < 0.0) {
-            return OperationError.NegativeExponentUnsupported;
+            return error.NegativeExponentUnsupported;
         }
 
         const base_min = self.get_min();
@@ -194,10 +210,10 @@ pub const _Continuous = struct {
             return try powered.op_invert(g, allocator);
         }
         if (exp_min < 0.0) {
-            return OperationError.ExponentCrossesZero;
+            return error.ExponentCrossesZero;
         }
         if (base_min < 0.0 and !exponent.is_integer()) {
-            return OperationError.FractionalExponentRequiresIntegerExponent;
+            return error.FractionalExponentRequiresIntegerExponent;
         }
 
         const pow_a = std.math.pow(f64, base_min, exp_min);
@@ -215,42 +231,42 @@ pub const _Continuous = struct {
         max_val = @max(max_val, pow_c);
         max_val = @max(max_val, pow_d);
 
-        return try Numeric_Set.init_from_interval(g, allocator, min_val, max_val);
+        return try MagnitudeSet.init_from_interval(g, allocator, min_val, max_val);
     }
 
-    pub fn op_invert(self: _Continuous, g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
+    pub fn op_invert(self: _Continuous, g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
         const neg_inf = -std.math.inf(f64);
         const pos_inf = std.math.inf(f64);
 
         if (self.get_min() == 0.0 and self.get_max() == 0.0) {
-            return try Numeric_Set.init_empty(g, g.allocator);
+            return try MagnitudeSet.init_empty(g, g.allocator);
         }
 
         if (self.get_min() < 0.0 and self.get_max() > 0.0) {
-            return Numeric_Set.init(g, allocator, &[_]_Continuous{
+            return MagnitudeSet.init(g, allocator, &[_]_Continuous{
                 try _Continuous.init(g, neg_inf, 1.0 / self.get_min()),
                 try _Continuous.init(g, 1.0 / self.get_max(), pos_inf),
-            }, &[_]Numeric_Set{});
+            }, &[_]MagnitudeSet{});
         }
 
         if (self.get_min() < 0.0 and self.get_max() == 0.0) {
-            return Numeric_Set.init(g, allocator, &[_]_Continuous{
+            return MagnitudeSet.init(g, allocator, &[_]_Continuous{
                 try _Continuous.init(g, neg_inf, 1.0 / self.get_min()),
-            }, &[_]Numeric_Set{});
+            }, &[_]MagnitudeSet{});
         }
 
         if (self.get_min() == 0.0 and self.get_max() > 0.0) {
-            return Numeric_Set.init(g, allocator, &[_]_Continuous{
+            return MagnitudeSet.init(g, allocator, &[_]_Continuous{
                 try _Continuous.init(g, 1.0 / self.get_max(), pos_inf),
-            }, &[_]Numeric_Set{});
+            }, &[_]MagnitudeSet{});
         }
 
-        return Numeric_Set.init(g, allocator, &[_]_Continuous{
+        return MagnitudeSet.init(g, allocator, &[_]_Continuous{
             try _Continuous.init(g, 1.0 / self.get_max(), 1.0 / self.get_min()),
-        }, &[_]Numeric_Set{});
+        }, &[_]MagnitudeSet{});
     }
 
-    pub fn op_divide(self: _Continuous, g: *GraphView, allocator: std.mem.Allocator, other: _Continuous) !Numeric_Set {
+    pub fn op_divide(self: _Continuous, g: *GraphView, allocator: std.mem.Allocator, other: _Continuous) !MagnitudeSet {
         var inverse_other = try other.op_invert(g, allocator);
 
         const inverse_intervals = try inverse_other.get_intervals(allocator);
@@ -263,7 +279,7 @@ pub const _Continuous = struct {
             try products.append(try self.op_multiply(g, r));
         }
 
-        return try Numeric_Set.init(g, allocator, products.items, &[_]Numeric_Set{});
+        return try MagnitudeSet.init(g, allocator, products.items, &[_]MagnitudeSet{});
     }
 
     pub fn op_intersect(self: _Continuous, g: *GraphView, other: _Continuous) !_Continuous {
@@ -274,10 +290,10 @@ pub const _Continuous = struct {
             return try _Continuous.init(g, lower, upper);
         }
 
-        return Error.Empty;
+        return error.Empty;
     }
 
-    pub fn op_difference(self: _Continuous, g: *GraphView, allocator: std.mem.Allocator, other: _Continuous) !Numeric_Set {
+    pub fn op_difference(self: _Continuous, g: *GraphView, allocator: std.mem.Allocator, other: _Continuous) !MagnitudeSet {
         const self_min = self.get_min();
         const self_max = self.get_max();
         const other_min = other.get_min();
@@ -285,29 +301,29 @@ pub const _Continuous = struct {
 
         // case: no overlap
         if (self_max <= other_min or self_min >= other_max) {
-            return try Numeric_Set.init_from_single(g, allocator, self);
+            return try MagnitudeSet.init_from_single(g, allocator, self);
         }
 
         // case: other completely covers self
         if (other_min <= self_min and other_max >= self_max) {
-            return try Numeric_Set.init_empty(g, allocator);
+            return try MagnitudeSet.init_empty(g, allocator);
         }
 
         // case: other is in the middle, splitting self into two pieces
         if (self_min < other_min and self_max > other_max) {
-            return try Numeric_Set.init(g, allocator, &[_]_Continuous{
+            return try MagnitudeSet.init(g, allocator, &[_]_Continuous{
                 try _Continuous.init(g, self_min, other_min),
                 try _Continuous.init(g, other_max, self_max),
-            }, &[_]Numeric_Set{});
+            }, &[_]MagnitudeSet{});
         }
 
         // case: overlap on right side
         if (self_min < other_min) {
-            return try Numeric_Set.init_from_interval(g, allocator, self_min, other_min);
+            return try MagnitudeSet.init_from_interval(g, allocator, self_min, other_min);
         }
 
         // case: overlap on left side
-        return try Numeric_Set.init_from_interval(g, allocator, other_max, self_max);
+        return try MagnitudeSet.init_from_interval(g, allocator, other_max, self_max);
     }
 
     pub fn op_round(self: _Continuous, g: *GraphView, ndigits: i32) !_Continuous {
@@ -337,7 +353,7 @@ pub const _Continuous = struct {
     pub fn op_log(self: _Continuous, g: *GraphView) !_Continuous {
         const min = self.get_min();
         const max = self.get_max();
-        if (min <= 0.0) return Error.NonPositiveLog;
+        if (min <= 0.0) return error.NonPositiveLog;
         return _Continuous.init(g, std.math.log(f64, std.math.e, min), std.math.log(f64, std.math.e, max));
     }
 
@@ -390,7 +406,7 @@ pub const _Continuous = struct {
     }
 
     pub fn isInteger(self: _Continuous) bool {
-        return self.is_single_element() and is_integer(self.min);
+        return self.is_single_element() and is_integer(self.get_min());
     }
 
     fn intervalLess(_: void, a: _Continuous, b: _Continuous) bool {
@@ -398,7 +414,7 @@ pub const _Continuous = struct {
     }
 };
 
-pub const Numeric_Set = struct {
+pub const MagnitudeSet = struct {
     set_node: BoundNodeReference,
 
     const set_identifier = "set";
@@ -408,19 +424,19 @@ pub const Numeric_Set = struct {
         Empty,
     };
 
-    pub fn init_empty(g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
-        return try Numeric_Set.init(g, allocator, &[_]_Continuous{}, &[_]Numeric_Set{});
+    pub fn init_empty(g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
+        return try MagnitudeSet.init(g, allocator, &[_]_Continuous{}, &[_]MagnitudeSet{});
     }
 
-    pub fn init_from_single(g: *GraphView, allocator: std.mem.Allocator, input: _Continuous) !Numeric_Set {
-        return try Numeric_Set.init(g, allocator, &[_]_Continuous{input}, &[_]Numeric_Set{});
+    pub fn init_from_single(g: *GraphView, allocator: std.mem.Allocator, input: _Continuous) !MagnitudeSet {
+        return try MagnitudeSet.init(g, allocator, &[_]_Continuous{input}, &[_]MagnitudeSet{});
     }
 
-    pub fn init_from_interval(g: *GraphView, allocator: std.mem.Allocator, min: f64, max: f64) !Numeric_Set {
-        return try Numeric_Set.init_from_single(g, allocator, try _Continuous.init(g, min, max));
+    pub fn init_from_interval(g: *GraphView, allocator: std.mem.Allocator, min: f64, max: f64) !MagnitudeSet {
+        return try MagnitudeSet.init_from_single(g, allocator, try _Continuous.init(g, min, max));
     }
 
-    pub fn init(g: *GraphView, allocator: std.mem.Allocator, continuous_inputs: []const _Continuous, set_inputs: []const Numeric_Set) !Numeric_Set {
+    pub fn init(g: *GraphView, allocator: std.mem.Allocator, continuous_inputs: []const _Continuous, set_inputs: []const MagnitudeSet) !MagnitudeSet {
         // Create a new node representing the numeric set
         const node = g.create_and_insert_node();
 
@@ -492,13 +508,13 @@ pub const Numeric_Set = struct {
         return of(node);
     }
 
-    pub fn of(node: BoundNodeReference) Numeric_Set {
-        return Numeric_Set{
+    pub fn of(node: BoundNodeReference) MagnitudeSet {
+        return MagnitudeSet{
             .set_node = node,
         };
     }
 
-    pub fn get_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator) ![]const _Continuous {
+    pub fn get_intervals(self: *const MagnitudeSet, allocator: std.mem.Allocator) ![]const _Continuous {
         // if there is no head node, return an empty array
         if (EdgeComposition.get_child_by_identifier(self.set_node, head_identifier) == null) {
             return &[_]_Continuous{};
@@ -520,31 +536,31 @@ pub const Numeric_Set = struct {
         return owned;
     }
 
-    pub fn get_intervals_len(self: *const Numeric_Set, allocator: std.mem.Allocator) !usize {
+    pub fn get_intervals_len(self: *const MagnitudeSet, allocator: std.mem.Allocator) !usize {
         const intervals = try self.get_intervals(allocator);
         defer allocator.free(intervals);
         return intervals.len;
     }
 
-    pub fn is_empty(self: *const Numeric_Set, allocator: std.mem.Allocator) !bool {
+    pub fn is_empty(self: *const MagnitudeSet, allocator: std.mem.Allocator) !bool {
         return (try self.get_intervals_len(allocator)) == 0;
     }
 
-    pub fn is_unbounded(self: *const Numeric_Set, allocator: std.mem.Allocator) bool {
+    pub fn is_unbounded(self: *const MagnitudeSet, allocator: std.mem.Allocator) bool {
         if (self.is_empty(allocator)) {
             return false;
         }
         return self.get_intervals(allocator)[0].is_unbounded();
     }
 
-    pub fn is_finite(self: *const Numeric_Set) bool {
+    pub fn is_finite(self: *const MagnitudeSet) bool {
         if (self.is_empty()) {
             return true;
         }
         return self.get_intervals()[0].is_finite() and self.get_intervals()[self.get_intervals().len - 1].is_finite();
     }
 
-    pub fn closest_elem(self: *const Numeric_Set, allocator: std.mem.Allocator, target: f64) !f64 {
+    pub fn closest_elem(self: *const MagnitudeSet, allocator: std.mem.Allocator, target: f64) !f64 {
         if (try self.is_empty(allocator)) {
             return error.Empty;
         }
@@ -595,7 +611,7 @@ pub const Numeric_Set = struct {
         unreachable;
     }
 
-    pub fn is_superset_of(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) bool {
+    pub fn is_superset_of(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) bool {
         _ = g;
 
         const other_empty = other.is_empty(allocator) catch return false;
@@ -634,11 +650,11 @@ pub const Numeric_Set = struct {
         return true;
     }
 
-    pub fn is_subset_of(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) bool {
+    pub fn is_subset_of(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) bool {
         return other.is_superset_of(g, allocator, self);
     }
 
-    pub fn op_intersect_interval(self: *const Numeric_Set, allocator: std.mem.Allocator, other: _Continuous) !Numeric_Set {
+    pub fn op_intersect_interval(self: *const MagnitudeSet, allocator: std.mem.Allocator, other: _Continuous) !MagnitudeSet {
         var intersections = std.ArrayList(_Continuous).init(allocator);
         defer intersections.deinit();
 
@@ -651,10 +667,10 @@ pub const Numeric_Set = struct {
             try intersections.append(overlap);
         }
 
-        return Numeric_Set.init(allocator, intersections.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(allocator, intersections.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_intersect_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_intersect_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -686,10 +702,10 @@ pub const Numeric_Set = struct {
                 o += 1;
             }
         }
-        return try Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return try MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_union_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_union_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var combined = std.ArrayList(_Continuous).init(allocator);
         defer combined.deinit();
         const self_intervals = try self.get_intervals(allocator);
@@ -699,10 +715,10 @@ pub const Numeric_Set = struct {
         try combined.appendSlice(self_intervals);
         try combined.appendSlice(other_intervals);
 
-        return Numeric_Set.init(g, allocator, combined.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, combined.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_difference_interval(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: _Continuous) !Numeric_Set {
+    pub fn op_difference_interval(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: _Continuous) !MagnitudeSet {
         var pieces = std.ArrayList(_Continuous).init(allocator);
         defer pieces.deinit();
 
@@ -717,14 +733,14 @@ pub const Numeric_Set = struct {
             try pieces.appendSlice(diff_intervals);
         }
 
-        return Numeric_Set.init(g, allocator, pieces.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, pieces.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_difference_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_difference_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         const base_intervals = try self.get_intervals(allocator);
         defer allocator.free(base_intervals);
 
-        var temp = try Numeric_Set.init(g, allocator, base_intervals, &[_]Numeric_Set{});
+        var temp = try MagnitudeSet.init(g, allocator, base_intervals, &[_]MagnitudeSet{});
 
         const other_intervals = try other.get_intervals(allocator);
         defer allocator.free(other_intervals);
@@ -736,7 +752,7 @@ pub const Numeric_Set = struct {
         return temp;
     }
 
-    pub fn op_symmetric_difference_intervals(self: *const Numeric_Set, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_symmetric_difference_intervals(self: *const MagnitudeSet, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var union_result = try self.op_union_intervals(allocator, other);
         defer union_result.deinit();
 
@@ -746,7 +762,7 @@ pub const Numeric_Set = struct {
         return union_result.op_difference_intervals(allocator, &intersection_result);
     }
 
-    pub fn op_add_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_add_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -761,10 +777,10 @@ pub const Numeric_Set = struct {
             }
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_negate(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
+    pub fn op_negate(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -775,16 +791,16 @@ pub const Numeric_Set = struct {
             try result.append(try interval.op_negate(g));
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_subtract_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_subtract_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var negated = try other.op_negate(g, allocator);
 
         return self.op_add_intervals(g, allocator, &negated);
     }
 
-    pub fn op_multiply_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_multiply_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -799,11 +815,11 @@ pub const Numeric_Set = struct {
             }
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_invert(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
-        var components = std.ArrayList(Numeric_Set).init(allocator);
+    pub fn op_invert(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
+        var components = std.ArrayList(MagnitudeSet).init(allocator);
         defer components.deinit();
 
         const self_intervals = try self.get_intervals(allocator);
@@ -814,7 +830,7 @@ pub const Numeric_Set = struct {
             try components.append(inverted);
         }
 
-        return try Numeric_Set.init(
+        return try MagnitudeSet.init(
             g,
             allocator,
             &[_]_Continuous{},
@@ -822,20 +838,20 @@ pub const Numeric_Set = struct {
         );
     }
 
-    pub fn op_divide_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_divide_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         var inverted = try other.op_invert(g, allocator);
 
         return self.op_multiply_intervals(g, allocator, &inverted);
     }
 
-    pub fn op_power_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Numeric_Set {
+    pub fn op_power_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !MagnitudeSet {
         const exponents = try other.get_intervals(allocator);
         defer allocator.free(exponents);
 
         const self_intervals = try self.get_intervals(allocator);
         defer allocator.free(self_intervals);
 
-        var components = std.ArrayList(Numeric_Set).init(allocator);
+        var components = std.ArrayList(MagnitudeSet).init(allocator);
         defer components.deinit();
 
         for (self_intervals) |base_interval| {
@@ -845,96 +861,100 @@ pub const Numeric_Set = struct {
             }
         }
 
-        return try Numeric_Set.init(g, allocator, &[_]_Continuous{}, components.items);
+        return try MagnitudeSet.init(g, allocator, &[_]_Continuous{}, components.items);
     }
 
-    pub fn min_elem(self: *const Numeric_Set, allocator: std.mem.Allocator) !f64 {
+    pub fn min_elem(self: *const MagnitudeSet, allocator: std.mem.Allocator) !f64 {
         const self_intervals = try self.get_intervals(allocator);
         defer allocator.free(self_intervals);
 
         return self_intervals[0].get_min();
     }
 
-    pub fn max_elem(self: *const Numeric_Set, allocator: std.mem.Allocator) !f64 {
+    pub fn max_elem(self: *const MagnitudeSet, allocator: std.mem.Allocator) !f64 {
         const self_intervals = try self.get_intervals(allocator);
         defer allocator.free(self_intervals);
 
         return self_intervals[self_intervals.len - 1].get_max();
     }
 
-    pub fn op_ge_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+    pub fn op_ge_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !BoolSet {
         const min = try self.min_elem(allocator);
         const max = try self.max_elem(allocator);
         const other_min = try other.min_elem(allocator);
         const other_max = try other.max_elem(allocator);
 
         if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
-            return Bool_Set.init_empty(g);
+            return BoolSet.init_empty(g);
         }
         if (min >= other_max) {
-            return Bool_Set.init_from_single(g, true);
+            return BoolSet.init_from_single(g, true);
         }
         if (max < other_min) {
-            return Bool_Set.init_from_single(g, false);
+            return BoolSet.init_from_single(g, false);
         }
-        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
+        return BoolSet.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_gt_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+    pub fn op_gt_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !BoolSet {
         const min = try self.min_elem(allocator);
         const max = try self.max_elem(allocator);
         const other_min = try other.min_elem(allocator);
         const other_max = try other.max_elem(allocator);
 
         if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
-            return Bool_Set.init_empty(g);
+            return BoolSet.init_empty(g);
         }
         if (min > other_max) {
-            return Bool_Set.init_from_single(g, true);
+            return BoolSet.init_from_single(g, true);
         }
         if (max <= other_min) {
-            return Bool_Set.init_from_single(g, false);
+            return BoolSet.init_from_single(g, false);
         }
-        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
+        return BoolSet.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_le_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+    pub fn op_le_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !BoolSet {
         const min = try self.min_elem(allocator);
         const max = try self.max_elem(allocator);
         const other_min = try other.min_elem(allocator);
         const other_max = try other.max_elem(allocator);
 
         if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
-            return Bool_Set.init_empty(g);
+            return BoolSet.init_empty(g);
         }
         if (max <= other_min) {
-            return Bool_Set.init_from_single(g, true);
+            return BoolSet.init_from_single(g, true);
         }
         if (min > other_max) {
-            return Bool_Set.init_from_single(g, false);
+            return BoolSet.init_from_single(g, false);
         }
-        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
+        return BoolSet.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_lt_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, other: *const Numeric_Set) !Bool_Set {
+    pub fn op_lt_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, other: *const MagnitudeSet) !BoolSet {
         const min = try self.min_elem(allocator);
         const max = try self.max_elem(allocator);
         const other_min = try other.min_elem(allocator);
         const other_max = try other.max_elem(allocator);
 
         if (try self.is_empty(allocator) or try other.is_empty(allocator)) {
-            return Bool_Set.init_empty(g);
+            return BoolSet.init_empty(g);
         }
         if (max < other_min) {
-            return Bool_Set.init_from_single(g, true);
+            return BoolSet.init_from_single(g, true);
         }
         if (min >= other_max) {
-            return Bool_Set.init_from_single(g, false);
+            return BoolSet.init_from_single(g, false);
         }
-        return Bool_Set.init_from_bools(g, allocator, &[_]bool{ true, false });
+        if (min == other_min and max == other_max) {
+            // Identical intervals can never satisfy a strict less-than comparison.
+            return BoolSet.init_from_single(g, false);
+        }
+        return BoolSet.init_from_bools(g, allocator, &[_]bool{ true, false });
     }
 
-    pub fn op_round_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator, ndigits: i32) !Numeric_Set {
+    pub fn op_round_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator, ndigits: i32) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -946,10 +966,10 @@ pub const Numeric_Set = struct {
             try result.append(rounded);
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_abs_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
+    pub fn op_abs_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -961,10 +981,10 @@ pub const Numeric_Set = struct {
             try result.append(abs);
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_log_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
+    pub fn op_log_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -975,10 +995,10 @@ pub const Numeric_Set = struct {
             try result.append(try interval.op_log(g));
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 
-    pub fn op_sin_intervals(self: *const Numeric_Set, g: *GraphView, allocator: std.mem.Allocator) !Numeric_Set {
+    pub fn op_sin_intervals(self: *const MagnitudeSet, g: *GraphView, allocator: std.mem.Allocator) !MagnitudeSet {
         var result = std.ArrayList(_Continuous).init(allocator);
         defer result.deinit();
 
@@ -989,7 +1009,7 @@ pub const Numeric_Set = struct {
             try result.append(try interval.op_sin(g));
         }
 
-        return Numeric_Set.init(g, allocator, result.items, &[_]Numeric_Set{});
+        return MagnitudeSet.init(g, allocator, result.items, &[_]MagnitudeSet{});
     }
 };
 
@@ -1377,14 +1397,14 @@ test "_Continuous.op_difference returns two segments when other is inside" {
 test "Numeric_Set.init_empty" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
-    const numeric_set = try Numeric_Set.init_empty(&g, std.testing.allocator);
+    const numeric_set = try MagnitudeSet.init_empty(&g, std.testing.allocator);
     try std.testing.expectEqual(0, try numeric_set.get_intervals_len(std.testing.allocator));
 }
 
 test "Numeric_Set.init_from_single" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
-    const numeric_set = try Numeric_Set.init_from_single(&g, std.testing.allocator, try _Continuous.init(&g, 1.0, 3.0));
+    const numeric_set = try MagnitudeSet.init_from_single(&g, std.testing.allocator, try _Continuous.init(&g, 1.0, 3.0));
     try std.testing.expectEqual(1, try numeric_set.get_intervals_len(std.testing.allocator));
     const intervals = try numeric_set.get_intervals(std.testing.allocator);
     defer std.testing.allocator.free(intervals);
@@ -1395,11 +1415,11 @@ test "Numeric_Set.init_from_single" {
 test "Numeric_Set.init with 3 intervals" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
-    const numeric_set = try Numeric_Set.init(&g, std.testing.allocator, &[_]_Continuous{
+    const numeric_set = try MagnitudeSet.init(&g, std.testing.allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
         try _Continuous.init(&g, 5.0, 7.0),
         try _Continuous.init(&g, 9.0, 11.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     try std.testing.expectEqual(3, try numeric_set.get_intervals_len(std.testing.allocator));
     const result_intervals = try numeric_set.get_intervals(std.testing.allocator);
     defer std.testing.allocator.free(result_intervals);
@@ -1418,7 +1438,7 @@ test "Numeric_Set.init basic case" {
         try _Continuous.init(&g, 5.0, 7.0),
     };
 
-    const disjoint = try Numeric_Set.init(&g, std.testing.allocator, &intervals, &[_]Numeric_Set{});
+    const disjoint = try MagnitudeSet.init(&g, std.testing.allocator, &intervals, &[_]MagnitudeSet{});
     const result_intervals = try disjoint.get_intervals(std.testing.allocator);
     defer std.testing.allocator.free(result_intervals);
 
@@ -1432,17 +1452,17 @@ test "Numeric_Set.init basic case" {
 test "Numeric_Set.init merges and sorts intervals" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
-    const nested_disjoint = try Numeric_Set.init(&g, std.testing.allocator, &[_]_Continuous{
+    const nested_disjoint = try MagnitudeSet.init(&g, std.testing.allocator, &[_]_Continuous{
         try _Continuous.init(&g, 6.0, 8.0),
         try _Continuous.init(&g, 10.0, 12.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const intervals = [_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
         try _Continuous.init(&g, 4.0, 7.0),
         try _Continuous.init(&g, 9.0, 11.0),
     };
-    const disjoint = try Numeric_Set.init(&g, std.testing.allocator, &intervals, &[_]Numeric_Set{nested_disjoint});
+    const disjoint = try MagnitudeSet.init(&g, std.testing.allocator, &intervals, &[_]MagnitudeSet{nested_disjoint});
     const result_intervals = try disjoint.get_intervals(std.testing.allocator);
     defer std.testing.allocator.free(result_intervals);
 
@@ -1460,7 +1480,7 @@ test "Numeric_Set.closest_elem handles relative positions" {
     defer g.deinit();
     const interval_a = try _Continuous.init(&g, 1.0, 3.0);
     const interval_b = try _Continuous.init(&g, 5.0, 7.0);
-    var set = try Numeric_Set.init(&g, std.testing.allocator, &[_]_Continuous{ interval_a, interval_b }, &[_]Numeric_Set{});
+    var set = try MagnitudeSet.init(&g, std.testing.allocator, &[_]_Continuous{ interval_a, interval_b }, &[_]MagnitudeSet{});
     const result_intervals = try set.get_intervals(std.testing.allocator);
     defer std.testing.allocator.free(result_intervals);
 
@@ -1492,10 +1512,10 @@ test "Numeric_Set.is_superset_of handles various cases" {
         try _Continuous.init(&g, 0.5, 2.0),
     };
 
-    var outer = try Numeric_Set.init(&g, std.testing.allocator, &outer_intervals, &[_]Numeric_Set{});
-    var inner = try Numeric_Set.init(&g, std.testing.allocator, &inner_intervals, &[_]Numeric_Set{});
-    var partial = try Numeric_Set.init(&g, std.testing.allocator, &partial_intervals, &[_]Numeric_Set{});
-    var empty = try Numeric_Set.init_empty(&g, std.testing.allocator);
+    var outer = try MagnitudeSet.init(&g, std.testing.allocator, &outer_intervals, &[_]MagnitudeSet{});
+    var inner = try MagnitudeSet.init(&g, std.testing.allocator, &inner_intervals, &[_]MagnitudeSet{});
+    var partial = try MagnitudeSet.init(&g, std.testing.allocator, &partial_intervals, &[_]MagnitudeSet{});
+    var empty = try MagnitudeSet.init_empty(&g, std.testing.allocator);
 
     const allocator = std.testing.allocator;
 
@@ -1522,10 +1542,10 @@ test "Numeric_Set.is_subset_of handles various cases" {
         try _Continuous.init(&g, 0.5, 2.0),
     };
 
-    var outer = try Numeric_Set.init(&g, std.testing.allocator, &outer_intervals, &[_]Numeric_Set{});
-    var inner = try Numeric_Set.init(&g, std.testing.allocator, &inner_intervals, &[_]Numeric_Set{});
-    var partial = try Numeric_Set.init(&g, std.testing.allocator, &partial_intervals, &[_]Numeric_Set{});
-    var empty = try Numeric_Set.init_empty(&g, std.testing.allocator);
+    var outer = try MagnitudeSet.init(&g, std.testing.allocator, &outer_intervals, &[_]MagnitudeSet{});
+    var inner = try MagnitudeSet.init(&g, std.testing.allocator, &inner_intervals, &[_]MagnitudeSet{});
+    var partial = try MagnitudeSet.init(&g, std.testing.allocator, &partial_intervals, &[_]MagnitudeSet{});
+    var empty = try MagnitudeSet.init_empty(&g, std.testing.allocator);
     const allocator = std.testing.allocator;
 
     try std.testing.expect(inner.is_subset_of(&g, allocator, &outer));
@@ -1539,15 +1559,15 @@ test "Numeric_Set.is_subset_of handles various cases" {
 test "Numeric_Set.op_union_intervals handles various cases" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
-    const lhs = try Numeric_Set.init(&g, std.testing.allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, std.testing.allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
         try _Continuous.init(&g, 5.0, 7.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    const rhs = try Numeric_Set.init(&g, std.testing.allocator, &[_]_Continuous{
+    const rhs = try MagnitudeSet.init(&g, std.testing.allocator, &[_]_Continuous{
         try _Continuous.init(&g, 2.0, 4.0),
         try _Continuous.init(&g, 6.0, 8.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const result = try lhs.op_union_intervals(&g, std.testing.allocator, &rhs);
     const result_intervals = try result.get_intervals(std.testing.allocator);
@@ -1565,10 +1585,10 @@ test "Numeric_Set.op_difference_interval handles overlap" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var base = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var base = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 4.0),
         try _Continuous.init(&g, 6.0, 8.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const subtract = try _Continuous.init(&g, 2.0, 7.0);
 
@@ -1588,15 +1608,15 @@ test "Numeric_Set.op_difference_intervals handles multiple subtractions" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var base = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var base = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 0.0, 5.0),
         try _Continuous.init(&g, 6.0, 10.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    var subtract = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var subtract = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
         try _Continuous.init(&g, 7.0, 9.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var result = try base.op_difference_intervals(&g, allocator, &subtract);
     const result_intervals = try result.get_intervals(std.testing.allocator);
@@ -1618,15 +1638,15 @@ test "Numeric_Set.op_add_intervals sums pairwise intervals" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
         try _Continuous.init(&g, 4.0, 5.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    var rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 10.0, 11.0),
         try _Continuous.init(&g, 20.0, 22.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const result = try lhs.op_add_intervals(&g, allocator, &rhs);
     const result_intervals = try result.get_intervals(std.testing.allocator);
@@ -1649,10 +1669,10 @@ test "Numeric_Set.op_negate flips all intervals" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var original = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var original = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
         try _Continuous.init(&g, 5.0, 6.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const negated = try original.op_negate(&g, allocator);
     const negated_intervals = try negated.get_intervals(std.testing.allocator);
@@ -1670,15 +1690,15 @@ test "Numeric_Set.op_subtract_intervals subtracts via negation and add" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 5.0, 7.0),
         try _Continuous.init(&g, 10.0, 12.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    var rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 2.0, 3.0),
         try _Continuous.init(&g, 1.0, 1.5),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var negated_rhs = try rhs.op_negate(&g, allocator);
     const negated_rhs_intervals = try negated_rhs.get_intervals(std.testing.allocator);
@@ -1705,15 +1725,15 @@ test "Numeric_Set.op_multiply_intervals multiplies pairwise intervals" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, -2.0, -1.0),
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    var rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 0.5, 1.5),
         try _Continuous.init(&g, 2.0, 3.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var result = try lhs.op_multiply_intervals(&g, allocator, &rhs);
     const result_intervals = try result.get_intervals(std.testing.allocator);
@@ -1733,15 +1753,15 @@ test "Numeric_Set.op_divide_intervals divides pairwise intervals" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var numerator = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var numerator = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 6.0, 8.0),
         try _Continuous.init(&g, -4.0, -2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    var denominator = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var denominator = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 2.0, 3.0),
         try _Continuous.init(&g, -1.5, -0.5),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var div_result = try numerator.op_divide_intervals(&g, allocator, &denominator);
     const div_result_intervals = try div_result.get_intervals(std.testing.allocator);
@@ -1767,15 +1787,15 @@ test "Numeric_Set.op_power_intervals raises pairwise combinations" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var bases = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var bases = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    var exponents = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var exponents = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 2.0, 2.5),
         try _Continuous.init(&g, 3.0, 3.5),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var result = try bases.op_power_intervals(&g, allocator, &exponents);
     const result_intervals = try result.get_intervals(std.testing.allocator);
@@ -1793,10 +1813,10 @@ test "Numeric_Set.op_round_intervals rounds each interval" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var set = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.2345, 2.3456),
         try _Continuous.init(&g, -3.8765, -1.2345),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var rounded = try set.op_round_intervals(&g, allocator, 2);
     const rounded_intervals = try rounded.get_intervals(std.testing.allocator);
@@ -1818,10 +1838,10 @@ test "Numeric_Set.op_abs_intervals takes absolute value of each interval" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var set = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, -4.5, -2.5),
         try _Continuous.init(&g, -1.0, 3.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const abs_set = try set.op_abs_intervals(&g, allocator);
     const abs_set_intervals = try abs_set.get_intervals(std.testing.allocator);
@@ -1839,10 +1859,10 @@ test "Numeric_Set.op_log_intervals takes natural log of each interval" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var set = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
         try _Continuous.init(&g, 5.0, 8.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var logged = try set.op_log_intervals(&g, allocator);
     const logged_intervals = try logged.get_intervals(std.testing.allocator);
@@ -1864,10 +1884,10 @@ test "Numeric_Set.op_sin_intervals applies sine envelope" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    var set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    var set = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 0.0, std.math.pi / 2.0),
         try _Continuous.init(&g, std.math.pi, 3.0 * std.math.pi / 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     var sin = try set.op_sin_intervals(&g, allocator);
     const sin_intervals = try sin.get_intervals(std.testing.allocator);
@@ -1885,9 +1905,9 @@ test "Numeric_Set.get_min_elem returns the minimum element of the set" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    const set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const set = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const min = try set.min_elem(std.testing.allocator);
 
@@ -1899,9 +1919,9 @@ test "Numeric_Set.get_max_elem returns the maximum element of the set" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    const set = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const set = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const max = try set.max_elem(std.testing.allocator);
 
@@ -1913,13 +1933,13 @@ test "Numeric_Set.op_ge_intervals returns false when lhs is less than rhs" {
     defer g.deinit();
     const allocator = std.testing.allocator;
 
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
 
     const result = try lhs.op_ge_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
@@ -1933,12 +1953,12 @@ test "Numeric_Set.op_ge_intervals returns true when lhs is greater than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_ge_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -1950,12 +1970,12 @@ test "Numeric_Set.op_gt_intervals returns false when lhs is less than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -1968,12 +1988,12 @@ test "Numeric_Set.op_gt_intervals returns false when lhs is equal to rhs" {
     defer g.deinit();
     const allocator = std.testing.allocator;
     const val = 1.0;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, val, val),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, val, val),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -1985,12 +2005,12 @@ test "Numeric_Set.op_gt_intervals returns true when lhs is greater than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2002,12 +2022,12 @@ test "Numeric_Set.op_gt_intervals returns true and false when lhs is both greate
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 5.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_gt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2020,12 +2040,12 @@ test "Numeric_Set.op_le_intervals returns false when lhs is greater than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_le_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2038,12 +2058,12 @@ test "Numeric_Set.op_le_intervals returns true when lhs is equal to rhs" {
     defer g.deinit();
     const allocator = std.testing.allocator;
     const val = 1.0;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, val, val),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, val, val),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_le_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2055,12 +2075,12 @@ test "Numeric_Set.op_le_intervals returns true and false when lhs is both less a
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 2.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_le_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2073,12 +2093,12 @@ test "Numeric_Set.op_lt_intervals returns false when lhs is greater than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2090,12 +2110,12 @@ test "Numeric_Set.op_lt_intervals returns false when lhs is equal to rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2107,12 +2127,12 @@ test "Numeric_Set.op_lt_intervals returns true when lhs is less than rhs" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 2.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 3.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
@@ -2124,12 +2144,12 @@ test "Numeric_Set.op_lt_intervals returns true and false when lhs is both less a
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const allocator = std.testing.allocator;
-    const lhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    const lhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 1.0, 3.0),
-    }, &[_]Numeric_Set{});
-    const rhs = try Numeric_Set.init(&g, allocator, &[_]_Continuous{
+    }, &[_]MagnitudeSet{});
+    const rhs = try MagnitudeSet.init(&g, allocator, &[_]_Continuous{
         try _Continuous.init(&g, 2.0, 4.0),
-    }, &[_]Numeric_Set{});
+    }, &[_]MagnitudeSet{});
     const result = try lhs.op_lt_intervals(&g, allocator, &rhs);
     const result_bools = try result.get_bools(std.testing.allocator);
     defer std.testing.allocator.free(result_bools);
