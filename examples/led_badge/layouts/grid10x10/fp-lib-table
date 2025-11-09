@@ -224,4 +224,11 @@
 		(options "")
 		(descr "atopile: part lib: TDK_InvenSense_ICS_43434")
 	)
+	(lib
+		(name "Samsung_Electro_Mechanics_CL05A106MQ5NUNC")
+		(type "KiCad")
+		(uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A106MQ5NUNC")
+		(options "")
+		(descr "atopile: part lib: Samsung_Electro_Mechanics_CL05A106MQ5NUNC")
+	)
 )

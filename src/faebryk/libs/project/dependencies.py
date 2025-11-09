@@ -457,12 +457,45 @@ class ProjectDependencies:
         self.reload()
         self.clean_unmanaged_directories()
 
+    def find_version_mismatches(
+        self,
+    ) -> list[tuple[ProjectDependency, str | None, str]]:
+        """
+        Return direct dependencies whose installed version differs from the manifest.
+        """
+
+        mismatches: list[tuple[ProjectDependency, str | None, str]] = []
+
+        for dep in self.direct_deps:
+            if not isinstance(dep.spec, config.RegistryDependencySpec):
+                continue
+
+            desired_version = dep.spec.release
+            if desired_version is None:
+                continue
+
+            dep.try_load()
+
+            installed_version: str | None = None
+            if dep.cfg is not None:
+                package_cfg = getattr(dep.cfg, "package", None)
+                if package_cfg is not None:
+                    installed_version = cast(config.PackageConfig, package_cfg).version
+
+            if installed_version is None:
+                continue
+
+            if installed_version != desired_version:
+                mismatches.append((dep, installed_version, desired_version))
+
+        return mismatches
+
     def sync_versions(self):
         """
         Ensure that installed dependency versions match the manifest
         """
 
-        def _sync_dep(dep: ProjectDependency, installed_version: str) -> bool:
+        def _sync_dep(dep: ProjectDependency, installed_version: str | None) -> bool:
             dep.load_dist()
             assert dep.dist is not None
 
@@ -482,13 +515,17 @@ class ProjectDependencies:
         for dep in self.direct_deps:
             match dep.spec.type:
                 case "registry":
-                    if dep.cfg is None or dep.cfg.package is None:
-                        installed_version = "<unknown>"
-                    else:
-                        installed_version = dep.cfg.package.version
-
                     spec = cast(config.RegistryDependencySpec, dep.spec)
                     desired_version = spec.release
+
+                    dep.try_load()
+                    installed_version: str | None = None
+                    if dep.cfg is not None:
+                        package_cfg = getattr(dep.cfg, "package", None)
+                        if package_cfg is not None:
+                            installed_version = cast(
+                                config.PackageConfig, package_cfg
+                            ).version
 
                     if installed_version != desired_version:
                         dirty |= _sync_dep(dep, installed_version)
