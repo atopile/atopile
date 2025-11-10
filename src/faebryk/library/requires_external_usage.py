@@ -22,7 +22,7 @@ class requires_external_usage(fabll.Node):
 
     @property
     def fulfilled(self) -> bool:
-        obj = self.get_obj(type=fabll.ModuleInterface)
+        obj = self.get_obj(type=fabll.Node)
         connected_to = set(obj.connected.get_connected_nodes(types=[type(obj)]))
         parent = obj.get_parent()
         # no shared parent possible
@@ -43,8 +43,8 @@ class requires_external_usage(fabll.Node):
         return False
 
     def on_obj_set(self):
-        if not isinstance(self.obj, fabll.ModuleInterface):
-            raise NotImplementedError("Only supported on ModuleInterfaces")
+        if not self.obj.has_trait(fabll.is_interface):
+            raise NotImplementedError("Only supported on interfaces")
 
         super().on_obj_set()
 

@@ -137,7 +137,7 @@ class does_not_require_picker_check(fabll.Node):
     pass
 
 
-def get_pick_tree(module: fabll.Node | fabll.ModuleInterface) -> Tree[fabll.Module]:
+def get_pick_tree(module: fabll.Node) -> Tree[fabll.Module]:
     if module.has_trait(fabll.is_module):
         module = module.get_most_special()
 
@@ -153,7 +153,7 @@ def get_pick_tree(module: fabll.Node | fabll.ModuleInterface) -> Tree[fabll.Modu
 
     for child in module.get_children(
         direct_only=True,
-        types=(fabll.Module, fabll.ModuleInterface),
+        types=fabll.Node,
         include_root=False,
     ):
         child_tree = get_pick_tree(child)

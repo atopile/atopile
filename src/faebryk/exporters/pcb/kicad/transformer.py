@@ -335,9 +335,8 @@ class PCB_Transformer:
             node=g_fp, trait=PCB_Transformer.has_linked_kicad_footprint
         ).setup(pcb_fp, self)
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
-        # F.Pad is a fabll.ModuleInterface - don't be tricked
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
-        for fpad in g_fp.get_children(direct_only=True, types=fabll.ModuleInterface):
+        for fpad in g_fp.get_children(direct_only=True, types=fabll.Node):
             pads = [
                 pad
                 for pad in pcb_pads

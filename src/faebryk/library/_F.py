@@ -39,8 +39,6 @@ from faebryk.library.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.has_part_removed import has_part_removed
-from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library import Expressions
 from faebryk.library.has_footprint import has_footprint

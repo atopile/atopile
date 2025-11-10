@@ -27,7 +27,7 @@ def _get_library_nodes(
             language=Language.FABLL,
             type=NodeType.MODULE if issubclass(m, fabll.Module) else NodeType.INTERFACE,
             inherits=m.__bases__[0].__name__
-            if m.__bases__[0] not in [fabll.Module, fabll.ModuleInterface]
+            if m.__bases__[0] not in [fabll.Node]
             else None,
         )
         for m in F.__dict__.values()
@@ -87,17 +87,17 @@ def inspect_library_module_or_interface(name: str) -> NodeInfo:
     """
     return _get_library_node(name)
 
-
-@library_tools.register()
-def get_library_modules_or_interfaces(
-    include_modules: bool = True, include_interfaces: bool = True
-) -> list[NodeInfoOverview]:
-    """
-    List all atopile standard library modules and interfaces.
-    """
-    types = tuple()
-    if include_modules:
-        types += (fabll.Module,)
-    if include_interfaces:
-        types += (fabll.ModuleInterface,)
-    return _get_library_nodes(types)
+# TODO un-used?
+# @library_tools.register()
+# def get_library_modules_or_interfaces(
+#     include_modules: bool = True, include_interfaces: bool = True
+# ) -> list[NodeInfoOverview]:
+#     """
+#     List all atopile standard library modules and interfaces.
+#     """
+#     types = tuple()
+#     if include_modules:
+#         types += (fabll.Module,)
+#     if include_interfaces:
+#         types += (fabll.ModuleInterface,)
+#     return _get_library_nodes(types)

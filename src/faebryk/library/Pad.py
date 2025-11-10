@@ -29,7 +29,7 @@ class Pad(fabll.Node):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
-        intf: fabll.ModuleInterface,
+        intf: fabll.Node,
     ) -> "Pad":
         pads = Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         if len(pads) != 1:
@@ -38,7 +38,7 @@ class Pad(fabll.Node):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint(
-        intf: fabll.ModuleInterface,
+        intf: fabll.Node,
     ) -> list["Pad"]:
         # This only finds directly attached pads
         # -> misses from parents / children nodes
