@@ -12,31 +12,31 @@ class Crystal(fabll.Node):
     gnd = F.Electrical.MakeChild()
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    frequency = fabll.Parameter.MakeChild_Numeric(
+    frequency = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Hertz,
     )
 
-    frequency_tolerance = fabll.Parameter.MakeChild_Numeric(
+    frequency_tolerance = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ppm,
     )
 
-    frequency_temperature_tolerance = fabll.Parameter.MakeChild_Numeric(
+    frequency_temperature_tolerance = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ppm,
     )
 
-    frequency_ageing = fabll.Parameter.MakeChild_Numeric(
+    frequency_ageing = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ppm,
     )
 
-    equivalent_series_resistance = fabll.Parameter.MakeChild_Numeric(
+    equivalent_series_resistance = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ohm,
     )
 
-    shunt_capacitance = fabll.Parameter.MakeChild_Numeric(
+    shunt_capacitance = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Farad,
     )
 
-    load_capacitance = fabll.Parameter.MakeChild_Numeric(
+    load_capacitance = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Farad,
     )
 
@@ -49,6 +49,11 @@ class Crystal(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.XTAL
+    )
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(frequency, tolerance=True),
     )
 
     usage_example = F.has_usage_example.MakeChild(

@@ -24,22 +24,22 @@ class Comparator(fabll.Node):
     non_inverting_input = F.Electrical.MakeChild()
     output = F.Electrical.MakeChild()
 
-    common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
+    common_mode_rejection_ratio = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Decibel,
     )
-    input_bias_current = fabll.Parameter.MakeChild_Numeric(
+    input_bias_current = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ampere,
     )
-    input_hysteresis_voltage = fabll.Parameter.MakeChild_Numeric(
+    input_hysteresis_voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
     )
-    input_offset_voltage = fabll.Parameter.MakeChild_Numeric(
+    input_offset_voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
     )
-    propagation_delay = fabll.Parameter.MakeChild_Numeric(
+    propagation_delay = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Second,
     )
-    output_type = fabll.Parameter.MakeChild_Enum(
+    output_type = F.Parameters.EnumParameter.MakeChild(
         enum_t=OutputType,
     )
 
@@ -50,11 +50,11 @@ class Comparator(fabll.Node):
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(common_mode_rejection_ratio, suffix="CMRR"),
-        S(input_bias_current, suffix="Ib"),
-        S(input_hysteresis_voltage, suffix="Vhys"),
-        S(input_offset_voltage, suffix="Vos"),
-        S(propagation_delay, suffix="tpd"),
+        S(common_mode_rejection_ratio, prefix="CMRR"),
+        S(input_bias_current, prefix="Ib"),
+        S(input_hysteresis_voltage, prefix="Vhys"),
+        S(input_offset_voltage, prefix="Vos"),
+        S(propagation_delay, prefix="tpd"),
     )
 
     designator_prefix = F.has_designator_prefix.MakeChild(

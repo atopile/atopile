@@ -4,7 +4,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class Crystal_Oscillator(fabll.Node):
@@ -18,7 +17,7 @@ class Crystal_Oscillator(fabll.Node):
 
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
-    _STRAY_CAPACITANCE = fabll.Parameter.MakeChild_Numeric(
+    _STRAY_CAPACITANCE = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Farad,
     )
 
@@ -32,7 +31,7 @@ class Crystal_Oscillator(fabll.Node):
     # ----------------------------------------
 
     def capacitance(self):
-        return (self.crystal.load_capacitance - self._STRAY_CAPACITANCE) * 2
+        return (self.crystal.get().load_capacitance.get(). - self._STRAY_CAPACITANCE.get()) * 2
 
     def __preinit__(self):
         for cap in self.capacitors:

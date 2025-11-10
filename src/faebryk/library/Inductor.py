@@ -4,7 +4,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class Inductor(fabll.Node):
@@ -13,11 +12,13 @@ class Inductor(fabll.Node):
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    inductance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Henry)
-    max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    dc_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
-    saturation_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    self_resonant_frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
+    inductance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Henry)
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    dc_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    saturation_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    self_resonant_frequency = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz
+    )
 
     # ----------------------------------------
     #                 traits
@@ -38,16 +39,16 @@ class Inductor(fabll.Node):
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
-    S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(inductance, tolerance=True),
-        S(self_resonant_frequency),
-        S(max_current),
-        S(dc_resistance),
-    )
-
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.L
+    )
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(inductance, tolerance=True, prefix="L"),
+        S(self_resonant_frequency, prefix="SRF"),
+        S(max_current, prefix="Imax"),
+        S(dc_resistance, prefix="DCR"),
     )
 
     usage_example = F.has_usage_example.MakeChild(

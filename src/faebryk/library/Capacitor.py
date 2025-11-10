@@ -27,9 +27,10 @@ class Capacitor(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
-    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
-    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    # TODO: Use temperature coefficient
+    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
     #     enum_t=TemperatureCoefficient
     # )
 

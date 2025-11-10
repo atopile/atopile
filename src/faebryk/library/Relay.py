@@ -9,7 +9,6 @@ import faebryk.library._F as F
 logger = logging.getLogger(__name__)
 
 
-# TODO: make generic (use Switch module, different switch models, bistable, etc.)
 class Relay(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -22,12 +21,15 @@ class Relay(fabll.Node):
     switch_b_nc = F.Electrical.MakeChild()
     coil_power = F.ElectricPower.MakeChild()
 
-    coil_max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    coil_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    coil_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
     contact_max_switching_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     contact_max_switching_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     contact_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    # TODO: make generic (use Switch module, different switch models, bistable, etc.)
+    # switch = [F.Switch.MakeChild() for _ in range(6)]
+
+    coil_max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    coil_max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    coil_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
 
     # ----------------------------------------
     #                 traits
@@ -38,7 +40,14 @@ class Relay(fabll.Node):
         F.has_designator_prefix.Prefix.K
     )
 
-    usage_example = F.has_usage_example.MakeChild(
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(coil_max_voltage, prefix="Coil"),
+        #     S(switch.get().max_voltage, prefix="Sw"),
+        #     S(switch.get().max_current, prefix="Sw"),
+    )
+
+    _usage_example = F.has_usage_example.MakeChild(
         example="""
         import Relay, ElectricPower, Diode, MOSFET, ElectricLogic
 

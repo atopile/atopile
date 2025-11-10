@@ -10,13 +10,15 @@ class Diode(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    forward_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    # Current at which the design is functional
-    current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    reverse_working_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    reverse_leakage_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    # Current at which the design may be damaged
-    max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    forward_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    """Current at which the design is functional"""
+    reverse_working_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    reverse_leakage_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere
+    )
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    """Current at which the design may be damaged"""
 
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
@@ -30,7 +32,8 @@ class Diode(fabll.Node):
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(forward_voltage, tolerance=True),
+        S(forward_voltage, tolerance=True, prefix="Vf"),
+        S(current, prefix="If"),
     )
 
     designator_prefix = F.has_designator_prefix.MakeChild(

@@ -5,7 +5,6 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
@@ -16,9 +15,9 @@ class ResistorArray(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     resistors_ = F.Collections.PointerSet.MakeChild()
-    resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
-    rated_power = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Watt)
-    rated_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    rated_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt)
+    rated_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
 
     # ----------------------------------------
     #                 traits

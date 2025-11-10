@@ -22,9 +22,9 @@ class CapacitorElectrolytic(fabll.Node):
     _is_module = fabll.is_module.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
-    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
     #     enum_t=TemperatureCoefficient
     # )
 
