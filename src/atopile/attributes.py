@@ -292,7 +292,7 @@ class GlobalAttributes(fabll.Node):
     @property
     def required(self):
         """
-        Only for ModuleInterfaces.
+        Only for Interfaces.
         If set to `True`, require that interface is connected to something outside
         of the module it's defined in.
         """

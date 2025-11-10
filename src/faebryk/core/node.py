@@ -549,7 +549,7 @@ class Path:
             # FIXME: Notes: from the master of graphs:
             #  - iterate through all paths
             #  - make a helper function
-            #    ModuleInterfacePath.get_subpaths(path: Path, search: SubpathSearch)
+            #    Path.get_subpaths(path: Path, search: SubpathSearch)
             #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
             #  - choose out of subpaths
             #    - be careful with LinkDirectDerived edges (if there is a faulting edge
@@ -1431,10 +1431,10 @@ class is_interface(Node):
 
     """
     TODO
-    fabll.ModuleInterface._group_into_buses(interfaces) clusters the supplied electrical
+    _group_into_buses(interfaces) clusters the supplied electrical
     interfaces by their shared bus (electrical connectivity) so the exporter can treat
     every bus once; the result is a dict whose keys are the representative bus interfaces
-    and whose values are the other ModuleInterface instances that belong to the same bus.
+    and whose values are the other Interfaces that belong to the same bus.
     """
     def group_into_buses(nodes: set["Node[Any]"]) -> dict[str, set["Node[Any]"]]:
         raise NotImplementedError("group_into_buses is not implemented")
@@ -1475,8 +1475,6 @@ type Module = Node
 class NodeWithInterface(Node):
     _is_interface = is_interface.MakeChild()
 
-
-ModuleInterface = NodeWithInterface
 IMPLIED_PATHS = False
 
 # lib fields

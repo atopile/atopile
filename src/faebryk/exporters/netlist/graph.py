@@ -197,7 +197,7 @@ def _name_shittiness(name: str | None) -> float:
 
 
 @once
-def _get_stable_node_name(mif: fabll.ModuleInterface) -> str:
+def _get_stable_node_name(mif: fabll.Node) -> str:
     """Get a stable hierarchical name for a module interface."""
     return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
 
@@ -248,12 +248,12 @@ def _register_named_nets(
             )
 
 
-def _calculate_suggested_name_rank(mif: fabll.ModuleInterface, base_depth: int) -> int:
+def _calculate_suggested_name_rank(mif: fabll.Node, base_depth: int) -> int:
     """Calculate rank for a suggested name based on hierarchy."""
     rank = base_depth
 
-    owner_iface = mif.get_parent_of_type(fabll.ModuleInterface)
-    if owner_iface and not isinstance(owner_iface, F.Electrical):
+    owner_iface = mif.get_parent_of_type(fabll.Node)
+    if owner_iface and not owner_iface.isinstance(F.Electrical):
         rank -= 1
 
     if fabll.Node.nearest_common_ancestor(mif):
@@ -263,7 +263,7 @@ def _calculate_suggested_name_rank(mif: fabll.ModuleInterface, base_depth: int) 
 
 
 def _extract_net_name_info(
-    mif: fabll.ModuleInterface,
+    mif: fabll.Node,
 ) -> tuple[set[str], list[tuple[str, int]], dict[str, float]]:
     """Extract naming information from an interface."""
     required_names: set[str] = set()
@@ -285,7 +285,7 @@ def _extract_net_name_info(
         for node, _name_in_parent in mif.get_hierarchy():
             if not node.get_parent():
                 continue
-            if not isinstance(node, fabll.ModuleInterface):
+            if not node.has_trait(fabll.is_interface):
                 continue
             if not node.has_trait(F.has_net_name):
                 continue
@@ -402,8 +402,8 @@ def _extract_interface_candidate(mif: F.Electrical) -> tuple[str, int] | None:
             if not node.get_parent():
                 continue
 
-            is_interface = isinstance(node, fabll.ModuleInterface)
-            is_not_electrical = not isinstance(node, F.Electrical)
+            is_interface = node.has_trait(fabll.is_interface)
+            is_not_electrical = not node.isinstance(F.Electrical)
 
             if is_interface and is_not_electrical:
                 return (name_in_parent, len(node.get_hierarchy()))
@@ -481,10 +481,10 @@ def _apply_affixes(
 
 
 def _find_anchor_interface(hierarchy: list[tuple]) -> tuple[int, tuple] | None:
-    """Find the first non-Electrical fabll.ModuleInterface in hierarchy."""
+    """Find the first non-Electrical fabll.Node in hierarchy."""
     for idx, (node, name) in enumerate(hierarchy):
-        is_interface = isinstance(node, fabll.ModuleInterface)
-        is_not_electrical = not isinstance(node, F.Electrical)
+        is_interface = node.has_trait(fabll.is_interface)
+        is_not_electrical = not node.isinstance(F.Electrical)
 
         if is_interface and is_not_electrical:
             return idx, (node, name)
@@ -505,7 +505,7 @@ def _score_interface_path(anchor_node, anchor_name: str, has_owner: bool) -> int
     """Calculate score for an interface path."""
     score = 0
 
-    if isinstance(anchor_node, F.ElectricPower):
+    if anchor_node.isinstance(F.ElectricPower):
         score += 2
 
     if has_owner:
