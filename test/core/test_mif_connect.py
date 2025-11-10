@@ -18,12 +18,11 @@ import faebryk.library._F as F
 from faebryk.core.node import IMPLIED_PATHS
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
-
-# from faebryk.libs.app.erc import (
-#     ERCFaultShortedModuleInterfaces,
-#     ERCPowerSourcesShortedError,
-#     simple_erc,
-# )
+from faebryk.libs.app.erc import (
+    ERCFaultShortedInterfaces,
+    ERCPowerSourcesShortedError,
+    simple_erc,
+)
 from faebryk.libs.util import cast_assert, times
 
 # from test.common.resources.fabll_modules.ButtonCell import ButtonCell
@@ -1239,7 +1238,7 @@ def test_simple_erc_ElectricPower_short():
     ep1.lv.connect(ep2.hv)
 
     # This is not okay!
-    with pytest.raises(ERCFaultShortedModuleInterfaces) as ex:
+    with pytest.raises(ERCFaultShortedInterfaces) as ex:
         simple_erc(ep1.get_graph())
 
     assert set(ex.value.path) == {ep1.lv, ep2.hv}

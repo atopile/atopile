@@ -81,7 +81,6 @@ from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
 from faebryk.library.Resistor import Resistor
-from faebryk.library.Switch import Switch
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.MultiCapacitor import MultiCapacitor

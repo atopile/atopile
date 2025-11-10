@@ -541,6 +541,23 @@ class Path:
     def get_end_node(self) -> "Node[Any]":
         return Node[Any].bind_instance(instance=self.end_node)
 
+    def from_connection(self, a: "Node[Any]", b: "Node[Any]") -> "Path | None":
+        if paths := a.get_trait(is_interface).is_connected_to(b):
+            # this was a node on the previous implementation
+            # basically we can do this more efficiently
+
+            # FIXME: Notes: from the master of graphs:
+            #  - iterate through all paths
+            #  - make a helper function
+            #    ModuleInterfacePath.get_subpaths(path: Path, search: SubpathSearch)
+            #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
+            #  - choose out of subpaths
+            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
+            #      is derived, save it as candidate and only yield it if no other found)
+            #    - choose first shortest
+            return Path(paths[0])
+        return None
+
     def __repr__(self) -> str:
         start = self.start_node
         end = self.end_node
