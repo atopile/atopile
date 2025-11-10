@@ -12,9 +12,6 @@ class Crystal(fabll.Node):
     gnd = F.Electrical.MakeChild()
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
 
-    # ----------------------------------------
-    #               parameters
-    # ----------------------------------------
     frequency = fabll.Parameter.MakeChild_Numeric(
         unit=F.Units.Hertz,
     )
@@ -46,6 +43,8 @@ class Crystal(fabll.Node):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
 
     designator_prefix = F.has_designator_prefix.MakeChild(

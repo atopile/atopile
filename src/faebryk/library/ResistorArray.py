@@ -12,15 +12,26 @@ logger = logging.getLogger(__name__)
 
 
 class ResistorArray(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     resistors_ = F.Collections.PointerSet.MakeChild()
     resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
     rated_power = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Watt)
     rated_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.R
     )
 
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     @classmethod
     def MakeChild(cls, resistor_count: int):
         out = fabll.ChildField(cls)

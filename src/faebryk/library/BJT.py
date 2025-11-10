@@ -9,6 +9,9 @@ from faebryk.core.node import rt_field
 
 
 class BJT(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class DopingType(Enum):
         NPN = auto()
         PNP = auto()
@@ -20,12 +23,17 @@ class BJT(fabll.Node):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    # doping_type = fabll.Parameter.MakeChild_Enum(enum_t=DopingType)
-    # operation_region = fabll.Parameter.MakeChild_Enum(enum_t=OperationRegion)
-
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     emitter = F.Electrical.MakeChild()
     base = F.Electrical.MakeChild()
     collector = F.Electrical.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
     _can_bridge = F.can_bridge.MakeChild(in_=collector, out_=emitter)
 
@@ -42,6 +50,16 @@ class BJT(fabll.Node):
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.Q
     )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+
+    # doping_type = fabll.Parameter.MakeChild_Enum(enum_t=DopingType)
+    # operation_region = fabll.Parameter.MakeChild_Enum(enum_t=OperationRegion)
+
+
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

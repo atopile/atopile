@@ -8,6 +8,8 @@ import faebryk.library._F as F
 class EnablePin(fabll.Node):
     enable = F.ElectricLogic.MakeChild()
 
+    _is_interface = fabll.is_interface.MakeChild()
+
     def _handle_optional(self, needed: bool):
         if not needed:
             self.enable.set(True)

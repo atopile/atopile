@@ -1,11 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-# import faebryk.library._F as F
 import faebryk.core.node as fabll
-
-# import faebryk.core.node as fabll
-
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import GraphView
 

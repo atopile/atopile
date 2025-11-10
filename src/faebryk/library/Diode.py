@@ -7,6 +7,9 @@ import faebryk.library._F as F
 
 
 class Diode(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     forward_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     # Current at which the design is functional
     current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
@@ -17,6 +20,11 @@ class Diode(fabll.Node):
 
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
@@ -37,6 +45,10 @@ class Diode(fabll.Node):
         accept_prefix=False,
         case_sensitive=False,
     )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     # anode.add_dependant(
     #     F.has_net_name.MakeChild(name="anode", level=F.has_net_name.Level.SUGGESTED)

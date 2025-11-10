@@ -8,10 +8,21 @@ import faebryk.library._F as F
 
 
 class Comparator(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class OutputType(Enum):
         Differential = auto()
         PushPull = auto()
         OpenDrain = auto()
+
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    power = F.ElectricPower.MakeChild()
+    inverting_input = F.Electrical.MakeChild()
+    non_inverting_input = F.Electrical.MakeChild()
+    output = F.Electrical.MakeChild()
 
     common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
         unit=F.Units.Decibel,
@@ -32,10 +43,10 @@ class Comparator(fabll.Node):
         enum_t=OutputType,
     )
 
-    power = F.ElectricPower.MakeChild()
-    inverting_input = F.Electrical.MakeChild()
-    non_inverting_input = F.Electrical.MakeChild()
-    output = F.Electrical.MakeChild()
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = F.has_simple_value_representation.MakeChild(

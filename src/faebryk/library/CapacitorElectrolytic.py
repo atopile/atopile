@@ -5,17 +5,21 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-# from faebryk.core.zig.gen.faebryk.interface import EdgeInterface
 
 logger = logging.getLogger(__name__)
 
 
 class CapacitorElectrolytic(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
 
-    power = F.ElectricPower.MakeChild()
-
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
     capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
@@ -39,6 +43,13 @@ class CapacitorElectrolytic(fabll.Node):
         accept_prefix=False,
         case_sensitive=False,
     )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+    # optional interface to automatically connect HV to anode and LV to cathode
+    # power = F.ElectricPower.MakeChild()
 
     # anode_edge = fabll.EdgeField(
     #     [anode],

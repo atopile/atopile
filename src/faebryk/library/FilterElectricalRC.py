@@ -16,10 +16,24 @@ class FilterElectricalRC(fabll.Node):
     Basic Electrical RC filter
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     in_ = F.ElectricSignal.MakeChild()
     out = F.ElectricSignal.MakeChild()
     resistor = F.Resistor.MakeChild()
     capacitor = F.Capacitor.MakeChild()
+
+    filter = F.Filter.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __init__(self, *, _hardcoded: bool = False):
         super().__init__()

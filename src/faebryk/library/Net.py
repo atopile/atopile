@@ -21,7 +21,7 @@ class Net(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_module = fabll.is_module.MakeChild()
 
     # ----------------------------------------
     #                WIP

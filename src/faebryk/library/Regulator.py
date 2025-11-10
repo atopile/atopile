@@ -6,9 +6,20 @@ import faebryk.library._F as F
 
 
 class Regulator(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power_in = F.ElectricPower.MakeChild()
     power_out = F.ElectricPower.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def __preinit__(self):
         self.power_out.add(F.Power.is_power_source.impl()())
         self.power_in.add(F.Power.is_power_sink.impl()())

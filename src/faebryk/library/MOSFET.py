@@ -8,6 +8,9 @@ import faebryk.library._F as F
 
 
 class MOSFET(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class ChannelType(Enum):
         N_CHANNEL = auto()
         P_CHANNEL = auto()
@@ -15,6 +18,13 @@ class MOSFET(fabll.Node):
     class SaturationType(Enum):
         ENHANCEMENT = auto()
         DEPLETION = auto()
+
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    source = F.Electrical.MakeChild()
+    gate = F.Electrical.MakeChild()
+    drain = F.Electrical.MakeChild()
 
     channel_type = fabll.Parameter.MakeChild_Enum(enum_t=ChannelType)
     saturation_type = fabll.Parameter.MakeChild_Enum(enum_t=SaturationType)
@@ -25,9 +35,10 @@ class MOSFET(fabll.Node):
     )
     on_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
 
-    source = F.Electrical.MakeChild()
-    gate = F.Electrical.MakeChild()
-    drain = F.Electrical.MakeChild()
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.Q

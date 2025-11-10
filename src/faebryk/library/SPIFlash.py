@@ -7,10 +7,19 @@ from faebryk.libs.units import P
 
 
 class SPIFlash(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     qspi = F.MultiSPI.MakeChild(4)
 
     memory_size = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Byte)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
     )

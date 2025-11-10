@@ -15,10 +15,21 @@ class PDM(fabll.Node):
     signal's amplitude
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     data = F.ElectricLogic.MakeChild()
     clock = F.ElectricLogic.MakeChild()
     select = F.ElectricLogic.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     def __postinit__(self, *args, **kwargs):

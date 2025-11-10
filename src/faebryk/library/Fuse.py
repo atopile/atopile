@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class Fuse(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class FuseType(Enum):
         NON_RESETTABLE = auto()
         RESETTABLE = auto()
@@ -20,10 +23,18 @@ class Fuse(fabll.Node):
         SLOW = auto()
         FAST = auto()
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
     fuse_type = fabll.Parameter.MakeChild_Enum(enum_t=FuseType)
     response_type = fabll.Parameter.MakeChild_Enum(enum_t=ResponseType)
     trip_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
 

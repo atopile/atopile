@@ -27,16 +27,12 @@ class Pinmux(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def __preinit__(self):
-        # ------------------------------------
-        #           connections
-        # ------------------------------------
-
-        # ------------------------------------
-        #          parametrization
-        # ------------------------------------
-
         self._function_matrix = self._get_matrix()
         self._ios = self._get_ios()
         self.configured: dict[F.Electrical, F.Electrical] = {}

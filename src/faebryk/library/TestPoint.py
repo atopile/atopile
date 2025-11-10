@@ -14,7 +14,16 @@ class TestPoint(fabll.Node):
     Basic test point.
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     contact = F.Electrical.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     contact.add_dependant(F.requires_external_usage.MakeChild())
 
     designator_prefix = F.has_designator_prefix.MakeChild(

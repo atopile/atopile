@@ -15,12 +15,26 @@ class FilterElectricalLC(fabll.Node):
     Basic Electrical LC filter
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     in_ = F.ElectricSignal.MakeChild()
     out = F.ElectricSignal.MakeChild()
     capacitor = F.Capacitor.MakeChild()
     inductor = F.Inductor.MakeChild()
 
     z0 = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
+
+    filter = F.Filter.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __preinit__(self):
         self.order.alias_is(2)

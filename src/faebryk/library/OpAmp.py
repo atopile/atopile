@@ -8,6 +8,13 @@ from faebryk.libs.units import P
 
 
 class OpAmp(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    inverting_input = F.Electrical.MakeChild()
+    non_inverting_input = F.Electrical.MakeChild()
+    output = F.Electrical.MakeChild()
+
     bandwidth = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
     common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
         unit=F.Units.Decibel
@@ -18,6 +25,14 @@ class OpAmp(fabll.Node):
     output_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     slew_rate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.VoltsPerSecond)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     # TODO: Refactor pin association heuristic to use ref paths insted of child field
     power = fabll.ChildField(F.ElectricPower)
     power_hv = fabll.ChildField(F.Electrical)
@@ -32,10 +47,6 @@ class OpAmp(fabll.Node):
     #     [power_lv],
     #     edge=EdgeInterfaceConnection.build(identifier="power_hv", order=None),
     # )
-
-    inverting_input = F.Electrical.MakeChild()
-    non_inverting_input = F.Electrical.MakeChild()
-    output = F.Electrical.MakeChild()
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = F.has_simple_value_representation.MakeChild(

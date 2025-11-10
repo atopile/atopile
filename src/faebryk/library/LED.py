@@ -11,6 +11,9 @@ import faebryk.library._F as F
 
 
 class LED(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class Color(Enum):
         # Primary Colors
         RED = auto()
@@ -41,10 +44,23 @@ class LED(fabll.Node):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    diode = F.Diode.MakeChild()
+
     brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
     max_brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
     color = fabll.Parameter.MakeChild_Enum(enum_t=Color)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     # TODO: Implement math and constraints in typegraph
     # def __preinit__(self):
     #     self.current.alias_is(self.brightness / self.max_brightness * self.max_current)

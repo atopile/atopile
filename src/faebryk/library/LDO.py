@@ -10,6 +10,9 @@ from faebryk.libs.util import assert_once
 
 
 class LDO(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     @assert_once
     def enable_output(self):
         self.enable.set(True)
@@ -22,6 +25,13 @@ class LDO(fabll.Node):
         POSITIVE = auto()
         NEGATIVE = auto()
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    enable = F.EnablePin.MakeChild()
+    power_in = F.ElectricPower.MakeChild()
+    power_out = F.ElectricPower.MakeChild()
+
     max_input_voltage = fabll.Parameter.MakeChild_Numeric(F.Units.Volt)
     output_voltage = fabll.Parameter.MakeChild_Numeric(F.Units.Volt)
     quiescent_current = fabll.Parameter.MakeChild_Numeric(F.Units.Ampere)
@@ -31,10 +41,14 @@ class LDO(fabll.Node):
     output_type = fabll.Parameter.MakeChild_Enum(OutputType)
     output_current = fabll.Parameter.MakeChild_Numeric(F.Units.Ampere)
 
-    enable = F.EnablePin.MakeChild()
-    power_in = F.ElectricPower.MakeChild()
-    power_out = F.ElectricPower.MakeChild()
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     # @fabll.rt_field
     # def pickable(self) -> F.is_pickable_by_type:
     #     return F.is_pickable_by_type(

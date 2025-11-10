@@ -5,13 +5,15 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 # TODO: make generic (use Switch module, different switch models, bistable, etc.)
 class Relay(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     switch_a_nc = F.Electrical.MakeChild()
     switch_a_common = F.Electrical.MakeChild()
     switch_a_no = F.Electrical.MakeChild()
@@ -24,10 +26,13 @@ class Relay(fabll.Node):
     coil_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     coil_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
     contact_max_switching_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    contact_max_switching_current = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Ampere
-    )
+    contact_max_switching_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     contact_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.K

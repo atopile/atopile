@@ -6,10 +6,25 @@ import faebryk.library._F as F
 
 
 class PoweredLED(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     current_limiting_resistor = F.Resistor.MakeChild()
     led = F.LED.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    _can_bridge = F.can_bridge.MakeChild(in_=power.nodetype.hv, out_=power.nodetype.lv)
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def __init__(self, low_side_resistor: bool = True):
         super().__init__()
         self._low_side_resistor = low_side_resistor
@@ -35,7 +50,3 @@ class PoweredLED(fabll.Node):
             self.power.voltage
             - self.led.current * self.current_limiting_resistor.resistance
         )
-
-    _can_bridge = F.can_bridge.MakeChild(in_=power.nodetype.hv, out_=power.nodetype.lv)
-
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)

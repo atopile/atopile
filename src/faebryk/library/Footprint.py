@@ -6,6 +6,15 @@ import faebryk.core.node as fabll
 
 
 class Footprint(fabll.Node):
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
     @staticmethod
     def get_footprint_of_parent(
         intf: fabll.Node,

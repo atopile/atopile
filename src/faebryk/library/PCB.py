@@ -20,6 +20,14 @@ if TYPE_CHECKING:
 
 
 class PCB(fabll.Node):
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def __init__(self, path: Path):
         super().__init__()
 

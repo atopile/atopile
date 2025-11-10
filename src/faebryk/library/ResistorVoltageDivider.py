@@ -20,21 +20,29 @@ class ResistorVoltageDivider(fabll.Node):
     output.reference.lv ~ node[2]
     """
 
-    # External interfaces
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power: F.ElectricPower
     output: F.ElectricSignal
 
-    # Components
     r_bottom: F.Resistor
     r_top: F.Resistor
 
-    # Variables
     v_in = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     v_out = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
     max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
     total_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
     ratio = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Dimensionless)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def can_bridge(self):
         return F.can_bridge(self.power.hv, self.output.line)
 
