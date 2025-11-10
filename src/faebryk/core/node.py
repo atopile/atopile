@@ -1412,6 +1412,16 @@ class is_interface(Node):
                 bn1=self_node.instance, bn2=other.instance
             )
 
+    """
+    TODO
+    fabll.ModuleInterface._group_into_buses(interfaces) clusters the supplied electrical
+    interfaces by their shared bus (electrical connectivity) so the exporter can treat
+    every bus once; the result is a dict whose keys are the representative bus interfaces
+    and whose values are the other ModuleInterface instances that belong to the same bus.
+    """
+    def group_into_buses(nodes: set["Node[Any]"]) -> dict[str, set["Node[Any]"]]:
+        raise NotImplementedError("group_into_buses is not implemented")
+
     def is_connected_to(self, other: "NodeT") -> bool:
         self_node = self.get_obj()
         path = EdgeInterfaceConnection.is_connected_to(

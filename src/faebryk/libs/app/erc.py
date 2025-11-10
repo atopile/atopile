@@ -144,7 +144,7 @@ def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
         electricpower = fabll.Node.bind_typegraph(G).nodes_of_type(F.ElectricPower)
         logger.info(f"Checking {len(electricpower)} Power")
 
-        buses_grouped = fabll.ModuleInterface._group_into_buses(electricpower)
+        buses_grouped = fabll.is_interface.group_into_buses(electricpower)
         buses = list(buses_grouped.values())
 
         # We do collection both inside and outside the loop because we don't

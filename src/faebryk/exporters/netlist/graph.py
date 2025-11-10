@@ -71,7 +71,7 @@ def ensure_ref_and_value(c: fabll.Node):
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
-    buses = fabll.ModuleInterface._group_into_buses(interfaces)
+    buses = fabll.is_interface.group_into_buses(interfaces)
     nets_out = set()
 
     # Iterate buses in a deterministic order by their string representation
