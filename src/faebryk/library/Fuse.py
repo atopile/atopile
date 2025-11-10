@@ -6,7 +6,6 @@ from enum import Enum, auto
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +20,9 @@ class Fuse(fabll.Node):
         FAST = auto()
 
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
-    fuse_type = fabll.Parameter.MakeChild_Enum(enum_t=FuseType)
-    response_type = fabll.Parameter.MakeChild_Enum(enum_t=ResponseType)
-    trip_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    fuse_type = F.Parameters.EnumParameter.MakeChild(enum_t=FuseType)
+    response_type = F.Parameters.EnumParameter.MakeChild(enum_t=ResponseType)
+    trip_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
 
     _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
 
@@ -31,6 +30,11 @@ class Fuse(fabll.Node):
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.F
+    )
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(trip_current, prefix="It"),
     )
 
     usage_example = F.has_usage_example.MakeChild(

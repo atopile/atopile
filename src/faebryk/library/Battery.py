@@ -4,17 +4,16 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class Battery(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    voltage = fabll.Parameter.MakeChild_Numeric(
+    voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
     )
-    capacity = fabll.Parameter.MakeChild_Numeric(
+    capacity = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.AmpereHour,
     )
 
@@ -25,18 +24,15 @@ class Battery(fabll.Node):
     # ----------------------------------------
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    _net_name = F.has_net_name.MakeChild(
-        name="BAT_VCC",
-        level=F.has_net_name.Level.SUGGESTED,
-    )
+    # TODO: add trait
+    # _net_name = F.has_net_name.MakeChild(
+    #     name="BAT_VCC",
+    #     level=F.has_net_name.Level.SUGGESTED,
+    # )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.BAT
     )
-
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

@@ -5,6 +5,7 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+
 # from faebryk.core.zig.gen.faebryk.interface import EdgeInterface
 
 logger = logging.getLogger(__name__)
@@ -18,9 +19,9 @@ class CapacitorElectrolytic(fabll.Node):
 
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
-    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
     #     enum_t=TemperatureCoefficient
     # )
 

@@ -9,6 +9,7 @@ from faebryk.core.node import rt_field
 
 
 class BJT(fabll.Node):
+    # TODO use this
     class DopingType(Enum):
         NPN = auto()
         PNP = auto()

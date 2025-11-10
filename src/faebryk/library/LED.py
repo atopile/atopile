@@ -4,8 +4,6 @@
 
 from enum import Enum, auto
 
-from deprecated import deprecated
-
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -41,9 +39,11 @@ class LED(fabll.Node):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
-    max_brightness = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Candela)
-    color = fabll.Parameter.MakeChild_Enum(enum_t=Color)
+    diode = F.Diode.MakeChild()
+
+    brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
+    max_brightness = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Candela)
+    color = F.Parameters.EnumParameter.MakeChild(enum_t=Color)
 
     # TODO: Implement math and constraints in typegraph
     # def __preinit__(self):
@@ -52,6 +52,14 @@ class LED(fabll.Node):
 
     # def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
     #     self.brightness.alias_is(intensity * self.max_brightness)
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(max_brightness),
+        S(color),
+        S(diode.get().forward_voltage, prefix="Vf"),
+        S(diode.get().current, prefix="If"),
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
