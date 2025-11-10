@@ -77,8 +77,8 @@ class RP2040_ReferenceDesign(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    datasheet = fabll.f_field(F.has_datasheet_defined)(
-        "https://datasheets.raspberrypi.com/rp2040/hardware-design-with-rp2040.pdf"
+    datasheet = F.has_datasheet.MakeChild(
+        datasheet="https://datasheets.raspberrypi.com/rp2040/hardware-design-with-rp2040.pdf"
     )
 
     def __preinit__(self):

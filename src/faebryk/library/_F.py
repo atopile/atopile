@@ -19,7 +19,6 @@ import faebryk.library.Parameters as Parameters
 from faebryk.library import Units
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
-from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library import Collections
 # from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.Logic import Logic
@@ -29,7 +28,6 @@ from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.Power import Power
 from faebryk.library.Signal import Signal
-from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_app_root import is_app_root
@@ -69,8 +67,6 @@ from faebryk.library.has_pin_association_heuristic import has_pin_association_he
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
-from faebryk.library.has_equal_pins import has_equal_pins
-from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.BJT import BJT
@@ -116,7 +112,6 @@ from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.requires_pulls import requires_pulls
-from faebryk.library.LDO import LDO
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
 from faebryk.library.CAN import CAN

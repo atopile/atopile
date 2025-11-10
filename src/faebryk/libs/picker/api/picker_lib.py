@@ -130,6 +130,7 @@ def _prepare_query(
             )
 
     elif trait := module.try_get_trait(F.is_pickable_by_type):
+        # TODO: Fix this
         params_t = make_params_for_type(trait.pick_type)
 
         if pkg_t := module.try_get_trait(F.has_package_requirements):

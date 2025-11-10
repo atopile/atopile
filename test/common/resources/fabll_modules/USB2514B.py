@@ -187,8 +187,8 @@ class USB2514B(fabll.Node):
     explicit_part = fabll.f_field(F.has_explicit_part.by_mfr)(
         "Microchip Tech", "USB2514B-AEZC-TR"
     )
-    datasheet = fabll.f_field(F.has_datasheet_defined)(
-        "https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
+    datasheet = F.has_datasheet.MakeChild(
+        datasheet="https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
     )
 
     @fabll.rt_field

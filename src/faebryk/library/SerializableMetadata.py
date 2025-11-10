@@ -12,8 +12,8 @@ class SerializableMetadata(fabll.Node):
     Attribute that will be written to PCB footprint
     """
 
-    key_ = fabll.ChildField(fabll.Parameter)
-    value_ = fabll.ChildField(fabll.Parameter)
+    key_ = F.Parameters.StringParameter.MakeChild()
+    value_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def get_properties(cls, node: fabll.Node) -> dict[str, str]:
@@ -34,11 +34,11 @@ class SerializableMetadata(fabll.Node):
         return None
 
     @property
-    def key(self) -> fabll.LiteralT | None:
+    def key(self) -> F.Literals.Strings | None:
         return self.key_.get().try_extract_constrained_literal()
 
     @property
-    def value(self) -> fabll.LiteralT | None:
+    def value(self) -> F.Literals.Strings | None:
         return self.value_.get().try_extract_constrained_literal()
 
     # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
@@ -66,6 +66,6 @@ class SerializableMetadata(fabll.Node):
         return out
 
     def setup(self, key: str, value: str) -> Self:
-        self.key_.get().constrain_to_literal(g=self.instance.g(), value=key)
-        self.value_.get().constrain_to_literal(g=self.instance.g(), value=value)
+        self.key_.get().constrain_to_single(value=key)
+        self.value_.get().constrain_to_single(value=value)
         return self

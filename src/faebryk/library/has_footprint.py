@@ -1,16 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-from typing import TYPE_CHECKING
-
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.libs.util import not_none
-
-if TYPE_CHECKING:
-    from faebryk.library.Footprint import Footprint
 
 
 class has_footprint(fabll.Node):

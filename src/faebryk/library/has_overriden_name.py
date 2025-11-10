@@ -10,7 +10,7 @@ import faebryk.library._F as F
 class has_overriden_name(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    name_ = fabll.ChildField(fabll.Parameter)
+    name_ = fabll.ChildField(F.Parameters.StringParameter)
 
     def get_name(self) -> str | None:
         literal = self.name_.get().try_extract_constrained_literal()
@@ -25,5 +25,5 @@ class has_overriden_name(fabll.Node):
         return out
 
     def setup(self, name: str) -> Self:
-        self.name_.get().constrain_to_literal(self.instance.g(), name)
+        self.name_.get().constrain_to_single(value=name)
         return self

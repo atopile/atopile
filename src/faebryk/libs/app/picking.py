@@ -43,7 +43,7 @@ def load_part_info_from_pcb(G: fabll.Graph):
             continue
         if node.has_trait(F.has_part_picked):
             continue
-        assert node.has_trait(F.has_descriptive_properties), "Should load when linking"
+        assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
         part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
         fp = trait.get_fp()
@@ -54,7 +54,7 @@ def load_part_info_from_pcb(G: fabll.Graph):
         }
         if fp_props.get(Properties.lcsc) == NO_LCSC_DISPLAY:
             del fp_props[Properties.lcsc]
-        props = node.get_trait(F.has_descriptive_properties).get_properties()
+        props = F.SerializableMetadata.get_properties(node)
 
         # check if node has changed
         if any(props.get(k.value) != fp_props.get(k.value) for k in part_props):
@@ -66,35 +66,39 @@ def load_part_info_from_pcb(G: fabll.Graph):
 
         # Load Part from PCB
         if lcsc_id and manufacturer and partno:
-            node.add(
-                F.has_part_picked(
-                    PickedPartLCSC(
-                        supplier_partno=lcsc_id,
-                        manufacturer=manufacturer,
-                        partno=partno,
-                    )
-                )
-            )
-        elif lcsc_id:
-            node.add(
-                F.has_explicit_part.by_supplier(
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_part_picked
+            ).setup(
+                PickedPartLCSC(
                     supplier_partno=lcsc_id,
-                    supplier_id="lcsc",
-                )
-            )
-        elif manufacturer and partno:
-            node.add(
-                F.has_explicit_part.by_mfr(
-                    mfr=manufacturer,
+                    manufacturer=manufacturer,
                     partno=partno,
                 )
             )
+        elif lcsc_id:
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_explicit_part
+            ).setup_by_supplier(
+                supplier_partno=lcsc_id,
+                supplier_id="lcsc",
+            )
+        elif manufacturer and partno:
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_explicit_part
+            ).setup_by_mfr(
+                mfr=manufacturer,
+                partno=partno,
+            )
+        else:
+            raise ValueError(f"No part info found for {node.get_name()}")
 
         if lcsc_id:
             lcsc_attach(node, lcsc_id)
 
         if "Datasheet" in fp_props:
-            node.add(F.has_datasheet_defined(fp_props["Datasheet"]))
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_datasheet
+            ).setup(datasheet=fp_props["Datasheet"])
 
         # Load saved parameters from descriptive properties
         for key, value in props.items():
@@ -129,20 +133,16 @@ def save_part_info_to_pcb(G: fabll.Graph):
             if part is None:
                 continue
             if isinstance(part, PickedPartLCSC):
-                node.add(
-                    F.has_descriptive_properties.MakeChild(
-                        {Properties.lcsc: part.lcsc_id}
-                    )
-                )
-                # TODO save info?
-            node.add(
-                F.has_descriptive_properties.MakeChild(
-                    {
-                        Properties.manufacturer: part.manufacturer,
-                        Properties.partno: part.partno,
-                    }
-                )
-            )
+                # TODO: Change this from Traits.create... to Node.create_instance
+                fabll.Traits.create_and_add_instance_to(
+                    node=node, trait=F.SerializableMetadata
+                ).setup(key=Properties.lcsc, value=part.lcsc_id)
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=Properties.manufacturer, value=part.manufacturer)
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=Properties.partno, value=part.partno)
 
         for p in node.get_children(direct_only=True, types=Parameter):
             lit = p.try_get_literal()
@@ -151,4 +151,6 @@ def save_part_info_to_pcb(G: fabll.Graph):
             lit = P_Set.from_value(lit)
             key = f"{Properties.param_prefix}{p.get_name()}"
             value = json.dumps(lit.serialize())
-            node.add(F.has_descriptive_properties.MakeChild({key: value}))
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=key, value=value)

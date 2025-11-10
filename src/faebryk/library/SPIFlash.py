@@ -3,7 +3,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class SPIFlash(fabll.Node):
@@ -13,7 +12,7 @@ class SPIFlash(fabll.Node):
     power = F.ElectricPower.MakeChild()
     qspi = F.MultiSPI.MakeChild(4)
 
-    memory_size = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Byte)
+    memory_size = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Byte)
 
     # ----------------------------------------
     #                 traits

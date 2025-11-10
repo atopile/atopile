@@ -1,7 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from typing import Self
+
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
 class can_bridge_by_name(fabll.Node):
@@ -9,13 +12,22 @@ class can_bridge_by_name(fabll.Node):
     Only keeping for ato v1 compatibility.
     """
 
-    def __init__(self, input_name: str = "input", output_name: str = "output"):
-        # super().__init__()
-        self._input_name = input_name
-        self._output_name = output_name
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    def get_in(self):
-        return self.get_obj(fabll.Module)[self._input_name]
+    # TODO: Forward this trait to parent
+    _can_bridge = fabll.ChildField(F.can_bridge)
 
-    def get_out(self):
-        return self.get_obj(fabll.Module)[self._output_name]
+    def setup(self, input_name: str, output_name: str) -> Self:
+        input_node_list = self.get_parent_force()[0].get_children(
+            False, types=fabll.Node, f_filter=lambda x: x.get_name() == input_name
+        )
+        if len(input_node_list) != 1:
+            raise ValueError(f"Expected 1 input node, got {len(input_node_list)}")
+        output_node_list = self.get_parent_force()[0].get_children(
+            False, types=fabll.Node, f_filter=lambda x: x.get_name() == output_name
+        )
+        if len(output_node_list) != 1:
+            raise ValueError(f"Expected 1 output node, got {len(output_node_list)}")
+
+        self._can_bridge.get().setup(input_node_list[0], output_node_list[0])
+        return self

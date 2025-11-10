@@ -51,6 +51,19 @@ class ElectricPower(fabll.Node):
         unit=Units.Ampere,
     )
 
+    # TODO: Split out
+    class is_power_source(fabll.Node): ...
+
+    class is_power_sink(fabll.Node): ...
+
+    def setup_as_source(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_source)
+        return self
+
+    def setup_as_sink(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_sink)
+        return self
+
     # _surge_protected: can_be_surge_protected_power
     # _decoupled: can_be_decoupled_power
 

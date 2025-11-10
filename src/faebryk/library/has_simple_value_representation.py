@@ -38,33 +38,33 @@ class has_simple_value_representation(fabll.Node):
         spec_set_ = F.Collections.PointerSet.MakeChild()
         param_ptr_ = F.Collections.Pointer.MakeChild()
         unit_ = F.Collections.Pointer.MakeChild()
-        tolerance_ = fabll.Parameter.MakeChild()
-        prefix_ = fabll.Parameter.MakeChild()
-        suffix_ = fabll.Parameter.MakeChild()
-        default_ = fabll.Parameter.MakeChild()
+        tolerance_ = F.Parameters.BooleanParameter.MakeChild()
+        prefix_ = F.Parameters.StringParameter.MakeChild()
+        suffix_ = F.Parameters.StringParameter.MakeChild()
+        default_ = F.Parameters.StringParameter.MakeChild()
 
         @property
-        def param(self) -> fabll.Parameter:
+        def param(self) -> fabll.Node:
             # assert isinstance(self.param_ptr_.get(), F.Collections.Pointer)
-            return fabll.Parameter.bind_instance(self.param_ptr_.get().deref().instance)
+            return self.param_ptr_.get().deref()
 
         @property
         def prefix(self) -> fabll.LiteralT | None:
-            literal = fabll.Parameter.bind_instance(
+            literal = F.Parameters.StringParameter.bind_instance(
                 self.prefix_.get().instance
             ).try_extract_constrained_literal()
             return "" if literal is None else str(literal)
 
         @property
         def suffix(self) -> fabll.LiteralT | None:
-            literal = fabll.Parameter.bind_instance(
+            literal = F.Parameters.StringParameter.bind_instance(
                 self.suffix_.get().instance
             ).try_extract_constrained_literal()
             return "" if literal is None else str(literal)
 
         @property
         def default(self) -> fabll.LiteralT | None:
-            literal = fabll.Parameter.bind_instance(
+            literal = F.Parameters.StringParameter.bind_instance(
                 self.default_.get().instance
             ).try_extract_constrained_literal()
             return "" if literal is None else str(literal)
@@ -201,8 +201,8 @@ class has_simple_value_representation(fabll.Node):
             return out
 
     specs_set_ = F.Collections.PointerSet.MakeChild()
-    prefix_ = fabll.Parameter.MakeChild()
-    suffix_ = fabll.Parameter.MakeChild()
+    prefix_ = F.Parameters.StringParameter.MakeChild()
+    suffix_ = F.Parameters.StringParameter.MakeChild()
 
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
@@ -223,14 +223,14 @@ class has_simple_value_representation(fabll.Node):
 
     @property
     def prefix(self) -> fabll.LiteralT | None:
-        literal = fabll.Parameter.bind_instance(
+        literal = F.Parameters.StringParameter.bind_instance(
             self.prefix_.get().instance
         ).try_extract_constrained_literal()
         return "" if literal is None else str(literal)
 
     @property
     def suffix(self) -> fabll.LiteralT | None:
-        literal = fabll.Parameter.bind_instance(
+        literal = F.Parameters.StringParameter.bind_instance(
             self.suffix_.get().instance
         ).try_extract_constrained_literal()
         return "" if literal is None else str(literal)

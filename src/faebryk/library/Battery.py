@@ -10,8 +10,6 @@ class Battery(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    power = F.ElectricPower.MakeChild()
-
     voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
     )
@@ -26,7 +24,7 @@ class Battery(fabll.Node):
 
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    # TODO: add trait
+    # TODO: Add trait edge to power.hv
     # _net_name = F.has_net_name.MakeChild(
     #     name="BAT_VCC",
     #     level=F.has_net_name.Level.SUGGESTED,

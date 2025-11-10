@@ -48,8 +48,8 @@ class DifferentialPair(fabll.Node):
         """
         super().__postinit__(*args, **kwargs)
         # Apply suffixes to the electrical lines of the signals
-        self.p.line.add(F.has_net_name_affix.suffix("_P"))
-        self.n.line.add(F.has_net_name_affix.suffix("_N"))
+        self.p.line.add(F.has_net_name_affix.setup(suffix="_P"))
+        self.n.line.add(F.has_net_name_affix.setup(suffix="_N"))
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

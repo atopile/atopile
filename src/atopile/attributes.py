@@ -176,7 +176,9 @@ class GlobalAttributes(fabll.Node):
 
     @datasheet_url.setter
     def datasheet_url(self, value: str):
-        self.add(F.has_datasheet_defined(value))
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.has_datasheet).setup(
+            datasheet=value
+        )
 
     @property
     def designator_prefix(self):
@@ -187,7 +189,9 @@ class GlobalAttributes(fabll.Node):
 
     @designator_prefix.setter
     def designator_prefix(self, value: str):
-        self.add(F.has_designator_prefix(value))
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_designator_prefix
+        ).setup(designator_prefix=value)
 
     @property
     def package(self) -> str:

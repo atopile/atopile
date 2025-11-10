@@ -16,8 +16,8 @@ class has_usage_example(fabll.Node):
         fabll = "fabll"
         ato = "ato"
 
-    example_ = fabll.ChildField(fabll.Parameter)
-    language_ = fabll.ChildField(fabll.Parameter)
+    example_ = fabll.ChildField(F.Parameters.StringParameter)
+    language_ = fabll.ChildField(F.Parameters.EnumParameter)
 
     @property
     def example(self) -> str:

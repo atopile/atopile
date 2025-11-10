@@ -10,8 +10,8 @@ import faebryk.library._F as F
 class is_pickable_by_supplier_id(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    supplier_part_id_ = fabll.ChildField(fabll.Parameter)
-    supplier_ = fabll.ChildField(fabll.Parameter)
+    supplier_part_id_ = fabll.ChildField(F.Parameters.StringParameter)
+    supplier_ = fabll.ChildField(F.Parameters.StringParameter)
 
     # TODO: Forward this trait to parent
     _is_pickable = fabll.ChildField(F.is_pickable)
@@ -19,13 +19,11 @@ class is_pickable_by_supplier_id(fabll.Node):
     class Supplier(Enum):
         LCSC = auto()
 
-    def get_supplier_part_id(self) -> str | None:
-        literal = self.supplier_part_id_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+    def get_supplier_part_id(self) -> str:
+        return str(self.supplier_part_id_.get().force_extract_literal())
 
-    def get_supplier(self) -> str | None:
-        literal = self.supplier_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+    def get_supplier(self) -> str:
+        return str(self.supplier_.get().try_extract_constrained_literal())
 
     @classmethod
     def MakeChild(

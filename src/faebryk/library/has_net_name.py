@@ -1,9 +1,8 @@
 from enum import IntEnum, auto
-from typing import Any
+from typing import Any, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import not_none
 
 
 class has_net_name(fabll.Node):
@@ -18,8 +17,8 @@ class has_net_name(fabll.Node):
         SUGGESTED = auto()
         EXPECTED = auto()
 
-    name_ = fabll.Parameter.MakeChild()
-    level_ = fabll.Parameter.MakeChild()
+    name_ = F.Parameters.StringParameter.MakeChild()
+    level_ = F.Parameters.EnumParameter.MakeChild(F.has_net_name.Level)
 
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
@@ -47,3 +46,8 @@ class has_net_name(fabll.Node):
         if level_literal is None:
             return None
         return self.Level(int(level_literal))
+
+    def setup(self, name: str, level: Level) -> Self:
+        self.name_.get().constrain_to_single(value=name)
+        self.level_.get().constrain_to_literal(g=self.instance.g(), value=level.value)
+        return self

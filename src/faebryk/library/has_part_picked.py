@@ -18,10 +18,10 @@ class has_part_picked(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Manual storage of the PickedPart dataclass
-    manufacturer_ = fabll.ChildField(fabll.Parameter)
-    partno_ = fabll.ChildField(fabll.Parameter)
-    supplier_partno_ = fabll.ChildField(fabll.Parameter)
-    supplier_id_ = fabll.ChildField(fabll.Parameter)
+    manufacturer_ = F.Parameters.StringParameter.MakeChild()
+    partno_ = F.Parameters.StringParameter.MakeChild()
+    supplier_partno_ = F.Parameters.StringParameter.MakeChild()
+    supplier_id_ = F.Parameters.StringParameter.MakeChild()
 
     def get_part(self) -> "PickedPart":
         return not_none(self.try_get_part())
@@ -95,3 +95,14 @@ class has_part_picked(fabll.Node):
                 )
             case _:
                 raise ValueError(f"Unknown supplier: {supplier_id}")
+
+    def setup(self, picked_part: "PickedPart") -> Self:
+        self.manufacturer_.get().constrain_to_single(value=picked_part.manufacturer)
+        self.partno_.get().constrain_to_single(value=picked_part.partno)
+        self.supplier_partno_.get().constrain_to_single(
+            value=picked_part.supplier_partno
+        )
+        self.supplier_id_.get().constrain_to_single(
+            value=picked_part.supplier.supplier_id
+        )
+        return self

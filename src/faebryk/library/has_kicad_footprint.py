@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class has_kicad_footprint(fabll.Node):
-    kicad_identifier_ = fabll.ChildField(fabll.Parameter)
+    kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
     def get_kicad_footprint(self) -> str | None:
@@ -64,9 +64,7 @@ class has_kicad_footprint(fabll.Node):
         return out
 
     def setup(self, kicad_identifier: str, pinmap: dict[F.Pad, str]) -> Self:
-        self.kicad_identifier_.get().constrain_to_literal(
-            g=self.instance.g(), value=kicad_identifier
-        )
+        self.kicad_identifier_.get().constrain_to_single(value=kicad_identifier)
         for pad, pad_str in pinmap.items():
             # Create pin_tuple instance
             pin_tuple = F.Collections.PointerTuple.bind_typegraph(

@@ -218,9 +218,12 @@ def check_library_for_erc(lib):
 
 
 # TODO split this up
-class needs_erc_check(Trait.decless()):
-    design_check: F.implements_design_check
+class needs_erc_check(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
+    design_check = F.implements_design_check.MakeChild()
+
+    # TODO: Implement this
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
         simple_erc(self.get_graph())

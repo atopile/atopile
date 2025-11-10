@@ -159,8 +159,8 @@ class RP2040(fabll.Node):
     designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    datasheet = fabll.f_field(F.has_datasheet_defined)(
-        "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
+    datasheet = F.has_datasheet.MakeChild(
+        datasheet="https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
     )
 
     mfr = fabll.f_field(F.has_explicit_part.by_mfr)("Raspberry Pi", "RP2040")

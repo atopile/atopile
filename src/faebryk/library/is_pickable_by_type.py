@@ -5,7 +5,6 @@ from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 
 class is_pickable_by_type(fabll.Node):
@@ -17,9 +16,9 @@ class is_pickable_by_type(fabll.Node):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
-    endpoint_ = fabll.ChildField(fabll.Parameter)
-    params_ = F.Collections.PointerSet.MakeChild()
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    endpoint_ = fabll.ChildField(F.Parameters.StringParameter)
+    params_ = F.Collections.PointerSet.MakeChild()
 
     # TODO: Forward this trait to parent
     _is_pickable = fabll.ChildField(F.is_pickable)
@@ -32,7 +31,7 @@ class is_pickable_by_type(fabll.Node):
         INDUCTORS = "inductors"
 
     @property
-    def params(self) -> list[fabll.Parameter]:
+    def params(self) -> list[F.Parameters.StringParameter]:
         param_tuples = self.params_.get().as_list()
         parameters = [
             F.Collections.PointerTuple.bind_instance(
@@ -42,7 +41,7 @@ class is_pickable_by_type(fabll.Node):
         ]
         return parameters  # type: ignore
 
-    def get_param(self, param_name: str) -> fabll.Parameter:
+    def get_param(self, param_name: str) -> F.Parameters.StringParameter:
         param_tuples = self.params_.get().as_list()
         for param_tuple in param_tuples:
             if (

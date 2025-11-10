@@ -1,8 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-
-from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 import faebryk.core.node as fabll
@@ -18,7 +16,7 @@ class has_single_electric_reference(fabll.Node):
     """
 
     reference_ptr_ = F.Collections.Pointer.MakeChild()
-    ground_only_ = fabll.ChildField(fabll.Parameter)
+    ground_only_ = F.Parameters.BooleanParameter.MakeChild()
     exclude_ = F.Collections.PointerSet.MakeChild()
 
     def get_reference(self) -> "ElectricPower":

@@ -20,9 +20,10 @@ class requires_external_usage(fabll.Node):
                 nodes=nodes,
             )
 
+    # TODO: Implement this
     @property
     def fulfilled(self) -> bool:
-        obj = self.get_obj(type=fabll.Node)
+        obj = self.get_parent_force()[0]
         connected_to = set(obj.connected.get_connected_nodes(types=[type(obj)]))
         parent = obj.get_parent()
         # no shared parent possible
@@ -43,10 +44,8 @@ class requires_external_usage(fabll.Node):
         return False
 
     def on_obj_set(self):
-        if not self.obj.has_trait(fabll.is_interface):
+        if not self.get_parent_force()[0].has_trait(fabll.is_interface):
             raise NotImplementedError("Only supported on interfaces")
-
-        super().on_obj_set()
 
     design_check: F.implements_design_check
 
@@ -54,5 +53,5 @@ class requires_external_usage(fabll.Node):
     def __check_post_design__(self):
         if not self.fulfilled:
             raise requires_external_usage.RequiresExternalUsageNotFulfilled(
-                nodes=[self.obj],
+                nodes=[self.get_parent_force()[0]],
             )

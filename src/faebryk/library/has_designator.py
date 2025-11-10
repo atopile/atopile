@@ -8,11 +8,13 @@ import faebryk.library._F as F
 
 
 class has_designator(fabll.Node):
-    designator_ = fabll.ChildField(fabll.Parameter)
+    designator_ = F.Parameters.StringParameter.MakeChild()
 
-    def get_designator(self) -> str | None:
+    def get_designator(self) -> str:
         literal = self.designator_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        if literal is None:
+            raise ValueError("Designator is not set")
+        return str(literal)
 
     @classmethod
     def MakeChild(cls, designator: str) -> fabll.ChildField:
@@ -25,7 +27,5 @@ class has_designator(fabll.Node):
         return out
 
     def setup(self, designator: str) -> Self:
-        self.designator_.get().constrain_to_literal(
-            g=self.instance.g(), value=designator
-        )
+        self.designator_.get().constrain_to_single(value=designator)
         return self

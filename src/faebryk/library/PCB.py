@@ -3,7 +3,7 @@
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Self, override
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -137,13 +137,13 @@ class PCB(fabll.Node):
 
     # TODO use reference
     class has_pcb(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+        pcb_ptr_ = F.Collections.Pointer.MakeChild()
+
         class has_pcb_ref(fabll.Node):
             _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
             # reference: "PCB" = reference()
-
-        def __init__(self, pcb: "PCB"):
-            super().__init__()
-            self._pcbs = {pcb}
 
         def on_obj_set(self):
             obj = self.get_obj(fabll.Module)
@@ -158,14 +158,13 @@ class PCB(fabll.Node):
 
             return super().on_obj_set()
 
-        @override
-        def handle_duplicate(self, old: "PCB.has_pcb", node: fabll.Node) -> bool:
-            self._pcbs.update(old._pcbs)
-            return True
-
         @property
         def pcbs(self) -> set["PCB"]:
-            return self._pcbs
+            return {PCB.bind_instance(self.pcb_ptr_.get().deref().instance)}
 
         def get_pcb_by_path(self, path: Path) -> "PCB":
-            return find(self._pcbs, lambda pcb: pcb._path == path)
+            return find(self.pcbs, lambda pcb: pcb._path == path)
+
+        def setup(self, pcb: "PCB") -> Self:
+            self.pcb_ptr_.get().point(pcb)
+            return self

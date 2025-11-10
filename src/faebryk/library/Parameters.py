@@ -102,6 +102,16 @@ class StringParameter(fabll.Node):
             lit_type=F.Literals.Strings
         )
 
+    def constrain_to_single(self, value: str) -> None:
+        self._is_parameter_operatable.get().constrain_to_literal(
+            g=self.instance.g(),
+            value=F.Literals.Strings.bind_typegraph_from_instance(
+                instance=self.instance
+            )
+            .create_instance(self.instance.g())
+            .setup(value),
+        )
+
 
 class BooleanParameter(fabll.Node):
     _is_parameter = fabll.ChildField(is_parameter)

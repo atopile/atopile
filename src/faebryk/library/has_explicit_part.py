@@ -8,15 +8,15 @@ import faebryk.library._F as F
 
 
 class has_explicit_part(fabll.Node):
-    mfr_ = fabll.ChildField(fabll.Parameter)
-    partno_ = fabll.ChildField(fabll.Parameter)
-    supplier_id_ = fabll.ChildField(fabll.Parameter)
-    supplier_partno_ = fabll.ChildField(fabll.Parameter)
+    mfr_ = F.Parameters.StringParameter.MakeChild()
+    partno_ = F.Parameters.StringParameter.MakeChild()
+    supplier_id_ = F.Parameters.StringParameter.MakeChild()
+    supplier_partno_ = F.Parameters.StringParameter.MakeChild()
     pinmap_ = F.Collections.PointerSet.MakeChild()
     override_footprint_ = F.Collections.PointerTuple.MakeChild()
 
     @classmethod
-    def by_mfr(
+    def setup_by_mfr(
         cls,
         mfr: str,
         partno: str,
@@ -26,7 +26,7 @@ class has_explicit_part(fabll.Node):
         return cls.MakeChild(mfr, partno, None, None, pinmap, override_footprint)
 
     @classmethod
-    def by_supplier(
+    def setup_by_supplier(
         cls,
         supplier_partno: str,
         supplier_id: str = "lcsc",

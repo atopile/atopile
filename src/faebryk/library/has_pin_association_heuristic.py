@@ -41,8 +41,8 @@ class has_pin_association_heuristic(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     mapping = F.Collections.PointerSet.MakeChild()
-    accept_prefix_ = fabll.ChildField(fabll.Parameter)
-    case_sensitive_ = fabll.ChildField(fabll.Parameter)
+    accept_prefix_ = F.Parameters.BooleanParameter.MakeChild()
+    case_sensitive_ = F.Parameters.BooleanParameter.MakeChild()
     nc = F.Collections.PointerSet.MakeChild()
 
     @classmethod
