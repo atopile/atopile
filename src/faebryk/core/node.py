@@ -1231,6 +1231,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         )
 
 
+
 type NodeT = Node[Any]
 
 
@@ -1343,6 +1344,16 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             edge_attributes=edge,
         )
 
+    def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
+        children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
+            direct_only=True,
+            types=MakeChild
+        )
+        bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
+        for child in children:
+            if child.get_child_type().node().is_same(bound_trait.node()):
+                return True
+        return False
 
 # ------------------------------------------------------------
 
@@ -1387,6 +1398,15 @@ class ImplementsType(Node):
     Wrapper around zig type.
     Matched automatically because of name.
     """
+
+class MakeChild(Node):
+    """
+    Wrapper around zig make child.
+    Matched automatically because of name.
+    """
+
+    def get_child_type(self) -> BoundNode:
+        return EdgePointer.get_referenced_node_from_node(node=self.instance)
 
 
 class is_module(Node):
