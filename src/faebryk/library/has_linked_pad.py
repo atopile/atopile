@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 
-from typing import TYPE_CHECKING
+from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -31,3 +31,7 @@ class has_linked_pad(fabll.Node):
         out = fabll.ChildField(cls)
         out.add_dependant(pad)
         return out
+
+    def setup(self, pad: "F.Pad") -> Self:
+        self.pad_ptr_.get().point(pad)
+        return self

@@ -27,21 +27,12 @@ class CAN(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    # ----------------------------------------
-    #                 WIP
-    # ----------------------------------------
-
-    def __preinit__(self) -> None:
-        self.baudrate.add(F.is_bus_parameter())
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.diff_pair.p.line.add(
-            F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.diff_pair.n.line.add(
-            F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # self.diff_pair.p.line.add(
+    #     F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
+    # )
+    # self.diff_pair.n.line.add(
+    #     F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
+    # )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

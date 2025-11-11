@@ -35,26 +35,10 @@ class ElectricSignal(fabll.Node):
 
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
-    # class LinkIsolatedReference(LinkDirectConditional):
-    #     def test(self, node: CNode):
-    #         return not isinstance(node, F.ElectricPower)
-
-    #     def __init__(self) -> None:
-    #         super().__init__(
-    #             lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
-    #             if all(self.test(dst.node) for dst in path)
-    #             else LinkDirectConditionalFilterResult.FILTER_FAIL_UNRECOVERABLE,
-    #             needs_only_first_in_path=True,
-    #         )
-
     @staticmethod
     def connect_all_node_references(
-        nodes: Iterable[fabll.Node], gnd_only=False
-    ) -> F.ElectricPower:
+        reference: F.ElectricPower, nodes: Iterable[fabll.Node], gnd_only=False
+    ):
         # TODO check if any child contains ElectricLogic which is not connected
         # e.g find them in graph and check if any has parent without "single reference"
 
@@ -66,30 +50,27 @@ class ElectricSignal(fabll.Node):
         assert refs
 
         if gnd_only:
-            F.Electrical.connect(*{r.lv for r in refs})
-            return next(iter(refs))
-
-        F.ElectricPower.connect(*refs)
-
-        return next(iter(refs))
+            reference.lv.get().get_trait(fabll.is_interface).connect_to(
+                *{r.lv.get() for r in refs}
+            )
+        else:
+            reference.get_trait(fabll.is_interface).connect_to(*{r for r in refs})
 
     @classmethod
     def connect_all_module_references(
         cls,
+        reference: F.ElectricPower,
         node: fabll.Node,
         ground_only=False,
         exclude: Iterable[fabll.Node] = (),
-    ) -> F.ElectricPower:
-        return cls.connect_all_node_references(
-            node.get_children(
-                direct_only=True, types=fabll.Node
-            ).difference(set[Node[NodeAttributes]](exclude)),
+    ):
+        cls.connect_all_node_references(
+            reference=reference,
+            nodes=node.get_children(direct_only=True, types=fabll.Node).difference(
+                set[Node[NodeAttributes]](exclude)
+            ),
             gnd_only=ground_only,
         )
-
-    @staticmethod
-    def connect_all_references(ifs: Iterable["ElectricSignal"]) -> F.ElectricPower:
-        return F.ElectricPower.connect(*[x.reference for x in ifs])
 
     @property
     def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:

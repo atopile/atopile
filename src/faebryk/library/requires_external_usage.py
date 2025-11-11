@@ -11,20 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class requires_external_usage(fabll.Node):
-    class RequiresExternalUsageNotFulfilled(
-        F.implements_design_check.UnfulfilledCheckException
-    ):
-        def __init__(self, nodes: list[fabll.Node]):
-            super().__init__(
-                "Nodes requiring external usage but not used externally",
-                nodes=nodes,
-            )
-
-    # TODO: Implement this
     @property
     def fulfilled(self) -> bool:
         obj = self.get_parent_force()[0]
-        connected_to = set(obj.connected.get_connected_nodes(types=[type(obj)]))
+        connected_to = set(obj.get_trait(fabll.is_interface).get_connected())
         parent = obj.get_parent()
         # no shared parent possible
         if parent is None:
@@ -48,6 +38,15 @@ class requires_external_usage(fabll.Node):
             raise NotImplementedError("Only supported on interfaces")
 
     design_check: F.implements_design_check
+
+    class RequiresExternalUsageNotFulfilled(
+        F.implements_design_check.UnfulfilledCheckException
+    ):
+        def __init__(self, nodes: list[fabll.Node]):
+            super().__init__(
+                "Nodes requiring external usage but not used externally",
+                nodes=nodes,
+            )
 
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):

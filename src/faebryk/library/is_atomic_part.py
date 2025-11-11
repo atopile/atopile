@@ -69,7 +69,11 @@ class is_atomic_part(fabll.Node):
         parent = self.get_parent_force()[0]
 
         fp_path, fp_lib = self.fp_path
-        fp = F.KicadFootprint.from_path(fp_path, lib_name=fp_lib)
+        fp = (
+            F.KicadFootprint.bind_typegraph_from_instance(instance=self.instance)
+            .create_instance(g=self.instance.g())
+            .from_path(fp_path, lib_name=fp_lib)
+        )
         # TODO: This trait is forwarded by a trait with attach function
         parent.get_trait(F.can_attach_to_footprint).attach(fp)
 

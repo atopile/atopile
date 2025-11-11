@@ -3,7 +3,7 @@
 
 
 import faebryk.core.node as fabll
-from faebryk.library._F import Electrical, Units, has_usage_example
+import faebryk.library._F as F
 
 
 class ElectricPower(fabll.Node):
@@ -15,46 +15,33 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    hv = Electrical.MakeChild()
-    lv = Electrical.MakeChild()
+    hv = F.Electrical.MakeChild()
+    lv = F.Electrical.MakeChild()
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
-    # class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
-    #     def protect(self, owner: fabll.Node):
-    #         obj = self.get_obj(ElectricPower)
-    #         surge_protection = F.SurgeProtection.from_interfaces(obj.lv, obj.hv)
-    #         owner.add(
-    #             surge_protection,
-    #             name=f"surge_protection_{obj.get_name(accept_no_parent=True)}",
-    #         )
-    #         obj.add(F.is_surge_protected_defined(surge_protection))
-    #         return surge_protection
-
-    voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=Units.Volt,
+    voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
     )
-    max_current = fabll.Parameter.MakeChild_Numeric(
-        unit=Units.Ampere,
+    max_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere,
     )
 
     # _has_single_electric_reference = F.has_single_electric_reference_defined.MakeChild()
 
-    bus_max_current_consumption_sum = fabll.Parameter.MakeChild_Numeric(
-        unit=Units.Ampere,
+    bus_max_current_consumption_sum = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere,
     )
 
     # TODO: Split out
-    class is_power_source(fabll.Node): ...
+    class is_power_source(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    class is_power_sink(fabll.Node): ...
+    class is_power_sink(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     def setup_as_source(self):
         fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_source)
@@ -64,58 +51,14 @@ class ElectricPower(fabll.Node):
         fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_sink)
         return self
 
-    # _surge_protected: can_be_surge_protected_power
-    # _decoupled: can_be_decoupled_power
-
-    # def fused(self, attach_to: fabll.Node | None = None):
-    #     fused_power = type(self)()
-    #     fuse = fused_power.add(F.Fuse())
-
-    #     fused_power.hv.connect_via(fuse, self.hv)
-    #     fused_power.lv.connect(self.lv)
-
-    #     self.connect_shallow(fused_power)
-
-    #     fuse.trip_current.constrain_subset(
-    #         self.max_current * fabll.Range.from_center_rel(1.0, 0.1)
-    #     )
-    #     # TODO maybe better bus_consumption
-    #     fused_power.max_current.constrain_le(fuse.trip_current)
-
-    #     if attach_to is not None:
-    #         attach_to.add(fused_power)
-
-    #     return fused_power
-
-    # def __preinit__(self) -> None:
-    #     ...
-    #     # self.voltage.alias_is(
-    #     #    self.hv.potential - self.lv.potential
-    #     # )
-    #     self.voltage.add(F.is_bus_parameter())
-    #     self.bus_max_current_consumption_sum.add(
-    #         F.is_bus_parameter(reduce=(self.max_current, Add))
-    #     )
-
-    #     self.lv.add(F.has_net_name("gnd"))
-
-    # @property
-    # def vcc(self) -> F.Electrical:
-    #     """Higher-voltage side of the power interface."""
-    #     return self.hv
-
-    # @property
-    # def gnd(self) -> F.Electrical:
-    #     """Lower-voltage side of the power interface."""
-    #     return self.lv
-
-    # def __postinit__(self, *args, **kwargs):
-    #     super().__postinit__(*args, **kwargs)
-    #     # Apply suffixes to the electrical lines of the signals
+    # self.voltage.alias_is(
+    #    self.hv.potential - self.lv.potential
+    # )
+    # self.lv.add(F.has_net_name("gnd"))
     #     self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
     #     self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = has_usage_example.MakeChild(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import ElectricPower
 
@@ -129,5 +72,5 @@ class ElectricPower(fabll.Node):
         # Connect an example bypass capacitor
         power_5v.hv ~> example_capacitor ~> power_5v.lv
         """,
-        language=has_usage_example.Language.ato,
+        language=F.has_usage_example.Language.ato,
     )

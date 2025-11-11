@@ -24,8 +24,10 @@ class Pad(fabll.Node):
     # ----------------------------------------
 
     def attach(self, intf: F.Electrical):
-        self.net.connect(intf)
-        # intf.add(F.has_lnked_pad(self))
+        self.net.get().get_trait(fabll.is_interface).connect_to(intf)
+        fabll.Traits.create_and_add_instance_to(
+            node=intf, trait=F.has_linked_pad
+        ).setup(pad=self)
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
@@ -50,7 +52,7 @@ class Pad(fabll.Node):
         pads = [
             pad
             for pad in footprint.get_children(direct_only=True, types=Pad)
-            if pad.net.get_trait(fabll.is_interface).is_connected_to(intf)
+            if pad.net.get().get_trait(fabll.is_interface).is_connected_to(intf)
         ]
         return pads
 

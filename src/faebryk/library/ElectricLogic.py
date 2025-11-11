@@ -16,50 +16,50 @@ class ElectricLogic(fabll.Node):
     For more states / continuous signals check ElectricSignal.
     """
 
-    # ----------------------------------------
-    #     modules, interfaces, parameters
-    # ----------------------------------------
-    line = F.Electrical.MakeChild()
-    reference = F.ElectricPower.MakeChild()
-
-    # ----------------------------------------
-    #                 traits
-    # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
-
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
     class has_pulls(fabll.Node):
-        @abstractmethod
-        def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
-
-    class has_pulls_defined(fabll.Node):
         _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-        def __init__(self, up: F.Resistor | None, down: F.Resistor | None) -> None:
-            super().__init__()
-            self.up = up
-            self.down = down
+        up_ = F.Collections.Pointer.MakeChild()
+        down_ = F.Collections.Pointer.MakeChild()
 
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]:
-            return self.up, self.down
+            up_node = self.up_.get().deref()
+            down_node = self.down_.get().deref()
+            up = (
+                F.Resistor.bind_instance(up_node.instance)
+                if up_node is not None
+                else None
+            )
+            down = (
+                F.Resistor.bind_instance(down_node.instance)
+                if down_node is not None
+                else None
+            )
+            return up, down
+
+        def setup(self, up: F.Resistor | None, down: F.Resistor | None) -> Self:
+            if up is not None:
+                self.up_.get().point(up)
+            if down is not None:
+                self.down_.get().point(down)
+            return self
 
     class can_be_pulled(fabll.Node):
-        @abstractmethod
-        def pull(self, up: bool, owner: fabll.Node) -> F.Resistor: ...
-
-    class can_be_pulled_defined(fabll.Node):
         _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-        def __init__(self, line: F.Electrical, ref: F.ElectricPower) -> None:
-            super().__init__()
-            self.ref = ref
-            self.line = line
+        reference_ = F.Collections.Pointer.MakeChild()
+        line_ = F.Collections.Pointer.MakeChild()
+
+        @property
+        def reference(self) -> F.ElectricPower:
+            return F.ElectricPower.bind_instance(self.reference_.get().deref().instance)
+
+        @property
+        def line(self) -> F.Electrical:
+            return F.Electrical.bind_instance(self.line_.get().deref().instance)
 
         def pull(self, up: bool, owner: fabll.Node):
-            obj = self.obj
+            obj = self.get_parent_force()[0]
 
             up_r, down_r = None, None
             if obj.has_trait(ElectricLogic.has_pulls):
@@ -70,43 +70,80 @@ class ElectricLogic(fabll.Node):
             if not up and down_r:
                 return down_r
 
-            resistor = F.Resistor()
+            resistor = F.Resistor.bind_typegraph(self.tg).create_instance(
+                g=self.tg.get_graph_view()
+            )
             name = obj.get_name(accept_no_parent=True)
             # TODO handle collisions
             if up:
-                owner.add(resistor, f"pull_up_{name}")
+                fabll.EdgeComposition.add_child(
+                    bound_node=owner.instance,
+                    child=resistor.instance.node(),
+                    child_identifier=f"pull_up_{name}",
+                )
                 up_r = resistor
             else:
-                owner.add(resistor, f"pull_down_{name}")
+                fabll.EdgeComposition.add_child(
+                    bound_node=owner.instance,
+                    child=resistor.instance.node(),
+                    child_identifier=f"pull_down_{name}",
+                )
                 down_r = resistor
 
-            self.line.connect_via(resistor, self.ref.hv if up else self.ref.lv)
+            resistor._can_bridge.get().bridge(
+                self.line,
+                self.reference.hv.get() if up else self.reference.lv.get(),
+            )
 
-            obj.add(ElectricLogic.has_pulls_defined(up_r, down_r))
+            fabll.Traits.create_and_add_instance_to(
+                node=obj, trait=ElectricLogic.has_pulls
+            ).setup(up_r, down_r)
             return resistor
 
-    # class can_be_buffered(Trait):
-    #    @abstractmethod
-    #    def buffer(self):
-    #        ...
-    #
-    #
-    # class can_be_buffered_defined(can_be_buffered.impl()):
-    #    def __init__(self, line: "ElectricLogic") -> None:
-    #        super().__init__()
-    #        self.line = line
-    #
-    #    def buffer(self):
-    #        obj = self.obj
-    #
-    #        if hasattr(obj, "buffer"):
-    #            return cast_assert(SignalBuffer, getattr(obj, "buffer"))
-    #
-    #        buffer = SignalBuffer()
-    #        obj.buffer = buffer
-    #        self.line.connect(buffer.logic_in)
-    #
-    #        return buffer.logic_out
+        @classmethod
+        def MakeChild(
+            cls: type[Self],
+            line: fabll.ChildField[F.Electrical],
+            reference: fabll.ChildField[F.ElectricPower],
+        ) -> fabll.ChildField:
+            out = fabll.ChildField(cls)
+            out.add_dependant(
+                F.Collections.Pointer.EdgeField(
+                    [out, cls.line_],
+                    [line],
+                )
+            )
+            out.add_dependant(
+                F.Collections.Pointer.EdgeField(
+                    [out, cls.reference_],
+                    [reference],
+                )
+            )
+            return out
+
+        def setup(self, line: F.Electrical, reference: F.ElectricPower) -> Self:
+            self.reference_.get().point(reference)
+            self.line_.get().point(line)
+            return self
+
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    line_ = F.Electrical.MakeChild()
+    reference_ = F.ElectricPower.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    @property
+    def line(self) -> F.Electrical:
+        return self.line_.get()
+
+    @property
+    def reference(self) -> F.ElectricPower:
+        return self.reference_.get()
 
     class PushPull(Enum):
         PUSH_PULL = auto()
@@ -116,15 +153,14 @@ class ElectricLogic(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    # push_pull = fabll.p_field(
-    #     domain=fabll.Domains.ENUM(PushPull),
-    # )
+    push_pull_ = F.Parameters.EnumParameter.MakeChild(
+        enum_t=PushPull,
+    )
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    def pulled(self):
-        return ElectricLogic.can_be_pulled_defined(self.line, self.reference)
+    _can_be_pulled = can_be_pulled.MakeChild(line_, reference_)
 
     # ----------------------------------------
     #                functions
@@ -134,7 +170,9 @@ class ElectricLogic(fabll.Node):
         Set the logic signal by directly connecting to the reference.
         """
         r = self.reference
-        self.line.connect(r.hv if on else r.lv)
+        self.line.get_trait(fabll.is_interface).connect_to(
+            r.hv.get() if on else r.lv.get()
+        )
 
     def set_weak(self, on: bool, owner: fabll.Node):
         """
@@ -155,13 +193,17 @@ class ElectricLogic(fabll.Node):
 
         # TODO make custom LinkDirectShallow that also allows the specified params
         if signal:
-            self.line.connect(other.line)
+            self.line.get_trait(fabll.is_interface).connect_to(other.line)
         if reference:
-            self.reference.connect(other.reference)
+            self.reference.get_trait(fabll.is_interface).connect_to(other.reference)
         if lv:
-            self.reference.lv.connect(other.reference.lv)
+            self.reference.lv.get().get_trait(fabll.is_interface).connect_to(
+                other.reference.lv.get()
+            )
 
-        return super().connect_shallow(other)
+        self.get_trait(fabll.is_interface).connect_shallow_to(other)
+
+        return self
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

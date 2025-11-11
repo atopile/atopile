@@ -597,7 +597,11 @@ def attach(
             return
 
         # footprint
-        fp = F.KicadFootprint.from_path(apart.fp_path, lib_name=apart.path.name)
+        fp = (
+            F.KicadFootprint.bind_typegraph_from_instance(instance=component.instance)
+            .create_instance(g=component.instance.g())
+            .from_path(apart.fp_path, lib_name=apart.path.name)
+        )
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:

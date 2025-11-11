@@ -30,14 +30,18 @@ def _register_shim(addr: str | address.AddrStr, preferred: str):
     return _wrapper
 
 
-class _has_local_kicad_footprint_named_defined(F.has_footprint):
+class _has_local_kicad_footprint_named_defined(fabll.Node):
     """
     This trait defers footprint creation until it's needed,
     which means we can construct the underlying pin map
     """
 
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+    # TODO: Forward this trait to parent
+    _has_footprint = fabll.ChildField(F.has_footprint)
+
     def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
-        super().__init__()
         if ":" not in lib_reference:
             # TODO: default to a lib reference starting with "lib:"
             # for backwards compatibility with old footprints
@@ -49,10 +53,14 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint):
         if fp := self.try_get_footprint():
             return fp
         else:
-            fp = F.KicadFootprint(
-                pin_names=list(self.pinmap.keys()),
+            fp = (
+                F.KicadFootprint.bind_typegraph_from_instance(instance=self.instance)
+                .create_instance(g=self.instance.g())
+                .setup(pin_names=list(self.pinmap.keys()))
             )
-            fp.add(F.KicadFootprint.has_kicad_identifier(self.lib_reference))
+            fabll.Traits.create_and_add_instance_to(
+                node=fp, trait=fp.has_kicad_identifier
+            ).setup(kicad_identifier=self.lib_reference)
             fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)  # type: ignore
             self.set_footprint(fp)
             return fp
