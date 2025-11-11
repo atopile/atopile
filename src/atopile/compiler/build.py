@@ -3,6 +3,7 @@ Entry points for building from ato sources.
 """
 
 from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -31,6 +32,10 @@ class LinkerException(Exception):
 
 
 class ImportPathNotFoundError(LinkerException):
+    pass
+
+
+class CircularImportError(LinkerException):
     pass
 
 
@@ -151,6 +156,8 @@ class Linker:
         )
         self._stdlib_registry = stdlib_registry
         self._stdlib_tg = stdlib_tg
+        self._active_paths: set[Path] = set()
+        self._linked_modules: dict[Path, dict[str, BoundNode]] = {}
 
     def _stdlib_lookup(self, import_ref: ImportRef) -> BoundNode:
         return self._stdlib_registry[import_ref.name]
@@ -163,19 +170,37 @@ class Linker:
         source_path = self._resolver.resolve(
             raw_path=import_ref.path, base_file=build_state.file_path
         )
+
+        if source_path in self._linked_modules:
+            return self._linked_modules[source_path][import_ref.name]
+
         assert source_path.exists()
 
         child_result = build_file(graph, source_path)
         self.link_imports(graph, child_result.state)
+        self._linked_modules[source_path] = child_result.state.type_roots
         return child_result.state.type_roots[import_ref.name]
 
-    def link_imports(
-        self,
-        graph: GraphView,
-        build_state: BuildState,
-    ) -> None:
-        # TODO: handle cycles
+    def link_imports(self, graph: GraphView, build_state: BuildState) -> None:
+        resolved_path = (
+            self._resolver._normalize_path(build_state.file_path)
+            if build_state.file_path is not None
+            else None
+        )
 
+        match resolved_path:
+            case None:
+                self._link(graph, build_state)
+            case _ if resolved_path in self._linked_modules:
+                self._link_from_cache(
+                    graph, build_state, self._linked_modules[resolved_path]
+                )
+            case _:
+                with self._guard_path(resolved_path):
+                    self._link(graph, build_state)
+                    self._linked_modules[resolved_path] = build_state.type_roots
+
+    def _link(self, graph: GraphView, build_state: BuildState) -> None:
         for type_reference, import_ref in build_state.external_type_refs:
             _Linker.link_type_reference(
                 g=graph,
@@ -189,6 +214,35 @@ class Linker:
 
         if build_state.type_graph.collect_unresolved_type_references():
             raise LinkerException("Unresolved type references remaining after linking")
+
+    def _link_from_cache(
+        self,
+        graph: GraphView,
+        build_state: BuildState,
+        cached_type_roots: dict[str, BoundNode],
+    ) -> None:
+        for type_reference, import_ref in build_state.external_type_refs:
+            _Linker.link_type_reference(
+                g=graph,
+                type_reference=type_reference,
+                target_type_node=(
+                    self._stdlib_registry[import_ref.name]
+                    if import_ref.path is None
+                    else cached_type_roots[import_ref.name]
+                ),
+            )
+
+    @contextmanager
+    def _guard_path(self, path: Path) -> Generator[None, None, None]:
+        if path in self._active_paths:
+            raise CircularImportError(f"Circular import detected at `{path}`")
+
+        self._active_paths.add(path)
+
+        try:
+            yield
+        finally:
+            self._active_paths.remove(path)
 
 
 def build_stdlib(graph: GraphView) -> tuple[TypeGraph, dict[str, BoundNode]]:
