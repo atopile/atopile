@@ -1,5 +1,6 @@
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,6 +9,8 @@ from atopile.compiler.build import Linker, build_file, build_source, build_stdli
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraphPathError
 from faebryk.core.zig.gen.graph.graph import GraphView
+
+NULL_CONFIG = SimpleNamespace(project=None)
 
 
 def _get_make_child(type_graph, type_node, name: str):
@@ -118,7 +121,8 @@ def test_make_child_and_linking():
     unresolved = result.state.type_graph.collect_unresolved_type_references()
     assert not unresolved
 
-    Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
+    linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
+    linker.link_imports(graph, result.state)
 
     type_ref = type_graph.get_make_child_type_reference(make_child=res_node)
     assert type_ref is not None
@@ -854,7 +858,8 @@ def test_external_import_linking(tmp_path: Path):
     unresolved = result.state.type_graph.collect_unresolved_type_references()
     assert unresolved
 
-    Linker.link_imports(graph, result.state, stdlib_registry, stdlib_tg)
+    linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
+    linker.link_imports(graph, result.state)
 
     type_ref = type_graph.get_make_child_type_reference(make_child=child_node)
     assert type_ref is not None

@@ -2,17 +2,22 @@
 Entry points for building from ato sources.
 """
 
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 from atopile.compiler import ast_types as AST
 from atopile.compiler.antlr_visitor import ANTLRVisitor
 from atopile.compiler.ast_visitor import STDLIB_ALLOWLIST, ASTVisitor, BuildState
+from atopile.compiler.gentypegraph import ImportRef
 from atopile.compiler.parse import parse_file, parse_text_as_file
 from atopile.compiler.parser.AtoParser import AtoParser
+from atopile.config import find_project_dir
 from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
+from faebryk.libs.util import once, unique
 
 
 @dataclass
@@ -25,51 +30,161 @@ class LinkerException(Exception):
     pass
 
 
+class ImportPathNotFoundError(LinkerException):
+    pass
+
+
+class SearchPathResolver:
+    """
+    Implements search-path resolution for path-based imports.
+
+    Resolution order:
+    1. Directory containing the importing file (when available).
+    2. Extra search paths supplied by the caller (insertion order, duplicates removed).
+    3. Project `src` directory (from config, when known).
+    4. Project `.ato/modules` directory (from config, when known).
+    5. Project root directory (discovered via `find_project_dir`).
+
+    Each candidate path is normalised (expanduser + resolve) and deduplicated. If the
+    current project declares a package identifier and the import path starts with it,
+    the resolver first rewrites the prefix to the project `src` directory and probes
+    that absolute path immediately. If it does not exist, the raw import string is then
+    checked relative to each search path in order. Any successful probe returns the
+    normalised file location; otherwise an `ImportPathNotFoundError` is raised.
+    """
+
+    def __init__(self, config_obj, *, extra_search_paths: Iterable[Path]) -> None:
+        project = getattr(config_obj, "project", None)
+        package_cfg = getattr(project, "package", None)
+        project_paths = getattr(project, "paths", None)
+        self._extra_search_paths = extra_search_paths
+        self._project_src = self._normalize_path_optional(
+            getattr(project_paths, "src", None)
+        )
+        self._project_modules = self._normalize_path_optional(
+            getattr(project_paths, "modules", None)
+        )
+        self._project_root = self._normalize_path_optional(
+            getattr(project_paths, "root", None)
+        )
+        self._package_identifier = getattr(package_cfg, "identifier", None)
+
+    @staticmethod
+    def _normalize_path(path: Path) -> Path:
+        return path.expanduser().resolve()
+
+    @staticmethod
+    def _normalize_path_optional(path: Path | None) -> Path | None:
+        return None if path is None else SearchPathResolver._normalize_path(path)
+
+    @property
+    @once
+    def static_paths(self) -> tuple[Path, ...]:
+        return tuple(
+            unique(
+                [
+                    SearchPathResolver._normalize_path(path)
+                    for path in [
+                        *self._extra_search_paths,
+                        self._project_src,
+                        self._project_modules,
+                    ]
+                    if path is not None
+                ],
+                key=str,
+            )
+        )
+
+    def _rewrite_package_identifier(self, raw_path: str) -> Path | None:
+        if (
+            self._package_identifier is not None
+            and self._project_src is not None
+            and raw_path.startswith(self._package_identifier)
+        ):
+            return self._normalize_path(
+                Path(
+                    raw_path.replace(
+                        self._package_identifier, str(self._project_src), 1
+                    )
+                )
+            )
+
+    def search_paths(self, base_file: Path | None) -> Generator[Path, None, None]:
+        if base_file is not None:
+            yield self._normalize_path(base_file).parent
+
+        yield from self.static_paths
+
+        if self._project_root is not None:
+            yield self._project_root
+
+        if (
+            base_file is not None
+            and (project_dir := find_project_dir(base_file)) is not None
+        ):
+            yield self._normalize_path(project_dir)
+
+    @once
+    def resolve(self, raw_path: str, base_file: Path | None) -> Path:
+        # Package self-imports take precedence
+        if (rewritten := self._rewrite_package_identifier(raw_path)) is not None:
+            if rewritten.exists():
+                return rewritten
+
+        for search_dir in self.search_paths(base_file):
+            if (candidate := search_dir / raw_path).exists():
+                return self._normalize_path(candidate)
+
+        raise ImportPathNotFoundError(f"Unable to resolve import `{raw_path}`")
+
+
 class Linker:
-    @staticmethod
-    def _resolve_import_path(base_file: Path | None, raw_path: str) -> Path:
-        # TODO: include all search paths
-        # TODO: get base dirs from config
-        search_paths = [
-            *([base_file.parent] if base_file is not None else []),
-            Path(".ato/modules"),
-        ]
-
-        for search_path in search_paths:
-            if (candidate := search_path / raw_path).exists():
-                return candidate
-
-        raise LinkerException(f"Import path not found: `{raw_path}`")
-
-    @staticmethod
-    def link_imports(
-        graph: GraphView,
-        build_state: BuildState,
+    def __init__(
+        self,
+        config_obj,
         stdlib_registry: dict[str, BoundNode],
         stdlib_tg: TypeGraph,
+        extra_search_paths: Iterable[Path] | None = None,
+    ) -> None:
+        self._resolver = SearchPathResolver(
+            config_obj, extra_search_paths=extra_search_paths or []
+        )
+        self._stdlib_registry = stdlib_registry
+        self._stdlib_tg = stdlib_tg
+
+    def _stdlib_lookup(self, import_ref: ImportRef) -> BoundNode:
+        return self._stdlib_registry[import_ref.name]
+
+    def _build_imported_file(
+        self, graph: GraphView, import_ref: ImportRef, build_state: BuildState
+    ) -> BoundNode:
+        assert import_ref.path is not None
+
+        source_path = self._resolver.resolve(
+            raw_path=import_ref.path, base_file=build_state.file_path
+        )
+        assert source_path.exists()
+
+        child_result = build_file(graph, source_path)
+        self.link_imports(graph, child_result.state)
+        return child_result.state.type_roots[import_ref.name]
+
+    def link_imports(
+        self,
+        graph: GraphView,
+        build_state: BuildState,
     ) -> None:
         # TODO: handle cycles
 
         for type_reference, import_ref in build_state.external_type_refs:
-            if import_ref.path is None:
-                target_type_node = stdlib_registry[import_ref.name]
-
-            else:
-                source_path = Linker._resolve_import_path(
-                    base_file=build_state.file_path, raw_path=import_ref.path
-                )
-                assert source_path.exists()
-
-                child_result = build_file(graph, source_path)
-                Linker.link_imports(
-                    graph, child_result.state, stdlib_registry, stdlib_tg
-                )
-                target_type_node = child_result.state.type_roots[import_ref.name]
-
             _Linker.link_type_reference(
                 g=graph,
                 type_reference=type_reference,
-                target_type_node=target_type_node,
+                target_type_node=(
+                    self._stdlib_lookup(import_ref)
+                    if import_ref.path is None
+                    else self._build_imported_file(graph, import_ref, build_state)
+                ),
             )
 
         if build_state.type_graph.collect_unresolved_type_references():
