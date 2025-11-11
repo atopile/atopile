@@ -138,8 +138,9 @@ class does_not_require_picker_check(fabll.Node):
 
 
 def get_pick_tree(module: fabll.Node) -> Tree[fabll.Module]:
-    if module.has_trait(fabll.is_module):
-        module = module.get_most_special()
+    # TODO no specialization
+    # if module.has_trait(fabll.is_module):
+    #     module = module.get_most_special()
 
     tree = Tree()
     merge_tree = tree
@@ -155,6 +156,7 @@ def get_pick_tree(module: fabll.Node) -> Tree[fabll.Module]:
         direct_only=True,
         types=fabll.Node,
         include_root=False,
+        required_trait=(fabll.is_module, fabll.is_interface),
     ):
         child_tree = get_pick_tree(child)
         merge_tree.update(child_tree)

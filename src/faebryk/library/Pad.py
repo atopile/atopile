@@ -51,7 +51,11 @@ class Pad(fabll.Node):
         _, footprint = F.Footprint.get_footprint_of_parent(intf)
         pads = [
             pad
-            for pad in footprint.get_children(direct_only=True, types=Pad)
+            for pad in footprint.get_children(
+                direct_only=True,
+                types=Pad,
+                required_trait=fabll.is_interface,
+            )
             if pad.net.get().get_trait(fabll.is_interface).is_connected_to(intf)
         ]
         return pads

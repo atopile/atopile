@@ -968,10 +968,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         include_root: bool = False,
         f_filter: Callable[[C], bool] | None = None,
         sort: bool = True,
-        required_trait: "type[NodeT] | None" = None,
+        required_trait: "type[NodeT] | tuple[type[NodeT], ...] | None" = None,
     ) -> OrderedSet[C]:
         # copied from old fabll
         type_tuple = types if isinstance(types, tuple) else (types,)
+        trait_tuple: tuple[type[NodeT], ...] | None
+        if required_trait is None:
+            trait_tuple = None
+        elif isinstance(required_trait, tuple):
+            trait_tuple = required_trait
+        else:
+            trait_tuple = (required_trait,)
 
         result: list[C] = []
 
@@ -979,7 +986,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if not node.isinstance(*type_tuple):
                 return False
             candidate = cast(C, node)
-            if required_trait and not node.has_trait(required_trait):
+            if trait_tuple and not any(node.has_trait(trait) for trait in trait_tuple):
                 return False
             if f_filter and not f_filter(candidate):
                 return False
