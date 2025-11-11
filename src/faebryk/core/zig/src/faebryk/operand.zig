@@ -1,6 +1,7 @@
 const graph_mod = @import("graph");
 const std = @import("std");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const node_type_mod = @import("node_type.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -9,7 +10,7 @@ const Node = graph.Node;
 const EdgeReference = graph.EdgeReference;
 const NodeReference = graph.NodeReference;
 const str = graph.str;
-const EdgeType = edgebuilder_mod.EdgeType;
+const EdgeType = node_type_mod.EdgeType;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeOperand = struct {

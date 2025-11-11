@@ -156,14 +156,16 @@ test "basic" {
     var g = graph.GraphView.init(a);
     defer g.deinit(); // Graph owns all inserted nodes/edges and handles their cleanup
 
-    const n1 = Node.init(a);
-    const n2 = Node.init(a);
-    const n3 = Node.init(a);
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
 
-    // Insert nodes into GraphView g
-    const bn1 = g.insert_node(n1);
-    const bn2 = g.insert_node(n2);
-    const bn3 = g.insert_node(n3);
+    const bn1 = try tg.instantiate_node(electrical_type);
+    const bn2 = try tg.instantiate_node(electrical_type);
+    const bn3 = try tg.instantiate_node(electrical_type);
+
+    const n1 = bn1.node;
+    const n2 = bn2.node;
+    const n3 = bn3.node;
 
     std.debug.print("n1.uuid = {}\n", .{n1.attributes.uuid});
     std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
@@ -175,17 +177,7 @@ test "basic" {
     std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
     std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
 
-    // const n_list = EdgeInterfaceConnection.list_connections(e1);
-
-    // std.debug.print("n_list.len = {}\n", .{n_list.len});
-    // std.debug.print("n_list[0].uuid = {}\n", .{n_list[0].attributes.uuid});
-    // std.debug.print("n_list[1].uuid = {}\n", .{n_list[1].attributes.uuid});
-
-    // const n2_ref = EdgeInterfaceConnection.get_connected(e1, n1);
     std.debug.print("n2.uuid = {}\n", .{n2.attributes.uuid});
-    // std.debug.print("n2_ref.uuid = {}\n", .{n2_ref.?.attributes.uuid});
-
-    // EdgeInterfaceConnection.connect(e1, n3, n1);
 
     std.debug.print("e1.source.uuid = {}\n", .{be1.edge.source.attributes.uuid});
     std.debug.print("e1.target.uuid = {}\n", .{be1.edge.target.attributes.uuid});
@@ -288,9 +280,12 @@ test "is_connected_to" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+
+    const bn1 = try tg.instantiate_node(electrical_type);
+    const bn2 = try tg.instantiate_node(electrical_type);
+    const bn3 = try tg.instantiate_node(electrical_type);
     _ = try EdgeInterfaceConnection.connect(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn1, bn3);
 
@@ -310,17 +305,14 @@ test "down_connect" {
     var tg = TypeGraph.init(&g);
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
-    const LinkType = try tg.add_type("Link");
+    // const LinkType = try tg.add_type("Link");
 
     _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
     _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
-    _ = try tg.add_make_child(ElectricalType, LinkType, "HV/LV Child", null);
 
     const EP_1 = try tg.instantiate_node(ElectricPowerType);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
     const LV_1 = EdgeComposition.get_child_by_identifier(EP_1, "LV").?;
-
-    const HV_1_Child = EdgeComposition.get_child_by_identifier(LV_1, "HV/LV Child").?;
 
     const EP_2 = try tg.instantiate_node(ElectricPowerType);
     const HV_2 = EdgeComposition.get_child_by_identifier(EP_2, "HV").?;
@@ -343,9 +335,9 @@ test "down_connect" {
     try expectNoPath(a, HV_1, LV_2);
     try expectNoPath(a, LV_1, HV_2);
 
-    const link_a = try tg.instantiate_node(LinkType);
-    const link_b = try tg.instantiate_node(LinkType);
-    const link_c = try tg.instantiate_node(LinkType);
+    const link_a = try tg.instantiate_node(ElectricalType);
+    const link_b = try tg.instantiate_node(ElectricalType);
+    const link_c = try tg.instantiate_node(ElectricalType);
     _ = try EdgeInterfaceConnection.connect(HV_1, link_a);
     _ = try EdgeInterfaceConnection.connect(link_a, link_b);
     _ = try EdgeInterfaceConnection.connect(link_b, link_c);
@@ -355,8 +347,10 @@ test "down_connect" {
     defer path_hv_link_lv.deinit();
     try std.testing.expect(Node.is_same(path_hv_link_lv.get_last_node().node, LV_2.node));
 
-    _ = try EdgeInterfaceConnection.connect_shallow(HV_1_Child, LV_2);
+    const HV_1_Child = try tg.instantiate_node(ElectricalType);
+    _ = EdgeComposition.add_child(HV_1, HV_1_Child.node, "HV/LV Child");
 
+    _ = try EdgeInterfaceConnection.connect(HV_1, LV_2);
     try expectNoPath(a, HV_1_Child, LV_2);
 }
 
@@ -398,9 +392,12 @@ test "chains_direct" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const M1 = g.create_and_insert_node();
-    const M2 = g.create_and_insert_node();
-    const M3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+
+    const M1 = try tg.instantiate_node(electrical_type);
+    const M2 = try tg.instantiate_node(electrical_type);
+    const M3 = try tg.instantiate_node(electrical_type);
 
     _ = try EdgeInterfaceConnection.connect(M1, M2);
     _ = try EdgeInterfaceConnection.connect(M2, M3);
@@ -415,9 +412,12 @@ test "chains_double_shallow_flat" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+
+    const bn1 = try tg.instantiate_node(electrical_type);
+    const bn2 = try tg.instantiate_node(electrical_type);
+    const bn3 = try tg.instantiate_node(electrical_type);
 
     _ = try EdgeInterfaceConnection.connect_shallow(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect_shallow(bn2, bn3);
@@ -432,9 +432,12 @@ test "chains_mixed_shallow_flat" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+
+    const bn1 = try tg.instantiate_node(electrical_type);
+    const bn2 = try tg.instantiate_node(electrical_type);
+    const bn3 = try tg.instantiate_node(electrical_type);
 
     _ = try EdgeInterfaceConnection.connect_shallow(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn2, bn3);
@@ -453,13 +456,16 @@ test "multiple_paths" {
     var g = graph.GraphView.init(a);
     defer g.deinit();
 
-    const bn1 = g.create_and_insert_node();
-    const bn2 = g.create_and_insert_node();
-    const bn3 = g.create_and_insert_node();
-    const bn4 = g.create_and_insert_node();
-    const bn5 = g.create_and_insert_node();
-    const bn6 = g.create_and_insert_node();
-    const bn7 = g.create_and_insert_node();
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+
+    const bn1 = try tg.instantiate_node(electrical_type);
+    const bn2 = try tg.instantiate_node(electrical_type);
+    const bn3 = try tg.instantiate_node(electrical_type);
+    const bn4 = try tg.instantiate_node(electrical_type);
+    const bn5 = try tg.instantiate_node(electrical_type);
+    const bn6 = try tg.instantiate_node(electrical_type);
+    const bn7 = try tg.instantiate_node(electrical_type);
 
     _ = try EdgeInterfaceConnection.connect(bn1, bn2);
     _ = try EdgeInterfaceConnection.connect(bn2, bn4);
@@ -496,7 +502,6 @@ test "hierarchy_short" {
     var tg = TypeGraph.init(&g);
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
-    const LinkType = try tg.add_type("Link");
 
     _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
     _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
@@ -507,8 +512,8 @@ test "hierarchy_short" {
 
     try expectNoPath(a, electric_power, lv_pin);
 
-    const link_a = try tg.instantiate_node(LinkType);
-    const link_b = try tg.instantiate_node(LinkType);
+    const link_a = try tg.instantiate_node(ElectricalType);
+    const link_b = try tg.instantiate_node(ElectricalType);
 
     _ = try EdgeInterfaceConnection.connect(hv_pin, link_a);
     _ = try EdgeInterfaceConnection.connect(link_a, link_b);
@@ -629,11 +634,10 @@ test "split_flip_negative" {
 
     var tg = TypeGraph.init(&g);
     const HighType = try tg.add_type("High");
-    const Lower1Type = try tg.add_type("Lower1");
-    const Lower2Type = try tg.add_type("Lower2");
+    const Lower = try tg.add_type("Low");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null);
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null);
+    _ = try tg.add_make_child(HighType, Lower, "lower1", null);
+    _ = try tg.add_make_child(HighType, Lower, "lower2", null);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -692,6 +696,9 @@ test "loooooong_chain" {
     var g = graph.GraphView.init(allocator);
     defer g.deinit();
 
+    var tg = TypeGraph.init(&g);
+    const electrical_type = try tg.add_type("Electrical");
+
     const chain_length = 1000;
     var nodes = std.ArrayList(graph.BoundNodeReference).init(allocator);
     defer nodes.deinit();
@@ -707,7 +714,7 @@ test "loooooong_chain" {
         if (i % 1000 == 0 and i > 0) {
             std.debug.print("  Created {} nodes...\n", .{i});
         }
-        const node = g.create_and_insert_node();
+        const node = try tg.instantiate_node(electrical_type);
         nodes.appendAssumeCapacity(node);
     }
     std.debug.print("  All {} nodes created.\n", .{chain_length});
