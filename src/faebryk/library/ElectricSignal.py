@@ -63,12 +63,11 @@ class ElectricSignal(fabll.Node):
         node: fabll.Node,
         ground_only=False,
         exclude: Iterable[fabll.Node] = (),
-    ):
-        cls.connect_all_node_references(
-            reference=reference,
-            nodes=node.get_children(direct_only=True, types=fabll.Node).difference(
-                set[Node[NodeAttributes]](exclude)
-            ),
+    ) -> F.ElectricPower:
+        return cls.connect_all_node_references(
+            node.get_children(
+                direct_only=True, types=fabll.Node, required_trait=fabll.is_interface
+            ).difference(set[Node[NodeAttributes]](exclude)),
             gnd_only=ground_only,
         )
 

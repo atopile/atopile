@@ -17,6 +17,7 @@
 - [ ] ModuleInterface
   - [ ] isinstance checks
   - [x] rename to fabll.Node
+  - [ ] replace connect_all_node_references
 - [ ] library
   - [x] inheritance from Module/Node/Trait/ModuleInterface
   - [x] libs/L.py

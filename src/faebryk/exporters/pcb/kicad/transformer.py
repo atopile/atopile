@@ -336,7 +336,11 @@ class PCB_Transformer:
         ).setup(pcb_fp, self)
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
-        for fpad in g_fp.get_children(direct_only=True, types=fabll.Node):
+        for fpad in g_fp.get_children(
+            direct_only=True,
+            types=fabll.Node,
+            required_trait=fabll.is_interface,
+        ):
             pads = [
                 pad
                 for pad in pcb_pads
