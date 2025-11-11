@@ -48,28 +48,40 @@ pub const EdgeInterfaceConnection = struct {
     }
 
     pub fn connect(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        const bn1_type_edge = EdgeType.get_type_edge(bn1) orelse return error.IncompatibleTypes;
-        const bn2_type_edge = EdgeType.get_type_edge(bn2) orelse return error.IncompatibleTypes;
+        const bn1_type_edge = EdgeType.get_type_edge(bn1);
+        const bn2_type_edge = EdgeType.get_type_edge(bn2);
 
-        const type1 = EdgeType.get_type_node(bn1_type_edge.edge);
-        const type2 = EdgeType.get_type_node(bn2_type_edge.edge);
-
-        if (!Node.is_same(type1, type2)) {
+        if (bn1_type_edge == null and bn2_type_edge == null) {
+            // no type information on either node – allow connection
+        } else if (bn1_type_edge == null or bn2_type_edge == null) {
             return error.IncompatibleTypes;
+        } else {
+            const type1 = EdgeType.get_type_node(bn1_type_edge.?.edge);
+            const type2 = EdgeType.get_type_node(bn2_type_edge.?.edge);
+
+            if (!Node.is_same(type1, type2)) {
+                return error.IncompatibleTypes;
+            }
         }
 
         return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, false));
     }
 
     pub fn connect_shallow(bn1: BoundNodeReference, bn2: BoundNodeReference) !BoundEdgeReference {
-        const bn1_type_edge = EdgeType.get_type_edge(bn1) orelse return error.IncompatibleTypes;
-        const bn2_type_edge = EdgeType.get_type_edge(bn2) orelse return error.IncompatibleTypes;
+        const bn1_type_edge = EdgeType.get_type_edge(bn1);
+        const bn2_type_edge = EdgeType.get_type_edge(bn2);
 
-        const type1 = EdgeType.get_type_node(bn1_type_edge.edge);
-        const type2 = EdgeType.get_type_node(bn2_type_edge.edge);
-
-        if (!Node.is_same(type1, type2)) {
+        if (bn1_type_edge == null and bn2_type_edge == null) {
+            // no type information on either node – allow connection
+        } else if (bn1_type_edge == null or bn2_type_edge == null) {
             return error.IncompatibleTypes;
+        } else {
+            const type1 = EdgeType.get_type_node(bn1_type_edge.?.edge);
+            const type2 = EdgeType.get_type_node(bn2_type_edge.?.edge);
+
+            if (!Node.is_same(type1, type2)) {
+                return error.IncompatibleTypes;
+            }
         }
 
         return bn1.g.insert_edge(try EdgeInterfaceConnection.init(bn1.g.allocator, bn1.node, bn2.node, true));
