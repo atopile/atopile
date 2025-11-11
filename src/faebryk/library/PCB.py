@@ -10,7 +10,8 @@ import faebryk.library._F as F
 
 # from faebryk.core.reference import reference
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.units import to_si_str
+
+# from faebryk.libs.units import to_si_str
 from faebryk.libs.util import find, groupby, md_list
 
 logger = logging.getLogger(__name__)

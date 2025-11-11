@@ -1,8 +1,12 @@
 from enum import Enum
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+import faebryk.library.Units as Units
+
+if TYPE_CHECKING:
+    import faebryk.library.Units as Units
 
 
 class is_literal(fabll.Node):
@@ -31,7 +35,7 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: type[fabll.NodeT] = F.Units.Dimensionless,
+        unit: type[fabll.NodeT] = Units.Dimensionless,
     ) -> Self:
         # TODO
         return self
@@ -47,7 +51,7 @@ class Numbers(fabll.Node):
                 self,
                 lower: float | None,
                 upper: float | None,
-                unit: type[fabll.NodeT] = F.Units.Dimensionless,
+                unit: type[fabll.NodeT] = Units.Dimensionless,
             ) -> Self:
                 return (
                     cls.bind_typegraph(tg=tg)

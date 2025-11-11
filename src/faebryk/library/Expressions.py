@@ -71,7 +71,7 @@ def _retrieve_operands(node: fabll.NodeT, identifier: str | None) -> list[fabll.
         if ctx._identifier is not None and edge.edge().name() != ctx._identifier:
             return
         ctx.operands.append(
-            fabll.NodeT.bind_instance(edge.g().bind(node=edge.edge().target()))
+            fabll.Node.bind_instance(edge.g().bind(node=edge.edge().target()))
         )
 
     EdgeOperand.visit_operand_edges(bound_node=node.instance, ctx=Ctx, f=visit)
@@ -1023,7 +1023,7 @@ class Is(fabll.Node):
         ref: list[str | fabll.ChildField[Any]],
         value: fabll.LiteralT,
     ) -> fabll.ChildField[Any]:
-        lit = fabll.LiteralNode.MakeChild(value=value)
+        lit = F.Literals.Strings.MakeChild(value=value)
         out = cls.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out

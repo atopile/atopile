@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -6,11 +7,14 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
+if TYPE_CHECKING:
+    from faebryk.library.NumberDomain import NumberDomain
+
 
 class is_parameter_operatable(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
-    def try_extract_constrained_literal[T: F.Literals.LiteralNodes](
+    def try_extract_constrained_literal[T: "F.Literals.LiteralNodes"](
         self, lit_type: type[T]
     ) -> T | None:
         # 1. find all Is! expressions parameter is involved in
@@ -58,14 +62,16 @@ class is_parameter_operatable(fabll.Node):
 
         return e_ctx.lit
 
-    def force_extract_literal[T: F.Literals.LiteralNodes](self, lit_type: type[T]) -> T:
+    def force_extract_literal[T: "F.Literals.LiteralNodes"](
+        self, lit_type: type[T]
+    ) -> T:
         lit = self.try_extract_constrained_literal(lit_type=lit_type)
         if lit is None:
             raise ParameterIsNotConstrainedToLiteral(parameter=self)
         return lit
 
     def constrain_to_literal(
-        self, g: graph.GraphView, value: F.Literals.LiteralNodes
+        self, g: graph.GraphView, value: "F.Literals.LiteralNodes"
     ) -> None:
         node = self.instance
         tg = not_none(fabll.TypeGraph.of_instance(instance_node=node))
@@ -92,12 +98,12 @@ class StringParameter(fabll.Node):
     _is_parameter = fabll.ChildField(is_parameter)
     _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
 
-    def try_extract_constrained_literal(self) -> F.Literals.Strings | None:
+    def try_extract_constrained_literal(self) -> "F.Literals.Strings | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
             lit_type=F.Literals.Strings
         )
 
-    def force_extract_literal(self) -> F.Literals.Strings:
+    def force_extract_literal(self) -> "F.Literals.Strings":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
             lit_type=F.Literals.Strings
         )
@@ -117,12 +123,12 @@ class BooleanParameter(fabll.Node):
     _is_parameter = fabll.ChildField(is_parameter)
     _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
 
-    def try_extract_constrained_literal(self) -> F.Literals.Booleans | None:
+    def try_extract_constrained_literal(self) -> "F.Literals.Booleans | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
             lit_type=F.Literals.Booleans
         )
 
-    def force_extract_literal(self) -> F.Literals.Booleans:
+    def force_extract_literal(self) -> "F.Literals.Booleans":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
             lit_type=F.Literals.Booleans
         )
@@ -151,12 +157,12 @@ class EnumParameter(fabll.Node):
         # TODO
         return out
 
-    def try_extract_constrained_literal(self) -> F.Literals.Enums | None:
+    def try_extract_constrained_literal(self) -> "F.Literals.Enums | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
             lit_type=F.Literals.Enums
         )
 
-    def force_extract_literal(self) -> F.Literals.Enums:
+    def force_extract_literal(self) -> "F.Literals.Enums":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
             lit_type=F.Literals.Enums
         )
@@ -166,10 +172,10 @@ class NumericParameter(fabll.Node):
     _is_parameter = fabll.ChildField(is_parameter)
     _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
 
-    domain = fabll.ChildField(F.NumberDomain)
+    # domain = fabll.ChildField(NumberDomain)
 
     def constrain_to_literal(
-        self, g: graph.GraphView, value: F.Literals.Numbers
+        self, g: graph.GraphView, value: "F.Literals.Numbers"
     ) -> None:
         self.get_trait(is_parameter_operatable).constrain_to_literal(g=g, value=value)
 
@@ -191,22 +197,22 @@ class NumericParameter(fabll.Node):
                 edge=fbrk.EdgePointer.build(identifier="unit", order=None),
             )
         )
-        out.add_dependant(
-            *F.NumberDomain.EdgeFields(
-                ref=[out, cls.domain],
-                negative=negative,
-                zero_allowed=zero_allowed,
-                integer=integer,
-            )
-        )
+        # out.add_dependant(
+        #     *NumberDomain.EdgeFields(
+        #         ref=[out, cls.domain],
+        #         negative=negative,
+        #         zero_allowed=zero_allowed,
+        #         integer=integer,
+        #     )
+        # )
         return out
 
-    def try_extract_constrained_literal(self) -> F.Literals.Numbers | None:
+    def try_extract_constrained_literal(self) -> "F.Literals.Numbers | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
             lit_type=F.Literals.Numbers
         )
 
-    def force_extract_literal(self) -> F.Literals.Numbers:
+    def force_extract_literal(self) -> "F.Literals.Numbers":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
             lit_type=F.Literals.Numbers
         )

@@ -48,18 +48,16 @@ class NumberDomain(fabll.Node):
     ):
         out = [
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [*ref, F.NumberDomain.negative], negative
+                [*ref, cls.negative], negative
             ),
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [*ref, F.NumberDomain.zero_allowed], zero_allowed
+                [*ref, cls.zero_allowed], zero_allowed
             ),
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [*ref, F.NumberDomain.integer], integer
-            ),
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([*ref, cls.integer], integer),
         ]
         return out
 
-    def unbounded(self, units: type[fabll.NodeT]) -> F.Literals.Numbers:
+    def unbounded(self, units: type[fabll.NodeT]) -> "F.Literals.Numbers":
         if self.integer.get().extract_single():
             # TODO
             pass

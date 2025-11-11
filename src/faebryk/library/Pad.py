@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 
+from typing import TYPE_CHECKING
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
+
+if TYPE_CHECKING:
+    from faebryk.library.has_linked_pad import has_linked_pad
 
 
 class Pad(fabll.Node):
@@ -25,9 +29,9 @@ class Pad(fabll.Node):
 
     def attach(self, intf: F.Electrical):
         self.net.get().get_trait(fabll.is_interface).connect_to(intf)
-        fabll.Traits.create_and_add_instance_to(
-            node=intf, trait=F.has_linked_pad
-        ).setup(pad=self)
+        fabll.Traits.create_and_add_instance_to(node=intf, trait=has_linked_pad).setup(
+            pad=self
+        )
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(

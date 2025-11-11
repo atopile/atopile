@@ -1,7 +1,7 @@
 from typing import Any
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+import faebryk.library.Parameters as Parameters
 
 # TODO add all si units
 # TODO decide whether base units require unit trait
@@ -9,7 +9,7 @@ import faebryk.library._F as F
 
 class IsBaseUnit(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    symbol = F.Parameters.StringParameter.MakeChild()
+    symbol = Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(cls, symbol: str) -> fabll.ChildField[Any]:

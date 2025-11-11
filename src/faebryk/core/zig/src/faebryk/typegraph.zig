@@ -6,7 +6,7 @@ const next_mod = @import("next.zig");
 const pointer_mod = @import("pointer.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
 const nodebuilder_mod = @import("nodebuilder.zig");
-
+const trait_mod = @import("trait.zig");
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
 
@@ -23,6 +23,7 @@ const EdgePointer = pointer_mod.EdgePointer;
 const EdgeNext = next_mod.EdgeNext;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const NodeCreationAttributes = nodebuilder_mod.NodeCreationAttributes;
+const EdgeTrait = trait_mod.EdgeTrait;
 
 // TODO: BoundNodeReference and NodeReference used mixed all over the place
 // TODO: move add/create functions into respective structs
@@ -66,7 +67,7 @@ pub const TypeGraph = struct {
     pub const TraitNode = struct {
         pub fn add_trait_to(target: BoundNodeReference, trait_type: BoundNodeReference) BoundNodeReference {
             const trait_instance = TypeNode.spawn_instance(trait_type);
-            _ = EdgeComposition.add_child(target, trait_instance.node, null);
+            _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
             return trait_instance;
         }
     };
@@ -262,7 +263,7 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "MakeLink").?;
     }
 
-    fn get_ImplementsType(self: *@This()) BoundNodeReference {
+    pub fn get_ImplementsType(self: *@This()) BoundNodeReference {
         return EdgeComposition.get_child_by_identifier(self.self_node, "ImplementsType").?;
     }
 
@@ -341,7 +342,8 @@ pub const TypeGraph = struct {
 
         // Add type trait
         const trait_implements_type_instance = try self.instantiate_node(self.get_ImplementsType());
-        _ = EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
+        _ = EdgeTrait.add_trait_instance(type_node, trait_implements_type_instance.node);
+
         _ = EdgeComposition.add_child(self.self_node, type_node.node, identifier);
 
         return type_node;
@@ -514,11 +516,11 @@ pub const TypeGraph = struct {
                 const edge = type_edge.edge;
 
                 const implements_type_instance = ctx.self.get_g().bind(EdgeType.get_instance_node(edge).?);
-                const parent_type_edge = EdgeComposition.get_parent_edge(implements_type_instance);
-                const parent_type_node = EdgeComposition.get_parent_node(parent_type_edge.?.edge);
-                const type_node_name = TypeNodeAttributes.of(parent_type_node).get_type_name();
+                const owner_type_edge = EdgeTrait.get_owner_edge(implements_type_instance);
+                const owner_type_node = EdgeTrait.get_owner_node(owner_type_edge.?.edge);
+                const type_node_name = TypeNodeAttributes.of(owner_type_node).get_type_name();
                 if (std.mem.eql(u8, type_node_name, ctx.type_identifier)) {
-                    return visitor.VisitResult(NodeReference){ .OK = parent_type_node };
+                    return visitor.VisitResult(NodeReference){ .OK = owner_type_node };
                 }
                 return visitor.VisitResult(NodeReference){ .CONTINUE = {} };
             }

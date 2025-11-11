@@ -18,7 +18,7 @@ class has_net_name(fabll.Node):
         EXPECTED = auto()
 
     name_ = F.Parameters.StringParameter.MakeChild()
-    level_ = F.Parameters.EnumParameter.MakeChild(F.has_net_name.Level)
+    level_ = F.Parameters.EnumParameter.MakeChild(enum_t=Level)
 
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 

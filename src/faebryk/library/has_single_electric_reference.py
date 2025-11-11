@@ -29,7 +29,7 @@ class has_single_electric_reference(fabll.Node):
         self,
         ground_only: bool = False,
         exclude: list[fabll.Node] = [],
-    ) -> "ElectricPower":
+    ):
         parent_node = self.get_parent_force()[0]
 
         reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(
@@ -42,18 +42,18 @@ class has_single_electric_reference(fabll.Node):
         ).difference(set(exclude))
 
         refs = {
-            x.get_trait(F.has_single_electric_reference).get_reference()
+            x.get_trait(self.__class__).get_reference()
             for x in nodes
-            if x.has_trait(F.has_single_electric_reference)
+            if x.has_trait(self.__class__)
         } | {x for x in nodes if isinstance(x, F.ElectricPower)}
         assert refs
 
         if ground_only:
-            F.Electrical.connect(*{r.lv.get() for r in refs})
-            return next(iter(refs))
-
-        reference.get_trait(fabll.is_interface).connect_to(*refs)
-        return reference
+            reference.lv.get().get_trait(fabll.is_interface).connect_to(
+                *{r.lv.get() for r in refs}
+            )
+        else:
+            reference.get_trait(fabll.is_interface).connect_to(*refs)
 
     @property
     def ground_only(self) -> bool:
