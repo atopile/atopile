@@ -48,8 +48,10 @@ def export_testpoints(
         library_name = footprint.name
 
         # Get single connected net name
-        net = F.Net.find_named_net_for_mif(testpoint.contact.get())
-        net_name = net.get_trait(F.has_overriden_name).get_name() if net else "no-net"
+        net_name = (
+            testpoint.contact.get().get_trait(F.has_overriden_name).get_name()
+            or "no-net"
+        )
 
         testpoint_data[designator] = {
             "testpoint_name": full_name,
