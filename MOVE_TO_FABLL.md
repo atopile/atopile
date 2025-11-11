@@ -18,6 +18,7 @@
   - [ ] isinstance checks
   - [x] rename to fabll.Node
   - [ ] replace connect_all_node_references
+  - [x] implement group_into_buses
 - [ ] library
   - [x] inheritance from Module/Node/Trait/ModuleInterface
   - [x] libs/L.py
