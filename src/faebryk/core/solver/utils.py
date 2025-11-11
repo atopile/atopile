@@ -20,6 +20,7 @@ from typing import (
 )
 
 import faebryk.core.node as fabll
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.library.Expressions import (
     is_associative,
@@ -39,7 +40,6 @@ from faebryk.libs.util import (
     unique_ref,
 )
 
-ParameterOperatable = fabll.ParameterOperatable
 
 if TYPE_CHECKING:
     from faebryk.core.solver.mutator import Mutator

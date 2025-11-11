@@ -5,7 +5,14 @@ import io
 import logging
 from typing import TYPE_CHECKING, Any
 
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, Edge, Node, GraphView  # noqa: F401
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import (  # noqa: F401
+    BoundEdge,
+    BoundNode,
+    Edge,
+    GraphView,
+    Node,
+)
 
 if TYPE_CHECKING:
     pass

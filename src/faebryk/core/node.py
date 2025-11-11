@@ -1238,7 +1238,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         )
 
 
-
 type NodeT = Node[Any]
 
 
@@ -1353,14 +1352,14 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
 
     def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
         children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
-            direct_only=True,
-            types=MakeChild
+            direct_only=True, types=MakeChild
         )
         bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
         for child in children:
             if child.get_child_type().node().is_same(bound_trait.node()):
                 return True
         return False
+
 
 # ------------------------------------------------------------
 
@@ -1405,6 +1404,7 @@ class ImplementsType(Node):
     Wrapper around zig type.
     Matched automatically because of name.
     """
+
 
 class MakeChild(Node):
     """
@@ -1462,14 +1462,21 @@ class is_interface(Node):
     every bus once; the result is a dict whose keys are the representative bus interfaces
     and whose values are the other Interfaces that belong to the same bus.
     """
+
     @staticmethod
-    def group_into_buses(nodes: set["Node[Any]"], ) -> dict["Node[Any]", set["Node[Any]"]]:
+    def group_into_buses(
+        nodes: set["Node[Any]"],
+    ) -> dict["Node[Any]", set["Node[Any]"]]:
         remaining = set(nodes)
         buses: dict["Node[Any]", set["Node[Any]"]] = {}
 
         while remaining:
             interface = remaining.pop()
-            connected = set(interface.get_trait(is_interface).get_connected(include_self=True).keys())
+            connected = set(
+                interface.get_trait(is_interface)
+                .get_connected(include_self=True)
+                .keys()
+            )
             buses[interface] = connected
             remaining.difference_update(connected)
 
@@ -1511,6 +1518,7 @@ type Module = Node
 class NodeWithInterface(Node):
     _is_interface = is_interface.MakeChild()
 
+
 IMPLIED_PATHS = False
 
 # lib fields
@@ -1528,8 +1536,6 @@ RelaxedQuantity = None
 Expressions = None
 Domains = None
 Predicates = None
-
-ParameterOperatable = is_parameter_operatable
 
 # --------------------------------------------------------------------------------------
 
