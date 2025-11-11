@@ -16,6 +16,7 @@ class Battery(fabll.Node):
     capacity = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.AmpereHour,
     )
+    power = F.ElectricPower.MakeChild()
 
     # ----------------------------------------
     #                 traits
