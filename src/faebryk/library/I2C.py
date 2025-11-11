@@ -21,9 +21,9 @@ class I2C(fabll.Node):
     scl = F.ElectricLogic.MakeChild()
     sda = F.ElectricLogic.MakeChild()
 
-    address = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
-    bus_addresses = fabll.Parameter.MakeChild_Numeric(F.Units.Natural)
-    frequency = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
+    address = F.Parameters.NumericParameter.MakeChild(F.Units.Natural)
+    bus_addresses = F.Parameters.NumericParameter.MakeChild(F.Units.Natural)
+    frequency = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
 
     # ----------------------------------------
     #                 traits

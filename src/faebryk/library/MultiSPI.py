@@ -12,7 +12,7 @@ class MultiSPI(fabll.Node):
     # ----------------------------------------
     clock = F.ElectricLogic.MakeChild()
     chip_select = F.ElectricLogic.MakeChild()
-    data_lanes = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Natural)
+    data_lanes = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
 
     # ----------------------------------------
     #                 traits

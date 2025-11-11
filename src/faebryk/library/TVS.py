@@ -11,7 +11,9 @@ logger = logging.getLogger(__name__)
 
 # TODO: Deprecate, use Diode instead
 class TVS(fabll.Node):
-    reverse_breakdown_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
+    reverse_breakdown_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

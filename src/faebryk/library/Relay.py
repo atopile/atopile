@@ -21,9 +21,13 @@ class Relay(fabll.Node):
     switch_b_nc = F.Electrical.MakeChild()
     coil_power = F.ElectricPower.MakeChild()
 
-    contact_max_switching_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    contact_max_switching_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    contact_max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    contact_max_switching_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt
+    )
+    contact_max_switching_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere
+    )
+    contact_max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     # TODO: make generic (use Switch module, different switch models, bistable, etc.)
     # switch = [F.Switch.MakeChild() for _ in range(6)]
 

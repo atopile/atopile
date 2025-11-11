@@ -55,11 +55,8 @@ class BJT(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-
-    # doping_type = fabll.Parameter.MakeChild_Enum(enum_t=DopingType)
-    # operation_region = fabll.Parameter.MakeChild_Enum(enum_t=OperationRegion)
-
-
+    # doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
+    # operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

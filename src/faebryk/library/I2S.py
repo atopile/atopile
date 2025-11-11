@@ -16,8 +16,8 @@ class I2S(fabll.Node):
     ws = F.ElectricLogic.MakeChild()  # Word Select (Left/Right Clock)
     sck = F.ElectricLogic.MakeChild()  # Serial Clock
 
-    sample_rate = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
-    bit_depth = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Bit)
+    sample_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+    bit_depth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Bit)
 
     # ----------------------------------------
     #                 traits

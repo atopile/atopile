@@ -24,13 +24,13 @@ class Filter(fabll.Node):
     in_: fabll.ChildField[F.Electrical]
     out: fabll.ChildField[F.Electrical]
 
-    cutoff_frequency = fabll.Parameter.MakeChild_Numeric(
+    cutoff_frequency = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Hertz,
     )
-    order = fabll.Parameter.MakeChild_Numeric(
+    order = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Natural,
     )
-    response = fabll.Parameter.MakeChild_Enum(enum_t=Response)
+    response = F.Parameters.EnumParameter.MakeChild(enum_t=Response)
 
     # ----------------------------------------
     #                 traits
