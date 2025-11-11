@@ -31,8 +31,8 @@ def netlist_graph():
     power = F.ElectricPower()
 
     # net labels
-    vcc = F.Net.with_name("+3V3")
-    gnd = F.Net.with_name("GND")
+    vcc = F.Net.MakeChild("+3V3")
+    gnd = F.Net.MakeChild("GND")
     power.hv.connect(vcc.part_of)
     power.lv.connect(gnd.part_of)
 
