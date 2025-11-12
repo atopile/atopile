@@ -3,7 +3,7 @@ from typing import Any, Callable, Protocol, Self
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.library import Literals
+import faebryk.library._F as F
 
 RefPath = fabll.RefPath
 EdgeField = fabll.EdgeField
@@ -308,13 +308,13 @@ class PointerTuple(fabll.Node):
 
     def get_literals_as_list(self) -> list[fabll.LiteralT]:
         return [
-            Literals.Strings.bind_instance(instance=lit.instance).get_value()
+            F.Literals.Strings.bind_instance(instance=lit.instance).get_value()
             for lit in self.literals.get().as_list()
         ]
 
     def append_literal(self, literal: fabll.LiteralT) -> None:
-        lit = Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
-            g=self.instance.g(), attributes=Literals.LiteralsAttributes(value=literal)
+        lit = F.Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
+            g=self.instance.g(), attributes=F.Literals.LiteralsAttributes(value=literal)
         )
         self.literals.get().append(lit)
 
