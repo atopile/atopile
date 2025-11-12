@@ -79,15 +79,9 @@ class Numbers(fabll.Node):
         return self
 
     @classmethod
-<<<<<<< Updated upstream
-    def bind_from_interval(cls, tg: fbrk.TypeGraph, g: graph.GraphView):
-        class NumbersBound:
-            def __init__(self, tg: fbrk.TypeGraph, g: graph.GraphView):
-=======
     def bind_from_interval(cls, tg: graph.TypeGraph, g: graph.GraphView):
         class NumbersBound:
             def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
->>>>>>> Stashed changes
                 self.tg = tg
                 self.g = g
 
@@ -242,11 +236,7 @@ LiteralNodes = Numbers | Booleans | Enums | Strings
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-<<<<<<< Updated upstream
-def make_lit(tg: fbrk.TypeGraph, value: LiteralValues) -> LiteralNodes:
-=======
 def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
->>>>>>> Stashed changes
     match value:
         case bool():
             return Booleans.bind_typegraph(tg=tg).create_instance(

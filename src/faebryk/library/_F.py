@@ -61,7 +61,6 @@ from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.Comparator import Comparator
-from faebryk.library.Relay import Relay
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
