@@ -107,7 +107,7 @@ def topo_sort(modules_out: dict[str, tuple[Path, list[str]]]):
         seen.add(m)
 
     # Flatten modules_out into (module_name, class_name) tuples in topological order
-    result = []
+    result: list[tuple[str, str]] = []
     for module_name in order:
         if module_name in modules_out:
             _, class_names = modules_out[module_name]
@@ -153,13 +153,13 @@ def main():
     modules_ordered = topo_sort(modules_out)
 
     # Generate import statements
-    import_statements = []
+    import_statements: list[str] = []
     for module, class_ in modules_ordered:
         # Check if this is a module import (marked with __NAME__AS_MODULE__)
         if class_.endswith("__AS_MODULE__"):
             # Import the module itself as a namespace
             # The marker format is "__ModuleName__AS_MODULE__"
-            import_statements.append(f"from faebryk.library import {module}")
+            import_statements.append(f"import faebryk.library.{module} as {module}")
         else:
             # Import a specific class from the module
             import_statements.append(f"from faebryk.library.{module} import {class_}")
@@ -181,7 +181,12 @@ def main():
         "# flake8: noqa: F401\n"
         "# flake8: noqa: I001\n"
         "# flake8: noqa: E501\n"
-        "\n" + "\n".join(import_statements) + "\n",
+        "\n" + "\n".join(import_statements) + "\n"
+        "\n"
+        "__all__ = [\n"
+        + "\n".join(f'"{module}",' for module, _ in modules_ordered)
+        + "\n]"
+        "\n",
         encoding="utf-8",
     )
 
