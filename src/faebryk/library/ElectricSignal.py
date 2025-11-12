@@ -1,13 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from functools import reduce
-from typing import Iterable
-
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node, NodeAttributes
-from faebryk.libs.util import cast_assert
+import faebryk.library.can_be_pulled as can_be_pulled
 
 
 class ElectricSignal(fabll.Node):
@@ -25,70 +21,14 @@ class ElectricSignal(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.ChildField(fabll.is_interface)
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _can_be_pulled = can_be_pulled.can_be_pulled.MakeChild(line, reference)
 
     @property
     def pull_resistance(self):
-        if (
-            connected_to := self.line.get_trait(fabll.is_interface).get_connected()
-        ) is None:
-            return None
-
-        parallel_resistors: list[F.Resistor] = []
-        for mif, _ in connected_to.items():
-            if (maybe_parent := mif.get_parent()) is None:
-                continue
-            parent, _ = maybe_parent
-
-            if not isinstance(parent, F.Resistor):
-                continue
-
-            other_side = [x for x in parent.unnamed if x is not mif]
-            assert len(other_side) == 1, "Resistors are bilateral"
-
-            if (
-                self.reference.hv
-                not in other_side[0].get_trait(fabll.is_interface).get_connected()
-            ):
-                # cannot trivially determine effective resistance
-                return None
-
-            parallel_resistors.append(parent)
-
-        if len(parallel_resistors) == 0:
-            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
-        elif len(parallel_resistors) == 1:
-            (resistor,) = parallel_resistors
-            return resistor.resistance.try_get_literal_subset()
-        else:
-            resistances = [
-                resistor.resistance.try_get_literal_subset()
-                for resistor in parallel_resistors
-            ]
-
-            if any(r is None for r in resistances):
-                # incomplete solution
-                return None
-
-            if any(not isinstance(r, Quantity_Interval) for r in resistances):
-                # invalid resistance value
-                return None
-
-            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
-            try:
-                return cast_assert(
-                    (Quantity_Interval, Quantity_Interval_Disjoint),
-                    reduce(
-                        lambda a, b: a + b,
-                        [
-                            cast_assert(Quantity_Interval, r).op_invert()
-                            for r in resistances
-                        ],
-                    ),
-                ).op_invert()
-            except ZeroDivisionError:
-                return None
+        """Delegate to the can_be_pulled trait to calculate pull resistance."""
+        return self._can_be_pulled.get().pull_resistance
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

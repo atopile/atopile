@@ -1,7 +1,7 @@
-from typing import Any
+from typing import Any, Self
 
 import faebryk.core.node as fabll
-import faebryk.library.Parameters as Parameters
+import faebryk.library._F as F
 
 # TODO add all si units
 # TODO decide whether base units require unit trait
@@ -9,7 +9,7 @@ import faebryk.library.Parameters as Parameters
 
 class IsBaseUnit(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    symbol = Parameters.StringParameter.MakeChild()
+    symbol = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(cls, symbol: str) -> fabll.ChildField[Any]:
@@ -36,20 +36,27 @@ class IsUnit(fabll.Node):
         # TODO
         return out
 
-    @staticmethod
-    def is_compatible_with(unit: "fabll.NodeT", other: "fabll.NodeT") -> bool:
+    def is_compatible_with(self, other: "IsUnit") -> bool:
         # TODO
         raise NotImplementedError
 
-    @staticmethod
-    def get_units(obj: "fabll.NodeT") -> "fabll.NodeT":
-        # TODO
-        raise NotImplementedError
 
-    @staticmethod
-    def get_units_or_dimensionless(obj: "fabll.NodeT") -> "fabll.NodeT":
-        # TODO
-        raise NotImplementedError
+class HasUnit(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    unit = F.Collections.Pointer.MakeChild()
+
+    def get_unit(self) -> IsUnit:
+        return self.unit.get().deref().get_trait(IsUnit)
+
+    @classmethod
+    def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll.ChildField[Self]:
+        out = fabll.ChildField(cls)
+        unit_field = fabll.ChildField(unit)
+        out.add_dependant(unit_field)
+        out.add_dependant(
+            F.Collections.Pointer.EdgeField([out, cls.unit], [unit_field])
+        )
+        return out
 
 
 # Base units ---------------------------------------------------------------------------

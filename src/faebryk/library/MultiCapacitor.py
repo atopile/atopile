@@ -94,14 +94,6 @@ class MultiCapacitor(fabll.Node):
     #     for c in self.capacitors:
     #         c.capacitance.constrain_subset(capacitance)
 
-    @classmethod
-    def from_capacitors(cls, *capacitors: F.Capacitor):
-        # TODO consider merging them more flatly (for multicaps)
-        obj = cls(len(capacitors))
-        for c_old, c_new in zip(capacitors, obj.capacitors):
-            c_new.specialize(c_old)
-        return obj
-
     usage_example = F.has_usage_example.MakeChild(
         example="""
         import MultiCapacitor

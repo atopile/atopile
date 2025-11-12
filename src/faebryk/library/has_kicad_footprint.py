@@ -29,7 +29,7 @@ class has_kicad_footprint(fabll.Node):
     ) -> fabll.ChildField:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.kicad_identifier_], kicad_identifier
             )
         )
@@ -46,7 +46,7 @@ class has_kicad_footprint(fabll.Node):
                 )
             )
             # Pad Str
-            lit = fabll.LiteralNode.MakeChild(value=pad_str)
+            lit = F.Literals.Strings.MakeChild(value=pad_str)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(

@@ -10,42 +10,7 @@ class Electrical(fabll.Node):
     Electrical interface.
     """
 
-    _is_interface = fabll.is_interface.MakeChild()
-
-    def get_net(self):
-        from faebryk.library.Net import Net
-
-        nets = {
-            net
-            for node, path in self._is_interface.get().get_connected().items()
-            if (net := node.get_parent_of_type(Net)) is not None
-        }
-
-        if not nets:
-            return None
-
-        assert len(nets) == 1
-        return next(iter(nets))
-
-    def net_crosses_pad_boundary(self) -> bool:
-        from faebryk.library.Pad import Pad
-
-        def _get_pad(n: fabll.Node):
-            if (parent := n.get_parent()) is None:
-                return None
-
-            parent_node, name_on_parent = parent
-
-            return (
-                parent_node
-                if isinstance(parent_node, Pad) and name_on_parent == "net"
-                else None
-            )
-
-        net = self._is_interface.get().get_connected().keys()
-        pads_on_net = {pad for n in net if (pad := _get_pad(n)) is not None}
-
-        return len(pads_on_net) > 1
+    _is_interface = fabll.ChildField(fabll.is_interface)
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

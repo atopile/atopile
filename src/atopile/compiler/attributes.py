@@ -36,7 +36,9 @@ class _has_local_kicad_footprint_named_defined(fabll.Node):
     which means we can construct the underlying pin map
     """
 
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    )
 
     # TODO: Forward this trait to parent
     _has_footprint = fabll.ChildField(F.has_footprint)
@@ -523,6 +525,4 @@ class I2C(F.I2C):
 
     @property
     def gnd(self):
-        return (
-            self.get_trait(F.has_single_electric_reference).get_reference().gnd
-        )
+        return self.get_trait(F.has_single_electric_reference).get_reference().gnd

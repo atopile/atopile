@@ -47,8 +47,8 @@ logger = logging.getLogger(__name__)
 
 def _create_letters(
     n: int,
-) -> tuple[ParameterOperatable.ReprContext, list[Parameter], Graph]:
-    context = ParameterOperatable.ReprContext()
+) -> tuple[F.Parameters.ReprContext, list[Parameter], Graph]:
+    context = F.Parameters.ReprContext()
 
     out = []
 
@@ -116,7 +116,7 @@ def test_mutator_no_graph_merge():
 
     p3 = Parameter(units=P.V)
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
 
     @algorithm("")
     def algo(mutator: Mutator):

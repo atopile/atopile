@@ -1,9 +1,12 @@
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+
+# import faebryk.enum_sets as enum_sets
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
@@ -81,14 +84,76 @@ class is_parameter_operatable(fabll.Node):
             operands=[self, value], constrain=True
         )
 
+    def compact_repr(
+        self, context: "F.Parameters.ReprContext | None" = None, use_name: bool = False
+    ) -> str:
+        if p := fabll.Traits(self).try_get_trait_of_obj(F.Parameters.is_parameter):
+            return p.compact_repr(context=context, use_name=use_name)
+        if e := fabll.Traits(self).try_get_trait_of_obj(
+            F.Parameters.is_parameter_operatable
+        ):
+            return e.compact_repr(context=context, use_name=use_name)
+
+        raise NotImplementedError()
+
+    def get_depth(self) -> int:
+        # TODO
+        pass
+
+    def try_get_literal(self) -> "F.Literals.LiteralNodes | None":
+        # TODO
+        pass
+
+    def try_extract_literal(
+        self, allow_subset: bool = False
+    ) -> "F.Literals.LiteralNodes | None":
+        # TODO
+        pass
+
+    def as_parameter(self) -> "F.Parameters.is_parameter":
+        return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter)
+
+    def as_expression(self) -> "F.Expressions.is_expression":
+        return fabll.Traits(self).get_trait_of_obj(F.Expressions.is_expression)
+
 
 class is_parameter(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    def compact_repr(
+        self, context: "ReprContext | None" = None, use_name: bool = False
+    ) -> str:
+        # TODO
+        raise NotImplementedError()
+
+    def domain_set(self) -> "F.Literals.LiteralNodes":
+        # TODO
+        raise NotImplementedError()
+
+    def get_likely_constrained(self) -> bool:
+        # TODO
+        pass
+
+    def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
+        return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter_operatable)
 
 
 class ParameterIsNotConstrainedToLiteral(Exception):
     def __init__(self, parameter: fabll.Node):
         self.parameter = parameter
+
+
+@dataclass
+class ReprContext:
+    @dataclass
+    class VariableMapping:
+        mapping: dict[is_parameter, int] = field(default_factory=dict)
+        next_id: int = 0
+
+    variable_mapping: VariableMapping = field(default_factory=VariableMapping)
+
+    def __hash__(self) -> int:
+        return hash(id(self))
 
 
 # --------------------------------------------------------------------------------------
@@ -173,6 +238,14 @@ class EnumParameter(fabll.Node):
             lit_type=F.Literals.Enums
         )
 
+    def setup(self, enum: type[Enum]) -> Self:
+        # TODO
+        return self
+
+    def get_enum(self) -> type[Enum]:
+        # TODO
+        pass
+
 
 class NumericParameter(fabll.Node):
     _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
@@ -182,10 +255,49 @@ class NumericParameter(fabll.Node):
 
     # domain = fabll.ChildField(NumberDomain)
 
+    def get_units(self) -> "F.Units.IsUnit":
+        return self.get_trait(F.Units.HasUnit).get_unit()
+
+    def get_domain(self) -> "F.NumberDomain":
+        # TODO
+        pass
+
+    def get_within(self) -> "F.Literals.Numbers | None":
+        # TODO
+        pass
+
+    def get_soft_set(self) -> "F.Literals.Numbers | None":
+        # TODO
+        pass
+
+    def get_guess(self) -> "F.Literals.Numbers | None":
+        # TODO
+        pass
+
+    def get_tolerance_guess(self) -> float | None:
+        # TODO
+        pass
+
     def constrain_to_literal(
         self, g: graph.GraphView, value: "F.Literals.Numbers"
     ) -> None:
         self.get_trait(is_parameter_operatable).constrain_to_literal(g=g, value=value)
+
+    def setup(
+        self,
+        *,
+        units: "F.Units.IsUnit",
+        # hard constraints
+        within: "F.Literals.Numbers | None" = None,
+        domain: "F.NumberDomain | None" = None,
+        # soft constraints
+        soft_set: "F.Literals.Numbers | None" = None,
+        guess: "F.Literals.Numbers | None" = None,
+        tolerance_guess: float | None = None,
+        likely_constrained: bool = False,
+    ) -> Self:
+        # TODO
+        pass
 
     @classmethod
     def MakeChild(

@@ -3,6 +3,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 import faebryk.library.Units as Units
 
 if TYPE_CHECKING:
@@ -11,6 +12,17 @@ if TYPE_CHECKING:
 
 class is_literal(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+    # TODO
+    def is_subset_of(self, other: "LiteralNodes") -> bool: ...
+
+    def op_intersect_intervals(self, other: "LiteralNodes") -> "LiteralNodes": ...
+    def op_union_intervals(self, other: "LiteralNodes") -> "LiteralNodes": ...
+    def op_symmetric_difference_intervals(
+        self, other: "LiteralNodes"
+    ) -> "LiteralNodes": ...
+
+    def op_is_equal(self, other: "LiteralNodes") -> "Booleans": ...
 
 
 # --------------------------------------------------------------------------------------
@@ -27,7 +39,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
 
     def setup(self, value: str) -> Self:
-        self.instance.node().get_dynamic_attrs().update({"value": value})
+        # TODO:
         return self
 
     @classmethod
@@ -49,8 +61,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
         return str(self.instance.node().get_dynamic_attrs().get("value", ""))
 
 
-class Numbers(fabll.Node[LiteralsAttributes]):
-    Attributes = LiteralsAttributes
+class Numbers(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
@@ -61,7 +72,7 @@ class Numbers(fabll.Node[LiteralsAttributes]):
         self,
         lower: float | None,
         upper: float | None,
-        unit: type[fabll.NodeT] = Units.Dimensionless,
+        unit: type[fabll.NodeT] | F.Units.IsUnit = Units.Dimensionless,
     ) -> Self:
         # TODO
         return self
@@ -86,6 +97,9 @@ class Numbers(fabll.Node[LiteralsAttributes]):
                 )
 
         return NumbersBound(tg=tg, g=g).setup_from_interval
+
+    def get_value(self) -> float:
+        return float(self.instance.node().get_dynamic_attrs().get("value", 0))
 
     @classmethod
     def MakeChild(cls, value: float) -> fabll.ChildField:
@@ -113,6 +127,8 @@ class Numbers(fabll.Node[LiteralsAttributes]):
     def closest_elem(self, target: "Numbers") -> "Numbers": ...
     def is_superset_of(self, other: "Numbers") -> bool: ...
     def is_subset_of(self, other: "Numbers") -> bool: ...
+    def op_greater_or_equal(self, other: "Numbers") -> "Booleans": ...
+    def op_greater_than(self, other: "Numbers") -> "Booleans": ...
 
     def op_intersect_intervals(self, *other: "Numbers") -> "Numbers": ...
     def op_union_intervals(self, other: "Numbers") -> "Numbers": ...
@@ -156,7 +172,7 @@ class Numbers(fabll.Node[LiteralsAttributes]):
     def to_dimensionless(self) -> "Numbers": ...
 
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
-    def are_units_compatible(self, unit: fabll.NodeT) -> bool: ...
+    def are_units_compatible(self, unit: F.Units.IsUnit) -> bool: ...
 
 
 class Booleans(fabll.Node[LiteralsAttributes]):
@@ -184,6 +200,15 @@ class Booleans(fabll.Node[LiteralsAttributes]):
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
+    def get_value(self) -> bool:
+        return bool(self.instance.node().get_dynamic_attrs().get("value", None))
+
+    def op_or(self, other: "Booleans") -> "Booleans": ...
+    def op_and(self, other: "Booleans") -> "Booleans": ...
+    def op_not(self) -> "Booleans": ...
+    def op_xor(self, other: "Booleans") -> "Booleans": ...
+    def op_implies(self, other: "Booleans") -> "Booleans": ...
+
 
 class Enums(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
@@ -192,16 +217,57 @@ class Enums(fabll.Node):
         # TODO
         return self
 
+    @classmethod
+    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll.ChildField:
+        # TODO: Make this work
+        assert isinstance(value, Enum), "Value of enum literal must be an enum"
+        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+
+    def get_value(self):
+        # TODO
+        pass
+
 
 # --------------------------------------------------------------------------------------
 
 LiteralNodes = Numbers | Booleans | Enums | Strings
 
+LiteralLike = LiteralValues | LiteralNodes | F.Literals.is_literal
+
+
+def make_lit(tg: fabll.TypeGraph, value: LiteralValues) -> LiteralNodes:
+    match value:
+        case bool():
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+        case float() | int():
+            value = float(value)
+            return Numbers.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+        case Enum():
+            return Enums.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+        case str():
+            return Strings.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+
 
 # TODO
-def make_lit(value: LiteralValues) -> LiteralNodes: ...
-
-
-# TODO
-def make_lit_child(value: LiteralValues) -> fabll.ChildField[LiteralNodes]:
-    pass
+def MakeChild_Literal(
+    tg: fabll.TypeGraph, value: LiteralValues, enum: type[Enum] | None = None
+) -> fabll.ChildField[LiteralNodes]:
+    match value:
+        case bool():
+            return Booleans.MakeChild(value=value)
+        case float() | int():
+            return Numbers.MakeChild(value=value)
+        case Enum():
+            if enum is None:
+                raise ValueError("Enum must be provided when creating an enum literal")
+            return Enums.MakeChild(enum=enum, value=value)
+        case str():
+            return Strings.MakeChild(value=value)

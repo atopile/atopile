@@ -36,7 +36,7 @@ def test_new_definitions():
 def test_compact_repr():
     p1 = Parameter(units=P.V)
     p2 = Parameter(units=P.V)
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     expr = cast(Expression, (p1 + p2 + (5 * P.V)) * 10)  # type: ignore
     exprstr = expr.compact_repr(context)
     assert exprstr == "((A volt + B volt) + 5 volt) * 10"
