@@ -5,7 +5,6 @@ from enum import Enum, auto
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import rt_field
 
 
 class BJT(fabll.Node):
@@ -33,33 +32,34 @@ class BJT(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeChild_Trait(fabll.is_module.MakeChild())
 
-    _can_bridge = F.can_bridge.MakeChild(in_=collector, out_=emitter)
-
-    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
-        mapping={
-            emitter: ["E", "Emitter"],
-            base: ["B", "Base"],
-            collector: ["C", "Collector"],
-        },
-        accept_prefix=False,
-        case_sensitive=False,
+    _can_bridge = fabll.Traits.MakeChild_Trait(
+        F.can_bridge.MakeChild(in_=collector, out_=emitter)
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.Q
+    _pin_association_heuristic = fabll.Traits.MakeChild_Trait(
+        F.has_pin_association_heuristic.MakeChild(
+            mapping={
+                emitter: ["E", "Emitter"],
+                base: ["B", "Base"],
+                collector: ["C", "Collector"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
     )
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
+    designator_prefix = fabll.Traits.MakeChild_Trait(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
+    )
 
     # doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
     # operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeChild_Trait(
+        F.has_usage_example.MakeChild(
+            example="""
         import BJT, Resistor, ElectricPower
 
         bjt = new BJT
@@ -77,5 +77,6 @@ class BJT(fabll.Node):
         input_signal ~> base_resistor ~> bjt.base
         output_signal ~ bjt.collector
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

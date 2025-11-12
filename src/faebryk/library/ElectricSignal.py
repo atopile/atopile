@@ -1,18 +1,12 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.node import Node, NodeAttributes
-
-
 from functools import reduce
 from typing import Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-)
+from faebryk.core.node import Node, NodeAttributes
 from faebryk.libs.util import cast_assert
 
 
@@ -35,7 +29,7 @@ class ElectricSignal(fabll.Node):
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     @property
-    def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:
+    def pull_resistance(self):
         if (
             connected_to := self.line.get_trait(fabll.is_interface).get_connected()
         ) is None:

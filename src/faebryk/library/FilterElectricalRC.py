@@ -6,7 +6,6 @@ import math
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint, Quantity_Set
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,6 @@ class FilterElectricalRC(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-    def __init__(self, *, _hardcoded: bool = False):
-        super().__init__()
-        self._hardcoded = _hardcoded
-
     def __preinit__(self):
         self.response.alias_is(F.Filter.Response.LOWPASS)
         self.order.alias_is(1)
@@ -66,22 +61,21 @@ class FilterElectricalRC(fabll.Node):
 
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    def can_bridge(self):
-        return F.can_bridge(self.in_.line, self.out.line)
+    can_bridge = F.can_bridge.MakeChild(in_=in_, out_=out)
 
-    @classmethod
-    def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
-        # TODO: Remove hardcoded when normal equations solve faster
-        out = cls(_hardcoded=True)
-        cutoff_frequency = 1 / (
-            Quantity_Interval_Disjoint.from_value(resistance * capacitance)
-            * 2
-            * math.pi
-        )
-        out.resistor.resistance.constrain_subset(resistance)
-        out.capacitor.capacitance.constrain_subset(capacitance)
-        out.cutoff_frequency.constrain_subset(cutoff_frequency)
-        return out
+    # @classmethod
+    # def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
+    #     # TODO: Remove hardcoded when normal equations solve faster
+    #     out = cls(_hardcoded=True)
+    #     cutoff_frequency = 1 / (
+    #         Quantity_Interval_Disjoint.from_value(resistance * capacitance)
+    #         * 2
+    #         * math.pi
+    #     )
+    #     out.resistor.resistance.constrain_subset(resistance)
+    #     out.capacitor.capacitance.constrain_subset(capacitance)
+    #     out.cutoff_frequency.constrain_subset(cutoff_frequency)
+    #     return out
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

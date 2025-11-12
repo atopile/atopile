@@ -71,8 +71,8 @@ class LED(fabll.Node):
     _simple_repr = F.has_simple_value_representation.MakeChild(
         S(max_brightness),
         S(color),
-        S(diode.get().forward_voltage, prefix="Vf"),
-        S(diode.get().current, prefix="If"),
+        # S(diode.get().forward_voltage, prefix="Vf"), calling get before instantiation is not allowed
+        # S(diode.get().current, prefix="If"),
     )
 
     usage_example = F.has_usage_example.MakeChild(

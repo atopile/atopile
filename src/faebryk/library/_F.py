@@ -52,7 +52,6 @@ from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_numbe
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.library.Electrical import Electrical
-from faebryk.library.TVS import TVS
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad

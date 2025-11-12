@@ -3,7 +3,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class UART_Base(fabll.Node):
@@ -22,14 +21,5 @@ class UART_Base(fabll.Node):
 
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
-    def __preinit__(self) -> None:
-        self.baud.add(F.is_bus_parameter())
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.rx.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
-        self.tx.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
+    # self.rx.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
+    # self.tx.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))

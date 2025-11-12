@@ -1,10 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from ast import Or
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class CAN_TTL(fabll.Node):

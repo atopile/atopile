@@ -19,35 +19,25 @@ class MultiSPI(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
-    def __init__(self, data_lane_count: int) -> None:
-        super().__init__()
-        self._data_lane_count = data_lane_count
-
     def data(self):
         return times(self._data_lane_count, F.ElectricLogic)
 
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.clock.line.add(
-            F.has_net_name("clock", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.chip_select.line.add(
-            F.has_net_name("chip_select", level=F.has_net_name.Level.SUGGESTED)
-        )
-        for i, line in enumerate(self.data):
-            line.add(F.has_net_name(f"data_{i}", level=F.has_net_name.Level.SUGGESTED))
+    # self.clock.line.add(
+    #     F.has_net_name("clock", level=F.has_net_name.Level.SUGGESTED)
+    # )
+    # self.chip_select.line.add(
+    #     F.has_net_name("chip_select", level=F.has_net_name.Level.SUGGESTED)
+    # )
+    # for i, line in enumerate(self.data):
+    #     line.add(F.has_net_name(f"data_{i}", level=F.has_net_name.Level.SUGGESTED))
 
     @classmethod
     def MakeChild(cls, data_lane_count: int):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Numbers.MakeChild_ConstrainToLiteral(
                 [out, cls.data_lanes], data_lane_count
             )
         )

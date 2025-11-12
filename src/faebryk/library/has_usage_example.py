@@ -31,11 +31,13 @@ class has_usage_example(fabll.Node):
     def MakeChild(cls, example: str, language: Language) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.example_], example)
-        )
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.language_], language
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.example_], example
             )
         )
+        # out.add_dependant(
+        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
+        #         [out, cls.language_], language
+        #     )
+        # )
         return out
