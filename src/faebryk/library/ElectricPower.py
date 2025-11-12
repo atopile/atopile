@@ -30,8 +30,6 @@ class ElectricPower(fabll.Node):
         unit=F.Units.Ampere,
     )
 
-    # _has_single_electric_reference = F.has_single_electric_reference_defined.MakeChild()
-
     bus_max_current_consumption_sum = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ampere,
     )

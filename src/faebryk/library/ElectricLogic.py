@@ -136,6 +136,7 @@ class ElectricLogic(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     @property
     def line(self) -> F.Electrical:

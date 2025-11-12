@@ -864,11 +864,7 @@ def test_shallow_bridge_partial():
 
             self.ins_l.connect_shallow(self.outs_l)
 
-        @fabll.rt_field
-        def single_electric_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     l1 = F.ElectricLogic()
     l2 = F.ElectricLogic()
@@ -876,8 +872,9 @@ def test_shallow_bridge_partial():
 
     l1.signal.connect(b.ins)
     l2.signal.connect(b.outs)
-    l1.reference.connect(b.single_electric_reference.get_reference())
-    l2.reference.connect(b.single_electric_reference.get_reference())
+    b_ref = b.get_trait(F.has_single_electric_reference).get_reference()
+    l1.reference.connect(b_ref)
+    l2.reference.connect(b_ref)
 
     assert l1.is_connected_to(l2)
 
@@ -915,7 +912,9 @@ def test_shallow_bridge_full():
         def __preinit__(self) -> None:
             assert (
                 self.ins_l[0].reference
-                is self.ins_l[0].single_electric_reference.get_reference()
+                is self.ins_l[0]
+                .get_trait(F.has_single_electric_reference)
+                .get_reference()
             )
 
             for el, lo in chain(
@@ -927,11 +926,7 @@ def test_shallow_bridge_full():
             for l1, l2 in zip(self.ins_l, self.outs_l):
                 l1.connect_shallow(l2)
 
-        @fabll.rt_field
-        def single_electric_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     class UARTBuffer(fabll.Node):
         buf: Buffer
@@ -948,11 +943,7 @@ def test_shallow_bridge_full():
             bus_o.tx.line.connect(buf.outs[0])
             bus_o.rx.line.connect(buf.outs[1])
 
-        @fabll.rt_field
-        def single_electric_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     app = UARTBuffer()
 
@@ -974,7 +965,8 @@ def test_shallow_bridge_full():
 
     # connect through trait
     assert (
-        buf.ins_l[0].single_electric_reference.get_reference() is buf.ins_l[0].reference
+        buf.ins_l[0].get_trait(F.has_single_electric_reference).get_reference()
+        is buf.ins_l[0].reference
     )
     assert buf.ins_l[0].reference.is_connected_to(buf.outs_l[0].reference)
     assert buf.outs_l[1].reference.is_connected_to(buf.ins_l[0].reference)

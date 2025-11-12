@@ -27,6 +27,9 @@ class USB_C_PSU_Vertical(fabll.Node):
     esd: USB2_0_ESD_Protection
 
     def __preinit__(self):
+        self.get_trait(F.has_single_electric_reference).connect_all_references(
+            reference=self.power_out
+        )
         self.gnd_capacitor.capacitance.constrain_subset(
             fabll.Range.from_center_rel(100 * P.nF, 0.05)
         )
@@ -63,6 +66,4 @@ class USB_C_PSU_Vertical(fabll.Node):
         self.usb_connector.shield.connect_via(self.gnd_resistor, gnd)
         self.usb_connector.shield.connect_via(self.gnd_capacitor, gnd)
 
-    @fabll.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.power_out)
+    _single_electric_reference = F.has_single_electric_reference.MakeChild()

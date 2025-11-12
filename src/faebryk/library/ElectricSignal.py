@@ -32,46 +32,7 @@ class ElectricSignal(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
-
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
-
-    @staticmethod
-    def connect_all_node_references(
-        reference: F.ElectricPower, nodes: Iterable[fabll.Node], gnd_only=False
-    ):
-        # TODO check if any child contains ElectricLogic which is not connected
-        # e.g find them in graph and check if any has parent without "single reference"
-
-        refs = {
-            x.get_trait(F.has_single_electric_reference).get_reference()
-            for x in nodes
-            if x.has_trait(F.has_single_electric_reference)
-        } | {x for x in nodes if isinstance(x, F.ElectricPower)}
-        assert refs
-
-        if gnd_only:
-            reference.lv.get().get_trait(fabll.is_interface).connect_to(
-                *{r.lv.get() for r in refs}
-            )
-        else:
-            reference.get_trait(fabll.is_interface).connect_to(*{r for r in refs})
-
-    @classmethod
-    def connect_all_module_references(
-        cls,
-        reference: F.ElectricPower,
-        node: fabll.Node,
-        ground_only=False,
-        exclude: Iterable[fabll.Node] = (),
-    ) -> F.ElectricPower:
-        return cls.connect_all_node_references(
-            node.get_children(
-                direct_only=True,
-                types=fabll.Node,
-                required_trait=(fabll.is_interface, fabll.is_module),
-            ).difference(set[Node[NodeAttributes]](exclude)),
-            gnd_only=ground_only,
-        )
 
     @property
     def pull_resistance(self) -> Quantity_Interval | Quantity_Interval_Disjoint | None:

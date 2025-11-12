@@ -47,10 +47,12 @@ class USB2514B(fabll.Node):
                 self.battery_charging_enable.set_weak(on=False, owner=owner)
 
         def __preinit__(self):
-            F.ElectricLogic.connect_all_module_references(self)
+            self.get_trait(F.has_single_electric_reference).connect_all_references()
             self.usb_port_disable_p.line.connect(self.usb.p.line)
             self.usb_port_disable_n.line.connect(self.usb.n.line)
             self.usb_power_enable.connect(self.battery_charging_enable)
+
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     class ConfigurationSource(Enum):
         DEFAULT = auto()
@@ -190,6 +192,7 @@ class USB2514B(fabll.Node):
     datasheet = F.has_datasheet.MakeChild(
         datasheet="https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
     )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     @fabll.rt_field
     def can_attach_to_footprint(self):
@@ -318,10 +321,11 @@ class USB2514B(fabll.Node):
         self.usb_removability_configuration_intput[1].connect(self.i2c.sda)
         self.test.connect(self.power_core.lv)
 
-        F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
-        F.ElectricLogic.connect_all_module_references(
-            self,
-            exclude={
+        self.get_trait(F.has_single_electric_reference).connect_all_references(
+            ground_only=True
+        )
+        self.get_trait(F.has_single_electric_reference).connect_all_references(
+            exclude=[
                 self.power_pll,
                 self.power_core,
                 # self.power_io,
@@ -329,7 +333,7 @@ class USB2514B(fabll.Node):
                 self.local_power_detection,
                 self.power_3v3_regulator,
                 self.power_3v3_analog,
-            },
+            ],
         )
 
         # ----------------------------------------
