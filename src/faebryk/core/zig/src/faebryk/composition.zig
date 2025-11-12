@@ -182,19 +182,6 @@ pub const EdgeComposition = struct {
             .EXHAUSTED => return null,
         }
     }
-
-    pub fn try_get_single_child_of_type(bound_node: graph.BoundNodeReference, child_type: graph.NodeReference) ?graph.BoundNodeReference {
-        const Ctx = struct {};
-        var ctx = Ctx{};
-        const result = EdgeComposition.visit_children_of_type(bound_node, child_type, graph.BoundEdgeReference, &ctx, return_first(graph.BoundEdgeReference).visit);
-        switch (result) {
-            .OK => |found| return found.g.bind(EdgeComposition.get_child_node(found.edge)),
-            .CONTINUE => unreachable,
-            .STOP => unreachable,
-            .ERROR => return null, // Convert error to null since function returns optional
-            .EXHAUSTED => return null,
-        }
-    }
 };
 
 test "basic" {
