@@ -3,10 +3,9 @@
 
 import inspect
 import logging
-from typing import Callable, Iterable, cast
+from typing import Callable, Iterable
 
-from more_itertools import first
-
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
@@ -56,7 +55,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
+def simple_erc(G: graph.GraphView, voltage_limit=1e5 * P.V):
     """Simple ERC check.
 
     This function will check for the following ERC violations:
@@ -175,9 +174,7 @@ def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
                 ):
                     continue
 
-                if path := fabll.Path.from_connection(
-                    comp.unnamed[0], comp.unnamed[1]
-                ):
+                if path := fabll.Path.from_connection(comp.unnamed[0], comp.unnamed[1]):
                     raise ERCFaultShortedInterfaces.from_path(path)
 
         ## unmapped Electricals

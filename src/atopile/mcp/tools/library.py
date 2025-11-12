@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.mcp.util import (
@@ -68,12 +69,13 @@ def inspect_library_module_or_interface(name: str) -> NodeInfo:
     """
     return _get_library_node(name)
 
+
 @library_tools.register()
 def get_library_modules_or_interfaces(
     include_modules: bool = True,
     include_interfaces: bool = True,
     *,
-    typegraph: fabll.TypeGraph,
+    typegraph: fbrk.TypeGraph,
 ) -> list[NodeInfoOverview]:
     """
     List all atopile standard library modules and interfaces.

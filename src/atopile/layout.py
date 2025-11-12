@@ -2,9 +2,10 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
@@ -26,7 +27,7 @@ class SubPCB(fabll.Node):
 
     @classmethod
     def __create_instance__(
-        cls, tg: "fabll.TypeGraph", g: "fabll.GraphView", path: Path
+        cls, tg: "fbrk.TypeGraph", g: "graph.GraphView", path: Path
     ) -> "SubPCB":
         out = super()._create_instance(tg, g)
         out.path.get().constrain_to_single(g=g, value=str(path))

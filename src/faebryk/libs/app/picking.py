@@ -5,6 +5,7 @@ import json
 import logging
 from enum import StrEnum
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.parameter import Parameter
@@ -29,7 +30,7 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
-def load_part_info_from_pcb(G: fabll.Graph):
+def load_part_info_from_pcb(G: graph.GraphView):
     """
     Load descriptive properties from footprints and saved parameters.
     """
@@ -120,7 +121,7 @@ def load_part_info_from_pcb(G: fabll.Graph):
             param.alias_is(param_value)
 
 
-def save_part_info_to_pcb(G: fabll.Graph):
+def save_part_info_to_pcb(G: graph.GraphView):
     """
     Save parameters to footprints (by copying them to descriptive properties).
     """

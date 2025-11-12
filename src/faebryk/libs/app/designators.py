@@ -8,6 +8,7 @@ from typing import cast
 
 from natsort import natsorted
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -18,7 +19,7 @@ from faebryk.libs.util import duplicates, groupby, md_list
 logger = logging.getLogger(__name__)
 
 
-def attach_random_designators(graph: fabll.Graph):
+def attach_random_designators(g: graph.GraphView):
     """
     Sorts nodes by path and then sequentially attaches designators
 
@@ -26,7 +27,7 @@ def attach_random_designators(graph: fabll.Graph):
     """
 
     nodes = {
-        n for n, _ in fabll.Node.bind_typegraph(graph).nodes_with_trait(F.has_footprint)
+        n for n, _ in fabll.Node.bind_typegraph(g).nodes_with_trait(F.has_footprint)
     }
 
     in_use = {
@@ -79,7 +80,9 @@ def attach_random_designators(graph: fabll.Graph):
     )
 
 
-def load_designators(graph: fabll.Graph, attach: bool = False) -> dict[fabll.Node, str]:
+def load_designators(
+    graph: graph.GraphView, attach: bool = False
+) -> dict[fabll.Node, str]:
     """
     Load designators from attached footprints and attach them to the nodes.
     """

@@ -11,6 +11,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any, List, Protocol
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 
 # import numpy as np
@@ -85,10 +86,10 @@ class SchTransformer:
             self.pins = pins
 
     def __init__(
-        self, sch: SCH, graph: fabll.Graph, app: fabll.Node, cleanup: bool = True
+        self, sch: SCH, g: graph.GraphView, app: fabll.Node, cleanup: bool = True
     ) -> None:
         self.sch = sch
-        self.graph = graph
+        self.graph = g
         self.app = app
         self._symbol_files_index: dict[str, Path] = {}
 

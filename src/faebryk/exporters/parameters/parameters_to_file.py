@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from atopile.errors import UserBadParameterError
 from faebryk.core.parameter import Expression, Is, Parameter, Predicate
@@ -16,7 +17,7 @@ from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: fabll.Graph) -> list[set[Parameter]]:
+def parameter_alias_classes(G: graph.GraphView) -> list[set[Parameter]]:
     full_eq = EquivalenceClasses[Parameter](
         fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
     )
@@ -39,7 +40,7 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_dependency_classes(G: fabll.Graph) -> list[set[Parameter]]:
+def parameter_dependency_classes(G: graph.GraphView) -> list[set[Parameter]]:
     related = EquivalenceClasses[Parameter](
         fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
     )
@@ -57,7 +58,7 @@ def parameter_dependency_classes(G: fabll.Graph) -> list[set[Parameter]]:
     return related.get()
 
 
-def parameter_report(G: fabll.Graph, path: Path):
+def parameter_report(G: graph.GraphView, path: Path):
     params = fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
     exprs = fabll.Node.bind_typegraph(G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}

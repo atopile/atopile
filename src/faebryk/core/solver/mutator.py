@@ -6,13 +6,13 @@ import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from itertools import chain
 from typing import Any, Callable, Iterable, Sequence
 
 from more_itertools import first
 from rich.table import Table
 from rich.tree import Tree
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -101,7 +101,7 @@ class Transformations:
 
     @staticmethod
     def identity(
-        tg: fabll.TypeGraph,
+        tg: fbrk.TypeGraph,
         g: graph.GraphView,
         input_print_context: F.Parameters.ReprContext,
     ) -> "Transformations":
@@ -388,7 +388,7 @@ class MutationStage:
         )
 
     @property
-    def tg(self) -> fabll.TypeGraph:
+    def tg(self) -> fbrk.TypeGraph:
         # TODO
         pass
 
@@ -423,7 +423,7 @@ class MutationStage:
 
     @staticmethod
     def identity(
-        tg: fabll.TypeGraph,
+        tg: fbrk.TypeGraph,
         g: graph.GraphView,
         print_context: F.Parameters.ReprContext,
         algorithm: SolverAlgorithm | str = "identity",
@@ -887,7 +887,7 @@ class MutationMap:
 
     @staticmethod
     def identity(
-        tg: fabll.TypeGraph,
+        tg: fbrk.TypeGraph,
         g: graph.GraphView,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
@@ -1465,7 +1465,7 @@ class Mutator:
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
 
-    def remove_graph(self, g: fabll.Graph):
+    def remove_graph(self, g: graph.GraphView):
         # TODO implementing graph removal has to be more explicit
         # e.g mark as no more use, and then future mutators ignore it for the algos
         # for now at least remove expressions
@@ -1785,7 +1785,8 @@ class Mutator:
         if not self.transformations.dirty:
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
-                    *self.mutation_map.output_graph,
+                    self.tg,
+                    self.mutation_map.output_graph,
                     algorithm=self.algo,
                     iteration=self.iteration,
                     print_context=self.print_context,
@@ -1805,7 +1806,7 @@ class Mutator:
 
         # Check if original graphs ended up in result
         # allowed if no copy was needed for graph
-        assert not (touched_pre_copy & set(stage.output_graph))
+        assert not (touched_pre_copy & {stage.output_graph})
 
         return AlgoResult(mutation_stage=stage, dirty=True)
 

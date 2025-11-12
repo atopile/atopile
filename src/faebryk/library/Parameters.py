@@ -75,7 +75,7 @@ class is_parameter_operatable(fabll.Node):
         self, g: graph.GraphView, value: "Literals.LiteralNodes"
     ) -> None:
         node = self.instance
-        tg = not_none(fabll.TypeGraph.of_instance(instance_node=node))
+        tg = not_none(fbrk.TypeGraph.of_instance(instance_node=node))
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(

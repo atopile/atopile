@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Self
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -77,9 +79,9 @@ class Numbers(fabll.Node):
         return self
 
     @classmethod
-    def bind_from_interval(cls, tg: fabll.TypeGraph, g: fabll.GraphView):
+    def bind_from_interval(cls, tg: fbrk.TypeGraph, g: graph.GraphView):
         class NumbersBound:
-            def __init__(self, tg: fabll.TypeGraph, g: fabll.GraphView):
+            def __init__(self, tg: fbrk.TypeGraph, g: graph.GraphView):
                 self.tg = tg
                 self.g = g
 
@@ -234,7 +236,7 @@ LiteralNodes = Numbers | Booleans | Enums | Strings
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_lit(tg: fabll.TypeGraph, value: LiteralValues) -> LiteralNodes:
+def make_lit(tg: fbrk.TypeGraph, value: LiteralValues) -> LiteralNodes:
     match value:
         case bool():
             return Booleans.bind_typegraph(tg=tg).create_instance(

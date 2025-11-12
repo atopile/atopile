@@ -3,6 +3,7 @@
 
 import logging
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def check_design(
-    G: fabll.Graph,
+    G: graph.GraphView,
     stage: F.implements_design_check.CheckStage,
     exclude: tuple[str, ...] = tuple(),
 ):
