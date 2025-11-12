@@ -69,11 +69,11 @@ class is_pickable_by_type(fabll.Node):
     @classmethod
     def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll.ChildField]):
         out = fabll.ChildField(cls)
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.endpoint_], endpoint
-            )
-        )
+        # out.add_dependant(
+        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
+        #         [out, cls.endpoint_], endpoint
+        #     )
+        # )
         for param_name, param_ref in params.items():
             # Create tuple
             param_tuple = F.Collections.PointerTuple.MakeChild()
@@ -86,7 +86,7 @@ class is_pickable_by_type(fabll.Node):
                 )
             )
             # Add string to tuple
-            lit = fabll.LiteralNode.MakeChild(value=param_name)
+            lit = F.Literals.Strings.MakeChild(value=param_name)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(

@@ -95,8 +95,10 @@ class ParameterIsNotConstrainedToLiteral(Exception):
 
 
 class StringParameter(fabll.Node):
-    _is_parameter = fabll.ChildField(is_parameter)
-    _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(is_parameter_operatable)
+    )
 
     def try_extract_constrained_literal(self) -> "F.Literals.Strings | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -120,8 +122,10 @@ class StringParameter(fabll.Node):
 
 
 class BooleanParameter(fabll.Node):
-    _is_parameter = fabll.ChildField(is_parameter)
-    _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(is_parameter_operatable)
+    )
 
     def try_extract_constrained_literal(self) -> "F.Literals.Booleans | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -148,8 +152,10 @@ class BooleanParameter(fabll.Node):
 
 
 class EnumParameter(fabll.Node):
-    _is_parameter = fabll.ChildField(is_parameter)
-    _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(is_parameter_operatable)
+    )
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]):
@@ -169,8 +175,10 @@ class EnumParameter(fabll.Node):
 
 
 class NumericParameter(fabll.Node):
-    _is_parameter = fabll.ChildField(is_parameter)
-    _is_parameter_operatable = fabll.ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(is_parameter_operatable)
+    )
 
     # domain = fabll.ChildField(NumberDomain)
 

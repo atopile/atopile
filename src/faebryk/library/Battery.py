@@ -21,22 +21,28 @@ class Battery(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeChild_Trait(fabll.is_module.MakeChild())
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
-
-    # TODO: Add trait edge to power.hv
-    # _net_name = F.has_net_name.MakeChild(
-    #     name="BAT_VCC",
-    #     level=F.has_net_name.Level.SUGGESTED,
-    # )
-
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.BAT
+    _single_electric_reference = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(F.has_single_electric_reference)
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    # TODO: Add trait edge to power.hv
+    # _net_name = fabll.Traits.MakeChild_Trait(
+    #     F.has_net_name.MakeChild(
+    #         name="BAT_VCC",
+    #         level=F.has_net_name.Level.SUGGESTED,
+    #     ),
+    #     [power, "hv"],
+    # )
+
+    designator_prefix = fabll.Traits.MakeChild_Trait(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.BAT)
+    )
+
+    usage_example = fabll.Traits.MakeChild_Trait(
+        F.has_usage_example.MakeChild(
+            example="""
         import Battery, ElectricPower
 
         battery = new Battery
@@ -55,5 +61,6 @@ class Battery(fabll.Node):
         battery_pack.voltage = 11.1V +/- 10%  # 3S Li-ion pack
         battery_pack.capacity = 2000mAh +/- 5%
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

@@ -3,7 +3,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class USB2_0_IF(fabll.Node):
@@ -18,14 +17,8 @@ class USB2_0_IF(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.d.p.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
-        self.d.n.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
-        self.buspower.hv.add(
-            F.has_net_name("USB_VBUS", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # self.d.p.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
+    # self.d.n.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
+    # self.buspower.hv.add(
+    #     F.has_net_name("USB_VBUS", level=F.has_net_name.Level.SUGGESTED)
+    # )

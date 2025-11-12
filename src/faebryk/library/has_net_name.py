@@ -26,28 +26,30 @@ class has_net_name(fabll.Node):
     def MakeChild(cls, name: str, level: Level) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.name_], name)
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
         )
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.level_],
-                str(level.value),  # TODO: Change to make literal Enum
-            )
-        )
+        # out.add_dependant(
+        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
+        #         [out, cls.level_],
+        #         str(level.value),  # TODO: Change to make literal Enum
+        #     )
+        # )
         return out
 
     @property
     def name(self) -> str:
-        return str(self.name_.get().try_extract_constrained_literal())
+        lit = self.name_.get().try_extract_constrained_literal()
+        print(lit)
+        return lit.get_value() if lit is not None else "fail"
 
     @property
     def level(self) -> Level | None:
         level_literal = self.level_.get().try_extract_constrained_literal()
         if level_literal is None:
             return None
-        return self.Level(int(level_literal))
+        return None  # self.Level(int(level_literal))
 
     def setup(self, name: str, level: Level) -> Self:
         self.name_.get().constrain_to_single(value=name)
-        self.level_.get().constrain_to_literal(g=self.instance.g(), value=level.value)
+        # self.level_.get().constrain_to_literal(g=self.instance.g(), value=level.value)
         return self

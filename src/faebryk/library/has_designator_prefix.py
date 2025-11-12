@@ -233,11 +233,11 @@ class has_designator_prefix(fabll.Node):
     @classmethod
     def MakeChild(cls, value: Prefix) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.prefix_param_], value
-            )
-        )
+        # out.add_dependant(
+        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
+        #         [out, cls.prefix_param_], value
+        #     )
+        # )
         return out
 
     def get_prefix(self) -> str:

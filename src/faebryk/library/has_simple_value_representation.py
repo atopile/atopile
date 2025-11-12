@@ -164,23 +164,23 @@ class has_simple_value_representation(fabll.Node):
 
             # Constrain literals
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                     [out, cls.tolerance_], spec.tolerance
                 )
             )
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.prefix_], spec.prefix
                 )
             )
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.suffix_], spec.suffix
                 )
             )
             if spec.default is not None:
                 out.add_dependant(
-                    F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                    F.Literals.Strings.MakeChild_ConstrainToLiteral(
                         [out, cls.default_], spec.default
                     )
                 )

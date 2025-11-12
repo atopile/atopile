@@ -55,18 +55,18 @@ class has_pin_association_heuristic(fabll.Node):
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                 [out, cls.accept_prefix_], accept_prefix
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                 [out, cls.case_sensitive_], case_sensitive
             )
         )
         nc_makechilds = []
         for nc_literal in nc_in:
-            nc_lit = fabll.LiteralNode.MakeChild(value=nc_literal)
+            nc_lit = F.Literals.Strings.MakeChild(value=nc_literal)
             out.add_dependant(nc_lit)
             nc_makechilds.append([nc_lit])
         nc_set_fields = F.Collections.PointerSet.EdgeFields(
@@ -85,7 +85,7 @@ class has_pin_association_heuristic(fabll.Node):
                 )
             )
             for param_literal in param_names:
-                param_lit = fabll.LiteralNode.MakeChild(value=param_literal)
+                param_lit = F.Literals.Strings.MakeChild(value=param_literal)
                 out.add_dependant(param_lit)
                 out.add_dependant(
                     F.Collections.PointerTuple.AppendLiteral(
@@ -103,10 +103,10 @@ class has_pin_association_heuristic(fabll.Node):
 
         return out
 
-    def get_nc_literals(self) -> list[fabll.LiteralT]:
+    def get_nc_literals(self) -> list[str]:
         nc_list = self.nc.get().as_list()
         nc_literals = [
-            fabll.LiteralNode.bind_instance(instance=nc_lit.instance).get_value()
+            F.Literals.Strings.bind_instance(instance=nc_lit.instance).get_value()
             for nc_lit in nc_list
         ]
         return nc_literals

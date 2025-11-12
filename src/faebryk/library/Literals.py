@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Self
 
@@ -13,18 +14,44 @@ class is_literal(fabll.Node):
 
 
 # --------------------------------------------------------------------------------------
+LiteralValues = float | bool | Enum | str
 
 
-class Strings(fabll.Node):
-    _is_literal = is_literal.MakeChild()
+@dataclass(frozen=True)
+class LiteralsAttributes(fabll.NodeAttributes):
+    value: LiteralValues
 
-    def setup(self, *values: str) -> Self:
-        # TODO
+
+class Strings(fabll.Node[LiteralsAttributes]):
+    Attributes = LiteralsAttributes
+    _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
+
+    def setup(self, value: str) -> Self:
+        self.instance.node().get_dynamic_attrs().update({"value": value})
         return self
 
+    @classmethod
+    def MakeChild(cls, value: str) -> fabll.ChildField:
+        assert isinstance(value, str), "Value of string literal must be a string"
+        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
 
-class Numbers(fabll.Node):
-    _is_literal = is_literal.MakeChild()
+    @classmethod
+    def MakeChild_ConstrainToLiteral(
+        cls, ref: fabll.RefPath, value: str
+    ) -> fabll.ChildField:
+        assert isinstance(value, str), "Value of string literal must be a string"
+        lit = cls.MakeChild(value=value)
+        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out.add_dependant(lit, identifier="lit", before=True)
+        return out
+
+    def get_value(self) -> str:
+        return str(self.instance.node().get_dynamic_attrs().get("value", ""))
+
+
+class Numbers(fabll.Node[LiteralsAttributes]):
+    Attributes = LiteralsAttributes
+    _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
         # TODO
@@ -59,6 +86,24 @@ class Numbers(fabll.Node):
                 )
 
         return NumbersBound(tg=tg, g=g).setup_from_interval
+
+    @classmethod
+    def MakeChild(cls, value: float) -> fabll.ChildField:
+        assert isinstance(value, float), "Value of number literal must be a float"
+        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+
+    @classmethod
+    def MakeChild_ConstrainToLiteral(
+        cls, ref: fabll.RefPath, value: float
+    ) -> fabll.ChildField:
+        assert isinstance(value, float) or isinstance(value, int), (
+            "Value of number literal must be a float or int"
+        )
+        value = float(value)
+        lit = cls.MakeChild(value=value)
+        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out.add_dependant(lit, identifier="lit", before=True)
+        return out
 
     @classmethod
     def unbounded(cls, units: fabll.NodeT) -> "Numbers": ...
@@ -114,7 +159,8 @@ class Numbers(fabll.Node):
     def are_units_compatible(self, unit: fabll.NodeT) -> bool: ...
 
 
-class Booleans(fabll.Node):
+class Booleans(fabll.Node[LiteralsAttributes]):
+    Attributes = LiteralsAttributes
     _is_literal = is_literal.MakeChild()
 
     def setup(self, *values: bool) -> Self:
@@ -123,9 +169,24 @@ class Booleans(fabll.Node):
 
     def get_single(self) -> bool: ...
 
+    @classmethod
+    def MakeChild(cls, value: bool) -> fabll.ChildField:
+        assert isinstance(value, bool), "Value of boolean literal must be a boolean"
+        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+
+    @classmethod
+    def MakeChild_ConstrainToLiteral(
+        cls, ref: fabll.RefPath, value: bool
+    ) -> fabll.ChildField:
+        assert isinstance(value, bool), "Value of boolean literal must be a boolean"
+        lit = cls.MakeChild(value=value)
+        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out.add_dependant(lit, identifier="lit", before=True)
+        return out
+
 
 class Enums(fabll.Node):
-    _is_literal = is_literal.MakeChild()
+    _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
 
     def setup[T: Enum](self, enum: type[T], *values: T) -> Self:
         # TODO
@@ -135,7 +196,6 @@ class Enums(fabll.Node):
 # --------------------------------------------------------------------------------------
 
 LiteralNodes = Numbers | Booleans | Enums | Strings
-LiteralValues = float | bool | Enum | str
 
 
 # TODO

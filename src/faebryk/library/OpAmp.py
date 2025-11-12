@@ -23,36 +23,40 @@ class OpAmp(fabll.Node):
     output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
 
-
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(bandwidth, prefix="BW"),
-        S(common_mode_rejection_ratio, prefix="CMRR"),
-        S(input_bias_current, prefix="Ib"),
-        S(input_offset_voltage, prefix="Vos"),
-        S(gain_bandwidth_product, prefix="GBW"),
-        S(output_current, prefix="Iout"),
-        S(slew_rate, prefix="SR"),
+    _simple_repr = fabll.Traits.MakeChild_Trait(
+        F.has_simple_value_representation.MakeChild(
+            S(bandwidth, prefix="BW"),
+            S(common_mode_rejection_ratio, prefix="CMRR"),
+            S(input_bias_current, prefix="Ib"),
+            S(input_offset_voltage, prefix="Vos"),
+            S(gain_bandwidth_product, prefix="GBW"),
+            S(output_current, prefix="Iout"),
+            S(slew_rate, prefix="SR"),
+        )
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
-        mapping={
-            power.get().hv: ["V+", "Vcc", "Vdd", "Vcc+"],
-            power.get().lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
-            input.get().n: ["-", "IN-"],
-            input.get().p: ["+", "IN+"],
-            output: ["OUT"],
-        },
-        accept_prefix=False,
-        case_sensitive=False,
+    _pin_association_heuristic = fabll.Traits.MakeChild_Trait(
+        F.has_pin_association_heuristic.MakeChild(
+            mapping={
+                # power.get().hv: ["V+", "Vcc", "Vdd", "Vcc+"], not possible for now
+                # power.get().lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
+                # input.get().n: ["-", "IN-"],
+                # input.get().p: ["+", "IN+"],
+                output: ["OUT"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.U
+    designator_prefix = fabll.Traits.MakeChild_Trait(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.U)
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeChild_Trait(
+        F.has_usage_example.MakeChild(
+            example="""
         import OpAmp, Resistor, ElectricPower, Electrical
 
         opamp = new OpAmp
@@ -82,5 +86,6 @@ class OpAmp(fabll.Node):
         opamp.output ~> feedback_resistor ~> opamp.inverting_input
         output_signal ~ opamp.output
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

@@ -1016,14 +1016,3 @@ class Is(fabll.Node):
             identifier="connect_operands",
         )
         return out
-
-    @classmethod
-    def MakeChild_ConstrainToLiteral(
-        cls,
-        ref: list[str | fabll.ChildField[Any]],
-        value: fabll.LiteralT,
-    ) -> fabll.ChildField[Any]:
-        lit = F.Literals.Strings.MakeChild(value=value)
-        out = cls.MakeChild_Constrain([ref, [lit]])
-        out.add_dependant(lit, identifier="lit", before=True)
-        return out

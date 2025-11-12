@@ -31,7 +31,8 @@ class Crystal_Oscillator(fabll.Node):
     # ----------------------------------------
 
     def capacitance(self):
-        return (self.crystal.get().load_capacitance.get(). - self._STRAY_CAPACITANCE.get()) * 2
+        pass
+        # return (self.crystal.get().load_capacitance.get(). - self._STRAY_CAPACITANCE.get()) * 2
 
     def __preinit__(self):
         for cap in self.capacitors:
