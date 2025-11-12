@@ -4,9 +4,7 @@ import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode
-
-if TYPE_CHECKING:
-    from faebryk.library import Literals
+from faebryk.library import Literals
 
 RefPath = fabll.RefPath
 EdgeField = fabll.EdgeField

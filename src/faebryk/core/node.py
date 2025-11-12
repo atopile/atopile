@@ -2062,6 +2062,20 @@ def test_lightweight():
     print(kicad_footprint.get_kicad_footprint())
     print(kicad_footprint.get_pin_names())
 
+    strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(
+        g=g, attributes=F.Literals.LiteralsAttributes(value="test")
+    )
+    print(strings.get_value())
+
+    number = F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(
+        g=g, attributes=F.Literals.LiteralsAttributes(value=3)
+    )
+    print(number.get_value())
+
+    assert F.Literals.make_lit(tg, value=True).get_value()
+    assert F.Literals.make_lit(tg, value=3).get_value() == 3
+    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
+
 
 if __name__ == "__main__":
     import typer

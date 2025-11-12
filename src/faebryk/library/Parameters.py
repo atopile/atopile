@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+
+# import faebryk.enum_sets as enum_sets
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
 

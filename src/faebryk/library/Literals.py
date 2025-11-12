@@ -28,7 +28,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
 
     def setup(self, value: str) -> Self:
-        self.instance.node().get_dynamic_attrs().update({"value": value})
+        # TODO:
         return self
 
     @classmethod
@@ -50,8 +50,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
         return str(self.instance.node().get_dynamic_attrs().get("value", ""))
 
 
-class Numbers(fabll.Node[LiteralsAttributes]):
-    Attributes = LiteralsAttributes
+class Numbers(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
@@ -87,6 +86,9 @@ class Numbers(fabll.Node[LiteralsAttributes]):
                 )
 
         return NumbersBound(tg=tg, g=g).setup_from_interval
+
+    def get_value(self) -> float:
+        return float(self.instance.node().get_dynamic_attrs().get("value", 0))
 
     @classmethod
     def MakeChild(cls, value: float) -> fabll.ChildField:
@@ -185,6 +187,9 @@ class Booleans(fabll.Node[LiteralsAttributes]):
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
+    def get_value(self) -> bool:
+        return bool(self.instance.node().get_dynamic_attrs().get("value", None))
+
 
 class Enums(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
@@ -193,16 +198,55 @@ class Enums(fabll.Node):
         # TODO
         return self
 
+    @classmethod
+    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll.ChildField:
+        # TODO: Make this work
+        assert isinstance(value, Enum), "Value of enum literal must be an enum"
+        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+
+    def get_value(self):
+        # TODO
+        pass
+
 
 # --------------------------------------------------------------------------------------
 
 LiteralNodes = Numbers | Booleans | Enums | Strings
 
 
-# TODO
-def make_lit(value: LiteralValues) -> LiteralNodes: ...
+def make_lit(tg: fabll.TypeGraph, value: LiteralValues) -> LiteralNodes:
+    match value:
+        case bool():
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+        case float() | int():
+            value = float(value)
+            return Numbers.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+        case Enum():
+            return Enums.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
+        case str():
+            return Strings.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+            )
 
 
 # TODO
-def make_lit_child(value: LiteralValues) -> fabll.ChildField[LiteralNodes]:
-    pass
+def MakeChild_Literal(
+    tg: fabll.TypeGraph, value: LiteralValues, enum: type[Enum] | None = None
+) -> fabll.ChildField[LiteralNodes]:
+    match value:
+        case bool():
+            return Booleans.MakeChild(value=value)
+        case float() | int():
+            return Numbers.MakeChild(value=value)
+        case Enum():
+            if enum is None:
+                raise ValueError("Enum must be provided when creating an enum literal")
+            return Enums.MakeChild(enum=enum, value=value)
+        case str():
+            return Strings.MakeChild(value=value)

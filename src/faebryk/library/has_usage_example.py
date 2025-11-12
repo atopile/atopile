@@ -4,6 +4,7 @@ from typing import Any
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+import faebryk.enum_sets as enum_sets
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,10 @@ class has_usage_example(fabll.Node):
         fabll = "fabll"
         ato = "ato"
 
+    # LanguageEnumT = enum_sets.EnumsFactory(Language)
+
     example_ = fabll.ChildField(F.Parameters.StringParameter)
-    language_ = fabll.ChildField(F.Parameters.EnumParameter)
+    language_ = F.Parameters.EnumParameter.MakeChild(enum_t=Language)
 
     @property
     def example(self) -> str:

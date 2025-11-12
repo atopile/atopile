@@ -212,6 +212,11 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
+        def setup(self, net: Net, transformer: "PCB_Transformer") -> Self:
+            self.net = net
+            self.transformer = transformer
+            return self
+
     def __init__(self, pcb: PCB, graph: fabll.Graph, app: fabll.Node) -> None:
         self.pcb = pcb
         self.app = app
@@ -435,7 +440,9 @@ class PCB_Transformer:
         return known_nets
 
     def bind_net(self, pcb_net: Net, net: "F.Net"):
-        net.add(self.has_linked_kicad_net(pcb_net, self))
+        fabll.Traits.create_and_add_instance_to(
+            node=net, trait=PCB_Transformer.has_linked_kicad_net
+        ).setup(pcb_net, self)
 
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
@@ -673,7 +680,7 @@ class PCB_Transformer:
         pin_name = find(
             pin_map.items(),
             lambda pad_and_name: intf.get_trait(fabll.is_interface).is_connected_to(
-                pad_and_name[0].net
+                pad_and_name[0].net.get()
             ),
         )[1]
 
