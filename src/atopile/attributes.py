@@ -523,4 +523,6 @@ class I2C(F.I2C):
 
     @property
     def gnd(self):
-        return self.single_electric_reference.get_reference().gnd
+        return (
+            self.get_trait(F.has_single_electric_reference).get_reference().gnd
+        )

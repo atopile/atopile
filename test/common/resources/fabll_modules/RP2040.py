@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -9,6 +10,27 @@ from faebryk.libs.units import P
 from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux
 
 logger = logging.getLogger(__name__)
+
+
+def _connect_node_references(
+    reference: F.ElectricPower,
+    nodes: Iterable[fabll.Node],
+    ground_only: bool = False,
+) -> None:
+    refs: list[F.ElectricPower] = []
+    for node in nodes:
+        if node.has_trait(F.has_single_electric_reference):
+            refs.append(node.get_trait(F.has_single_electric_reference).get_reference())
+        elif isinstance(node, F.ElectricPower):
+            refs.append(node)
+    if not refs:
+        return
+    if ground_only:
+        reference.lv.get().get_trait(fabll.is_interface).connect_to(
+            *(ref.lv.get() for ref in refs)
+        )
+    else:
+        reference.get_trait(fabll.is_interface).connect_to(*refs)
 
 
 class RP2040(fabll.Node):
@@ -27,19 +49,17 @@ class RP2040(fabll.Node):
         A: F.ElectricLogic
         B: F.ElectricLogic
 
-        @fabll.rt_field
-        def single_electric_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     class CoreRegulator(fabll.Node):
         power_in: F.ElectricPower
         power_out: F.ElectricPower
 
-        def __preinit__(self):
-            F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
+        _single_electric_reference = F.has_single_electric_reference.MakeChild(
+            ground_only=True
+        )
 
+        def __preinit__(self):
             # TODO get tolerance
             self.power_out.voltage.constrain_subset(
                 fabll.Range.from_center_rel(1.1 * P.V, 0.05)
@@ -58,22 +78,14 @@ class RP2040(fabll.Node):
         rts: F.ElectricLogic
         cts: F.ElectricLogic
 
-        @fabll.rt_field
-        def single_electric_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     class USBPowerControl(fabll.Node):
         ovcur_det: F.ElectricLogic
         vbus_det: F.ElectricLogic
         vbus_en: F.ElectricLogic
 
-        @fabll.rt_field
-        def single_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     # power
     power_io: F.ElectricPower
@@ -119,22 +131,22 @@ class RP2040(fabll.Node):
         )
         self.power_io.voltage.constrain_subset(fabll.Range(1.8 * P.V, 3.3 * P.V))
 
-        F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
-        F.ElectricLogic.connect_all_node_references(
-            [self.power_io]
-            + self.gpio
-            + self.spi
-            + self.pwm
-            + self.uart
-            + self.i2c
-            + self.pio
-            + self.clock_in
-            + self.clock_out
-            + [self.usb_power_control]  # TODO is this the right ref?
-            + [self.run]
-            + [self.swd]
-            + [self.qspi]
+        self.get_trait(F.has_single_electric_reference).connect_all_references(
+            ground_only=True
         )
+
+        logic_nodes = (
+            list(self.gpio)
+            + list(self.spi)
+            + list(self.pwm)
+            + list(self.uart)
+            + list(self.i2c)
+            + list(self.pio)
+            + list(self.clock_in)
+            + list(self.clock_out)
+            + [self.usb_power_control, self.run, self.swd, self.qspi]
+        )
+        _connect_node_references(self.power_io, logic_nodes)
         self.power_io.lv.connect(self.xtal_if.gnd)
 
         # QSPI pins reusable for soft gpio
@@ -150,7 +162,7 @@ class RP2040(fabll.Node):
         self.adc[1].line.connect(self.io[27])
         self.adc[2].line.connect(self.io[28])
         self.adc[3].line.connect(self.io[29])
-        F.ElectricLogic.connect_all_node_references(self.adc + [self.power_adc])
+        _connect_node_references(self.power_adc, list(self.adc))
 
     @fabll.rt_field
     def pinmux(self):
@@ -162,6 +174,7 @@ class RP2040(fabll.Node):
     datasheet = F.has_datasheet.MakeChild(
         datasheet="https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
     )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     mfr = fabll.f_field(F.has_explicit_part.by_mfr)("Raspberry Pi", "RP2040")
 

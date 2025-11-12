@@ -1993,9 +1993,7 @@ def test_lightweight():
 
     _ = F.Battery.bind_typegraph(tg=tg).get_or_create_type()
     battery_instance = F.Battery.bind_typegraph(tg=tg).create_instance(g=g)
-    ref = battery_instance.get_trait(
-        F.has_single_electric_reference_defined
-    ).get_reference()
+    ref = battery_instance.get_trait(F.has_single_electric_reference).get_reference()
     print(ref)
     assert (
         battery_instance.get_trait(F.has_net_name).level

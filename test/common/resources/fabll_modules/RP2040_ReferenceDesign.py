@@ -53,10 +53,10 @@ class RP2040_ReferenceDesign(fabll.Node):
             self.switch.attach_to_footprint.attach(fp)
             # TODO make other trait for manual footprint, no pick
             self.switch.add(F.has_part_removed())
+            self.logic_out.get_trait(
+                F.has_single_electric_reference
+            ).connect_all_references(reference=self.logic_out.reference)
 
-        @fabll.rt_field
-        def single_reference(self):
-            return F.has_single_electric_reference_defined(self.logic_out.reference)
 
     # ----------------------------------------
     #     modules, interfaces, parameters
