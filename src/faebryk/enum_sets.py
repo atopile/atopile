@@ -34,12 +34,10 @@ class EnumValue(fabll.Node):
 class EnumsProtocol(Protocol):
     def setup(self, *enum_values: Enum) -> Self: ...
     @classmethod
-    def get_enum_value_type(
-        cls, tg: fabll.TypeGraph, enum_value: Enum
-    ) -> EnumValue: ...
+    def get_enum_value_type(cls, tg: fbrk.TypeGraph, enum_value: Enum) -> EnumValue: ...
 
     @classmethod
-    def create_instance(cls, tg: fabll.TypeGraph, g: graph.GraphView) -> Self: ...
+    def create_instance(cls, tg: fbrk.TypeGraph, g: graph.GraphView) -> Self: ...
 
     def get_elements(self) -> list[EnumValue]: ...
 
@@ -50,9 +48,7 @@ def EnumsFactory(enum_type: type[Enum]) -> type[EnumsProtocol]:
         values = F.Collections.PointerSet.MakeChild()
 
         @classmethod
-        def get_enum_value_type(
-            cls, tg: fabll.TypeGraph, enum_value: Enum
-        ) -> EnumValue:
+        def get_enum_value_type(cls, tg: fbrk.TypeGraph, enum_value: Enum) -> EnumValue:
             bound_e = cls.bind_typegraph(tg)
             e_val = fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=bound_e.get_or_create_type(),
@@ -76,7 +72,7 @@ def EnumsFactory(enum_type: type[Enum]) -> type[EnumsProtocol]:
             ]
 
         @classmethod
-        def create_instance(cls, tg: fabll.TypeGraph, g: graph.GraphView) -> Self:
+        def create_instance(cls, tg: fbrk.TypeGraph, g: graph.GraphView) -> Self:
             return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
     ConcreteEnums.__name__ = f"{enum_type.__name__}"
