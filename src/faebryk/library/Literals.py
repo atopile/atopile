@@ -3,6 +3,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 import faebryk.library.Units as Units
 
 if TYPE_CHECKING:
