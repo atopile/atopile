@@ -24,10 +24,6 @@ class TestPoint(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.is_module.MakeChild()
 
-    contact.add_dependant(
-        F.requires_external_usage.MakeChild()
-    )  # TODO: Does this work?
-
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.TP
     )

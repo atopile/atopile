@@ -5,7 +5,6 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.library.Collections import EdgePointer
 
 logger = logging.getLogger(__name__)
 
