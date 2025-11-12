@@ -8,16 +8,16 @@
   - [x] replace with TG
   - [ ] get rid of multi graphs (solver)
   - [x] Change Graph import to fabll.Graph
-- [ ] Module
-  - [ ] isinstance checks
+- [x] Module
+  - [x] isinstance checks
   - [x] rename to fabll.Node
-  - [ ] deal with modules vs node
+  - [x] deal with modules vs node
     - [x] get_children_modules
   - [ ] deal with specializations
-- [ ] ModuleInterface
-  - [ ] isinstance checks
+- [x] ModuleInterface
+  - [x] isinstance checks
   - [x] rename to fabll.Node
-  - [ ] replace connect_all_node_references
+  - [x] replace connect_all_node_references
   - [x] implement group_into_buses
 - [ ] library
   - [x] inheritance from Module/Node/Trait/ModuleInterface

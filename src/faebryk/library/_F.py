@@ -63,6 +63,7 @@ from faebryk.library.has_pin_association_heuristic import has_pin_association_he
 from faebryk.library.Comparator import Comparator
 from faebryk.library.Relay import Relay
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
+from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
