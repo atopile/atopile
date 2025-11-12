@@ -1,10 +1,12 @@
-from typing import Any, Callable, Protocol, Self
+from typing import TYPE_CHECKING, Any, Callable, Protocol, Self
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode
+
+if TYPE_CHECKING:
+    from faebryk.library import Literals
 
 RefPath = fabll.RefPath
 EdgeField = fabll.EdgeField
@@ -309,13 +311,13 @@ class PointerTuple(fabll.Node):
 
     def get_literals_as_list(self) -> list[fabll.LiteralT]:
         return [
-            F.Literals.Strings.bind_instance(instance=lit.instance).get_value()
+            Literals.Strings.bind_instance(instance=lit.instance).get_value()
             for lit in self.literals.get().as_list()
         ]
 
     def append_literal(self, literal: fabll.LiteralT) -> None:
-        lit = F.Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
-            g=self.instance.g(), attributes=F.Literals.LiteralsAttributes(value=literal)
+        lit = Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
+            g=self.instance.g(), attributes=Literals.LiteralsAttributes(value=literal)
         )
         self.literals.get().append(lit)
 

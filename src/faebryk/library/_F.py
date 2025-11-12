@@ -15,9 +15,8 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-from faebryk.library.Units import Units
-from faebryk.library.Collections import Collections
-from faebryk.library.Literals import Literals
+from faebryk.library import Units
+from faebryk.library import Collections
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
@@ -28,14 +27,15 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_pickable import is_pickable
+from faebryk.library import Expressions
 from faebryk.library.can_bridge import can_bridge
-from faebryk.library.Expressions import Expressions
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
+from faebryk.library import Literals
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
-from faebryk.library.Parameters import Parameters
 from faebryk.library.PCB import PCB
 from faebryk.library.requires_external_usage import requires_external_usage
+from faebryk.library import Parameters
 from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
