@@ -1,11 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-<<<<<<< Updated upstream
 from typing import Self
-=======
 from functools import reduce
->>>>>>> Stashed changes
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
