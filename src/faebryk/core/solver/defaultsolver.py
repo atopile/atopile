@@ -40,6 +40,7 @@ from faebryk.core.solver.utils import (
     TIMEOUT,
     get_graphs,
 )
+import faebryk.library.Expressions as Expressions
 from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import P_Set, as_lit
@@ -196,7 +197,9 @@ class DefaultSolver(Solver):
         )
 
         # inject new parameters
-        new_params = [p for p in new_p_ops if isinstance(p, Parameter)]
+        new_params = [
+            p for p in new_p_ops if Expressions.isinstance_node(p, fabll.Parameter)
+        ]
         for p in new_params:
             # strip units and copy (for decoupling from old graph)
             transforms.mutated[p] = Parameter(
@@ -214,7 +217,7 @@ class DefaultSolver(Solver):
             )
 
         # inject new expressions
-        new_exprs = {e for e in new_p_ops if isinstance(e, Expression)}
+        new_exprs = {e for e in new_p_ops if Expressions.is_expression_node(e)}
         for e in ParameterOperatable.sort_by_depth(new_exprs, ascending=True):
             if S_LOG:
                 logger.debug(
@@ -225,7 +228,7 @@ class DefaultSolver(Solver):
                 if op in transforms.mutated:
                     op_mapped.append(transforms.mutated[op])
                     continue
-                if isinstance(op, ParameterOperatable) and mutation_map.is_removed(op):
+                if fabll.isparameteroperable(op) and mutation_map.is_removed(op):
                     # TODO
                     raise Exception("Using removed operand")
                 if op in mutation_map.first_stage.input_operables:
@@ -238,8 +241,8 @@ class DefaultSolver(Solver):
                 op_mapped.append(op)
             e_mapped = type(e)(*op_mapped)
             transforms.mutated[e] = e_mapped
-            if isinstance(e, ConstrainableExpression) and e.constrained:
-                assert isinstance(e_mapped, ConstrainableExpression)
+            if Expressions.is_constrainable_node(e) and e.constrained:
+                assert Expressions.is_constrainable_node(e_mapped)
                 e_mapped.constrained = True
 
         return DefaultSolver.SolverState(

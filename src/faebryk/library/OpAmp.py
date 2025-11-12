@@ -3,65 +3,60 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class OpAmp(fabll.Node):
-    bandwidth = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
-    common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Decibel
-    )
-    input_bias_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    input_offset_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    gain_bandwidth_product = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Hertz)
-    output_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    # slew_rate = fabll.Parameter.MakeChild_Numeric(
-    #     unit=F.Units.Volt / F.Units.Second
-    # )
-
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
-    inverting_input = F.Electrical.MakeChild()
-    non_inverting_input = F.Electrical.MakeChild()
+    input = F.DifferentialPair.MakeChild()
     output = F.Electrical.MakeChild()
 
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "BW": bandwidth,
-            "CMRR": common_mode_rejection_ratio,
-            "Ib": input_bias_current,
-            "Vos": input_offset_voltage,
-            "GBW": gain_bandwidth_product,
-            "Iout": output_current,
-            # "SR": slew_rate,
-        }
+    bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+    common_mode_rejection_ratio = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Decibel
+    )
+    input_bias_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    input_offset_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+    output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeChild_Trait(
+        F.has_simple_value_representation.MakeChild(
+            S(bandwidth, prefix="BW"),
+            S(common_mode_rejection_ratio, prefix="CMRR"),
+            S(input_bias_current, prefix="Ib"),
+            S(input_offset_voltage, prefix="Vos"),
+            S(gain_bandwidth_product, prefix="GBW"),
+            S(output_current, prefix="Iout"),
+            S(slew_rate, prefix="SR"),
+        )
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
-        mapping={
-            power.nodetype.hv: ["V+", "Vcc", "Vdd", "Vcc+"],
-            power.nodetype.lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
-            inverting_input: ["-", "IN-"],
-            non_inverting_input: ["+", "IN+"],
-            output: ["OUT"],
-        },
-        accept_prefix=False,
-        case_sensitive=False,
+    _pin_association_heuristic = fabll.Traits.MakeChild_Trait(
+        F.has_pin_association_heuristic.MakeChild(
+            mapping={
+                # power.get().hv: ["V+", "Vcc", "Vdd", "Vcc+"], not possible for now
+                # power.get().lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
+                # input.get().n: ["-", "IN-"],
+                # input.get().p: ["+", "IN+"],
+                output: ["OUT"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.U
+    designator_prefix = fabll.Traits.MakeChild_Trait(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.U)
     )
 
-    @property
-    def inverting(self) -> F.Electrical:
-        return self.inverting_input.get()
-
-    @property
-    def non_inverting(self) -> F.Electrical:
-        return self.non_inverting_input.get()
-
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeChild_Trait(
+        F.has_usage_example.MakeChild(
+            example="""
         import OpAmp, Resistor, ElectricPower, Electrical
 
         opamp = new OpAmp
@@ -91,5 +86,6 @@ class OpAmp(fabll.Node):
         opamp.output ~> feedback_resistor ~> opamp.inverting_input
         output_signal ~ opamp.output
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

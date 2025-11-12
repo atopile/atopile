@@ -1,17 +1,20 @@
-from typing import Any, Callable, Protocol, Self
+from typing import TYPE_CHECKING, Any, Callable, Protocol, Self
 
 import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode
 
+if TYPE_CHECKING:
+    from faebryk.library import Literals
+
 RefPath = fabll.RefPath
 EdgeField = fabll.EdgeField
 
 
 def _get_pointer_references(
-    node: fabll.Node[Any], identifier: str | None = None
-) -> "list[fabll.Node[Any]]":
+    node: fabll.NodeT, identifier: str | None = None
+) -> "list[fabll.NodeT]":
     references: list[tuple[int | None, BoundNode]] = []
 
     def _collect(
@@ -51,12 +54,12 @@ class PointerEdgeFactory(Protocol):
 
 
 class CollectionProtocol(Protocol):
-    def as_list(self) -> list[fabll.Node[Any]]: ...
+    def as_list(self) -> list[fabll.NodeT]: ...
 
 
 class PointerProtocol(CollectionProtocol):
-    def deref(self) -> fabll.Node[Any]: ...
-    def point(self, node: fabll.Node[Any]) -> None: ...
+    def deref(self) -> fabll.NodeT: ...
+    def point(self, node: fabll.NodeT) -> None: ...
 
     @classmethod
     def MakeChild(cls) -> fabll.ChildField[Self]: ...  # type: ignore
@@ -66,19 +69,19 @@ class PointerProtocol(CollectionProtocol):
 
 def AbstractPointer(
     edge_factory: PointerEdgeFactory,
-    retrieval_function: Callable[[fabll.Node[Any]], fabll.Node[Any]],
+    retrieval_function: Callable[[fabll.NodeT], fabll.NodeT],
 ) -> type[PointerProtocol]:
     class ConcretePointer(fabll.Node):
         _edge_factory = edge_factory
         _retrieval_function = retrieval_function
 
-        def as_list(self) -> list[fabll.Node[Any]]:
+        def as_list(self) -> list[fabll.NodeT]:
             return [self.deref()]
 
-        def deref(self) -> fabll.Node[Any]:
+        def deref(self) -> fabll.NodeT:
             return type(self)._retrieval_function(self)
 
-        def point(self, node: fabll.Node[Any]) -> None:
+        def point(self, node: fabll.NodeT) -> None:
             self.connect(node, type(self)._edge_factory(identifier=None))
 
         @classmethod
@@ -94,7 +97,7 @@ def AbstractPointer(
 
 
 class SequenceProtocol(CollectionProtocol):
-    def append(self, *elems: fabll.Node[Any]) -> Self: ...
+    def append(self, *elems: fabll.NodeT) -> Self: ...
 
     @classmethod
     def MakeChild(cls) -> fabll.ChildField[Self]: ...  # type: ignore
@@ -118,7 +121,7 @@ class SequenceEdgeFactory(Protocol):
 
 def AbstractSequence(
     edge_factory: SequenceEdgeFactory,
-    retrieval_function: Callable[[fabll.Node[Any], str], list[fabll.Node[Any]]],
+    retrieval_function: Callable[[fabll.NodeT, str], list[fabll.NodeT]],
 ) -> type[SequenceProtocol]:
     class ConcreteSequence(fabll.Node):
         """
@@ -130,7 +133,7 @@ def AbstractSequence(
         _edge_factory = edge_factory
         _retrieval_function = retrieval_function
 
-        def append(self, *elems: fabll.Node[Any]) -> Self:
+        def append(self, *elems: fabll.NodeT) -> Self:
             cur_len = len(self.as_list())
             for i, elem in enumerate(elems):
                 self.connect(
@@ -141,7 +144,7 @@ def AbstractSequence(
                 )
             return self
 
-        def as_list(self) -> list[fabll.Node[Any]]:
+        def as_list(self) -> list[fabll.NodeT]:
             return type(self)._retrieval_function(self, self._elem_identifier)
 
         @classmethod
@@ -167,9 +170,9 @@ def AbstractSequence(
 
 
 class SetProtocol(Protocol):
-    def append(self, *elems: fabll.Node[Any]) -> Self: ...
-    def as_list(self) -> list[fabll.Node[Any]]: ...
-    def as_set(self) -> set[fabll.Node[Any]]: ...
+    def append(self, *elems: fabll.NodeT) -> Self: ...
+    def as_list(self) -> list[fabll.NodeT]: ...
+    def as_set(self) -> set[fabll.NodeT]: ...
     @classmethod
     def MakeChild(cls, *elems: RefPath) -> fabll.ChildField[Any]: ...
     @classmethod
@@ -188,14 +191,14 @@ class SetEdgeFactory(Protocol):
 
 def AbstractSet(
     edge_factory: SetEdgeFactory,
-    retrieval_function: Callable[[fabll.Node[Any], str], list[fabll.Node[Any]]],
+    retrieval_function: Callable[[fabll.NodeT, str], list[fabll.NodeT]],
 ) -> type[SetProtocol]:
     class ConcreteSet(fabll.Node):
         _elem_identifier = "e"
         _edge_factory = edge_factory
         _retrieval_function = retrieval_function
 
-        def append(self, *elems: fabll.Node[Any]) -> Self:
+        def append(self, *elems: fabll.NodeT) -> Self:
             by_uuid = {elem.instance.node().get_uuid(): elem for elem in elems}
             cur = self.as_list()
             cur_len = len(cur)
@@ -242,10 +245,10 @@ def AbstractSet(
                 )
             return out
 
-        def as_list(self) -> list[fabll.Node[Any]]:
+        def as_list(self) -> list[fabll.NodeT]:
             return type(self)._retrieval_function(self, self._elem_identifier)
 
-        def as_set(self) -> set[fabll.Node[Any]]:
+        def as_set(self) -> set[fabll.NodeT]:
             return set(self.as_list())
 
     ConcreteSet.__name__ = f"ConcreteSet_{id(ConcreteSet):x}"
@@ -302,15 +305,21 @@ class PointerTuple(fabll.Node):
             elem_ref,
         )
 
-    def deref_pointer(self) -> fabll.Node[Any]:
+    def deref_pointer(self) -> fabll.NodeT:
         electrical_ptr = self.pointer.get()
         return electrical_ptr.deref()
 
     def get_literals_as_list(self) -> list[fabll.LiteralT]:
         return [
-            fabll.LiteralNode.bind_instance(instance=lit.instance).get_value()
+            Literals.Strings.bind_instance(instance=lit.instance).get_value()
             for lit in self.literals.get().as_list()
         ]
+
+    def append_literal(self, literal: fabll.LiteralT) -> None:
+        lit = Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
+            g=self.instance.g(), attributes=Literals.LiteralsAttributes(value=literal)
+        )
+        self.literals.get().append(lit)
 
 
 # TESTS --------------------------------------------------------------------------------

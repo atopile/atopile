@@ -7,28 +7,40 @@ import faebryk.library._F as F
 
 
 class Diode(fabll.Node):
-    forward_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    # Current at which the design is functional
-    current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    reverse_working_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    reverse_leakage_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
-    # Current at which the design may be damaged
-    max_current = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ampere)
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    forward_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    """Current at which the design is functional"""
+    reverse_working_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    reverse_leakage_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere
+    )
+    max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    """Current at which the design may be damaged"""
 
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={"forward_voltage": forward_voltage},
-    ).put_on_type()
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(forward_voltage, tolerance=True, prefix="Vf"),
+        S(current, prefix="If"),
+    )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.D
-    ).put_on_type()
+    )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             anode: ["A", "Anode", "+"],
             cathode: ["K", "C", "Cathode", "-"],
@@ -36,6 +48,10 @@ class Diode(fabll.Node):
         accept_prefix=False,
         case_sensitive=False,
     )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     # anode.add_dependant(
     #     F.has_net_name.MakeChild(name="anode", level=F.has_net_name.Level.SUGGESTED)
@@ -63,4 +79,4 @@ class Diode(fabll.Node):
         power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

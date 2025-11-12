@@ -8,6 +8,9 @@ import faebryk.library._F as F
 
 
 class MOSFET(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class ChannelType(Enum):
         N_CHANNEL = auto()
         P_CHANNEL = auto()
@@ -16,42 +19,43 @@ class MOSFET(fabll.Node):
         ENHANCEMENT = auto()
         DEPLETION = auto()
 
-    channel_type = fabll.Parameter.MakeChild_Enum(enum_t=ChannelType)
-    saturation_type = fabll.Parameter.MakeChild_Enum(enum_t=SaturationType)
-    gate_source_threshold_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    max_drain_source_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    max_continuous_drain_current = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Ampere
-    )
-    on_resistance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Ohm)
-
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     source = F.Electrical.MakeChild()
     gate = F.Electrical.MakeChild()
     drain = F.Electrical.MakeChild()
 
+
+    channel_type = F.Parameters.EnumParameter.MakeChild(
+        enum_t=ChannelType
+    )
+    saturation_type = F.Parameters.EnumParameter.MakeChild(
+        enum_t=SaturationType
+    )
+    gate_source_threshold_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt
+    )
+    max_drain_source_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt
+    )
+    max_continuous_drain_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere
+    )
+    on_resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.Q
-    ).put_on_type()
+    )
 
-    # @fabll.rt_field
-    # def pickable(self) -> F.is_pickable_by_type:
-    #     return F.is_pickable_by_type(p
-    #         F.is_pickable_by_type.Type.MOSFET,
-    #         {
-    #             "channel_type": self.channel_type,
-    #             # TODO: add support in backend
-    #             # "saturation_type": self.saturation_type,
-    #             "gate_source_threshold_voltage": self.gate_source_threshold_voltage,
-    #             "max_drain_source_voltage": self.max_drain_source_voltage,
-    #             "max_continuous_drain_current": self.max_continuous_drain_current,
-    #             "on_resistance": self.on_resistance,
-    #         },
-    #     )
+    _can_bridge = F.can_bridge.MakeChild(in_=source, out_=drain)
 
-    # TODO pretty confusing
-    can_bridge = F.can_bridge.MakeChild(in_=source, out_=drain)
-
-    pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             source: ["S", "Source"],
             gate: ["G", "Gate"],
@@ -61,6 +65,14 @@ class MOSFET(fabll.Node):
         case_sensitive=False,
     )
 
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(gate_source_threshold_voltage, prefix="Vgs"),
+        S(max_drain_source_voltage, prefix="Vds max"),
+        S(max_continuous_drain_current, prefix="Id max"),
+        S(on_resistance, prefix="Ron"),
+    )
+    # TODO: add trait
     # self.source.add(F.has_net_name("source", level=F.has_net_name.Level.SUGGESTED))
     # self.gate.add(F.has_net_name("gate", level=F.has_net_name.Level.SUGGESTED))
     # self.drain.add(F.has_net_name("drain", level=F.has_net_name.Level.SUGGESTED))

@@ -1,46 +1,52 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from typing import Self
+
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+import faebryk.library._F as F
 
 
 class can_bridge(fabll.Node):
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
-    in_ = fabll.ChildField(fabll.Node)
-    out_ = fabll.ChildField(fabll.Node)
 
-    def bridge(self, _in: fabll.Node, out: fabll.Node):
+    in_ = F.Collections.Pointer.MakeChild()
+    out_ = F.Collections.Pointer.MakeChild()
+
+    def bridge(self, _in: fabll.Node, _out: fabll.Node):
         _in.get_trait(fabll.is_interface).connect_to(self.get_in())
-        out.get_trait(fabll.is_interface).connect_to(self.get_out())
+        _out.get_trait(fabll.is_interface).connect_to(self.get_out())
 
     def get_in(self) -> fabll.Node:
-        in_ = EdgePointer.get_referenced_node_from_node(node=self.in_.get().instance)
+        in_ = self.in_.get().deref()
         if in_ is None:
             raise ValueError("in is None")
-        return fabll.Node.bind_instance(in_)
+        return in_
 
     def get_out(self) -> fabll.Node:
-        out = EdgePointer.get_referenced_node_from_node(node=self.out_.get().instance)
-        if out is None:
+        out_ = self.out_.get().deref()
+        if out_ is None:
             raise ValueError("out is None")
-        return fabll.Node.bind_instance(out)
+        return out_
 
     @classmethod
     def MakeChild(cls, in_: fabll.ChildField, out_: fabll.ChildField):
         out = fabll.ChildField(cls)
         out.add_dependant(
-            fabll.EdgeField(
+            F.Collections.Pointer.EdgeField(
                 [out, cls.in_],
                 [in_],
-                edge=EdgePointer.build(identifier="in", order=None),
             )
         )
         out.add_dependant(
-            fabll.EdgeField(
+            F.Collections.Pointer.EdgeField(
                 [out, cls.out_],
                 [out_],
-                edge=EdgePointer.build(identifier="out", order=None),
             )
         )
         return out
+
+    def setup(self, in_: fabll.Node, out_: fabll.Node) -> Self:
+        self.in_.get().point(in_)
+        self.out_.get().point(out_)
+        return self

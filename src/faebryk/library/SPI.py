@@ -6,14 +6,22 @@ import faebryk.library._F as F
 
 
 class SPI(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     sclk = F.ElectricLogic.MakeChild()
     miso = F.ElectricLogic.MakeChild()
     mosi = F.ElectricLogic.MakeChild()
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+
 # TODO(zig-migration): `Graph` is currently an alias via Python.
 # Consider migrating call sites to Zig GraphView/TypeGraph directly.
 from faebryk.core.node import Graph
@@ -136,9 +137,10 @@ class does_not_require_picker_check(fabll.Node):
     pass
 
 
-def get_pick_tree(module: fabll.Node | fabll.ModuleInterface) -> Tree[fabll.Module]:
-    if isinstance(module, fabll.Module):
-        module = module.get_most_special()
+def get_pick_tree(module: fabll.Node) -> Tree[fabll.Module]:
+    # TODO no specialization
+    # if module.has_trait(fabll.is_module):
+    #     module = module.get_most_special()
 
     tree = Tree()
     merge_tree = tree
@@ -152,8 +154,9 @@ def get_pick_tree(module: fabll.Node | fabll.ModuleInterface) -> Tree[fabll.Modu
 
     for child in module.get_children(
         direct_only=True,
-        types=(fabll.Module, fabll.ModuleInterface),
+        types=fabll.Node,
         include_root=False,
+        required_trait=(fabll.is_module, fabll.is_interface),
     ):
         child_tree = get_pick_tree(child)
         merge_tree.update(child_tree)
@@ -183,15 +186,17 @@ def check_missing_picks(module: fabll.Node):
     # - no module children
     # - no parent with picker
 
-    missing = module.get_children_modules(
-        types=fabll.Module,
+    missing = module.get_children(
+        types=fabll.Node,
+        required_trait=fabll.is_module,
         direct_only=False,
         include_root=True,
-        # not specialized
-        most_special=True,
         # leaf == no children
-        f_filter=lambda m: not m.get_children_modules(
-            types=fabll.Module, f_filter=lambda x: not isinstance(x, F.Footprint)
+        f_filter=lambda m: not m.get_children(
+            types=fabll.Node,
+            required_trait=fabll.is_module,
+            direct_only=False,
+            f_filter=lambda x: not isinstance(x, F.Footprint),
         )
         and not isinstance(m, F.Footprint)
         # no parent with part picked
@@ -279,7 +284,7 @@ def find_independent_groups(
                 m
                 for p in p_eq
                 if (parent := p.get_parent()) is not None
-                and isinstance(m := parent[0], fabll.Module)
+                and (m := parent[0]).has_trait(fabll.is_module)
                 and m in modules
             }
             module_eqs.add_eq(*p_modules)

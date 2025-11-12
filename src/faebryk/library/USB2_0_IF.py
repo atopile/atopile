@@ -3,29 +3,22 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class USB2_0_IF(fabll.Node):
-    # class Data(F.DifferentialPair):
-    #     # FIXME: this should be in diffpair right?
-    #     def single_electric_reference(self):
-    #         return F.has_single_electric_reference_defined(
-    #             F.ElectricLogic.connect_all_module_references(self)
-    #         )
-
-    #     def __preinit__(self):
-    #         self.single_electric_reference.get_reference().voltage.constrain_subset(
-    #             fabll.Range(0 * P.V, 3.6 * P.V)
-    #         )
-
-    # d: Data
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    d = F.DifferentialPair.MakeChild()
     buspower = F.ElectricPower.MakeChild()
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.d.p.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
-        self.d.n.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
-        self.buspower.hv.add(
-            F.has_net_name("USB_VBUS", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # self.d.p.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
+    # self.d.n.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
+    # self.buspower.hv.add(
+    #     F.has_net_name("USB_VBUS", level=F.has_net_name.Level.SUGGESTED)
+    # )

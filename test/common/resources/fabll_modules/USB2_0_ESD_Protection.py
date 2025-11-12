@@ -29,7 +29,7 @@ class USB2_0_ESD_Protection(fabll.Node):
     # ----------------------------------------
     @fabll.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.usb[0], self.usb[1])
+        return F.can_bridge(self.usb[0], self.usb[1])
 
     designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U

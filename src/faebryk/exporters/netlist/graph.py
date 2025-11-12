@@ -71,7 +71,7 @@ def ensure_ref_and_value(c: fabll.Node):
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
-    buses = fabll.ModuleInterface._group_into_buses(interfaces)
+    buses = fabll.is_interface.group_into_buses(interfaces)
     nets_out = set()
 
     # Iterate buses in a deterministic order by their string representation
@@ -197,7 +197,7 @@ def _name_shittiness(name: str | None) -> float:
 
 
 @once
-def _get_stable_node_name(mif: fabll.ModuleInterface) -> str:
+def _get_stable_node_name(mif: fabll.Node) -> str:
     """Get a stable hierarchical name for a module interface."""
     return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
 
@@ -248,12 +248,12 @@ def _register_named_nets(
             )
 
 
-def _calculate_suggested_name_rank(mif: fabll.ModuleInterface, base_depth: int) -> int:
+def _calculate_suggested_name_rank(mif: fabll.Node, base_depth: int) -> int:
     """Calculate rank for a suggested name based on hierarchy."""
     rank = base_depth
 
-    owner_iface = mif.get_parent_of_type(fabll.ModuleInterface)
-    if owner_iface and not isinstance(owner_iface, F.Electrical):
+    owner_iface = mif.get_parent_of_type(fabll.Node)
+    if owner_iface and not owner_iface.isinstance(F.Electrical):
         rank -= 1
 
     if fabll.Node.nearest_common_ancestor(mif):
@@ -263,7 +263,7 @@ def _calculate_suggested_name_rank(mif: fabll.ModuleInterface, base_depth: int) 
 
 
 def _extract_net_name_info(
-    mif: fabll.ModuleInterface,
+    mif: fabll.Node,
 ) -> tuple[set[str], list[tuple[str, int]], dict[str, float]]:
     """Extract naming information from an interface."""
     required_names: set[str] = set()
@@ -285,7 +285,7 @@ def _extract_net_name_info(
         for node, _name_in_parent in mif.get_hierarchy():
             if not node.get_parent():
                 continue
-            if not isinstance(node, fabll.ModuleInterface):
+            if not node.has_trait(fabll.is_interface):
                 continue
             if not node.has_trait(F.has_net_name):
                 continue
@@ -366,7 +366,7 @@ def _process_unnamed_nets(
                 raise UserException(
                     f"Multiple conflicting required net names: {required}"
                 )
-            net.add(F.has_overriden_name_defined(required.pop()))
+            net.add(F.has_overriden_name(required.pop()))
             continue
 
         # Create net name entry and determine base name
@@ -402,8 +402,8 @@ def _extract_interface_candidate(mif: F.Electrical) -> tuple[str, int] | None:
             if not node.get_parent():
                 continue
 
-            is_interface = isinstance(node, fabll.ModuleInterface)
-            is_not_electrical = not isinstance(node, F.Electrical)
+            is_interface = node.has_trait(fabll.is_interface)
+            is_not_electrical = not node.isinstance(F.Electrical)
 
             if is_interface and is_not_electrical:
                 return (name_in_parent, len(node.get_hierarchy()))
@@ -439,9 +439,9 @@ def _collect_affixes(mifs: list[F.Electrical]) -> tuple[str | None, str | None]:
         if not affix:
             continue
 
-        if prefix := getattr(affix, "required_prefix", None):
+        if prefix := affix.prefix:
             prefixes.append(str(prefix))
-        if suffix := getattr(affix, "required_suffix", None):
+        if suffix := affix.suffix:
             suffixes.append(str(suffix))
 
     # Return first prefix and suffix found
@@ -481,10 +481,10 @@ def _apply_affixes(
 
 
 def _find_anchor_interface(hierarchy: list[tuple]) -> tuple[int, tuple] | None:
-    """Find the first non-Electrical fabll.ModuleInterface in hierarchy."""
+    """Find the first non-Electrical fabll.Node in hierarchy."""
     for idx, (node, name) in enumerate(hierarchy):
-        is_interface = isinstance(node, fabll.ModuleInterface)
-        is_not_electrical = not isinstance(node, F.Electrical)
+        is_interface = node.has_trait(fabll.is_interface)
+        is_not_electrical = not node.isinstance(F.Electrical)
 
         if is_interface and is_not_electrical:
             return idx, (node, name)
@@ -496,7 +496,7 @@ def _find_owner_module(hierarchy: list[tuple], before_idx: int) -> str | None:
     """Find the nearest owning Module before the given index."""
     for j in range(before_idx - 1, -1, -1):
         node, name = hierarchy[j]
-        if isinstance(node, fabll.Module):
+        if node.has_trait(fabll.is_module):
             return name
     return None
 
@@ -505,7 +505,7 @@ def _score_interface_path(anchor_node, anchor_name: str, has_owner: bool) -> int
     """Calculate score for an interface path."""
     score = 0
 
-    if isinstance(anchor_node, F.ElectricPower):
+    if anchor_node.isinstance(F.ElectricPower):
         score += 2
 
     if has_owner:
@@ -570,7 +570,7 @@ def _get_owner_module_name(net: F.Net) -> str | None:
         try:
             hierarchy = mif.get_hierarchy()
             for node, name_in_parent in hierarchy:
-                if node.get_parent() and isinstance(node, fabll.Module):
+                if node.get_parent() and node.has_trait(fabll.is_module):
                     owner_names.add(name_in_parent)
         except fabll.NodeNoParent:
             continue
@@ -667,7 +667,7 @@ def _assign_prefix_for_net(
         and not net_name.required_suffix
     )
 
-    if should_use_owner:
+    if should_use_owner
         if owner_name := _get_owner_module_name(net):
             net_name.prefix = owner_name
             return
@@ -737,7 +737,7 @@ def _apply_names_to_nets(names: FuncDict[F.Net, _NetName]) -> None:
     """Apply the computed names to nets, with length limiting."""
     for net, net_name in names.items():
         final_name = _truncate_long_name(net_name.name)
-        net.add(F.has_overriden_name_defined(final_name))
+        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(name=final_name)
 
 
 def attach_net_names(nets: Iterable[F.Net]) -> None:

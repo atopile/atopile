@@ -30,14 +30,18 @@ def _register_shim(addr: str | address.AddrStr, preferred: str):
     return _wrapper
 
 
-class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
+class _has_local_kicad_footprint_named_defined(fabll.Node):
     """
     This trait defers footprint creation until it's needed,
     which means we can construct the underlying pin map
     """
 
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+    # TODO: Forward this trait to parent
+    _has_footprint = fabll.ChildField(F.has_footprint)
+
     def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
-        super().__init__()
         if ":" not in lib_reference:
             # TODO: default to a lib reference starting with "lib:"
             # for backwards compatibility with old footprints
@@ -49,10 +53,14 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         if fp := self.try_get_footprint():
             return fp
         else:
-            fp = F.KicadFootprint(
-                pin_names=list(self.pinmap.keys()),
+            fp = (
+                F.KicadFootprint.bind_typegraph_from_instance(instance=self.instance)
+                .create_instance(g=self.instance.g())
+                .setup(pin_names=list(self.pinmap.keys()))
             )
-            fp.add(F.KicadFootprint.has_kicad_identifier(self.lib_reference))
+            fabll.Traits.create_and_add_instance_to(
+                node=fp, trait=fp.has_kicad_identifier
+            ).setup(kicad_identifier=self.lib_reference)
             fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)  # type: ignore
             self.set_footprint(fp)
             return fp
@@ -176,7 +184,9 @@ class GlobalAttributes(fabll.Node):
 
     @datasheet_url.setter
     def datasheet_url(self, value: str):
-        self.add(F.has_datasheet_defined(value))
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.has_datasheet).setup(
+            datasheet=value
+        )
 
     @property
     def designator_prefix(self):
@@ -187,7 +197,9 @@ class GlobalAttributes(fabll.Node):
 
     @designator_prefix.setter
     def designator_prefix(self, value: str):
-        self.add(F.has_designator_prefix(value))
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_designator_prefix
+        ).setup(designator_prefix=value)
 
     @property
     def package(self) -> str:
@@ -292,7 +304,7 @@ class GlobalAttributes(fabll.Node):
     @property
     def required(self):
         """
-        Only for ModuleInterfaces.
+        Only for Interfaces.
         If set to `True`, require that interface is connected to something outside
         of the module it's defined in.
         """
@@ -511,4 +523,6 @@ class I2C(F.I2C):
 
     @property
     def gnd(self):
-        return self.single_electric_reference.get_reference().gnd
+        return (
+            self.get_trait(F.has_single_electric_reference).get_reference().gnd
+        )

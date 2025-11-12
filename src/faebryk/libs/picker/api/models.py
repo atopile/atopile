@@ -199,23 +199,26 @@ class Component:
     def attach(self, module: fabll.Node, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
 
-        module.add(
-            F.has_part_picked(
-                PickedPartLCSC(
-                    manufacturer=self.manufacturer_name,
-                    partno=self.part_number,
-                    supplier_partno=self.lcsc_display,
-                    info=PickedPartLCSC.Info(
-                        stock=self.stock,
-                        price=self.get_price(qty),
-                        description=self.description,
-                        basic=bool(self.is_basic),
-                        preferred=bool(self.is_preferred),
-                    ),
-                )
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=F.has_part_picked
+        ).setup(
+            PickedPartLCSC(
+                manufacturer=self.manufacturer_name,
+                partno=self.part_number,
+                supplier_partno=self.lcsc_display,
+                info=PickedPartLCSC.Info(
+                    stock=self.stock,
+                    price=self.get_price(qty),
+                    description=self.description,
+                    basic=bool(self.is_basic),
+                    preferred=bool(self.is_preferred),
+                ),
             )
         )
-        module.add(F.has_datasheet_defined(self.datasheet_url))
+
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=F.has_datasheet
+        ).setup(datasheet=self.datasheet_url)
 
         missing_attrs = []
         # only for type picks

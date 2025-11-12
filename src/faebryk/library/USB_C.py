@@ -6,6 +6,9 @@ import faebryk.library._F as F
 
 
 class USB_C(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     usb3 = F.USB3.MakeChild()
     cc1 = F.Electrical.MakeChild()
     cc2 = F.Electrical.MakeChild()
@@ -13,6 +16,10 @@ class USB_C(fabll.Node):
     sbu2 = F.Electrical.MakeChild()
     rx = F.DifferentialPair.MakeChild()
     tx = F.DifferentialPair.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

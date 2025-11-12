@@ -601,15 +601,13 @@ class PartLifecycle:
 
             ## Apply propertys, Reference and atopile_address
             # Take any descriptive properties defined on the component
-            if c_props_t := component.try_get_trait(F.has_descriptive_properties):
-                for prop_name, prop_value in c_props_t.get_properties().items():
-                    if re_in(
-                        prop_name,
-                        PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
-                    ):
-                        Property.set_property(
-                            pcb_fp, _prop_factory(prop_name, prop_value)
-                        )
+            properties = F.SerializableMetadata.get_properties(component)
+            for prop_name, prop_value in properties.items():
+                if re_in(
+                    prop_name,
+                    PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
+                ):
+                    Property.set_property(pcb_fp, _prop_factory(prop_name, prop_value))
 
             if c_props_t := component.try_get_trait(F.has_datasheet):
                 Property.set_property(

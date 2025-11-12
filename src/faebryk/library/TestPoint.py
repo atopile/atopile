@@ -14,12 +14,23 @@ class TestPoint(fabll.Node):
     Basic test point.
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     contact = F.Electrical.MakeChild()
-    contact.add_dependant(F.requires_external_usage.MakeChild())
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    contact.add_dependant(
+        F.requires_external_usage.MakeChild()
+    )  # TODO: Does this work?
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.TP
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

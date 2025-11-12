@@ -10,21 +10,31 @@ class CAN(fabll.Node):
     CAN bus interface
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     diff_pair = F.DifferentialPair.MakeChild()
 
-    speed = fabll.Parameter.MakeChild_Numeric(unit=F.Units.BitPerSecond)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    # TODO constrain CAN baudrate between 10kbps to 1Mbps
+    # F.Expressions.Is.MakeChild_Constrain()
 
-    def __preinit__(self) -> None:
-        self.speed.add(F.is_bus_parameter())
+    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
+        [impedance], 120.0
+    )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.diff_pair.p.line.add(
-            F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.diff_pair.n.line.add(
-            F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # self.diff_pair.p.line.add(
+    #     F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
+    # )
+    # self.diff_pair.n.line.add(
+    #     F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
+    # )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

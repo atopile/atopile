@@ -2,22 +2,40 @@
 # SPDX-License-Identifier: MIT
 
 
+from typing import TYPE_CHECKING
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
+if TYPE_CHECKING:
+    from faebryk.library.has_linked_pad import has_linked_pad
+
 
 class Pad(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     net = F.Electrical.MakeChild()
-    pcb = fabll.GenericNodeWithInterface.MakeChild()
+    pcb = fabll.NodeWithInterface.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def attach(self, intf: F.Electrical):
-        self.net.connect(intf)
-        intf.add(F.has_linked_pad_defined(self))
+        self.net.get().get_trait(fabll.is_interface).connect_to(intf)
+        fabll.Traits.create_and_add_instance_to(node=intf, trait=has_linked_pad).setup(
+            pad=self
+        )
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint_unique(
-        intf: fabll.ModuleInterface,
+        intf: fabll.Node,
     ) -> "Pad":
         pads = Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         if len(pads) != 1:
@@ -26,19 +44,23 @@ class Pad(fabll.Node):
 
     @staticmethod
     def find_pad_for_intf_with_parent_that_has_footprint(
-        intf: fabll.ModuleInterface,
+        intf: fabll.Node,
     ) -> list["Pad"]:
         # This only finds directly attached pads
         # -> misses from parents / children nodes
-        # if intf.has_trait(F.has_linked_pad):
-        #     return list(intf.get_trait(F.has_linked_pad).get_pads())
+        # if intf.has_trait(F.has_lnked_pad):
+        #     return list(intf.get_trait(F.has_lnked_pad).get_pads())
 
         # This is a bit slower, but finds them all
         _, footprint = F.Footprint.get_footprint_of_parent(intf)
         pads = [
             pad
-            for pad in footprint.get_children(direct_only=True, types=Pad)
-            if pad.net.get_trait(fabll.is_interface).is_connected_to(intf)
+            for pad in footprint.get_children(
+                direct_only=True,
+                types=Pad,
+                required_trait=fabll.is_interface,
+            )
+            if pad.net.get().get_trait(fabll.is_interface).is_connected_to(intf)
         ]
         return pads
 

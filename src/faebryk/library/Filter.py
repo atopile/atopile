@@ -8,6 +8,9 @@ import faebryk.library._F as F
 
 
 class Filter(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class Response(Enum):
         LOWPASS = auto()
         HIGHPASS = auto()
@@ -15,13 +18,21 @@ class Filter(fabll.Node):
         BANDSTOP = auto()
         OTHER = auto()
 
-    cutoff_frequency = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Hertz,
-    )
-    order = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Natural,
-    )
-    response = fabll.Parameter.MakeChild_Enum(enum_t=Response)
-
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     in_: fabll.ChildField[F.Electrical]
     out: fabll.ChildField[F.Electrical]
+
+    cutoff_frequency = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz,
+    )
+    order = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Natural,
+    )
+    response = F.Parameters.EnumParameter.MakeChild(enum_t=Response)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()

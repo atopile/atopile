@@ -4,7 +4,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class Crystal_Oscillator(fabll.Node):
@@ -14,20 +13,26 @@ class Crystal_Oscillator(fabll.Node):
     crystal = F.Crystal.MakeChild()
     capacitors = [F.Capacitor.MakeChild() for _ in range(2)]
     current_limiting_resistor = F.Resistor.MakeChild()
-
     xtal_if = F.XtalIF.MakeChild()
 
-    # ----------------------------------------
-    #               parameters
-    # ----------------------------------------
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
-    _STRAY_CAPACITANCE = fabll.Parameter.MakeChild_Numeric(
+    _STRAY_CAPACITANCE = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Farad,
     )
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
     def capacitance(self):
-        return (self.crystal.load_capacitance - self._STRAY_CAPACITANCE) * 2
+        pass
+        # return (self.crystal.get().load_capacitance.get(). - self._STRAY_CAPACITANCE.get()) * 2
 
     def __preinit__(self):
         for cap in self.capacitors:

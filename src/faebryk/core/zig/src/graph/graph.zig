@@ -359,37 +359,19 @@ pub const Edge = struct {
     /// No guarantee that there is only one
     pub fn get_single_edge(bound_node: BoundNodeReference, edge_type: EdgeType, is_target: ?bool) ?BoundEdgeReference {
         const Visit = struct {
-            bound_node: BoundNodeReference,
-            is_target: ?bool,
-
             pub fn visit(ctx: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(BoundEdgeReference) {
-                const self: *@This() = @ptrCast(@alignCast(ctx));
-                if (self.is_target) |d| {
-                    if (d) {
-                        const target = bound_edge.edge.get_target();
-                        if (target) |t| {
-                            if (Node.is_same(t, self.bound_node.node)) {
-                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
-                            }
-                        }
-                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
-                    } else {
-                        const source = bound_edge.edge.get_source();
-                        if (source) |s| {
-                            if (Node.is_same(s, self.bound_node.node)) {
-                                return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
-                            }
-                        }
-                        return visitor.VisitResult(BoundEdgeReference){ .CONTINUE = {} };
-                    }
-                }
+                _ = ctx;
                 return visitor.VisitResult(BoundEdgeReference){ .OK = bound_edge };
             }
         };
 
-        var visit = Visit{ .bound_node = bound_node, .is_target = is_target };
-
-        const result = bound_node.visit_edges_of_type(edge_type, BoundEdgeReference, &visit, Visit.visit);
+        var visit = Visit{};
+        // Convert is_target to directed parameter:
+        // is_target = true -> directed = false (node is target)
+        // is_target = false -> directed = true (node is source)
+        // is_target = null -> directed = null (any direction)
+        const directed: ?bool = if (is_target) |d| !d else null;
+        const result = bound_node.visit_edges_of_type(edge_type, BoundEdgeReference, &visit, Visit.visit, directed);
         switch (result) {
             .OK => return result.OK,
             .EXHAUSTED => return null,
@@ -419,7 +401,7 @@ pub const BFSPath = struct {
     g: *GraphView,
     start_node: BoundNodeReference,
     invalid_path: bool = false, // invalid path (e.g., hierarchy violation, shallow link violation, etc.)
-    stop_new_path_discovery: bool = false, // Do not keep going down this path (do not add to open_path_queue)
+    stop_new_path_discovery: bool = false,
     visit_strength: VisitStrength = .unvisited,
 
     fn is_consistent(self: *const @This()) bool {
@@ -430,8 +412,9 @@ pub const BFSPath = struct {
         std.debug.assert(self.is_consistent());
     }
 
-    pub fn init(start: BoundNodeReference) @This() {
-        var path = BFSPath{
+    pub fn init(start: BoundNodeReference) !*@This() {
+        var path = try start.g.allocator.create(BFSPath);
+        path.* = BFSPath{
             .traversed_edges = std.ArrayList(TraversedEdge).init(start.g.allocator),
             .g = start.g,
             .start_node = start,
@@ -447,12 +430,7 @@ pub const BFSPath = struct {
         const g = base.g;
         std.debug.assert(base.start_node.g == g);
 
-        var new_path = try g.allocator.create(BFSPath);
-        new_path.* = BFSPath.init(base.start_node);
-        errdefer {
-            new_path.deinit();
-            g.allocator.destroy(new_path);
-        }
+        var new_path = try BFSPath.init(base.start_node);
 
         // Pre-allocate exact capacity needed to avoid reallocation
         const new_len = base.traversed_edges.items.len + 1;
@@ -478,6 +456,7 @@ pub const BFSPath = struct {
     pub fn deinit(self: *@This()) void {
         self.assert_consistent();
         self.traversed_edges.deinit();
+        self.g.allocator.destroy(self);
     }
 
     /// Returns the final destination of the path
@@ -516,18 +495,24 @@ pub const BFSPath = struct {
 };
 
 pub const BFSPaths = struct {
-    paths: std.ArrayList(BFSPath),
+    paths: std.ArrayList(*BFSPath),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) @This() {
-        return .{ .paths = std.ArrayList(BFSPath).init(allocator), .allocator = allocator };
+        return .{ .paths = std.ArrayList(*BFSPath).init(allocator), .allocator = allocator };
     }
 
-    pub fn deinit(self: *const @This()) void {
-        for (self.paths.items) |*path| {
+    pub fn deinit(self: *@This()) void {
+        for (self.paths.items) |path| {
             path.deinit();
         }
         self.paths.deinit();
+    }
+
+    pub fn destroy(self: *@This()) void {
+        const allocator = self.allocator;
+        self.deinit();
+        allocator.destroy(self);
     }
 };
 
@@ -547,8 +532,8 @@ pub const BoundNodeReference = struct {
         return self.g.visit_edges(self.node, T, ctx, f);
     }
 
-    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
-        return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f);
+    pub fn visit_edges_of_type(self: *const @This(), edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
+        return self.g.visit_edges_of_type(self.node, edge_type, T, ctx, f, directed);
     }
 };
 
@@ -719,7 +704,7 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
-    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
+    pub fn visit_edges_of_type(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T), directed: ?bool) visitor.VisitResult(T) {
         const Result = visitor.VisitResult(T);
         const edges = g.get_edges_of_type(node, edge_type);
         if (edges == null) {
@@ -727,6 +712,22 @@ pub const GraphView = struct {
         }
 
         for (edges.?.items) |edge| {
+            // Filter by direction if specified
+            if (directed) |d| {
+                if (d) {
+                    // directed = true: node must be source
+                    if (!Node.is_same(edge.source, node)) {
+                        continue;
+                    }
+                } else {
+                    // directed = false: node must be target
+                    if (!Node.is_same(edge.target, node)) {
+                        continue;
+                    }
+                }
+            }
+            // directed = null: ignore direction (process all edges)
+
             const bound_edge = BoundEdgeReference{ .edge = edge, .g = g };
             const result = f(ctx, bound_edge);
             switch (result) {
@@ -758,7 +759,6 @@ pub const GraphView = struct {
         defer {
             while (open_path_queue.readItem()) |bfspath| {
                 bfspath.deinit();
-                g.allocator.destroy(bfspath);
             }
             open_path_queue.deinit();
         }
@@ -803,16 +803,12 @@ pub const GraphView = struct {
 
         // BFS setup
         visited_nodes.put(start_node.node, VisitInfo{ .visit_strength = .strong }) catch @panic("OOM");
-        const empty_path_copy = start_node.g.allocator.create(BFSPath) catch @panic("OOM");
-        empty_path_copy.* = BFSPath.init(start_node);
+        const empty_path_copy = BFSPath.init(start_node) catch @panic("OOM");
         open_path_queue.writeItem(empty_path_copy) catch @panic("OOM");
 
         // BFS iterations
         while (open_path_queue.readItem()) |path| {
-            defer {
-                path.deinit();
-                g.allocator.destroy(path);
-            }
+            defer path.deinit();
 
             const bfs_visitor_result = f(ctx, path);
 
@@ -897,7 +893,7 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     _ = g.insert_edge(e12);
     _ = g.insert_edge(e23);
 
-    var base = BFSPath.init(bn1);
+    var base = try BFSPath.init(bn1);
     defer base.deinit();
     try base.traversed_edges.append(TraversedEdge{
         .edge = e12,
@@ -905,13 +901,8 @@ test "BFSPath cloneAndExtend preserves start metadata" {
     });
 
     const bn2_bound = g.bind(n2);
-    const cloned = BFSPath.cloneAndExtend(&base, bn2_bound, e23) catch |err| switch (err) {
-        else => return err,
-    };
-    defer {
-        cloned.deinit();
-        g.allocator.destroy(cloned);
-    }
+    const cloned = try BFSPath.cloneAndExtend(base, bn2_bound, e23);
+    defer cloned.deinit();
 
     try std.testing.expect(cloned.start_node.node == bn1.node);
     try std.testing.expect(cloned.start_node.g == bn1.g);
@@ -931,7 +922,7 @@ test "BFSPath detects inconsistent graph view" {
     const n1 = Node.init(a);
     const bn1 = g1.insert_node(n1);
 
-    var path = BFSPath.init(bn1);
+    var path = try BFSPath.init(bn1);
     defer {
         path.g = path.start_node.g;
         path.deinit();

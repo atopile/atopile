@@ -7,40 +7,37 @@ import logging
 import operator
 from typing import Callable, Iterable, cast
 
-from faebryk.core.parameter import (
-    Abs,
-    Add,
-    GreaterOrEqual,
-    GreaterThan,
-    Intersection,
-    Is,
-    IsBitSet,
-    IsSubset,
-    Log,
-    Multiply,
-    Not,
-    Or,
-    Power,
-    Round,
-    Sin,
-    SymmetricDifference,
-    Union,
-)
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
-    CanonicalExpression,
     MutatorUtils,
     SolverAll,
     SolverLiteral,
     make_lit,
 )
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval_Disjoint,
-)
-from faebryk.libs.sets.sets import BoolSet, P_Set
 
 logger = logging.getLogger(__name__)
+
+
+Abs = F.Expressions.Abs
+Add = F.Expressions.Add
+GreaterOrEqual = F.Expressions.GreaterOrEqual
+GreaterThan = F.Expressions.GreaterThan
+Intersection = F.Expressions.Intersection
+Is = F.Expressions.Is
+IsBitSet = F.Expressions.IsBitSet
+IsSubset = F.Expressions.IsSubset
+Log = F.Expressions.Log
+Multiply = F.Expressions.Multiply
+Not = F.Expressions.Not
+Or = F.Expressions.Or
+Power = F.Expressions.Power
+Round = F.Expressions.Round
+Sin = F.Expressions.Sin
+SymmetricDifference = F.Expressions.SymmetricDifference
+Union = F.Expressions.Union
+is_canonical = F.Expressions.is_canonical
 
 
 def _multi(op: Callable, init=None) -> Callable:
@@ -99,9 +96,7 @@ def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral |
 
 @algorithm("Fold pure literal expressions", terminal=False)
 def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.nodes_of_types(
-        tuple(_CanonicalExpressions.keys()), sort_by_depth=True
-    )
+    exprs = mutator.get_expressions(sort_by_depth=True, required_traits=(is_canonical,))
     exprs = cast(Iterable[CanonicalExpression], exprs)
 
     for expr in exprs:

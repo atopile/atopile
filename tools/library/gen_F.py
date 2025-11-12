@@ -4,6 +4,7 @@
 This file generates faebryk/src/faebryk/library/__init__.py
 """
 
+import ast
 import logging
 import re
 from graphlib import TopologicalSorter
@@ -29,7 +30,37 @@ def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
     )
 
 
-def topo_sort(modules_out: dict[str, tuple[Path, str]]):
+def extract_public_classes(module_path: Path) -> list[str]:
+    """
+    Parse a Python file and extract all public class names (not starting with _).
+    Returns a list of class names defined at the top level of the module.
+    """
+    try:
+        content = module_path.read_text(encoding="utf-8")
+        tree = ast.parse(content, filename=str(module_path))
+
+        classes = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
+                # Check if this is a top-level class (not nested)
+                # We do this by checking if the parent is the Module node
+                for parent_node in ast.walk(tree):
+                    if isinstance(parent_node, ast.Module):
+                        if node in parent_node.body:
+                            classes.append(node.name)
+                            break
+
+        return sorted(set(classes))  # Remove duplicates and sort
+    except Exception as e:
+        logger.warning(f"Failed to parse {module_path}: {e}")
+        return []
+
+
+def topo_sort(modules_out: dict[str, tuple[Path, list[str]]]):
+    """
+    Sort modules topologically based on their dependencies.
+    """
+
     def find_deps(module_path: Path) -> set[str]:
         f = module_path.read_text(encoding="utf-8")
         p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
@@ -75,11 +106,15 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
                 raise Exception(f"Collision: {sub} after {m}")
         seen.add(m)
 
-    return [
-        (module_name, modules_out[module_name][1])
-        for module_name in order
-        if module_name in modules_out
-    ]
+    # Flatten modules_out into (module_name, class_name) tuples in topological order
+    result = []
+    for module_name in order:
+        if module_name in modules_out:
+            _, class_names = modules_out[module_name]
+            for class_name in class_names:
+                result.append((module_name, class_name))
+
+    return result
 
 
 def main():
@@ -91,27 +126,43 @@ def main():
 
     logger.info(f"Found {len(module_files)} modules")
 
-    modules_out: dict[str, tuple[Path, str]] = {}
+    modules_out: dict[str, tuple[Path, list[str]]] = {}
 
-    # Import each module and add its class to the current namespace
-    # for module_name in module_files:
-    #    module = importlib.import_module(
-    #        f"faebryk.library.{module_name}"  # , package=__name__
-    #    )
-    #    class_name = module_name
-    #    if hasattr(module, class_name):
-    #        # globals()[class_name] = getattr(module, class_name)
-    #        modules_out[module_name] = class_name
+    # Extract classes from each module
+    for module_path in module_files:
+        module_name = module_path.stem
+        classes = extract_public_classes(module_path)
 
-    # assuming class name is equal to file stem
-    modules_out = {
-        module_path.stem: (module_path, module_path.stem)
-        for module_path in module_files
-    }
+        if not classes:
+            logger.warning(f"No public classes found in {module_path}")
+            continue
+
+        # If a class with the same name as the module exists, use only that
+        if module_name in classes:
+            modules_out[module_name] = (module_path, [module_name])
+        else:
+            # Otherwise, import the module itself as a namespace
+            # Use the special marker to signal module import
+            marker = f"__{module_name}__AS_MODULE__"
+            modules_out[module_name] = (module_path, [marker])
+            logger.info(
+                f"Module {module_name} has no matching class, "
+                f"importing module as namespace"
+            )
 
     modules_ordered = topo_sort(modules_out)
 
-    logger.info(f"Found {len(modules_out)} classes")
+    # Generate import statements
+    import_statements = []
+    for module, class_ in modules_ordered:
+        # Check if this is a module import (marked with __NAME__AS_MODULE__)
+        if class_.endswith("__AS_MODULE__"):
+            # Import the module itself as a namespace
+            # The marker format is "__ModuleName__AS_MODULE__"
+            import_statements.append(f"from faebryk.library import {module}")
+        else:
+            # Import a specific class from the module
+            import_statements.append(f"from faebryk.library.{module} import {class_}")
 
     OUT.write_text(
         "# This file is part of the faebryk project\n"
@@ -130,17 +181,11 @@ def main():
         "# flake8: noqa: F401\n"
         "# flake8: noqa: I001\n"
         "# flake8: noqa: E501\n"
-        "\n"
-        + "\n".join(
-            # try_(
-            f"from faebryk.library.{module} import {class_}"
-            #    (AttributeError,),
-            # )
-            for module, class_ in modules_ordered
-        )
-        + "\n",
+        "\n" + "\n".join(import_statements) + "\n",
         encoding="utf-8",
     )
+
+    logger.info(f"Exported to {OUT}")
 
 
 if __name__ == "__main__":

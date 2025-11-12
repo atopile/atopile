@@ -12,11 +12,13 @@
   - [ ] isinstance checks
   - [x] rename to fabll.Node
   - [ ] deal with modules vs node
-    - [ ] get_children_modules
+    - [x] get_children_modules
   - [ ] deal with specializations
 - [ ] ModuleInterface
   - [ ] isinstance checks
   - [x] rename to fabll.Node
+  - [ ] replace connect_all_node_references
+  - [x] implement group_into_buses
 - [ ] library
   - [x] inheritance from Module/Node/Trait/ModuleInterface
   - [x] libs/L.py
@@ -24,7 +26,9 @@
 - [ ] Traits
   - [ ] for usage change constructor call to setup()
   - [ ] refactor all traits
-  - [ ] handle_duplicate
+  - [ ] replace <node>.add(<trait>) with Traits.add_to(<node>, <trait>)
+  - [ ] replace all trait inits `<trait>()`
+  - [ ] handle_duplicate 
 - [ ] Parameter
   - [ ] literals (fabll.Range...)
 - [ ] Links
@@ -40,3 +44,8 @@
 - node.get_children
 
 ## Strategy
+
+## Notes
+- rename node.py to fabll.py
+- use graph.py as graph 
+- use faebrykpy.py as fbrk (consider renaming to fbrk)

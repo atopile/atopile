@@ -76,7 +76,7 @@ class in_sub_pcb(fabll.Node):
     sub_root_modules = fabll.ChildField(F.Collections.PointerSet)
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
-    def setup(self, sub_root_module: fabll.Node[Any]) -> "in_sub_pcb":
+    def setup(self, sub_root_module: fabll.NodeT) -> "in_sub_pcb":
         self.sub_root_modules.get().append(sub_root_module)
         return self
 

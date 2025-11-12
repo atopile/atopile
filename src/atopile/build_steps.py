@@ -51,8 +51,6 @@ from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import attach_random_designators, load_designators
 from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.pcb import (
-    apply_layouts,
-    apply_routing,
     check_net_names,
     load_net_names,
 )
@@ -208,24 +206,13 @@ muster = Muster()
 def prepare_build(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    app.add(F.has_solver(solver))
-    app.add(F.PCB.has_pcb(pcb))
+    fabll.Traits.create_and_add_instance_to(app, F.has_solver).setup(solver)
+    fabll.Traits.create_and_add_instance_to(app, F.PCB.has_pcb).setup(pcb)
 
     layout.attach_sub_pcbs_to_entry_points(app)
 
     # TODO remove, once erc split up
-    app.add(needs_erc_check())
-
-    logger.info("Resolving bus parameters")
-    try:
-        F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    # FIXME: this is a hack around a compiler bug
-    except KeyErrorAmbiguous as ex:
-        raise UserException(
-            "Unfortunately, there's a compiler bug at the moment that means "
-            "that this sometimes fails. Try again, and it'll probably work. "
-            "See https://github.com/atopile/atopile/issues/807"
-        ) from ex
+    fabll.Traits.create_and_add_instance_to(app, needs_erc_check)
 
 
 @muster.register(
@@ -430,14 +417,7 @@ def update_pcb(
     pcb.transformer.apply_design()
     pcb.transformer.check_unattached_fps()
 
-    if transform_trait := app.try_get_trait(F.has_layout_transform):
-        logger.info("Transforming PCB")
-        transform_trait.transform(pcb.transformer)
-
     # set layout
-    apply_layouts(app)
-    pcb.transformer.move_footprints()
-    apply_routing(app, pcb.transformer)
     if config.build.hide_designators:
         pcb.transformer.hide_all_designators()
 
@@ -484,7 +464,9 @@ def generate_bom(
 ) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
-        app.get_children_modules(types=fabll.Module),
+        app.get_children(
+            direct_only=False, types=fabll.Node, required_trait=fabll.is_module
+        ),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
 

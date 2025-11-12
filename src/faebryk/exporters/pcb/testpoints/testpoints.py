@@ -8,6 +8,7 @@ from pathlib import Path
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,9 @@ logger = logging.getLogger(__name__)
 def _get_testpoints(app: fabll.Node) -> list[F.TestPoint]:
     return [
         testpoint
-        for testpoint in app.get_children_modules(
+        for testpoint in app.get_children(
             types=F.TestPoint,
+            direct_only=False,
             include_root=True,
         )
         if testpoint.has_trait(F.has_footprint)
@@ -37,7 +39,7 @@ def export_testpoints(
     testpoints = _get_testpoints(app)
 
     for testpoint in testpoints:
-        designator = testpoint.get_trait(F.has_designator).get_designator()
+        designator = not_none(testpoint.get_trait(F.has_designator).get_designator())
         full_name = testpoint.get_full_name()
         fp = testpoint.get_trait(F.has_footprint).get_footprint()
         footprint = PCB_Transformer.get_fp(fp)  # get KiCad footprint
@@ -46,8 +48,10 @@ def export_testpoints(
         library_name = footprint.name
 
         # Get single connected net name
-        net = F.Net.find_named_net_for_mif(testpoint.contact)
-        net_name = net.get_trait(F.has_overriden_name).get_name() if net else "no-net"
+        net_name = (
+            testpoint.contact.get().get_trait(F.has_overriden_name).get_name()
+            or "no-net"
+        )
 
         testpoint_data[designator] = {
             "testpoint_name": full_name,

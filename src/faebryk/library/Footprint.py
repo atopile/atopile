@@ -3,13 +3,23 @@
 
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
 
 
 class Footprint(fabll.Node):
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
     @staticmethod
     def get_footprint_of_parent(
-        intf: fabll.ModuleInterface,
+        intf: fabll.Node,
     ) -> "tuple[fabll.Node, Footprint]":
-        parent, trait = intf.get_parent_with_trait(F.has_footprint)
+        from faebryk.library._F import has_footprint
+
+        parent, trait = intf.get_parent_with_trait(has_footprint)
         return parent, trait.get_footprint()

@@ -3,6 +3,7 @@ from enum import auto
 from typing import Any, Self, cast
 
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.graph.graph import BoundEdge
@@ -16,18 +17,61 @@ from faebryk.core.zig.gen.graph.graph import BoundEdge
 # and later when we performance optimize reconsider
 
 
-def _retrieve_operands(
-    node: fabll.Node[Any], identifier: str | None
-) -> list[fabll.Node[Any]]:
+# solver shims TODO remove -------------------------------------------------------------
+
+
+def _as_node(candidate: Any) -> fabll.NodeT | None:
+    if isinstance(candidate, fabll.Node):
+        return candidate
+    return None
+
+
+def isinstance_node(candidate: Any, node_type: type[fabll.NodeT]) -> bool:
+    node = _as_node(candidate)
+    if node is None:
+        return False
+    return node.isinstance(node_type)
+
+
+def isinstance_any(candidate: Any, *node_types: type[fabll.NodeT]) -> bool:
+    return any(isinstance_node(candidate, node_type) for node_type in node_types)
+
+
+def has_trait(candidate: Any, trait: type[fabll.NodeT]) -> bool:
+    node = _as_node(candidate)
+    if node is None:
+        return False
+    return node.has_trait(trait)
+
+
+def is_expression_node(candidate: Any) -> bool:
+    return has_trait(candidate, is_expression)
+
+
+def is_constrainable_node(candidate: Any) -> bool:
+    return has_trait(candidate, IsConstrainable)
+
+
+def is_canonical_expression_node(candidate: Any) -> bool:
+    node = _as_node(candidate)
+    if node is None:
+        return False
+    return node.has_trait(is_expression) and node.has_trait(is_canonical)
+
+
+# --------------------------------------------------------------------------------------
+
+
+def _retrieve_operands(node: fabll.NodeT, identifier: str | None) -> list[fabll.NodeT]:
     class Ctx:
-        operands: list[fabll.Node[Any]] = []
+        operands: list[fabll.NodeT] = []
         _identifier = identifier
 
     def visit(ctx: type[Ctx], edge: BoundEdge):
         if ctx._identifier is not None and edge.edge().name() != ctx._identifier:
             return
         ctx.operands.append(
-            fabll.Node[Any].bind_instance(edge.g().bind(node=edge.edge().target()))
+            fabll.Node.bind_instance(edge.g().bind(node=edge.edge().target()))
         )
 
     EdgeOperand.visit_operand_edges(bound_node=node.instance, ctx=Ctx, f=visit)
@@ -91,8 +135,8 @@ class is_expression(fabll.Node):
         return out
 
     @staticmethod
-    def get_all_operands(node: fabll.Node[Any]) -> set[fabll.Node[Any]]:
-        operands: set[fabll.Node[Any]] = set()
+    def get_all_operands(node: fabll.NodeT) -> set[fabll.NodeT]:
+        operands: set[fabll.NodeT] = set()
         for child in node.get_children(
             direct_only=True,
             types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
@@ -103,7 +147,9 @@ class is_expression(fabll.Node):
         return operands
 
     @staticmethod
-    def get_all_expressions_involved_in(node: fabll.Node[Any]) -> set[fabll.Node[Any]]:
+    def get_all_expressions_involved_in(
+        node: fabll.NodeT,
+    ) -> set[fabll.NodeT]:
         # 1. Find all EdgeOperand edges
         # 2. Get their source nodes
         # 3. Get their parents
@@ -113,6 +159,19 @@ class is_expression(fabll.Node):
 
 # TODO
 class has_implicit_constraints(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class IsConstrainable(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    # TODO: solver_terminated flag, has to be attr
+
+    def constrain(self) -> None:
+        parent = self.get_parent_force()[0]
+        fabll.Traits.create_and_add_instance_to(node=parent, trait=IsConstrained)
+
+
+class IsConstrained(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
 
@@ -154,6 +213,57 @@ class is_setic_predicate(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
 
+class has_side_effects(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+# solver specific
+
+
+class is_canonical(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+# algebraic properties
+
+
+class is_reflexive(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class is_idempotent(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class has_idempotent_operands(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class is_commutative(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    @classmethod
+    def is_commutative_type(cls, node_type: type[fabll.NodeT]) -> bool:
+        # TODO
+        raise NotImplementedError
+
+
+class has_unary_identity(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class is_fully_associative(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class is_associative(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
+class is_involutory(fabll.Node):
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+
 # --------------------------------------------------------------------------------------
 
 
@@ -164,10 +274,15 @@ class Add(fabll.Node):
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
+    _has_unary_identity = has_unary_identity.MakeChild()
+    _is_fully_associative = is_fully_associative.MakeChild()
+    _is_associative = is_associative.MakeChild()
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any]) -> Self:
+    def setup(self, *operands: fabll.NodeT) -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -183,7 +298,7 @@ class Subtract(fabll.Node):
     minuend = OperandPointer.MakeChild()
     subtrahends = OperandSequence.MakeChild()
 
-    def setup(self, minuend: fabll.Node[Any], *subtrahends: fabll.Node[Any]) -> Self:
+    def setup(self, minuend: fabll.NodeT, *subtrahends: fabll.NodeT) -> Self:
         self.minuend.get().point(minuend)
         for subtrahend in subtrahends:
             self.subtrahends.get().append(subtrahend)
@@ -197,10 +312,15 @@ class Multiply(fabll.Node):
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
+    _has_unary_identity = has_unary_identity.MakeChild()
+    _is_fully_associative = is_fully_associative.MakeChild()
+    _is_associative = is_associative.MakeChild()
 
     operands = OperandSet.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any]) -> Self:
+    def setup(self, *operands: fabll.NodeT) -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -218,7 +338,7 @@ class Divide(fabll.Node):
     numerator = OperandPointer.MakeChild()
     denominator = OperandSequence.MakeChild()
 
-    def setup(self, numerator: fabll.Node[Any], *denominators: fabll.Node[Any]) -> Self:
+    def setup(self, numerator: fabll.NodeT, *denominators: fabll.NodeT) -> Self:
         self.numerator.get().point(numerator)
         for denominator in denominators:
             self.denominator.get().append(denominator)
@@ -237,7 +357,7 @@ class Sqrt(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -249,11 +369,12 @@ class Power(fabll.Node):
             placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
 
     base = OperandPointer.MakeChild()
     exponent = OperandPointer.MakeChild()
 
-    def setup(self, base: fabll.Node[Any], exponent: fabll.Node[Any]) -> Self:
+    def setup(self, base: fabll.NodeT, exponent: fabll.NodeT) -> Self:
         self.base.get().point(base)
         self.exponent.get().point(exponent)
         return self
@@ -266,6 +387,7 @@ class Log(fabll.Node):
             placement=is_expression.ReprStyle.Placement.PREFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
 
     # non-negative
     _has_implicit_constraints = has_implicit_constraints.MakeChild()
@@ -273,9 +395,7 @@ class Log(fabll.Node):
     operand = OperandPointer.MakeChild()
     base = OperandPointer.MakeChild()  # Optional, defaults to natural log if not set
 
-    def setup(
-        self, operand: fabll.Node[Any], base: fabll.Node[Any] | None = None
-    ) -> Self:
+    def setup(self, operand: fabll.NodeT, base: fabll.NodeT | None = None) -> Self:
         self.operand.get().point(operand)
         if base is not None:
             self.base.get().point(base)
@@ -289,10 +409,11 @@ class Sin(fabll.Node):
             placement=is_expression.ReprStyle.Placement.PREFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -307,7 +428,7 @@ class Cos(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -319,10 +440,12 @@ class Abs(fabll.Node):
             placement=is_expression.ReprStyle.Placement.EMBRACE,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_idempotent = is_idempotent.MakeChild()
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -334,10 +457,12 @@ class Round(fabll.Node):
             placement=is_expression.ReprStyle.Placement.PREFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_idempotent = is_idempotent.MakeChild()
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -352,7 +477,7 @@ class Floor(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -367,7 +492,7 @@ class Ceil(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT) -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -382,7 +507,7 @@ class Min(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any]) -> Self:
+    def setup(self, *operands: fabll.NodeT) -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -397,7 +522,7 @@ class Max(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any]) -> Self:
+    def setup(self, *operands: fabll.NodeT) -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -413,7 +538,7 @@ class Integrate(fabll.Node):
     function = OperandPointer.MakeChild()
     variable = OperandPointer.MakeChild()  # Variable to integrate with respect to
 
-    def setup(self, operand: fabll.Node[Any], variable: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT, variable: fabll.NodeT) -> Self:
         self.function.get().point(operand)
         self.variable.get().point(variable)
         return self
@@ -430,14 +555,14 @@ class Differentiate(fabll.Node):
     function = OperandPointer.MakeChild()
     variable = OperandPointer.MakeChild()  # Variable to differentiate with respect to
 
-    def setup(self, operand: fabll.Node[Any], variable: fabll.Node[Any]) -> Self:
+    def setup(self, operand: fabll.NodeT, variable: fabll.NodeT) -> Self:
         self.function.get().point(operand)
         self.variable.get().point(variable)
         return self
 
 
 class And(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="∧",
@@ -447,7 +572,7 @@ class And(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any], constrain: bool = False) -> Self:
+    def setup(self, *operands: fabll.NodeT, constrain: bool = False) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
@@ -455,17 +580,23 @@ class And(fabll.Node):
 
 
 class Or(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="∨",
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _has_idempotent_operands = has_idempotent_operands.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
+    _has_unary_identity = has_unary_identity.MakeChild()
+    _is_fully_associative = is_fully_associative.MakeChild()
+    _is_associative = is_associative.MakeChild()
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any], constrain: bool = False) -> Self:
+    def setup(self, *operands: fabll.NodeT, constrain: bool = False) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
@@ -473,17 +604,19 @@ class Or(fabll.Node):
 
 
 class Not(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="¬",
             placement=is_expression.ReprStyle.Placement.PREFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_involutory = is_involutory.MakeChild()
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: fabll.Node[Any], constrain: bool = False) -> Self:
+    def setup(self, operand: fabll.NodeT, constrain: bool = False) -> Self:
         self.operand.get().point(operand)
         if constrain:
             self._is_constrainable.get().constrain()
@@ -491,7 +624,7 @@ class Not(fabll.Node):
 
 
 class Xor(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⊕",
@@ -501,7 +634,7 @@ class Xor(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any], constrain: bool = False) -> Self:
+    def setup(self, *operands: fabll.NodeT, constrain: bool = False) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
@@ -509,7 +642,7 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⇒",
@@ -522,8 +655,8 @@ class Implies(fabll.Node):
 
     def setup(
         self,
-        antecedent: fabll.Node[Any],
-        consequent: fabll.Node[Any],
+        antecedent: fabll.NodeT,
+        consequent: fabll.NodeT,
         constrain: bool = False,
     ) -> Self:
         self.antecedent.get().point(antecedent)
@@ -534,6 +667,7 @@ class Implies(fabll.Node):
 
 
 class IfThenElse(fabll.Node):
+    _has_side_effects = has_side_effects.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="?:",
@@ -547,9 +681,9 @@ class IfThenElse(fabll.Node):
 
     def setup(
         self,
-        condition: fabll.Node[Any],
-        then_value: fabll.Node[Any],
-        else_value: fabll.Node[Any],
+        condition: fabll.NodeT,
+        then_value: fabll.NodeT,
+        else_value: fabll.NodeT,
     ) -> Self:
         self.condition.get().point(condition)
         self.then_value.get().point(then_value)
@@ -564,10 +698,16 @@ class Union(fabll.Node):
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _has_idempotent_operands = has_idempotent_operands.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
+    _has_unary_identity = has_unary_identity.MakeChild()
+    _is_fully_associative = is_fully_associative.MakeChild()
+    _is_associative = is_associative.MakeChild()
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any]) -> Self:
+    def setup(self, *operands: fabll.NodeT) -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -579,10 +719,16 @@ class Intersection(fabll.Node):
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _has_idempotent_operands = has_idempotent_operands.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
+    _has_unary_identity = has_unary_identity.MakeChild()
+    _is_fully_associative = is_fully_associative.MakeChild()
+    _is_associative = is_associative.MakeChild()
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: fabll.Node[Any]) -> Self:
+    def setup(self, *operands: fabll.NodeT) -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -598,7 +744,7 @@ class Difference(fabll.Node):
     minuend = OperandPointer.MakeChild()
     subtrahend = OperandPointer.MakeChild()
 
-    def setup(self, minuend: fabll.Node[Any], subtrahend: fabll.Node[Any]) -> Self:
+    def setup(self, minuend: fabll.NodeT, subtrahend: fabll.NodeT) -> Self:
         self.minuend.get().point(minuend)
         self.subtrahend.get().point(subtrahend)
         return self
@@ -611,18 +757,20 @@ class SymmetricDifference(fabll.Node):
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
 
-    def setup(self, left: fabll.Node[Any], right: fabll.Node[Any]) -> Self:
+    def setup(self, left: fabll.NodeT, right: fabll.NodeT) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
         return self
 
 
 class LessThan(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="<",
@@ -634,7 +782,7 @@ class LessThan(fabll.Node):
     right = OperandPointer.MakeChild()
 
     def setup(
-        self, left: fabll.Node[Any], right: fabll.Node[Any], constrain: bool = False
+        self, left: fabll.NodeT, right: fabll.NodeT, constrain: bool = False
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -644,19 +792,20 @@ class LessThan(fabll.Node):
 
 
 class GreaterThan(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol=">",
             placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
 
     def setup(
-        self, left: fabll.Node[Any], right: fabll.Node[Any], constrain: bool = False
+        self, left: fabll.NodeT, right: fabll.NodeT, constrain: bool = False
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -666,7 +815,7 @@ class GreaterThan(fabll.Node):
 
 
 class LessOrEqual(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="≤",
@@ -678,7 +827,7 @@ class LessOrEqual(fabll.Node):
     right = OperandPointer.MakeChild()
 
     def setup(
-        self, left: fabll.Node[Any], right: fabll.Node[Any], constrain: bool = False
+        self, left: fabll.NodeT, right: fabll.NodeT, constrain: bool = False
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -688,19 +837,21 @@ class LessOrEqual(fabll.Node):
 
 
 class GreaterOrEqual(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="≥",
             placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_reflexive = is_reflexive.MakeChild()
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
 
     def setup(
-        self, left: fabll.Node[Any], right: fabll.Node[Any], constrain: bool = False
+        self, left: fabll.NodeT, right: fabll.NodeT, constrain: bool = False
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -710,7 +861,7 @@ class GreaterOrEqual(fabll.Node):
 
 
 class NotEqual(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="≠",
@@ -722,7 +873,7 @@ class NotEqual(fabll.Node):
     right = OperandPointer.MakeChild()
 
     def setup(
-        self, left: fabll.Node[Any], right: fabll.Node[Any], constrain: bool = False
+        self, left: fabll.NodeT, right: fabll.NodeT, constrain: bool = False
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -732,21 +883,22 @@ class NotEqual(fabll.Node):
 
 
 class IsBitSet(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="b[]",
             placement=is_expression.ReprStyle.Placement.INFIX,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
 
     value = OperandPointer.MakeChild()
     bit_index = OperandPointer.MakeChild()
 
     def setup(
         self,
-        value: fabll.Node[Any],
-        bit_index: fabll.Node[Any],
+        value: fabll.NodeT,
+        bit_index: fabll.NodeT,
         constrain: bool = False,
     ) -> Self:
         self.value.get().point(value)
@@ -757,21 +909,23 @@ class IsBitSet(fabll.Node):
 
 
 class IsSubset(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⊆",
             placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_reflexive = is_reflexive.MakeChild()
 
     subset = OperandPointer.MakeChild()
     superset = OperandPointer.MakeChild()
 
     def setup(
         self,
-        subset: fabll.Node[Any],
-        superset: fabll.Node[Any],
+        subset: fabll.NodeT,
+        superset: fabll.NodeT,
         constrain: bool = False,
     ) -> Self:
         self.subset.get().point(subset)
@@ -782,7 +936,7 @@ class IsSubset(fabll.Node):
 
 
 class IsSuperset(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⊇",
@@ -795,8 +949,8 @@ class IsSuperset(fabll.Node):
 
     def setup(
         self,
-        superset: fabll.Node[Any],
-        subset: fabll.Node[Any],
+        superset: fabll.NodeT,
+        subset: fabll.NodeT,
         constrain: bool = False,
     ) -> Self:
         self.superset.get().point(superset)
@@ -807,7 +961,7 @@ class IsSuperset(fabll.Node):
 
 
 class Cardinality(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="||",
@@ -820,8 +974,8 @@ class Cardinality(fabll.Node):
 
     def setup(
         self,
-        set: fabll.Node[Any],
-        cardinality: fabll.Node[Any],
+        set: fabll.NodeT,
+        cardinality: fabll.NodeT,
         constrain: bool = False,
     ) -> Self:
         self.set.get().point(set)
@@ -832,17 +986,20 @@ class Cardinality(fabll.Node):
 
 
 class Is(fabll.Node):
-    _is_constrainable = fabll.IsConstrainable.MakeChild()
+    _is_reflexive = is_reflexive.MakeChild()
+    _is_constrainable = IsConstrainable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="=",
             placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
         )
     )
+    _is_canonical = is_canonical.MakeChild()
+    _is_commutative = is_commutative.MakeChild()
 
     operands = OperandSet.MakeChild()
 
-    def setup(self, operands: list[fabll.Node[Any]], constrain: bool) -> Self:
+    def setup(self, operands: list[fabll.NodeT], constrain: bool) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
@@ -853,20 +1010,9 @@ class Is(fabll.Node):
         cls, operands: list[fabll.RefPath]
     ) -> fabll.ChildField[Any]:
         out = fabll.ChildField(cls)
-        out.add_dependant(fabll.IsConstrained.MakeChild())
-        out.add_dependant(*OperandSet.EdgeFields([out, cls.operands], operands))
-        return out
-
-    @classmethod
-    def MakeChild_ConstrainToLiteral(
-        cls,
-        ref: list[str | fabll.ChildField[Any]],
-        value: fabll.LiteralT,
-    ) -> fabll.ChildField[Any]:
-        lit = fabll.ChildField(
-            fabll.LiteralNode,
-            attributes=fabll.LiteralNodeAttributes(value=value),
+        out.add_dependant(IsConstrained.MakeChild(), identifier="constrain")
+        out.add_dependant(
+            *OperandSet.EdgeFields([out, cls.operands], operands),
+            identifier="connect_operands",
         )
-        out = cls.MakeChild_Constrain([ref, [lit]])
-        out.add_dependant(lit)
         return out

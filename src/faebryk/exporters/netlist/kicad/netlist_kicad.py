@@ -103,7 +103,7 @@ def attach_kicad_info(G: fabll.Graph) -> None:
         # TODO maybe nicer to just look for footprints
         # and get their respective components instead
         for n, t in fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_footprint)
-        if isinstance(n, fabll.Module)
+        if n.has_trait(fabll.is_module)
     }
 
     logger.info(f"Found {len(node_fps)} components with footprints")

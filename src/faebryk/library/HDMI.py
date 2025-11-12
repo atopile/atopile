@@ -13,6 +13,10 @@ class HDMI(fabll.Node):
     HDMI interface
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+
     power = F.ElectricPower.MakeChild()
     data = [F.DifferentialPair.MakeChild() for _ in range(3)]
     clock = F.DifferentialPair.MakeChild()
@@ -20,10 +24,15 @@ class HDMI(fabll.Node):
     cec = F.ElectricLogic.MakeChild()
     hotplug = F.ElectricLogic.MakeChild()
 
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     # @staticmethod
     # def define_max_frequency_capability(mode: SpeedMode):

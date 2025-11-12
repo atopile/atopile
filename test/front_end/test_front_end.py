@@ -37,7 +37,7 @@ def test_empty_module_build(bob: Bob):
     )
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     assert isinstance(node, bob.modules[address.AddrStr(":A")])
 
 
@@ -50,7 +50,7 @@ def test_simple_module_build(bob: Bob):
     )
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     param = node.runtime["a"]
     assert isinstance(param, fab_param.ParameterOperatable)
@@ -67,7 +67,7 @@ def test_arithmetic(bob: Bob):
     )
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     # TODO: check output
     # Requires params solver to be sane
@@ -87,7 +87,7 @@ def test_simple_new(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     child = bob.resolve_node_shortcut(node, "child")
     assert child.has_trait(_has_ato_cmp_attrs)
 
@@ -109,7 +109,7 @@ def test_multiple_new(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     resistors = bob.resolve_field_shortcut(node, "resistors")
     assert isinstance(resistors, list)
     assert len(set(resistors)) == 5
@@ -202,7 +202,7 @@ def test_nested_nodes(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
 
 def test_resistor(bob: Bob, repo_root: Path):
@@ -225,7 +225,7 @@ def test_resistor(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
     assert r1.get_trait(F.has_package_requirements)._size == SMDSize.I0805
@@ -246,7 +246,7 @@ def test_standard_library_import(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
@@ -304,7 +304,7 @@ def test_reserved_attrs(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = bob.resolve_node_shortcut(node, "a")
     assert a.get_trait(F.has_package_requirements)._size == pkg
@@ -344,7 +344,7 @@ def test_import_ato(bob: Bob, tmp_path):
     tree = parse_text_as_file(top_module_content)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
@@ -400,7 +400,7 @@ def test_signal_connect(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -428,7 +428,7 @@ def test_interface_connect(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -475,7 +475,7 @@ def test_duck_type_connect(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -507,7 +507,7 @@ def test_directed_connect_signals(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -536,7 +536,7 @@ def test_directed_connect_power_via_led(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
     current_limiting_resistor = cast_assert(
@@ -567,7 +567,7 @@ def test_directed_connect_signal_to_resistor(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
@@ -644,7 +644,7 @@ def test_requires(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     assert a.has_trait(F.requires_external_usage)
@@ -663,7 +663,7 @@ def test_key(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     r = bob.resolve_node_shortcut(node, "r")
     assert isinstance(r, F.Resistor)
@@ -684,7 +684,7 @@ def test_pin_ref(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
 
 def test_non_ex_pin_ref(bob: Bob):
@@ -727,7 +727,7 @@ def test_regression_pin_refs(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
 
 def test_pragma_feature_existing(bob: Bob):
@@ -802,7 +802,7 @@ def test_for_loop_basic(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     resistors = bob.resolve_field_shortcut(node, "resistors")
     assert isinstance(resistors, list)
     for r in resistors:
@@ -1041,7 +1041,7 @@ def test_list_literal_nested(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     nested = bob.resolve_field_shortcut(node, "nested")
-    assert isinstance(nested, fabll.Module)
+    assert nested.has_trait(fabll.is_module)
     r1 = bob.resolve_field_shortcut(nested, "r1")
     assert isinstance(r1, F.Resistor)
     r2 = bob.resolve_field_shortcut(nested, "r2")
@@ -1144,7 +1144,7 @@ def test_plain_trait(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     assert node.has_trait(test_trait)
 
 
@@ -1407,7 +1407,7 @@ def test_slice_for_loop(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     resistors = bob.resolve_field_shortcut(node, "resistors")
     resistors2 = bob.resolve_field_shortcut(node, "resistors2")
     assert isinstance(resistors, list)
@@ -1511,7 +1511,7 @@ def test_directed_connect_reverse_signals(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     b = _get_mif(bob, node, "b")
@@ -1540,7 +1540,7 @@ def test_directed_connect_reverse_power_via_led(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
     current_limiting_resistor = cast_assert(
@@ -1571,7 +1571,7 @@ def test_directed_connect_reverse_resistor_to_signal(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     a = _get_mif(bob, node, "a")
     r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
@@ -1617,7 +1617,7 @@ def test_module_templating(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     addressor7 = bob.resolve_field_shortcut(node, "addressor7")
     assert isinstance(addressor7, F.Addressor)
     assert addressor7._address_bits == 7
@@ -1637,7 +1637,7 @@ def test_module_templating_list(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     addressors = bob.resolve_field_shortcut(node, "addressors")
     assert isinstance(addressors, list)
     addressors = cast(list[F.Addressor], addressors)
@@ -1731,7 +1731,7 @@ def test_assign_to_enum_param(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     cap = bob.resolve_field_shortcut(node, "cap")
     assert isinstance(cap, F.Capacitor)
     assert cap.temperature_coefficient.try_get_literal_subset() == P_Set.from_value(
@@ -1759,7 +1759,7 @@ def test_trait_template_enum(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     r = bob.resolve_field_shortcut(node, "r")
     assert isinstance(r, F.Resistor)
 
@@ -1814,7 +1814,7 @@ def test_module_template_enum(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     r = bob.resolve_field_shortcut(node, "r")
     assert isinstance(r, ResistorWithSize)
 
@@ -2026,7 +2026,7 @@ def test_module_template_enum_scenarios(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     mod = bob.resolve_field_shortcut(node, "mod")
     assert isinstance(mod, eval(module_name))
 
@@ -2089,7 +2089,7 @@ def test_module_template_enum_union_types(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
     mod = bob.resolve_field_shortcut(node, "mod")
     assert isinstance(mod, eval(module_name))
     assert mod._value == expected_value
@@ -2127,7 +2127,7 @@ def test_module_template_multiple_enum_args(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     mod1 = bob.resolve_field_shortcut(node, "mod1")
     assert isinstance(mod1, ModuleWithMultipleEnums)
@@ -2174,7 +2174,7 @@ def test_module_template_mixed_syntax_compatibility(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, fabll.Module)
+    assert node.has_trait(fabll.is_module)
 
     mod1 = bob.resolve_field_shortcut(node, "mod1")
     assert isinstance(mod1, ModuleWithModernOptional)

@@ -26,7 +26,9 @@ def export_datasheets(
     path.mkdir(parents=True, exist_ok=True)
 
     logger.info(f"Exporting datasheets to: {path}")
-    for m in app.get_children_modules(types=fabll.Module):
+    for m in app.get_children(
+        direct_only=False, types=fabll.Node, required_trait=fabll.is_module
+    ):
         if not m.has_trait(F.has_datasheet):
             continue
         url = m.get_trait(F.has_datasheet).get_datasheet()

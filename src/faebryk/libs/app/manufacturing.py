@@ -27,7 +27,10 @@ def export_pcba_artifacts(out: Path, pcb_path: Path, app: fabll.Node):
     logger.info("Exporting PCBA artifacts")
 
     write_bom_jlcpcb(
-        app.get_children_modules(types=fabll.Module), out.joinpath("jlcpcb_bom.csv")
+        app.get_children(
+            types=fabll.Node, required_trait=fabll.is_module, direct_only=False
+        ),
+        out.joinpath("jlcpcb_bom.csv"),
     )
     export_step(pcb_path, step_file=cad_path.joinpath("pcba.step"))
     export_glb(pcb_path, glb_file=cad_path.joinpath("pcba.glb"))

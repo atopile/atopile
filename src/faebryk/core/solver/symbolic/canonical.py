@@ -5,33 +5,35 @@ import logging
 from cmath import pi
 from typing import cast
 
-from faebryk.core.parameter import (
+import faebryk.core.node as fabll
+import faebryk.library.Expressions as Expressions
+from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.utils import (
+    SolverAllExtended,
+    make_lit,
+)
+from faebryk.library.Expressions import (
     Add,
     And,
-    CanonicalExpression,
     Cardinality,
     Ceil,
-    ConstrainableExpression,
     Cos,
     Difference,
     Divide,
-    Expression,
     Floor,
     GreaterOrEqual,
     GreaterThan,
     Implies,
     Intersection,
+    IsConstrainable,
     IsSubset,
     IsSuperset,
     LessOrEqual,
     LessThan,
-    Max,
-    Min,
     Multiply,
     Not,
     Or,
-    Parameter,
-    ParameterOperatable,
     Power,
     Round,
     Sin,
@@ -41,24 +43,11 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
-from faebryk.core.solver.algorithm import algorithm
-from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import (
-    SolverAllExtended,
-    make_lit,
-)
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-    QuantityLikeR,
-)
-from faebryk.libs.sets.sets import as_lit
-from faebryk.libs.units import dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
-NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
+# NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
 @algorithm("Constrain within and domain", single=True, terminal=False)
@@ -67,7 +56,7 @@ def constrain_within_domain(mutator: Mutator):
     Translate domain and within constraints to parameter constraints.
     """
 
-    for param in mutator.nodes_of_type(Parameter):
+    for param in mutator.get_parameters():
         new_param = mutator.mutate_parameter(param, override_within=True, within=None)
         if param.within is not None:
             mutator.utils.subset_to(new_param, param.within, from_ops=[param])
@@ -84,7 +73,7 @@ def alias_predicates_to_true(mutator: Mutator):
     Alias predicates to True since we need to assume they are true.
     """
 
-    for predicate in mutator.nodes_of_type(ConstrainableExpression):
+    for predicate in mutator.get_expressions(required_traits=(IsConstrainable,)):
         if predicate.constrained:
             new_predicate = cast_assert(
                 ConstrainableExpression, mutator.mutate_expression(predicate)
@@ -103,11 +92,11 @@ def convert_to_canonical_literals(mutator: Mutator):
     - Enum -> P_Set[Enum]
     """
 
-    param_ops = mutator.nodes_of_type(ParameterOperatable, sort_by_depth=True)
+    param_ops = mutator.get_parameter_operatables(sort_by_depth=True)
 
     for po in param_ops:
         # Parameter
-        if isinstance(po, Parameter):
+        if Expressions.isinstance_node(po, fabll.Parameter):
             mutator.mutate_parameter(
                 po,
                 units=dimensionless,
@@ -124,7 +113,7 @@ def convert_to_canonical_literals(mutator: Mutator):
             )
 
         # Expression
-        elif isinstance(po, Expression):
+        elif Expressions.is_expression_node(po):
 
             def mutate(i: int, operand: SolverAllExtended) -> SolverAllExtended:
                 if not ParameterOperatable.is_literal(operand):
@@ -172,8 +161,7 @@ def convert_to_canonical_operations(mutator: Mutator):
     def curry(e_type: type[CanonicalExpression]) -> type[Expression]:
         def _(*operands):
             operands = [
-                make_lit(o) if not isinstance(o, ParameterOperatable) else o
-                for o in operands
+                make_lit(o) if not fabll.isparameteroperable(o) else o for o in operands
             ]
             return c(e_type, *operands)
 
@@ -292,7 +280,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         for Target, Convertible, Converter in MirroredExpressions
     }
 
-    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
+    exprs = mutator.get_expressions(sort_by_depth=True)
     for e in exprs:
         if type(e) in UnsupportedOperations:
             replacement = UnsupportedOperations[type(e)]
@@ -312,14 +300,14 @@ def convert_to_canonical_operations(mutator: Mutator):
         from_ops = [e]
         # TODO move up, by implementing Parameter Target
         # Min, Max
-        if isinstance(e, (Min, Max)):
+        if Expressions.isinstance_any(e, Expressions.Min, Expressions.Max):
             p = Parameter(units=e.units)
             mutator.register_created_parameter(p, from_ops=from_ops)
             union = Union(*[mutator.get_copy(o) for o in e.operands])
             mutator.create_expression(
                 IsSubset, p, union, from_ops=from_ops, constrain=True
             )
-            if isinstance(e, Min):
+            if Expressions.isinstance_node(e, Expressions.Min):
                 mutator.create_expression(GreaterOrEqual, union, p, from_ops=from_ops)
             else:
                 mutator.create_expression(GreaterOrEqual, p, union, from_ops=from_ops)

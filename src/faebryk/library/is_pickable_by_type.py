@@ -5,7 +5,6 @@ from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 
 
 class is_pickable_by_type(fabll.Node):
@@ -17,9 +16,12 @@ class is_pickable_by_type(fabll.Node):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
-    endpoint_ = fabll.ChildField(fabll.Parameter)
-    params_ = fabll.ChildField(fabll.Node)  # TODO: change to list
     _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    endpoint_ = fabll.ChildField(F.Parameters.StringParameter)
+    params_ = F.Collections.PointerSet.MakeChild()
+
+    # TODO: Forward this trait to parent
+    _is_pickable = fabll.ChildField(F.is_pickable)
 
     class Endpoint(StrEnum):
         """Query endpoints known to the API."""
@@ -29,16 +31,29 @@ class is_pickable_by_type(fabll.Node):
         INDUCTORS = "inductors"
 
     @property
-    def params(self) -> list[fabll.Parameter]:
-        parameters: list[fabll.Parameter] = []
-        EdgePointer.visit_pointed_edges(
-            bound_node=self.params_.get().instance,
-            ctx=parameters,
-            f=lambda ctx, edge: ctx.append(
-                fabll.Parameter.bind_instance(edge.g().bind(node=edge.edge().target()))
-            ),
-        )
-        return parameters
+    def params(self) -> list[F.Parameters.StringParameter]:
+        param_tuples = self.params_.get().as_list()
+        parameters = [
+            F.Collections.PointerTuple.bind_instance(
+                param_tuple.instance
+            ).deref_pointer()
+            for param_tuple in param_tuples
+        ]
+        return parameters  # type: ignore
+
+    def get_param(self, param_name: str) -> F.Parameters.StringParameter:
+        param_tuples = self.params_.get().as_list()
+        for param_tuple in param_tuples:
+            if (
+                F.Collections.PointerTuple.bind_instance(
+                    param_tuple.instance
+                ).get_literals_as_list()[0]
+                == param_name
+            ):
+                return F.Collections.PointerTuple.bind_instance(
+                    param_tuple.instance
+                ).deref_pointer()  # type: ignore
+        raise ValueError(f"Param {param_name} not found")
 
     @property
     def endpoint(self) -> str:
@@ -54,16 +69,34 @@ class is_pickable_by_type(fabll.Node):
     @classmethod
     def MakeChild(cls, endpoint: Endpoint, params: dict[str, fabll.ChildField]):
         out = fabll.ChildField(cls)
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.endpoint_], endpoint
-            )
-        )
+        # out.add_dependant(
+        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
+        #         [out, cls.endpoint_], endpoint
+        #     )
+        # )
         for param_name, param_ref in params.items():
-            field = fabll.EdgeField(
-                [out, cls.params_],
-                [param_ref],
-                edge=EdgePointer.build(identifier=param_name, order=None),
+            # Create tuple
+            param_tuple = F.Collections.PointerTuple.MakeChild()
+            out.add_dependant(param_tuple)
+            # Add tuple to params_ set
+            out.add_dependant(
+                F.Collections.PointerSet.EdgeField(
+                    [out, cls.params_],
+                    [param_tuple],
+                )
             )
-            out.add_dependant(field)
+            # Add string to tuple
+            lit = F.Literals.Strings.MakeChild(value=param_name)
+            out.add_dependant(lit)
+            out.add_dependant(
+                F.Collections.PointerTuple.AppendLiteral(
+                    tup_ref=[param_tuple], elem_ref=[lit]
+                )
+            )
+            # Add param reference to tuple
+            out.add_dependant(
+                F.Collections.PointerTuple.SetPointer(
+                    tup_ref=[param_tuple], elem_ref=[param_ref]
+                )
+            )
         return out

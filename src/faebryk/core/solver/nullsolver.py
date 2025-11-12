@@ -1,21 +1,15 @@
 from typing import Any, override
 
 import faebryk.core.node as fabll
-from faebryk.core.parameter import (
-    ConstrainableExpression,
-    Expression,
-    Parameter,
-    Predicate,
-)
+import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.sets.sets import P_Set, as_lit
 
 
 class NullSolver(Solver):
     @override
     def get_any_single(
         self,
-        operatable: Parameter,
+        operatable: fabll.NodeT,
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
@@ -25,7 +19,7 @@ class NullSolver(Solver):
     @override
     def try_fulfill(
         self,
-        predicate: ConstrainableExpression,
+        predicate: fabll.NodeT,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool:
@@ -38,7 +32,7 @@ class NullSolver(Solver):
         pass
 
     @override
-    def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
+    def inspect_get_known_supersets(self, value: fabll.NodeT) -> P_Set:
         lit = value.try_get_literal_subset()
         if lit is None:
             lit = value.domain_set()

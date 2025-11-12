@@ -8,48 +8,58 @@ import faebryk.library._F as F
 
 
 class Comparator(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class OutputType(Enum):
         Differential = auto()
         PushPull = auto()
         OpenDrain = auto()
 
-    common_mode_rejection_ratio = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Decibel,
-    )
-    input_bias_current = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Ampere,
-    )
-    input_hysteresis_voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Volt,
-    )
-    input_offset_voltage = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Volt,
-    )
-    propagation_delay = fabll.Parameter.MakeChild_Numeric(
-        unit=F.Units.Second,
-    )
-    output_type = fabll.Parameter.MakeChild_Enum(
-        enum_t=OutputType,
-    )
-
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     inverting_input = F.Electrical.MakeChild()
     non_inverting_input = F.Electrical.MakeChild()
     output = F.Electrical.MakeChild()
 
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "CMRR": common_mode_rejection_ratio,
-            "Ib": input_bias_current,
-            "Vhys": input_hysteresis_voltage,
-            "Vos": input_offset_voltage,
-            "tpd": propagation_delay,
-        }
-    ).put_on_type()
+    common_mode_rejection_ratio = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Decibel,
+    )
+    input_bias_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere,
+    )
+    input_hysteresis_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
+    )
+    input_offset_voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
+    )
+    propagation_delay = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Second,
+    )
+    output_type = F.Parameters.EnumParameter.MakeChild(
+        enum_t=OutputType,
+    )
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(common_mode_rejection_ratio, prefix="CMRR"),
+        S(input_bias_current, prefix="Ib"),
+        S(input_hysteresis_voltage, prefix="Vhys"),
+        S(input_offset_voltage, prefix="Vos"),
+        S(propagation_delay, prefix="tpd"),
+    )
 
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
-    ).put_on_type()
+    )
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
@@ -89,4 +99,4 @@ class Comparator(fabll.Node):
         # Output will be HIGH when input_signal > reference_voltage
         """,
         language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+    )

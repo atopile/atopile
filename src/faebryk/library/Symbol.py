@@ -10,8 +10,18 @@ class Symbol(fabll.Node):
     linked with the module they represent via the `has_linked` trait.
     """
 
-    pass
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     # class Pin(fabll.Node):
     #     represents = reference(F.Electrical)
 

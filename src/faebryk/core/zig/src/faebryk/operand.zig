@@ -1,6 +1,7 @@
 const graph_mod = @import("graph");
 const std = @import("std");
 const edgebuilder_mod = @import("edgebuilder.zig");
+const node_type_mod = @import("node_type.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -9,7 +10,7 @@ const Node = graph.Node;
 const EdgeReference = graph.EdgeReference;
 const NodeReference = graph.NodeReference;
 const str = graph.str;
-const EdgeType = edgebuilder_mod.EdgeType;
+const EdgeType = node_type_mod.EdgeType;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 
 pub const EdgeOperand = struct {
@@ -88,7 +89,39 @@ pub const EdgeOperand = struct {
         };
 
         var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: only edges where bound_node is the source (outgoing edges)
+        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+    }
+
+    pub fn visit_expression_edges(
+        bound_node: graph.BoundNodeReference,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            target: graph.BoundNodeReference,
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                // Filter out self-references
+                const expression = EdgeOperand.get_expression_of(bound_edge.edge, self.target.node);
+                if (expression) |_| {
+                    const expression_result = self.cb(self.cb_ctx, bound_edge);
+                    switch (expression_result) {
+                        .CONTINUE => {},
+                        else => return expression_result,
+                    }
+                }
+                return visitor.VisitResult(T){ .CONTINUE = {} };
+            }
+        };
+
+        var visit = Visit{ .target = bound_node, .cb_ctx = ctx, .cb = f };
+        // directed = false: only edges where bound_node is the target (incoming edges)
+        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, false);
     }
 
     //TODO not sure we want to advertise this, only in aliases interesting
@@ -187,7 +220,41 @@ pub const EdgeOperand = struct {
             .cb_ctx = ctx,
             .cb = f,
         };
-        return expression.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: expression is source, operand is target
+        return expression.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
+    }
+
+    pub fn visit_expression_edges_of_type(
+        operand: graph.BoundNodeReference,
+        expression_type: graph.NodeReference,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            operand: graph.BoundNodeReference,
+            expression_type: graph.NodeReference,
+            cb_ctx: *anyopaque,
+            cb: *const fn (*anyopaque, graph.BoundEdgeReference) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                const expression = bound_edge.g.bind(EdgeOperand.get_expression_node(bound_edge.edge));
+                if (!EdgeType.is_node_instance_of(expression, self.expression_type)) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+                return self.cb(self.cb_ctx, bound_edge);
+            }
+        };
+
+        var visit = Visit{
+            .operand = operand,
+            .expression_type = expression_type,
+            .cb_ctx = ctx,
+            .cb = f,
+        };
+        // directed = false: operand is target, expression is source
+        return operand.visit_edges_of_type(tid, T, &visit, Visit.visit, false);
     }
 };
 

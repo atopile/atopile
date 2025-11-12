@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from atopile.mcp.util import (
     Language,
     MCPTools,
@@ -13,26 +14,6 @@ from atopile.mcp.util import (
 logger = logging.getLogger(__name__)
 
 library_tools = MCPTools()
-
-
-def _get_library_nodes(
-    t: type[fabll.Node] | tuple[type[fabll.Node], ...],
-) -> list[NodeInfoOverview]:
-    import faebryk.library._F as F
-
-    return [
-        NodeInfoOverview(
-            name=m.__name__,
-            docstring=m.__doc__ or "",
-            language=Language.FABLL,
-            type=NodeType.MODULE if issubclass(m, fabll.Module) else NodeType.INTERFACE,
-            inherits=m.__bases__[0].__name__
-            if m.__bases__[0] not in [fabll.Module, fabll.ModuleInterface]
-            else None,
-        )
-        for m in F.__dict__.values()
-        if isinstance(m, type) and issubclass(m, t)
-    ]
 
 
 def _locator_from_file_path(path: Path) -> str:
@@ -87,17 +68,39 @@ def inspect_library_module_or_interface(name: str) -> NodeInfo:
     """
     return _get_library_node(name)
 
-
 @library_tools.register()
 def get_library_modules_or_interfaces(
-    include_modules: bool = True, include_interfaces: bool = True
+    include_modules: bool = True,
+    include_interfaces: bool = True,
+    *,
+    typegraph: fabll.TypeGraph,
 ) -> list[NodeInfoOverview]:
     """
     List all atopile standard library modules and interfaces.
     """
-    types = tuple()
-    if include_modules:
-        types += (fabll.Module,)
-    if include_interfaces:
-        types += (fabll.ModuleInterface,)
-    return _get_library_nodes(types)
+    if not include_modules and not include_interfaces:
+        return []
+
+    results: list[NodeInfoOverview] = []
+    for m in F.__dict__.values():
+        if not isinstance(m, type) or not issubclass(m, fabll.Node):
+            continue
+
+        bound = m.bind_typegraph(typegraph)
+        is_interface = bound.check_if_instance_of_type_has_trait(fabll.is_interface)
+
+        if is_interface and not include_interfaces:
+            continue
+        if not is_interface and not include_modules:
+            continue
+
+        results.append(
+            NodeInfoOverview(
+                name=m.__name__,
+                docstring=m.__doc__ or "",
+                language=Language.FABLL,
+                type=NodeType.INTERFACE if is_interface else NodeType.MODULE,
+            )
+        )
+
+    return results

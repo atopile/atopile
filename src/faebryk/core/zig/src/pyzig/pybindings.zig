@@ -327,6 +327,7 @@ pub extern fn PyObject_Call(callable: ?*PyObject, args: ?*PyObject, kwargs: ?*Py
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;
+pub extern var _Py_NotImplementedStruct: PyObject;
 
 pub fn Py_True() *PyObject {
     return &_Py_TrueStruct;
@@ -334,6 +335,10 @@ pub fn Py_True() *PyObject {
 
 pub fn Py_False() *PyObject {
     return &_Py_FalseStruct;
+}
+
+pub fn Py_NotImplemented() *PyObject {
+    return &_Py_NotImplementedStruct;
 }
 
 // Exception types

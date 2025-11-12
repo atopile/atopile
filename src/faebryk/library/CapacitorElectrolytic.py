@@ -5,34 +5,38 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-# from faebryk.core.zig.gen.faebryk.interface import EdgeInterface
+from faebryk.library.Collections import EdgePointer
 
 logger = logging.getLogger(__name__)
 
 
 class CapacitorElectrolytic(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
 
-    power = F.ElectricPower.MakeChild()
-
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    capacitance = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Farad)
-    max_voltage = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Volt)
-    # temperature_coefficient = fabll.Parameter.MakeChild_Enum(
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
     #     enum_t=TemperatureCoefficient
     # )
 
-    _simple_repr = F.has_simple_value_representation_based_on_params_chain.MakeChild(
-        params={
-            "capacitance": capacitance,
-            "max_voltage": max_voltage,
-            # "temperature_coefficient": temperature_coefficient,
-        }
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(capacitance, tolerance=True),
+        S(max_voltage),
+        # S(temperature_coefficient),
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic_lookup_table.MakeChild(
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
         mapping={
             anode: ["anode", "a"],
             cathode: ["cathode", "c"],
@@ -40,6 +44,13 @@ class CapacitorElectrolytic(fabll.Node):
         accept_prefix=False,
         case_sensitive=False,
     )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+    # optional interface to automatically connect HV to anode and LV to cathode
+    # power = F.ElectricPower.MakeChild()
 
     # anode_edge = fabll.EdgeField(
     #     [anode],

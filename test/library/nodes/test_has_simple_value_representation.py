@@ -24,8 +24,8 @@ def test_repr_chain_basic():
 
         @fabll.rt_field
         def simple_value_representation(self):
-            S = F.has_simple_value_representation_based_on_params_chain.Spec
-            return F.has_simple_value_representation_based_on_params_chain(
+            S = F.has_simple_value_representation.Spec
+            return F.has_simple_value_representation(
                 S(param=self.param1, tolerance=True),
                 S(param=self.param2, suffix="P2"),
                 S(param=self.param3, tolerance=True, suffix="P3"),
@@ -54,8 +54,8 @@ def test_repr_chain_non_number():
 
         @fabll.rt_field
         def simple_value_representation(self):
-            S = F.has_simple_value_representation_based_on_params_chain.Spec
-            return F.has_simple_value_representation_based_on_params_chain(
+            S = F.has_simple_value_representation.Spec
+            return F.has_simple_value_representation(
                 S(param=self.param1),
                 S(param=self.param2, prefix="P2:"),
             )
@@ -78,8 +78,8 @@ def test_repr_chain_no_literal():
 
         @fabll.rt_field
         def simple_value_representation(self):
-            S = F.has_simple_value_representation_based_on_params_chain.Spec
-            return F.has_simple_value_representation_based_on_params_chain(
+            S = F.has_simple_value_representation.Spec
+            return F.has_simple_value_representation(
                 S(param=self.param1, default=None),
                 S(param=self.param2),
                 S(param=self.param3, default="P3: MISSING"),

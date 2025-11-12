@@ -4,4 +4,7 @@
 import faebryk.core.node as fabll
 
 
-class Mechanical(fabll.Node): ...
+class Mechanical(fabll.Node):
+    _is_interface = fabll.is_interface.MakeChild()
+
+

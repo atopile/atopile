@@ -3,22 +3,27 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 
 
 class SPIFlash(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     qspi = F.MultiSPI.MakeChild(4)
 
-    memory_size = fabll.Parameter.MakeChild_Numeric(unit=F.Units.Byte)
+    memory_size = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Byte)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
     designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
-    ).put_on_type()
+    )
 
-    def single_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
