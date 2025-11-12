@@ -3,8 +3,8 @@ from enum import auto
 from typing import Any, Self, cast
 
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 import faebryk.library._F as F
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.graph.graph import BoundEdge
 
@@ -20,43 +20,43 @@ from faebryk.core.zig.gen.graph.graph import BoundEdge
 # solver shims TODO remove -------------------------------------------------------------
 
 
-def _as_node(candidate: Any) -> fabll.NodeT | None:
-    if isinstance(candidate, fabll.Node):
-        return candidate
-    return None
-
-
-def isinstance_node(candidate: Any, node_type: type[fabll.NodeT]) -> bool:
-    node = _as_node(candidate)
-    if node is None:
-        return False
-    return node.isinstance(node_type)
-
-
-def isinstance_any(candidate: Any, *node_types: type[fabll.NodeT]) -> bool:
-    return any(isinstance_node(candidate, node_type) for node_type in node_types)
-
-
-def has_trait(candidate: Any, trait: type[fabll.NodeT]) -> bool:
-    node = _as_node(candidate)
-    if node is None:
-        return False
-    return node.has_trait(trait)
-
-
-def is_expression_node(candidate: Any) -> bool:
-    return has_trait(candidate, is_expression)
-
-
-def is_constrainable_node(candidate: Any) -> bool:
-    return has_trait(candidate, IsConstrainable)
-
-
-def is_canonical_expression_node(candidate: Any) -> bool:
-    node = _as_node(candidate)
-    if node is None:
-        return False
-    return node.has_trait(is_expression) and node.has_trait(is_canonical)
+# def _as_node(candidate: Any) -> fabll.NodeT | None:
+#     if isinstance(candidate, fabll.Node):
+#         return candidate
+#     return None
+#
+#
+# def isinstance_node(candidate: Any, node_type: type[fabll.NodeT]) -> bool:
+#     node = _as_node(candidate)
+#     if node is None:
+#         return False
+#     return node.isinstance(node_type)
+#
+#
+# def isinstance_any(candidate: Any, *node_types: type[fabll.NodeT]) -> bool:
+#     return any(isinstance_node(candidate, node_type) for node_type in node_types)
+#
+#
+# def has_trait(candidate: Any, trait: type[fabll.NodeT]) -> bool:
+#     node = _as_node(candidate)
+#     if node is None:
+#         return False
+#     return node.has_trait(trait)
+#
+#
+# def is_expression_node(candidate: Any) -> bool:
+#     return has_trait(candidate, is_expression)
+#
+#
+# def is_constrainable_node(candidate: Any) -> bool:
+#     return has_trait(candidate, IsConstrainable)
+#
+#
+# def is_canonical_expression_node(candidate: Any) -> bool:
+#     node = _as_node(candidate)
+#     if node is None:
+#         return False
+#     return node.has_trait(is_expression) and node.has_trait(is_canonical)
 
 
 # --------------------------------------------------------------------------------------
@@ -134,17 +134,29 @@ class is_expression(fabll.Node):
         out = fabll.ChildField(cls)
         return out
 
-    @staticmethod
-    def get_all_operands(node: fabll.NodeT) -> set[fabll.NodeT]:
-        operands: set[fabll.NodeT] = set()
-        for child in node.get_children(
+    def get_operands(self) -> list[fabll.NodeT]:
+        node = fabll.Traits(self).get_obj_raw()
+        operands: list[fabll.NodeT] = []
+        pointers = node.get_children(
             direct_only=True,
             types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
-        ):
-            child = cast(F.Collections.PointerProtocol, child)
-            operands.update(child.as_list())
+        )
+        for pointer in pointers:
+            child = cast(F.Collections.PointerProtocol, pointer)
+            operands.extend(child.as_list())
 
         return operands
+
+    def get_operand_operatables(self) -> set[F.Parameters.is_parameter_operatable]:
+        return {
+            po
+            for op in self.get_operands()
+            if (
+                po := fabll.Traits(op).try_get_trait_of_obj(
+                    F.Parameters.is_parameter_operatable
+                )
+            )
+        }
 
     @staticmethod
     def get_all_expressions_involved_in(
@@ -155,6 +167,15 @@ class is_expression(fabll.Node):
         # 3. Get their parents
         # TODO requires EdgeOperand to support multi expression edges
         raise NotImplementedError("Not implemented")
+
+    def compact_repr(
+        self, context: "F.Parameters.ReprContext | None" = None, use_name: bool = False
+    ) -> str:
+        # TODO
+        raise NotImplementedError()
+
+    def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
+        return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter_operatable)
 
 
 # TODO
@@ -169,6 +190,9 @@ class IsConstrainable(fabll.Node):
     def constrain(self) -> None:
         parent = self.get_parent_force()[0]
         fabll.Traits.create_and_add_instance_to(node=parent, trait=IsConstrained)
+
+    def as_expression(self) -> "F.Expressions.is_expression":
+        return fabll.Traits(self).get_trait_of_obj(F.Expressions.is_expression)
 
 
 class IsConstrained(fabll.Node):

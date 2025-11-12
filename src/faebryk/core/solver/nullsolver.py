@@ -9,17 +9,17 @@ class NullSolver(Solver):
     @override
     def get_any_single(
         self,
-        operatable: fabll.NodeT,
+        operatable: F.Parameters.is_parameter,
         lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
+        suppose_constraint: F.Expressions.IsConstrainable | None = None,
+        minimize: F.Expressions.is_expression | None = None,
     ) -> Any:
         return operatable.domain_set().any()
 
     @override
     def try_fulfill(
         self,
-        predicate: fabll.NodeT,
+        predicate: F.Expressions.IsConstrainable,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool:
@@ -32,7 +32,9 @@ class NullSolver(Solver):
         pass
 
     @override
-    def inspect_get_known_supersets(self, value: fabll.NodeT) -> P_Set:
+    def inspect_get_known_supersets(
+        self, value: F.Parameters.is_parameter
+    ) -> F.Literals.is_literal:
         lit = value.try_get_literal_subset()
         if lit is None:
             lit = value.domain_set()

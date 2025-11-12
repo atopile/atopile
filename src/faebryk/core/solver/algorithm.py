@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass
 from functools import wraps
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from faebryk.core.solver.mutator import Mutator
@@ -19,7 +19,7 @@ class SolverAlgorithm:
     single: bool
     terminal: bool
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args: Any, **kwargs: Any):
         return self.func(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -45,7 +45,7 @@ def algorithm(
 
     def decorator(func: SolverAlgorithmFunc) -> SolverAlgorithm:
         @wraps(func)
-        def wrapped(*args, **kwargs):
+        def wrapped(*args: Any, **kwargs: Any):
             return func(*args, **kwargs)
 
         out = SolverAlgorithm(

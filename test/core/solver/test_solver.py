@@ -72,8 +72,8 @@ logger = logging.getLogger(__name__)
 
 def _create_letters(
     n: int, units=dimensionless
-) -> tuple[ParameterOperatable.ReprContext, list[Parameter], Graph]:
-    context = ParameterOperatable.ReprContext()
+) -> tuple[F.Parameters.ReprContext, list[Parameter], Graph]:
+    context = F.Parameters.ReprContext()
 
     out = []
 
@@ -241,7 +241,7 @@ def test_alias_classes():
     E.alias_is(addition2)
 
     G = A.get_graph()
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in (A, B, C, D, E):
         p.compact_repr(context)
     solver = DefaultSolver()
@@ -323,7 +323,7 @@ def test_subset_is():
     B.constrain_subset(Range(5, 20))
     A.alias_is(B)
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in params:
         p.compact_repr(context)
 
@@ -335,7 +335,7 @@ def test_subset_is():
 def test_subset_is_expr():
     A, B, C = params = times(3, lambda: Parameter(domain=fabll.Domains.Numbers.REAL()))
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in params:
         p.compact_repr(context)
 
@@ -364,7 +364,7 @@ def test_very_simple_alias_class():
     A.alias_is(B)
     B.alias_is(C)
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in params:
         p.compact_repr(context)
 
@@ -396,7 +396,7 @@ def test_less_obvious_contradiction_by_literal():
     C.alias_is(A + B)
     C.alias_is(Range(0.0 * P.V, 15.0 * P.V))
 
-    print_context = ParameterOperatable.ReprContext()
+    print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
         p.compact_repr(print_context)
 
@@ -560,7 +560,7 @@ def test_transitive_subset():
     A.constrain_subset(B)
     B.constrain_subset(C)
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in (A, B, C):
         p.compact_repr(context)
 
@@ -1079,7 +1079,7 @@ def test_graph_split():
     app.A.alias_is(C)
     app.B.alias_is(D)
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in (app.A, app.B, C, D):
         p.compact_repr(context)
 
@@ -1642,7 +1642,7 @@ def test_fold_correlated():
     B.alias_is(op(A, lit_operand))  # B is A + 5
     C.alias_is(op_inv(B, A))  # C is B - A
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     for p in (A, B, C):
         p.compact_repr(context)
 

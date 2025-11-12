@@ -812,6 +812,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def MakeChild(cls) -> ChildField[Self]:
         return ChildField(cls)
 
+    def setup(self) -> Self:
+        return self
+
     # bindings -------------------------------------------------------------------------
     @classmethod
     def bind_typegraph[N: NodeT](
@@ -1288,8 +1291,10 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
             node_type=self.get_or_create_type().node(),
         )
 
-    def get_instances(self) -> list[N]:
+    def get_instances(self, g: GraphView | None = None) -> list[N]:
         type_node = self.get_or_create_type()
+        if g is not None:
+            type_node = g.bind(node=type_node.node())
         instances: list[BoundNode] = []
         EdgeType.visit_instance_edges(
             bound_node=type_node,
@@ -1299,9 +1304,12 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         return [self.t(instance=instance) for instance in instances]
 
     # node type agnostic ---------------------------------------------------------------
+    @deprecated("Use Traits.get_implementors instead")
     def nodes_with_trait[T: NodeT](self, trait: type[T]) -> list[tuple["NodeT", T]]:
-        impls = trait.bind_typegraph(self.tg).get_instances()
-        return [(p[0], impl) for impl in impls if (p := impl.get_parent()) is not None]
+        return [
+            (Traits(impl).get_obj_raw(), impl)
+            for impl in Traits.get_implementors(trait=trait.bind_typegraph(self.tg))
+        ]
 
     # TODO: Waiting for python to add support for type mapping
     def nodes_with_traits[*Ts](
@@ -1370,6 +1378,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
 # ------------------------------------------------------------
 
 
+# TODO shouldnt this all be in ImplementsTrait?
 class Traits:
     def __init__(self, node: NodeT):
         self.node = node
@@ -1410,6 +1419,27 @@ class Traits:
             )
         )
         return out
+
+    @staticmethod
+    def get_implementors[T: NodeT](
+        trait: TypeNodeBoundTG[T, Any],
+        g: GraphView | None = None,
+    ) -> list[T]:
+        return trait.get_instances(g=g)
+
+    @staticmethod
+    def get_implementor_objects(
+        trait: TypeNodeBoundTG[Any, Any], g: GraphView | None = None
+    ) -> list[NodeT]:
+        return [
+            Traits(impl).get_obj_raw() for impl in Traits.get_implementors(trait, g=g)
+        ]
+
+    def get_trait_of_obj[T: NodeT](self, t: type[T]) -> T:
+        return self.get_obj_raw().get_trait(t)
+
+    def try_get_trait_of_obj[T: NodeT](self, t: type[T]) -> T | None:
+        return self.get_obj_raw().try_get_trait(t)
 
 
 class ImplementsTrait(Node):

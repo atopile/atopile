@@ -9,12 +9,13 @@ from types import SimpleNamespace
 from typing import Any, override
 
 import faebryk.core.node as fabll
+import faebryk.library.Expressions as Expressions
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
     IfThenElse,
     Parameter,
-    ParameterOperatable,
+    F.Parameters.is_parameter_operatable,
     Predicate,
 )
 from faebryk.core.solver.algorithm import SolverAlgorithm
@@ -40,7 +41,6 @@ from faebryk.core.solver.utils import (
     TIMEOUT,
     get_graphs,
 )
-import faebryk.library.Expressions as Expressions
 from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import P_Set, as_lit
@@ -127,7 +127,7 @@ class DefaultSolver(Solver):
             if PRINT_START:
                 logger.debug(
                     f"START Iteration {iterno} Phase 2.{phase_name}: {algo.name}"
-                    f" G:{len(data.mutation_map.output_graphs)}"
+                    f" G:{len(data.mutation_map.output_graph)}"
                 )
 
             mutator = Mutator(
@@ -147,7 +147,7 @@ class DefaultSolver(Solver):
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
-                    f"G:{len(data.mutation_map.output_graphs)}"
+                    f"G:{len(data.mutation_map.output_graph)}"
                 )
                 # atm only one stage
                 # expensive
@@ -170,7 +170,7 @@ class DefaultSolver(Solver):
 
     def _create_or_resume_state(
         self,
-        print_context: ParameterOperatable.ReprContext | None,
+        print_context: F.Parameters.ReprContext | None,
         *gs: fabll.Graph | fabll.Node,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
@@ -187,12 +187,12 @@ class DefaultSolver(Solver):
             raise ValueError("print_context not allowed when using reusable state")
 
         mutation_map = self.reusable_state.data.mutation_map
-        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(ParameterOperatable)
+        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(F.Parameters.is_parameter_operatable)
         new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
         # TODO consider using mutator
         transforms = Transformations.identity(
-            *mutation_map.last_stage.output_graphs,
+            *mutation_map.last_stage.output_graph,
             input_print_context=mutation_map.output_print_context,
         )
 
@@ -218,7 +218,7 @@ class DefaultSolver(Solver):
 
         # inject new expressions
         new_exprs = {e for e in new_p_ops if Expressions.is_expression_node(e)}
-        for e in ParameterOperatable.sort_by_depth(new_exprs, ascending=True):
+        for e in F.Parameters.is_parameter_operatable.sort_by_depth(new_exprs, ascending=True):
             if S_LOG:
                 logger.debug(
                     f"injecting {e.compact_repr(mutation_map.input_print_context)}"
@@ -234,7 +234,7 @@ class DefaultSolver(Solver):
                 if op in mutation_map.first_stage.input_operables:
                     op_mapped.append(not_none(mutation_map.map_forward(op).maps_to))
                     continue
-                if ParameterOperatable.is_literal(op):
+                if F.Parameters.is_parameter_operatable.is_literal(op):
                     op = as_lit(op)
                     if isinstance(op, Quantity_Interval_Disjoint):
                         op = op.to_dimensionless()
@@ -262,7 +262,7 @@ class DefaultSolver(Solver):
     def simplify_symbolically(
         self,
         *gs: fabll.Graph | fabll.Node,
-        print_context: ParameterOperatable.ReprContext | None = None,
+        print_context: F.Parameters.ReprContext | None = None,
         terminal: bool = True,
     ) -> SolverState:
         """
@@ -316,7 +316,7 @@ class DefaultSolver(Solver):
             if not iteration_state.dirty:
                 break
 
-            if not len(self.state.data.mutation_map.output_graphs):
+            if not len(self.state.data.mutation_map.output_graph):
                 break
 
             if S_LOG:
@@ -334,7 +334,7 @@ class DefaultSolver(Solver):
             self.reusable_state = self.state
 
         ifs = fabll.Node.bind_typegraph(
-            *self.state.data.mutation_map.last_stage.output_graphs
+            *self.state.data.mutation_map.last_stage.output_graph
         ).nodes_of_type(IfThenElse)
         for i in ifs:
             i.try_run()
@@ -365,7 +365,7 @@ class DefaultSolver(Solver):
 
         # FIXME: is this correct?
         # definitely breaks a lot
-        new_Gs = repr_map.output_graphs
+        new_Gs = repr_map.output_graph
         repr_pred = repr_map.map_forward(pred).maps_to
         print_context_new = repr_map.output_print_context
 
