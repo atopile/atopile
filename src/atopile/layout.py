@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, override
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
 from atopile import front_end
 from atopile.address import AddressError, AddrStr
 from atopile.config import ProjectConfig, config
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import (
     DefaultFactoryDict,
     cast_assert,
@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 class SubPCB(fabll.Node):
-    path = fabll.ChildField(fabll.Parameter)
+    path = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def __create_instance__(
         cls, tg: "fabll.TypeGraph", g: "fabll.GraphView", path: Path
     ) -> "SubPCB":
         out = super()._create_instance(tg, g)
-        out.path.get().constrain_to_literal(g=g, value=str(path))
+        out.path.get().constrain_to_single(g=g, value=str(path))
         return out
 
     def get_path(self) -> Path:
@@ -37,7 +37,7 @@ class SubPCB(fabll.Node):
 
 
 class has_subpcb(fabll.Node):
-    subpcb_ = fabll.ChildField(F.Collections.PointerSet)
+    subpcb_ = F.Collections.PointerSet.MakeChild()
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, subpcb: "SubPCB") -> "has_subpcb":
@@ -73,7 +73,7 @@ class SubAddress:
 
 class in_sub_pcb(fabll.Node):
     _sub_root_module_identifier = "sub_root_module"
-    sub_root_modules = fabll.ChildField(F.Collections.PointerSet)
+    sub_root_modules = F.Collections.PointerSet.MakeChild()
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, sub_root_module: fabll.NodeT) -> "in_sub_pcb":
@@ -172,7 +172,7 @@ def attach_subaddresses_to_modules(app: fabll.Node):
         for footprint_child, _ in module.iter_children_with_trait(F.has_footprint):
             footprint_child.connect(
                 in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module),
-                edge_attrs=EdgeComposition.build(
+                edge_attrs=fbrk.EdgeComposition.build(
                     child_identifier=f"{id(footprint_child)}"
                 ),
             )

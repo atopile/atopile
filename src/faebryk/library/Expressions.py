@@ -2,11 +2,10 @@ from dataclasses import dataclass
 from enum import auto
 from typing import Any, Self, cast
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
-from faebryk.core.zig.gen.graph.graph import BoundEdge
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -67,31 +66,33 @@ def _retrieve_operands(node: fabll.NodeT, identifier: str | None) -> list[fabll.
         operands: list[fabll.NodeT] = []
         _identifier = identifier
 
-    def visit(ctx: type[Ctx], edge: BoundEdge):
+    def visit(ctx: type[Ctx], edge: graph.BoundEdge):
         if ctx._identifier is not None and edge.edge().name() != ctx._identifier:
             return
         ctx.operands.append(
             fabll.Node.bind_instance(edge.g().bind(node=edge.edge().target()))
         )
 
-    EdgeOperand.visit_operand_edges(bound_node=node.instance, ctx=Ctx, f=visit)
+    fbrk.EdgeOperand.visit_operand_edges(bound_node=node.instance, ctx=Ctx, f=visit)
     return Ctx.operands
 
 
 OperandPointer = F.Collections.AbstractPointer(
-    edge_factory=lambda identifier: EdgeOperand.build(operand_identifier=identifier),
+    edge_factory=lambda identifier: fbrk.EdgeOperand.build(
+        operand_identifier=identifier
+    ),
     retrieval_function=lambda node: _retrieve_operands(node, None)[0],
 )
 
 OperandSequence = F.Collections.AbstractSequence(
-    edge_factory=lambda identifier, order: EdgeOperand.build(
+    edge_factory=lambda identifier, order: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,
 )
 
 OperandSet = F.Collections.AbstractSet(
-    edge_factory=lambda identifier, order: EdgeOperand.build(
+    edge_factory=lambda identifier, order: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,

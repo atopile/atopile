@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import (  # noqa: F401
+    BFSPath,
     BoundEdge,
     BoundNode,
     Edge,

@@ -1,26 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-from curses import meta
 from dataclasses import dataclass
-from enum import Enum
-from textwrap import indent
-from tkinter import N
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
-from faebryk.core.zig.gen.faebryk.node_type import EdgeType
-from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
-from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.core.zig.gen.faebryk.trait import EdgeTrait, Trait
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BFSPath, BoundEdge, BoundNode, GraphView
-from faebryk.core.zig.gen.graph.graph import Node as GraphNode
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -251,7 +238,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
             f"{type(InstanceChildBoundInstance).__name__}"
         ) from None
 
-    def cast_to_child_type(self, instance: BoundNode) -> T:
+    def cast_to_child_type(self, instance: graph.BoundNode) -> T:
         """
         Casts instance node to the child type
         """
@@ -263,7 +250,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
             raise FabLLException("Can only be called on named children")
 
         child_instance = not_none(
-            EdgeComposition.get_child_by_identifier(
+            fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=instance, child_identifier=self.identifier
             )
         )
@@ -275,7 +262,7 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
             raise FabLLException("Identifier is not set")
         return self.identifier
 
-    def bind_instance(self, instance: BoundNode):
+    def bind_instance(self, instance: graph.BoundNode):
         return InstanceChildBoundInstance(
             nodetype=self.nodetype,
             identifier=self.get_identifier(),
@@ -289,7 +276,7 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
     """
 
     def __init__(
-        self, nodetype: type[T], identifier: str | None, instance: BoundNode
+        self, nodetype: type[T], identifier: str | None, instance: graph.BoundNode
     ) -> None:
         self.nodetype = nodetype
         self.identifier = identifier
@@ -303,7 +290,7 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
             raise FabLLException("Can only be called on named children")
 
         child_instance = not_none(
-            EdgeComposition.get_child_by_identifier(
+            fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=self.instance, child_identifier=self.identifier
             )
         )
@@ -335,11 +322,11 @@ class TypeChildBoundInstance[T: NodeT]:
     def get(self) -> T:
         return self.get_unbound(instance=self._instance)
 
-    def get_unbound(self, instance: BoundNode) -> T:
+    def get_unbound(self, instance: graph.BoundNode) -> T:
         assert self.identifier is not None, "Bug: Needs to be set on setattr"
 
         child_instance = not_none(
-            EdgeComposition.get_child_by_identifier(
+            fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=instance, child_identifier=self.identifier
             )
         )
@@ -362,7 +349,7 @@ class EdgeField(Field):
         lhs: RefPath,
         rhs: RefPath,
         *,
-        edge: EdgeCreationAttributes,
+        edge: fbrk.EdgeCreationAttributes,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
     ):
         super().__init__(identifier=identifier)
@@ -386,14 +373,14 @@ class EdgeField(Field):
 
     @staticmethod
     def _resolve_path_from_node(
-        path: list[str] | RefPath, instance: BoundNode
-    ) -> BoundNode:
+        path: list[str] | RefPath, instance: graph.BoundNode
+    ) -> graph.BoundNode:
         target = instance
 
         for segment in path:
             if not isinstance(segment, str):
                 segment = segment.get_identifier()
-            child = EdgeComposition.get_child_by_identifier(
+            child = fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=target, child_identifier=segment
             )
             if child is None:
@@ -409,13 +396,13 @@ class EdgeField(Field):
     def lhs_resolved(self) -> list[str]:
         return self._resolve_path(self.lhs)
 
-    def lhs_resolved_on_node(self, instance: BoundNode) -> BoundNode:
+    def lhs_resolved_on_node(self, instance: graph.BoundNode) -> graph.BoundNode:
         return self._resolve_path_from_node(self.lhs_resolved(), instance)
 
     def rhs_resolved(self) -> list[str]:
         return self._resolve_path(self.rhs)
 
-    def rhs_resolved_on_node(self, instance: BoundNode) -> BoundNode:
+    def rhs_resolved_on_node(self, instance: graph.BoundNode) -> graph.BoundNode:
         return self._resolve_path_from_node(self.rhs_resolved(), instance)
 
     def __repr__(self) -> str:
@@ -453,7 +440,7 @@ class EdgeFactoryAccessor(Protocol):
 class EdgeFactoryField(Field, EdgeFactoryAccessor):
     def __init__(
         self,
-        edge_factory: Callable[[str], EdgeCreationAttributes],
+        edge_factory: Callable[[str], fbrk.EdgeCreationAttributes],
         *,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
         single: bool = False,
@@ -472,7 +459,7 @@ class EdgeFactoryField(Field, EdgeFactoryAccessor):
 
     def _get_all(self, source: "NodeT") -> list["NodeT"]:
         class Ctx:
-            nodes: list[BoundNode] = []
+            nodes: list[graph.BoundNode] = []
 
         source.instance.visit_edges_of_type(
             edge_type=self.edge_attrs.get_tid(),
@@ -510,19 +497,19 @@ class InstanceBoundEdgeFactory(EdgeFactoryField):
 
 class Path:
     """
-    Wrapper around Zig's BFSPath object.
+    Wrapper around Zig's graph.BFSPath object.
 
     This is a lightweight Python wrapper around a path object that lives in Zig memory.
-    The underlying BFSPath is automatically freed when this Python object is garbage collected.
+    The underlying graph.BFSPath is automatically freed when this Python object is garbage collected.
 
     Access path information via properties that call back into Zig:
     - length: Number of edges in the path
-    - start_node: Starting node (BoundNode)
-    - end_node: Ending node (BoundNode)
+    - start_node: Starting node (graph.BoundNode)
+    - end_node: Ending node (graph.BoundNode)
     - edges: List of edges (creates Python objects, use sparingly for long paths)
     """
 
-    def __init__(self, bfs_path: "BFSPath"):  # type: ignore
+    def __init__(self, bfs_path: "graph.BFSPath"):  # type: ignore
         self._bfs_path = bfs_path
 
     @property
@@ -530,15 +517,15 @@ class Path:
         return self._bfs_path.get_length()
 
     @property
-    def start_node(self) -> BoundNode:
+    def start_node(self) -> graph.BoundNode:
         return self._bfs_path.get_start_node()
 
     @property
-    def end_node(self) -> BoundNode:
+    def end_node(self) -> graph.BoundNode:
         return self._bfs_path.get_end_node()
 
     @property
-    def edges(self) -> list[BoundEdge]:
+    def edges(self) -> list[graph.BoundEdge]:
         return self._bfs_path.get_edges()
 
     def get_start_node(self) -> "Node[Any]":
@@ -567,8 +554,8 @@ class Path:
     def __repr__(self) -> str:
         start = self.start_node
         end = self.end_node
-        start_str = f"BoundNode({start.node().get_uuid()})"
-        end_str = f"BoundNode({end.node().get_uuid()})"
+        start_str = f"graph.BoundNode({start.node().get_uuid()})"
+        end_str = f"graph.BoundNode({end.node().get_uuid()})"
         return f"Path(start={start_str}, end={end_str}, length={self.length})"
 
 
@@ -602,7 +589,7 @@ class NodeAttributes:
         pass
 
     @classmethod
-    def of(cls: type[Self], node: "BoundNode | NodeT") -> Self:
+    def of(cls: type[Self], node: "graph.BoundNode | NodeT") -> Self:
         if isinstance(node, Node):
             node = node.instance
         return cls(**node.node().get_dynamic_attrs())
@@ -610,20 +597,20 @@ class NodeAttributes:
     def to_dict(self) -> dict[str, Literal]:
         return dataclass_as_kwargs(self)
 
-    def to_node_attributes(self) -> NodeCreationAttributes | None:
+    def to_node_attributes(self) -> fbrk.NodeCreationAttributes | None:
         attrs = self.to_dict()
         if not attrs:
             return None
-        return NodeCreationAttributes.init(dynamic=attrs)
+        return fbrk.NodeCreationAttributes.init(dynamic=attrs)
 
 
 class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     Attributes = NodeAttributes
     __fields: list[Field] = []
     # TODO do we need this?
-    # _fields_bound_tg: dict[TypeGraph, list[InstanceChildBoundType]] = {}
+    # _fields_bound_tg: dict[fbrk.TypeGraph, list[InstanceChildBoundType]] = {}
 
-    def __init__(self, instance: BoundNode) -> None:
+    def __init__(self, instance: graph.BoundNode) -> None:
         self.instance = instance
 
         # setup instance accessors
@@ -692,7 +679,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     g=t.tg.get_graph_view(),
                     attributes=field.attributes,
                 )
-                EdgeComposition.add_child(
+                fbrk.EdgeComposition.add_child(
                     bound_node=t.get_or_create_type(),
                     child=child_instance.instance.node(),
                     child_identifier=identifier,
@@ -736,7 +723,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         pass
 
     @classmethod
-    def _create_instance(cls, tg: TypeGraph, g: GraphView) -> Self:
+    def _create_instance(cls, tg: fbrk.TypeGraph, g: graph.GraphView) -> Self:
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
     @classmethod
@@ -772,7 +759,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _add_instance_child(
         cls,
         child: InstanceChildBoundType,
-    ) -> BoundNode:
+    ) -> graph.BoundNode:
         tg = child.t.tg
         identifier = child.get_identifier()
         nodetype = child.nodetype
@@ -788,13 +775,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _add_type_child(
         cls,
         child: TypeChildBoundInstance,
-    ) -> BoundNode:
+    ) -> graph.BoundNode:
         tg = child.t.tg
         identifier = child.identifier
         nodetype = child.nodetype
 
         child_node = nodetype.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
-        EdgeComposition.add_child(
+        fbrk.EdgeComposition.add_child(
             bound_node=cls.bind_typegraph(tg).get_or_create_type(),
             child=child_node.instance.node(),
             child_identifier=identifier,
@@ -818,18 +805,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     # bindings -------------------------------------------------------------------------
     @classmethod
     def bind_typegraph[N: NodeT](
-        cls: type[N], tg: TypeGraph
+        cls: type[N], tg: fbrk.TypeGraph
     ) -> "TypeNodeBoundTG[N, T]":
         return TypeNodeBoundTG[N, T](tg=tg, t=cls)
 
     @classmethod
     def bind_typegraph_from_instance[N: NodeT](
-        cls: type[N], instance: BoundNode
+        cls: type[N], instance: graph.BoundNode
     ) -> "TypeNodeBoundTG[N, T]":
         return cls.bind_instance(instance=instance).bind_typegraph_from_self()
 
     @classmethod
-    def bind_instance(cls, instance: BoundNode) -> Self:
+    def bind_instance(cls, instance: graph.BoundNode) -> Self:
         return cls(instance=instance)
 
     # instance methods -----------------------------------------------------------------
@@ -837,13 +824,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def add(self, node: "NodeT"):
         # TODO node name
         self.connect(
-            to=node, edge_attrs=EdgeComposition.build(child_identifier=f"{id(node)}")
+            to=node,
+            edge_attrs=fbrk.EdgeComposition.build(child_identifier=f"{id(node)}"),
         )
 
     def __setattr__(self, name: str, value: Any, /) -> None:
         if isinstance(value, Node) and not name.startswith("_"):
             self.connect(
-                to=value, edge_attrs=EdgeComposition.build(child_identifier=name)
+                to=value, edge_attrs=fbrk.EdgeComposition.build(child_identifier=name)
             )
         return super().__setattr__(name, value)
 
@@ -863,15 +851,15 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return parent[1]
 
     def get_parent(self) -> tuple["Node", str] | None:
-        parent_edge = EdgeComposition.get_parent_edge(bound_node=self.instance)
+        parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=self.instance)
         if parent_edge is None:
             return None
         parent_node = parent_edge.g().bind(
-            node=EdgeComposition.get_parent_node(edge=parent_edge.edge())
+            node=fbrk.EdgeComposition.get_parent_node(edge=parent_edge.edge())
         )
         return (
             Node(instance=parent_node),
-            EdgeComposition.get_name(edge=parent_edge.edge()),
+            fbrk.EdgeComposition.get_name(edge=parent_edge.edge()),
         )
 
     def get_parent_force(self) -> tuple["Node", str]:
@@ -952,7 +940,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     # TODO: remove when get_children() is visitor
     def get_direct_children(self) -> list[tuple[str | None, "Node"]]:
         children: list[tuple[str | None, "Node"]] = []
-        EdgeComposition.visit_children_edges(
+        fbrk.EdgeComposition.visit_children_edges(
             bound_node=self.instance,
             ctx=children,
             f=lambda ctx, edge: ctx.append(
@@ -960,7 +948,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     edge.edge().name(),
                     Node(
                         instance=edge.g().bind(
-                            node=EdgeComposition.get_child_node(edge=edge.edge())
+                            node=fbrk.EdgeComposition.get_child_node(edge=edge.edge())
                         )
                     ),
                 )
@@ -1070,8 +1058,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             )
 
     @property
-    def tg(self) -> TypeGraph:
-        tg = TypeGraph.of_instance(instance_node=self.instance)
+    def tg(self) -> fbrk.TypeGraph:
+        tg = fbrk.TypeGraph.of_instance(instance_node=self.instance)
         if tg is None:
             raise FabLLException(
                 f"Failed to bind typegraph from instance: {self.instance}"
@@ -1081,14 +1069,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def bind_typegraph_from_self(self) -> "TypeNodeBoundTG[Self, Any]":
         return self.bind_typegraph(tg=self.tg)
 
-    def get_graph(self) -> TypeGraph:
+    def get_graph(self) -> fbrk.TypeGraph:
         return self.tg
 
-    def get_type_node(self) -> BoundNode | None:
-        type_edge = EdgeType.get_type_edge(bound_node=self.instance)
+    def get_type_node(self) -> graph.BoundNode | None:
+        type_edge = fbrk.EdgeType.get_type_edge(bound_node=self.instance)
         if type_edge is None:
             return None
-        return type_edge.g().bind(node=EdgeType.get_type_node(edge=type_edge.edge()))
+        return type_edge.g().bind(
+            node=fbrk.EdgeType.get_type_node(edge=type_edge.edge())
+        )
 
     def get_type_name(self) -> str | None:
         type_node = self.get_type_node()
@@ -1169,7 +1159,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return self_name.removeprefix(root_name + ".")
 
     def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
-        impl = Trait.try_get_trait(
+        impl = fbrk.Trait.try_get_trait(
             target=self.instance,
             trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
         )
@@ -1225,9 +1215,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         match other:
             case Node():
                 other_node = other.instance.node()
-            case GraphNode():
+            case graph.Node():
                 other_node = other
-            case BoundNode():
+            case graph.BoundNode():
                 other_node = other.node()
             case _:
                 return False
@@ -1238,7 +1228,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return self.instance.node().get_uuid()
 
     # instance edges -------------------------------------------------------------------
-    def connect(self, to: "NodeT", edge_attrs: EdgeCreationAttributes) -> None:
+    def connect(self, to: "NodeT", edge_attrs: fbrk.EdgeCreationAttributes) -> None:
         """
         Low-level edge creation function.
         """
@@ -1252,16 +1242,16 @@ type NodeT = Node[Any]
 
 class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     """
-    (type[Node], TypeGraph)
+    (type[Node], fbrk.TypeGraph)
     Becomes available during stage 1 (typegraph creation)
     """
 
-    def __init__(self, tg: TypeGraph, t: type[N]) -> None:
+    def __init__(self, tg: fbrk.TypeGraph, t: type[N]) -> None:
         self.tg = tg
         self.t = t
 
     # node type methods ----------------------------------------------------------------
-    def get_or_create_type(self) -> BoundNode:
+    def get_or_create_type(self) -> graph.BoundNode:
         """
         Builds Type node and returns it
         """
@@ -1273,7 +1263,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.t._create_type(self)
         return typenode
 
-    def create_instance(self, g: GraphView, attributes: A | None = None) -> N:
+    def create_instance(self, g: graph.GraphView, attributes: A | None = None) -> N:
         """
         Create a node instance for the given type node
         """
@@ -1286,17 +1276,17 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         return self.t.bind_instance(instance=instance)
 
     def isinstance(self, instance: NodeT) -> bool:
-        return EdgeType.is_node_instance_of(
+        return fbrk.EdgeType.is_node_instance_of(
             bound_node=instance.instance,
             node_type=self.get_or_create_type().node(),
         )
 
-    def get_instances(self, g: GraphView | None = None) -> list[N]:
+    def get_instances(self, g: graph.GraphView | None = None) -> list[N]:
         type_node = self.get_or_create_type()
         if g is not None:
             type_node = g.bind(node=type_node.node())
-        instances: list[BoundNode] = []
-        EdgeType.visit_instance_edges(
+        instances: list[graph.BoundNode] = []
+        fbrk.EdgeType.visit_instance_edges(
             bound_node=type_node,
             ctx=instances,
             f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
@@ -1346,7 +1336,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         *,
         lhs_reference_path: RefPath1,
         rhs_reference_path: RefPath1,
-        edge: EdgeCreationAttributes,
+        edge: fbrk.EdgeCreationAttributes,
     ) -> None:
         tg = self.tg
         type_node = self.get_or_create_type()
@@ -1395,7 +1385,7 @@ class Traits:
 
     @staticmethod
     def add_to(node: NodeT, trait: NodeT) -> None:
-        Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+        fbrk.Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
 
     @staticmethod
     def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
@@ -1415,7 +1405,7 @@ class Traits:
             EdgeField(
                 owner,
                 [child_field],
-                edge=EdgeTrait.build(),
+                edge=fbrk.EdgeTrait.build(),
             )
         )
         return out
@@ -1423,13 +1413,13 @@ class Traits:
     @staticmethod
     def get_implementors[T: NodeT](
         trait: TypeNodeBoundTG[T, Any],
-        g: GraphView | None = None,
+        g: graph.GraphView | None = None,
     ) -> list[T]:
         return trait.get_instances(g=g)
 
     @staticmethod
     def get_implementor_objects(
-        trait: TypeNodeBoundTG[Any, Any], g: GraphView | None = None
+        trait: TypeNodeBoundTG[Any, Any], g: graph.GraphView | None = None
     ) -> list[NodeT]:
         return [
             Traits(impl).get_obj_raw() for impl in Traits.get_implementors(trait, g=g)
@@ -1462,8 +1452,8 @@ class MakeChild(Node):
     Matched automatically because of name.
     """
 
-    def get_child_type(self) -> BoundNode:
-        return EdgePointer.get_referenced_node_from_node(node=self.instance)
+    def get_child_type(self) -> graph.BoundNode:
+        return fbrk.EdgePointer.get_referenced_node_from_node(node=self.instance)
 
 
 class is_module(Node):
@@ -1487,7 +1477,7 @@ class is_module(Node):
         return Traits.get_obj_raw(Traits.bind(self))
 
 
-# wraps the raw EdgeInterfaceConnection functions into fabll nodes
+# wraps the raw fbrk.EdgeInterfaceConnection functions into fabll nodes
 class is_interface(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
@@ -1497,12 +1487,14 @@ class is_interface(Node):
     def connect_to(self, *others: "NodeT") -> None:
         self_node = self.get_obj()
         for other in others:
-            EdgeInterfaceConnection.connect(bn1=self_node.instance, bn2=other.instance)
+            fbrk.EdgeInterfaceConnection.connect(
+                bn1=self_node.instance, bn2=other.instance
+            )
 
     def connect_shallow_to(self, *others: "NodeT") -> None:
         self_node = self.get_obj()
         for other in others:
-            EdgeInterfaceConnection.connect_shallow(
+            fbrk.EdgeInterfaceConnection.connect_shallow(
                 bn1=self_node.instance, bn2=other.instance
             )
 
@@ -1534,7 +1526,7 @@ class is_interface(Node):
 
     def is_connected_to(self, other: "NodeT") -> bool:
         self_node = self.get_obj()
-        path = EdgeInterfaceConnection.is_connected_to(
+        path = fbrk.EdgeInterfaceConnection.is_connected_to(
             source=self_node.instance, target=other.instance
         )
 
@@ -1542,7 +1534,7 @@ class is_interface(Node):
 
     def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
         self_node = self.get_obj()
-        connected_nodes_map = EdgeInterfaceConnection.get_connected(
+        connected_nodes_map = fbrk.EdgeInterfaceConnection.get_connected(
             source=self_node.instance, include_self=include_self
         )
         return {
@@ -1557,8 +1549,8 @@ class is_interface(Node):
 
 # --------------------------------------------------------------------------------------
 # TODO remove
-# re-export GraphView to be used from fabll namespace
-Graph = TypeGraph
+# re-export graph.GraphView to be used from fabll namespace
+Graph = fbrk.TypeGraph
 # Node type aliases
 Module = Node
 type Module = Node
@@ -1591,8 +1583,8 @@ Predicates = None
 
 
 def _make_graph_and_typegraph():
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
     return g, tg
 
 
@@ -1631,7 +1623,7 @@ def test_fabll_basic():
         _edge = EdgeField(
             lhs=[tnwa1],
             rhs=[tnwa2],
-            edge=EdgePointer.build(identifier=None, order=None),
+            edge=fbrk.EdgePointer.build(identifier=None, order=None),
         )
 
     g, tg = _make_graph_and_typegraph()
@@ -1660,7 +1652,9 @@ def test_fabll_basic():
     tnwc = TestNodeWithChildren.bind_typegraph(tg).create_instance(g=g)
     assert (
         not_none(
-            EdgePointer.get_referenced_node_from_node(node=tnwc.tnwa1.get().instance)
+            fbrk.EdgePointer.get_referenced_node_from_node(
+                node=tnwc.tnwa1.get().instance
+            )
         )
         .node()
         .is_same(other=tnwc.tnwa2.get().instance.node())
@@ -1677,21 +1671,23 @@ def test_typegraph_of_type_and_instance_roundtrip():
     g, tg = _make_graph_and_typegraph()
 
     class Simple(Node):
-        """Minimal node to exercise TypeGraph helpers."""
+        """Minimal node to exercise fbrk.TypeGraph helpers."""
 
         pass
 
     bound_simple = Simple.bind_typegraph(tg)
     type_node = bound_simple.get_or_create_type()
 
-    tg_from_type = TypeGraph.of_type(type_node=type_node)
+    tg_from_type = fbrk.TypeGraph.of_type(type_node=type_node)
     assert tg_from_type is not None
     rebound = tg_from_type.get_type_by_name(type_identifier=Simple._type_identifier())
     assert rebound is not None
     assert rebound.node().is_same(other=type_node.node())
 
     simple_instance = bound_simple.create_instance(g=g)
-    tg_from_instance = TypeGraph.of_instance(instance_node=simple_instance.instance)
+    tg_from_instance = fbrk.TypeGraph.of_instance(
+        instance_node=simple_instance.instance
+    )
     assert tg_from_instance is not None
     rebound_from_instance = tg_from_instance.get_type_by_name(
         type_identifier=Simple._type_identifier()
@@ -1864,8 +1860,8 @@ def test_type_children():
 def test_manual_resistor_def():
     import faebryk.library._F as F
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     # create electrical type node and insert into type graph
     _ = F.Electrical.bind_typegraph(tg=tg).get_or_create_type()
@@ -1880,7 +1876,7 @@ def test_manual_resistor_def():
     print(resistor_instance._type_identifier())
 
     # Electrical make child
-    p1 = EdgeComposition.get_child_by_identifier(
+    p1 = fbrk.EdgeComposition.get_child_by_identifier(
         bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
     )
     assert p1 is not None
@@ -1889,13 +1885,13 @@ def test_manual_resistor_def():
     print("p1:", p1)
 
     # unconstrained Parameter make child
-    resistance = EdgeComposition.get_child_by_identifier(
+    resistance = fbrk.EdgeComposition.get_child_by_identifier(
         bound_node=resistor_instance.instance, child_identifier="resistance"
     )
     assert resistance is not None
     print(
         "resistance is type Parameter:",
-        EdgeType.is_node_instance_of(
+        fbrk.EdgeType.is_node_instance_of(
             bound_node=resistance,
             node_type=Parameter.bind_typegraph(tg=tg).get_or_create_type().node(),
         ),
@@ -1903,73 +1899,75 @@ def test_manual_resistor_def():
 
     # Constrained parameter type child
     designator_prefix = not_none(
-        EdgeComposition.get_child_by_identifier(
+        fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=resistor_instance.instance,
             child_identifier="designator_prefix",
         )
     )
     prefix_param = not_none(
-        EdgeComposition.get_child_by_identifier(
+        fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=designator_prefix,
             child_identifier="prefix_param",
         )
     )
-    constraint_edge = not_none(EdgeOperand.get_expression_edge(bound_node=prefix_param))
+    constraint_edge = not_none(
+        fbrk.EdgeOperand.get_expression_edge(bound_node=prefix_param)
+    )
     expression_node = not_none(
-        EdgeOperand.get_expression_node(edge=constraint_edge.edge())
+        fbrk.EdgeOperand.get_expression_node(edge=constraint_edge.edge())
     )
     expression_bnode = g.bind(node=expression_node)
 
-    operands: list[BoundNode] = []
-    EdgeOperand.visit_operand_edges(
+    operands: list[graph.BoundNode] = []
+    fbrk.EdgeOperand.visit_operand_edges(
         bound_node=expression_bnode,
         ctx=operands,
         f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
     )
     for operand in operands:
-        attrs = EdgeType.get_type_node(
-            edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()
+        attrs = fbrk.EdgeType.get_type_node(
+            edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=operand)).edge()
         ).get_dynamic_attrs()
         print(f"{attrs} {operand.node().get_dynamic_attrs()}")
 
     expression_bnode = g.bind(node=expression_node)
-    operands2: list[BoundNode] = []
-    EdgeOperand.visit_operand_edges(
+    operands2: list[graph.BoundNode] = []
+    fbrk.EdgeOperand.visit_operand_edges(
         bound_node=expression_bnode,
         ctx=operands2,
         f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
     )
     for operand in operands2:
-        attrs = EdgeType.get_type_node(
-            edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()
+        attrs = fbrk.EdgeType.get_type_node(
+            edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=operand)).edge()
         ).get_dynamic_attrs()
         print(f"{attrs} {operand.node().get_dynamic_attrs()}")
 
     # Is pickable by type
     ipbt = not_none(
-        EdgeComposition.get_child_by_identifier(
+        fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=resistor_instance.instance,
             child_identifier="_is_pickable",
         )
     )
     ipbt_params = not_none(
-        EdgeComposition.get_child_by_identifier(
+        fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=ipbt,
             child_identifier="params_",
         )
     )
-    variables: list[BoundNode] = []
+    variables: list[graph.BoundNode] = []
     ipbt_params.visit_edges_of_type(
-        edge_type=EdgePointer.get_tid(),
+        edge_type=fbrk.EdgePointer.get_tid(),
         ctx=variables,
         f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
     )
     print(
         "ipbt_params:",
         [
-            EdgeComposition.get_name(
+            fbrk.EdgeComposition.get_name(
                 edge=not_none(
-                    EdgeComposition.get_parent_edge(bound_node=variable)
+                    fbrk.EdgeComposition.get_parent_edge(bound_node=variable)
                 ).edge()
             )
             for variable in variables
@@ -2007,7 +2005,7 @@ def test_lightweight():
     _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
     _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
     # pat = not_none(
-    #     EdgePointer.get_pointed_node_by_identifier(
+    #     fbrk.EdgePointer.get_pointed_node_by_identifier(
     #         bound_node=bjt_instance.emitter.get().instance,
     #         identifier="pin_association_table_set",
     #     )

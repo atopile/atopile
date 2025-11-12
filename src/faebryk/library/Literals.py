@@ -258,7 +258,7 @@ def make_lit(tg: fabll.TypeGraph, value: LiteralValues) -> LiteralNodes:
 
 # TODO
 def MakeChild_Literal(
-    tg: fabll.TypeGraph, value: LiteralValues, enum: type[Enum] | None = None
+    value: LiteralValues, enum: type[Enum] | None = None
 ) -> fabll.ChildField[LiteralNodes]:
     match value:
         case bool():

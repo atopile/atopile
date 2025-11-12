@@ -1,9 +1,8 @@
-from typing import TYPE_CHECKING, Any, Callable, Protocol, Self
+from typing import Any, Callable, Protocol, Self
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode
 from faebryk.library import Literals
 
 RefPath = fabll.RefPath
@@ -13,29 +12,29 @@ EdgeField = fabll.EdgeField
 def _get_pointer_references(
     node: fabll.NodeT, identifier: str | None = None
 ) -> "list[fabll.NodeT]":
-    references: list[tuple[int | None, BoundNode]] = []
+    references: list[tuple[int | None, graph.BoundNode]] = []
 
     def _collect(
-        ctx: list[tuple[int | None, BoundNode]], bound_edge: BoundEdge
+        ctx: list[tuple[int | None, graph.BoundNode]], bound_edge: graph.BoundEdge
     ) -> None:
         edge_name = bound_edge.edge().name()
         if identifier is not None and edge_name != identifier:
             return
-        target = EdgePointer.get_referenced_node(edge=bound_edge.edge())
+        target = fbrk.EdgePointer.get_referenced_node(edge=bound_edge.edge())
         if target is None:
             return
-        edge_order = EdgePointer.get_order(edge=bound_edge.edge())
+        edge_order = fbrk.EdgePointer.get_order(edge=bound_edge.edge())
         node = bound_edge.g().bind(node=target)
         ctx.append((edge_order, node))
 
     if identifier is None:
-        EdgePointer.visit_pointed_edges(
+        fbrk.EdgePointer.visit_pointed_edges(
             bound_node=node.instance,
             ctx=references,
             f=_collect,
         )
     else:
-        EdgePointer.visit_pointed_edges_with_identifier(
+        fbrk.EdgePointer.visit_pointed_edges_with_identifier(
             bound_node=node.instance,
             identifier=identifier,
             ctx=references,
@@ -48,7 +47,7 @@ def _get_pointer_references(
 
 
 class PointerEdgeFactory(Protocol):
-    def __call__(self, identifier: str | None) -> EdgeCreationAttributes: ...
+    def __call__(self, identifier: str | None) -> fbrk.EdgeCreationAttributes: ...
 
 
 class CollectionProtocol(Protocol):
@@ -114,7 +113,7 @@ class SequenceProtocol(CollectionProtocol):
 class SequenceEdgeFactory(Protocol):
     def __call__(
         self, identifier: str, order: int | None
-    ) -> EdgeCreationAttributes: ...
+    ) -> fbrk.EdgeCreationAttributes: ...
 
 
 def AbstractSequence(
@@ -184,7 +183,7 @@ class SetProtocol(Protocol):
 class SetEdgeFactory(Protocol):
     def __call__(
         self, identifier: str, order: int | None
-    ) -> EdgeCreationAttributes: ...
+    ) -> fbrk.EdgeCreationAttributes: ...
 
 
 def AbstractSet(
@@ -259,21 +258,21 @@ def AbstractSet(
 # get rid of the abstract bs and just reimplement sets wherever needed
 
 Pointer = AbstractPointer(
-    edge_factory=lambda identifier: EdgePointer.build(
+    edge_factory=lambda identifier: fbrk.EdgePointer.build(
         identifier=identifier, order=None
     ),
     retrieval_function=lambda node: _get_pointer_references(node, None)[0],
 )
 
 PointerSequence = AbstractSequence(
-    edge_factory=lambda identifier, order: EdgePointer.build(
+    edge_factory=lambda identifier, order: fbrk.EdgePointer.build(
         identifier=identifier, order=order
     ),
     retrieval_function=_get_pointer_references,
 )
 
 PointerSet = AbstractSet(
-    edge_factory=lambda identifier, order: EdgePointer.build(
+    edge_factory=lambda identifier, order: fbrk.EdgePointer.build(
         identifier=identifier, order=order
     ),
     retrieval_function=_get_pointer_references,
@@ -335,15 +334,19 @@ def test_pointer_helpers():
     left_child = parent.left.get()
     right_child = parent.right.get()
 
-    parent.connect(left_child, EdgePointer.build(identifier="left_ptr", order=None))
-    parent.connect(right_child, EdgePointer.build(identifier="right_ptr", order=None))
+    parent.connect(
+        left_child, fbrk.EdgePointer.build(identifier="left_ptr", order=None)
+    )
+    parent.connect(
+        right_child, fbrk.EdgePointer.build(identifier="right_ptr", order=None)
+    )
 
     pointed_edges: list[str | None] = []
 
-    def _collect(names: list[str | None], edge: BoundEdge):
+    def _collect(names: list[str | None], edge: graph.BoundEdge):
         names.append(edge.edge().name())
 
-    EdgePointer.visit_pointed_edges(
+    fbrk.EdgePointer.visit_pointed_edges(
         bound_node=parent.instance,
         ctx=pointed_edges,
         f=_collect,
@@ -351,29 +354,29 @@ def test_pointer_helpers():
     assert pointed_edges.count("left_ptr") == 1
     assert pointed_edges.count("right_ptr") == 1
 
-    left = EdgePointer.get_pointed_node_by_identifier(
+    left = fbrk.EdgePointer.get_pointed_node_by_identifier(
         bound_node=parent.instance,
         identifier="left_ptr",
     )
     assert left is not None
     assert left.node().is_same(other=left_child.instance.node())
 
-    right = EdgePointer.get_pointed_node_by_identifier(
+    right = fbrk.EdgePointer.get_pointed_node_by_identifier(
         bound_node=parent.instance,
         identifier="right_ptr",
     )
     assert right is not None
     assert right.node().is_same(other=right_child.instance.node())
 
-    parent.connect(left_child, EdgePointer.build(identifier="shared", order=None))
-    parent.connect(right_child, EdgePointer.build(identifier="shared", order=None))
+    parent.connect(left_child, fbrk.EdgePointer.build(identifier="shared", order=None))
+    parent.connect(right_child, fbrk.EdgePointer.build(identifier="shared", order=None))
 
-    shared_edges: list[BoundEdge] = []
+    shared_edges: list[graph.BoundEdge] = []
 
-    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
+    def _collect_shared(ctx: list[graph.BoundEdge], edge: graph.BoundEdge):
         ctx.append(edge)
 
-    EdgePointer.visit_pointed_edges_with_identifier(
+    fbrk.EdgePointer.visit_pointed_edges_with_identifier(
         bound_node=parent.instance,
         identifier="shared",
         ctx=shared_edges,

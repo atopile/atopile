@@ -1,10 +1,10 @@
 from enum import Enum
 from typing import Protocol, Self, cast
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.core.zig.gen.graph.graph as graph
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 
 
 class EnumValue(fabll.Node):
@@ -13,7 +13,7 @@ class EnumValue(fabll.Node):
     @classmethod
     def MakeChild(cls, enum_value: F.Literals.LiteralValues) -> fabll.ChildField[Self]:
         out = fabll.ChildField(cls)
-        literal = F.Literals.make_lit_child(value=enum_value)
+        literal = F.Literals.MakeChild_Literal(value=enum_value)
         out.add_dependant(
             F.Collections.Pointer.EdgeField(
                 [out, cls.value],
@@ -54,7 +54,7 @@ def EnumsFactory(enum_type: type[Enum]) -> type[EnumsProtocol]:
             cls, tg: fabll.TypeGraph, enum_value: Enum
         ) -> EnumValue:
             bound_e = cls.bind_typegraph(tg)
-            e_val = EdgeComposition.get_child_by_identifier(
+            e_val = fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=bound_e.get_or_create_type(),
                 child_identifier=enum_value.name,
             )

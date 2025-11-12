@@ -175,13 +175,14 @@ class StringParameter(fabll.Node):
             lit_type=F.Literals.Strings
         )
 
-    def constrain_to_single(self, value: str) -> None:
+    def constrain_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
+        g = g or self.instance.g()
         self._is_parameter_operatable.get().constrain_to_literal(
-            g=self.instance.g(),
+            g=g,
             value=F.Literals.Strings.bind_typegraph_from_instance(
                 instance=self.instance
             )
-            .create_instance(self.instance.g())
+            .create_instance(g)
             .setup(value),
         )
 

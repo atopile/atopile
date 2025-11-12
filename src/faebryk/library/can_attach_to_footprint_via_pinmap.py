@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 import faebryk.library._F as F
 
 
@@ -51,7 +50,7 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
                 )
             )
             # Pin Str
-            lit = fabll.LiteralNode.MakeChild(value=pin_str)
+            lit = F.Literals.Strings.MakeChild(value=pin_str)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(
