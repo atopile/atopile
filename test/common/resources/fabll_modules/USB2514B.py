@@ -52,7 +52,7 @@ class USB2514B(fabll.Node):
             self.usb_port_disable_n.line.connect(self.usb.n.line)
             self.usb_power_enable.connect(self.battery_charging_enable)
 
-        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+        _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     class ConfigurationSource(Enum):
         DEFAULT = auto()
@@ -192,7 +192,7 @@ class USB2514B(fabll.Node):
     datasheet = F.has_datasheet.MakeChild(
         datasheet="https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
     )
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     @fabll.rt_field
     def can_attach_to_footprint(self):

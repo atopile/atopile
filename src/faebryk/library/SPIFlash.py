@@ -23,7 +23,7 @@ class SPIFlash(fabll.Node):
         F.has_designator_prefix.Prefix.U
     )
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

@@ -12,10 +12,10 @@ class _FileManuallyModified(Exception): ...
 class is_auto_generated(fabll.Node):
     CHECKSUM_PLACEHOLDER = "{IS_AUTO_GENERATED_CHECKSUM}"
 
-    source_ = fabll.ChildField(F.Parameters.StringParameter)
-    system_ = fabll.ChildField(F.Parameters.StringParameter)
-    date_ = fabll.ChildField(F.Parameters.StringParameter)
-    checksum_ = fabll.ChildField(F.Parameters.StringParameter)
+    source_ = fabll._ChildField(F.Parameters.StringParameter)
+    system_ = fabll._ChildField(F.Parameters.StringParameter)
+    date_ = fabll._ChildField(F.Parameters.StringParameter)
+    checksum_ = fabll._ChildField(F.Parameters.StringParameter)
 
     @property
     def source(self) -> str | None:
@@ -59,8 +59,8 @@ class is_auto_generated(fabll.Node):
         system: str | None = None,
         date: str | None = None,
         checksum: str | None = None,
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         if source is not None:
             out.add_dependant(
                 F.Expressions.Is.MakeChild_ConstrainToLiteral(

@@ -17,8 +17,8 @@ class has_designator(fabll.Node):
         return str(literal)
 
     @classmethod
-    def MakeChild(cls, designator: str) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, designator: str) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.designator_], designator

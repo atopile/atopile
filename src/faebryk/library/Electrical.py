@@ -10,7 +10,7 @@ class Electrical(fabll.Node):
     Electrical interface.
     """
 
-    _is_interface = fabll.ChildField(fabll.is_interface)
+    _is_interface = fabll._ChildField(fabll.is_interface)
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

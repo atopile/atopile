@@ -55,8 +55,8 @@ class SerializableMetadata(fabll.Node):
         return SerializableMetadata.get_property(node, key)
 
     @classmethod
-    def MakeChild(cls, key: str, value: str) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, key: str, value: str) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.key_], key)
         )

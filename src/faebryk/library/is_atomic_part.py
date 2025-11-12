@@ -10,7 +10,7 @@ from faebryk.libs.util import once
 
 
 class is_atomic_part(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     manufacturer_ = F.Parameters.StringParameter.MakeChild()
     partnumber_ = F.Parameters.StringParameter.MakeChild()
@@ -87,8 +87,8 @@ class is_atomic_part(fabll.Node):
         footprint: str,
         symbol: str,
         model: str | None = None,
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.manufacturer_], manufacturer

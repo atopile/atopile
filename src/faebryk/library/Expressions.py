@@ -134,8 +134,8 @@ class is_expression(fabll.Node):
         placement: Placement = Placement.INFIX
 
     @classmethod
-    def MakeChild(cls, repr_style: ReprStyle) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, repr_style: ReprStyle) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         return out
 
     def get_operands(self) -> list[fabll.NodeT]:
@@ -1036,8 +1036,8 @@ class Is(fabll.Node):
     @classmethod
     def MakeChild_Constrain(
         cls, operands: list[fabll.RefPath]
-    ) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         out.add_dependant(IsConstrained.MakeChild(), identifier="constrain")
         out.add_dependant(
             *OperandSet.EdgeFields([out, cls.operands], operands),

@@ -23,4 +23,4 @@ class CAN_TTL(fabll.Node):
     #                 WIP
     # ----------------------------------------
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)

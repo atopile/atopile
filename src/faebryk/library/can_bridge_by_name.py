@@ -12,10 +12,10 @@ class can_bridge_by_name(fabll.Node):
     Only keeping for ato v1 compatibility.
     """
 
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # TODO: Forward this trait to parent
-    _can_bridge = fabll.ChildField(F.can_bridge)
+    _can_bridge = fabll._ChildField(F.can_bridge)
 
     def setup(self, input_name: str, output_name: str) -> Self:
         input_node_list = self.get_parent_force()[0].get_children(

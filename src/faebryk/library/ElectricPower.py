@@ -21,7 +21,7 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.ChildField(fabll.is_interface)
+    _is_interface = fabll._ChildField(fabll.is_interface)
 
     voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
@@ -33,7 +33,6 @@ class ElectricPower(fabll.Node):
     bus_max_current_consumption_sum = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ampere,
     )
-
 
     usage_example = F.has_usage_example.MakeChild(
         example="""

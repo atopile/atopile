@@ -136,7 +136,7 @@ class ChildAccessor[T: NodeT](Protocol):
     def get(self) -> T: ...
 
 
-class ChildField[T: NodeT](Field, ChildAccessor[T]):
+class _ChildField[T: NodeT](Field, ChildAccessor[T]):
     """
     Stage 0: Child in a python class definition (pre-graph)
     """
@@ -149,8 +149,8 @@ class ChildField[T: NodeT](Field, ChildAccessor[T]):
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
     ):
         self.nodetype = nodetype
-        self._dependants: list["ChildField[Any] | EdgeField"] = []
-        self._prepend_dependants: list["ChildField[Any] | EdgeField"] = []
+        self._dependants: list["_ChildField[Any] | _EdgeField"] = []
+        self._prepend_dependants: list["_ChildField[Any] | _EdgeField"] = []
         self.attributes = attributes
         super().__init__(identifier=identifier)
 
@@ -167,7 +167,7 @@ class ChildField[T: NodeT](Field, ChildAccessor[T]):
 
     def add_dependant(
         self,
-        *dependant: "ChildField[Any] | EdgeField",
+        *dependant: "_ChildField[Any] | _EdgeField",
         identifier: str | None = None,
         before: bool = False,
     ):
@@ -334,7 +334,7 @@ class TypeChildBoundInstance[T: NodeT]:
         return bound
 
 
-RefPath = list[str | ChildField[Any]]
+RefPath = list[str | _ChildField[Any]]
 
 
 SELF_OWNER_PLACEHOLDER: RefPath = [""]
@@ -343,7 +343,7 @@ When creating trait, default reference path to self is [""].
 """
 
 
-class EdgeField(Field):
+class _EdgeField(Field):
     def __init__(
         self,
         lhs: RefPath,
@@ -355,7 +355,7 @@ class EdgeField(Field):
         super().__init__(identifier=identifier)
         for arg in [lhs, rhs]:
             for r in arg:
-                if not isinstance(r, (ChildField, str)):
+                if not isinstance(r, (_ChildField, str)):
                     raise FabLLException(
                         f"Only ChildFields and strings are allowed, got {type(r)}"
                     )
@@ -367,7 +367,9 @@ class EdgeField(Field):
     def _resolve_path(path: RefPath) -> list[str]:
         # TODO dont think we can assert here, raise FabLLException
         return [
-            not_none(field.get_identifier()) if isinstance(field, ChildField) else field
+            not_none(field.get_identifier())
+            if isinstance(field, _ChildField)
+            else field
             for field in path
         ]
 
@@ -410,6 +412,21 @@ class EdgeField(Field):
             f"EdgeField(lhs={self.lhs_resolved()}, "
             f"rhs={self.rhs_resolved()}, "
             f"edge={self.edge})"
+        )
+
+    @staticmethod
+    def MakeLink(
+        lhs: RefPath,
+        rhs: RefPath,
+        *,
+        edge: fbrk.EdgeCreationAttributes,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+    ) -> "_EdgeField":
+        return _EdgeField(
+            lhs=lhs,
+            rhs=rhs,
+            edge=edge,
+            identifier=identifier,
         )
 
 
@@ -618,7 +635,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         for field in type(self).__fields:
             if field.locator is None:
                 continue
-            if isinstance(field, ChildField):
+            if isinstance(field, _ChildField):
                 child = InstanceChildBoundInstance(
                     nodetype=field.nodetype,
                     identifier=field.get_identifier(),
@@ -628,7 +645,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if isinstance(field, ListField):
                 list_attr = list[InstanceChildBoundInstance[Any]]()
                 for nested_field in field.get_fields():
-                    if isinstance(nested_field, ChildField):
+                    if isinstance(nested_field, _ChildField):
                         child = InstanceChildBoundInstance(
                             nodetype=nested_field.nodetype,
                             identifier=nested_field.get_identifier(),
@@ -669,7 +686,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         cls, t: "TypeNodeBoundTG[Self, T]", field: Field, type_field: bool = False
     ) -> None:
         type_field = type_field or field._type_child
-        if isinstance(field, ChildField):
+        if isinstance(field, _ChildField):
             identifier = field.get_identifier()
             for dependant in field._prepend_dependants:
                 cls._exec_field(t=t, field=dependant, type_field=type_field)
@@ -696,7 +713,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         elif isinstance(field, ListField):
             for nested_field in field.get_fields():
                 cls._exec_field(t=t, field=nested_field, type_field=type_field)
-        elif isinstance(field, EdgeField):
+        elif isinstance(field, _EdgeField):
             if type_field:
                 type_node = t.get_or_create_type()
                 edge_instance = field.edge.create_edge(
@@ -796,8 +813,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         cls._add_instance_child(child)
 
     @classmethod
-    def MakeChild(cls) -> ChildField[Self]:
-        return ChildField(cls)
+    def MakeChild(cls) -> _ChildField[Self]:
+        return _ChildField(cls)
 
     def setup(self) -> Self:
         return self
@@ -1398,11 +1415,11 @@ class Traits:
 
     @staticmethod
     def MakeChild_Trait(
-        child_field: ChildField, owner: RefPath = SELF_OWNER_PLACEHOLDER
-    ) -> ChildField:
+        child_field: _ChildField, owner: RefPath = SELF_OWNER_PLACEHOLDER
+    ) -> _ChildField:
         out = child_field
         out.add_dependant(
-            EdgeField(
+            _EdgeField(
                 owner,
                 [child_field],
                 edge=fbrk.EdgeTrait.build(),
@@ -1615,12 +1632,12 @@ def test_fabll_basic():
 
     class Slice(Node[SliceAttributes]):
         Attributes = SliceAttributes
-        tnwa = ChildField(TestNodeWithoutAttr)
+        tnwa = _ChildField(TestNodeWithoutAttr)
 
     class TestNodeWithChildren(Node):
-        tnwa1 = ChildField(TestNodeWithoutAttr)
-        tnwa2 = ChildField(TestNodeWithoutAttr)
-        _edge = EdgeField(
+        tnwa1 = _ChildField(TestNodeWithoutAttr)
+        tnwa2 = _ChildField(TestNodeWithoutAttr)
+        _edge = _EdgeField(
             lhs=[tnwa1],
             rhs=[tnwa2],
             edge=fbrk.EdgePointer.build(identifier=None, order=None),

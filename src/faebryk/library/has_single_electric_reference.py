@@ -78,9 +78,9 @@ class has_single_electric_reference(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, ground_only: bool = False, exclude: list[fabll.ChildField] = []
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        cls, ground_only: bool = False, exclude: list[fabll._ChildField] = []
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         # Reference pointer does not exist yet. Created when added to obj
         out.add_dependant(
             F.Literals.Booleans.MakeChild_ConstrainToLiteral(

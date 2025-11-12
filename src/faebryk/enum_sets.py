@@ -11,8 +11,8 @@ class EnumValue(fabll.Node):
     value = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, enum_value: F.Literals.LiteralValues) -> fabll.ChildField[Self]:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, enum_value: F.Literals.LiteralValues) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
         literal = F.Literals.MakeChild_Literal(value=enum_value)
         out.add_dependant(
             F.Collections.Pointer.EdgeField(

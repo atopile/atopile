@@ -30,7 +30,7 @@ class PDM(fabll.Node):
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

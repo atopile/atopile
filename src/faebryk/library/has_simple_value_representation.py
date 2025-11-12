@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class has_simple_value_representation(fabll.Node):
     @dataclass
     class Spec:
-        param: fabll.ChildField
+        param: fabll._ChildField
         unit: Optional[fabll.Node] = None
         tolerance: bool = False
         prefix: str = ""
@@ -144,7 +144,7 @@ class has_simple_value_representation(fabll.Node):
             cls,
             spec: "has_simple_value_representation.Spec",
         ):
-            out = fabll.ChildField(cls)
+            out = fabll._ChildField(cls)
 
             out.add_dependant(
                 F.Collections.Pointer.EdgeField(
@@ -204,7 +204,7 @@ class has_simple_value_representation(fabll.Node):
     prefix_ = F.Parameters.StringParameter.MakeChild()
     suffix_ = F.Parameters.StringParameter.MakeChild()
 
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     def get_specs(self) -> list[SpecNode]:
         specs_set = self.specs_set_.get()
@@ -237,7 +237,7 @@ class has_simple_value_representation(fabll.Node):
 
     @classmethod
     def MakeChild(cls, *specs: Spec):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         for spec in specs:
             spec_node = cls.SpecNode.MakeChild(spec)
             out.add_dependant(spec_node)

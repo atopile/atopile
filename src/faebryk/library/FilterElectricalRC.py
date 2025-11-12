@@ -59,7 +59,7 @@ class FilterElectricalRC(fabll.Node):
         # Set the max voltage of the capacitor to min 1.5 times the output voltage
         self.capacitor.max_voltage.constrain_ge(self.out.reference.voltage * 1.5)
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     can_bridge = F.can_bridge.MakeChild(in_=in_, out_=out)
 

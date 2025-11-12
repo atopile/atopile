@@ -37,11 +37,11 @@ class _has_local_kicad_footprint_named_defined(fabll.Node):
     """
 
     _is_trait = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+        fabll._ChildField(fabll.ImplementsTrait).put_on_type()
     )
 
     # TODO: Forward this trait to parent
-    _has_footprint = fabll.ChildField(F.has_footprint)
+    _has_footprint = fabll._ChildField(F.has_footprint)
 
     def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
         if ":" not in lib_reference:

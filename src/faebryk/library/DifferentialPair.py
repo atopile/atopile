@@ -19,8 +19,8 @@ class DifferentialPair(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.ChildField(fabll.is_interface)
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _is_interface = fabll._ChildField(fabll.is_interface)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     def terminated(self) -> "DifferentialPair":
         terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(

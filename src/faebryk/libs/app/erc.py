@@ -216,7 +216,7 @@ def check_library_for_erc(lib):
 
 # TODO split this up
 class needs_erc_check(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     design_check = F.implements_design_check.MakeChild()
 

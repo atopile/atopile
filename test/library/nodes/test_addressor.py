@@ -17,7 +17,7 @@ class ConfigurableI2CClient(fabll.Node):
     config = fabll.list_field(3, F.ElectricLogic)
     ref: F.ElectricPower
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     def __preinit__(self) -> None:
         self.addressor.address.alias_is(self.i2c.address)

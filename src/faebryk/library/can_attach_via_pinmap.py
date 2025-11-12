@@ -30,9 +30,9 @@ class can_attach_via_pinmap(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, pin_list: dict[str, fabll.ChildField[F.Pad]]
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        cls, pin_list: dict[str, fabll._ChildField[F.Pad]]
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         for pad_str, pad in pin_list.items():
             # Make tuple
             pin_tuple = F.Collections.PointerTuple.MakeChild()

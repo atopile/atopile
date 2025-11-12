@@ -22,7 +22,7 @@ class MultiSPI(fabll.Node):
     def data(self):
         return times(self._data_lane_count, F.ElectricLogic)
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     # self.clock.line.add(
     #     F.has_net_name("clock", level=F.has_net_name.Level.SUGGESTED)
@@ -35,7 +35,7 @@ class MultiSPI(fabll.Node):
 
     @classmethod
     def MakeChild(cls, data_lane_count: int):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Numbers.MakeChild_ConstrainToLiteral(
                 [out, cls.data_lanes], data_lane_count

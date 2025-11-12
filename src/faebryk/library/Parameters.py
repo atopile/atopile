@@ -156,9 +156,9 @@ class ReprContext:
 
 
 class StringParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(is_parameter_operatable)
+        fabll._ChildField(is_parameter_operatable)
     )
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
@@ -184,9 +184,9 @@ class StringParameter(fabll.Node):
 
 
 class BooleanParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(is_parameter_operatable)
+        fabll._ChildField(is_parameter_operatable)
     )
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
@@ -212,14 +212,14 @@ class BooleanParameter(fabll.Node):
 
 
 class EnumParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(is_parameter_operatable)
+        fabll._ChildField(is_parameter_operatable)
     )
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         # TODO
         return out
 
@@ -243,9 +243,9 @@ class EnumParameter(fabll.Node):
 
 
 class NumericParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll.ChildField(is_parameter))
+    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(is_parameter_operatable)
+        fabll._ChildField(is_parameter_operatable)
     )
 
     # domain = fabll.ChildField(NumberDomain)
@@ -302,11 +302,11 @@ class NumericParameter(fabll.Node):
         negative: bool = False,
         zero_allowed: bool = True,
     ):
-        out = fabll.ChildField(cls)
-        unit_instance = fabll.ChildField(unit, identifier=None)
+        out = fabll._ChildField(cls)
+        unit_instance = fabll._ChildField(unit, identifier=None)
         out.add_dependant(unit_instance)
         out.add_dependant(
-            fabll.EdgeField(
+            fabll._EdgeField(
                 [out],
                 [unit_instance],
                 edge=fbrk.EdgePointer.build(identifier="unit", order=None),

@@ -899,7 +899,7 @@ def test_shallow_bridge_partial():
 
             self.ins_l.connect_shallow(self.outs_l)
 
-        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+        _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     l1 = F.ElectricLogic()
     l2 = F.ElectricLogic()
@@ -961,7 +961,7 @@ def test_shallow_bridge_full():
             for l1, l2 in zip(self.ins_l, self.outs_l):
                 l1.connect_shallow(l2)
 
-        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+        _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     class UARTBuffer(fabll.Node):
         buf: Buffer
@@ -978,7 +978,7 @@ def test_shallow_bridge_full():
             bus_o.tx.line.connect(buf.outs[0])
             bus_o.rx.line.connect(buf.outs[1])
 
-        _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+        _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     app = UARTBuffer()
 

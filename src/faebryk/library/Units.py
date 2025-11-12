@@ -12,8 +12,8 @@ class IsBaseUnit(fabll.Node):
     symbol = Parameters.StringParameter.MakeChild()
 
     @classmethod
-    def MakeChild(cls, symbol: str) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, symbol: str) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         # out.add_dependant(
         #     EdgeField(
         #         [out],
@@ -26,13 +26,13 @@ class IsBaseUnit(fabll.Node):
 
 class IsUnit(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    base_unit = fabll.ChildField(fabll.Node)
+    base_unit = fabll._ChildField(fabll.Node)
 
     @classmethod
     def MakeChild(
         cls, symbol: str, base_units: list[tuple[type[fabll.NodeT], int]]
-    ) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         # TODO
         return out
 
@@ -49,9 +49,9 @@ class HasUnit(fabll.Node):
         return self.unit.get().deref().get_trait(IsUnit)
 
     @classmethod
-    def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll.ChildField[Self]:
-        out = fabll.ChildField(cls)
-        unit_field = fabll.ChildField(unit)
+    def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        unit_field = fabll._ChildField(unit)
         out.add_dependant(unit_field)
         out.add_dependant(Collections.Pointer.EdgeField([out, cls.unit], [unit_field]))
         return out

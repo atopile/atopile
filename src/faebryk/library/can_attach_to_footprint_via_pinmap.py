@@ -6,10 +6,10 @@ import faebryk.library._F as F
 
 
 class can_attach_to_footprint_via_pinmap(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # TODO: Forward this trait to parent
-    _can_attach_to_footprint = fabll.ChildField(F.can_attach_to_footprint)
+    _can_attach_to_footprint = fabll._ChildField(F.can_attach_to_footprint)
 
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
@@ -34,10 +34,10 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
     @classmethod
     def MakeChild(
         cls,
-        pinmap: dict[str, fabll.ChildField[F.Electrical] | None]
-        | dict[str, fabll.ChildField[F.Electrical]],
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        pinmap: dict[str, fabll._ChildField[F.Electrical] | None]
+        | dict[str, fabll._ChildField[F.Electrical]],
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         for pin_str, electrical in pinmap.items():
             # Tuple
             pin_tuple = F.Collections.PointerTuple.MakeChild()

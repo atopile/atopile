@@ -33,7 +33,7 @@ class ResistorArray(fabll.Node):
     # ----------------------------------------
     @classmethod
     def MakeChild(cls, resistor_count: int):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         for i in range(resistor_count):
             resistor_child_field = F.Resistor.MakeChild()
             out.add_dependant(resistor_child_field)

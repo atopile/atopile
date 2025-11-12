@@ -37,7 +37,7 @@ class has_pin_association_heuristic(fabll.Node):
     |  |  |- literal2
     """
 
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     mapping = F.Collections.PointerSet.MakeChild()
     accept_prefix_ = F.Parameters.BooleanParameter.MakeChild()
@@ -47,12 +47,12 @@ class has_pin_association_heuristic(fabll.Node):
     @classmethod
     def MakeChild(
         cls,
-        mapping: dict[fabll.ChildField, list[str]],
+        mapping: dict[fabll._ChildField, list[str]],
         accept_prefix: bool,
         case_sensitive: bool,
         nc_in: list[str] = ["NC", "nc"],
-    ) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                 [out, cls.accept_prefix_], accept_prefix

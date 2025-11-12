@@ -23,7 +23,7 @@ class XtalIF(fabll.Node):
 
     @classmethod
     def MakeChild(cls):
-        return fabll.ChildField(cls)
+        return fabll._ChildField(cls)
 
     # ----------------------------------------
     #                 traits

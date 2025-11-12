@@ -25,9 +25,9 @@ class has_kicad_footprint(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, kicad_identifier: str, pinmap: dict[fabll.ChildField[F.Pad], str]
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        cls, kicad_identifier: str, pinmap: dict[fabll._ChildField[F.Pad], str]
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.kicad_identifier_], kicad_identifier

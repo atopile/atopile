@@ -10,7 +10,7 @@ from faebryk.libs.util import cast_assert
 
 
 class can_be_pulled(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     reference_ = F.Collections.Pointer.MakeChild()
     line_ = F.Collections.Pointer.MakeChild()
@@ -68,10 +68,10 @@ class can_be_pulled(fabll.Node):
     @classmethod
     def MakeChild(
         cls: type[Self],
-        line: fabll.ChildField[F.Electrical],
-        reference: fabll.ChildField[F.ElectricPower],
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        line: fabll._ChildField[F.Electrical],
+        reference: fabll._ChildField[F.ElectricPower],
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Collections.Pointer.EdgeField(
                 [out, cls.line_],

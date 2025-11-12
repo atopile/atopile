@@ -27,7 +27,7 @@ class NumberDomain(fabll.Node):
         zero_allowed: bool = True,
         integer: bool = False,
     ):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         out.add_dependant(
             *cls.EdgeFields(
                 ref=[out],
@@ -41,7 +41,7 @@ class NumberDomain(fabll.Node):
     @classmethod
     def EdgeFields(
         cls,
-        ref: list[str | fabll.ChildField[Any]],
+        ref: list[str | fabll._ChildField[Any]],
         negative: bool = False,
         zero_allowed: bool = True,
         integer: bool = False,

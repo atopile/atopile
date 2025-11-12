@@ -19,7 +19,7 @@ class UART_Base(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
     # self.rx.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
     # self.tx.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))

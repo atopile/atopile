@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 class is_literal(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # TODO
     def is_subset_of(self, other: "LiteralNodes") -> bool: ...
@@ -44,14 +44,14 @@ class Strings(fabll.Node[LiteralsAttributes]):
         return self
 
     @classmethod
-    def MakeChild(cls, value: str) -> fabll.ChildField:
+    def MakeChild(cls, value: str) -> fabll._ChildField:
         assert isinstance(value, str), "Value of string literal must be a string"
-        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: str
-    ) -> fabll.ChildField:
+    ) -> fabll._ChildField:
         assert isinstance(value, str), "Value of string literal must be a string"
         lit = cls.MakeChild(value=value)
         out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
@@ -79,9 +79,15 @@ class Numbers(fabll.Node):
         return self
 
     @classmethod
+<<<<<<< Updated upstream
     def bind_from_interval(cls, tg: fbrk.TypeGraph, g: graph.GraphView):
         class NumbersBound:
             def __init__(self, tg: fbrk.TypeGraph, g: graph.GraphView):
+=======
+    def bind_from_interval(cls, tg: graph.TypeGraph, g: graph.GraphView):
+        class NumbersBound:
+            def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
+>>>>>>> Stashed changes
                 self.tg = tg
                 self.g = g
 
@@ -103,14 +109,14 @@ class Numbers(fabll.Node):
         return float(self.instance.node().get_dynamic_attrs().get("value", 0))
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll.ChildField:
+    def MakeChild(cls, value: float) -> fabll._ChildField:
         assert isinstance(value, float), "Value of number literal must be a float"
-        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: float
-    ) -> fabll.ChildField:
+    ) -> fabll._ChildField:
         assert isinstance(value, float) or isinstance(value, int), (
             "Value of number literal must be a float or int"
         )
@@ -187,14 +193,14 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     def get_single(self) -> bool: ...
 
     @classmethod
-    def MakeChild(cls, value: bool) -> fabll.ChildField:
+    def MakeChild(cls, value: bool) -> fabll._ChildField:
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
-        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: bool
-    ) -> fabll.ChildField:
+    ) -> fabll._ChildField:
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
         lit = cls.MakeChild(value=value)
         out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
@@ -219,10 +225,10 @@ class Enums(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll.ChildField:
+    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll._ChildField:
         # TODO: Make this work
         assert isinstance(value, Enum), "Value of enum literal must be an enum"
-        return fabll.ChildField(cls, attributes=LiteralsAttributes(value=value))
+        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
 
     def get_value(self):
         # TODO
@@ -236,7 +242,11 @@ LiteralNodes = Numbers | Booleans | Enums | Strings
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
+<<<<<<< Updated upstream
 def make_lit(tg: fbrk.TypeGraph, value: LiteralValues) -> LiteralNodes:
+=======
+def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
+>>>>>>> Stashed changes
     match value:
         case bool():
             return Booleans.bind_typegraph(tg=tg).create_instance(
@@ -260,7 +270,7 @@ def make_lit(tg: fbrk.TypeGraph, value: LiteralValues) -> LiteralNodes:
 # TODO
 def MakeChild_Literal(
     value: LiteralValues, enum: type[Enum] | None = None
-) -> fabll.ChildField[LiteralNodes]:
+) -> fabll._ChildField[LiteralNodes]:
     match value:
         case bool():
             return Booleans.MakeChild(value=value)

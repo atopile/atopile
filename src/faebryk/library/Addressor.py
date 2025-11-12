@@ -17,8 +17,8 @@ class Addressor(fabll.Node):
     # def address_lines(self):
     #     return times(self._address_bits, F.ElectricLogic)
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
-    address_bits_ = fabll.ChildField(F.Parameters.NumericParameter)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
+    address_bits_ = fabll._ChildField(F.Parameters.NumericParameter)
     address_lines_ = [F.ElectricLogic.MakeChild() for _ in range(4)]
 
     def __preinit__(self) -> None:
@@ -51,8 +51,8 @@ class Addressor(fabll.Node):
         ]
 
     @classmethod
-    def MakeChild(cls, address_bits: int) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Expressions.Is.MakeChild_ConstrainToLiteral(
                 [out, cls.address_bits_], address_bits

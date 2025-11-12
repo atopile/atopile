@@ -20,11 +20,11 @@ class has_net_name(fabll.Node):
     name_ = F.Parameters.StringParameter.MakeChild()
     level_ = F.Parameters.EnumParameter.MakeChild(enum_t=Level)
 
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     @classmethod
-    def MakeChild(cls, name: str, level: Level) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, name: str, level: Level) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
         )

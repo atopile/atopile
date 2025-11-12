@@ -5,6 +5,8 @@
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
+import faebryk.core.faebrykpy as fbrk
+
 
 class Battery(fabll.Node):
     # ----------------------------------------
@@ -24,17 +26,20 @@ class Battery(fabll.Node):
     _is_module = fabll.Traits.MakeChild_Trait(fabll.is_module.MakeChild())
 
     _single_electric_reference = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(F.has_single_electric_reference)
+        fabll._ChildField(F.has_single_electric_reference)
     )
 
     # TODO: Add trait edge to power.hv
-    # _net_name = fabll.Traits.MakeChild_Trait(
-    #     F.has_net_name.MakeChild(
-    #         name="BAT_VCC",
-    #         level=F.has_net_name.Level.SUGGESTED,
-    #     ),
-    #     [power, "hv"],
-    # )
+    _net_name = child_field = F.has_net_name.MakeChild(
+        name="BAT_VCC",
+        level=F.has_net_name.Level.SUGGESTED,
+    )
+
+    edgeField = fabll._EdgeField(
+        lhs=[power, "hv"],
+        rhs=[_net_name],
+        edge=fbrk.EdgeTrait.build(),
+    )
 
     designator_prefix = fabll.Traits.MakeChild_Trait(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.BAT)
