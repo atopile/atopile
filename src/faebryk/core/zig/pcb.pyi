@@ -549,6 +549,15 @@ class FpText:
     def __field_names__() -> list[str]: ...
     def __zig_address__(self) -> int: ...
 
+class PadPrimitives:
+    gr_polys: list[Polygon]
+
+    def __init__(self, *, gr_polys: list[Polygon]) -> None: ...
+    def __repr__(self) -> str: ...
+    @staticmethod
+    def __field_names__() -> list[str]: ...
+    def __zig_address__(self) -> int: ...
+
 class PadDrill:
     shape: str | None
     size_x: float | None
@@ -611,6 +620,7 @@ class Pad:
     options: PadOptions | None
     tenting: PadTenting | None
     uuid: str | None
+    primitives: PadPrimitives | None
 
     def __init__(
         self,
@@ -638,6 +648,7 @@ class Pad:
         options: PadOptions | None,
         tenting: PadTenting | None,
         uuid: str | None,
+        primitives: PadPrimitives | None,
     ) -> None: ...
     def __repr__(self) -> str: ...
     @staticmethod
