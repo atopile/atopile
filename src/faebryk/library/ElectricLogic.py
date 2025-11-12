@@ -26,18 +26,18 @@ class ElectricLogic(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    line_ = F.Electrical.MakeChild()
-    reference_ = F.ElectricPower.MakeChild()
+    line = F.Electrical.MakeChild()
+    reference = F.ElectricPower.MakeChild()
 
-    push_pull_ = F.Parameters.EnumParameter.MakeChild(
+    push_pull = F.Parameters.EnumParameter.MakeChild(
         enum_t=PushPull,
     )
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
-    _single_electric_reference = F.has_single_electric_reference.MakeChild()
-    _can_be_pulled = can_be_pulled.can_be_pulled.MakeChild(line_, reference_)
+    _is_interface = fabll.ChildField(fabll.is_interface)
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _can_be_pulled = can_be_pulled.can_be_pulled.MakeChild(line, reference)
 
     # ----------------------------------------
     #                functions
@@ -47,8 +47,8 @@ class ElectricLogic(fabll.Node):
         """
         Set the logic signal by directly connecting to the reference.
         """
-        r = self.reference_
-        self.line_.get().get_trait(fabll.is_interface).connect_to(
+        r = self.reference
+        self.line.get().get_trait(fabll.is_interface).connect_to(
             r.get().hv.get() if on else r.get().lv.get()
         )
 

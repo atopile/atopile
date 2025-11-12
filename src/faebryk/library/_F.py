@@ -91,7 +91,6 @@ from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
-from faebryk.library.EnablePin import EnablePin
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
 from faebryk.library.MultiSPI import MultiSPI

@@ -21,7 +21,7 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.ChildField(fabll.is_interface)
 
     voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
@@ -34,27 +34,6 @@ class ElectricPower(fabll.Node):
         unit=F.Units.Ampere,
     )
 
-    # TODO: Split out
-    class is_power_source(fabll.Node):
-        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
-
-    class is_power_sink(fabll.Node):
-        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
-
-    def setup_as_source(self):
-        fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_source)
-        return self
-
-    def setup_as_sink(self):
-        fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_sink)
-        return self
-
-    # self.voltage.alias_is(
-    #    self.hv.potential - self.lv.potential
-    # )
-    # self.lv.add(F.has_net_name("gnd"))
-    #     self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
-    #     self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
 
     usage_example = F.has_usage_example.MakeChild(
         example="""
