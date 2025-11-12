@@ -1,16 +1,11 @@
 from dataclasses import dataclass
-from enum import auto
+from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Self, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-<<<<<<< Updated upstream
-=======
-from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
-from faebryk.core.zig.gen.graph.graph import BoundEdge
->>>>>>> Stashed changes
 
 if TYPE_CHECKING:
     from faebryk.library import Parameters
@@ -114,7 +109,7 @@ class is_expression(fabll.Node):
     class ReprStyle(fabll.NodeAttributes):
         symbol: str | None = None
 
-        class Placement(fabll.Enum):
+        class Placement(Enum):
             INFIX = auto()
             """
             A + B + C
