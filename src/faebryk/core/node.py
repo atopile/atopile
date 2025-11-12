@@ -1,11 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-# from curses import meta
+from curses import meta
 from dataclasses import dataclass
-
-# from enum import Enum
-# from textwrap import indent
-# from tkinter import N
+from enum import Enum
+from textwrap import indent
+from tkinter import N
 from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
@@ -86,9 +85,6 @@ class PathNotResolvable(NodeException):
             f" No child found at '{error_node}' with identifier '{error_identifier}'.\n"
             f"Available children: {indented_container(children_str)}",
         )
-
-    def get_unbound(self, instance: BoundNode) -> T:
-        assert self.identifier is not None, "Bug: Needs to be set on setattr"
 
 
 # --------------------------------------------------------------------------------------
@@ -1935,7 +1931,7 @@ def test_lightweight():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
 
-    # resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
     resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Test list fields
@@ -2014,13 +2010,13 @@ def test_lightweight():
     )
 
     _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
-    # footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
+    footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
 
     # print(resistor_instance.get_trait(F.has_footprint))
     # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
-    # metadata = resistor_instance.get_children(
-    #     direct_only=True, types=F.SerializableMetadata
-    # )
+    metadata = resistor_instance.get_children(
+        direct_only=True, types=F.SerializableMetadata
+    )
     print(F.SerializableMetadata.get_properties(node=resistor_instance))
     # print(F.SerializableMetadata.get_properties(node=resistor_instance))
 
