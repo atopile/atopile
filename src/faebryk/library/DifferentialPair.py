@@ -12,14 +12,14 @@ class DifferentialPair(fabll.Node):
     # ----------------------------------------
     p = F.ElectricSignal.MakeChild()
     n = F.ElectricSignal.MakeChild()
+    reference = F.ElectricPower.MakeChild()
 
     impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
-
+    _is_interface = fabll.ChildField(fabll.is_interface)
     _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
     def terminated(self) -> "DifferentialPair":

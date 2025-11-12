@@ -38,7 +38,9 @@ class has_single_electric_reference(fabll.Node):
         self.reference_ptr_.get().point(reference)
 
         nodes = parent_node.get_children(
-            direct_only=True, types=(fabll.Node)
+            direct_only=True,
+            types=(fabll.Node),
+            required_trait=fabll.is_interface,
         ).difference(set(exclude))
 
         refs = {
