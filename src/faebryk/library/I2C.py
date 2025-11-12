@@ -1,13 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from enum import Enum
-
-from more_itertools import first
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import invert_dict, md_list, partition_as_list
 
 logger = logging.getLogger(__name__)
 
@@ -27,35 +23,21 @@ class I2C(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.is_interface.MakeChild()
-
-    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
+    _single_electric_reference = F.has_single_electric_reference.MakeChild()
 
     # ----------------------------------------
-    #                 WIP
+    #                 functions
     # ----------------------------------------
 
-    # def requires_pulls(self):
-    #     def pred(signal: F.ElectricSignal, bus: set[fabll.Node]):
-    #         interface = signal.get_parent_of_type(I2C)
-
-    #         assert interface in bus
-
-    #         return (
-    #             len(bus) > 1
-    #             # arbitrarily choose an interface to represent the bus for this check
-    #             and first(sorted(bus, key=lambda n: str(n))) is interface
-    #             # indicates usage
-    #             and signal.line.net_crosses_pad_boundary()
-    #         )
-
-    #     return F.requires_pulls(
-    #         self.scl,
-    #         self.sda,
-    #         pred=pred,
-    #         required_resistance=fabll.Range(
-    #             1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
-    #         ),
-    #     )
+    def requires_pulls(self):
+        self._requires_pulls = F.requires_pulls.MakeChild(
+            self.scl,
+            self.sda,
+            interface_type=I2C,
+            required_resistance=fabll.Range(
+                1000 * (1 - 0.1) * F.Units.Ohm, 10000 * (1 + 0.1) * F.Units.Ohm
+            ),
+        )
 
     # def bus_crosses_pad_boundary(self):
     #     return (

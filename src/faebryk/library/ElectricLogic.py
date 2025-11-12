@@ -58,6 +58,11 @@ class ElectricLogic(fabll.Node):
         """
         return self.get_trait(can_be_pulled.can_be_pulled).pull(up=on, owner=owner)
 
+    @property
+    def pull_resistance(self):
+        """Expose effective pull resistance like ElectricSignal."""
+        return self.get_trait(can_be_pulled.can_be_pulled).pull_resistance
+
     usage_example = F.has_usage_example.MakeChild(
         example="""
         import ElectricLogic
