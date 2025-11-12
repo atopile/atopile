@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
@@ -28,17 +28,20 @@ class has_single_electric_reference(fabll.Node):
     def connect_all_references(
         self,
         ground_only: bool = False,
-        exclude: list[fabll.Node] = [],
+        exclude: "Iterable[fabll.Node]" = (),
+        reference: F.ElectricPower | None = None,
     ):
         parent_node = self.get_parent_force()[0]
 
-        reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(
-            g=self.tg.get_graph_view()
-        )
+        if reference is None:
+            reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(
+                g=self.tg.get_graph_view()
+            )
         self.reference_ptr_.get().point(reference)
 
         nodes = parent_node.get_children(
-            direct_only=True, types=(fabll.Node)
+            direct_only=True,
+            types=(fabll.Node),
         ).difference(set(exclude))
 
         refs = {
@@ -54,6 +57,8 @@ class has_single_electric_reference(fabll.Node):
             )
         else:
             reference.get_trait(fabll.is_interface).connect_to(*refs)
+
+        return reference
 
     @property
     def ground_only(self) -> bool:
@@ -76,7 +81,8 @@ class has_single_electric_reference(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, ground_only: bool = False, exclude: list[fabll.ChildField] = []
+        cls,
+        ground_only: bool = False,
     ) -> fabll.ChildField:
         out = fabll.ChildField(cls)
         # Reference pointer does not exist yet. Created when added to obj
