@@ -1,11 +1,19 @@
 from dataclasses import dataclass
 from enum import auto
-from typing import Any, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+<<<<<<< Updated upstream
+=======
+from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
+from faebryk.core.zig.gen.graph.graph import BoundEdge
+>>>>>>> Stashed changes
+
+if TYPE_CHECKING:
+    from faebryk.library import Parameters
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -148,7 +156,7 @@ class is_expression(fabll.Node):
 
         return operands
 
-    def get_operand_operatables(self) -> set[F.Parameters.is_parameter_operatable]:
+    def get_operand_operatables(self) -> set["Parameters.is_parameter_operatable"]:
         return {
             po
             for op in self.get_operands()
@@ -170,12 +178,12 @@ class is_expression(fabll.Node):
         raise NotImplementedError("Not implemented")
 
     def compact_repr(
-        self, context: "F.Parameters.ReprContext | None" = None, use_name: bool = False
+        self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
     ) -> str:
         # TODO
         raise NotImplementedError()
 
-    def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
+    def as_parameter_operatable(self) -> "Parameters.is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter_operatable)
 
 
@@ -192,8 +200,8 @@ class IsConstrainable(fabll.Node):
         parent = self.get_parent_force()[0]
         fabll.Traits.create_and_add_instance_to(node=parent, trait=IsConstrained)
 
-    def as_expression(self) -> "F.Expressions.is_expression":
-        return fabll.Traits(self).get_trait_of_obj(F.Expressions.is_expression)
+    def as_expression(self) -> "is_expression":
+        return fabll.Traits(self).get_trait_of_obj(is_expression)
 
 
 class IsConstrained(fabll.Node):

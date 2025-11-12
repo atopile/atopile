@@ -4,10 +4,9 @@ from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.library.Units as Units
 
 if TYPE_CHECKING:
-    import faebryk.library.Units as Units
+    from faebryk.library import Units
 
 
 class is_literal(fabll.Node):
@@ -72,7 +71,7 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: type[fabll.NodeT] | F.Units.IsUnit = Units.Dimensionless,
+        unit: "type[fabll.NodeT] | Units.IsUnit | None" = None,
     ) -> Self:
         # TODO
         return self
@@ -172,7 +171,7 @@ class Numbers(fabll.Node):
     def to_dimensionless(self) -> "Numbers": ...
 
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
-    def are_units_compatible(self, unit: F.Units.IsUnit) -> bool: ...
+    def are_units_compatible(self, unit: "Units.IsUnit") -> bool: ...
 
 
 class Booleans(fabll.Node[LiteralsAttributes]):
@@ -232,7 +231,7 @@ class Enums(fabll.Node):
 
 LiteralNodes = Numbers | Booleans | Enums | Strings
 
-LiteralLike = LiteralValues | LiteralNodes | F.Literals.is_literal
+LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
 def make_lit(tg: fabll.TypeGraph, value: LiteralValues) -> LiteralNodes:

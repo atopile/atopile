@@ -6,11 +6,6 @@ from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-)
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
 

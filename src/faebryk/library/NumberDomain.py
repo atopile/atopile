@@ -47,13 +47,15 @@ class NumberDomain(fabll.Node):
         integer: bool = False,
     ):
         out = [
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                 [*ref, cls.negative], negative
             ),
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
                 [*ref, cls.zero_allowed], zero_allowed
             ),
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([*ref, cls.integer], integer),
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+                [*ref, cls.integer], integer
+            ),
         ]
         return out
 

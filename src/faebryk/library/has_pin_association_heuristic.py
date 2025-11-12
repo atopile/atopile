@@ -6,7 +6,6 @@ from typing import Any
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 

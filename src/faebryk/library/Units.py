@@ -1,7 +1,7 @@
 from typing import Any, Self
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.library import Collections, Parameters
 
 # TODO add all si units
 # TODO decide whether base units require unit trait
@@ -9,7 +9,7 @@ import faebryk.library._F as F
 
 class IsBaseUnit(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    symbol = F.Parameters.StringParameter.MakeChild()
+    symbol = Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(cls, symbol: str) -> fabll.ChildField[Any]:
@@ -43,7 +43,7 @@ class IsUnit(fabll.Node):
 
 class HasUnit(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    unit = F.Collections.Pointer.MakeChild()
+    unit = Collections.Pointer.MakeChild()
 
     def get_unit(self) -> IsUnit:
         return self.unit.get().deref().get_trait(IsUnit)
@@ -53,9 +53,7 @@ class HasUnit(fabll.Node):
         out = fabll.ChildField(cls)
         unit_field = fabll.ChildField(unit)
         out.add_dependant(unit_field)
-        out.add_dependant(
-            F.Collections.Pointer.EdgeField([out, cls.unit], [unit_field])
-        )
+        out.add_dependant(Collections.Pointer.EdgeField([out, cls.unit], [unit_field]))
         return out
 
 
