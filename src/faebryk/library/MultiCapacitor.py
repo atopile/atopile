@@ -2,39 +2,71 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from enum import Enum, auto
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.parameter import Add, ParameterOperatable
-from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import Quantity
+
+# from faebryk.core.parameter import Add, ParameterOperatable
 from faebryk.libs.util import times  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
 
-class MultiCapacitor(F.Capacitor):
+class MultiCapacitor(fabll.Node):
     """
     MultiCapacitor acts a single cap but contains multiple in parallel.
     """
 
     # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class TemperatureCoefficient(Enum):
+        Y5V = auto()
+        Z5U = auto()
+        X7S = auto()
+        X5R = auto()
+        X6R = auto()
+        X7R = auto()
+        X8R = auto()
+        C0G = auto()
+
+    # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
+    unnamed = [F.Electrical.MakeChild() for _ in range(2)]
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
+    #     enum_t=TemperatureCoefficient
+    # )
+    count = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
-    def __init__(self, count: int):
-        super().__init__()
-        self._count = count
+    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
 
-    pickable = None  # type: ignore
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(capacitance, tolerance=True),
+        S(max_voltage),
+        # S(temperature_coefficient),
+    )
 
-    @L.rt_field
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.C
+    )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def capacitors(self) -> list[F.Capacitor]:
-        return times(self._count, F.Capacitor)
+        count = self.count
+        return times(count, F.Capacitor)
 
     def __preinit__(self):
         # ------------------------------------
@@ -53,24 +85,14 @@ class MultiCapacitor(F.Capacitor):
             self.max_voltage.constrain_le(c.max_voltage)
             self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
 
-    def set_equal_capacitance(self, capacitance: ParameterOperatable):
-        op = capacitance / self._count
+    # def set_equal_capacitance(self, capacitance: ParameterOperatable):
+    #     op = capacitance / self._count
 
-        self.set_equal_capacitance_each(op)
+    #     self.set_equal_capacitance_each(op)
 
-    def set_equal_capacitance_each(self, capacitance: ParameterOperatable.NumberLike):
-        for c in self.capacitors:
-            c.capacitance.constrain_subset(capacitance)
-
-    # TODO kinda weird
-    def explicit(
-        self,
-        nominal_capacitance: Quantity | None = None,
-        tolerance: float | None = None,
-        size: SMDSize | None = None,
-    ):
-        for c in self.capacitors:
-            c.explicit(nominal_capacitance, tolerance, size=size)
+    # def set_equal_capacitance_each(self, capacitance: ParameterOperatable.NumberLike):
+    #     for c in self.capacitors:
+    #         c.capacitance.constrain_subset(capacitance)
 
     @classmethod
     def from_capacitors(cls, *capacitors: F.Capacitor):
@@ -80,7 +102,7 @@ class MultiCapacitor(F.Capacitor):
             c_new.specialize(c_old)
         return obj
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import MultiCapacitor
 

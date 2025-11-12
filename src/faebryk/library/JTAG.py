@@ -1,27 +1,34 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class JTAG(ModuleInterface):
-    dbgrq: F.ElectricLogic
-    tdo: F.ElectricLogic
-    tdi: F.ElectricLogic
-    tms: F.ElectricLogic
-    tck: F.ElectricLogic
-    rtck: F.ElectricLogic
-    n_trst: F.ElectricLogic
-    n_reset: F.ElectricLogic
-    vtref: F.ElectricPower
+class JTAG(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    dbgrq = F.ElectricLogic.MakeChild()
+    tdo = F.ElectricLogic.MakeChild()
+    tdi = F.ElectricLogic.MakeChild()
+    tms = F.ElectricLogic.MakeChild()
+    tck = F.ElectricLogic.MakeChild()
+    rtck = F.ElectricLogic.MakeChild()
+    n_trst = F.ElectricLogic.MakeChild()
+    n_reset = F.ElectricLogic.MakeChild()
+    vtref = F.ElectricPower.MakeChild()
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
@@ -41,7 +48,7 @@ class JTAG(ModuleInterface):
         )
         self.vtref.add(F.has_net_name("VTREF", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import JTAG, ElectricPower, Resistor
 
@@ -77,4 +84,4 @@ class JTAG(ModuleInterface):
         jtag.n_reset.line ~> reset_pullup ~> jtag.n_reset.reference.hv
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

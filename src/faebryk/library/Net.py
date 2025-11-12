@@ -2,21 +2,30 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import Self, cast
 
-from more_itertools import first
-
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.util import KeyErrorAmbiguous, groupby
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
 
-class Net(Module):
-    part_of: F.Electrical
+class Net(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    part_of = F.Electrical.MakeChild()
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def get_connected_pads(self) -> dict[F.Pad, F.Footprint]:
-        """Return a dict of pads connected to this net"""
         return {
             pad: fp
             for mif in self.get_connected_interfaces()
@@ -32,14 +41,8 @@ class Net(Module):
         }
 
     # TODO should this be here?
-    def get_connected_interfaces(self):
-        return {
-            mif
-            for mif in self.part_of.get_connected()
-            # TODO: this should be removable since,
-            # only mifs of the same type can connect
-            if isinstance(mif, type(self.part_of))
-        }
+    def get_connected_interfaces(self) -> dict[fabll.Node, fabll.Path]:
+        return self.part_of.get().get_trait(fabll.is_interface).get_connected()
 
     def __repr__(self) -> str:
         up = super().__repr__()
@@ -49,49 +52,27 @@ class Net(Module):
             return up
 
     @classmethod
-    def with_name(cls, name: str) -> "Net":
-        n = cls()
-        n.add(F.has_overriden_name_defined(name))
-        return n
+    def MakeChild(cls, name: str) -> fabll.ChildField:
+        out = fabll.ChildField(cls)
+        out.add_dependant(F.has_overriden_name.MakeChild(name))
+        return out
 
-    @classmethod
-    def find_from_part_of_mif(cls, mif: F.Electrical) -> "Net | None":
+    def setup(self, name: str) -> Self:
+        fabll.Node.bind_typegraph_from_instance(instance=self.instance).create_instance(
+            g=self.instance.g()
+        ).get_trait(F.has_overriden_name).setup(name=name)
+        return self
+
+    def setup_from_part_of_mif(self, mif: F.Electrical) -> "Net":
         """Return the Net that this "part_of" mif represents"""
-        parent = mif.get_parent()
-        if parent is None:
-            return None
-        if isinstance(parent[0], cls):
-            return parent[0]
-        return None
+        name = not_none(mif.get_trait(F.has_overriden_name).get_name())
+        self = self.setup(name=name)
+        return self
 
-    @classmethod
-    def find_nets_for_mif(cls, mif: F.Electrical) -> set["Net"]:
+    def find_nets_for_mif(self, mif: F.Electrical) -> set["Net"]:
         """Return all nets that are connected to this mif"""
         return {
             net
-            for net_mif in mif.get_connected()
-            if (net := cls.find_from_part_of_mif(net_mif))
+            for net_mif in mif.get_trait(fabll.is_interface).get_connected()
+            if (net := self.setup_from_part_of_mif(mif=cast(F.Electrical, net_mif)))
         }
-
-    @classmethod
-    def find_named_net_for_mif(cls, mif: F.Electrical) -> "Net | None":
-        nets = cls.find_nets_for_mif(mif)
-        named_nets = groupby(
-            {n for n in nets if n.has_trait(F.has_overriden_name)},
-            lambda n: n.get_trait(F.has_overriden_name).get_name(),
-        )
-        if len(named_nets) > 1:
-            raise KeyErrorAmbiguous(
-                list(named_nets),
-                "Multiple nets with the same name connected to this mif",
-            )
-        if not named_nets:
-            return None
-        same_name_nets = first(named_nets.values())
-        if len(same_name_nets) > 1:
-            # TODO not sure whether this should be an error
-            raise KeyErrorAmbiguous(
-                same_name_nets,
-                "Multiple nets with the same name connected to this mif",
-            )
-        return first(same_name_nets)

@@ -1,19 +1,52 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from abc import abstractmethod
-from typing import Any
+from typing import Self
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
-class can_bridge(Module.TraitT):
-    def bridge(self, _in, out):
-        _in.connect(self.get_in())
-        out.connect(self.get_out())
+class can_bridge(fabll.Node):
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    @abstractmethod
-    def get_in(self) -> Any: ...
+    in_ = F.Collections.Pointer.MakeChild()
+    out_ = F.Collections.Pointer.MakeChild()
 
-    @abstractmethod
-    def get_out(self) -> Any: ...
+    def bridge(self, _in: fabll.Node, _out: fabll.Node):
+        _in.get_trait(fabll.is_interface).connect_to(self.get_in())
+        _out.get_trait(fabll.is_interface).connect_to(self.get_out())
+
+    def get_in(self) -> fabll.Node:
+        in_ = self.in_.get().deref()
+        if in_ is None:
+            raise ValueError("in is None")
+        return in_
+
+    def get_out(self) -> fabll.Node:
+        out_ = self.out_.get().deref()
+        if out_ is None:
+            raise ValueError("out is None")
+        return out_
+
+    @classmethod
+    def MakeChild(cls, in_: fabll.ChildField, out_: fabll.ChildField):
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.EdgeField(
+                [out, cls.in_],
+                [in_],
+            )
+        )
+        out.add_dependant(
+            F.Collections.Pointer.EdgeField(
+                [out, cls.out_],
+                [out_],
+            )
+        )
+        return out
+
+    def setup(self, in_: fabll.Node, out_: fabll.Node) -> Self:
+        self.in_.get().point(in_)
+        self.out_.get().point(out_)
+        return self

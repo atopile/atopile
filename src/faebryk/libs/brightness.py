@@ -3,7 +3,7 @@
 
 from enum import Enum
 
-from faebryk.libs.library import L
+import faebryk.core.node as fabll
 from faebryk.libs.units import P, Quantity
 
 """
@@ -64,7 +64,9 @@ class TypicalLuminousIntensity(Enum):
     CREE_SMD_LED_VERY_BRIGHT = 2 * P.candela
     CREE_SMD_LED_EXTREMELY_BRIGHT = 14 * P.candela
 
-    TYPICAL_SMD_LED_MAX_BRIGHTNESS = L.Range(60 * P.millicandela, 800 * P.millicandela)
+    TYPICAL_SMD_LED_MAX_BRIGHTNESS = fabll.Range(
+        60 * P.millicandela, 800 * P.millicandela
+    )
 
     WS2812B_LED_RED = 420 * P.millicandela
     WS2812B_LED_GREEN = 720 * P.millicandela
@@ -78,16 +80,18 @@ class TypicalLuminousIntensity(Enum):
     APPLICATION_CAR_BREAK_LIGHT_BRIGHT = 50 * P.kcandela
 
     # not sure about these values
-    APPLICATION_LED_STANDBY = L.Range(1 * P.millicandela, 10 * P.millicandela)
-    APPLICATION_LED_INDICATOR_INSIDE = L.Range(
+    APPLICATION_LED_STANDBY = fabll.Range(1 * P.millicandela, 10 * P.millicandela)
+    APPLICATION_LED_INDICATOR_INSIDE = fabll.Range(
         10 * P.millicandela, 100 * P.millicandela
     )
-    APPLICATION_LED_KEYBOARD_BACKLIGHT = L.Range(
+    APPLICATION_LED_KEYBOARD_BACKLIGHT = fabll.Range(
         50 * P.millicandela, 500 * P.millicandela
     )
-    APPLICATION_LED_INDICATOR_OUTSIDE = L.Range(100 * P.millicandela, 1 * P.candela)
-    APPLICATION_LED_DECORATIVE_LIGHTING = L.Range(100 * P.millicandela, 1 * P.candela)
-    APPLICATION_LED_FLASHLIGHT = L.Range(10 * P.candela, 1 * P.kcandela)
+    APPLICATION_LED_INDICATOR_OUTSIDE = fabll.Range(100 * P.millicandela, 1 * P.candela)
+    APPLICATION_LED_DECORATIVE_LIGHTING = fabll.Range(
+        100 * P.millicandela, 1 * P.candela
+    )
+    APPLICATION_LED_FLASHLIGHT = fabll.Range(10 * P.candela, 1 * P.kcandela)
 
 
 class TypicalLuminousFlux(Enum):

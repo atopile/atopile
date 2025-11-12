@@ -1,32 +1,41 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.libs.checksum import Checksum
 
 
 class _FileManuallyModified(Exception): ...
 
 
-class is_auto_generated(Module.TraitT.decless()):
+class is_auto_generated(fabll.Node):
     CHECKSUM_PLACEHOLDER = "{IS_AUTO_GENERATED_CHECKSUM}"
 
-    def __init__(
-        self,
-        source: str | None = None,
-        system: str | None = None,
-        date: str | None = None,
-        checksum: str | None = None,
-    ) -> None:
-        super().__init__()
-        self._source = source
-        self._system = system
-        self._date = date
-        self._checksum = checksum
-        """
-        checksum is the sha256 hash of the file where the checksum string is:
-          '{CHECKSUM}'
-        """
+    source_ = fabll.ChildField(F.Parameters.StringParameter)
+    system_ = fabll.ChildField(F.Parameters.StringParameter)
+    date_ = fabll.ChildField(F.Parameters.StringParameter)
+    checksum_ = fabll.ChildField(F.Parameters.StringParameter)
+
+    @property
+    def source(self) -> str | None:
+        literal = self.source_.get().try_extract_constrained_literal()
+        return None if literal is None else str(literal)
+
+    @property
+    def system(self) -> str | None:
+        literal = self.system_.get().try_extract_constrained_literal()
+        return None if literal is None else str(literal)
+
+    @property
+    def date(self) -> str | None:
+        literal = self.date_.get().try_extract_constrained_literal()
+        return None if literal is None else str(literal)
+
+    @property
+    def checksum(self) -> str | None:
+        literal = self.checksum_.get().try_extract_constrained_literal()
+        return None if literal is None else str(literal)
 
     @staticmethod
     def verify(stated_checksum: str, file_contents: str):
@@ -42,3 +51,36 @@ class is_auto_generated(Module.TraitT.decless()):
     def set_checksum(file_contents: str) -> str:
         actual = Checksum.build(file_contents)
         return file_contents.replace(is_auto_generated.CHECKSUM_PLACEHOLDER, actual)
+
+    @classmethod
+    def MakeChild(
+        cls,
+        source: str | None = None,
+        system: str | None = None,
+        date: str | None = None,
+        checksum: str | None = None,
+    ) -> fabll.ChildField:
+        out = fabll.ChildField(cls)
+        if source is not None:
+            out.add_dependant(
+                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                    [out, cls.source_], source
+                )
+            )
+        if system is not None:
+            out.add_dependant(
+                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                    [out, cls.system_], system
+                )
+            )
+        if date is not None:
+            out.add_dependant(
+                F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.date_], date)
+            )
+        if checksum is not None:
+            out.add_dependant(
+                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                    [out, cls.checksum_], checksum
+                )
+            )
+        return out

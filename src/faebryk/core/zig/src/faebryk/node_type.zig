@@ -87,7 +87,8 @@ pub const EdgeType = struct {
         };
 
         var visit = Visit{ .cb_ctx = ctx, .cb = f };
-        return bound_type_node.visit_edges_of_type(tid, void, &visit, Visit.visit);
+        // directed = true: type is source, instance is target
+        return bound_type_node.visit_edges_of_type(tid, void, &visit, Visit.visit, true);
     }
 };
 

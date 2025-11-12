@@ -1,26 +1,24 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
-from faebryk.libs.library import L
 
 
-class Electrical(ModuleInterface):
+class Electrical(fabll.Node):
     """
     Electrical interface.
     """
 
-    # potential= L.p_field(units=P.dimensionless)
+    _is_interface = fabll.is_interface.MakeChild()
 
     def get_net(self):
         from faebryk.library.Net import Net
 
         nets = {
             net
-            for mif in self.get_connected()
-            if (net := mif.get_parent_of_type(Net)) is not None
+            for node, path in self._is_interface.get().get_connected().items()
+            if (net := node.get_parent_of_type(Net)) is not None
         }
 
         if not nets:
@@ -32,7 +30,7 @@ class Electrical(ModuleInterface):
     def net_crosses_pad_boundary(self) -> bool:
         from faebryk.library.Pad import Pad
 
-        def _get_pad(n: Node):
+        def _get_pad(n: fabll.Node):
             if (parent := n.get_parent()) is None:
                 return None
 
@@ -44,12 +42,12 @@ class Electrical(ModuleInterface):
                 else None
             )
 
-        net = self.get_connected().keys()
+        net = self._is_interface.get().get_connected().keys()
         pads_on_net = {pad for n in net if (pad := _get_pad(n)) is not None}
 
         return len(pads_on_net) > 1
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Electrical, Resistor, Capacitor
 
@@ -75,4 +73,4 @@ class Electrical(ModuleInterface):
         capacitor.unnamed[1] ~ electrical2
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

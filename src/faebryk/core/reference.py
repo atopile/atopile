@@ -1,15 +1,24 @@
 from collections import defaultdict
 from typing import cast
 
+import constructed_field
+
+import faebryk.core.node as fabll
+
+# TODO(zig-migration): Legacy import – faebryk.core.graphinterface no longer exists.
+# Replace GraphInterfaceReference* usages with Zig equivalents or rework references
+# using EdgePointer from faebryk.core.zig.gen.faebryk.pointer.
 from faebryk.core.graphinterface import (
     GraphInterfaceReference,
     GraphInterfaceReferenceUnboundError,
 )
+
+# TODO(zig-migration): Legacy import – faebryk.core.link.LinkPointer does not exist.
+# Migrate to faebryk.core.zig.gen.faebryk.pointer.EdgePointer APIs.
 from faebryk.core.link import LinkPointer
-from faebryk.core.node import Node, constructed_field
 
 
-class Reference[O: Node](constructed_field):
+class Reference[O: fabll.Node](constructed_field):
     """
     Create a simple reference to other nodes that are properly encoded in the graph.
     """
@@ -18,18 +27,18 @@ class Reference[O: Node](constructed_field):
         """Cannot resolve unbound reference"""
 
     def __init__(self, out_type: type[O] | None = None):
-        self.gifs: dict[Node, GraphInterfaceReference] = defaultdict(
+        self.gifs: dict[fabll.Node, GraphInterfaceReference] = defaultdict(
             GraphInterfaceReference
         )
-        self.is_set: set[Node] = set()
+        self.is_set: set[fabll.Node] = set()
 
-        def get(instance: Node) -> O:
+        def get(instance: fabll.Node) -> O:
             try:
                 return cast(O, self.gifs[instance].get_reference())
             except GraphInterfaceReferenceUnboundError as ex:
                 raise Reference.UnboundError from ex
 
-        def set_(instance: Node, value: O):
+        def set_(instance: fabll.Node, value: O):
             if instance in self.is_set:
                 # TypeError is also raised when attempting to assign
                 # to an immutable (eg. tuple)
@@ -46,15 +55,15 @@ class Reference[O: Node](constructed_field):
 
         property.__init__(self, get, set_)
 
-    def __construct__(self, obj: Node) -> None:
+    def __construct__(self, obj: fabll.Node) -> None:
         # add our gif to our instance object
         obj.add(self.gifs[obj])
 
-        # don't attach anything additional to the Node during field setup
+        # don't attach anything additional to the fabll.Node during field setup
         return None
 
 
-def reference[O: Node](out_type: type[O] | None = None) -> O | Reference:
+def reference[O: fabll.Node](out_type: type[O] | None = None) -> O | Reference:
     """
     Create a simple reference to other nodes properly encoded in the graph.
 

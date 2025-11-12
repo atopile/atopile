@@ -1,21 +1,27 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class SPI(ModuleInterface):
-    sclk: F.ElectricLogic
-    miso: F.ElectricLogic
-    mosi: F.ElectricLogic
+class SPI(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    sclk = F.ElectricLogic.MakeChild()
+    miso = F.ElectricLogic.MakeChild()
+    mosi = F.ElectricLogic.MakeChild()
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
@@ -23,7 +29,7 @@ class SPI(ModuleInterface):
         self.miso.line.add(F.has_net_name("MISO", level=F.has_net_name.Level.SUGGESTED))
         self.mosi.line.add(F.has_net_name("MOSI", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import SPI, ElectricPower, ElectricLogic
 
@@ -46,4 +52,4 @@ class SPI(ModuleInterface):
         flash_memory.cs ~ chip_select
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

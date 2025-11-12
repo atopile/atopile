@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
+from typing import Any, Self
 
-from faebryk.core.module import Module
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
-class has_designator_prefix(Module.TraitT.decless()):
+class has_designator_prefix(fabll.Node):
     class Prefix(StrEnum):
         A = "A"
         """Separable assembly or sub-assembly (e.g. printed circuit assembly)"""
@@ -225,9 +227,22 @@ class has_designator_prefix(Module.TraitT.decless()):
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
-    def __init__(self, prefix: str | Prefix) -> None:
-        super().__init__()
-        self.prefix = prefix
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    prefix_param_ = F.Parameters.StringParameter.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, value: Prefix) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.prefix_param_], value
+            )
+        )
+        return out
 
     def get_prefix(self) -> str:
-        return self.prefix
+        return str(self.prefix_param_.get().try_extract_constrained_literal())
+
+    def setup(self, designator_prefix: str) -> Self:
+        self.prefix_param_.get().constrain_to_single(value=designator_prefix)
+        return self

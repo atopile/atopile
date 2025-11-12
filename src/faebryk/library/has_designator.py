@@ -1,13 +1,31 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.module import Module
+from typing import Self
+
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
-class has_designator(Module.TraitT.decless()):
-    def __init__(self, value: str) -> None:
-        super().__init__()
-        self.value = value
+class has_designator(fabll.Node):
+    designator_ = F.Parameters.StringParameter.MakeChild()
 
     def get_designator(self) -> str:
-        return self.value
+        literal = self.designator_.get().try_extract_constrained_literal()
+        if literal is None:
+            raise ValueError("Designator is not set")
+        return str(literal)
+
+    @classmethod
+    def MakeChild(cls, designator: str) -> fabll.ChildField:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.designator_], designator
+            )
+        )
+        return out
+
+    def setup(self, designator: str) -> Self:
+        self.designator_.get().constrain_to_single(value=designator)
+        return self

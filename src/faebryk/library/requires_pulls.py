@@ -5,21 +5,20 @@ import logging
 from collections.abc import Sequence
 from typing import Callable
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.util import md_list
 
 logger = logging.getLogger(__name__)
 
 
-class requires_pulls(Module.TraitT.decless()):
+class requires_pulls(fabll.Node):
     class RequiresPullNotFulfilled(F.implements_design_check.UnfulfilledCheckException):
         def __init__(
             self,
             signals: Sequence[F.ElectricSignal],
-            bus: set[Node],
+            bus: set[fabll.Node],
             required_resistance: Quantity_Interval,
         ):
             message = (
@@ -47,7 +46,7 @@ class requires_pulls(Module.TraitT.decless()):
         def __init__(
             self,
             signals: Sequence[F.ElectricSignal],
-            bus: set[Node],
+            bus: set[fabll.Node],
             required_resistance: Quantity_Interval,
         ):
             message = (
@@ -72,7 +71,7 @@ class requires_pulls(Module.TraitT.decless()):
     def __init__(
         self,
         *signals: F.ElectricSignal,
-        pred: Callable[[F.ElectricSignal, set[Node]], bool] | None,
+        pred: Callable[[F.ElectricSignal, set[fabll.Node]], bool] | None,
         required_resistance: Quantity_Interval,
     ):
         super().__init__()
@@ -85,7 +84,7 @@ class requires_pulls(Module.TraitT.decless()):
     def _get_bus(self, signal: F.ElectricSignal):
         return {
             parent
-            for node in signal.get_connected(include_self=True)
+            for node in signal.get_trait(fabll.is_interface).get_connected()
             if (
                 parent := node.get_parent_f(lambda node: node.has_trait(requires_pulls))
             )

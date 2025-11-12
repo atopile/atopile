@@ -31,7 +31,6 @@ class NodeInfoOverview(BaseModel):
     docstring: str
     language: Language
     type: NodeType
-    inherits: str | None = None
 
 
 MCP_DECORATOR = Callable[[FastMCP], Callable]

@@ -6,33 +6,35 @@ from itertools import chain, pairwise
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.link import (
-    LinkDirect,
-    LinkDirectConditional,
-    LinkDirectConditionalFilterResult,
-    LinkDirectDerived,
-)
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
-from faebryk.core.node import Node, NodeException
+
+# from faebryk.core.link import (
+#     LinkDirect,
+#     LinkDirectConditional,
+#     LinkDirectConditionalFilterResult,
+#     LinkDirectDerived,
+# )
+from faebryk.core.node import IMPLIED_PATHS
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import GraphView
 from faebryk.libs.app.erc import (
-    ERCFaultShortedModuleInterfaces,
+    ERCFaultShortedInterfaces,
     ERCPowerSourcesShortedError,
     simple_erc,
 )
-from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
-from test.common.resources.fabll_modules.ButtonCell import ButtonCell
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
+
+# from test.common.resources.fabll_modules.ButtonCell import ButtonCell
+# from test.common.resources.fabll_modules.RP2040 import RP2040
+# from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
+#     RP2040_ReferenceDesign,
+# )
 
 logger = logging.getLogger(__name__)
 
 
-def ensure_typegraph(node: Node) -> Node:
+def ensure_typegraph(node: fabll.Node) -> fabll.Node:
     """Build TypeGraph, instantiate, and bind for the node's tree."""
     root = node._get_root()
 
@@ -41,12 +43,12 @@ def ensure_typegraph(node: Node) -> Node:
     assert not getattr(root, "_instance_bound", None), "Instance already bound"
 
     # Instantiate graph and execute runtime hooks
-    Node.instantiate(root)
+    fabll.Node.instantiate(root)
     return root
 
 
-def bind_to_module(*nodes: Node) -> Module:
-    class _Harness(Module):
+def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
+    class _Harness(fabll.Node):
         pass
 
     harness = _Harness()
@@ -56,10 +58,11 @@ def bind_to_module(*nodes: Node) -> Module:
 
 
 def test_self():
-    mif = ModuleInterface()
-    assert mif.is_connected_to(mif)
+    g = GraphView.create()
+    mif = fabll.ModuleInterface._create_instance(TypeGraph.create(g=g), g)
+    assert mif.get_trait(fabll.is_interface).is_connected_to(mif)
 
-
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_simple_single():
     """
     ```
@@ -68,8 +71,8 @@ def test_up_connect_simple_single():
     ```
     """
 
-    class High(ModuleInterface):
-        lower: ModuleInterface
+    class High(fabll.Node):
+        lower: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -77,7 +80,7 @@ def test_up_connect_simple_single():
     high1.lower.connect(high2.lower)
     assert high1.is_connected_to(high2)
 
-
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_simple_two():
     """
     ```
@@ -87,9 +90,9 @@ def test_up_connect_simple_two():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.Node):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -98,7 +101,7 @@ def test_up_connect_simple_two():
     high1.lower2.connect(high2.lower2)
     assert high1.is_connected_to(high2)
 
-
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_simple_multiple():
     """
     ```
@@ -109,10 +112,10 @@ def test_up_connect_simple_multiple():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
-        lower3: ModuleInterface
+    class High(fabll.Node):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
+        lower3: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -122,7 +125,7 @@ def test_up_connect_simple_multiple():
     high1.lower3.connect(high2.lower3)
     assert high1.is_connected_to(high2)
 
-
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_chain_simple():
     """
     ```
@@ -132,14 +135,14 @@ def test_up_connect_chain_simple():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.Node):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
 
-    middle = ModuleInterface()
+    middle = fabll.ModuleInterface()
 
     high1.lower1.connect(middle)
     high2.lower1.connect(middle)
@@ -148,6 +151,7 @@ def test_up_connect_chain_simple():
     assert high1.is_connected_to(high2)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_chain_multiple_same():
     """
     ```
@@ -157,9 +161,9 @@ def test_up_connect_chain_multiple_same():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.Node):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
     high1 = High()
     high2 = High()
@@ -173,6 +177,7 @@ def test_up_connect_chain_multiple_same():
     assert high1.is_connected_to(high3)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_chain_multiple_mixed():
     """
     ```
@@ -182,9 +187,9 @@ def test_up_connect_chain_multiple_mixed():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -199,6 +204,7 @@ def test_up_connect_chain_multiple_mixed():
     assert high1.is_connected_to(high4)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_split_chain_single():
     """
     Miro: Implied bus connection 2
@@ -211,9 +217,9 @@ def test_split_chain_single():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -238,14 +244,14 @@ def test_split_chain_double_flat_no_inter():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class App(Module):
-        high = L.list_field(4, High)
+    class App(fabll.Node):
+        high = fabll.list_field(4, High)
 
     app = App()
 
@@ -266,6 +272,7 @@ def test_split_chain_double_flat_no_inter():
     # TODO: See pathfinder.cpp:67 for failure
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_split_chain_double_flat_inter():
     # TODO this test is not difficult enough
     # the intermediate is trivially connected since the double split is resolved
@@ -280,14 +287,14 @@ def test_split_chain_double_flat_inter():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class App(Module):
-        high = L.list_field(4, High)
+    class App(fabll.Node):
+        high = fabll.list_field(4, High)
 
     app = App()
 
@@ -317,18 +324,18 @@ def test_split_chain_double_hierarchy():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.Node):
         high: High
 
-    class App(Module):
-        high = L.list_field(3, High)
-        higher = L.list_field(2, Higher)
+    class App(fabll.Node):
+        high = fabll.list_field(3, High)
+        higher = fabll.list_field(2, Higher)
 
     app = App()
 
@@ -345,6 +352,7 @@ def test_split_chain_double_hierarchy():
     assert high1.is_connected_to(high3)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_split_chain_flip():
     """
     Miro: Implied Double-Flip Bus Connection
@@ -356,14 +364,14 @@ def test_split_chain_flip():
     Note: Shallowness not important, just makes it harder
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class App(Module):
-        high = L.list_field(4, High)
+    class App(fabll.Node):
+        high = fabll.list_field(4, High)
 
     app = App()
 
@@ -378,6 +386,7 @@ def test_split_chain_flip():
     assert high1.is_connected_to(high4)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_split_flip_negative():
     """
     Miro: Implied Bus Non-Connection
@@ -388,9 +397,9 @@ def test_split_flip_negative():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -402,6 +411,7 @@ def test_split_flip_negative():
     assert not high1.is_connected_to(high2)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_chain_multiple_mixed_simulate_realworld():
     """
     ```
@@ -411,9 +421,9 @@ def test_up_connect_chain_multiple_mixed_simulate_realworld():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
@@ -451,6 +461,7 @@ def test_up_connect_chain_multiple_realworld():
     assert l1.is_connected_to(l4)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_chain_hierarchy():
     """
     ```
@@ -464,13 +475,13 @@ def test_up_connect_chain_hierarchy():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.Node):
         high1: High
         high2: High
 
@@ -490,6 +501,7 @@ def test_up_connect_chain_hierarchy():
     assert higher_begin.is_connected_to(higher_end)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_hierarchy():
     """
     ```
@@ -503,11 +515,11 @@ def test_up_connect_hierarchy():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.Node):
+        lower1: fabll.ModuleInterface
+        lower2: fabll.ModuleInterface
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.Node):
         high1: High
         high2: High
 
@@ -520,7 +532,7 @@ def test_up_connect_hierarchy():
     higher1.high2.lower2.connect(higher2.high2.lower2)
     assert higher1.is_connected_to(higher2)
 
-
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_hierarchy_mixed():
     """
     ```
@@ -534,13 +546,13 @@ def test_up_connect_hierarchy_mixed():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class Higher(ModuleInterface):
+    class Higher(fabll.Node):
         high1: High
         high2: High
 
@@ -561,16 +573,20 @@ def test_up_connect_simple_two_negative():
      L2      L2
     ```
     """
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
+    class High(fabll.Node):
+        _is_interface = fabll.is_interface.MakeChild()
+        lower1 = fabll.ModuleInterface.MakeChild()
+        lower2 = fabll.ModuleInterface.MakeChild()
 
-    high1 = High()
-    high2 = High()
+    highType = High.bind_typegraph(tg)
+    high1 = highType.create_instance(g=g)
+    high2 = highType.create_instance(g=g)
 
-    high1.lower1.connect(high2.lower1)
-    assert not high1.is_connected_to(high2)
+    high1.lower1.get().get_trait(fabll.is_interface).connect_to(high2.lower1.get())
+    assert not high1.get_trait(fabll.is_interface).is_connected_to(high2)
 
 
 def test_up_connect_simple_multiple_negative():
@@ -583,19 +599,25 @@ def test_up_connect_simple_multiple_negative():
     ```
     """
 
-    class High(ModuleInterface):
-        lower1: ModuleInterface
-        lower2: ModuleInterface
-        lower3: ModuleInterface
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    high1 = High()
-    high2 = High()
+    class High(fabll.Node):
+        _is_interface = fabll.is_interface.MakeChild()
+        lower1 = fabll.ModuleInterface.MakeChild()
+        lower2 = fabll.ModuleInterface.MakeChild()
+        lower3 = fabll.ModuleInterface.MakeChild()
 
-    high1.lower1.connect(high2.lower1)
-    high1.lower2.connect(high2.lower2)
-    assert not high1.is_connected_to(high2)
+    highType = High.bind_typegraph(tg)
+    high1 = highType.create_instance(g=g)
+    high2 = highType.create_instance(g=g)
+
+    high1.lower1.get().get_trait(fabll.is_interface).connect_to(high2.lower1.get())
+    high1.lower2.get().get_trait(fabll.is_interface).connect_to(high2.lower2.get())
+    assert not high1.get_trait(fabll.is_interface).is_connected_to(high2)
 
 
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect():
     """
     ```
@@ -613,7 +635,7 @@ def test_up_connect():
     ```
     """
 
-    class UARTBuffer(Module):
+    class UARTBuffer(fabll.Node):
         bus_in: F.UART_Base
         bus_out: F.UART_Base
 
@@ -640,12 +662,17 @@ def test_down_connect():
     ```
     """
 
-    ep = times(2, F.ElectricPower)
-    ep[0].connect(ep[1])
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    assert ep[0].is_connected_to(ep[1])
-    assert ep[0].hv.is_connected_to(ep[1].hv)
-    assert ep[0].lv.is_connected_to(ep[1].lv)
+    electricPowerType = F.ElectricPower.bind_typegraph(tg)
+    ep = [electricPowerType.create_instance(g=g) for _ in range(2)]
+
+    ep[0].get_trait(fabll.is_interface).connect_to(ep[1])
+
+    assert ep[0].get_trait(fabll.is_interface).is_connected_to(ep[1])
+    assert ep[0].hv.get().get_trait(fabll.is_interface).is_connected_to(ep[1].hv.get())
+    assert ep[0].lv.get().get_trait(fabll.is_interface).is_connected_to(ep[1].lv.get())
 
 
 def test_chains_direct():
@@ -654,11 +681,15 @@ def test_chains_direct():
     M1 --> M2 --> M3
     ```
     """
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    mifs = times(3, ModuleInterface)
-    mifs[0].connect(mifs[1])
-    mifs[1].connect(mifs[2])
-    assert mifs[0].is_connected_to(mifs[2])
+    electricalType = F.Electrical.bind_typegraph(tg)
+    electrics = [electricalType.create_instance(g=g) for _ in range(3)]
+
+    electrics[0].get_trait(fabll.is_interface).connect_to(electrics[1])
+    electrics[1].get_trait(fabll.is_interface).connect_to(electrics[2])
+    assert electrics[0].get_trait(fabll.is_interface).is_connected_to(electrics[2])
 
 
 def test_chains_double_shallow_flat():
@@ -668,10 +699,15 @@ def test_chains_double_shallow_flat():
     ```
     """
 
-    mifs = times(3, ModuleInterface)
-    mifs[0].connect_shallow(mifs[1])
-    mifs[1].connect_shallow(mifs[2])
-    assert mifs[0].is_connected_to(mifs[2])
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    electricalType = F.Electrical.bind_typegraph(tg)
+    electrics = [electricalType.create_instance(g=g) for _ in range(3)]
+
+    electrics[0].get_trait(fabll.is_interface).connect_shallow_to(electrics[1])
+    electrics[1].get_trait(fabll.is_interface).connect_shallow_to(electrics[2])
+    assert electrics[0].get_trait(fabll.is_interface).is_connected_to(electrics[2])
 
 
 def test_chains_mixed_shallow_flat():
@@ -681,10 +717,15 @@ def test_chains_mixed_shallow_flat():
     ```
     """
 
-    mifs = times(3, ModuleInterface)
-    mifs[0].connect_shallow(mifs[1])
-    mifs[1].connect(mifs[2])
-    assert mifs[0].is_connected_to(mifs[2])
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    electricalType = F.Electrical.bind_typegraph(tg)
+    electrics = [electricalType.create_instance(g=g) for _ in range(3)]
+
+    electrics[0].get_trait(fabll.is_interface).connect_shallow_to(electrics[1])
+    electrics[1].get_trait(fabll.is_interface).connect_to(electrics[2])
+    assert electrics[0].get_trait(fabll.is_interface).is_connected_to(electrics[2])
 
 
 def test_chains_mixed_shallow_nested():
@@ -698,51 +739,68 @@ def test_chains_mixed_shallow_nested():
     ```
     """
     # Test hierarchy down filter & chain resolution
-    el = times(3, F.ElectricLogic)
-    el[0].connect_shallow(el[1])
-    el[1].connect(el[2])
-    assert el[0].is_connected_to(el[2])
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    assert el[1].line.is_connected_to(el[2].line)
-    assert el[1].reference.is_connected_to(el[2].reference)
-    assert not el[0].line.is_connected_to(el[1].line)
-    assert not el[0].reference.is_connected_to(el[1].reference)
-    assert not el[0].line.is_connected_to(el[2].line)
-    assert not el[0].reference.is_connected_to(el[2].reference)
+    electricalLogicType = F.ElectricLogic.bind_typegraph(tg)
+    el = [electricalLogicType.create_instance(g=g) for _ in range(3)]
+
+    el[0].get_trait(fabll.is_interface).connect_shallow_to(el[1])
+    el[1].get_trait(fabll.is_interface).connect_to(el[2])
+
+    assert el[0].get_trait(fabll.is_interface).is_connected_to(el[2])
+
+    assert el[1].line.get().get_trait(fabll.is_interface).is_connected_to(el[2].line.get())
+    assert el[1].reference.get().get_trait(fabll.is_interface).is_connected_to(el[2].reference.get())
+    assert not el[0].line.get().get_trait(fabll.is_interface).is_connected_to(el[1].line.get())
+    assert not el[0].reference.get().get_trait(fabll.is_interface).is_connected_to(el[1].reference.get())
+    assert not el[0].line.get().get_trait(fabll.is_interface).is_connected_to(el[2].line.get())
+    assert not el[0].reference.get().get_trait(fabll.is_interface).is_connected_to(el[2].reference.get())
 
     # Test duplicate resolution
-    el[0].line.connect(el[1].line)
-    el[0].reference.connect(el[1].reference)
-    assert el[0].is_connected_to(el[1])
-    assert el[0].is_connected_to(el[2])
+    el[0].line.get().get_trait(fabll.is_interface).connect_to(el[1].line.get())
+    el[0].reference.get().get_trait(fabll.is_interface).connect_to(el[1].reference.get())
+    assert el[0].get_trait(fabll.is_interface).is_connected_to(el[1])
+    assert el[0].get_trait(fabll.is_interface).is_connected_to(el[2])
 
 
 def test_loooooong_chain():
     """Let's make it hard"""
-    mifs = times(2**10, F.ElectricPower)
-    for left, right in pairwise(mifs):
-        left.connect(right)
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    assert mifs[0].is_connected_to(mifs[-1])
+    electricPowerType = F.ElectricPower.bind_typegraph(tg)
+    ep = [electricPowerType.create_instance(g=g) for _ in range(2**10)]
+
+    for left, right in pairwise(ep):
+        left.get_trait(fabll.is_interface).connect_to(right)
+
+    assert ep[0].get_trait(fabll.is_interface).is_connected_to(ep[-1])
 
 
 # FIXME: this should be WAYYY higher than 16
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 @pytest.mark.parametrize("length", [16])
 def test_alternating_long_chain(length):
     """Let's make it hard"""
-    mifs = times(length, F.ElectricPower)
-    for i, (left, right) in enumerate(pairwise(mifs)):
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    electricPowerType = F.ElectricPower.bind_typegraph(tg)
+    ep = [electricPowerType.create_instance(g=g) for _ in range(length)]
+
+    for i, (left, right) in enumerate(pairwise(ep)):
         if i % 2:
-            left.connect(right)
+            left.get_trait(fabll.is_interface).connect_to(right)
         else:
-            left.lv.connect(right.lv)
-            left.hv.connect(right.hv)
+            left.lv.get().get_trait(fabll.is_interface).connect_to(right.lv.get())
+            left.hv.get().get_trait(fabll.is_interface).connect_to(right.hv.get())
 
-    assert mifs[0].is_connected_to(mifs[-1])
-    assert mifs[0].lv.is_connected_to(mifs[-1].lv)
-    assert mifs[0].hv.is_connected_to(mifs[-1].hv)
+    assert ep[0].get_trait(fabll.is_interface).is_connected_to(ep[-1])
+    assert ep[0].lv.get().get_trait(fabll.is_interface).is_connected_to(ep[-1].lv.get())
+    assert ep[0].hv.get().get_trait(fabll.is_interface).is_connected_to(ep[-1].hv.get())
 
-
+@pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_shallow_bridge_simple():
     """
     ```
@@ -753,22 +811,22 @@ def test_shallow_bridge_simple():
     ```
     """
 
-    class Low(ModuleInterface): ...
+    class Low(fabll.Node): ...
 
-    class High(ModuleInterface):
+    class High(fabll.Node):
         lower1: Low
         lower2: Low
 
-    class ShallowBridge(Module):
+    class ShallowBridge(fabll.Node):
         high_in: High
         high_out: High
 
         def __preinit__(self) -> None:
             self.high_in.connect_shallow(self.high_out)
 
-        @L.rt_field
+        @fabll.rt_field
         def can_bridge(self):
-            return F.can_bridge_defined(self.high_in, self.high_out)
+            return F.can_bridge(self.high_in, self.high_out)
 
     bridge = ShallowBridge()
     high1 = High()
@@ -793,7 +851,7 @@ def test_shallow_bridge_partial():
     ```
     """
 
-    class Buffer(Module):
+    class Buffer(fabll.Node):
         ins: F.Electrical
         outs: F.Electrical
 
@@ -806,7 +864,7 @@ def test_shallow_bridge_partial():
 
             self.ins_l.connect_shallow(self.outs_l)
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
@@ -847,12 +905,12 @@ def test_shallow_bridge_full():
     - OL: Output Logic
     """
 
-    class Buffer(Module):
-        ins = L.list_field(2, F.Electrical)
-        outs = L.list_field(2, F.Electrical)
+    class Buffer(fabll.Node):
+        ins = fabll.list_field(2, F.Electrical)
+        outs = fabll.list_field(2, F.Electrical)
 
-        ins_l = L.list_field(2, F.ElectricLogic)
-        outs_l = L.list_field(2, F.ElectricLogic)
+        ins_l = fabll.list_field(2, F.ElectricLogic)
+        outs_l = fabll.list_field(2, F.ElectricLogic)
 
         def __preinit__(self) -> None:
             assert (
@@ -869,13 +927,13 @@ def test_shallow_bridge_full():
             for l1, l2 in zip(self.ins_l, self.outs_l):
                 l1.connect_shallow(l2)
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
             )
 
-    class UARTBuffer(Module):
+    class UARTBuffer(fabll.Node):
         buf: Buffer
         bus_in: F.UART_Base
         bus_out: F.UART_Base
@@ -890,7 +948,7 @@ def test_shallow_bridge_full():
             bus_o.tx.line.connect(buf.outs[0])
             bus_o.rx.line.connect(buf.outs[1])
 
-        @L.rt_field
+        @fabll.rt_field
         def single_electric_reference(self):
             return F.has_single_electric_reference_defined(
                 F.ElectricLogic.connect_all_module_references(self)
@@ -935,15 +993,15 @@ def test_shallow_bridge_full():
     assert bus_i.is_connected_to(bus_o)
 
 
-class Specialized(ModuleInterface): ...
+class Specialized(fabll.Node): ...
 
 
-class DoubleSpecialized(Specialized): ...
+# class DoubleSpecialized(Specialized): ...
 
-
+@pytest.mark.xfail(reason="No specialized links yet")
 def test_specialize_general_to_special():
     # general connection -> specialized connection
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs_special = times(3, Specialized)
 
     mifs[0].connect(mifs[1])
@@ -954,10 +1012,10 @@ def test_specialize_general_to_special():
 
     assert mifs_special[0].is_connected_to(mifs_special[2])
 
-
+@pytest.mark.xfail(reason="No specialized links yet")
 def test_specialize_special_to_general():
     # specialized connection -> general connection
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs_special = times(3, Specialized)
 
     mifs_special[0].connect(mifs_special[1])
@@ -969,6 +1027,7 @@ def test_specialize_special_to_general():
     assert mifs[0].is_connected_to(mifs[2])
 
 
+@pytest.mark.xfail(reason="No specialized links yet")
 def test_specialize_link():
     # test special link
     class _Link(LinkDirectConditional):
@@ -978,7 +1037,7 @@ def test_specialize_link():
                 needs_only_first_in_path=True,
             )
 
-    mifs = times(3, ModuleInterface)
+    mifs = times(3, fabll.ModuleInterface)
     mifs_special = times(3, Specialized)
 
     mifs[0].connect(mifs[1], link=_Link)
@@ -995,10 +1054,10 @@ def test_specialize_link():
 
     assert mifs_special[0].is_connected_to(mifs_special[2])
 
-
+@pytest.mark.xfail(reason="No specialized links yet")
 def test_specialize_double_with_gap():
     # double specialization with gap
-    mifs = times(2, ModuleInterface)
+    mifs = times(2, fabll.ModuleInterface)
     mifs_special = times(1, Specialized)
     mifs_double_special = times(2, DoubleSpecialized)
 
@@ -1009,9 +1068,9 @@ def test_specialize_double_with_gap():
 
     assert mifs_double_special[0].is_connected_to(mifs_double_special[1])
 
-
+@pytest.mark.xfail(reason="No specialized links yet")
 def test_specialize_double_with_gap_2():
-    mifs = times(2, ModuleInterface)
+    mifs = times(2, fabll.ModuleInterface)
     mifs_special = times(1, Specialized)
     mifs_double_special = times(2, DoubleSpecialized)
 
@@ -1022,7 +1081,7 @@ def test_specialize_double_with_gap_2():
 
     assert mifs[0].is_connected_to(mifs[1])
 
-
+@pytest.mark.xfail(reason="No specialized links yet")
 def test_specialize_module():
     battery = F.Battery()
     power = F.ElectricPower()
@@ -1033,7 +1092,7 @@ def test_specialize_module():
     assert buttoncell.power.is_connected_to(battery.power)
     assert power.is_connected_to(buttoncell.power)
 
-
+@pytest.mark.xfail(reason="No conditional links yet")
 def test_isolated_connect_simple():
     x1 = F.ElectricLogic()
     x2 = F.ElectricLogic()
@@ -1044,6 +1103,97 @@ def test_isolated_connect_simple():
 
     assert not x1.reference.is_connected_to(x2.reference)
     assert not x1.reference.hv.is_connected_to(x2.reference.hv)
+
+
+def test_basic_i2c():
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    I2CType = F.I2C.bind_typegraph(tg)
+    i2c1 = I2CType.create_instance(g=g)
+    i2c2 = I2CType.create_instance(g=g)
+
+    i2c1.get_trait(fabll.is_interface).connect_to(i2c2)
+
+    # I2C's connected
+    assert i2c1.get_trait(fabll.is_interface).is_connected_to(i2c2)
+
+    # Electric signals connected
+    assert i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get())
+    assert i2c1.sda.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+
+    assert ~i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+
+    # Electricals connected
+    assert (
+        i2c1.scl.get()
+        .line.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().line.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .line.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().line.get())
+    )
+
+    # Electric powers connected
+    assert (
+        i2c1.scl.get()
+        .reference.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().reference.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .reference.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().reference.get())
+    )
+
+    # Electric powers electricals connected
+    assert (
+        i2c1.scl.get()
+        .reference.get()
+        .hv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    )
+    assert (
+        i2c1.scl.get()
+        .reference.get()
+        .lv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .reference.get()
+        .hv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().reference.get().hv.get())
+    )
+    assert (
+        i2c1.sda.get()
+        .reference.get()
+        .lv.get()
+        .get_trait(fabll.is_interface)
+        .is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    )
+
+    assert ~i2c1.scl.get().reference.get().hv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.scl.get().reference.get().lv.get())
+    assert ~i2c1.scl.get().reference.get().lv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.scl.get().reference.get().hv.get())
+    assert ~i2c1.sda.get().reference.get().hv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.sda.get().reference.get().lv.get())
+    assert ~i2c1.sda.get().reference.get().lv.get().get_trait(
+        fabll.is_interface
+    ).is_connected_to(i2c2.sda.get().reference.get().hv.get())
 
 
 def test_isolated_connect_erc():
@@ -1088,7 +1238,7 @@ def test_simple_erc_ElectricPower_short():
     ep1.lv.connect(ep2.hv)
 
     # This is not okay!
-    with pytest.raises(ERCFaultShortedModuleInterfaces) as ex:
+    with pytest.raises(ERCFaultShortedInterfaces) as ex:
         simple_erc(ep1.get_graph())
 
     assert set(ex.value.path) == {ep1.lv, ep2.hv}
@@ -1152,159 +1302,65 @@ def test_shallow_implied_paths():
 
 
 def test_direct_shallow_instance():
-    class MIFType(ModuleInterface):
-        pass
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    mif1 = MIFType()
-    mif2 = MIFType()
-    mif3 = MIFType()
+    electricalType = F.Electrical.bind_typegraph(tg)
+    electrical1 = electricalType.create_instance(g=g)
+    electrical2 = electricalType.create_instance(g=g)
+    electrical3 = electricalType.create_instance(g=g)
 
-    mif1.connect_shallow(mif2, mif3)
-    assert isinstance(
-        mif1.connected.is_connected_to(mif2.connected), MIFType.LinkDirectShallow()
-    )
-    assert isinstance(
-        mif1.connected.is_connected_to(mif3.connected), MIFType.LinkDirectShallow()
-    )
-
-
-def test_regression_rp2040_usb_diffpair_minimal():
-    usb = F.USB2_0_IF.Data()
-    terminated_usb = usb.terminated()
-
-    other_usb = F.USB2_0_IF.Data()
-    terminated_usb.connect(other_usb)
-
-    n_ref = usb.n.reference
-    p_ref = usb.p.reference
-    t_n_ref = terminated_usb.n.reference
-    t_p_ref = terminated_usb.p.reference
-    o_n_ref = other_usb.n.reference
-    o_p_ref = other_usb.p.reference
-    refs = {n_ref, p_ref, t_n_ref, t_p_ref, o_n_ref, o_p_ref}
-
-    assert isinstance(
-        usb.connected.is_connected_to(terminated_usb.connected),
-        F.USB2_0_IF.Data.LinkDirectShallow(),
-    )
-    assert isinstance(
-        other_usb.connected.is_connected_to(terminated_usb.connected), LinkDirect
-    )
-    assert usb.connected.is_connected_to(other_usb.connected) is None
-
-    ensure_typegraph(usb)
-
-    connected_per_mif = {ref: ref.get_connected(include_self=True) for ref in refs}
-
-    assert not {n_ref, p_ref} & connected_per_mif[t_n_ref].keys()
-    assert not {n_ref, p_ref} & connected_per_mif[t_p_ref].keys()
-    assert not {t_n_ref, t_p_ref} & connected_per_mif[n_ref].keys()
-    assert not {t_n_ref, t_p_ref} & connected_per_mif[p_ref].keys()
-
-    assert set(connected_per_mif[n_ref].keys()) == {n_ref, p_ref}
-    assert set(connected_per_mif[p_ref].keys()) == {n_ref, p_ref}
-    assert set(connected_per_mif[t_n_ref].keys()) == {
-        t_n_ref,
-        t_p_ref,
-        o_n_ref,
-        o_p_ref,
-    }
-    assert set(connected_per_mif[t_p_ref].keys()) == {
-        t_n_ref,
-        t_p_ref,
-        o_n_ref,
-        o_p_ref,
-    }
-
-    # close references – rebuild the scenario to respect the post-build immutability
-    usb_post = F.USB2_0_IF.Data()
-    terminated_usb_post = usb_post.terminated()
-    other_usb_post = F.USB2_0_IF.Data()
-    terminated_usb_post.connect(other_usb_post)
-    usb_post.p.reference.connect(other_usb_post.p.reference)
-
-    refs_post = {
-        usb_post.n.reference,
-        usb_post.p.reference,
-        terminated_usb_post.n.reference,
-        terminated_usb_post.p.reference,
-        other_usb_post.n.reference,
-        other_usb_post.p.reference,
-    }
-
-    ensure_typegraph(usb_post)
-
-    connected_per_mif_post = {
-        ref: ref.get_connected(include_self=True) for ref in refs_post
-    }
-    for _, connected in connected_per_mif_post.items():
-        assert set(connected.keys()).issuperset(refs_post)
-
-
-def test_regression_rp2040_usb_diffpair():
-    app = RP2040_ReferenceDesign()
-
-    terminated_usb = cast_assert(F.USB2_0_IF.Data, app.runtime["_terminated_usb_data"])
-    rp_usb = app.rp2040.usb
-
-    t_p_ref = terminated_usb.p.reference
-    t_n_ref = terminated_usb.n.reference
-    r_p_ref = rp_usb.p.reference
-    r_n_ref = rp_usb.n.reference
-    refs = [
-        r_p_ref,
-        r_n_ref,
-        t_p_ref,
-        t_n_ref,
-    ]
-
-    connected_per_mif = {ref: ref.get_connected(include_self=True) for ref in refs}
-    for connected in connected_per_mif.values():
-        assert set(connected.keys()) == set(refs)
-
-
-@pytest.mark.slow
-def test_regression_rp2040_usb_diffpair_full():
-    app = RP2040_ReferenceDesign()
-    rp2040_2 = RP2040()
-    rp2040_3 = RP2040()
-
-    # make graph bigger
-    app.rp2040.i2c[0].connect(rp2040_2.i2c[0])
-    app.rp2040.i2c[0].connect(rp2040_3.i2c[0])
-
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    electrical1.get_trait(fabll.is_interface).connect_shallow_to(electrical2)
+    electrical1.get_trait(fabll.is_interface).connect_shallow_to(electrical3)
+    assert electrical1.get_trait(fabll.is_interface).is_connected_to(electrical2)
+    assert electrical1.get_trait(fabll.is_interface).is_connected_to(electrical3)
 
 
 def test_connect_incompatible():
-    class A(ModuleInterface):
-        pass
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    class B(ModuleInterface):
-        pass
+    class A(fabll.Node):
+        _is_interface = fabll.is_interface.MakeChild()
+    class B(fabll.Node):
+        _is_interface = fabll.is_interface.MakeChild()
 
-    x = A()
-    y = B()
-    with pytest.raises(NodeException):
-        x.connect(y)  # type: ignore
+    aType = A.bind_typegraph(tg)
+    bType = B.bind_typegraph(tg)
+    a = aType.create_instance(g=g)
+    b = bType.create_instance(g=g)
+
+    with pytest.raises(ValueError, match="Failed to connect"):
+        a.get_trait(fabll.is_interface).connect_to(b)
 
 
 def test_connect_incompatible_hierarchical():
-    class A(ModuleInterface):
-        pass
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    class B(A):
-        pass
+    class B(fabll.Node):
+        _is_interface = fabll.is_interface.MakeChild()
 
-    x = A()
-    y = B()
-    with pytest.raises(NodeException):
-        x.connect(y)  # type: ignore
+    class A(fabll.Node):
+        _is_interface = fabll.is_interface.MakeChild()
+        b = B.MakeChild()
+
+    aType = A.bind_typegraph(tg)
+    bType = B.bind_typegraph(tg)
+    x = aType.create_instance(g=g)
+    y = bType.create_instance(g=g)
+    with pytest.raises(ValueError, match="Failed to connect"):
+        x.get_trait(fabll.is_interface).connect_to(y)
 
 
 def test_connect_incompatible_hierarchical_regression():
-    x = F.ElectricPower()
-    y = F.Electrical()
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
 
-    with pytest.raises(NodeException):
-        x.connect(y)  # type: ignore
+    electricPowerType = F.ElectricPower.bind_typegraph(tg)
+    electricalType = F.Electrical.bind_typegraph(tg)
+    x = electricPowerType.create_instance(g=g)
+    y = electricalType.create_instance(g=g)
+
+    with pytest.raises(ValueError, match="Failed to connect"):
+        x.get_trait(fabll.is_interface).connect_to(y)

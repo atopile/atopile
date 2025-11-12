@@ -3,39 +3,57 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
-class ResistorArray(Module):
-    resistance = L.p_field(units=P.ohm)
-    rated_power = L.p_field(units=P.W)
-    rated_voltage = L.p_field(units=P.V)
+class ResistorArray(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    resistors_ = F.Collections.PointerSet.MakeChild()
+    resistance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    rated_power = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Watt)
+    rated_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
 
-    @L.rt_field
-    def resistors(self):
-        return times(self._resistor_count, F.Resistor)
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.R
     )
 
-    def __init__(self, resistor_count: int = 4):
-        super().__init__()
-        self._resistor_count = resistor_count
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+    @classmethod
+    def MakeChild(cls, resistor_count: int):
+        out = fabll.ChildField(cls)
+        for i in range(resistor_count):
+            resistor_child_field = F.Resistor.MakeChild()
+            out.add_dependant(resistor_child_field)
+            out.add_dependant(
+                F.Collections.PointerSet.EdgeField(
+                    [out, cls.resistors_],
+                    [resistor_child_field],
+                )
+            )
+        return out
 
-    def __preinit__(self):
-        for resistor in self.resistors:
-            resistor.resistance = self.resistance
-            resistor.max_power = self.rated_power
-            resistor.max_voltage = self.rated_voltage
+    @property
+    def resistors(self) -> list[F.Resistor]:
+        print(self.resistors_.get())
+        return [
+            F.Resistor.bind_instance(resistor.instance)
+            for resistor in self.resistors_.get().as_list()
+        ]
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import ResistorArray, ElectricPower, ElectricLogic
 

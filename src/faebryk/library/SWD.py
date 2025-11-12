@@ -1,22 +1,28 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class SWD(ModuleInterface):
-    clk: F.ElectricLogic
-    dio: F.ElectricLogic
-    swo: F.ElectricLogic
-    reset: F.ElectricLogic
+class SWD(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    clk = F.ElectricLogic.MakeChild()
+    dio = F.ElectricLogic.MakeChild()
+    swo = F.ElectricLogic.MakeChild()
+    reset = F.ElectricLogic.MakeChild()
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
@@ -33,7 +39,7 @@ class SWD(ModuleInterface):
             F.has_net_name("SWD_RESET", level=F.has_net_name.Level.SUGGESTED)
         )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import SWD, ElectricPower, Resistor
 
@@ -67,4 +73,4 @@ class SWD(ModuleInterface):
         # SWD is commonly used for ARM Cortex-M debugging and programming
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

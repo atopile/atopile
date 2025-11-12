@@ -27,7 +27,24 @@ class EdgeOperand:
         f: Callable[[T, BoundEdge], None],
     ) -> None: ...
     @staticmethod
+    def visit_expression_edges[T](
+        *,
+        bound_node: BoundNode,
+        ctx: T,
+        f: Callable[[T, BoundEdge], None],
+    ) -> None: ...
+    @staticmethod
+    def visit_expression_edges_of_type[T](
+        *,
+        bound_node: BoundNode,
+        expression_type: Node,
+        ctx: T,
+        f: Callable[[T, BoundEdge], None],
+    ) -> None: ...
+    @staticmethod
     def get_expression_edge(*, bound_node: BoundNode) -> BoundEdge | None: ...
+    @staticmethod
+    def get_expression_node(*, edge: Edge) -> Node: ...
     @staticmethod
     def add_operand(
         *, bound_node: BoundNode, operand: Node, operand_identifier: str | None = ...

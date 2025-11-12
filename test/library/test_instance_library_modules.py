@@ -6,11 +6,10 @@ from pathlib import Path
 
 import pytest
 
+import faebryk.core.node as fabll
 from atopile.front_end import Bob, TypeRef, ap
 from faebryk.core.core import Namespace
-from faebryk.core.node import Node
 from faebryk.core.trait import Trait
-from faebryk.libs.library import L
 from faebryk.libs.util import not_none
 
 try:
@@ -35,8 +34,8 @@ def test_symbol_types(name: str, module):
     if getattr(module, "_is_once_wrapper", False):
         return
 
-    # otherwise, only allow Node or Namespace class objects
-    assert isinstance(module, type) and issubclass(module, (Node, Namespace))
+    # otherwise, only allow fabll.Node or Namespace class objects
+    assert isinstance(module, type) and issubclass(module, (fabll.Node, Namespace))
 
 
 @pytest.mark.skipif(F is None, reason="Library not loaded")
@@ -48,7 +47,7 @@ def test_symbol_types(name: str, module):
         if not (
             name.startswith("_")
             or not isinstance(module, type)
-            or not issubclass(module, Node)
+            or not issubclass(module, fabll.Node)
             or (issubclass(module, Trait))
         )
     ],
@@ -78,7 +77,7 @@ def test_init_args(name: str, module):
 
     try:
         module()
-    except L.AbstractclassError:
+    except fabll.AbstractclassError:
         pytest.skip("Skipped abstract class")
 
 

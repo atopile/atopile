@@ -1,11 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.trait import TraitImpl
-from faebryk.libs.library import L
+from typing import Self
+
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
-class has_net_name_affix(L.Trait.decless()):
+class has_net_name_affix(fabll.Node):
     """Require a fixed prefix/suffix to be applied to a derived net name.
 
     This does not set or suggest the base name, it enforces that when a name is
@@ -15,46 +17,46 @@ class has_net_name_affix(L.Trait.decless()):
     Attach to an `F.Electrical` interface (e.g. a `.line`).
     """
 
-    def __init__(
-        self, required_prefix: str | None = None, required_suffix: str | None = None
-    ):
-        super().__init__()
-        self.required_prefix = required_prefix
-        self.required_suffix = required_suffix
+    required_prefix_ = F.Parameters.StringParameter.MakeChild()
+    required_suffix_ = F.Parameters.StringParameter.MakeChild()
 
-    @classmethod
-    def prefix(cls, value: str) -> "has_net_name_affix":
-        return cls(required_prefix=value, required_suffix=None)
+    @property
+    def prefix(self) -> F.Literals.Strings | None:
+        return self.required_prefix_.get().try_extract_constrained_literal()
 
-    @classmethod
-    def suffix(cls, value: str) -> "has_net_name_affix":
-        return cls(required_prefix=None, required_suffix=value)
+    @property
+    def suffix(self) -> F.Literals.Strings | None:
+        return self.required_suffix_.get().try_extract_constrained_literal()
 
-    @classmethod
-    def both(cls, prefix: str, suffix: str) -> "has_net_name_affix":
-        return cls(required_prefix=prefix, required_suffix=suffix)
+    def setup(self, prefix: str | None = None, suffix: str | None = None) -> Self:
+        if prefix is not None:
+            self.required_prefix_.get().constrain_to_single(value=prefix)
+        if suffix is not None:
+            self.required_suffix_.get().constrain_to_single(value=suffix)
+        return self
 
-    def handle_duplicate(self, old: TraitImpl, node: L.Node) -> bool:
-        # If re-added, keep the more specific (non-None) values; error on conflicts
-        assert isinstance(old, has_net_name_affix)
-        # Merge if compatible
-        if (
-            self.required_prefix
-            and old.required_prefix
-            and self.required_prefix != old.required_prefix
-        ):
-            # Different required prefixes are incompatible; let caller decide
-            return super().handle_duplicate(old, node)
-        if (
-            self.required_suffix
-            and old.required_suffix
-            and self.required_suffix != old.required_suffix
-        ):
-            return super().handle_duplicate(old, node)
+    # TODO: Implement this
+    # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
+    #     # If re-added, keep the more specific (non-None) values; error on conflicts
+    #     assert isinstance(old, has_net_name_affix)
+    #     # Merge if compatible
+    #     if (
+    #         self.required_prefix
+    #         and old.required_prefix
+    #         and self.required_prefix != old.required_prefix
+    #     ):
+    #         # Different required prefixes are incompatible; let caller decide
+    #         return super().handle_duplicate(old, node)
+    #     if (
+    #         self.required_suffix
+    #         and old.required_suffix
+    #         and self.required_suffix != old.required_suffix
+    #     ):
+    #         return super().handle_duplicate(old, node)
 
-        # Prefer new non-None values
-        if self.required_prefix is not None:
-            old.required_prefix = self.required_prefix
-        if self.required_suffix is not None:
-            old.required_suffix = self.required_suffix
-        return False
+    #     # Prefer new non-None values
+    #     if self.required_prefix is not None:
+    #         old.required_prefix = self.required_prefix
+    #     if self.required_suffix is not None:
+    #         old.required_suffix = self.required_suffix
+    #     return False

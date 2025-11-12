@@ -3,46 +3,71 @@
 
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
+from faebryk.library.Collections import EdgePointer
 
 logger = logging.getLogger(__name__)
 
 
-class CapacitorElectrolytic(F.Capacitor):
-    pickable = None  # type: ignore
-    can_attach_to_footprint_symmetrically = None  # type: ignore
+class CapacitorElectrolytic(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    anode = F.Electrical.MakeChild()
+    cathode = F.Electrical.MakeChild()
 
-    anode: F.Electrical
-    cathode: F.Electrical
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
-    def __preinit__(self):
-        self.power.hv.connect(self.anode)
-        self.power.lv.connect(self.cathode)
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
+    #     enum_t=TemperatureCoefficient
+    # )
 
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.anode, self.cathode)
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = F.has_simple_value_representation.MakeChild(
+        S(capacitance, tolerance=True),
+        S(max_voltage),
+        # S(temperature_coefficient),
+    )
 
-    @L.rt_field
-    def has_pin_association_heuristic_lookup_table(self):
-        return F.has_pin_association_heuristic_lookup_table(
-            mapping={
-                self.power.hv: ["anode", "a"],
-                self.power.lv: ["cathode", "c"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
+    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
+        mapping={
+            anode: ["anode", "a"],
+            cathode: ["cathode", "c"],
+        },
+        accept_prefix=False,
+        case_sensitive=False,
+    )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.anode.add(F.has_net_name("anode", level=F.has_net_name.Level.SUGGESTED))
-        self.cathode.add(
-            F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
-    usage_example = L.f_field(F.has_usage_example)(
+    # optional interface to automatically connect HV to anode and LV to cathode
+    # power = F.ElectricPower.MakeChild()
+
+    # anode_edge = fabll.EdgeField(
+    #     [anode],
+    #     [power, "hv"],
+    #     edge=EdgePointer.build(
+    #         identifier="anode", order=None
+    #     ),  # TODO: Change to electrical connect
+    # )
+    # cathode_edge = fabll.EdgeField(
+    #     [cathode],
+    #     [power, "lv"],
+    #     edge=EdgePointer.build(
+    #         identifier="cathode", order=None
+    #     ),  # TODO: Change to electrical connect
+    # )
+
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import CapacitorElectrolytic, ElectricPower
 

@@ -9,8 +9,8 @@ from typing import Any
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
@@ -66,7 +66,7 @@ class BaseParams(Serializable):
 
 
 @once
-def make_params_for_type(module_type: type[Module]) -> type:
+def make_params_for_type(module_type: type[fabll.Module]) -> type:
     m = module_type()
     assert m.has_trait(F.is_pickable_by_type)
     pickable_trait = m.get_trait(F.is_pickable_by_type)
@@ -196,26 +196,29 @@ class Component:
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
-    def attach(self, module: Module, qty: int = 1):
+    def attach(self, module: fabll.Node, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
 
-        module.add(
-            F.has_part_picked(
-                PickedPartLCSC(
-                    manufacturer=self.manufacturer_name,
-                    partno=self.part_number,
-                    supplier_partno=self.lcsc_display,
-                    info=PickedPartLCSC.Info(
-                        stock=self.stock,
-                        price=self.get_price(qty),
-                        description=self.description,
-                        basic=bool(self.is_basic),
-                        preferred=bool(self.is_preferred),
-                    ),
-                )
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=F.has_part_picked
+        ).setup(
+            PickedPartLCSC(
+                manufacturer=self.manufacturer_name,
+                partno=self.part_number,
+                supplier_partno=self.lcsc_display,
+                info=PickedPartLCSC.Info(
+                    stock=self.stock,
+                    price=self.get_price(qty),
+                    description=self.description,
+                    basic=bool(self.is_basic),
+                    preferred=bool(self.is_preferred),
+                ),
             )
         )
-        module.add(F.has_datasheet_defined(self.datasheet_url))
+
+        fabll.Traits.create_and_add_instance_to(
+            node=module, trait=F.has_datasheet
+        ).setup(datasheet=self.datasheet_url)
 
         missing_attrs = []
         # only for type picks

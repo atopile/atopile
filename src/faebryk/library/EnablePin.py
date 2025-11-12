@@ -1,14 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class EnablePin(ModuleInterface):
-    enable: F.ElectricLogic
+class EnablePin(fabll.Node):
+    enable = F.ElectricLogic.MakeChild()
+
+    _is_interface = fabll.is_interface.MakeChild()
 
     def _handle_optional(self, needed: bool):
         if not needed:
@@ -18,14 +18,11 @@ class EnablePin(ModuleInterface):
         self.add(F.is_optional_defined(not value, self._handle_optional))
         self.enable.set(value)
 
-    def set_weak(self, value: bool, owner: Module):
+    def set_weak(self, value: bool, owner: fabll.Node):
         return self.enable.set_weak(value, owner=owner)
 
-    @L.rt_field
-    def has_single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.enable.reference)
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    @L.rt_field
     def is_optional(self):
         return F.is_optional_defined(False, self._handle_optional)
 

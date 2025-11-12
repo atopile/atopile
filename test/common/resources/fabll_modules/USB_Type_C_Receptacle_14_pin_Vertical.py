@@ -1,12 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 
 
-class USB_Type_C_Receptacle_14_pin_Vertical(Module):
+class USB_Type_C_Receptacle_14_pin_Vertical(fabll.Node):
     """
     14 pin vertical female USB Type-C connector
     918-418K2022Y40000
@@ -23,11 +22,11 @@ class USB_Type_C_Receptacle_14_pin_Vertical(Module):
     # diffpairs: p, n
     usb: F.USB2_0
 
-    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+    explicit_part = fabll.f_field(F.has_explicit_part.by_mfr)(
         "Jing Extension of the Electronic Co.", "918-418K2022Y40000"
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def attach_to_footprint(self):
         return F.can_attach_to_footprint_via_pinmap(
             {
@@ -49,6 +48,6 @@ class USB_Type_C_Receptacle_14_pin_Vertical(Module):
             }
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )

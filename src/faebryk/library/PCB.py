@@ -3,15 +3,15 @@
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, Self, override
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import Node
-from faebryk.core.reference import reference
-from faebryk.core.trait import Trait
+
+# from faebryk.core.reference import reference
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.units import to_si_str
+
+# from faebryk.libs.units import to_si_str
 from faebryk.libs.util import find, groupby, md_list
 
 logger = logging.getLogger(__name__)
@@ -20,14 +20,22 @@ if TYPE_CHECKING:
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
 
-class PCB(Node):
+class PCB(fabll.Node):
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
     def __init__(self, path: Path):
         super().__init__()
 
         self._path = path
         self._pcb_file: kicad.pcb.PcbFile | None = None
         self._transformer: "PCB_Transformer | None" = None
-        self.app: Module | None = None
+        self.app: fabll.Node | None = None
 
     def load(self):
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -49,7 +57,8 @@ class PCB(Node):
         assert self._pcb_file is not None
         return self._pcb_file
 
-    class requires_drc_check(Trait.decless()):
+    class requires_drc_check(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
         type Violation = kicad.drc.DrcFile.C_Violation
 
         class DrcException(F.implements_design_check.UnfulfilledCheckException):
@@ -128,16 +137,17 @@ class PCB(Node):
                 )
 
     # TODO use reference
-    class has_pcb(Module.TraitT.decless()):
-        class has_pcb_ref(F.has_reference.decless()):
-            reference: "PCB" = reference()
+    class has_pcb(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-        def __init__(self, pcb: "PCB"):
-            super().__init__()
-            self._pcbs = {pcb}
+        pcb_ptr_ = F.Collections.Pointer.MakeChild()
+
+        class has_pcb_ref(fabll.Node):
+            _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+            # reference: "PCB" = reference()
 
         def on_obj_set(self):
-            obj = self.get_obj(Module)
+            obj = self.get_obj(fabll.Module)
             for pcb in self._pcbs:
                 if pcb.app and pcb.app is not obj:
                     raise ValueError(
@@ -149,14 +159,13 @@ class PCB(Node):
 
             return super().on_obj_set()
 
-        @override
-        def handle_duplicate(self, old: "PCB.has_pcb", node: Node) -> bool:
-            self._pcbs.update(old._pcbs)
-            return True
-
         @property
         def pcbs(self) -> set["PCB"]:
-            return self._pcbs
+            return {PCB.bind_instance(self.pcb_ptr_.get().deref().instance)}
 
         def get_pcb_by_path(self, path: Path) -> "PCB":
-            return find(self._pcbs, lambda pcb: pcb._path == path)
+            return find(self.pcbs, lambda pcb: pcb._path == path)
+
+        def setup(self, pcb: "PCB") -> Self:
+            self.pcb_ptr_.get().point(pcb)
+            return self

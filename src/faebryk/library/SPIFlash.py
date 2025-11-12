@@ -1,31 +1,31 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class SPIFlash(Module):
-    power: F.ElectricPower
-    qspi = L.f_field(F.MultiSPI)(4)
+class SPIFlash(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    power = F.ElectricPower.MakeChild()
+    qspi = F.MultiSPI.MakeChild(4)
 
-    memory_size = L.p_field(
-        units=P.byte,
-        domain=L.Domains.Numbers.NATURAL(),
-    )
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    memory_size = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Byte)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    designator_prefix = F.has_designator_prefix.MakeChild(
         F.has_designator_prefix.Prefix.U
     )
 
-    @L.rt_field
-    def single_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import SPIFlash, ElectricPower, ElectricLogic
 
@@ -58,4 +58,4 @@ class SPIFlash(Module):
         # Common applications: firmware storage, data logging, file systems
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

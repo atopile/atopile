@@ -4,17 +4,16 @@
 import logging
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once
 
 logger = logging.getLogger(__name__)
 
 
-class USB2514B(Module):
-    class ConfigurableUSB(Module):
+class USB2514B(fabll.Node):
+    class ConfigurableUSB(fabll.Node):
         """
         USB port wrapper with configuration pins and power enable pin.
         """
@@ -31,7 +30,7 @@ class USB2514B(Module):
         @assert_once
         def configure_usb_port(
             self,
-            owner: Module,
+            owner: fabll.Node,
             enable_usb: bool = True,
             enable_battery_charging: bool = True,
         ):
@@ -82,7 +81,7 @@ class USB2514B(Module):
     @assert_once
     def set_configuration_source(
         self,
-        owner: Module,
+        owner: fabll.Node,
         configuration_source: ConfigurationSource = ConfigurationSource.DEFAULT,
     ):
         """
@@ -110,7 +109,7 @@ class USB2514B(Module):
     @assert_once
     def set_non_removable_ports(
         self,
-        owner: Module,
+        owner: fabll.Node,
         non_removable_port_configuration: NonRemovablePortConfiguration,
     ):
         """
@@ -159,7 +158,7 @@ class USB2514B(Module):
     power_io: F.ElectricPower
 
     usb_upstream: F.USB2_0_IF.Data
-    configurable_downstream_usb = L.list_field(4, ConfigurableUSB)
+    configurable_downstream_usb = fabll.list_field(4, ConfigurableUSB)
 
     xtal_if: F.XtalIF
     external_clock_input: F.ElectricLogic
@@ -171,8 +170,8 @@ class USB2514B(Module):
     reset: F.ElectricLogic
     local_power_detection: F.ElectricSignal
 
-    usb_removability_configuration_intput = L.list_field(2, F.ElectricLogic)
-    configuration_source_input = L.list_field(2, F.ElectricLogic)
+    usb_removability_configuration_intput = fabll.list_field(2, F.ElectricLogic)
+    configuration_source_input = fabll.list_field(2, F.ElectricLogic)
 
     suspense_indicator: F.ElectricLogic
     high_speed_upstream_indicator: F.ElectricLogic
@@ -182,20 +181,20 @@ class USB2514B(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+    explicit_part = fabll.f_field(F.has_explicit_part.by_mfr)(
         "Microchip Tech", "USB2514B-AEZC-TR"
     )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
+    datasheet = F.has_datasheet.MakeChild(
+        datasheet="https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def can_attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap(
-            {
+        return F.can_attach_to_footprint_via_pinmap.MakeChild(
+            pinmap={
                 "1": self.configurable_downstream_usb[0].usb.n.line,
                 "2": self.configurable_downstream_usb[0].usb.p.line,
                 "3": self.configurable_downstream_usb[1].usb.n.line,
@@ -236,9 +235,9 @@ class USB2514B(Module):
             }
         )
 
-    @L.rt_field
+    @fabll.rt_field
     def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
+        return F.has_pin_association_heuristic(
             mapping={
                 self.power_core.hv: ["CRFILT"],
                 self.power_core.lv: ["EP"],
@@ -337,17 +336,17 @@ class USB2514B(Module):
         #              parametrization
         # ----------------------------------------
         self.power_pll.voltage.constrain_subset(
-            L.Range.from_center_rel(1.8 * P.V, 0.05)
+            fabll.Range.from_center_rel(1.8 * P.V, 0.05)
         )  # datasheet does not specify a voltage range
         self.power_core.voltage.constrain_subset(
-            L.Range.from_center_rel(1.8 * P.V, 0.05)
+            fabll.Range.from_center_rel(1.8 * P.V, 0.05)
         )  # datasheet does not specify a voltage range
         self.power_3v3_regulator.voltage.constrain_subset(
-            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
+            fabll.Range.from_center(3.3 * P.V, 0.3 * P.V)
         )
         self.power_3v3_analog.voltage.constrain_subset(
-            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
+            fabll.Range.from_center(3.3 * P.V, 0.3 * P.V)
         )
         self.power_io.voltage.constrain_subset(
-            L.Range.from_center(3.3 * P.V, 0.3 * P.V)
+            fabll.Range.from_center(3.3 * P.V, 0.3 * P.V)
         )

@@ -4,21 +4,20 @@
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
-from faebryk.libs.library import L
 
 
-class ConfigurableI2CClient(Module):
-    addressor = L.f_field(F.Addressor)(address_bits=3)
+class ConfigurableI2CClient(fabll.Node):
+    addressor = fabll.f_field(F.Addressor)(address_bits=3)
     i2c: F.I2C
-    config = L.list_field(3, F.ElectricLogic)
+    config = fabll.list_field(3, F.ElectricLogic)
     ref: F.ElectricPower
 
-    @L.rt_field
+    @fabll.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
@@ -47,9 +46,9 @@ def test_addressor():
     assert app.config[2].line.is_connected_to(app.ref.lv)
 
 
-class I2CBusTopology(Module):
+class I2CBusTopology(fabll.Node):
     server: F.I2C
-    clients = L.list_field(3, ConfigurableI2CClient)
+    clients = fabll.list_field(3, ConfigurableI2CClient)
 
     def __init__(self, isolated=False):
         super().__init__()

@@ -18,10 +18,17 @@ from typing import (
     override,
 )
 
+import f_field
+
+import faebryk.core.node as fabll
 from faebryk.core.core import Namespace
+
+# TODO(zig-migration): Legacy import – faebryk.core.graphinterface no longer exists.
+# Replace GraphInterface with the Zig graph API equivalent (e.g., BoundNode/BoundEdge
+# or appropriate interface wrapper from faebryk.core.zig.gen.*).
 from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
+from faebryk.library.Expressions import is_commutative
 from faebryk.libs.sets.numeric_sets import NumberLike
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -71,7 +78,7 @@ class ParameterOperableHasNoLiteral(ParameterOperableException):
 # boolean: T == S == bool
 # enum: T == S == Enum
 # number: T == Number type, S == Range[Number]
-class ParameterOperatable(Node):
+class ParameterOperatable(fabll.Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
@@ -610,7 +617,7 @@ class Expression(ParameterOperatable):
             return False
         if self.operands == other.operands:
             return True
-        if isinstance(self, Commutative):
+        if self.has_trait(is_commutative):
             # fucking genius
             # lit hash is stable
             # paramop hash only same with same id
@@ -622,7 +629,7 @@ class Expression(ParameterOperatable):
         if recursive and Expression.are_pos_congruent(
             self.operands,
             other.operands,
-            commutative=isinstance(self, Commutative),
+            commutative=self.has_trait(is_commutative),
             allow_uncorrelated=allow_uncorrelated,
             check_constrained=check_constrained,
         ):
@@ -1886,62 +1893,25 @@ class Parameter(ParameterOperatable):
         return None if as_literal == self.domain_set() else as_literal
 
 
-p_field = f_field(Parameter)
-
 # Canonical ----------------------------------------------------------------------------
-CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
-CanonicalLogicExpression = Or | Not
-CanonicalSeticExpression = Intersection | Union | SymmetricDifference
-CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan | IsBitSet
-CanonicalOther = IfThenElse
+_CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
+_CanonicalLogicExpression = Or | Not
+_CanonicalSeticExpression = Intersection | Union | SymmetricDifference
+_CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan | IsBitSet
+_CanonicalOther = IfThenElse
 
-CanonicalConstrainableExpression = CanonicalLogicExpression | CanonicalPredicate
 
 CanonicalExpression = (
-    CanonicalNumericExpression
-    | CanonicalLogicExpression
-    | CanonicalSeticExpression
-    | CanonicalPredicate
-    | CanonicalOther
+    _CanonicalNumericExpression
+    | _CanonicalLogicExpression
+    | _CanonicalSeticExpression
+    | _CanonicalPredicate
+    | _CanonicalOther
 )
 CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
-CanonicalBoolean = BoolSet
-CanonicalEnum = P_Set[Enum]
-# TODO Canonical set?
+_CanonicalBoolean = BoolSet
+_CanonicalEnum = P_Set[Enum]
 
-CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
-CanonicalOperable = CanonicalExpression | Parameter
-CanonicalAll = CanonicalOperable | CanonicalLiteral
+CanonicalLiteral = CanonicalNumber | _CanonicalBoolean | _CanonicalEnum
 
 # --------------------------------------------------------------------------------------
-
-Reflexive = Is | IsSubset | GreaterOrEqual
-IdempotentExpression = Abs | Round
-IdempotentOperands = Or | Union | Intersection
-Commutative = Add | Multiply | Or | Union | Intersection | SymmetricDifference | Is
-UnaryIdentity = Add | Multiply | Or | Union | Intersection
-FullyAssociative = Add | Multiply | Or | Union | Intersection
-Associative = FullyAssociative
-Involutory = Not
-
-HasSideEffects = IfThenElse
-
-# python help --------------------------------------------------------------------------
-CanonicalExpressionR = (
-    Add,
-    Multiply,
-    Power,
-    Round,
-    Abs,
-    Sin,
-    Log,
-    Or,
-    Not,
-    Intersection,
-    Union,
-    SymmetricDifference,
-    Is,
-    GreaterOrEqual,
-    GreaterThan,
-    IsSubset,
-)

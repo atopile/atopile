@@ -8,25 +8,26 @@ from typing import cast
 
 from natsort import natsorted
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
-from faebryk.libs.library import L
 from faebryk.libs.util import duplicates, groupby, md_list
 
 logger = logging.getLogger(__name__)
 
 
-def attach_random_designators(graph: Graph):
+def attach_random_designators(graph: fabll.Graph):
     """
     Sorts nodes by path and then sequentially attaches designators
 
     This ensures that everything which has a footprint must have a designator.
     """
 
-    nodes = {n for n, _ in GraphFunctions(graph).nodes_with_trait(F.has_footprint)}
+    nodes = {
+        n for n, _ in fabll.Node.bind_typegraph(graph).nodes_with_trait(F.has_footprint)
+    }
 
     in_use = {
         n.get_trait(F.has_designator).get_designator()
@@ -78,7 +79,7 @@ def attach_random_designators(graph: Graph):
     )
 
 
-def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
+def load_designators(graph: fabll.Graph, attach: bool = False) -> dict[fabll.Node, str]:
     """
     Load designators from attached footprints and attach them to the nodes.
     """
@@ -92,7 +93,7 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
             return None
         return _get_reference(fp)
 
-    nodes = GraphFunctions(graph).nodes_with_trait(
+    nodes = fabll.Node.bind_typegraph(graph).nodes_with_trait(
         PCB_Transformer.has_linked_kicad_footprint
     )
 

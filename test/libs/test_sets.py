@@ -3,10 +3,15 @@
 
 import math
 from enum import Enum, auto
+from typing import Any
 
 import pytest
 
-from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+from faebryk.core.node import DiscreteSet, EmptySet, RangeWithGaps, Single
+from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
+from faebryk.core.zig.gen.graph.graph import GraphView
 from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval,
     Numeric_Interval_Disjoint,
@@ -22,8 +27,16 @@ from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
 from faebryk.libs.units import P, Unit, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
+_g = GraphView.create()
+_tg = TypeGraph.create(g=_g)
+
+
+Range = F.Literals.Numbers.bind_from_interval(tg=_tg, g=_g)
+
 
 def test_interval_intersection_simple():
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
     x = Range(0, 10)
     y = x & Range(5, 15)
     assert y == Range(5, 10)

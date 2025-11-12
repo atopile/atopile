@@ -1,31 +1,35 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.module import Module
-from faebryk.core.parameter import EnumDomain
-from faebryk.core.solver.solver import Solver
-from faebryk.libs.library import L
-from faebryk.libs.sets.sets import EnumSet
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.util import cast_assert
+
+# from faebryk.libs.util import cast_assert
 
 
-class has_package_requirements(Module.TraitT.decless()):
+class has_package_requirements(fabll.Node):
     """
     Collection of constraints for package of module.
     """
 
-    size = L.p_field(domain=EnumDomain(SMDSize))
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    def __init__(self, *, size: SMDSize | EnumSet[SMDSize] | None = None) -> None:
-        super().__init__()
+    # size = fabll.p_field(domain=EnumDomain(SMDSize))
+    size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
-        self._size = size
+    @classmethod
+    def MakeChild(cls, size: SMDSize):
+        out = fabll.ChildField(cls)
+        # TODO: Constrain to ENUM value
+        # out.add_dependant(
+        # F.Expressions.Is.MakeChild_ConstrainToLiteral(
+        #     [out, cls.size],
+        #     size,
+        # )
+        # )
+        return out
 
-    def __preinit__(self):
-        if self._size is not None:
-            self.size.constrain_subset(EnumSet(self._size))
-
-    def get_sizes(self, solver: Solver) -> EnumSet[SMDSize]:
-        ss = self.size.get_last_known_deduced_superset(solver)
-        return cast_assert(EnumSet, ss)
+    # def get_sizes(self, solver: Solver) -> EnumSet[SMDSize]:
+    #     ss = self.size.get_last_known_deduced_superset(solver)
+    #     return cast_assert(EnumSet, ss)

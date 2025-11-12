@@ -1,28 +1,26 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class USB2_0_IF(ModuleInterface):
-    class Data(F.DifferentialPair):
-        # FIXME: this should be in diffpair right?
-        @L.rt_field
-        def single_electric_reference(self):
-            return F.has_single_electric_reference_defined(
-                F.ElectricLogic.connect_all_module_references(self)
-            )
+class USB2_0_IF(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    d = F.DifferentialPair.MakeChild()
+    buspower = F.ElectricPower.MakeChild()
 
-        def __preinit__(self):
-            self.single_electric_reference.get_reference().voltage.constrain_subset(
-                L.Range(0 * P.V, 3.6 * P.V)
-            )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
-    d: Data
-    buspower: F.ElectricPower
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)

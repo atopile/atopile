@@ -3,13 +3,14 @@
 
 from enum import Enum, auto
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class Filter(Module):
+class Filter(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
     class Response(Enum):
         LOWPASS = auto()
         HIGHPASS = auto()
@@ -17,20 +18,21 @@ class Filter(Module):
         BANDSTOP = auto()
         OTHER = auto()
 
-    cutoff_frequency = L.p_field(
-        units=P.Hz,
-        likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(0 * P.Hz, 1000 * P.Hz),
-    )
-    order = L.p_field(
-        domain=L.Domains.Numbers.NATURAL(),
-        soft_set=L.Range(2, 10),
-        guess=2,
-    )
-    response = L.p_field(
-        domain=L.Domains.ENUM(Response),
-    )
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    in_: fabll.ChildField[F.Electrical]
+    out: fabll.ChildField[F.Electrical]
 
-    in_: F.Signal
-    out: F.Signal
+    cutoff_frequency = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Hertz,
+    )
+    order = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Natural,
+    )
+    response = F.Parameters.EnumParameter.MakeChild(enum_t=Response)
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()

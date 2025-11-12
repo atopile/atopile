@@ -24,7 +24,7 @@ from faebryk.libs.logging import ReprHighlighter
 from faebryk.libs.util import groupby, md_list
 
 if TYPE_CHECKING:
-    from faebryk.core.node import Node
+    import faebryk.core.node as fabll
 
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class UserDesignCheckException(UserException):
     """Indicates a failing design check"""
 
     @classmethod
-    def from_nodes(cls, message: str, nodes: Sequence["Node"]) -> Self:
+    def from_nodes(cls, message: str, nodes: Sequence["fabll.Node"]) -> Self:
         nodes = sorted(nodes, key=lambda n: str(n))
         msg = message
         if nodes:

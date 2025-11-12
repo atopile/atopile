@@ -8,8 +8,7 @@ from itertools import count
 from types import SimpleNamespace
 from typing import Any, override
 
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -41,6 +40,7 @@ from faebryk.core.solver.utils import (
     TIMEOUT,
     get_graphs,
 )
+import faebryk.library.Expressions as Expressions
 from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import P_Set, as_lit
@@ -169,7 +169,9 @@ class DefaultSolver(Solver):
         return iteration_state
 
     def _create_or_resume_state(
-        self, print_context: ParameterOperatable.ReprContext | None, *gs: Graph | Node
+        self,
+        print_context: ParameterOperatable.ReprContext | None,
+        *gs: fabll.Graph | fabll.Node,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
         _gs = get_graphs(gs)
@@ -185,7 +187,7 @@ class DefaultSolver(Solver):
             raise ValueError("print_context not allowed when using reusable state")
 
         mutation_map = self.reusable_state.data.mutation_map
-        p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
+        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(ParameterOperatable)
         new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
         # TODO consider using mutator
@@ -195,7 +197,9 @@ class DefaultSolver(Solver):
         )
 
         # inject new parameters
-        new_params = [p for p in new_p_ops if isinstance(p, Parameter)]
+        new_params = [
+            p for p in new_p_ops if Expressions.isinstance_node(p, fabll.Parameter)
+        ]
         for p in new_params:
             # strip units and copy (for decoupling from old graph)
             transforms.mutated[p] = Parameter(
@@ -213,7 +217,7 @@ class DefaultSolver(Solver):
             )
 
         # inject new expressions
-        new_exprs = {e for e in new_p_ops if isinstance(e, Expression)}
+        new_exprs = {e for e in new_p_ops if Expressions.is_expression_node(e)}
         for e in ParameterOperatable.sort_by_depth(new_exprs, ascending=True):
             if S_LOG:
                 logger.debug(
@@ -224,7 +228,7 @@ class DefaultSolver(Solver):
                 if op in transforms.mutated:
                     op_mapped.append(transforms.mutated[op])
                     continue
-                if isinstance(op, ParameterOperatable) and mutation_map.is_removed(op):
+                if fabll.isparameteroperable(op) and mutation_map.is_removed(op):
                     # TODO
                     raise Exception("Using removed operand")
                 if op in mutation_map.first_stage.input_operables:
@@ -237,8 +241,8 @@ class DefaultSolver(Solver):
                 op_mapped.append(op)
             e_mapped = type(e)(*op_mapped)
             transforms.mutated[e] = e_mapped
-            if isinstance(e, ConstrainableExpression) and e.constrained:
-                assert isinstance(e_mapped, ConstrainableExpression)
+            if Expressions.is_constrainable_node(e) and e.constrained:
+                assert Expressions.is_constrainable_node(e_mapped)
                 e_mapped.constrained = True
 
         return DefaultSolver.SolverState(
@@ -257,7 +261,7 @@ class DefaultSolver(Solver):
     @times_out(TIMEOUT)
     def simplify_symbolically(
         self,
-        *gs: Graph | Node,
+        *gs: fabll.Graph | fabll.Node,
         print_context: ParameterOperatable.ReprContext | None = None,
         terminal: bool = True,
     ) -> SolverState:
@@ -329,7 +333,7 @@ class DefaultSolver(Solver):
         if not terminal:
             self.reusable_state = self.state
 
-        ifs = GraphFunctions(
+        ifs = fabll.Node.bind_typegraph(
             *self.state.data.mutation_map.last_stage.output_graphs
         ).nodes_of_type(IfThenElse)
         for i in ifs:
@@ -369,7 +373,9 @@ class DefaultSolver(Solver):
         if repr_pred is not None:
             new_Gs = [repr_pred.get_graph()]
 
-        new_preds = GraphFunctions(*new_Gs).nodes_of_type(ConstrainableExpression)
+        new_preds = fabll.Node.bind_typegraph(*new_Gs).nodes_of_type(
+            ConstrainableExpression
+        )
         not_deduced = [
             p for p in new_preds if p.constrained and not p._solver_terminated
         ]
@@ -404,10 +410,10 @@ class DefaultSolver(Solver):
         return True
 
     @override
-    def simplify(self, *gs: Graph | Node):
+    def simplify(self, *gs: fabll.Graph | fabll.Node):
         self.simplify_symbolically(*gs, terminal=False)
 
-    def update_superset_cache(self, *nodes: Node):
+    def update_superset_cache(self, *nodes: fabll.Node):
         try:
             self.simplify_symbolically(*nodes, terminal=True)
         except TimeoutError:

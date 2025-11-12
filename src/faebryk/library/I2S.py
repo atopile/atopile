@@ -2,28 +2,33 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.parameter import R
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
-class I2S(ModuleInterface):
-    sd: F.ElectricLogic  # Serial Data
-    ws: F.ElectricLogic  # Word Select (Left/Right Clock)
-    sck: F.ElectricLogic  # Serial Clock
+class I2S(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    sd = F.ElectricLogic.MakeChild()  # Serial Data
+    ws = F.ElectricLogic.MakeChild()  # Word Select (Left/Right Clock)
+    sck = F.ElectricLogic.MakeChild()  # Serial Clock
 
-    sample_rate = L.p_field(units=P.hertz, domain=R.Domains.Numbers.NATURAL())
-    bit_depth = L.p_field(units=P.bit, domain=R.Domains.Numbers.NATURAL())
+    sample_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
+    bit_depth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Bit)
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
@@ -31,7 +36,7 @@ class I2S(ModuleInterface):
         self.ws.line.add(F.has_net_name("WS", level=F.has_net_name.Level.SUGGESTED))
         self.sck.line.add(F.has_net_name("SCK", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import I2S, ElectricPower
 
@@ -62,4 +67,4 @@ class I2S(ModuleInterface):
         # Common applications: digital audio, microphones, speakers
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

@@ -4,22 +4,36 @@
 import logging
 import math
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint, Quantity_Set
 
 logger = logging.getLogger(__name__)
 
 
-class FilterElectricalRC(F.Filter):
+class FilterElectricalRC(fabll.Node):
     """
     Basic Electrical RC filter
     """
 
-    in_: F.ElectricSignal
-    out: F.ElectricSignal
-    resistor: F.Resistor
-    capacitor: F.Capacitor
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    in_ = F.ElectricSignal.MakeChild()
+    out = F.ElectricSignal.MakeChild()
+    resistor = F.Resistor.MakeChild()
+    capacitor = F.Capacitor.MakeChild()
+
+    filter = F.Filter.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __init__(self, *, _hardcoded: bool = False):
         super().__init__()
@@ -50,15 +64,10 @@ class FilterElectricalRC(F.Filter):
         # Set the max voltage of the capacitor to min 1.5 times the output voltage
         self.capacitor.max_voltage.constrain_ge(self.out.reference.voltage * 1.5)
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
 
-    @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.in_.line, self.out.line)
+        return F.can_bridge(self.in_.line, self.out.line)
 
     @classmethod
     def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
@@ -74,7 +83,7 @@ class FilterElectricalRC(F.Filter):
         out.cutoff_frequency.constrain_subset(cutoff_frequency)
         return out
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import FilterElectricalRC, ElectricSignal, ElectricPower
 
@@ -98,4 +107,4 @@ class FilterElectricalRC(F.Filter):
         rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

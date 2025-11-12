@@ -53,7 +53,8 @@ def compile_zig():
 
     # Process all generated pyi files
     # only if any change in the pyi, formatting is expensive
-    if pyi_watcher.has_changed():
+    # FIXME: remove True
+    if True or pyi_watcher.has_changed():
         for pyi_source in _pyi_dir.rglob("*/*.pyi"):
             # Copy to source directory with proper formatting
             pyi_out = _thisdir / pyi_source.relative_to(_build_dir)

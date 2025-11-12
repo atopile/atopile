@@ -1,87 +1,593 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+# from curses import meta
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Self, cast, override
+
+# from enum import Enum
+# from textwrap import indent
+# from tkinter import N
+from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-from faebryk.core.zig.gen.faebryk.next import EdgeNext
+from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
+from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.trait import Trait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
+from faebryk.core.zig.gen.graph.graph import BFSPath, BoundEdge, BoundNode, GraphView
 from faebryk.core.zig.gen.graph.graph import Node as GraphNode
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
+    cast_assert,
     dataclass_as_kwargs,
+    indented_container,
     not_none,
     zip_dicts_by_key,
 )
 
+# Exceptions ---------------------------------------------------------------------------
 
-class FaebrykApiException(Exception):
+
+class FabLLException(Exception):
     pass
 
 
-class TraitNotFound(FaebrykApiException):
+class InvalidState(FabLLException):
     pass
 
 
-class Child[T: Node[Any]]:
-    def __init__[N: Node](self, nodetype: type[T], t: "BoundNodeType[N, Any]") -> None:
+class TraitNotFound(FabLLException):
+    pass
+
+
+class NodeException(FabLLException):
+    def __init__(self, node: "NodeT", message: str):
+        self.node = node
+        super().__init__(message)
+
+
+class NodeNoParent(NodeException):
+    def __init__(self, node: "NodeT"):
+        super().__init__(node, "Node has no parent")
+
+
+class ChildNotFound(NodeException):
+    def __init__(self, node: "NodeT", identifier: str):
+        super().__init__(node, f"Child with identifier {identifier} not found")
+
+
+class PathNotResolvable(NodeException):
+    def __init__(
+        self,
+        node: "NodeT",
+        path: "list[str] | RefPath",
+        error_node: "NodeT",
+        error_identifier: str,
+    ):
+        # get all children of error_node
+        try:
+            children = error_node.get_children(
+                direct_only=True, include_root=False, types=Node
+            )
+            children_str = "\n".join(f"- {c}" for c in children)
+        except Exception as e:
+            children_str = f"Error getting children of '{error_node}': {e}"
+
+        super().__init__(
+            node,
+            f"Path {path} not resolvable from '{node}'.\n"
+            f" No child found at '{error_node}' with identifier '{error_identifier}'.\n"
+            f"Available children: {indented_container(children_str)}",
+        )
+
+    def get_unbound(self, instance: BoundNode) -> T:
+        assert self.identifier is not None, "Bug: Needs to be set on setattr"
+
+
+# --------------------------------------------------------------------------------------
+
+# Child Definitions --------------------------------------------------------------------
+
+
+class PLACEHOLDER:
+    def __repr__(self) -> str:
+        return "<PLACEHOLDER>"
+
+
+class Field:
+    def __init__(self, identifier: str | None | PLACEHOLDER = PLACEHOLDER()):
+        self.identifier: str | PLACEHOLDER = PLACEHOLDER()
+        if not isinstance(identifier, PLACEHOLDER):
+            self._set_identifier(identifier)
+
+        self.locator: str | None | PLACEHOLDER = PLACEHOLDER()
+        self._type_child = False
+
+    def _set_identifier(self, identifier: str | None) -> None:
+        if identifier is None:
+            identifier = f"anon_{id(self):04x}"
+        self.identifier = identifier
+
+    def get_identifier(self) -> str:
+        if isinstance(self.identifier, PLACEHOLDER):
+            raise FabLLException("Identifier is not set")
+        return not_none(self.identifier)
+
+    def get_locator(self) -> str:
+        if isinstance(self.locator, PLACEHOLDER):
+            raise FabLLException("Locator is not set")
+        if self.locator is None:
+            raise FabLLException("Locator is None")
+        return self.locator
+
+    def _set_locator(self, locator: str | None) -> None:
+        self.locator = locator
+        if isinstance(self.identifier, PLACEHOLDER):
+            self._set_identifier(locator)
+
+    def put_on_type(self) -> Self:
+        self._type_child = True
+        return self
+
+    def __repr__(self) -> str:
+        return (
+            f"{type(self).__name__}(identifier={self.identifier},"
+            f" locator={self.locator})"
+        )
+
+
+class ChildAccessor[T: NodeT](Protocol):
+    """
+    Protocol to trick python LSP into thinking there is a get() function on Stage 0 & 1
+    We replace Stage 0 & 1 with Stage 2 during init, but the LSP doesn't know that
+    So we have to pretend there is a get() function on Stage 0 & 1
+    """
+
+    def get(self) -> T: ...
+
+
+class ChildField[T: NodeT](Field, ChildAccessor[T]):
+    """
+    Stage 0: Child in a python class definition (pre-graph)
+    """
+
+    def __init__(
+        self,
+        nodetype: type[T],
+        *,
+        attributes: "NodeAttributes | None" = None,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+    ):
+        self.nodetype = nodetype
+        self._dependants: list["ChildField[Any] | EdgeField"] = []
+        self._prepend_dependants: list["ChildField[Any] | EdgeField"] = []
+        self.attributes = attributes
+        super().__init__(identifier=identifier)
+
+    def bind_to_parent_type[N: NodeT](
+        self, t: "TypeNodeBoundTG[N, Any]"
+    ) -> "InstanceChildBoundType[T]":
+        return InstanceChildBoundType(nodetype=self.nodetype, t=t)
+
+    def get(self) -> T:
+        raise InvalidState(
+            f"Called on {type(self).__name__} instead of "
+            f"{type(InstanceChildBoundInstance).__name__}"
+        ) from None
+
+    def add_dependant(
+        self,
+        *dependant: "ChildField[Any] | EdgeField",
+        identifier: str | None = None,
+        before: bool = False,
+    ):
+        for d in dependant:
+            if identifier is not None:
+                d._set_locator(f"{identifier}_{id(d):04x}")
+            else:
+                d._set_locator(None)
+            if before:
+                self._prepend_dependants.append(d)
+            else:
+                self._dependants.append(d)
+
+    def __repr__(self) -> str:
+        return (
+            f"ChildField(nodetype={self.nodetype.__qualname__},"
+            f" identifier={self.identifier}, attributes={self.attributes})"
+            f" dependants={indented_container(self._dependants)}, "
+            f"prepend_dependants={indented_container(self._prepend_dependants)})"
+            f" type_child={self._type_child})"
+        )
+
+
+class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
+    """
+    Stage 1: Child on a type node (type graph)
+    """
+
+    def __init__[N: NodeT](
+        self,
+        nodetype: type[T],
+        t: "TypeNodeBoundTG[N, Any]",
+        attributes: "NodeAttributes | None" = None,
+        identifier: str | None | PLACEHOLDER = None,
+    ) -> None:
+        self.nodetype = nodetype
+        self.t = t
+        self.identifier = identifier
+        self.attributes = attributes
+
+        if nodetype.Attributes is not NodeAttributes and not isinstance(
+            attributes, nodetype.Attributes
+        ):
+            raise FabLLException(
+                f"Attributes mismatch: {nodetype.__name__} expects"
+                f" {nodetype.Attributes} but got {type(attributes)}"
+            )
+
+    def _add_to_typegraph(self) -> None:
+        identifier = self.identifier
+        if isinstance(identifier, PLACEHOLDER):
+            raise FabLLException("Placeholder identifier not allowed")
+
+        self.t.tg.add_make_child(
+            type_node=self.t.get_or_create_type(),
+            child_type_node=self.nodetype.bind_typegraph(
+                self.t.tg
+            ).get_or_create_type(),
+            identifier=identifier,
+            node_attributes=self.attributes.to_node_attributes()
+            if self.attributes is not None
+            else None,
+        )
+
+    def get(self) -> T:
+        raise InvalidState(
+            f"Called on {type(self).__name__} instead of "
+            f"{type(InstanceChildBoundInstance).__name__}"
+        ) from None
+
+    def cast_to_child_type(self, instance: BoundNode) -> T:
+        """
+        Casts instance node to the child type
+        """
+        assert not isinstance(self.identifier, PLACEHOLDER), (
+            "Bug: Needs to be set on setattr"
+        )
+
+        if self.identifier is None:
+            raise FabLLException("Can only be called on named children")
+
+        child_instance = not_none(
+            EdgeComposition.get_child_by_identifier(
+                bound_node=instance, child_identifier=self.identifier
+            )
+        )
+        bound = self.nodetype(instance=child_instance)
+        return bound
+
+    def get_identifier(self) -> str | None:
+        if isinstance(self.identifier, PLACEHOLDER):
+            raise FabLLException("Identifier is not set")
+        return self.identifier
+
+    def bind_instance(self, instance: BoundNode):
+        return InstanceChildBoundInstance(
+            nodetype=self.nodetype,
+            identifier=self.get_identifier(),
+            instance=instance,
+        )
+
+
+class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
+    """
+    Stage 2: Child on an instance (instance graph)
+    """
+
+    def __init__(
+        self, nodetype: type[T], identifier: str | None, instance: BoundNode
+    ) -> None:
+        self.nodetype = nodetype
+        self.identifier = identifier
+        self.instance = instance
+
+    def get(self) -> T:
+        """
+        Return reference to py-wrapped child node
+        """
+        if self.identifier is None:
+            raise FabLLException("Can only be called on named children")
+
+        child_instance = not_none(
+            EdgeComposition.get_child_by_identifier(
+                bound_node=self.instance, child_identifier=self.identifier
+            )
+        )
+        bound = self.nodetype(instance=child_instance)
+        return bound
+
+
+class TypeChildBoundInstance[T: NodeT]:
+    """
+    Child of type
+    Adds child directly to type node, will not create child in every instance
+    Inherintly bound to the type node by definition, therefore no unbound version
+    """
+
+    def __init__[N: Node](
+        self, nodetype: type[T], t: "TypeNodeBoundTG[N, Any]"
+    ) -> None:
+        # TODO: why so many nodetype references
         self.nodetype = nodetype
         self.t = t
         self.identifier: str = None  # type: ignore
+        self._instance = t.get_or_create_type()
 
         if nodetype.Attributes is not NodeAttributes:
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"Can't have Child with custom Attributes: {nodetype.__name__}"
             )
 
     def get(self) -> T:
-        raise FaebrykApiException(
-            "Called on class child instead of bound instance child"
-        )
+        return self.get_unbound(instance=self._instance)
 
     def get_unbound(self, instance: BoundNode) -> T:
         assert self.identifier is not None, "Bug: Needs to be set on setattr"
 
         child_instance = not_none(
             EdgeComposition.get_child_by_identifier(
-                node=instance, child_identifier=self.identifier
+                bound_node=instance, child_identifier=self.identifier
             )
         )
         bound = self.nodetype(instance=child_instance)
         return bound
 
-    def bind(self, node: BoundNode):
-        return BoundChild(child=self, instance=node)
+
+RefPath = list[str | ChildField[Any]]
 
 
-class BoundChild[T: Node](Child[T]):
-    def __init__(self, child: Child, instance: BoundNode) -> None:
-        self.nodetype = child.nodetype
-        self.node = child.nodetype
-        self.identifier = child.identifier
-        self.t = child.t
-        self._instance = instance
+class EdgeField(Field):
+    def __init__(
+        self,
+        lhs: RefPath,
+        rhs: RefPath,
+        *,
+        edge: EdgeCreationAttributes,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+    ):
+        super().__init__(identifier=identifier)
+        for arg in [lhs, rhs]:
+            for r in arg:
+                if not isinstance(r, (ChildField, str)):
+                    raise FabLLException(
+                        f"Only ChildFields and strings are allowed, got {type(r)}"
+                    )
+        self.lhs = lhs
+        self.rhs = rhs
+        self.edge = edge
 
-    def get(self) -> T:
-        return self.get_unbound(instance=self._instance)
+    @staticmethod
+    def _resolve_path(path: RefPath) -> list[str]:
+        # TODO dont think we can assert here, raise FabLLException
+        return [
+            not_none(field.get_identifier()) if isinstance(field, ChildField) else field
+            for field in path
+        ]
+
+    @staticmethod
+    def _resolve_path_from_node(
+        path: list[str] | RefPath, instance: BoundNode
+    ) -> BoundNode:
+        target = instance
+
+        for segment in path:
+            if not isinstance(segment, str):
+                segment = segment.get_identifier()
+            child = EdgeComposition.get_child_by_identifier(
+                bound_node=target, child_identifier=segment
+            )
+            if child is None:
+                raise PathNotResolvable(
+                    node=Node.bind_instance(instance),
+                    path=path,
+                    error_node=Node.bind_instance(target),
+                    error_identifier=segment,
+                )
+            target = child
+        return target
+
+    def lhs_resolved(self) -> list[str]:
+        return self._resolve_path(self.lhs)
+
+    def lhs_resolved_on_node(self, instance: BoundNode) -> BoundNode:
+        return self._resolve_path_from_node(self.lhs_resolved(), instance)
+
+    def rhs_resolved(self) -> list[str]:
+        return self._resolve_path(self.rhs)
+
+    def rhs_resolved_on_node(self, instance: BoundNode) -> BoundNode:
+        return self._resolve_path_from_node(self.rhs_resolved(), instance)
+
+    def __repr__(self) -> str:
+        return (
+            f"EdgeField(lhs={self.lhs_resolved()}, "
+            f"rhs={self.rhs_resolved()}, "
+            f"edge={self.edge})"
+        )
+
+
+class ListField(Field, list[Field]):
+    def __init__(
+        self,
+        fields: list[Field],
+        *,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+    ):
+        list.__init__(self, fields)
+        Field.__init__(self, identifier=identifier)
+
+    def get_fields(self) -> list[Field]:
+        locator = self.get_locator()
+        for i, f in enumerate(self):
+            f_id = f"{locator}[{i}]" if locator is not None else None
+            f._set_locator(locator=f_id)
+        return self
+
+
+class EdgeFactoryAccessor(Protocol):
+    def connect(self, target: "NodeT") -> None: ...
+    def get_single(self) -> "NodeT": ...
+    def get_all(self) -> list["NodeT"]: ...
+
+
+class EdgeFactoryField(Field, EdgeFactoryAccessor):
+    def __init__(
+        self,
+        edge_factory: Callable[[str], EdgeCreationAttributes],
+        *,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+        single: bool = False,
+    ):
+        super().__init__(identifier=identifier)
+        self.edge_factory = edge_factory
+        self.edge_attrs = self.edge_factory(self.get_identifier())
+        self.single = single
+        raise NotImplementedError("Not sure whether we want to keep this")
+
+    def _connect(self, source: "NodeT", target: "NodeT"):
+        source.connect(target, self.edge_attrs)
+
+    def _get_single(self, source: "NodeT") -> "NodeT":
+        return self._get_all(source)[0]
+
+    def _get_all(self, source: "NodeT") -> list["NodeT"]:
+        class Ctx:
+            nodes: list[BoundNode] = []
+
+        source.instance.visit_edges_of_type(
+            edge_type=self.edge_attrs.get_tid(),
+            ctx=Ctx,
+            f=lambda ctx, bound_edge: ctx.nodes.append(
+                bound_edge.g().bind(node=bound_edge.edge().target())
+            ),
+        )
+        return [Node.bind_instance(instance=node) for node in Ctx.nodes]
+
+    def connect(self, target: "NodeT") -> None:
+        raise FabLLException("Wrong stage")
+
+    def get_single(self) -> "NodeT":
+        raise FabLLException("Wrong stage")
+
+    def get_all(self) -> list["NodeT"]:
+        raise FabLLException("Wrong stage")
+
+
+class InstanceBoundEdgeFactory(EdgeFactoryField):
+    def __init__(self, instance: "NodeT", edge_factory_field: EdgeFactoryField):
+        self.instance = instance
+        self.edge_factory_field = edge_factory_field
+
+    def connect(self, target: "NodeT") -> None:
+        self.edge_factory_field._connect(source=self.instance, target=target)
+
+    def get_single(self) -> "NodeT":
+        return self.edge_factory_field._get_single(source=self.instance)
+
+    def get_all(self) -> list["NodeT"]:
+        return self.edge_factory_field._get_all(source=self.instance)
+
+
+class Path:
+    """
+    Wrapper around Zig's BFSPath object.
+
+    This is a lightweight Python wrapper around a path object that lives in Zig memory.
+    The underlying BFSPath is automatically freed when this Python object is garbage collected.
+
+    Access path information via properties that call back into Zig:
+    - length: Number of edges in the path
+    - start_node: Starting node (BoundNode)
+    - end_node: Ending node (BoundNode)
+    - edges: List of edges (creates Python objects, use sparingly for long paths)
+    """
+
+    def __init__(self, bfs_path: "BFSPath"):  # type: ignore
+        self._bfs_path = bfs_path
+
+    @property
+    def length(self) -> int:
+        return self._bfs_path.get_length()
+
+    @property
+    def start_node(self) -> BoundNode:
+        return self._bfs_path.get_start_node()
+
+    @property
+    def end_node(self) -> BoundNode:
+        return self._bfs_path.get_end_node()
+
+    @property
+    def edges(self) -> list[BoundEdge]:
+        return self._bfs_path.get_edges()
+
+    def get_start_node(self) -> "Node[Any]":
+        return Node[Any].bind_instance(instance=self.start_node)
+
+    def get_end_node(self) -> "Node[Any]":
+        return Node[Any].bind_instance(instance=self.end_node)
+
+    def from_connection(self, a: "Node[Any]", b: "Node[Any]") -> "Path | None":
+        if paths := a.get_trait(is_interface).is_connected_to(b):
+            # this was a node on the previous implementation
+            # basically we can do this more efficiently
+
+            # FIXME: Notes: from the master of graphs:
+            #  - iterate through all paths
+            #  - make a helper function
+            #    Path.get_subpaths(path: Path, search: SubpathSearch)
+            #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
+            #  - choose out of subpaths
+            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
+            #      is derived, save it as candidate and only yield it if no other found)
+            #    - choose first shortest
+            return Path(paths[0])
+        return None
+
+    def __repr__(self) -> str:
+        start = self.start_node
+        end = self.end_node
+        start_str = f"BoundNode({start.node().get_uuid()})"
+        end_str = f"BoundNode({end.node().get_uuid()})"
+        return f"Path(start={start_str}, end={end_str}, length={self.length})"
+
+
+# --------------------------------------------------------------------------------------
+
+LiteralT = float | int | str | bool
+Literal = LiteralT  # Type alias for compatibility with generated types
 
 
 class NodeMeta(type):
+    """
+    Handles _setattr_ on Node subclasses
+    e.g `cls.resistance = ChildField(Resistor)`
+    """
+
     @override
     def __setattr__(cls, name: str, value: Any, /) -> None:
-        if isinstance(value, Child) and issubclass(cls, Node):
-            value.identifier = name
-            cls._add_child(value)
+        try:
+            cls._handle_cls_attr(name, value)  # type: ignore
+        except NameError:
+            pass
         return super().__setattr__(name, value)
 
 
@@ -90,27 +596,63 @@ class NodeAttributes:
     def __init_subclass__(cls) -> None:
         # TODO collect all fields (like dataclasses)
         # TODO check Attributes is dataclass and frozen
+        # TODO check all values are literals
         pass
 
     @classmethod
-    def of(cls: type[Self], node: "BoundNode | Node[Any]") -> Self:
+    def of(cls: type[Self], node: "BoundNode | NodeT") -> Self:
         if isinstance(node, Node):
             node = node.instance
         return cls(**node.node().get_dynamic_attrs())
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, Literal]:
         return dataclass_as_kwargs(self)
+
+    def to_node_attributes(self) -> NodeCreationAttributes | None:
+        attrs = self.to_dict()
+        if not attrs:
+            return None
+        return NodeCreationAttributes.init(dynamic=attrs)
 
 
 class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     Attributes = NodeAttributes
+    __fields: list[Field] = []
+    # TODO do we need this?
+    # _fields_bound_tg: dict[TypeGraph, list[InstanceChildBoundType]] = {}
 
     def __init__(self, instance: BoundNode) -> None:
         self.instance = instance
-        for name, child in vars(type(self)).items():
-            if not isinstance(child, Child):
+
+        # setup instance accessors
+        # overrides fields in instance
+        for field in type(self).__fields:
+            if field.locator is None:
                 continue
-            setattr(self, name, child.bind(instance))
+            if isinstance(field, ChildField):
+                child = InstanceChildBoundInstance(
+                    nodetype=field.nodetype,
+                    identifier=field.get_identifier(),
+                    instance=instance,
+                )
+                setattr(self, field.get_locator(), child)
+            if isinstance(field, ListField):
+                list_attr = list[InstanceChildBoundInstance[Any]]()
+                for nested_field in field.get_fields():
+                    if isinstance(nested_field, ChildField):
+                        child = InstanceChildBoundInstance(
+                            nodetype=nested_field.nodetype,
+                            identifier=nested_field.get_identifier(),
+                            instance=instance,
+                        )
+                        list_attr.append(child)
+                setattr(self, field.get_locator(), list_attr)
+            if isinstance(field, EdgeFactoryField):
+                edge_factory_field = InstanceBoundEdgeFactory(
+                    instance=self,
+                    edge_factory_field=field,
+                )
+                setattr(self, field.get_locator(), edge_factory_field)
 
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
@@ -118,16 +660,81 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if len(cls.__mro__) > len(Node.__mro__) + 1:
             # mro(): [Leaf, NodeType, object] is allowed (len==3),
             # deeper (len>3) is forbidden
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"NodeType subclasses cannot themselves be subclassed "
                 f"more than one level deep (found: {cls.__mro__})"
             )
         super().__init_subclass__()
+        cls.__fields = []
+
+        # Scan through class fields and add handle ChildFields
+        # e.g ```python
+        # class Resistor(Node):
+        #     resistance = InstanceChildField(Parameter)
+        # ```
+        for name, child in vars(cls).items():
+            cls._handle_cls_attr(name, child)
 
     @classmethod
-    def __create_instance__(cls, tg: TypeGraph, g: GraphView) -> Self:
-        """DO NOT OVERRIDE!"""
+    def _exec_field(
+        cls, t: "TypeNodeBoundTG[Self, T]", field: Field, type_field: bool = False
+    ) -> None:
+        type_field = type_field or field._type_child
+        if isinstance(field, ChildField):
+            identifier = field.get_identifier()
+            for dependant in field._prepend_dependants:
+                cls._exec_field(t=t, field=dependant, type_field=type_field)
+            if type_field:
+                child_nodetype: type[NodeT] = field.nodetype
+                child_instance = child_nodetype.bind_typegraph(tg=t.tg).create_instance(
+                    g=t.tg.get_graph_view(),
+                    attributes=field.attributes,
+                )
+                EdgeComposition.add_child(
+                    bound_node=t.get_or_create_type(),
+                    child=child_instance.instance.node(),
+                    child_identifier=identifier,
+                )
+            else:
+                mc = t.MakeChild(
+                    nodetype=field.nodetype,
+                    identifier=identifier,
+                    attributes=field.attributes,
+                )
+                mc._add_to_typegraph()
+            for dependant in field._dependants:
+                cls._exec_field(t=t, field=dependant, type_field=type_field)
+        elif isinstance(field, ListField):
+            for nested_field in field.get_fields():
+                cls._exec_field(t=t, field=nested_field, type_field=type_field)
+        elif isinstance(field, EdgeField):
+            if type_field:
+                type_node = t.get_or_create_type()
+                edge_instance = field.edge.create_edge(
+                    source=field.lhs_resolved_on_node(instance=type_node).node(),
+                    target=field.rhs_resolved_on_node(instance=type_node).node(),
+                )
+                type_node.g().insert_edge(edge=edge_instance)
+            else:
+                t.MakeEdge(
+                    lhs_reference_path=field.lhs_resolved(),
+                    rhs_reference_path=field.rhs_resolved(),
+                    edge=field.edge,
+                )
 
+    @classmethod
+    def _create_type(cls, t: "TypeNodeBoundTG[Self, T]") -> None:
+        # read out fields
+        # construct typegraph
+        for field in cls.__fields:
+            cls._exec_field(t=t, field=field)
+        # TODO
+        # call stage1
+        # call stage2
+        pass
+
+    @classmethod
+    def _create_instance(cls, tg: TypeGraph, g: GraphView) -> Self:
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
     @classmethod
@@ -135,13 +742,37 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return cls.__name__
 
     # type construction ----------------------------------------------------------------
+
     @classmethod
-    def _add_child(
+    def _handle_cls_attr(cls, name: str, value: Any) -> None:
+        """
+        Collect all fields (from class body and stage0 setattr)
+        """
+        # TODO the __fields is a hack
+        if name.startswith("__") or name.endswith("__fields"):
+            return
+        if isinstance(value, Field):
+            cls._add_field(locator=name, field=value)
+        if (
+            isinstance(value, list)
+            and len(value)
+            and all(isinstance(c, Field) for c in value)
+        ):
+            cls._add_field(locator=name, field=ListField(fields=value))
+
+    @classmethod
+    def _add_field(cls, locator: str, field: Field):
+        # TODO check if identifier is already in use
+        field._set_locator(locator=locator)
+        cls.__fields.append(field)
+
+    @classmethod
+    def _add_instance_child(
         cls,
-        child: Child,
+        child: InstanceChildBoundType,
     ) -> BoundNode:
         tg = child.t.tg
-        identifier = child.identifier
+        identifier = child.get_identifier()
         nodetype = child.nodetype
 
         child_type_node = nodetype.bind_typegraph(tg).get_or_create_type()
@@ -152,23 +783,44 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         )
 
     @classmethod
+    def _add_type_child(
+        cls,
+        child: TypeChildBoundInstance,
+    ) -> BoundNode:
+        tg = child.t.tg
+        identifier = child.identifier
+        nodetype = child.nodetype
+
+        child_node = nodetype.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
+        EdgeComposition.add_child(
+            bound_node=cls.bind_typegraph(tg).get_or_create_type(),
+            child=child_node.instance.node(),
+            child_identifier=identifier,
+        )
+        return child_node
+
+    @classmethod
     def add_anon_child(
         cls,
-        child: Child[Any],
+        child: InstanceChildBoundType[Any],
     ):
-        cls._add_child(child)
+        cls._add_instance_child(child)
+
+    @classmethod
+    def MakeChild(cls) -> ChildField[Self]:
+        return ChildField(cls)
 
     # bindings -------------------------------------------------------------------------
     @classmethod
-    def bind_typegraph[N: Node[Any]](
+    def bind_typegraph[N: NodeT](
         cls: type[N], tg: TypeGraph
-    ) -> "BoundNodeType[N, T]":
-        return BoundNodeType[N, T](tg=tg, t=cls)
+    ) -> "TypeNodeBoundTG[N, T]":
+        return TypeNodeBoundTG[N, T](tg=tg, t=cls)
 
     @classmethod
-    def bind_typegraph_from_instance[N: Node[Any]](
+    def bind_typegraph_from_instance[N: NodeT](
         cls: type[N], instance: BoundNode
-    ) -> "BoundNodeType[N, T]":
+    ) -> "TypeNodeBoundTG[N, T]":
         return cls.bind_instance(instance=instance).bind_typegraph_from_self()
 
     @classmethod
@@ -177,12 +829,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     # instance methods -----------------------------------------------------------------
     @deprecated("Use compose_with instead")
-    def add(self, node: "Node[Any]"):
-        self.compose_with(node)
+    def add(self, node: "NodeT"):
+        # TODO node name
+        self.connect(
+            to=node, edge_attrs=EdgeComposition.build(child_identifier=f"{id(node)}")
+        )
 
     def __setattr__(self, name: str, value: Any, /) -> None:
         if isinstance(value, Node) and not name.startswith("_"):
-            self.compose_with(value, name=name)
+            self.connect(
+                to=value, edge_attrs=EdgeComposition.build(child_identifier=name)
+            )
         return super().__setattr__(name, value)
 
     def attributes(self) -> T:
@@ -197,7 +854,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if parent is None:
             if accept_no_parent:
                 return self.get_root_id()
-            raise FaebrykApiException("Node has no parent")
+            raise FabLLException("Node has no parent")
         return parent[1]
 
     def get_parent(self) -> tuple["Node", str] | None:
@@ -215,17 +872,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_parent_force(self) -> tuple["Node", str]:
         parent = self.get_parent()
         if parent is None:
-            raise FaebrykApiException("Node has no parent")
+            raise NodeNoParent(self)
         return parent
 
     # TODO get_parent_f, get_parent_of_type, get_parent_with_trait should be called
     # get_ancestor_...
     def get_parent_f(
         self,
-        filter_expr: Callable[["Node[Any]"], bool],
+        filter_expr: Callable[["NodeT"], bool],
         direct_only: bool = False,
         include_root: bool = True,
-    ) -> "Node[Any] | None":
+    ) -> "NodeT | None":
         parents = [p for p, _ in self.get_hierarchy()]
         if not include_root:
             parents = parents[:-1]
@@ -236,7 +893,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 return p
         return None
 
-    def get_parent_of_type[P: Node[Any]](
+    def get_parent_of_type[P: NodeT](
         self,
         parent_type: type[P],
         direct_only: bool = False,
@@ -255,7 +912,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         self,
         trait: type[TR],
         include_self: bool = True,
-    ) -> tuple["Node[Any]", TR]:
+    ) -> tuple["NodeT", TR]:
         hierarchy = self.get_hierarchy()
         if not include_self:
             hierarchy = hierarchy[:-1]
@@ -264,9 +921,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 return parent, parent.get_trait(trait)
         raise KeyErrorNotFound(f"No parent with trait {trait} found")
 
-    def nearest_common_ancestor(
-        self, *others: "Node[Any]"
-    ) -> tuple["Node[Any]", str] | None:
+    def nearest_common_ancestor(self, *others: "NodeT") -> tuple["NodeT", str] | None:
         """
         Finds the nearest common ancestor of the given nodes, or None if no common
         ancestor exists
@@ -317,23 +972,37 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         include_root: bool = False,
         f_filter: Callable[[C], bool] | None = None,
         sort: bool = True,
+        required_trait: "type[NodeT] | tuple[type[NodeT], ...] | None" = None,
     ) -> OrderedSet[C]:
         # copied from old fabll
         type_tuple = types if isinstance(types, tuple) else (types,)
+        trait_tuple: tuple[type[NodeT], ...] | None
+        if required_trait is None:
+            trait_tuple = None
+        elif isinstance(required_trait, tuple):
+            trait_tuple = required_trait
+        else:
+            trait_tuple = (required_trait,)
 
         result: list[C] = []
 
-        if include_root and self.isinstance(*type_tuple):
-            self_c = cast(C, self)
-            if not f_filter or f_filter(self_c):
-                result.append(self_c)
+        def check(node: "NodeT") -> TypeGuard[C]:
+            if not node.isinstance(*type_tuple):
+                return False
+            candidate = cast(C, node)
+            if trait_tuple and not any(node.has_trait(trait) for trait in trait_tuple):
+                return False
+            if f_filter and not f_filter(candidate):
+                return False
+            return True
 
-        def _visit(node: "Node[Any]") -> None:
+        if include_root and check(self):
+            result.append(self)
+
+        def _visit(node: "NodeT") -> None:
             for _name, child in node.get_direct_children():
-                if child.isinstance(*type_tuple):
-                    candidate = cast(C, child)
-                    if not f_filter or f_filter(candidate):
-                        result.append(candidate)
+                if check(child):
+                    result.append(child)
                 if not direct_only:
                     _visit(child)
 
@@ -385,7 +1054,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         self,
         trait: type[TR],
         include_self: bool = True,
-    ) -> Iterator[tuple["Node[Any]", TR]]:
+    ) -> Iterator[tuple["NodeT", TR]]:
         for level in self.get_tree(
             types=Node, include_root=include_self
         ).iter_by_depth():
@@ -399,23 +1068,51 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def tg(self) -> TypeGraph:
         tg = TypeGraph.of_instance(instance_node=self.instance)
         if tg is None:
-            raise FaebrykApiException(
+            raise FabLLException(
                 f"Failed to bind typegraph from instance: {self.instance}"
             )
         return tg
 
-    def bind_typegraph_from_self(self) -> "BoundNodeType[Self, Any]":
+    def bind_typegraph_from_self(self) -> "TypeNodeBoundTG[Self, Any]":
         return self.bind_typegraph(tg=self.tg)
 
-    def isinstance(self, *type_node: "type[Node]") -> bool:
+    def get_graph(self) -> TypeGraph:
+        return self.tg
+
+    def get_type_node(self) -> BoundNode | None:
+        type_edge = EdgeType.get_type_edge(bound_node=self.instance)
+        if type_edge is None:
+            return None
+        return type_edge.g().bind(node=EdgeType.get_type_node(edge=type_edge.edge()))
+
+    def get_type_name(self) -> str | None:
+        type_node = self.get_type_node()
+        if type_node is None:
+            return None
+        # TODO make zig api for this
+        type_identifier = type_node.node().get_attr(key="type_identifier")
+        if type_identifier is None:
+            return None
+        return cast_assert(str, type_identifier)
+
+    def isinstance(self, *type_node: "type[NodeT]") -> bool:
+        """
+        Wildcard: Node
+        """
+        if Node in type_node:
+            return True
         bound_type_nodes = [
             tn.bind_typegraph_from_instance(self.instance) for tn in type_node
         ]
         return any(tn.isinstance(self) for tn in bound_type_nodes)
 
+    @classmethod
+    def istypeof(cls, node: "NodeT") -> bool:
+        return node.isinstance(cls)
+
     def get_hierarchy(self) -> list[tuple["Node", str]]:
-        hierarchy: list[tuple["Node[Any]", str]] = []
-        current: Node[Any] = self
+        hierarchy: list[tuple["NodeT", str]] = []
+        current: NodeT = self
         while True:
             if (parent_entry := current.get_parent()) is None:
                 hierarchy.append((current, current.get_root_id()))
@@ -439,7 +1136,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         base = ".".join(filter(None, parts))
         if types:
-            type_name = self.__class__.__qualname__
+            type_name = self.get_type_name() or "<NOTYPE>"
             return f"{base}|{type_name}" if base else type_name
         return base
 
@@ -466,7 +1163,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         return self_name.removeprefix(root_name + ".")
 
-    def try_get_trait[TR: Node[Any]](self, trait: type[TR]) -> TR | None:
+    def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
         impl = Trait.try_get_trait(
             target=self.instance,
             trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
@@ -481,7 +1178,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             raise TraitNotFound(f"No trait {trait} found")
         return impl
 
-    def has_trait(self, trait: type["Node[Any]"]) -> bool:
+    def has_trait(self, trait: type["NodeT"]) -> bool:
         return self.try_get_trait(trait) is not None
 
     def zip_children_by_name_with[N: Node](
@@ -500,10 +1197,15 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
         return {n.get_name(): n for n in nodes}
 
-    def cast[N: Node[Any]](self, t: type[N], check: bool = True) -> N:
+    def cast[N: NodeT](self, t: type[N], check: bool = True) -> N:
         if check and not self.isinstance(t):
             # TODO other exception
-            raise FaebrykApiException(f"Node {self} is not an instance of {t}")
+            raise FabLLException(f"Node {self} is not an instance of {t}")
+        return t.bind_instance(self.instance)
+
+    def try_cast[N: NodeT](self, t: type[N]) -> N | None:
+        if not self.isinstance(t):
+            return None
         return t.bind_instance(self.instance)
 
     def __repr__(self) -> str:
@@ -530,82 +1232,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __hash__(self) -> int:
         return self.instance.node().get_uuid()
 
-    # instance edge sugar --------------------------------------------------------------
-    def compose_with(self, node: "Node[Any]", name: str | None = None):
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=node.instance.node(),
-            # TODO None or empty?
-            child_identifier=name or "",
-        )
-
-    # Get compositions with the get_children functions
-
-    def point_to(
-        self,
-        to_node: "Node[Any]",
-        identifier: str | None = None,
-        order: int | None = None,
-    ) -> None:
-        EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=to_node.instance.node(),
-            identifier=identifier,
-            order=order,
-        )
-
-    def get_references(self, identifier: str | None = None) -> "list[Node[Any]]":
-        references: list[tuple[int | None, BoundNode]] = []
-
-        def _collect(
-            ctx: list[tuple[int | None, BoundNode]], bound_edge: BoundEdge
-        ) -> None:
-            edge_name = bound_edge.edge().name()
-            if identifier is not None and edge_name != identifier:
-                return
-            target = EdgePointer.get_referenced_node(edge=bound_edge.edge())
-            if target is None:
-                return
-            edge_order = EdgePointer.get_order(edge=bound_edge.edge())
-            node = bound_edge.g().bind(node=target)
-            ctx.append((edge_order, node))
-
-        if identifier is None:
-            EdgePointer.visit_pointed_edges(
-                bound_node=self.instance,
-                ctx=references,
-                f=_collect,
-            )
-        else:
-            EdgePointer.visit_pointed_edges_with_identifier(
-                bound_node=self.instance,
-                identifier=identifier,
-                ctx=references,
-                f=_collect,
-            )
-        return [
-            Node(instance=instance)
-            for _, instance in sorted(references, key=lambda x: x[0] or 0)
-        ]
-
-    def chain_to(self, to_node: "Node[Any]") -> None:
-        EdgeNext.add_next(
-            previous_node=self.instance,
-            next_node=to_node.instance,
-        )
-
-    # overrides ------------------------------------------------------------------------
-    @classmethod
-    def __create_type__[N: Node[Any]](cls: type[N], t: "BoundNodeType[N, T]") -> None:
+    # instance edges -------------------------------------------------------------------
+    def connect(self, to: "NodeT", edge_attrs: EdgeCreationAttributes) -> None:
         """
-        Override this to add children to the type.
+        Low-level edge creation function.
         """
-        pass
+        edge_attrs.insert_edge(
+            g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
+        )
 
 
-class BoundNodeType[N: Node[Any], A: NodeAttributes]:
+type NodeT = Node[Any]
+
+
+class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     """
     (type[Node], TypeGraph)
+    Becomes available during stage 1 (typegraph creation)
     """
 
     def __init__(self, tg: TypeGraph, t: type[N]) -> None:
@@ -622,8 +1265,7 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
         if typenode is not None:
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
-        bound_type = self.t.bind_typegraph(tg=tg)
-        self.t.__create_type__(bound_type)
+        self.t._create_type(self)
         return typenode
 
     def create_instance(self, g: GraphView, attributes: A | None = None) -> N:
@@ -638,7 +1280,7 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
         instance = self.tg.instantiate_node(type_node=typenode, attributes=attrs)
         return self.t.bind_instance(instance=instance)
 
-    def isinstance(self, instance: Node[Any]) -> bool:
+    def isinstance(self, instance: NodeT) -> bool:
         return EdgeType.is_node_instance_of(
             bound_node=instance.instance,
             node_type=self.get_or_create_type().node(),
@@ -655,9 +1297,7 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
         return [self.t(instance=instance) for instance in instances]
 
     # node type agnostic ---------------------------------------------------------------
-    def nodes_with_trait[T: Node[Any]](
-        self, trait: type[T]
-    ) -> list[tuple["Node[Any]", T]]:
+    def nodes_with_trait[T: NodeT](self, trait: type[T]) -> list[tuple["NodeT", T]]:
         impls = trait.bind_typegraph(self.tg).get_instances()
         return [(p[0], impl) for impl in impls if (p := impl.get_parent()) is not None]
 
@@ -676,14 +1316,26 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
         return {n for tn in t for n in tn.bind_typegraph(self.tg).get_instances()}
 
     # construction ---------------------------------------------------------------------
-    def Child[C: Node[Any]](self, nodetype: type[C]) -> Child[C]:
-        return Child(nodetype=nodetype, t=self)
+    def MakeChild[C: NodeT](
+        self,
+        nodetype: type[C],
+        *,
+        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+        attributes: NodeAttributes | None = None,
+    ) -> InstanceChildBoundType[C]:
+        return InstanceChildBoundType(
+            nodetype=nodetype, t=self, identifier=identifier, attributes=attributes
+        )
 
-    def _add_link(
+    # TODO
+    # RefPath1 = list[str | InstanceChildBoundType[Any]]
+    RefPath1 = list[str]
+
+    def MakeEdge(
         self,
         *,
-        lhs_reference_path: list[str],
-        rhs_reference_path: list[str],
+        lhs_reference_path: RefPath1,
+        rhs_reference_path: RefPath1,
         edge: EdgeCreationAttributes,
     ) -> None:
         tg = self.tg
@@ -702,168 +1354,205 @@ class BoundNodeType[N: Node[Any], A: NodeAttributes]:
             edge_attributes=edge,
         )
 
+    def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
+        children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
+            direct_only=True, types=MakeChild
+        )
+        bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
+        for child in children:
+            if child.get_child_type().node().is_same(bound_trait.node()):
+                return True
+        return False
+
+
+# ------------------------------------------------------------
+
+
+class Traits:
+    def __init__(self, node: NodeT):
+        self.node = node
+
+    @classmethod
+    def bind(cls, node: NodeT) -> Self:
+        return cls(node)
+
+    def get_obj_raw(self) -> NodeT:
+        return self.node.get_parent_force()[0]
+
+    def get_obj[N: NodeT](self, t: type[N]) -> N:
+        return self.get_obj_raw().cast(t)
+
+    @staticmethod
+    def add_to(node: NodeT, trait: NodeT) -> None:
+        Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+
+    @staticmethod
+    def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
+        trait_bound = trait.bind_typegraph_from_instance(
+            node.instance
+        ).get_or_create_type()
+        trait_node = Node.bind_instance(instance=trait_bound)
+        Traits.add_to(node=node, trait=trait_node)
+        return node  # type: ignore
+
+
+class ImplementsTrait(Node):
+    """
+    Wrapper around zig trait.
+    Matched automatically because of name.
+    """
+
+
+class ImplementsType(Node):
+    """
+    Wrapper around zig type.
+    Matched automatically because of name.
+    """
+
+
+class MakeChild(Node):
+    """
+    Wrapper around zig make child.
+    Matched automatically because of name.
+    """
+
+    def get_child_type(self) -> BoundNode:
+        return EdgePointer.get_referenced_node_from_node(node=self.instance)
+
+
+class is_module(Node):
+    """
+    Replaces Module type.
+    TODO: Will remove in the future.
+    Exists for now as compatibility layer.
+    specialization/retyping is removed and done in ast -> typegraph now
+
+    Replacement guide:
+    - creation: instead of inherit of Module -> inherit of Node + add is_module trait
+    - usage instead of type check, trait check:
+        - replace isinstance(node, Module) with node.has_trait(is_module)
+        - replace get_children(types=(Module,)) with get_children_with_trait(is_module)
+        - ...
+    """
+
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+
+    def get_obj(self) -> NodeT:
+        return Traits.get_obj_raw(Traits.bind(self))
+
+
+# wraps the raw EdgeInterfaceConnection functions into fabll nodes
+class is_interface(Node):
+    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+
+    def get_obj(self) -> NodeT:
+        return Traits.get_obj_raw(Traits.bind(self))
+
+    def connect_to(self, *others: "NodeT") -> None:
+        self_node = self.get_obj()
+        for other in others:
+            EdgeInterfaceConnection.connect(bn1=self_node.instance, bn2=other.instance)
+
+    def connect_shallow_to(self, *others: "NodeT") -> None:
+        self_node = self.get_obj()
+        for other in others:
+            EdgeInterfaceConnection.connect_shallow(
+                bn1=self_node.instance, bn2=other.instance
+            )
+
+    """
+    group_into_buses() clusters the supplied electrical
+    interfaces by their shared bus (electrical connectivity) so the exporter can treat
+    every bus once; the result is a dict whose keys are the representative bus interfaces
+    and whose values are the other Interfaces that belong to the same bus.
+    """
+
+    @staticmethod
+    def group_into_buses(
+        nodes: set["Node[Any]"],
+    ) -> dict["Node[Any]", set["Node[Any]"]]:
+        remaining = set(nodes)
+        buses: dict["Node[Any]", set["Node[Any]"]] = {}
+
+        while remaining:
+            interface = remaining.pop()
+            connected = set(
+                interface.get_trait(is_interface)
+                .get_connected(include_self=True)
+                .keys()
+            )
+            buses[interface] = connected
+            remaining.difference_update(connected)
+
+        return buses
+
+    def is_connected_to(self, other: "NodeT") -> bool:
+        self_node = self.get_obj()
+        path = EdgeInterfaceConnection.is_connected_to(
+            source=self_node.instance, target=other.instance
+        )
+
+        return path[0] > 0 if path else False
+
+    def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
+        self_node = self.get_obj()
+        connected_nodes_map = EdgeInterfaceConnection.get_connected(
+            source=self_node.instance, include_self=include_self
+        )
+        return {
+            Node[Any].bind_instance(instance=node): Path(bfs_path)
+            for node, bfs_path in connected_nodes_map.items()
+        }
+
 
 # ------------------------------------------------------------
 # TODO move parameter stuff into own file (better into zig)
 
 
-LiteralT = float | int | str | bool
-Literal = LiteralT  # Type alias for compatibility with generated types
+# --------------------------------------------------------------------------------------
+# TODO remove
+# re-export GraphView to be used from fabll namespace
+Graph = TypeGraph
+# Node type aliases
+Module = Node
+type Module = Node
 
 
-class Parameter(Node):
-    def constrain_to_literal(self, g: GraphView, value: LiteralT) -> None:
-        node = self.instance
-        tg = not_none(TypeGraph.of_instance(instance_node=node))
-        lit = LiteralNode.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=LiteralNodeAttributes(value=value)
-        )
-
-        ExpressionAliasIs.alias_is(tg=tg, g=g, operands=[node, lit.instance])
-
-    def try_extract_constrained_literal(self) -> LiteralT | None:
-        # TODO: solver? `only_proven=True` parameter?
-        node = self.instance
-
-        if (
-            inbound_expr_edge := EdgeOperand.get_expression_edge(bound_node=node)
-        ) is None:
-            return None
-
-        expr = inbound_expr_edge.g().bind(node=inbound_expr_edge.edge().source())
-
-        class Ctx:
-            lit: LiteralNode | None = None
-
-        def visit(ctx: type[Ctx], edge: BoundEdge) -> None:
-            operand = Node[Any].bind_instance(edge.g().bind(node=edge.edge().target()))
-            tg = not_none(TypeGraph.of_instance(instance_node=operand.instance))
-            if LiteralNode.bind_typegraph(tg=tg).isinstance(instance=operand):
-                ctx.lit = LiteralNode.bind_instance(operand.instance)
-
-        EdgeOperand.visit_operand_edges(bound_node=expr, ctx=Ctx, f=visit)
-
-        if Ctx.lit is None:
-            return None
-        return LiteralNode.Attributes.of(node=Ctx.lit.instance).value
-
-    def force_extract_literal[T: LiteralT](self, t: type[T]) -> T:
-        lit = self.try_extract_constrained_literal()
-        if lit is None:
-            raise FaebrykApiException(f"Parameter {self} has no literal")
-        if not isinstance(lit, t):
-            raise FaebrykApiException(f"Parameter {self} has no literal of type {t}")
-        return lit
+# Going to replace MIF usages
+class NodeWithInterface(Node):
+    _is_interface = is_interface.MakeChild()
 
 
-@dataclass(frozen=True)
-class LiteralNodeAttributes(NodeAttributes):
-    value: Literal
+IMPLIED_PATHS = False
 
+# lib fields
+rt_field = None
+f_field = None
+d_field = None
+# Param stuff
+p_field = None
+Range = None
+RangeWithGaps = None
+Single = None
+DiscreteSet = None
+EmptySet = None
+RelaxedQuantity = None
+Expressions = None
+Domains = None
+Predicates = None
 
-class LiteralNode(Node[LiteralNodeAttributes]):
-    Attributes = LiteralNodeAttributes
-
-
-@dataclass(frozen=True)
-class ExpressionAliasIsAttributes(NodeAttributes):
-    constrained: bool  # TODO: principled reason for this not being a Parameter
-
-
-class ExpressionAliasIs(Node[ExpressionAliasIsAttributes]):
-    # TODO: constrain operand cardinality?
-
-    Attributes = ExpressionAliasIsAttributes
-
-    @classmethod
-    def alias_is(
-        cls, tg: TypeGraph, g: GraphView, operands: list[BoundNode]
-    ) -> BoundNode:
-        expr = cls.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=cls.Attributes(constrained=True)
-        )
-        for operand in operands:
-            EdgeOperand.add_operand(
-                bound_node=expr.instance,
-                operand=operand.node(),
-                operand_identifier=None,
-            )
-        return expr.instance
-
-
-# ------------------------------------------------------------
-class Sequence(Node):
-    """
-    A sequence of (non-unique) elements.
-    Sorted by insertion order.
-    """
-
-    _elem_identifier = "e"
-
-    def append(self, *elems: Node[Any]) -> Self:
-        cur_len = len(self.as_list())
-        for i, elem in enumerate(elems):
-            self.point_to(elem, self._elem_identifier, order=cur_len + i)
-        return self
-
-    def as_list(self) -> list[Node[Any]]:
-        return self.get_references(self._elem_identifier)
-
-
-class Set(Node):
-    """
-    A set of unique elements.
-    Sorted by insertion order.
-    """
-
-    _elem_identifier = "e"
-
-    def append(self, *elems: Node[Any]) -> Self:
-        by_uuid = {elem.instance.node().get_uuid(): elem for elem in elems}
-        cur = self.as_list()
-        cur_len = len(cur)
-        for node in cur:
-            by_uuid.pop(node.instance.node().get_uuid(), None)
-
-        for i, elem in enumerate(by_uuid.values()):
-            self.point_to(elem, self._elem_identifier, order=cur_len + i)
-
-        return self
-
-    def as_list(self) -> list[Node[Any]]:
-        return self.get_references(self._elem_identifier)
-
-    def as_set(self) -> set[Node[Any]]:
-        return set(self.as_list())
-
-
-class Traits:
-    def __init__(self, node: Node[Any]):
-        self.node = node
-
-    @classmethod
-    def bind(cls, node: Node[Any]) -> Self:
-        return cls(node)
-
-    def get_obj[N: Node[Any]](self, t: type[N]) -> N:
-        return self.node.get_parent_force()[0].cast(t)
-
-    @staticmethod
-    def mark_as_trait(t: BoundNodeType[Any, Any]) -> None:
-        Trait.mark_as_trait(trait_type=t.get_or_create_type())
-
-    @staticmethod
-    def add_to(node: Node[Any], trait: Node[Any]) -> None:
-        Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
-
-
-# ------------------------------------------------------------
+# --------------------------------------------------------------------------------------
 
 
 def _make_graph_and_typegraph():
     g = GraphView.create()
     tg = TypeGraph.create(g=g)
     return g, tg
+
+
+def isparameteroperable(candidate: object) -> bool:
+    """Temporary compatibility shim until ParameterOperatable migrates to Zig."""
+    return isinstance(candidate, Node)
 
 
 def test_fabll_basic():
@@ -877,6 +1566,9 @@ def test_fabll_basic():
     class FileLocation(Node[FileLocationAttributes]):
         Attributes = FileLocationAttributes
 
+    class TestNodeWithoutAttr(Node):
+        pass
+
     @dataclass(frozen=True)
     class SliceAttributes(NodeAttributes):
         start: int
@@ -885,25 +1577,16 @@ def test_fabll_basic():
 
     class Slice(Node[SliceAttributes]):
         Attributes = SliceAttributes
-
-        @classmethod
-        def __create_type__(cls, t: "BoundNodeType[Slice, Any]") -> None:
-            cls.tnwa = t.Child(TestNodeWithoutAttr)
-
-    class TestNodeWithoutAttr(Node):
-        pass
+        tnwa = ChildField(TestNodeWithoutAttr)
 
     class TestNodeWithChildren(Node):
-        @classmethod
-        def __create_type__(cls, t: "BoundNodeType[TestNodeWithoutAttr, Any]") -> None:
-            cls.tnwa1 = t.Child(TestNodeWithoutAttr)
-            cls.tnwa2 = t.Child(TestNodeWithoutAttr)
-
-            t._add_link(
-                lhs_reference_path=["tnwa1"],
-                rhs_reference_path=["tnwa2"],
-                edge=EdgePointer.build(identifier=None, order=None),
-            )
+        tnwa1 = ChildField(TestNodeWithoutAttr)
+        tnwa2 = ChildField(TestNodeWithoutAttr)
+        _edge = EdgeField(
+            lhs=[tnwa1],
+            rhs=[tnwa2],
+            edge=EdgePointer.build(identifier=None, order=None),
+        )
 
     g, tg = _make_graph_and_typegraph()
     fileloc = FileLocation.bind_typegraph(tg).create_instance(
@@ -978,98 +1661,26 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        @classmethod
-        def __create_type__(cls, t: "BoundNodeType[ExampleTrait, Any]") -> None:
-            Traits.mark_as_trait(t=t)
+        _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     class ExampleNode(Node):
-        @classmethod
-        def __create_type__(cls, t: "BoundNodeType[ExampleNode, Any]") -> None:
-            cls.example_trait = t.Child(ExampleTrait)
+        example_trait = ExampleTrait.MakeChild()
 
     node = ExampleNode.bind_typegraph(tg).create_instance(g=g)
     assert node.try_get_trait(ExampleTrait) is not None
 
 
-def test_pointer_helpers():
-    g, tg = _make_graph_and_typegraph()
-
-    class Leaf(Node):
-        pass
-
-    class Parent(Node):
-        @classmethod
-        def __create_type__(cls, t: "BoundNodeType[Parent, Any]") -> None:
-            cls.left = t.Child(Leaf)
-            cls.right = t.Child(Leaf)
-
-    parent = Parent.bind_typegraph(tg).create_instance(g=g)
-    left_child = parent.left.get()
-    right_child = parent.right.get()
-
-    parent.point_to(left_child, identifier="left_ptr")
-    parent.point_to(right_child, identifier="right_ptr")
-
-    pointed_edges: list[str | None] = []
-
-    def _collect(names: list[str | None], edge: BoundEdge):
-        names.append(edge.edge().name())
-
-    EdgePointer.visit_pointed_edges(
-        bound_node=parent.instance,
-        ctx=pointed_edges,
-        f=_collect,
-    )
-    assert pointed_edges.count("left_ptr") == 1
-    assert pointed_edges.count("right_ptr") == 1
-
-    left = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=parent.instance,
-        identifier="left_ptr",
-    )
-    assert left is not None
-    assert left.node().is_same(other=left_child.instance.node())
-
-    right = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=parent.instance,
-        identifier="right_ptr",
-    )
-    assert right is not None
-    assert right.node().is_same(other=right_child.instance.node())
-
-    parent.point_to(left_child, identifier="shared")
-    parent.point_to(right_child, identifier="shared")
-
-    shared_edges: list[BoundEdge] = []
-
-    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
-        ctx.append(edge)
-
-    EdgePointer.visit_pointed_edges_with_identifier(
-        bound_node=parent.instance,
-        identifier="shared",
-        ctx=shared_edges,
-        f=_collect_shared,
-    )
-    assert len(shared_edges) == 2
-
-    shared_nodes = parent.get_references(identifier="shared")
-    uuids = {node.instance.node().get_uuid() for node in shared_nodes}
-    assert uuids == {
-        left_child.instance.node().get_uuid(),
-        right_child.instance.node().get_uuid(),
-    }
-
-
 def test_set_basic():
     """Test basic Set functionality: append, as_list, as_set."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
     # Create a Set and some elements
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1100,12 +1711,14 @@ def test_set_basic():
 
 def test_set_deduplication():
     """Test that Set correctly deduplicates elements by UUID."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
 
@@ -1130,12 +1743,15 @@ def test_set_deduplication():
 
 def test_set_order_preservation():
     """Test that Set preserves insertion order of unique elements."""
+
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1163,12 +1779,14 @@ def test_set_order_preservation():
 
 def test_set_chaining():
     """Test that Set.append returns self for method chaining."""
+    import faebryk.library.Collections as Collections
+
     g, tg = _make_graph_and_typegraph()
 
     class Element(Node):
         pass
 
-    set_node = Set.bind_typegraph(tg).create_instance(g=g)
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -1184,7 +1802,253 @@ def test_set_chaining():
     assert len(elems) == 3
 
 
+def test_type_children():
+    import faebryk.library._F as F
+
+    g, tg = _make_graph_and_typegraph()
+    Resistor = F.Resistor.bind_typegraph(tg=tg)
+
+    children = Node.bind_instance(Resistor.get_or_create_type()).get_children(
+        direct_only=True,
+        types=Node,
+    )
+    print(indented_container([c.get_full_name(types=True) for c in children]))
+
+
+def test_manual_resistor_def():
+    import faebryk.library._F as F
+
+    g = GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    # create electrical type node and insert into type graph
+    _ = F.Electrical.bind_typegraph(tg=tg).get_or_create_type()
+
+    # create resistor type node and insert into type graph
+    # add make child nodes for p1 and p2, insert into type graph
+    Resistor = F.Resistor.bind_typegraph(tg=tg)
+
+    resistor_instance = Resistor.create_instance(g=g)
+    assert resistor_instance
+    print("resistor_instance:", resistor_instance.instance.node().get_dynamic_attrs())
+    print(resistor_instance._type_identifier())
+
+    # Electrical make child
+    p1 = EdgeComposition.get_child_by_identifier(
+        bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
+    )
+    assert p1 is not None
+    p1_fab = resistor_instance.unnamed[0].get()
+    assert p1_fab.instance.node().is_same(other=p1.node())
+    print("p1:", p1)
+
+    # unconstrained Parameter make child
+    resistance = EdgeComposition.get_child_by_identifier(
+        bound_node=resistor_instance.instance, child_identifier="resistance"
+    )
+    assert resistance is not None
+    print(
+        "resistance is type Parameter:",
+        EdgeType.is_node_instance_of(
+            bound_node=resistance,
+            node_type=Parameter.bind_typegraph(tg=tg).get_or_create_type().node(),
+        ),
+    )
+
+    # Constrained parameter type child
+    designator_prefix = not_none(
+        EdgeComposition.get_child_by_identifier(
+            bound_node=resistor_instance.instance,
+            child_identifier="designator_prefix",
+        )
+    )
+    prefix_param = not_none(
+        EdgeComposition.get_child_by_identifier(
+            bound_node=designator_prefix,
+            child_identifier="prefix_param",
+        )
+    )
+    constraint_edge = not_none(EdgeOperand.get_expression_edge(bound_node=prefix_param))
+    expression_node = not_none(
+        EdgeOperand.get_expression_node(edge=constraint_edge.edge())
+    )
+    expression_bnode = g.bind(node=expression_node)
+
+    operands: list[BoundNode] = []
+    EdgeOperand.visit_operand_edges(
+        bound_node=expression_bnode,
+        ctx=operands,
+        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+    )
+    for operand in operands:
+        attrs = EdgeType.get_type_node(
+            edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()
+        ).get_dynamic_attrs()
+        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
+
+    expression_bnode = g.bind(node=expression_node)
+    operands2: list[BoundNode] = []
+    EdgeOperand.visit_operand_edges(
+        bound_node=expression_bnode,
+        ctx=operands2,
+        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+    )
+    for operand in operands2:
+        attrs = EdgeType.get_type_node(
+            edge=not_none(EdgeType.get_type_edge(bound_node=operand)).edge()
+        ).get_dynamic_attrs()
+        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
+
+    # Is pickable by type
+    ipbt = not_none(
+        EdgeComposition.get_child_by_identifier(
+            bound_node=resistor_instance.instance,
+            child_identifier="_is_pickable",
+        )
+    )
+    ipbt_params = not_none(
+        EdgeComposition.get_child_by_identifier(
+            bound_node=ipbt,
+            child_identifier="params_",
+        )
+    )
+    variables: list[BoundNode] = []
+    ipbt_params.visit_edges_of_type(
+        edge_type=EdgePointer.get_tid(),
+        ctx=variables,
+        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
+    )
+    print(
+        "ipbt_params:",
+        [
+            EdgeComposition.get_name(
+                edge=not_none(
+                    EdgeComposition.get_parent_edge(bound_node=variable)
+                ).edge()
+            )
+            for variable in variables
+        ],
+    )
+
+
+def test_lightweight():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
+    # resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Test list fields
+    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
+    assert resistor_instance.unnamed[1].get().get_name() == "unnamed[1]"
+
+    # Test is pickable by type
+    ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
+    sorted_params = sorted(param.get_name() for param in ipbt.params)
+    assert sorted_params == ["max_power", "max_voltage", "resistance"]
+    assert ipbt.get_param("resistance").get_name() == "resistance"
+
+    # TODO: test endpoint extraction from endpoint property
+    # assert endpoint == "resistors"
+
+    # Test has_simple_value_representation
+    # hsvprp = resistor_instance.get_trait(
+    #     F.has_simple_value_representation
+    # )
+    # print(hsvprp.get_value())
+
+    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
+    # pat = not_none(
+    #     EdgePointer.get_pointed_node_by_identifier(
+    #         bound_node=bjt_instance.emitter.get().instance,
+    #         identifier="pin_association_table_set",
+    #     )
+    # )
+    # for lit in Set.bind_instance(instance=pat).as_list():
+    #     lit = LiteralNode.bind_instance(instance=lit.instance)
+    #     print(lit.get_value())
+
+    # print(pah.get_nc_literals())
+    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+    bjt_instance = F.BJT.bind_typegraph(tg=tg).create_instance(g=g)
+    pah = bjt_instance.get_trait(F.has_pin_association_heuristic)
+    #
+    # print(nc_set)
+    # print(pah.nc.get())
+    # print(pah.nc.get().as_list())
+    # print(pah.get_nc_literals())
+    print(pah.get_mapping_as_dict())
+    print(pah.get_pins(pins=[("1", "E"), ("2", "Collector"), ("3", "B")]))
+
+    # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
+    # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
+
+    # TODO: Fix this to pull traits from the type node
+    # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
+    # print(resistor_instance.get_trait(F.has_usage_example).language)
+
+    simple_repr = resistor_instance.get_trait(F.has_simple_value_representation)
+    print(simple_repr.get_specs())
+    specs_set = simple_repr.specs_set_.get()
+    assert isinstance(specs_set, F.Collections.PointerSet)
+    print(simple_repr.get_params())
+    print(simple_repr.get_value())
+
+    _ = F.Battery.bind_typegraph(tg=tg).get_or_create_type()
+    battery_instance = F.Battery.bind_typegraph(tg=tg).create_instance(g=g)
+    ref = battery_instance.get_trait(
+        F.has_single_electric_reference_defined
+    ).get_reference()
+    print(ref)
+    assert (
+        battery_instance.get_trait(F.has_net_name).level
+        == F.has_net_name.Level.SUGGESTED
+    )
+    assert battery_instance.get_trait(F.has_net_name).name == "BAT_VCC"
+
+    _ = F.OpAmp.bind_typegraph(tg=tg).get_or_create_type()
+    op_amp_instance = F.OpAmp.bind_typegraph(tg=tg).create_instance(g=g)
+    print(
+        op_amp_instance.get_trait(F.has_pin_association_heuristic).get_mapping_as_dict()
+    )
+
+    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
+    # footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # print(resistor_instance.get_trait(F.has_footprint))
+    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
+    # metadata = resistor_instance.get_children(
+    #     direct_only=True, types=F.SerializableMetadata
+    # )
+    print(F.SerializableMetadata.get_properties(node=resistor_instance))
+    # print(F.SerializableMetadata.get_properties(node=resistor_instance))
+
+    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
+
+    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
+    sym = resistor_instance.get_trait(F.can_attach_to_footprint_symmetrically)
+    print(sym.electricals_.get().as_list())
+
+    _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
+    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+
+    _ = F.has_kicad_footprint.bind_typegraph(tg=tg).get_or_create_type()
+    kicad_footprint = F.has_kicad_footprint.bind_typegraph(tg=tg).create_instance(g=g)
+    kicad_footprint = kicad_footprint.setup(
+        kicad_identifier="libR_0402_1005Metric",
+        pinmap={pad1: "P1", pad2: "P2"},
+    )
+    print(kicad_footprint.get_kicad_footprint())
+    print(kicad_footprint.get_pin_names())
+
+
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_fabll_basic)
+    # typer.run(test_fabll_basic)
+
+    # test_manual_resistor_def()
+
+    typer.run(test_lightweight)

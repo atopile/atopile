@@ -1,7 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from faebryk.core.moduleinterface import ModuleInterface
+import faebryk.core.node as fabll
 
 
-class Signal(ModuleInterface): ...
+class Signal(fabll.Node):
+    _is_interface = fabll.is_interface.MakeChild()

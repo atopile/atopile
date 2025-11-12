@@ -5,8 +5,8 @@ import logging
 
 import pytest
 
+import faebryk.core.node as fabll
 from faebryk.core.cpp import Graph
-from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Add,
     And,
@@ -38,7 +38,6 @@ from faebryk.core.solver.utils import (
     FullyAssociative,
     MutatorUtils,
 )
-from faebryk.libs.library import L
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, times
@@ -53,7 +52,7 @@ def _create_letters(
 
     out = []
 
-    class App(Node):
+    class App(fabll.Node):
         def __preinit__(self) -> None:
             for _ in range(n):
                 p = Parameter()
@@ -85,9 +84,9 @@ def test_flatten_associative(op: type[Expression]):
         return MutatorUtils.flatten_associative(op, lambda _, __: True)
 
     if issubclass(op, Logic):
-        domain = L.Domains.BOOL()
+        domain = fabll.Domains.BOOL()
     else:
-        domain = L.Domains.Numbers.REAL()
+        domain = fabll.Domains.Numbers.REAL()
 
     A, B, C, D, E = times(5, lambda: Parameter(domain=domain))
 
@@ -255,7 +254,7 @@ def test_get_correlations_shared_predicates():
     correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
 
-    E2 = Is(A * B, L.Range(0, 10))
+    E2 = Is(A * B, fabll.Range(0, 10))
 
     correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
@@ -274,8 +273,8 @@ def test_get_correlations_correlated_regression():
     A = Parameter()
     B = Parameter()
 
-    A.alias_is(L.Range(5, 10))
-    B.alias_is(L.Range(10, 15))
+    A.alias_is(fabll.Range(5, 10))
+    B.alias_is(fabll.Range(10, 15))
 
     # correlate
     o = B.alias_is(A + 5)
@@ -470,8 +469,8 @@ def test_traceback_filtering_tree():
     context, variables, graph = _create_letters(3)
     A, B, C = variables
 
-    B.constrain_subset(L.Range(0, 10))
-    C.constrain_subset(L.Range(5, 15))
+    B.constrain_subset(fabll.Range(0, 10))
+    C.constrain_subset(fabll.Range(5, 15))
 
     A.constrain_subset(B)
     A.constrain_subset(C)
@@ -494,8 +493,8 @@ def test_contradiction_message_subset():
     context, variables, graph = _create_letters(1)
     (A,) = variables
 
-    A.constrain_subset(L.Range(6, 7))
-    A.alias_is(L.Range(4, 5))
+    A.constrain_subset(fabll.Range(6, 7))
+    A.alias_is(fabll.Range(4, 5))
 
     solver = DefaultSolver()
 
@@ -507,8 +506,8 @@ def test_contradiction_message_superset():
     context, variables, graph = _create_letters(1)
     (A,) = variables
 
-    A.constrain_superset(L.Range(0, 10))
-    A.alias_is(L.Range(4, 5))
+    A.constrain_superset(fabll.Range(0, 10))
+    A.alias_is(fabll.Range(4, 5))
 
     solver = DefaultSolver()
 

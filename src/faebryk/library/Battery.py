@@ -2,42 +2,40 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.libs.library.L as L
-from faebryk.core.module import Module
-from faebryk.libs.units import P
 
 
-class Battery(Module):
-    voltage = L.p_field(
-        units=P.V,
-        soft_set=L.Range(0 * P.V, 100 * P.V),
-        likely_constrained=True,
+class Battery(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
     )
-    capacity = L.p_field(
-        units=P.Ah,
-        soft_set=L.Range(100 * P.mAh, 100 * P.Ah),
-        likely_constrained=True,
+    capacity = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.AmpereHour,
+    )
+    power = F.ElectricPower.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+
+    # TODO: Add trait edge to power.hv
+    # _net_name = F.has_net_name.MakeChild(
+    #     name="BAT_VCC",
+    #     level=F.has_net_name.Level.SUGGESTED,
+    # )
+
+    designator_prefix = F.has_designator_prefix.MakeChild(
+        F.has_designator_prefix.Prefix.BAT
     )
 
-    power: F.ElectricPower
-
-    def __preinit__(self) -> None:
-        self.power.voltage.constrain_subset(self.voltage)
-
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self.power)
-
-    designator = L.f_field(F.has_designator_prefix)("BAT")
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.power.hv.add(
-            F.has_net_name("BAT_VCC", level=F.has_net_name.Level.SUGGESTED)
-        )
-
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Battery, ElectricPower
 
@@ -58,4 +56,4 @@ class Battery(Module):
         battery_pack.capacity = 2000mAh +/- 5%
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

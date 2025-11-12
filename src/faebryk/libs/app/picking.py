@@ -5,9 +5,8 @@ import json
 import logging
 from enum import StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
@@ -30,21 +29,21 @@ class Properties(StrEnum):
     param_wildcard = "PARAM_*"
 
 
-def load_part_info_from_pcb(G: Graph):
+def load_part_info_from_pcb(G: fabll.Graph):
     """
     Load descriptive properties from footprints and saved parameters.
     """
-    nodes = GraphFunctions(G).nodes_with_trait(
+    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(
         PCB_Transformer.has_linked_kicad_footprint
     )
 
     for node, trait in nodes:
-        assert isinstance(node, Module)
+        assert node.has_trait(fabll.is_module)
         if isinstance(node, F.Footprint):
             continue
         if node.has_trait(F.has_part_picked):
             continue
-        assert node.has_trait(F.has_descriptive_properties), "Should load when linking"
+        assert F.SerializableMetadata.get_properties(node), "Should load when linking"
 
         part_props = [Properties.lcsc, Properties.manufacturer, Properties.partno]
         fp = trait.get_fp()
@@ -55,7 +54,7 @@ def load_part_info_from_pcb(G: Graph):
         }
         if fp_props.get(Properties.lcsc) == NO_LCSC_DISPLAY:
             del fp_props[Properties.lcsc]
-        props = node.get_trait(F.has_descriptive_properties).get_properties()
+        props = F.SerializableMetadata.get_properties(node)
 
         # check if node has changed
         if any(props.get(k.value) != fp_props.get(k.value) for k in part_props):
@@ -67,35 +66,39 @@ def load_part_info_from_pcb(G: Graph):
 
         # Load Part from PCB
         if lcsc_id and manufacturer and partno:
-            node.add(
-                F.has_part_picked(
-                    PickedPartLCSC(
-                        supplier_partno=lcsc_id,
-                        manufacturer=manufacturer,
-                        partno=partno,
-                    )
-                )
-            )
-        elif lcsc_id:
-            node.add(
-                F.has_explicit_part.by_supplier(
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_part_picked
+            ).setup(
+                PickedPartLCSC(
                     supplier_partno=lcsc_id,
-                    supplier_id="lcsc",
-                )
-            )
-        elif manufacturer and partno:
-            node.add(
-                F.has_explicit_part.by_mfr(
-                    mfr=manufacturer,
+                    manufacturer=manufacturer,
                     partno=partno,
                 )
             )
+        elif lcsc_id:
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_explicit_part
+            ).setup_by_supplier(
+                supplier_partno=lcsc_id,
+                supplier_id="lcsc",
+            )
+        elif manufacturer and partno:
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_explicit_part
+            ).setup_by_mfr(
+                mfr=manufacturer,
+                partno=partno,
+            )
+        else:
+            raise ValueError(f"No part info found for {node.get_name()}")
 
         if lcsc_id:
             lcsc_attach(node, lcsc_id)
 
         if "Datasheet" in fp_props:
-            node.add(F.has_datasheet_defined(fp_props["Datasheet"]))
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.has_datasheet
+            ).setup(datasheet=fp_props["Datasheet"])
 
         # Load saved parameters from descriptive properties
         for key, value in props.items():
@@ -117,12 +120,12 @@ def load_part_info_from_pcb(G: Graph):
             param.alias_is(param_value)
 
 
-def save_part_info_to_pcb(G: Graph):
+def save_part_info_to_pcb(G: fabll.Graph):
     """
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
-    nodes = GraphFunctions(G).nodes_with_trait(F.has_part_picked)
+    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_part_picked)
 
     for node, _ in nodes:
         if t := node.try_get_trait(F.has_part_picked):
@@ -130,20 +133,16 @@ def save_part_info_to_pcb(G: Graph):
             if part is None:
                 continue
             if isinstance(part, PickedPartLCSC):
-                node.add(
-                    F.has_descriptive_properties_defined(
-                        {Properties.lcsc: part.lcsc_id}
-                    )
-                )
-                # TODO save info?
-            node.add(
-                F.has_descriptive_properties_defined(
-                    {
-                        Properties.manufacturer: part.manufacturer,
-                        Properties.partno: part.partno,
-                    }
-                )
-            )
+                # TODO: Change this from Traits.create... to Node.create_instance
+                fabll.Traits.create_and_add_instance_to(
+                    node=node, trait=F.SerializableMetadata
+                ).setup(key=Properties.lcsc, value=part.lcsc_id)
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=Properties.manufacturer, value=part.manufacturer)
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=Properties.partno, value=part.partno)
 
         for p in node.get_children(direct_only=True, types=Parameter):
             lit = p.try_get_literal()
@@ -152,4 +151,6 @@ def save_part_info_to_pcb(G: Graph):
             lit = P_Set.from_value(lit)
             key = f"{Properties.param_prefix}{p.get_name()}"
             value = json.dumps(lit.serialize())
-            node.add(F.has_descriptive_properties_defined({key: value}))
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=key, value=value)

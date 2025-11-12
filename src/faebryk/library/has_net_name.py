@@ -1,10 +1,11 @@
 from enum import IntEnum, auto
+from typing import Any, Self
 
-from faebryk.core.trait import TraitImpl
-from faebryk.libs.library import L
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
-class has_net_name(L.Trait.decless()):
+class has_net_name(fabll.Node):
     """Provide a net name suggestion or expectation"""
 
     # TODO:
@@ -16,20 +17,37 @@ class has_net_name(L.Trait.decless()):
         SUGGESTED = auto()
         EXPECTED = auto()
 
-    def __init__(self, name: str, level: Level = Level.SUGGESTED):
-        super().__init__()
-        self.name = name
-        self.level = level
+    name_ = F.Parameters.StringParameter.MakeChild()
+    level_ = F.Parameters.EnumParameter.MakeChild(enum_t=Level)
+
+    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
     @classmethod
-    def suggested(cls, name: str) -> "has_net_name":
-        return cls(name, cls.Level.SUGGESTED)
+    def MakeChild(cls, name: str, level: Level) -> fabll.ChildField[Any]:
+        out = fabll.ChildField(cls)
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.name_], name)
+        )
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.level_],
+                str(level.value),  # TODO: Change to make literal Enum
+            )
+        )
+        return out
 
-    @classmethod
-    def expected(cls, name: str) -> "has_net_name":
-        return cls(name, cls.Level.EXPECTED)
+    @property
+    def name(self) -> str:
+        return str(self.name_.get().try_extract_constrained_literal())
 
-    def handle_duplicate(self, old: TraitImpl, node: L.Node) -> bool:
-        assert isinstance(old, has_net_name)  # Asserting trait, not impl
-        # FIXME: gracefully handle hitting this multiple times
-        return super().handle_duplicate(old, node)
+    @property
+    def level(self) -> Level | None:
+        level_literal = self.level_.get().try_extract_constrained_literal()
+        if level_literal is None:
+            return None
+        return self.Level(int(level_literal))
+
+    def setup(self, name: str, level: Level) -> Self:
+        self.name_.get().constrain_to_single(value=name)
+        self.level_.get().constrain_to_literal(g=self.instance.g(), value=level.value)
+        return self

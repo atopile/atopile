@@ -2,32 +2,36 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class Crystal_Oscillator(Module):
+class Crystal_Oscillator(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    crystal: F.Crystal
-    capacitors = L.list_field(2, F.Capacitor)
-    current_limiting_resistor: F.Resistor
+    crystal = F.Crystal.MakeChild()
+    capacitors = [F.Capacitor.MakeChild() for _ in range(2)]
+    current_limiting_resistor = F.Resistor.MakeChild()
+    xtal_if = F.XtalIF.MakeChild()
 
-    xtal_if: F.XtalIF
-
-    # ----------------------------------------
-    #               parameters
-    # ----------------------------------------
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
-    _STRAY_CAPACITANCE = L.Range(1 * P.pF, 5 * P.pF)
+    _STRAY_CAPACITANCE = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Farad,
+    )
 
-    @L.rt_field
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
     def capacitance(self):
-        return (self.crystal.load_capacitance - self._STRAY_CAPACITANCE) * 2
+        return (self.crystal.get().load_capacitance.get(). - self._STRAY_CAPACITANCE.get()) * 2
 
     def __preinit__(self):
         for cap in self.capacitors:
@@ -43,11 +47,11 @@ class Crystal_Oscillator(Module):
         )
         self.crystal.unnamed[1].connect(self.xtal_if.xin)
 
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
+        _can_bridge = F.can_bridge.MakeChild(
+            in_=self.xtal_if.get().xin, out_=self.xtal_if.get().xout
+        )
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import Crystal_Oscillator, ElectricPower
 

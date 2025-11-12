@@ -7,29 +7,21 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from itertools import chain
-from types import UnionType
-from typing import Any, Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Iterable, Sequence
 
 from more_itertools import first
 from rich.table import Table
 from rich.tree import Tree
 
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.parameter import (
-    ConstrainableExpression,
-    Domain,
-    Expression,
-    Is,
-    IsSubset,
-    Parameter,
-    ParameterOperatable,
-)
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+import faebryk.library.Expressions as Expressions
+from faebryk.core.node import Graph
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.utils import (
     S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
-    CanonicalExpression,
     ContradictionByLiteral,
     MutatorUtils,
     SolverAll,
@@ -37,15 +29,9 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     get_graphs,
 )
+from faebryk.library.Expressions import IsConstrainable
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.logging import rich_to_string
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-    Quantity_Set,
-)
-from faebryk.libs.sets.sets import P_Set, as_lit
-from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
     KeyErrorNotFound,
     cast_assert,
@@ -60,6 +46,10 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 if S_LOG:
     logger.setLevel(logging.DEBUG)
+
+
+Is = F.Expressions.Is
+IsSubset = F.Expressions.IsSubset
 
 
 @dataclass
@@ -111,11 +101,14 @@ class Transformations:
 
     @staticmethod
     def identity(
-        *gs: Graph, input_print_context: ParameterOperatable.ReprContext
+        *gs: fabll.Graph, input_print_context: ParameterOperatable.ReprContext
     ) -> "Transformations":
         return Transformations(
             mutated={
-                po: po for po in GraphFunctions(*gs).nodes_of_type(ParameterOperatable)
+                po: po
+                for po in fabll.Node.bind_typegraph(*gs).nodes_of_type(
+                    ParameterOperatable
+                )
             },
             input_print_context=input_print_context,
         )
@@ -132,7 +125,9 @@ class Transformations:
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
 
         for s, d in self.mutated.items():
-            if isinstance(s, Parameter) and isinstance(d, Parameter):
+            if Expressions.isinstance_node(
+                s, fabll.Parameter
+            ) and Expressions.isinstance_node(d, fabll.Parameter):
                 s.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s]
                 d_mapping = context_new.variable_mapping.mapping.get(d, None)
@@ -178,8 +173,8 @@ class Transformations:
         )
 
     def get_new_constraints(
-        self, op: ParameterOperatable
-    ) -> list[ConstrainableExpression]:
+        self, op: fabll.is_parameter_operatable
+    ) -> list[F.Expressions.IsConstrainable]:
         # TODO could still happen, but then we have clash
         # keep this in mind for future
         if self.is_identity:
@@ -189,7 +184,7 @@ class Transformations:
         target = self.mutated[op]
         out = []
         for e in self.created:
-            if not isinstance(e, ConstrainableExpression) or not e.constrained:
+            if not Expressions.is_constrainable_node(e) or not e.constrained:
                 continue
             if target in e.get_operand_operatables():
                 out.append(e)
@@ -210,12 +205,12 @@ class Traceback:
 
     @dataclass(repr=False)
     class Stage:
-        srcs: Sequence[ParameterOperatable]
-        dst: ParameterOperatable
+        srcs: Sequence[fabll.is_parameter_operatable]
+        dst: fabll.is_parameter_operatable
         algo: str
         reason: "Traceback.Type"
-        src_context: ParameterOperatable.ReprContext
-        dst_context: ParameterOperatable.ReprContext
+        src_context: fabll.is_parameter_operatable.ReprContext
+        dst_context: fabll.is_parameter_operatable.ReprContext
         related: list["Traceback.Stage"]
 
         def __repr__(self) -> str:
@@ -317,7 +312,9 @@ class Traceback:
         # TODO
         return f"Traceback({id(self):04x}) {self.stage}"
 
-    def as_rich_tree(self, visited: set[ParameterOperatable] | None = None) -> Tree:
+    def as_rich_tree(
+        self, visited: set[fabll.is_parameter_operatable] | None = None
+    ) -> Tree:
         from rich.text import Text
 
         if visited is None:
@@ -369,16 +366,16 @@ class MutationStage:
         self,
         algorithm: SolverAlgorithm | str,
         iteration: int,
-        print_context: ParameterOperatable.ReprContext,
+        print_context: fabll.is_parameter_operatable.ReprContext,
         transformations: Transformations,
     ):
         self.algorithm = algorithm
         self.iteration = iteration
         self.transformations = transformations
         self.input_print_context = print_context
-        self.input_operables = GraphFunctions(*self.input_graphs).nodes_of_type(
-            ParameterOperatable
-        )
+        self.input_operables = fabll.Node.bind_typegraph(
+            *self.input_graphs
+        ).nodes_with_trait(fabll.is_parameter_operatable)
 
     @property
     def output_graphs(self) -> list[Graph]:
@@ -398,12 +395,14 @@ class MutationStage:
 
     @property
     @once
-    def output_operables(self) -> set[ParameterOperatable]:
-        return GraphFunctions(*self.output_graphs).nodes_of_type(ParameterOperatable)
+    def output_operables(self) -> set[fabll.is_parameter_operatable]:
+        return fabll.Node.bind_typegraph(*self.output_graphs).nodes_with_trait(
+            fabll.is_parameter_operatable
+        )
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        *graphs: fabll.Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext,
@@ -438,7 +437,7 @@ class MutationStage:
         log: Callable[[str], None] = logger.debug,
     ):
         for i, g in enumerate(self.output_graphs):
-            pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
+            pre_nodes = fabll.Node.bind_typegraph(g).nodes_of_type(type_filter)
             if SHOW_SS_IS:
                 nodes = pre_nodes
             else:
@@ -515,7 +514,11 @@ class MutationStage:
                 lit = next(iter(op.get_operand_literals().values()))
                 if not SHOW_SS_IS and expr in created_ops:
                     continue
-                alias_type = "alias" if isinstance(op, Is) else "subset"
+                alias_type = (
+                    "alias"
+                    if Expressions.isinstance_node(op, Expressions.Is)
+                    else "subset"
+                )
                 key = f"new_{alias_type}\n{lit}"
                 value = expr.compact_repr(context_new)
             if key_from_ops:
@@ -546,7 +549,7 @@ class MutationStage:
             if old == new:
                 continue
             if (
-                isinstance(s, ConstrainableExpression)
+                Expressions.is_constrainable_node(s)
                 and new.replace("✓", "") == old.replace("✓", "")
                 and d.try_get_literal() != s.try_get_literal()
                 and new.count("✓") == old.count("✓") + 1
@@ -685,7 +688,7 @@ class MutationMap:
         """
         return mapped param, True if removed or False if not mapped
         """
-        assert isinstance(param, ParameterOperatable)
+        assert fabll.isparameteroperable(param)
         is_root = param.get_parent() is not None
 
         if not self.non_identity_stages:
@@ -779,32 +782,37 @@ class MutationMap:
     def is_mapped(self, p: ParameterOperatable) -> bool:
         return self.map_forward(p) is not False
 
+    def make_lit(self):
+        # TODO
+        # need to use internal bound lit types to create new instance
+        raise NotImplementedError
+
     def try_get_literal(
         self,
-        param: ParameterOperatable,
+        param: fabll.NodeT,
         allow_subset: bool = False,
         domain_default: bool = False,
-    ) -> SolverLiteral | None:
+    ) -> fabll.NodeT | None:
         def _default():
             if not domain_default:
                 return None
-            if not isinstance(param, Parameter):
+            if not Expressions.isinstance_node(param, fabll.Parameter):
                 raise ValueError("domain_default only supported for parameters")
             return param.domain_set()
 
         maps_to = self.map_forward(param).maps_to
-        if not isinstance(maps_to, ParameterOperatable):
+        if not fabll.isparameteroperable(maps_to):
             return _default()
         lit = ParameterOperatable.try_extract_literal(
             maps_to, allow_subset=allow_subset
         )
         if lit is None:
             return _default()
-        lit = as_lit(lit)
-        param_units = HasUnit.get_units_or_dimensionless(param)
-        if isinstance(lit, Quantity_Set) and not lit.units.is_compatible_with(
-            param_units
-        ):
+        lit = self.make_lit(lit)
+        param_units = F.Units.IsUnit.get_units_or_dimensionless(param)
+        if (
+            lit_n := lit.try_cast(F.Literals.Numbers)
+        ) is not None and not lit_n.are_units_compatible(param_units):
             fac = quantity(1, param_units)
             return lit * fac / fac.to_base_units().m
         return lit
@@ -821,7 +829,7 @@ class MutationMap:
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        *graphs: fabll.Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext | None = None,
@@ -889,10 +897,10 @@ class MutationMap:
     def print_name_mappings(self, log: Callable[[str], None] = logger.debug):
         table = Table(title="Name mappings", show_lines=True)
         table.add_column("Variable name")
-        table.add_column("Node name")
+        table.add_column("fabll.Node name")
 
         for p in sorted(
-            GraphFunctions(*self.input_graphs).nodes_of_type(Parameter),
+            fabll.Node.bind_typegraph(*self.input_graphs).nodes_of_type(Parameter),
             key=Parameter.get_full_name,
         ):
             table.add_row(p.compact_repr(self.input_print_context), p.get_full_name())
@@ -935,10 +943,10 @@ class MutationMap:
         out = {
             v
             for v, ks in self.compressed_mapping_backwards.items()
-            if isinstance(v, CanonicalExpression)
+            if Expressions.is_canonical_expression_node(v)
             # if all merged changed, else covered by merged
             and all(
-                isinstance(k, Expression)
+                Expressions.is_expression_node(k)
                 and k is not v
                 and k.compact_repr() != v.compact_repr()
                 for k in ks
@@ -996,7 +1004,7 @@ class Mutator:
     ) -> Parameter:
         if param in self.transformations.mutated:
             out = self.get_mutated(param)
-            assert isinstance(out, Parameter)
+            assert Expressions.isinstance_node(out, fabll.Parameter)
             assert out.units == units
             assert out.domain == domain
             assert out.soft_set == soft_set
@@ -1040,13 +1048,13 @@ class Mutator:
         else:
             new_expr = expr_factory(*new_operands)
 
-        if constrain and isinstance(new_expr, ConstrainableExpression):
+        if constrain and Expressions.is_constrainable_node(new_expr):
             new_expr.constrained = True
             # TODO this is better, but ends up in inf loop
             # self.constrain(new_expr)
 
         for op in new_operands:
-            if isinstance(op, ParameterOperatable):
+            if fabll.isparameteroperable(op):
                 assert op.get_graph() == new_expr.get_graph(), (
                     f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
                 )
@@ -1070,7 +1078,7 @@ class Mutator:
 
         if expr in self.transformations.mutated:
             out = self.get_mutated(expr)
-            assert isinstance(out, CanonicalExpression)
+            assert Expressions.is_canonical_expression_node(out)
             # TODO more checks
             assert type(out) is expression_factory
             # still need to run soft_mutate even if expr already in repr
@@ -1099,7 +1107,7 @@ class Mutator:
             if exists is not None:
                 return self._mutate(expr, self.get_copy(exists))
 
-        constrain = isinstance(expr, ConstrainableExpression) and expr.constrained
+        constrain = Expressions.is_constrainable_node(expr) and expr.constrained
         new_expr = self._create_expression(
             expression_factory,
             *operands,
@@ -1107,7 +1115,7 @@ class Mutator:
             constrain=constrain,
         )
 
-        if isinstance(expr, ConstrainableExpression):
+        if Expressions.is_constrainable_node(expr):
             new_expr = cast_assert(ConstrainableExpression, new_expr)
             if self.is_predicate_terminated(expr):
                 new_expr._solver_terminated = True
@@ -1151,7 +1159,7 @@ class Mutator:
                 if soft is Is
                 else self.utils.get_supersets(expr)
             )
-            if isinstance(alias, expression_factory)
+            if Expressions.isinstance_node(alias, expression_factory)
             and alias.is_congruent_to_factory(
                 expression_factory, operands, allow_uncorrelated=True
             )
@@ -1199,11 +1207,11 @@ class Mutator:
         ```
         """
         unpacked = expr.operands[0] if operands is None else operands[0]
-        if not isinstance(unpacked, ParameterOperatable):
+        if not fabll.isparameteroperable(unpacked):
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(expr, self.get_copy(unpacked))
-        if isinstance(expr, ConstrainableExpression) and expr.constrained:
-            assert isinstance(out, ConstrainableExpression)
+        if Expressions.is_constrainable_node(expr) and expr.constrained:
+            assert Expressions.is_constrainable_node(out)
             self.constrain(out)
         return out
 
@@ -1215,13 +1223,13 @@ class Mutator:
         '''
         """
         inner_expr = expr.operands[0]
-        if not isinstance(inner_expr, Expression):
+        if not Expressions.is_expression_node(inner_expr):
             raise ValueError("Inner operand must be an expression")
         inner_operand = inner_expr.operands[0]
-        if not isinstance(inner_operand, ParameterOperatable):
+        if not fabll.isparameteroperable(inner_operand):
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(expr, self.get_copy(inner_operand))
-        if isinstance(out, ConstrainableExpression) and out.constrained:
+        if Expressions.is_constrainable_node(out) and out.constrained:
             self.constrain(out)
         return out
 
@@ -1245,7 +1253,7 @@ class Mutator:
     def get_copy(
         self, obj: ParameterOperatable.All, accept_soft: bool = True
     ) -> ParameterOperatable.All:
-        if not isinstance(obj, ParameterOperatable):
+        if not fabll.isparameteroperable(obj):
             return obj
 
         if accept_soft and obj in self.transformations.soft_replaced:
@@ -1266,9 +1274,9 @@ class Mutator:
         # purely for debug
         self.transformations.copied.add(obj)
 
-        if isinstance(obj, Expression):
+        if Expressions.is_expression_node(obj):
             return self.mutate_expression(obj)
-        elif isinstance(obj, Parameter):
+        elif Expressions.isinstance_node(obj, fabll.Parameter):
             return self.mutate_parameter(obj)
 
         assert False
@@ -1289,7 +1297,7 @@ class Mutator:
 
         assert issubclass(expr_factory, CanonicalExpression)
         from_ops = [
-            x for x in unique_ref(from_ops or []) if isinstance(x, ParameterOperatable)
+            x for x in unique_ref(from_ops or []) if fabll.isparameteroperable(x)
         ]
         if _relay:
             if constrain and expr_factory is IsSubset:
@@ -1325,7 +1333,7 @@ class Mutator:
             self.transformations.created[expr] = from_ops
 
         # TODO double constrain ugly
-        if constrain and isinstance(expr, ConstrainableExpression):
+        if constrain and Expressions.is_constrainable_node(expr):
             self.constrain(expr)
 
         return expr
@@ -1338,12 +1346,12 @@ class Mutator:
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
 
-    def remove_graph(self, g: Graph):
+    def remove_graph(self, g: fabll.Graph):
         # TODO implementing graph removal has to be more explicit
         # e.g mark as no more use, and then future mutators ignore it for the algos
         # for now at least remove expressions
         assert g in self.G
-        self.remove(*GraphFunctions(g).nodes_of_type(Expression))
+        self.remove(*fabll.Node.bind_typegraph(g).nodes_of_type(Expression))
 
     def register_created_parameter(
         self, param: Parameter, from_ops: Sequence[ParameterOperatable] | None = None
@@ -1370,65 +1378,53 @@ class Mutator:
         pred._solver_terminated = False
 
     # Algorithm Query ------------------------------------------------------------------
-    def is_predicate_terminated(self, pred: ParameterOperatable) -> bool:
-        assert isinstance(pred, ConstrainableExpression)
-        return pred._solver_terminated
+    def is_predicate_terminated(self, pred: fabll.Node) -> bool:
+        return pred.get_trait(IsConstrainable).is_terminated()
 
-    def nodes_of_type[T: "ParameterOperatable"](
+    def get_parameter_operatables(
+        self, include_terminated: bool = False, sort_by_depth: bool = False
+    ) -> set[fabll.Node]:
+        # TODO
+        pass
+
+    def get_parameters(self) -> set[Parameter]:
+        # TODO
+        pass
+
+    def get_expressions[T: "fabll.Node"](
         self,
-        t: type[T] = ParameterOperatable,
+        t: type[T] = fabll.Node,
         sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
         include_terminated: bool = False,
+        required_traits: tuple[type[fabll.Node], ...] = (),
     ) -> list[T] | set[T]:
         assert not new_only or not created_only
 
         if new_only:
-            out = {n for n in self._new_operables if isinstance(n, t)}
+            out = {n for n in self._new_operables if Expressions.isinstance_node(n, t)}
         elif created_only:
-            out = {n for n in self.transformations.created if isinstance(n, t)}
+            out = {
+                n
+                for n in self.transformations.created
+                if Expressions.isinstance_node(n, t)
+            }
         else:
-            out = GraphFunctions(*self.G).nodes_of_type(t)
+            out = fabll.Node.bind_typegraph(*self.G).nodes_of_type(t)
 
         if not include_terminated:
             out = {
                 n
                 for n in out
                 if not (
-                    isinstance(n, ConstrainableExpression)
-                    and self.is_predicate_terminated(n)
+                    n.has_trait(IsConstrainable) and self.is_predicate_terminated(n)
                 )
             }
 
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
 
-        return out
-
-    def nodes_of_types(
-        self,
-        t: tuple[type[ParameterOperatable], ...] | UnionType,
-        sort_by_depth: bool = False,
-        include_terminated: bool = False,
-        new_only: bool = False,
-    ) -> list[ParameterOperatable] | set[ParameterOperatable]:
-        if new_only:
-            out = {n for n in self._new_operables if isinstance(n, t)}
-        else:
-            out = GraphFunctions(*self.G).nodes_of_types(t)
-        out = cast(set[ParameterOperatable], out)
-        if not include_terminated:
-            out = {
-                n
-                for n in out
-                if not (
-                    isinstance(n, ConstrainableExpression)
-                    and self.is_predicate_terminated(n)
-                )
-            }
-        if sort_by_depth:
-            out = ParameterOperatable.sort_by_depth(out, ascending=True)
         return out
 
     @property
@@ -1445,7 +1441,7 @@ class Mutator:
 
         aliases: set[CanonicalExpression]
         aliases = set(
-            self.nodes_of_type(Is, new_only=new_only, include_terminated=True)
+            self.get_expressions(Is, new_only=new_only, include_terminated=True)
         )
 
         if new_only and self._mutations_since_last_iteration is not None:
@@ -1468,7 +1464,7 @@ class Mutator:
     def _get_literal_subsets(self, new_only: bool = True):
         subsets: set[CanonicalExpression]
         subsets = set(
-            self.nodes_of_type(IsSubset, new_only=new_only, include_terminated=True)
+            self.get_expressions(IsSubset, new_only=new_only, include_terminated=True)
         )
 
         if new_only and self._mutations_since_last_iteration is not None:
@@ -1557,7 +1553,9 @@ class Mutator:
         self.print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
 
-        self._starting_operables = set(self.nodes_of_type(include_terminated=True))
+        self._starting_operables = set(
+            self.get_parameter_operatables(include_terminated=True)
+        )
 
         self.transformations = Transformations(input_print_context=self.print_context)
 
@@ -1595,7 +1593,9 @@ class Mutator:
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
             (
-                GraphFunctions(*_touched_graphs).nodes_of_type(ParameterOperatable)
+                fabll.Node.bind_typegraph(*_touched_graphs).nodes_of_type(
+                    ParameterOperatable
+                )
                 - touched
             ),
             ascending=True,
@@ -1606,14 +1606,16 @@ class Mutator:
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
         untouched_graphs = self.G - _touched_graphs
-        for p in GraphFunctions(*untouched_graphs).nodes_of_type(ParameterOperatable):
+        for p in fabll.Node.bind_typegraph(*untouched_graphs).nodes_of_type(
+            ParameterOperatable
+        ):
             self.transformations.mutated[p] = p
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
 
         # Check modifications to original graph
-        post_mut_nodes = set(self.nodes_of_type(include_terminated=True))
+        post_mut_nodes = set(self.get_parameter_operatables(include_terminated=True))
         removed = self._starting_operables.difference(
             post_mut_nodes, self.transformations.removed
         )
@@ -1636,7 +1638,7 @@ class Mutator:
         all_new_params = {
             op
             for g in all_new_graphs
-            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            for op in fabll.Node.bind_typegraph(g).nodes_of_type(ParameterOperatable)
         }
         non_registered = all_new_params.difference(
             self.transformations.created, self.transformations.mutated.values()

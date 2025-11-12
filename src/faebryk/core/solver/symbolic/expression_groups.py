@@ -5,19 +5,17 @@
 import logging
 from typing import cast
 
-from faebryk.core.parameter import (
-    ConstrainableExpression,
-    Expression,
-    IdempotentExpression,
-    IdempotentOperands,
-    Involutory,
-    ParameterOperatable,
-    Reflexive,
-    UnaryIdentity,
-)
+import faebryk.core.node as fabll
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import FullyAssociative
+from faebryk.library.Expressions import (
+    has_idempotent_operands,
+    has_unary_identity,
+    is_fully_associative,
+    is_idempotent,
+    is_involutory,
+    is_reflexive,
+)
 from faebryk.libs.util import (
     unique,
 )
@@ -34,12 +32,13 @@ def reflexive_predicates(mutator: Mutator):
     A >= A -> True
     """
 
-    predicates = mutator.nodes_of_types(Reflexive, sort_by_depth=True)
+    predicates = mutator.get_expressions(
+        sort_by_depth=True, required_traits=(is_reflexive,)
+    )
     for pred in predicates:
-        assert isinstance(pred, ConstrainableExpression)
         if not pred.operatable_operands:
             continue
-        if not isinstance(pred.operands[0], ParameterOperatable):
+        if not fabll.isparameteroperable(pred.operands[0]):
             continue
         if pred.operands[0] is not pred.operands[1]:
             continue
@@ -55,9 +54,10 @@ def idempotent_deduplicate(mutator: Mutator):
     Intersection(A, A, B) -> Intersection(A, B)
     """
 
-    exprs = mutator.nodes_of_types(IdempotentOperands, sort_by_depth=True)
+    exprs = mutator.get_expressions(
+        sort_by_depth=True, required_traits=(has_idempotent_operands,)
+    )
     for expr in exprs:
-        assert isinstance(expr, IdempotentOperands)
         unique_operands = unique(expr.operands, key=lambda x: x)
         if len(unique_operands) != len(expr.operands):
             mutator.mutate_expression(expr, operands=unique_operands)
@@ -69,9 +69,10 @@ def idempotent_unpack(mutator: Mutator):
     Abs(Abs(A)) -> Abs(A)
     """
 
-    exprs = mutator.nodes_of_types(IdempotentExpression, sort_by_depth=True)
+    exprs = mutator.get_expressions(
+        sort_by_depth=True, required_traits=(is_idempotent,)
+    )
     for expr in exprs:
-        assert isinstance(expr, IdempotentExpression)
         assert len(expr.operands) == 1
         inner = expr.operands[0]
         if type(inner) is not type(expr):
@@ -87,9 +88,10 @@ def unary_identity_unpack(mutator: Mutator):
     for E in [Add, Multiply, Or, Union, Intersection]
     """
 
-    exprs = mutator.nodes_of_types(UnaryIdentity, sort_by_depth=True)
+    exprs = mutator.get_expressions(
+        sort_by_depth=True, required_traits=(has_unary_identity,)
+    )
     for expr in exprs:
-        assert isinstance(expr, UnaryIdentity)
         if len(expr.operands) != 1:
             continue
         inner = expr.operands[0]
@@ -105,15 +107,16 @@ def involutory_fold(mutator: Mutator):
     Not(Not(A)) -> A
     """
 
-    exprs = mutator.nodes_of_type(Involutory, sort_by_depth=True)
+    exprs = mutator.get_expressions(
+        sort_by_depth=True, required_traits=(is_involutory,)
+    )
     for expr in exprs:
-        assert isinstance(expr, Involutory)
         if len(expr.operands) != 1:
             continue
         inner = expr.operands[0]
         if type(inner) is not type(expr):
             continue
-        assert isinstance(inner, type(expr))
+        assert Expressions.isinstance_node(inner, type(expr))
         innest = inner.operands[0]
         if mutator.utils.is_literal(innest):
             mutator.utils.alias_to(expr, innest, terminate=True)
@@ -134,8 +137,10 @@ def associative_flatten(mutator: Mutator):
     for +, *, and, or, &, |, ^
     """
     ops = cast(
-        list[FullyAssociative],
-        mutator.nodes_of_types(FullyAssociative, sort_by_depth=True),
+        list[fabll.Node],
+        mutator.get_expressions(
+            sort_by_depth=True, required_traits=(is_fully_associative,)
+        ),
     )
     # get out deepest expr in compressable tree
     root_ops = [e for e in ops if type(e) not in {type(n) for n in e.get_operations()}]

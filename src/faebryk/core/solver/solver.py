@@ -4,8 +4,7 @@
 import logging
 from typing import Any, Protocol
 
-from faebryk.core.graph import Graph
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -83,6 +82,6 @@ class Solver(Protocol):
 
     def inspect_get_known_supersets(self, value: Parameter) -> P_Set: ...
 
-    def update_superset_cache(self, *nodes: Node): ...
+    def update_superset_cache(self, *nodes: fabll.Node): ...
 
-    def simplify(self, *gs: Graph | Node): ...
+    def simplify(self, *gs: fabll.Graph | fabll.Node): ...

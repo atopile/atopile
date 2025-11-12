@@ -3,8 +3,8 @@
 
 import logging
 
+import faebryk.core.node as fabll  # noqa: F401
 import faebryk.library._F as F  # noqa: F401
-from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -26,15 +26,15 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     #                 traits
     # ----------------------------------------
 
-    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C97521")
+    explicit_part = fabll.f_field(F.has_explicit_part.by_supplier)("C97521")
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
-    @L.rt_field
+    @fabll.rt_field
     def pin_association_heuristic(self):
-        return F.has_pin_association_heuristic_lookup_table(
+        return F.has_pin_association_heuristic(
             mapping={
                 self.qspi.chip_select.line: ["CS#", "~{CS}"],
                 self.qspi.data[0].line: ["DO"],
@@ -48,10 +48,6 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
             accept_prefix=True,
             case_sensitive=False,
         )
-
-    @L.rt_field
-    def decoupled(self):
-        return F.can_be_decoupled_rails(self.power)
 
     def __preinit__(self):
         # ------------------------------------

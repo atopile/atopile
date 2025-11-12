@@ -1,23 +1,30 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class RS232(ModuleInterface):
-    tx: F.ElectricLogic
-    rx: F.ElectricLogic
-    dtr: F.ElectricLogic
-    dcd: F.ElectricLogic
-    dsr: F.ElectricLogic
-    ri: F.ElectricLogic
-    rts: F.ElectricLogic
-    cts: F.ElectricLogic
+class RS232(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    tx = F.ElectricLogic.MakeChild()
+    rx = F.ElectricLogic.MakeChild()
+    dtr = F.ElectricLogic.MakeChild()
+    dcd = F.ElectricLogic.MakeChild()
+    dsr = F.ElectricLogic.MakeChild()
+    ri = F.ElectricLogic.MakeChild()
+    rts = F.ElectricLogic.MakeChild()
+    cts = F.ElectricLogic.MakeChild()
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
+
+    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------

@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from faebryk.core.node import Node
+import faebryk.core.node as fabll
 from faebryk.exporters.netlist.graph import (
     _conflicts,
     _NetName,
@@ -29,11 +29,11 @@ def test_net_name(base_name, prefix, suffix, expected):
 @pytest.fixture
 def node_hierarchy():
     """Creates a mock node hierarchy for testing."""
-    root = Mock(spec=Node)
-    child1 = Mock(spec=Node)
-    child2 = Mock(spec=Node)
-    grandchild1 = Mock(spec=Node)
-    grandchild2 = Mock(spec=Node)
+    root = Mock(spec=fabll.Node)
+    child1 = Mock(spec=fabll.Node)
+    child2 = Mock(spec=fabll.Node)
+    grandchild1 = Mock(spec=fabll.Node)
+    grandchild2 = Mock(spec=fabll.Node)
 
     # Setup hierarchies
     root.get_hierarchy = lambda: [(root, "root")]

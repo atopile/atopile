@@ -6,9 +6,8 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+import faebryk.core.node as fabll
 from atopile.errors import UserBadParameterError
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
 from faebryk.core.parameter import Expression, Is, Parameter, Predicate
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.sets.sets import P_Set
@@ -17,10 +16,14 @@ from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: Graph) -> list[set[Parameter]]:
-    full_eq = EquivalenceClasses[Parameter](GraphFunctions(G).nodes_of_type(Parameter))
+def parameter_alias_classes(G: fabll.Graph) -> list[set[Parameter]]:
+    full_eq = EquivalenceClasses[Parameter](
+        fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+    )
 
-    is_exprs = [e for e in GraphFunctions(G).nodes_of_type(Is) if e.constrained]
+    is_exprs = [
+        e for e in fabll.Node.bind_typegraph(G).nodes_of_type(Is) if e.constrained
+    ]
 
     for is_expr in is_exprs:
         params_ops = [op for op in is_expr.operands if isinstance(op, Parameter)]
@@ -36,10 +39,16 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
-    related = EquivalenceClasses[Parameter](GraphFunctions(G).nodes_of_type(Parameter))
+def parameter_dependency_classes(G: fabll.Graph) -> list[set[Parameter]]:
+    related = EquivalenceClasses[Parameter](
+        fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+    )
 
-    eq_exprs = [e for e in GraphFunctions(G).nodes_of_type(Predicate) if e.constrained]
+    eq_exprs = [
+        e
+        for e in fabll.Node.bind_typegraph(G).nodes_of_type(Predicate)
+        if e.constrained
+    ]
 
     for eq_expr in eq_exprs:
         params = get_params_for_expr(eq_expr)
@@ -48,9 +57,9 @@ def parameter_dependency_classes(G: Graph) -> list[set[Parameter]]:
     return related.get()
 
 
-def parameter_report(G: Graph, path: Path):
-    params = GraphFunctions(G).nodes_of_type(Parameter)
-    exprs = GraphFunctions(G).nodes_of_type(Expression)
+def parameter_report(G: fabll.Graph, path: Path):
+    params = fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+    exprs = fabll.Node.bind_typegraph(G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
     exprs.difference_update(predicates)
     alias_classes = parameter_alias_classes(G)
@@ -204,13 +213,18 @@ def _generate_txt_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> st
     return out
 
 
-def export_parameters_to_file(module: Module, solver: Solver, path: Path):
+def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 
     parameters = dict[str, dict[str, P_Set[Any]]]()
 
-    for m in module.get_children_modules(types=Module, include_root=True):
+    for m in module.get_children(
+        direct_only=False,
+        types=fabll.Node,
+        required_trait=fabll.is_module,
+        include_root=True,
+    ):
         module_name = m.get_full_name(types=True)
         module_params = m.get_children(
             direct_only=True, include_root=True, types=Parameter

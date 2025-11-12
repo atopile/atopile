@@ -2,148 +2,63 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.node import Node
-from faebryk.core.parameter import Add
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class ElectricPower(F.Power):
+class ElectricPower(fabll.Node):
     """
     ElectricPower is a class that represents a power rail. Power rails have a
     higher potential (hv), and lower potential (lv) Electrical.
     """
 
-    class can_be_decoupled_power(F.can_be_decoupled.impl()):
-        def decouple(
-            self,
-            owner: Module,
-            count: int = 1,
-        ):
-            obj = self.get_obj(ElectricPower)
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    hv = F.Electrical.MakeChild()
+    lv = F.Electrical.MakeChild()
 
-            capacitor = F.MultiCapacitor(count)
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
-            # FIXME seems to cause contradictions
-            capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
-
-            obj.hv.connect_via(capacitor, obj.lv)
-
-            name = f"decoupling_{obj.get_name(accept_no_parent=True)}"
-            new_capacitor = capacitor
-            # Merge
-            if obj.has_trait(F.is_decoupled):
-                old_capacitor = obj.get_trait(F.is_decoupled).capacitor
-                capacitor = F.MultiCapacitor.from_capacitors(
-                    old_capacitor,
-                    new_capacitor,
-                )
-                name = old_capacitor.get_name(accept_no_parent=True) + "'"
-
-            # TODO improve
-            if name in owner.runtime:
-                name += "_"
-            owner.add(capacitor, name=name)
-            obj.add(F.is_decoupled(capacitor))
-
-            return new_capacitor
-
-    class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
-        def protect(self, owner: Module):
-            obj = self.get_obj(ElectricPower)
-            surge_protection = F.SurgeProtection.from_interfaces(obj.lv, obj.hv)
-            owner.add(
-                surge_protection,
-                name=f"surge_protection_{obj.get_name(accept_no_parent=True)}",
-            )
-            obj.add(F.is_surge_protected_defined(surge_protection))
-            return surge_protection
-
-    hv: F.Electrical
-    lv: F.Electrical
-
-    voltage = L.p_field(
-        units=P.V,
-        likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(0 * P.V, 1000 * P.V),
-        tolerance_guess=5 * P.percent,
+    voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
     )
-    max_current = L.p_field(
-        units=P.A,
-        domain=L.Domains.Numbers.REAL(),
+    max_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere,
     )
-    """
-    WARNING!!!
-    Only for this particular power interface
-    Does not propagate to connections
-    """
-    bus_max_current_consumption_sum = L.p_field(
-        units=P.A, domain=L.Domains.Numbers.REAL()
+
+    # _has_single_electric_reference = F.has_single_electric_reference_defined.MakeChild()
+
+    bus_max_current_consumption_sum = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere,
     )
-    """
-    Summed current for all connected power interfaces
-    Only available after resolve_bus_parameters
-    """
 
-    surge_protected: can_be_surge_protected_power
-    decoupled: can_be_decoupled_power
+    # TODO: Split out
+    class is_power_source(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(self)
+    class is_power_sink(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    def fused(self, attach_to: Node | None = None):
-        fused_power = type(self)()
-        fuse = fused_power.add(F.Fuse())
+    def setup_as_source(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_source)
+        return self
 
-        fused_power.hv.connect_via(fuse, self.hv)
-        fused_power.lv.connect(self.lv)
+    def setup_as_sink(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=self.is_power_sink)
+        return self
 
-        self.connect_shallow(fused_power)
+    # self.voltage.alias_is(
+    #    self.hv.potential - self.lv.potential
+    # )
+    # self.lv.add(F.has_net_name("gnd"))
+    #     self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
+    #     self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
 
-        fuse.trip_current.constrain_subset(
-            self.max_current * L.Range.from_center_rel(1.0, 0.1)
-        )
-        # TODO maybe better bus_consumption
-        fused_power.max_current.constrain_le(fuse.trip_current)
-
-        if attach_to is not None:
-            attach_to.add(fused_power)
-
-        return fused_power
-
-    def __preinit__(self) -> None:
-        ...
-        # self.voltage.alias_is(
-        #    self.hv.potential - self.lv.potential
-        # )
-        self.voltage.add(F.is_bus_parameter())
-        self.bus_max_current_consumption_sum.add(
-            F.is_bus_parameter(reduce=(self.max_current, Add))
-        )
-
-        self.lv.add(F.has_net_name("gnd"))
-
-    @property
-    def vcc(self) -> F.Electrical:
-        """Higher-voltage side of the power interface."""
-        return self.hv
-
-    @property
-    def gnd(self) -> F.Electrical:
-        """Lower-voltage side of the power interface."""
-        return self.lv
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        # Apply suffixes to the electrical lines of the signals
-        self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
-        self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
-
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import ElectricPower
 

@@ -1,34 +1,40 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
-from faebryk.libs.units import P
 
 
-class CAN(ModuleInterface):
+class CAN(fabll.Node):
     """
     CAN bus interface
     """
 
-    diff_pair: F.DifferentialPair
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    diff_pair = F.DifferentialPair.MakeChild()
 
-    speed = L.p_field(units=P.bps)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    # TODO constrain CAN baudrate between 10kbps to 1Mbps
+    # F.Expressions.Is.MakeChild_Constrain()
 
-    def __preinit__(self) -> None:
-        self.speed.add(F.is_bus_parameter())
+    impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
+    F.Expressions.Is.MakeChild_ConstrainToLiteral([impedance], 120.0)
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.diff_pair.p.line.add(
-            F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.diff_pair.n.line.add(
-            F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
-    usage_example = L.f_field(F.has_usage_example)(
+    # self.diff_pair.p.line.add(
+    #     F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
+    # )
+    # self.diff_pair.n.line.add(
+    #     F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
+    # )
+
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import CAN, ElectricPower, Resistor
 
@@ -56,4 +62,4 @@ class CAN(ModuleInterface):
         # Common applications: automotive, industrial automation, IoT
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

@@ -3,62 +3,139 @@
 
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
-from faebryk.libs.util import times
 
 if TYPE_CHECKING:
     from faebryk.libs.kicad.fileformats import kicad
 
 
-class KicadFootprint(F.Footprint):
-    class has_file(F.Footprint.TraitT.decless()):
+class KicadFootprint(fabll.Node):
+    class has_file(fabll.Node):
         """
         Direct reference to a KiCAD footprint file
         """
 
-        def __init__(self, file: PathLike):
-            super().__init__()
-            self.file = Path(file)
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
 
-    class has_kicad_identifier(F.Footprint.TraitT.decless()):
-        def __init__(self, kicad_identifier: str):
-            super().__init__()
-            self.kicad_identifier = kicad_identifier
+        file_ = F.Parameters.StringParameter.MakeChild()
+
+        @property
+        def file(self) -> Path:
+            return Path(str(self.file_.get().force_extract_literal()))
+
+        def setup(self, file: PathLike) -> Self:
+            self.file_.get().constrain_to_single(value=str(file))
+            return self
+
+    class has_kicad_identifier(fabll.Node):
+        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+
+        kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
+
+        @property
+        def kicad_identifier(self) -> str:
+            return str(self.kicad_identifier_.get().force_extract_literal())
+
+        def setup(self, kicad_identifier: str) -> Self:
+            self.kicad_identifier_.get().constrain_to_single(value=kicad_identifier)
+            return self
 
         def on_obj_set(self):
             # Implicit trait of has_kicad_footprint is added w/ this trait
             # If this changes, create_footprint_library will need to be updated
-            fp = self.get_obj(KicadFootprint)
+            fp = self.get_parent_force()[0].get_trait(KicadFootprint)
             if not fp.has_trait(F.has_kicad_footprint):
-                fp.add(
-                    F.has_kicad_manual_footprint(
-                        self.kicad_identifier,
-                        {fp.pins[i]: pin_name for i, pin_name in fp.pin_names_sorted},
-                    )
+                fabll.Traits.create_and_add_instance_to(
+                    node=fp, trait=F.has_kicad_footprint
+                ).setup(
+                    kicad_identifier=self.kicad_identifier,
+                    pinmap={
+                        fp.pins[i]: pin_name for i, pin_name in fp.pin_names_sorted
+                    },
                 )
 
-    def __init__(self, pin_names: list[str]) -> None:
-        super().__init__()
+    pin_names_ = F.Collections.PointerSet.MakeChild()
+    pins_ = F.Collections.PointerSet.MakeChild()
 
-        unique_pin_names = sorted(set(pin_names))
-        self.pin_names_sorted = list(enumerate(unique_pin_names))
+    @property
+    def pin_names(self) -> list[str]:
+        pin_name_parameters = self.pin_names_.get().as_list()
+        return [
+            str(
+                F.Parameters.StringParameter.bind_instance(
+                    instance=pin_name_parameter.instance
+                ).force_extract_literal()
+            )
+            for pin_name_parameter in pin_name_parameters
+        ]
 
-    @L.rt_field
-    def pins(self):
-        return times(len(self.pin_names_sorted), F.Pad)
+    @property
+    def pin_names_sorted(self) -> list[tuple[int, str]]:
+        return list(enumerate(sorted(set(self.pin_names))))
 
-    @L.rt_field
-    def attach_via_pinmap(self):
-        return F.can_attach_via_pinmap_pinlist(
-            {pin_name: self.pins[i] for i, pin_name in self.pin_names_sorted}
-        )
+    @property
+    def pins(self) -> list[F.Pad]:
+        pin_pads = self.pins_.get().as_list()
+        return [F.Pad.bind_instance(pin_pad.instance) for pin_pad in pin_pads]
 
     @classmethod
+    def MakeChild(cls, pin_names: list[str]) -> fabll.ChildField:
+        out = fabll.ChildField(cls)
+        for pin_name in pin_names:
+            pin_parameter = F.Parameters.StringParameter.MakeChild()
+            out.add_dependant(pin_parameter)
+            out.add_dependant(
+                F.Expressions.Is.MakeChild_ConstrainToLiteral([pin_parameter], pin_name)
+            )
+            out.add_dependant(
+                F.Collections.PointerSet.EdgeField([out, cls.pin_names_], [pin_name])
+            )
+            pin_pad = F.Pad.MakeChild()
+            out.add_dependant(pin_pad)
+            out.add_dependant(
+                F.Collections.PointerSet.EdgeField([out, cls.pins_], [pin_pad])
+            )
+        return out
+
+    def setup(self, pin_names: list[str]) -> Self:
+        for pin_name in pin_names:
+            # Pin name parameters
+            pin_parameter = F.Parameters.StringParameter.bind_typegraph_from_instance(
+                instance=self.instance
+            ).create_instance(g=self.instance.g())
+            pin_parameter.constrain_to_single(value=pin_name)
+            self.pin_names_.get().append(pin_parameter)
+
+            # Pads
+            pad = F.Pad.bind_typegraph_from_instance(
+                instance=self.instance
+            ).create_instance(g=self.instance.g())
+            self.pins_.get().append(pad)
+        return self
+
+    def setup_from_path(
+        self, fp_path: PathLike, lib_name: str | None = None
+    ) -> "KicadFootprint":
+        """
+        Create based on a footprint file
+
+        Will take the pin names from that file.
+        """
+        from faebryk.libs.kicad.fileformats import kicad
+
+        self = self.from_file(
+            kicad.loads(kicad.footprint.FootprintFile, Path(fp_path)), lib_name=lib_name
+        )
+        fabll.Traits.create_and_add_instance_to(node=self, trait=self.has_file).setup(
+            file=fp_path
+        )
+        return self
+
     def from_file(
-        cls, fp_file: "kicad.footprint.FootprintFile", lib_name: str | None = None
+        self, fp_file: "kicad.footprint.FootprintFile", lib_name: str | None = None
     ) -> "KicadFootprint":
         """
         Create based on a footprint file
@@ -84,17 +161,16 @@ class KicadFootprint(F.Footprint):
         assert lib_name is not None
 
         pad_names = [pad.name for pad in fp_file.footprint.pads]
-        self = cls(pad_names)
-        self.add(
-            cls.has_kicad_identifier(
-                f"{lib_name}:{kicad.fp_get_base_name(fp_file.footprint)}"
-            )
+        self = self.setup(pad_names)
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=self.has_kicad_identifier
+        ).setup(
+            kicad_identifier=f"{lib_name}:{kicad.fp_get_base_name(fp_file.footprint)}"
         )
         return self
 
-    @classmethod
     def from_path(
-        cls, fp_path: PathLike, lib_name: str | None = None
+        self, fp_path: PathLike, lib_name: str | None = None
     ) -> "KicadFootprint":
         """
         Create based on a footprint file
@@ -103,8 +179,10 @@ class KicadFootprint(F.Footprint):
         """
         from faebryk.libs.kicad.fileformats import kicad
 
-        self = cls.from_file(
+        self = self.from_file(
             kicad.loads(kicad.footprint.FootprintFile, Path(fp_path)), lib_name=lib_name
         )
-        self.add(cls.has_file(fp_path))
+        fabll.Traits.create_and_add_instance_to(node=self, trait=self.has_file).setup(
+            file=fp_path
+        )
         return self

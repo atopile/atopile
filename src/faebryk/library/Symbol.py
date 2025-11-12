@@ -1,59 +1,70 @@
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.reference import reference
-from faebryk.core.trait import Trait
+
+# from faebryk.core.reference import reference
 
 
-class Symbol(Module):
+class Symbol(fabll.Node):
     """
     Symbols represent a symbol instance and are bi-directionally
     linked with the module they represent via the `has_linked` trait.
     """
 
-    class Pin(ModuleInterface):
-        represents = reference(F.Electrical)
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
 
-        class has_pin(F.has_reference.decless()):
-            """
-            Attach to an ElectricalInterface to point back at the pin
-            """
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.is_module.MakeChild()
 
-            reference: "Symbol.Pin" = reference()
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+    # class Pin(fabll.Node):
+    #     represents = reference(F.Electrical)
 
-    class TraitT(Trait): ...
+    #     class has_pin(F.has_reference.decless()):
+    #         """
+    #         Attach to an ElectricalInterface to point back at the pin
+    #         """
 
-    class has_symbol(F.has_reference.decless()):
-        """
-        Attach to an Module to point back at the pin
-        """
+    #         reference: "Symbol.Pin" = reference()
 
-        reference: "Symbol" = reference()
+    # class TraitT(Trait): ...
 
-    class has_kicad_symbol(TraitT.decless()):
-        """
-        If a symbol has this trait, then the symbol has a matching KiCAD symbol
-        :param symbol_name: The full name of the KiCAD symbol including the library name
-        """
+    # class has_symbol(F.has_reference.decless()):
+    #     """
+    #     Attach to an Module to point back at the pin
+    #     """
 
-        def __init__(self, symbol_name: str):
-            super().__init__()
-            self.symbol_name = symbol_name
+    #     reference: "Symbol" = reference()
 
-    pins: dict[str, Pin]
-    represents = reference(Module)
+    # class has_kicad_symbol(fabll.Node):
+    #     """
+    #     If a symbol has this trait, then the symbol has a matching KiCAD symbol
+    #     :param symbol_name: The full name of the KiCAD symbol including the library name
+    #     """
 
-    @classmethod
-    def with_component(cls, component: Module, pin_map: dict[str, F.Electrical]):
-        sym = cls()
-        sym.represents = component
-        component.add(cls.has_symbol(sym))
+    #     def __init__(self, symbol_name: str):
+    #         super().__init__()
+    #         self.symbol_name = symbol_name
 
-        sym.pins = {}
-        for pin_name, e_pin in pin_map.items():
-            pin = cls.Pin()
-            pin.represents = e_pin
-            e_pin.add(cls.Pin.has_pin(pin))
-            sym.pins[pin_name] = pin
+    # pins: dict[str, Pin]
+    # represents = reference(fabll.Module)
 
-        return sym
+    # @classmethod
+    # def with_component(cls, component: fabll.Node, pin_map: dict[str, F.Electrical]):
+    #     sym = cls()
+    #     sym.represents = component
+    #     component.add(cls.has_symbol(sym))
+
+    #     sym.pins = {}
+    #     for pin_name, e_pin in pin_map.items():
+    #         pin = cls.Pin()
+    #         pin.represents = e_pin
+    #         e_pin.add(cls.Pin.has_pin(pin))
+    #         sym.pins[pin_name] = pin
+
+    #     return sym

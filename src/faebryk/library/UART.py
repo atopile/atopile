@@ -1,37 +1,44 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 
-class UART(ModuleInterface):
-    base_uart: F.UART_Base
-    rts: F.ElectricLogic
-    cts: F.ElectricLogic
-    dtr: F.ElectricLogic
-    dsr: F.ElectricLogic
-    dcd: F.ElectricLogic
-    ri: F.ElectricLogic
+class UART(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    base_uart = F.UART_Base.MakeChild()
+    rts = F.ElectricLogic.MakeChild()
+    cts = F.ElectricLogic.MakeChild()
+    dtr = F.ElectricLogic.MakeChild()
+    dsr = F.ElectricLogic.MakeChild()
+    dcd = F.ElectricLogic.MakeChild()
+    ri = F.ElectricLogic.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.is_interface.MakeChild()
 
     # TODO: this creates too many connections in some projects
-    # @L.rt_field
-    # def single_electric_reference(self):
-    #    return F.has_single_electric_reference_defined(
-    #       F.ElectricLogic.connect_all_module_references(self)
-    #   )
+    # _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
-        self.rts.line.add(F.has_net_name("RTS", level=F.has_net_name.Level.SUGGESTED))
-        self.cts.line.add(F.has_net_name("CTS", level=F.has_net_name.Level.SUGGESTED))
-        self.dtr.line.add(F.has_net_name("DTR", level=F.has_net_name.Level.SUGGESTED))
-        self.dsr.line.add(F.has_net_name("DSR", level=F.has_net_name.Level.SUGGESTED))
-        self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
-        self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))
+        # self.rts.line.add(F.has_net_name("RTS", level=F.has_net_name.Level.SUGGESTED))
+        # self.cts.line.add(F.has_net_name("CTS", level=F.has_net_name.Level.SUGGESTED))
+        # self.dtr.line.add(F.has_net_name("DTR", level=F.has_net_name.Level.SUGGESTED))
+        # self.dsr.line.add(F.has_net_name("DSR", level=F.has_net_name.Level.SUGGESTED))
+        # self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
+        # self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))
 
-    usage_example = L.f_field(F.has_usage_example)(
+    usage_example = F.has_usage_example.MakeChild(
         example="""
         import UART, ElectricPower
 
@@ -60,4 +67,4 @@ class UART(ModuleInterface):
         # Common baud rates: 9600, 38400, 115200, 230400, 460800
         """,
         language=F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()
