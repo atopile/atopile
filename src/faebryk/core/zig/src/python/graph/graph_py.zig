@@ -1002,12 +1002,30 @@ fn wrap_graphview_bind() type {
     };
 }
 
+fn wrap_graphview_get_node_count() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_node_count",
+            .doc = "Get the number of nodes in the graph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const count = wrapper.data.get_node_count();
+            return py.PyLong_FromUnsignedLongLong(count);
+        }
+    };
+}
+
 fn wrap_graphview(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_graphview_create(),
         wrap_graphview_insert_node(),
         wrap_graphview_insert_edge(),
         wrap_graphview_bind(),
+        wrap_graphview_get_node_count(),
     };
     bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
     graph_view_type = type_registry.getRegisteredTypeObject("GraphView");

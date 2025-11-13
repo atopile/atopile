@@ -38,6 +38,9 @@ class LiteralsAttributes(fabll.NodeAttributes):
 class Strings(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
+    _can_be_operand = fabll.Traits.MakeChild_Trait(
+        fabll.ChildField(F.Parameters.can_be_operand)
+    )
 
     def setup(self, value: str) -> Self:
         # TODO:
@@ -64,6 +67,9 @@ class Strings(fabll.Node[LiteralsAttributes]):
 
 class Numbers(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
+    _can_be_operand = fabll.Traits.MakeChild_Trait(
+        F.Parameters.can_be_operand.MakeChild()
+    )
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
         # TODO
@@ -179,6 +185,9 @@ class Numbers(fabll.Node):
 class Booleans(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = is_literal.MakeChild()
+    _can_be_operand = fabll.Traits.MakeChild_Trait(
+        F.Parameters.can_be_operand.MakeChild()
+    )
 
     def setup(self, *values: bool) -> Self:
         # TODO
@@ -213,6 +222,9 @@ class Booleans(fabll.Node[LiteralsAttributes]):
 
 class Enums(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
+    _can_be_operand = fabll.Traits.MakeChild_Trait(
+        F.Parameters.can_be_operand.MakeChild()
+    )
 
     def setup[T: Enum](self, enum: type[T], *values: T) -> Self:
         # TODO

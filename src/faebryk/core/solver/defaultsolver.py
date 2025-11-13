@@ -24,6 +24,7 @@ from faebryk.core.solver.mutator import (
     MutationStage,
     Mutator,
     Transformations,
+    is_terminated,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.core.solver.symbolic import (
@@ -381,7 +382,7 @@ class DefaultSolver(Solver):
             ConstrainableExpression
         )
         not_deduced = [
-            p for p in new_preds if p.constrained and not p._solver_terminated
+            p for p in new_preds if p.constrained and not p.has_trait(is_terminated)
         ]
 
         if not_deduced:

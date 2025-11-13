@@ -1377,7 +1377,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         )
         bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
         for child in children:
-            if child.get_child_type().node().is_same(bound_trait.node()):
+            if child.get_child_type().node().is_same(other=bound_trait.node()):
                 return True
         return False
 

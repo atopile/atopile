@@ -55,16 +55,14 @@ _CanonicalExpressions: dict[type[fabll.NodeT], Callable[..., Any]] = {
 
 
 def _exec_pure_literal_operands(
-    expr_type: fabll.ImplementsType, operands: Iterable[fabll.NodeT]
+    expr_type: fabll.TypeNodeBoundTG, operands: Iterable[F.Parameters.can_be_operand]
 ) -> F.Literals.is_literal | None:
     operands = list(operands)
     _map = {
-        k.bind_typegraph_from_instance(expr_type.instance)
-        .get_or_create_type()
-        .node(): v
+        k.bind_typegraph(expr_type.tg).get_or_create_type().node(): v
         for k, v in _CanonicalExpressions.items()
     }
-    expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
+    expr_type_node = expr_type.get_or_create_type().node()
     if expr_type_node not in _map:
         return None
     if not all(o.has_trait(F.Literals.is_literal) for o in operands):

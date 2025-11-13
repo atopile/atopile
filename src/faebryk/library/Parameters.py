@@ -112,6 +112,25 @@ class is_parameter_operatable(fabll.Node):
     def as_expression(self) -> "F.Expressions.is_expression":
         return fabll.Traits(self).get_trait_of_obj(F.Expressions.is_expression)
 
+    def as_operand(self) -> "can_be_operand":
+        return fabll.Traits(self).get_trait_of_obj(can_be_operand)
+
+    def is_parameter(self) -> "is_parameter | None":
+        return fabll.Traits(self).try_get_trait_of_obj(is_parameter)
+
+    def is_expresssion(self) -> "F.Expressions.is_expression | None":
+        return fabll.Traits(self).try_get_trait_of_obj(F.Expressions.is_expression)
+
+    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
+        return fabll.Traits(self).get_trait_of_obj(t)
+
+    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
+        return fabll.Traits(self).try_get_trait_of_obj(t)
+
+    def get_operations(self) -> set["F.Expressions.is_expression"]:
+        # TODO
+        pass
+
 
 class is_parameter(fabll.Node):
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
@@ -132,6 +151,32 @@ class is_parameter(fabll.Node):
 
     def as_parameter_operatable(self) -> "is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
+
+    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
+        return fabll.Traits(self).get_trait_of_obj(t)
+
+    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
+        return fabll.Traits(self).try_get_trait_of_obj(t)
+
+
+class can_be_operand(fabll.Node):
+    """
+    Parameter, Expression, Literal
+    """
+
+    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+
+    def as_parameter_operatable(self) -> "is_parameter_operatable":
+        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
+
+    def is_parameter_operatable(self) -> "is_parameter_operatable | None":
+        return fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable)
+
+    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
+        return fabll.Traits(self).get_trait_of_obj(t)
+
+    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
+        return fabll.Traits(self).try_get_trait_of_obj(t)
 
 
 class ParameterIsNotConstrainedToLiteral(Exception):
@@ -160,6 +205,7 @@ class StringParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -188,6 +234,7 @@ class BooleanParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -216,6 +263,7 @@ class EnumParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]):
@@ -247,13 +295,14 @@ class NumericParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "Units.IsUnit":
-        return self.get_trait(Units.HasUnit).get_unit()
+    def get_units(self) -> "F.Units.IsUnit":
+        return self.get_trait(F.Units.HasUnit).get_unit()
 
-    def get_domain(self) -> "NumberDomain":
+    def get_domain(self) -> "F.NumberDomain":
         # TODO
         pass
 
@@ -281,10 +330,10 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        units: "Units.IsUnit",
+        units: "F.Units.IsUnit",
         # hard constraints
         within: "Literals.Numbers | None" = None,
-        domain: "NumberDomain | None" = None,
+        domain: "F.NumberDomain | None" = None,
         # soft constraints
         soft_set: "Literals.Numbers | None" = None,
         guess: "Literals.Numbers | None" = None,

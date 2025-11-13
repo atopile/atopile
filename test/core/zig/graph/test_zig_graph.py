@@ -49,6 +49,31 @@ def test_minimal_graph():
         print(edge)
 
 
+def test_node_count():
+    from faebryk.core.zig.gen.graph.graph import (  # type: ignore
+        GraphView,
+        Node,
+    )
+
+    g = GraphView.create()
+
+    # GraphView starts with 1 node (the self_node)
+    assert g.get_node_count() == 1
+
+    n1 = Node.create()
+    n2 = Node.create()
+    n3 = Node.create()
+
+    g.insert_node(node=n1)
+    assert g.get_node_count() == 2
+
+    g.insert_node(node=n2)
+    assert g.get_node_count() == 3
+
+    g.insert_node(node=n3)
+    assert g.get_node_count() == 4
+
+
 def test_edge_composition_create():
     parent = graph.Node.create()
     child = graph.Node.create()
@@ -149,7 +174,7 @@ def test_typegraph_instantiate():
         type_node=Resistor,
         lhs_reference_node=rp1_ref.node(),
         rhs_reference_node=rp2_ref.node(),
-        edge_type=EdgePointer.get_tid(),
+        edge_type=fbrk.EdgePointer.get_tid(),
         edge_directional=True,
         edge_name="test",
         edge_attributes={"test_key": "test_value"},
@@ -194,6 +219,7 @@ def test_typegraph_instantiate():
 
 if __name__ == "__main__":
     test_minimal_graph()
+    test_node_count()
     test_edge_composition_create()
     test_edge_composition_add_child_and_visit()
     test_edge_type_create()
