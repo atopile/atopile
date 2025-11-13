@@ -27,9 +27,11 @@ class Ethernet(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     # ----------------------------------------
     #                WIP
@@ -51,8 +53,9 @@ class Ethernet(fabll.Node):
                 F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
             )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Ethernet, ElectricPower
 
         ethernet = new Ethernet
@@ -73,5 +76,6 @@ class Ethernet(fabll.Node):
         ethernet.led_speed ~ speed_led_output
         ethernet.led_link ~ link_led_output
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

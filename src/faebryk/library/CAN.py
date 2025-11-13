@@ -27,7 +27,7 @@ class CAN(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     # self.diff_pair.p.line.add(
     #     F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
@@ -36,8 +36,9 @@ class CAN(fabll.Node):
     #     F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
     # )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import CAN, ElectricPower, Resistor
 
         can_bus = new CAN
@@ -63,5 +64,6 @@ class CAN(fabll.Node):
 
         # Common applications: automotive, industrial automation, IoT
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

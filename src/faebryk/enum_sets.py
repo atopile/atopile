@@ -15,7 +15,7 @@ class EnumValue(fabll.Node):
         out = fabll._ChildField(cls)
         literal = F.Literals.MakeChild_Literal(value=enum_value)
         out.add_dependant(
-            F.Collections.Pointer.EdgeField(
+            F.Collections.Pointer.MakeEdge(
                 [out, cls.value],
                 [literal],
             )

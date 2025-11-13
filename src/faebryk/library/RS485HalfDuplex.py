@@ -21,25 +21,27 @@ class RS485HalfDuplex(fabll.Node):
         [impedance], 120.0
     )
 
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     # TODO: add trait
     # self.diff_pair.p.line.add(F.has_net_name_affix.suffix("_A"))
     # self.diff_pair.n.line.add(F.has_net_name_affix.suffix("_B"))
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import RS485HalfDuplex
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import RS485HalfDuplex
 
-        rs485_bus = new RS485HalfDuplex
+            rs485_bus = new RS485HalfDuplex
 
-        # Connect to rs485 transceiver
-        rs485_transceiver.rs485 ~ rs485_bus
+            # Connect to rs485 transceiver
+            rs485_transceiver.rs485 ~ rs485_bus
 
-        # Connect to connector pins
-        rs485_connector.1 ~ rs485_bus.diff_pair.p.line
-        rs485_connector.2 ~ rs485_bus.diff_pair.n.line
-        rs485_connector.3 ~ rs485_bus.reference_shim.lv
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            # Connect to connector pins
+            rs485_connector.1 ~ rs485_bus.diff_pair.p.line
+            rs485_connector.2 ~ rs485_bus.diff_pair.n.line
+            rs485_connector.3 ~ rs485_bus.reference_shim.lv
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

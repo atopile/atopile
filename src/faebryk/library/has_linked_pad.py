@@ -9,7 +9,7 @@ import faebryk.library._F as F
 
 
 class has_linked_pad(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     pad_ptr_ = F.Collections.Pointer.MakeChild()
 
     def get_pads(self) -> set["F.Pad"]:

@@ -10,7 +10,7 @@ from faebryk.libs.util import once
 
 
 class is_atomic_part(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     manufacturer_ = F.Parameters.StringParameter.MakeChild()
     partnumber_ = F.Parameters.StringParameter.MakeChild()
@@ -18,7 +18,7 @@ class is_atomic_part(fabll.Node):
     symbol_ = F.Parameters.StringParameter.MakeChild()
     model_ = F.Parameters.StringParameter.MakeChild()
 
-    lazy: F.is_lazy
+    is_lazy = fabll.Traits.MakeEdge(F.is_lazy.MakeChild())
 
     @property
     def manufacturer(self) -> str:
@@ -90,26 +90,28 @@ class is_atomic_part(fabll.Node):
     ) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.manufacturer_], manufacturer
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.partnumber_], partnumber
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.footprint_], footprint
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.symbol_], symbol)
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.symbol_], symbol)
         )
         if model is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.model_], model)
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [out, cls.model_], model
+                )
             )
         return out
 

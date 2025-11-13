@@ -147,7 +147,7 @@ class has_simple_value_representation(fabll.Node):
             out = fabll._ChildField(cls)
 
             out.add_dependant(
-                F.Collections.Pointer.EdgeField(
+                F.Collections.Pointer.MakeEdge(
                     [out, cls.param_ptr_],
                     [spec.param],
                 )
@@ -156,7 +156,7 @@ class has_simple_value_representation(fabll.Node):
                 # TODO: Fix units
                 print(spec.unit.get_full_name())
                 out.add_dependant(
-                    F.Collections.Pointer.EdgeField(
+                    F.Collections.Pointer.MakeEdge(
                         [out, cls.unit_],
                         [spec.unit.get_full_name()],
                     )
@@ -186,7 +186,7 @@ class has_simple_value_representation(fabll.Node):
                 )
 
             # Connect Spec Set to all fields
-            F.Collections.PointerSet.EdgeFields(
+            F.Collections.PointerSet.MakeEdges(
                 [out, cls.spec_set_],
                 [
                     [out, cls.param_ptr_],
@@ -204,7 +204,7 @@ class has_simple_value_representation(fabll.Node):
     prefix_ = F.Parameters.StringParameter.MakeChild()
     suffix_ = F.Parameters.StringParameter.MakeChild()
 
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def get_specs(self) -> list[SpecNode]:
         specs_set = self.specs_set_.get()
@@ -242,7 +242,7 @@ class has_simple_value_representation(fabll.Node):
             spec_node = cls.SpecNode.MakeChild(spec)
             out.add_dependant(spec_node)
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField(
+                F.Collections.PointerSet.MakeEdge(
                     [out, cls.specs_set_],
                     [spec_node],
                 )

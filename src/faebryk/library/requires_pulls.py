@@ -126,7 +126,8 @@ class requires_pulls(fabll.Node):
             pred=cls._first_interface_on_bus_pred(interface_type),
         )
 
-    design_check: F.implements_design_check
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):

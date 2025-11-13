@@ -17,9 +17,12 @@ class Addressor(fabll.Node):
     # def address_lines(self):
     #     return times(self._address_bits, F.ElectricLogic)
 
-    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
-    address_bits_ = fabll._ChildField(F.Parameters.NumericParameter)
+    address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
     address_lines_ = [F.ElectricLogic.MakeChild() for _ in range(4)]
+
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     def __preinit__(self) -> None:
         for x in (self.address, self.offset, self.base):
@@ -75,8 +78,9 @@ class Addressor(fabll.Node):
             ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
         return self
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Addressor, I2C, ElectricPower
 
         # For I2C device with 2 address pins (4 possible addresses)
@@ -97,5 +101,6 @@ class Addressor(fabll.Node):
         assert i2c_bus.address is addressor.address
         device.i2c ~ i2c_bus
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

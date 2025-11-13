@@ -8,6 +8,7 @@ import faebryk.library._F as F
 
 
 class can_attach_via_pinmap(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
     pin_list_ = F.Collections.PointerSet.MakeChild()
 
     def attach(self, pinmap: dict[str, F.Electrical | None]):
@@ -39,7 +40,7 @@ class can_attach_via_pinmap(fabll.Node):
             out.add_dependant(pin_tuple)
             # Add tuple to pin list
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField(
+                F.Collections.PointerSet.MakeEdge(
                     [out, cls.pin_list_],
                     [pin_tuple],
                 )

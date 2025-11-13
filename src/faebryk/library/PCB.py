@@ -21,7 +21,10 @@ if TYPE_CHECKING:
 
 
 class PCB(fabll.Node):
-    _is_module = fabll.is_module.MakeChild()
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     path_ = F.Parameters.StringParameter.MakeChild()
     pcb_file_ = F.Collections.Pointer.MakeChild()

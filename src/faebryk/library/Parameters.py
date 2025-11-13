@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -11,11 +11,11 @@ import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
-    from faebryk.library import Literals, NumberDomain
+    from faebryk.library import Expressions, Literals, NumberDomain, Units
 
 
 class is_parameter_operatable(fabll.Node):
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def try_extract_constrained_literal[T: "Literals.LiteralNodes"](
         self, lit_type: type[T]
@@ -25,21 +25,24 @@ class is_parameter_operatable(fabll.Node):
 
         class E_Ctx:
             lit: T | None = None
-            node = fabll.Traits(self).get_obj(fabll.Node)
+            node = fabll.Traits(self).get_obj_raw()
             Lit = lit_type.bind_typegraph(tg=self.tg)
             LitT = lit_type
 
-        Is = F.Expressions.Is.bind_typegraph(tg=self.tg)
+        Is = Expressions.Is.bind_typegraph(tg=self.tg)
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             class Ctx:
                 lit: T | None = None
 
             # check if Is is constrained
-            expr = fbrk.EdgeOperand.get_expression_node(edge=edge.edge())
-            is_expr = F.Expressions.Is.bind_instance(instance=edge.g().bind(node=expr))
-            if not is_expr.has_trait(F.Expressions.IsConstrained):
+            expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
+            is_expr = Expressions.Is.bind_instance(instance=edge.g().bind(node=expr))
+            print(f"is_expr: {is_expr.get_full_name(types=True)}")
+            if not is_expr.has_trait(Expressions.IsConstrained):
                 return
+
+            print("constrained")
 
             # for each of those check if they have a literal operand
             def visit(ctx: Ctx, edge: graph.BoundEdge) -> None:
@@ -51,7 +54,9 @@ class is_parameter_operatable(fabll.Node):
 
             ctx = Ctx()
             fbrk.EdgeOperand.visit_operand_edges(
-                bound_node=is_expr.instance, ctx=ctx, f=visit
+                bound_node=cast(fabll.NodeT, is_expr.operands.get()).instance,
+                ctx=ctx,
+                f=visit,
             )
             e_ctx.lit = ctx.lit
 
@@ -79,7 +84,7 @@ class is_parameter_operatable(fabll.Node):
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            operands=[self, value], constrain=True
+            operands=[fabll.Traits(self).get_obj_raw(), value], constrain=True
         )
 
     def compact_repr(
@@ -109,8 +114,8 @@ class is_parameter_operatable(fabll.Node):
     def as_parameter(self) -> "is_parameter":
         return fabll.Traits(self).get_trait_of_obj(is_parameter)
 
-    def as_expression(self) -> "F.Expressions.is_expression":
-        return fabll.Traits(self).get_trait_of_obj(F.Expressions.is_expression)
+    def as_expression(self) -> "Expressions.is_expression":
+        return fabll.Traits(self).get_trait_of_obj(Expressions.is_expression)
 
     def as_operand(self) -> "can_be_operand":
         return fabll.Traits(self).get_trait_of_obj(can_be_operand)
@@ -118,8 +123,8 @@ class is_parameter_operatable(fabll.Node):
     def is_parameter(self) -> "is_parameter | None":
         return fabll.Traits(self).try_get_trait_of_obj(is_parameter)
 
-    def is_expresssion(self) -> "F.Expressions.is_expression | None":
-        return fabll.Traits(self).try_get_trait_of_obj(F.Expressions.is_expression)
+    def is_expresssion(self) -> "Expressions.is_expression | None":
+        return fabll.Traits(self).try_get_trait_of_obj(Expressions.is_expression)
 
     def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
         return fabll.Traits(self).get_trait_of_obj(t)
@@ -127,13 +132,13 @@ class is_parameter_operatable(fabll.Node):
     def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
         return fabll.Traits(self).try_get_trait_of_obj(t)
 
-    def get_operations(self) -> set["F.Expressions.is_expression"]:
+    def get_operations(self) -> set["Expressions.is_expression"]:
         # TODO
         pass
 
 
 class is_parameter(fabll.Node):
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
@@ -164,7 +169,7 @@ class can_be_operand(fabll.Node):
     Parameter, Expression, Literal
     """
 
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def as_parameter_operatable(self) -> "is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
@@ -201,44 +206,42 @@ class ReprContext:
 
 
 class StringParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
-    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll._ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        is_parameter_operatable.MakeChild()
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=F.Literals.Strings
+            lit_type=Literals.Strings
         )
 
     def force_extract_literal(self) -> "Literals.Strings":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=F.Literals.Strings
+            lit_type=Literals.Strings
         )
 
     def constrain_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
         self._is_parameter_operatable.get().constrain_to_literal(
             g=g,
-            value=F.Literals.Strings.bind_typegraph_from_instance(
+            value=Literals.Strings.bind_typegraph_from_instance(
                 instance=self.instance
-            )
-            .create_instance(g)
-            .setup(value),
+            ).create_instance(g, attributes=Literals.Strings.Attributes(value=value)),
         )
 
 
 class BooleanParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
-    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll._ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        is_parameter_operatable.MakeChild()
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=F.Literals.Booleans
+            lit_type=Literals.Booleans
         )
 
     def force_extract_literal(self) -> "Literals.Booleans":
@@ -259,11 +262,11 @@ class BooleanParameter(fabll.Node):
 
 
 class EnumParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
-    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll._ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        is_parameter_operatable.MakeChild()
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]):
@@ -291,18 +294,18 @@ class EnumParameter(fabll.Node):
 
 
 class NumericParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeChild_Trait(fabll._ChildField(is_parameter))
-    _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
-        fabll._ChildField(is_parameter_operatable)
+    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        is_parameter_operatable.MakeChild()
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "F.Units.IsUnit":
-        return self.get_trait(F.Units.HasUnit).get_unit()
+    def get_units(self) -> "Units.IsUnit":
+        return self.get_trait(Units.HasUnit).get_unit()
 
-    def get_domain(self) -> "F.NumberDomain":
+    def get_domain(self) -> "NumberDomain":
         # TODO
         pass
 
@@ -330,10 +333,10 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        units: "F.Units.IsUnit",
+        units: "Units.IsUnit",
         # hard constraints
         within: "Literals.Numbers | None" = None,
-        domain: "F.NumberDomain | None" = None,
+        domain: "NumberDomain | None" = None,
         # soft constraints
         soft_set: "Literals.Numbers | None" = None,
         guess: "Literals.Numbers | None" = None,
@@ -355,14 +358,14 @@ class NumericParameter(fabll.Node):
         unit_instance = fabll._ChildField(unit, identifier=None)
         out.add_dependant(unit_instance)
         out.add_dependant(
-            fabll._EdgeField(
+            fabll.MakeEdge(
                 [out],
                 [unit_instance],
                 edge=fbrk.EdgePointer.build(identifier="unit", order=None),
             )
         )
         # out.add_dependant(
-        #     *NumberDomain.EdgeFields(
+        #     *NumberDomain.MakeEdges(
         #         ref=[out, cls.domain],
         #         negative=negative,
         #         zero_allowed=zero_allowed,

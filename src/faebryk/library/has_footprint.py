@@ -7,7 +7,7 @@ from faebryk.libs.util import not_none
 
 
 class has_footprint(fabll.Node):
-    _is_trait = fabll.Traits.MakeChild_Trait(
+    _is_trait = fabll.Traits.MakeEdge(
         fabll._ChildField(fabll.ImplementsTrait).put_on_type()
     )
 
@@ -29,7 +29,7 @@ class has_footprint(fabll.Node):
     def MakeChild(cls, fp: fabll._ChildField[F.Footprint]):
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Collections.Pointer.EdgeField(
+            F.Collections.Pointer.MakeEdge(
                 [out, cls.footprint_pointer_],
                 [fp],
             )

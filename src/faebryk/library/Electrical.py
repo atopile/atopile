@@ -10,10 +10,11 @@ class Electrical(fabll.Node):
     Electrical interface.
     """
 
-    _is_interface = fabll._ChildField(fabll.is_interface)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Electrical, Resistor, Capacitor
 
         # Basic electrical connection point
@@ -37,5 +38,6 @@ class Electrical(fabll.Node):
         electrical1 ~ capacitor.unnamed[0]
         capacitor.unnamed[1] ~ electrical2
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

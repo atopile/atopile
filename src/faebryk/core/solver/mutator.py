@@ -66,7 +66,8 @@ class Transformations:
     removed: set[F.Parameters.is_parameter_operatable] = field(default_factory=set)
     copied: set[F.Parameters.is_parameter_operatable] = field(default_factory=set)
     created: dict[
-        F.Parameters.is_parameter_operatable, list[F.Parameters.is_parameter_operatable]
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
     ] = field(default_factory=lambda: defaultdict(list))
     # TODO make api for contraining
     terminated: set[F.Expressions.IsConstrained] = field(default_factory=set)
@@ -503,7 +504,8 @@ class MutationStage:
     def backwards_mapping(
         self,
     ) -> dict[
-        F.Parameters.is_parameter_operatable, list[F.Parameters.is_parameter_operatable]
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
     ]:
         return invert_dict(self.transformations.mutated)
 
@@ -830,7 +832,8 @@ class MutationMap:
     def compressed_mapping_backwards(
         self,
     ) -> dict[
-        F.Parameters.is_parameter_operatable, list[F.Parameters.is_parameter_operatable]
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
     ]:
         return {
             end: self.map_backward(end, only_full=True) for end in self.output_operables
@@ -994,7 +997,8 @@ class MutationMap:
     def has_merged(
         self,
     ) -> dict[
-        F.Parameters.is_parameter_operatable, list[F.Parameters.is_parameter_operatable]
+        F.Parameters.is_parameter_operatable,
+        list[F.Parameters.is_parameter_operatable],
     ]:
         mapping = self.compressed_mapping_backwards
         return {k: v for k, v in mapping.items() if len(v) > 1}

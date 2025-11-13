@@ -6,10 +6,12 @@ import faebryk.library._F as F
 
 
 class can_attach_to_footprint_via_pinmap(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
 
     # TODO: Forward this trait to parent
-    _can_attach_to_footprint = fabll._ChildField(F.can_attach_to_footprint)
+    _can_attach_to_footprint = fabll.Traits.MakeEdge(
+        (F.can_attach_to_footprint.MakeChild())
+    )
 
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
@@ -44,7 +46,7 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
             out.add_dependant(pin_tuple)
             # Add tuple to pinmap set
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField(
+                F.Collections.PointerSet.MakeEdge(
                     [out, cls.pinmap_],
                     [pin_tuple],
                 )

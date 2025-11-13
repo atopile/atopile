@@ -1,9 +1,9 @@
-from typing import Any, Callable, Protocol, Self
+from typing import TYPE_CHECKING, Any, Callable, Protocol, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.library import Literals
 
 RefPath = fabll.RefPath
 EdgeField = fabll._EdgeField
@@ -61,7 +61,7 @@ class PointerProtocol(CollectionProtocol):
     @classmethod
     def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
     @classmethod
-    def EdgeField(cls, pointer_ref: RefPath, elef_ref: RefPath) -> fabll._EdgeField: ...
+    def MakeEdge(cls, pointer_ref: RefPath, elef_ref: RefPath) -> fabll._EdgeField: ...
 
 
 def AbstractPointer(
@@ -82,7 +82,7 @@ def AbstractPointer(
             self.connect(node, type(self)._edge_factory(identifier=None))
 
         @classmethod
-        def EdgeField(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
+        def MakeEdge(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
             return fabll._EdgeField(
                 pointer_ref,
                 elem_ref,
@@ -100,12 +100,10 @@ class SequenceProtocol(CollectionProtocol):
     def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
 
     @classmethod
-    def EdgeField(
-        cls, seq_ref: RefPath, elem_ref: RefPath, order: int
-    ) -> EdgeField: ...
+    def MakeEdge(cls, seq_ref: RefPath, elem_ref: RefPath, order: int) -> EdgeField: ...
 
     @classmethod
-    def EdgeFields(
+    def MakeEdges(
         cls, seq_ref: RefPath, elem_ref: list[RefPath]
     ) -> "list[EdgeField]": ...
 
@@ -145,7 +143,7 @@ def AbstractSequence(
             return type(self)._retrieval_function(self, self._elem_identifier)
 
         @classmethod
-        def EdgeField(
+        def MakeEdge(
             cls, seq_ref: RefPath, elem_ref: RefPath, order: int
         ) -> fabll._EdgeField:
             return fabll._EdgeField(
@@ -157,10 +155,10 @@ def AbstractSequence(
             )
 
         @classmethod
-        def EdgeFields(
+        def MakeEdges(
             cls, seq_ref: RefPath, elem_ref: list[RefPath]
         ) -> "list[fabll._EdgeField]":
-            return [cls.EdgeField(seq_ref, elem, i) for i, elem in enumerate(elem_ref)]
+            return [cls.MakeEdge(seq_ref, elem, i) for i, elem in enumerate(elem_ref)]
 
     ConcreteSequence.__name__ = f"ConcreteSequence_{id(ConcreteSequence):x}"
     return ConcreteSequence  # type: ignore
@@ -171,11 +169,11 @@ class SetProtocol(Protocol):
     def as_list(self) -> list[fabll.NodeT]: ...
     def as_set(self) -> set[fabll.NodeT]: ...
     @classmethod
-    def MakeChild(cls, *elems: RefPath) -> fabll._ChildField[Any]: ...
+    def MakeChild(cls, *elems: RefPath) -> fabll._ChildField[Self]: ...
     @classmethod
-    def EdgeField(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField: ...
+    def MakeEdge(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField: ...
     @classmethod
-    def EdgeFields(
+    def MakeEdges(
         cls, set_ref: RefPath, elem_ref: list[RefPath]
     ) -> "list[fabll._EdgeField]": ...
 
@@ -203,17 +201,15 @@ def AbstractSet(
                 by_uuid.pop(node.instance.node().get_uuid(), None)
 
             for i, elem in enumerate(by_uuid.values()):
-                self.connect(
-                    elem,
-                    type(self)._edge_factory(
-                        identifier=self._elem_identifier, order=cur_len + i
-                    ),
+                edge_attrs = type(self)._edge_factory(
+                    identifier=self._elem_identifier, order=cur_len + i
                 )
+                self.connect(elem, edge_attrs)
 
             return self
 
         @classmethod
-        def EdgeField(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
+        def MakeEdge(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
             return fabll._EdgeField(
                 set_ref,
                 elem_ref,
@@ -221,10 +217,10 @@ def AbstractSet(
             )
 
         @classmethod
-        def EdgeFields(
+        def MakeEdges(
             cls, set_ref: RefPath, elem_ref: list[RefPath]
         ) -> "list[fabll._EdgeField]":
-            return [cls.EdgeField(set_ref, elem) for elem in elem_ref]
+            return [cls.MakeEdge(set_ref, elem) for elem in elem_ref]
 
         @classmethod
         def MakeChild(cls, *elems: RefPath):
@@ -288,7 +284,7 @@ class PointerTuple(fabll.Node):
     def SetPointer(cls, tup_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
         ptr_ref = tup_ref
         ptr_ref.append(cls.pointer)
-        return Pointer.EdgeField(
+        return Pointer.MakeEdge(
             ptr_ref,
             elem_ref,
         )
@@ -297,7 +293,7 @@ class PointerTuple(fabll.Node):
     def AppendLiteral(cls, tup_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
         set_ref = tup_ref  # TODO: Can this be done in a more elegant way?
         set_ref.append(cls.literals)
-        return PointerSet.EdgeField(
+        return PointerSet.MakeEdge(
             tup_ref,
             elem_ref,
         )
@@ -308,13 +304,14 @@ class PointerTuple(fabll.Node):
 
     def get_literals_as_list(self) -> list[fabll.LiteralT]:
         return [
-            F.Literals.Strings.bind_instance(instance=lit.instance).get_value()
+            Literals.Strings.bind_instance(instance=lit.instance).get_value()
             for lit in self.literals.get().as_list()
         ]
 
     def append_literal(self, literal: fabll.LiteralT) -> None:
-        lit = F.Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
-            g=self.instance.g(), attributes=F.Literals.LiteralsAttributes(value=literal)
+        lit = Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
+            g=self.instance.g(),
+            attributes=Literals.LiteralsAttributes(value=literal),
         )
         self.literals.get().append(lit)
 

@@ -18,15 +18,15 @@ class Resistor(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_attach = fabll.Traits.MakeChild_Trait(
+    _can_attach = fabll.Traits.MakeEdge(
         F.can_attach_to_footprint_symmetrically.MakeChild(*unnamed)
     )
-    _can_bridge = fabll.Traits.MakeChild_Trait(
+    _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
     )
-    _is_pickable = fabll.Traits.MakeChild_Trait(
+    _is_pickable = fabll.Traits.MakeEdge(
         F.is_pickable_by_type.MakeChild(
             endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
             params={
@@ -38,7 +38,7 @@ class Resistor(fabll.Node):
     )
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = fabll.Traits.MakeChild_Trait(
+    _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
             S(resistance, tolerance=True),
             S(max_power),
@@ -46,11 +46,11 @@ class Resistor(fabll.Node):
         )
     )
 
-    designator_prefix = fabll.Traits.MakeChild_Trait(
+    designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.R)
     )
 
-    usage_example = fabll.Traits.MakeChild_Trait(
+    usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             """
                 import Resistor

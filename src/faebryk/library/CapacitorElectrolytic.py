@@ -29,19 +29,23 @@ class CapacitorElectrolytic(fabll.Node):
     # )
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(capacitance, tolerance=True),
-        S(max_voltage),
-        # S(temperature_coefficient),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(capacitance, tolerance=True),
+            S(max_voltage),
+            # S(temperature_coefficient),
+        )
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
-        mapping={
-            anode: ["anode", "a"],
-            cathode: ["cathode", "c"],
-        },
-        accept_prefix=False,
-        case_sensitive=False,
+    _pin_association_heuristic = fabll.Traits.MakeEdge(
+        F.has_pin_association_heuristic.MakeChild(
+            mapping={
+                anode: ["anode", "a"],
+                cathode: ["cathode", "c"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
     )
 
     # ----------------------------------------
@@ -51,14 +55,14 @@ class CapacitorElectrolytic(fabll.Node):
     # optional interface to automatically connect HV to anode and LV to cathode
     # power = F.ElectricPower.MakeChild()
 
-    # anode_edge = fabll.EdgeField(
+    # anode_edge = fabll.MakeEdge(
     #     [anode],
     #     [power, "hv"],
     #     edge=EdgePointer.build(
     #         identifier="anode", order=None
     #     ),  # TODO: Change to electrical connect
     # )
-    # cathode_edge = fabll.EdgeField(
+    # cathode_edge = fabll.MakeEdge(
     #     [cathode],
     #     [power, "lv"],
     #     edge=EdgePointer.build(
@@ -66,8 +70,9 @@ class CapacitorElectrolytic(fabll.Node):
     #     ),  # TODO: Change to electrical connect
     # )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import CapacitorElectrolytic, ElectricPower
 
         electrolytic_cap = new CapacitorElectrolytic
@@ -95,5 +100,6 @@ class CapacitorElectrolytic(fabll.Node):
         # WARNING: Reverse voltage will damage electrolytic capacitors!
         # Use ceramic or film capacitors for AC coupling applications
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

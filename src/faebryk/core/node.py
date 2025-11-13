@@ -6,6 +6,7 @@ from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, ove
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
+import faebryk
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
@@ -382,6 +383,11 @@ class _EdgeField(Field):
         for segment in path:
             if not isinstance(segment, str):
                 segment = segment.get_identifier()
+
+            if segment == SELF_OWNER_PLACEHOLDER[0]:
+                # keep target unchanged (self-reference)
+                continue
+
             child = fbrk.EdgeComposition.get_child_by_identifier(
                 bound_node=target, child_identifier=segment
             )
@@ -414,20 +420,20 @@ class _EdgeField(Field):
             f"edge={self.edge})"
         )
 
-    @staticmethod
-    def MakeLink(
-        lhs: RefPath,
-        rhs: RefPath,
-        *,
-        edge: fbrk.EdgeCreationAttributes,
-        identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
-    ) -> "_EdgeField":
-        return _EdgeField(
-            lhs=lhs,
-            rhs=rhs,
-            edge=edge,
-            identifier=identifier,
-        )
+
+def MakeEdge(
+    lhs: RefPath,
+    rhs: RefPath,
+    *,
+    edge: fbrk.EdgeCreationAttributes,
+    identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+) -> "_EdgeField":
+    return _EdgeField(
+        lhs=lhs,
+        rhs=rhs,
+        edge=edge,
+        identifier=identifier,
+    )
 
 
 class ListField(Field, list[Field]):
@@ -1395,7 +1401,11 @@ class Traits:
         return cls(node)
 
     def get_obj_raw(self) -> NodeT:
-        return self.node.get_parent_force()[0]
+        return Node.bind_instance(
+            instance=not_none(
+                fbrk.EdgeTrait.get_owner_node_of(bound_node=self.node.instance)
+            )
+        )
 
     def get_obj[N: NodeT](self, t: type[N]) -> N:
         return self.get_obj_raw().cast(t)
@@ -1414,12 +1424,12 @@ class Traits:
         return node  # type: ignore
 
     @staticmethod
-    def MakeChild_Trait(
-        child_field: _ChildField, owner: RefPath = SELF_OWNER_PLACEHOLDER
-    ) -> _ChildField:
+    def MakeEdge[T: _ChildField](
+        child_field: T, owner: RefPath = SELF_OWNER_PLACEHOLDER
+    ) -> T:
         out = child_field
         out.add_dependant(
-            _EdgeField(
+            MakeEdge(
                 owner,
                 [child_field],
                 edge=fbrk.EdgeTrait.build(),
@@ -1488,7 +1498,7 @@ class is_module(Node):
         - ...
     """
 
-    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+    _is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
 
     def get_obj(self) -> NodeT:
         return Traits.get_obj_raw(Traits.bind(self))
@@ -2013,12 +2023,6 @@ def test_lightweight():
     # TODO: test endpoint extraction from endpoint property
     # assert endpoint == "resistors"
 
-    # Test has_simple_value_representation
-    # hsvprp = resistor_instance.get_trait(
-    #     F.has_simple_value_representation
-    # )
-    # print(hsvprp.get_value())
-
     _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
     _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
     # pat = not_none(
@@ -2085,7 +2089,9 @@ def test_lightweight():
     metadata = resistor_instance.get_children(
         direct_only=True, types=F.SerializableMetadata
     )
-    print(F.SerializableMetadata.get_properties(node=resistor_instance))
+    print(
+        f"SerializableMetadata: {F.SerializableMetadata.get_properties(node=resistor_instance)}"
+    )
     # print(F.SerializableMetadata.get_properties(node=resistor_instance))
 
     # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
@@ -2094,21 +2100,44 @@ def test_lightweight():
     sym = resistor_instance.get_trait(F.can_attach_to_footprint_symmetrically)
     print(sym.electricals_.get().as_list())
 
+
+def test_string_param():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
+    string_param = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(
+        g=g
+    )
+    string_param.constrain_to_single(value="TEST")
+    print(string_param.try_extract_constrained_literal().get_value())
+    print(string_param.get_full_name(types=True))
+
+
+def test_kicad_footprint():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
     _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
     pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
     pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
-    _ = F.has_kicad_footprint.bind_typegraph(tg=tg).get_or_create_type()
-    kicad_footprint = F.has_kicad_footprint.bind_typegraph(tg=tg).create_instance(g=g)
-    kicad_footprint = kicad_footprint.setup(
-        kicad_identifier="libR_0402_1005Metric",
-        pinmap={pad1: "P1", pad2: "P2"},
+    kicad_footprint = (
+        F.has_kicad_footprint.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            kicad_identifier="libR_0402_1005Metric2",
+            pinmap={pad1: "P1", pad2: "P2"},
+        )
     )
-    print(kicad_footprint.get_kicad_footprint())
-    print(kicad_footprint.get_pin_names())
+    print(
+        f"kicad_footprint.get_kicad_footprint(): {kicad_footprint.get_kicad_footprint()}"
+    )
+    print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
+
+def test2():
     strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(
-        g=g, attributes=F.Literals.LiteralsAttributes(value="test")
+        g=g, attributes=F.Literals.Strings.Attributes(value="test")
     )
     print(strings.get_value())
 
@@ -2129,4 +2158,5 @@ if __name__ == "__main__":
 
     # test_manual_resistor_def()
 
-    typer.run(test_lightweight)
+    typer.run(test_string_param)
+    # typer.run(test_string_param)

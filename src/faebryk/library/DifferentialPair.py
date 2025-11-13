@@ -19,8 +19,10 @@ class DifferentialPair(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll._ChildField(fabll.is_interface)
-    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     def terminated(self) -> "DifferentialPair":
         terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(
@@ -54,8 +56,9 @@ class DifferentialPair(fabll.Node):
         # self.p.line.add(F.has_net_name_affix.setup(suffix="_P"))
         # self.n.line.add(F.has_net_name_affix.setup(suffix="_N"))
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import DifferentialPair, ElectricPower
 
         diff_pair = new DifferentialPair
@@ -79,5 +82,6 @@ class DifferentialPair(fabll.Node):
         usb_dp_dn = new DifferentialPair
         usb_dp_dn.impedance = 90ohm +/- 10%
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

@@ -10,14 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 class has_usage_example(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
-
     class Language(StrEnum):
         python = "python"
         fabll = "fabll"
         ato = "ato"
 
-    # LanguageEnumT = enum_sets.EnumsFactory(Language)
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     example_ = fabll._ChildField(F.Parameters.StringParameter)
     language_ = F.Parameters.EnumParameter.MakeChild(enum_t=Language)

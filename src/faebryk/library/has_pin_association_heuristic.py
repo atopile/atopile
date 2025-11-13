@@ -37,7 +37,7 @@ class has_pin_association_heuristic(fabll.Node):
     |  |  |- literal2
     """
 
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     mapping = F.Collections.PointerSet.MakeChild()
     accept_prefix_ = F.Parameters.BooleanParameter.MakeChild()
@@ -68,9 +68,7 @@ class has_pin_association_heuristic(fabll.Node):
             nc_lit = F.Literals.Strings.MakeChild(value=nc_literal)
             out.add_dependant(nc_lit)
             nc_makechilds.append([nc_lit])
-        nc_set_fields = F.Collections.PointerSet.EdgeFields(
-            [out, cls.nc], nc_makechilds
-        )
+        nc_set_fields = F.Collections.PointerSet.MakeEdges([out, cls.nc], nc_makechilds)
         out.add_dependant(*nc_set_fields)
 
         pat_tuples = []
@@ -95,7 +93,7 @@ class has_pin_association_heuristic(fabll.Node):
             pat_tuples.append([pat_tuple])
 
         # Populate mapping set with pat sets
-        pat_set_edges = F.Collections.PointerSet.EdgeFields(
+        pat_set_edges = F.Collections.PointerSet.MakeEdges(
             [out, cls.mapping], pat_tuples
         )
         out.add_dependant(*pat_set_edges)

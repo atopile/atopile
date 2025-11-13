@@ -227,8 +227,8 @@ class has_designator_prefix(fabll.Node):
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
-    prefix_param_ = F.Parameters.StringParameter.MakeChild()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    prefix_param_ = F.Parameters.EnumParameter.MakeChild(enum_t=Prefix)
 
     @classmethod
     def MakeChild(cls, value: Prefix) -> fabll._ChildField[Any]:
@@ -244,5 +244,5 @@ class has_designator_prefix(fabll.Node):
         return str(self.prefix_param_.get().try_extract_constrained_literal())
 
     def setup(self, designator_prefix: str) -> Self:
-        self.prefix_param_.get().constrain_to_single(value=designator_prefix)
+        # self.prefix_param_.get().constrain_to_single(value=designator_prefix)
         return self

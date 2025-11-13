@@ -9,6 +9,7 @@ import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
+
 class Capacitor(fabll.Node):
     # ----------------------------------------
     #                 enums
@@ -37,16 +38,22 @@ class Capacitor(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
-    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
-    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
-    _is_pickable = F.is_pickable_by_type.MakeChild(
-        endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
-        params={
-            "capacitance": capacitance,
-            "max_voltage": max_voltage,
-            # "temperature_coefficient": temperature_coefficient,
-        },
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    _can_attach = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint_symmetrically.MakeChild()
+    )
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
+    )
+    _is_pickable = fabll.Traits.MakeEdge(
+        F.is_pickable_by_type.MakeChild(
+            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
+            params={
+                "capacitance": capacitance,
+                "max_voltage": max_voltage,
+                # "temperature_coefficient": temperature_coefficient,
+            },
+        )
     )
 
     S = F.has_simple_value_representation.Spec

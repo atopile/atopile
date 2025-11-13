@@ -45,20 +45,26 @@ class MultiCapacitor(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
-    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
-
-    S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(capacitance, tolerance=True),
-        S(max_voltage),
-        # S(temperature_coefficient),
+    _can_attach = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint_symmetrically.MakeChild()
+    )
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.C
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(capacitance, tolerance=True),
+            S(max_voltage),
+            # S(temperature_coefficient),
+        )
+    )
+
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.C)
     )
 
     # ----------------------------------------
@@ -94,17 +100,19 @@ class MultiCapacitor(fabll.Node):
     #     for c in self.capacitors:
     #         c.capacitance.constrain_subset(capacitance)
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import MultiCapacitor
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import MultiCapacitor
 
-        multicapacitor = new MultiCapacitor<count=4>
-        for c in multicapacitor.capacitors:
-            c.capacitance = 100nF +/- 10%
-            c.package = "0402"
+            multicapacitor = new MultiCapacitor<count=4>
+            for c in multicapacitor.capacitors:
+                c.capacitance = 100nF +/- 10%
+                c.package = "0402"
 
-        electrical1 ~ multicapacitor.unnamed[0]
-        electrical2 ~ multicapacitor.unnamed[1]
-        """,
-        language=F.has_usage_example.Language.ato,
+            electrical1 ~ multicapacitor.unnamed[0]
+            electrical2 ~ multicapacitor.unnamed[1]
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

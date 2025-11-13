@@ -1,10 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+
+if TYPE_CHECKING:
+    from faebryk.library import Literals
 
 
 class NumberDomain(fabll.Node):
@@ -29,7 +32,7 @@ class NumberDomain(fabll.Node):
     ):
         out = fabll._ChildField(cls)
         out.add_dependant(
-            *cls.EdgeFields(
+            *cls.MakeEdges(
                 ref=[out],
                 negative=negative,
                 zero_allowed=zero_allowed,
@@ -39,7 +42,7 @@ class NumberDomain(fabll.Node):
         return out
 
     @classmethod
-    def EdgeFields(
+    def MakeEdges(
         cls,
         ref: list[str | fabll._ChildField[Any]],
         negative: bool = False,
@@ -59,7 +62,7 @@ class NumberDomain(fabll.Node):
         ]
         return out
 
-    def unbounded(self, units: type[fabll.NodeT]) -> "F.Literals.Numbers":
+    def unbounded(self, units: type[fabll.NodeT]) -> "Literals.Numbers":
         if self.integer.get().extract_single():
             # TODO
             pass

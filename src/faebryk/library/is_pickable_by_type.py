@@ -16,12 +16,12 @@ class is_pickable_by_type(fabll.Node):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
-    endpoint_ = fabll._ChildField(F.Parameters.StringParameter)
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    endpoint_ = F.Parameters.StringParameter.MakeChild()
     params_ = F.Collections.PointerSet.MakeChild()
 
     # TODO: Forward this trait to parent
-    _is_pickable = fabll._ChildField(F.is_pickable)
+    _is_pickable = fabll.Traits.MakeEdge(F.is_pickable.MakeChild())
 
     class Endpoint(StrEnum):
         """Query endpoints known to the API."""
@@ -80,7 +80,7 @@ class is_pickable_by_type(fabll.Node):
             out.add_dependant(param_tuple)
             # Add tuple to params_ set
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField(
+                F.Collections.PointerSet.MakeEdge(
                     [out, cls.params_],
                     [param_tuple],
                 )

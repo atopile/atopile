@@ -5,5 +5,5 @@ import faebryk.core.node as fabll
 
 
 class is_pickable(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     pass

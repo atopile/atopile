@@ -17,10 +17,10 @@ class has_net_name(fabll.Node):
         SUGGESTED = auto()
         EXPECTED = auto()
 
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
     name_ = F.Parameters.StringParameter.MakeChild()
     level_ = F.Parameters.EnumParameter.MakeChild(enum_t=Level)
-
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     @classmethod
     def MakeChild(cls, name: str, level: Level) -> fabll._ChildField[Any]:

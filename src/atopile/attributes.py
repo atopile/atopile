@@ -36,7 +36,7 @@ class _has_local_kicad_footprint_named_defined(fabll.Node):
     which means we can construct the underlying pin map
     """
 
-    _is_trait = fabll.Traits.MakeChild_Trait(
+    _is_trait = fabll.Traits.MakeEdge(
         fabll._ChildField(fabll.ImplementsTrait).put_on_type()
     )
 

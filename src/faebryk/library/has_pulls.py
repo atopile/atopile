@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class has_pulls(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     up_ = F.Collections.Pointer.MakeChild()
     down_ = F.Collections.Pointer.MakeChild()

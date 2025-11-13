@@ -32,8 +32,11 @@ class I2C(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
-    _single_electric_reference = F.has_single_electric_reference.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     # ----------------------------------------
     #                 functions
@@ -137,25 +140,27 @@ class I2C(fabll.Node):
 
     # address_check = requires_unique_addresses.MakeChild()
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import I2C, ElectricPower
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import I2C, ElectricPower
 
-        i2c_bus = new I2C
-        i2c_bus.frequency = 400kHz  # Fast mode
-        i2c_bus.address = 0x48  # Device address
+            i2c_bus = new I2C
+            i2c_bus.frequency = 400kHz  # Fast mode
+            i2c_bus.address = 0x48  # Device address
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        i2c_bus.scl.reference ~ power_3v3
-        i2c_bus.sda.reference ~ power_3v3
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            i2c_bus.scl.reference ~ power_3v3
+            i2c_bus.sda.reference ~ power_3v3
 
-        # Connect to microcontroller
-        microcontroller.i2c ~ i2c_bus
+            # Connect to microcontroller
+            microcontroller.i2c ~ i2c_bus
 
-        # Connect to I2C sensor
-        sensor.i2c ~ i2c_bus
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            # Connect to I2C sensor
+            sensor.i2c ~ i2c_bus
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

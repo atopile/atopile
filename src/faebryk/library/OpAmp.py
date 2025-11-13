@@ -24,7 +24,7 @@ class OpAmp(fabll.Node):
     slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = fabll.Traits.MakeChild_Trait(
+    _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
             S(bandwidth, prefix="BW"),
             S(common_mode_rejection_ratio, prefix="CMRR"),
@@ -36,7 +36,7 @@ class OpAmp(fabll.Node):
         )
     )
 
-    _pin_association_heuristic = fabll.Traits.MakeChild_Trait(
+    _pin_association_heuristic = fabll.Traits.MakeEdge(
         F.has_pin_association_heuristic.MakeChild(
             mapping={
                 # power.get().hv: ["V+", "Vcc", "Vdd", "Vcc+"], not possible for now
@@ -50,11 +50,11 @@ class OpAmp(fabll.Node):
         )
     )
 
-    designator_prefix = fabll.Traits.MakeChild_Trait(
+    designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.U)
     )
 
-    usage_example = fabll.Traits.MakeChild_Trait(
+    usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""
         import OpAmp, Resistor, ElectricPower, Electrical

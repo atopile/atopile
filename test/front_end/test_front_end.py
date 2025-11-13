@@ -1954,7 +1954,11 @@ class ModuleWithTypingUnionEnumOrNone(fabll.Node):
         ("ModuleWithOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
         # Optional enums with typing syntax
         ("ModuleWithTypingOptionalEnum", "", {"_color": None}),
-        ("ModuleWithTypingOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
+        (
+            "ModuleWithTypingOptionalEnum",
+            '<color="RED">',
+            {"_color": F.LED.Color.RED},
+        ),
         # Enum | None variations
         ("ModuleWithEnumOrNone", "", {"_channel": None}),
         (

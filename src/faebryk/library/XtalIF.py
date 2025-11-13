@@ -10,10 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class XtalIF(fabll.Node):
-    """
-    TODO: Docstring describing your module
-    """
-
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -21,17 +17,11 @@ class XtalIF(fabll.Node):
     xout = F.Electrical.MakeChild()
     gnd = F.Electrical.MakeChild()
 
-    @classmethod
-    def MakeChild(cls):
-        return fabll._ChildField(cls)
-
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # def __postinit__(self, *args, **kwargs):
-    #     super().__postinit__(*args, **kwargs)
     #     self.xin.add(F.has_net_name("XIN", level=F.has_net_name.Level.SUGGESTED))
     #     self.xout.add(F.has_net_name("XOUT", level=F.has_net_name.Level.SUGGESTED))
     #     self.gnd.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))

@@ -4,13 +4,15 @@
 from functools import reduce
 from typing import Self
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import cast_assert
 
 
 class can_be_pulled(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
 
     reference_ = F.Collections.Pointer.MakeChild()
     line_ = F.Collections.Pointer.MakeChild()
@@ -41,14 +43,14 @@ class can_be_pulled(fabll.Node):
         name = obj.get_name(accept_no_parent=True)
         # TODO handle collisions
         if up:
-            fabll.EdgeComposition.add_child(
+            fbrk.EdgeComposition.add_child(
                 bound_node=owner.instance,
                 child=resistor.instance.node(),
                 child_identifier=f"pull_up_{name}",
             )
             up_r = resistor
         else:
-            fabll.EdgeComposition.add_child(
+            fbrk.EdgeComposition.add_child(
                 bound_node=owner.instance,
                 child=resistor.instance.node(),
                 child_identifier=f"pull_down_{name}",
@@ -73,13 +75,13 @@ class can_be_pulled(fabll.Node):
     ) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Collections.Pointer.EdgeField(
+            F.Collections.Pointer.MakeEdge(
                 [out, cls.line_],
                 [line],
             )
         )
         out.add_dependant(
-            F.Collections.Pointer.EdgeField(
+            F.Collections.Pointer.MakeEdge(
                 [out, cls.reference_],
                 [reference],
             )
