@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.library._F as F
-
-from faebryk.library import Parameters, Units
+from faebryk.library.Expressions import Is
+from faebryk.library.Parameters import can_be_operand
+from faebryk.library.Units import Dimensionless, IsUnit
 
 
 class is_literal(fabll.Node):
@@ -37,9 +36,7 @@ class LiteralsAttributes(fabll.NodeAttributes):
 class Strings(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeChild_Trait(
-        fabll._ChildField(Parameters.can_be_operand)
-    )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
 
     def setup(self, value: str) -> Self:
         # TODO:
@@ -56,7 +53,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
     ) -> fabll._ChildField:
         assert isinstance(value, str), "Value of string literal must be a string"
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -66,9 +63,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
 
 class Numbers(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeChild_Trait(
-        Parameters.can_be_operand.MakeChild()
-    )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(can_be_operand.MakeChild())
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
         # TODO
@@ -78,13 +73,13 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: "type[fabll.NodeT] | Units.IsUnit | None" = None,
+        unit: "type[fabll.NodeT] | IsUnit | None" = None,
     ) -> Self:
         # TODO
         return self
 
     def setup_from_singleton(self, value: float, unit: fabll.NodeT) -> Self:
-        #TODO
+        # TODO
         return self
 
     def deserialize(self, data: dict) -> Self:
@@ -102,7 +97,7 @@ class Numbers(fabll.Node):
                 self,
                 lower: float | None,
                 upper: float | None,
-                unit: type[fabll.NodeT] = Units.Dimensionless,
+                unit: type[fabll.NodeT] = Dimensionless,
             ) -> Self:
                 return (
                     cls.bind_typegraph(tg=tg)
@@ -129,7 +124,7 @@ class Numbers(fabll.Node):
         )
         value = float(value)
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -186,15 +181,13 @@ class Numbers(fabll.Node):
     def to_dimensionless(self) -> "Numbers": ...
 
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
-    def are_units_compatible(self, unit: "Units.IsUnit") -> bool: ...
+    def are_units_compatible(self, unit: "IsUnit") -> bool: ...
 
 
 class Booleans(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = is_literal.MakeChild()
-    _can_be_operand = fabll.Traits.MakeChild_Trait(
-        Parameters.can_be_operand.MakeChild()
-    )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(can_be_operand.MakeChild())
 
     def setup(self, *values: bool) -> Self:
         # TODO
@@ -213,7 +206,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     ) -> fabll._ChildField:
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -229,9 +222,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
 
 class Enums(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeChild_Trait(
-        Parameters.can_be_operand.MakeChild()
-    )
+    _can_be_operand = fabll.Traits.MakeChild_Trait(can_be_operand.MakeChild())
 
     def setup[T: Enum](self, enum: type[T], *values: T) -> Self:
         # TODO

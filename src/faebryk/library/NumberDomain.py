@@ -4,13 +4,14 @@
 from typing import Any, Self
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.library.Literals import Booleans, Numbers
+from faebryk.library.Parameters import BooleanParameter
 
 
 class NumberDomain(fabll.Node):
-    negative = F.Parameters.BooleanParameter.MakeChild()
-    zero_allowed = F.Parameters.BooleanParameter.MakeChild()
-    integer = F.Parameters.BooleanParameter.MakeChild()
+    negative = BooleanParameter.MakeChild()
+    zero_allowed = BooleanParameter.MakeChild()
+    integer = BooleanParameter.MakeChild()
 
     def setup(
         self, negative: bool = False, zero_allowed: bool = True, integer: bool = False
@@ -47,19 +48,15 @@ class NumberDomain(fabll.Node):
         integer: bool = False,
     ):
         out = [
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
-                [*ref, cls.negative], negative
-            ),
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            Booleans.MakeChild_ConstrainToLiteral([*ref, cls.negative], negative),
+            Booleans.MakeChild_ConstrainToLiteral(
                 [*ref, cls.zero_allowed], zero_allowed
             ),
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
-                [*ref, cls.integer], integer
-            ),
+            Booleans.MakeChild_ConstrainToLiteral([*ref, cls.integer], integer),
         ]
         return out
 
-    def unbounded(self, units: type[fabll.NodeT]) -> "F.Literals.Numbers":
+    def unbounded(self, units: type[fabll.NodeT]) -> "Numbers":
         if self.integer.get().extract_single():
             # TODO
             pass
@@ -69,7 +66,7 @@ class NumberDomain(fabll.Node):
         if self.negative.get().extract_single():
             # TODO
             pass
-        return F.Literals.Numbers.unbounded(units=units)
+        return Numbers.unbounded(units=units)
 
     @classmethod
     def get_shared_domain(cls, *domains: "NumberDomain") -> "NumberDomain":
