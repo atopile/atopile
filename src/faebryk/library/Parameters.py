@@ -29,7 +29,7 @@ class is_parameter_operatable(fabll.Node):
             Lit = lit_type.bind_typegraph(tg=self.tg)
             LitT = lit_type
 
-        Is = Expressions.Is.bind_typegraph(tg=self.tg)
+        Is = F.Expressions.Is.bind_typegraph(tg=self.tg)
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             class Ctx:
@@ -37,9 +37,9 @@ class is_parameter_operatable(fabll.Node):
 
             # check if Is is constrained
             expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
-            is_expr = Expressions.Is.bind_instance(instance=edge.g().bind(node=expr))
+            is_expr = F.Expressions.Is.bind_instance(instance=edge.g().bind(node=expr))
             print(f"is_expr: {is_expr.get_full_name(types=True)}")
-            if not is_expr.has_trait(Expressions.IsConstrained):
+            if not is_expr.has_trait(F.Expressions.IsConstrained):
                 return
 
             print("constrained")
@@ -214,21 +214,21 @@ class StringParameter(fabll.Node):
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=Literals.Strings
+            lit_type=F.Literals.Strings
         )
 
     def force_extract_literal(self) -> "Literals.Strings":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=Literals.Strings
+            lit_type=F.Literals.Strings
         )
 
     def constrain_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
         self._is_parameter_operatable.get().constrain_to_literal(
             g=g,
-            value=Literals.Strings.bind_typegraph_from_instance(
+            value=F.Literals.Strings.bind_typegraph_from_instance(
                 instance=self.instance
-            ).create_instance(g, attributes=Literals.Strings.Attributes(value=value)),
+            ).create_instance(g, attributes=F.Literals.Strings.Attributes(value=value)),
         )
 
 
@@ -241,12 +241,12 @@ class BooleanParameter(fabll.Node):
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=Literals.Booleans
+            lit_type=F.Literals.Booleans
         )
 
     def force_extract_literal(self) -> "Literals.Booleans":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=Literals.Booleans
+            lit_type=F.Literals.Booleans
         )
 
     def extract_single(self) -> bool:

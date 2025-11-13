@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Self, Sequence, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Self, Sequence, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -281,7 +281,7 @@ class is_canonical(fabll.Node):
         return fabll.Traits(self).get_trait_of_obj(is_expression)
 
     def as_parameter_operatable(self) -> "Parameters.is_parameter_operatable":
-        return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter_operatable)
+        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
 
 
 # algebraic properties
@@ -328,8 +328,8 @@ class is_involutory(fabll.Node):
 
 
 class Add(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -352,8 +352,8 @@ class Add(fabll.Node):
 
 
 class Subtract(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -377,8 +377,8 @@ class Subtract(fabll.Node):
 
 
 class Multiply(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -401,8 +401,8 @@ class Multiply(fabll.Node):
 
 
 class Divide(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -431,8 +431,8 @@ class Divide(fabll.Node):
 
 
 class Sqrt(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -454,8 +454,8 @@ class Sqrt(fabll.Node):
 
 
 class Power(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -480,8 +480,8 @@ class Power(fabll.Node):
 
 
 class Log(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -512,8 +512,8 @@ class Log(fabll.Node):
 
 
 class Sin(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -532,8 +532,8 @@ class Sin(fabll.Node):
 
 
 class Cos(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -544,14 +544,14 @@ class Cos(fabll.Node):
     )
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: Parameters.can_be_operand) -> Self:
+    def setup(self, operand: "Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
 
 class Abs(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -565,14 +565,14 @@ class Abs(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: Parameters.can_be_operand) -> Self:
+    def setup(self, operand: "Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
 
 class Round(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -586,14 +586,14 @@ class Round(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: Parameters.can_be_operand) -> Self:
+    def setup(self, operand: "Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
 
 class Floor(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -605,7 +605,7 @@ class Floor(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: Parameters.can_be_operand) -> Self:
+    def setup(self, operand: "Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -622,14 +622,14 @@ class Ceil(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: Parameters.can_be_operand) -> Self:
+    def setup(self, operand: "Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
 
 class Min(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -641,14 +641,14 @@ class Min(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: Parameters.can_be_operand) -> Self:
+    def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
 
 class Max(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -660,14 +660,14 @@ class Max(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: Parameters.can_be_operand) -> Self:
+    def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
 
 class Integrate(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -682,8 +682,8 @@ class Integrate(fabll.Node):
 
     def setup(
         self,
-        operand: Parameters.can_be_operand,
-        variable: Parameters.can_be_operand,
+        operand: "Parameters.can_be_operand",
+        variable: "Parameters.can_be_operand",
     ) -> Self:
         self.function.get().point(operand)
         self.variable.get().point(variable)
@@ -691,8 +691,8 @@ class Integrate(fabll.Node):
 
 
 class Differentiate(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -707,8 +707,8 @@ class Differentiate(fabll.Node):
 
     def setup(
         self,
-        operand: Parameters.can_be_operand,
-        variable: Parameters.can_be_operand,
+        operand: "Parameters.can_be_operand",
+        variable: "Parameters.can_be_operand",
     ) -> Self:
         self.function.get().point(operand)
         self.variable.get().point(variable)
@@ -716,8 +716,8 @@ class Differentiate(fabll.Node):
 
 
 class And(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -731,7 +731,7 @@ class And(fabll.Node):
     operands = OperandSequence.MakeChild()
 
     def setup(
-        self, *operands: Parameters.can_be_operand, constrain: bool = False
+        self, *operands: "Parameters.can_be_operand", constrain: bool = False
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
@@ -740,8 +740,8 @@ class And(fabll.Node):
 
 
 class Or(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -763,7 +763,7 @@ class Or(fabll.Node):
     operands = OperandSequence.MakeChild()
 
     def setup(
-        self, *operands: Parameters.can_be_operand, constrain: bool = False
+        self, *operands: "Parameters.can_be_operand", constrain: bool = False
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
@@ -772,8 +772,8 @@ class Or(fabll.Node):
 
 
 class Not(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -789,7 +789,7 @@ class Not(fabll.Node):
     operand = OperandPointer.MakeChild()
 
     def setup(
-        self, operand: Parameters.can_be_operand, constrain: bool = False
+        self, operand: "Parameters.can_be_operand", constrain: bool = False
     ) -> Self:
         self.operand.get().point(operand)
         if constrain:
@@ -798,8 +798,8 @@ class Not(fabll.Node):
 
 
 class Xor(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -813,7 +813,7 @@ class Xor(fabll.Node):
     operands = OperandSequence.MakeChild()
 
     def setup(
-        self, *operands: Parameters.can_be_operand, constrain: bool = False
+        self, *operands: "Parameters.can_be_operand", constrain: bool = False
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
@@ -837,8 +837,8 @@ class Implies(fabll.Node):
 
     def setup(
         self,
-        antecedent: Parameters.can_be_operand,
-        consequent: Parameters.can_be_operand,
+        antecedent: "Parameters.can_be_operand",
+        consequent: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.antecedent.get().point(antecedent)
@@ -865,9 +865,9 @@ class IfThenElse(fabll.Node):
 
     def setup(
         self,
-        condition: Parameters.can_be_operand,
-        then_value: Parameters.can_be_operand,
-        else_value: Parameters.can_be_operand,
+        condition: "Parameters.can_be_operand",
+        then_value: "Parameters.can_be_operand",
+        else_value: "Parameters.can_be_operand",
     ) -> Self:
         self.condition.get().point(condition)
         self.then_value.get().point(then_value)
@@ -876,8 +876,8 @@ class IfThenElse(fabll.Node):
 
 
 class Union(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -897,14 +897,14 @@ class Union(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: Parameters.can_be_operand) -> Self:
+    def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
 
 class Intersection(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -924,14 +924,14 @@ class Intersection(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: Parameters.can_be_operand) -> Self:
+    def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
 
 class Difference(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -945,8 +945,8 @@ class Difference(fabll.Node):
 
     def setup(
         self,
-        minuend: Parameters.can_be_operand,
-        subtrahend: Parameters.can_be_operand,
+        minuend: "Parameters.can_be_operand",
+        subtrahend: "Parameters.can_be_operand",
     ) -> Self:
         self.minuend.get().point(minuend)
         self.subtrahend.get().point(subtrahend)
@@ -954,8 +954,8 @@ class Difference(fabll.Node):
 
 
 class SymmetricDifference(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -972,8 +972,8 @@ class SymmetricDifference(fabll.Node):
 
     def setup(
         self,
-        left: Parameters.can_be_operand,
-        right: Parameters.can_be_operand,
+        left: "Parameters.can_be_operand",
+        right: "Parameters.can_be_operand",
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -981,8 +981,8 @@ class SymmetricDifference(fabll.Node):
 
 
 class LessThan(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -998,8 +998,8 @@ class LessThan(fabll.Node):
 
     def setup(
         self,
-        left: Parameters.can_be_operand,
-        right: Parameters.can_be_operand,
+        left: "Parameters.can_be_operand",
+        right: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1010,8 +1010,8 @@ class LessThan(fabll.Node):
 
 
 class GreaterThan(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1028,8 +1028,8 @@ class GreaterThan(fabll.Node):
 
     def setup(
         self,
-        left: Parameters.can_be_operand,
-        right: Parameters.can_be_operand,
+        left: "Parameters.can_be_operand",
+        right: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1040,8 +1040,8 @@ class GreaterThan(fabll.Node):
 
 
 class LessOrEqual(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1057,8 +1057,8 @@ class LessOrEqual(fabll.Node):
 
     def setup(
         self,
-        left: Parameters.can_be_operand,
-        right: Parameters.can_be_operand,
+        left: "Parameters.can_be_operand",
+        right: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1069,8 +1069,8 @@ class LessOrEqual(fabll.Node):
 
 
 class GreaterOrEqual(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1088,8 +1088,8 @@ class GreaterOrEqual(fabll.Node):
 
     def setup(
         self,
-        left: Parameters.can_be_operand,
-        right: Parameters.can_be_operand,
+        left: "Parameters.can_be_operand",
+        right: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1100,8 +1100,8 @@ class GreaterOrEqual(fabll.Node):
 
 
 class NotEqual(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1117,8 +1117,8 @@ class NotEqual(fabll.Node):
 
     def setup(
         self,
-        left: Parameters.can_be_operand,
-        right: Parameters.can_be_operand,
+        left: "Parameters.can_be_operand",
+        right: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1129,8 +1129,8 @@ class NotEqual(fabll.Node):
 
 
 class IsBitSet(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1147,8 +1147,8 @@ class IsBitSet(fabll.Node):
 
     def setup(
         self,
-        value: Parameters.can_be_operand,
-        bit_index: Parameters.can_be_operand,
+        value: "Parameters.can_be_operand",
+        bit_index: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.value.get().point(value)
@@ -1159,8 +1159,8 @@ class IsBitSet(fabll.Node):
 
 
 class IsSubset(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1178,8 +1178,8 @@ class IsSubset(fabll.Node):
 
     def setup(
         self,
-        subset: Parameters.can_be_operand,
-        superset: Parameters.can_be_operand,
+        subset: "Parameters.can_be_operand",
+        superset: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.subset.get().point(subset)
@@ -1190,8 +1190,8 @@ class IsSubset(fabll.Node):
 
 
 class IsSuperset(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1207,8 +1207,8 @@ class IsSuperset(fabll.Node):
 
     def setup(
         self,
-        superset: Parameters.can_be_operand,
-        subset: Parameters.can_be_operand,
+        superset: "Parameters.can_be_operand",
+        subset: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.superset.get().point(superset)
@@ -1219,8 +1219,8 @@ class IsSuperset(fabll.Node):
 
 
 class Cardinality(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1236,8 +1236,8 @@ class Cardinality(fabll.Node):
 
     def setup(
         self,
-        set: Parameters.can_be_operand,
-        cardinality: Parameters.can_be_operand,
+        set: "Parameters.can_be_operand",
+        cardinality: "Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.set.get().point(set)
@@ -1248,8 +1248,8 @@ class Cardinality(fabll.Node):
 
 
 class Is(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
@@ -1265,7 +1265,9 @@ class Is(fabll.Node):
 
     operands = OperandSet.MakeChild()
 
-    def setup(self, operands: list[Parameters.can_be_operand], constrain: bool) -> Self:
+    def setup(
+        self, operands: list["Parameters.can_be_operand"], constrain: bool
+    ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()

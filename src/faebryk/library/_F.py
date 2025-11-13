@@ -15,9 +15,7 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-import faebryk.library.Expressions as Expressions
-import faebryk.library.Units as Units
-import faebryk.library.Literals as Literals
+import faebryk.library.Parameters as Parameters
 import faebryk.library.Collections as Collections
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
@@ -30,12 +28,14 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_pickable import is_pickable
+import faebryk.library.Expressions as Expressions
+import faebryk.library.Literals as Literals
+import faebryk.library.Units as Units
 from faebryk.library.can_bridge import can_bridge
-import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.has_footprint import has_footprint
-import faebryk.library.Parameters as Parameters
 from faebryk.library.implements_design_check import implements_design_check
-from faebryk.library.can_bridge_by_name import can_bridge_by_name
+from faebryk.library.has_package_requirements import has_package_requirements
+from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
@@ -48,6 +48,7 @@ from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
+from faebryk.library.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.PCB import PCB
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.Electrical import Electrical
@@ -117,9 +118,7 @@ from faebryk.library.USB3 import USB3
 from faebryk.library.USB_C import USB_C
 
 __all__ = [
-    "Expressions",
-    "Units",
-    "Literals",
+    "Parameters",
     "Collections",
     "Footprint",
     "Logic",
@@ -132,26 +131,27 @@ __all__ = [
     "is_lazy",
     "has_part_removed",
     "is_pickable",
+    "Expressions",
+    "Literals",
+    "Units",
     "can_bridge",
-    "PCBTransformer",
     "has_footprint",
-    "Parameters",
     "implements_design_check",
-    "can_bridge_by_name",
+    "has_package_requirements",
+    "is_auto_generated",
     "SerializableMetadata",
     "has_datasheet",
     "has_designator",
     "has_designator_prefix",
     "has_net_name",
     "has_overriden_name",
-    "has_package_requirements",
     "has_part_picked",
     "has_simple_value_representation",
     "has_usage_example",
-    "is_auto_generated",
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
+    "can_bridge_by_name",
     "PCB",
     "requires_external_usage",
     "Electrical",
