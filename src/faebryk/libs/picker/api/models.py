@@ -26,7 +26,7 @@ class Interval:
     max: float | None
 
 
-ApiParamT = P_Set | None
+ApiParamT = F.Literals.is_literal[Any] | None
 
 
 def SerializableField():
@@ -40,7 +40,7 @@ def _pretty_params_helper(params) -> str:
     def _map(v: Any) -> str:
         if v is None:
             return "**unconstrained**"
-        elif isinstance(v, (P_Set, int, float)):
+        elif isinstance(v, (F.Literals.is_literal[Any], int, float)):
             return f"`{v}`"
         elif isinstance(v, str):
             return f'"{v}"'
@@ -187,11 +187,11 @@ class Component:
         return unit_price * qty + handling_fee
 
     @functools.cached_property
-    def attribute_literals(self) -> dict[str, P_Set | None]:
+    def attribute_literals(self) -> dict[str, F.Literals.is_literal[Any] | None]:
         def deserialize(k, v):
             if v is None:
                 return None
-            return P_Set.deserialize(v)
+            return F.Literals.Numbers.deserialize(v)
 
         return {k: deserialize(k, v) for k, v in self.attributes.items()}
 

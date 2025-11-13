@@ -87,6 +87,10 @@ class Numbers(fabll.Node):
         #TODO
         return self
 
+    def deserialize(self, data: dict) -> Self:
+        # TODO
+        return self
+
     @classmethod
     def bind_from_interval(cls, tg: graph.TypeGraph, g: graph.GraphView):
         class NumbersBound:

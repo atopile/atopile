@@ -35,7 +35,6 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Set_Discrete,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set, as_lit
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
