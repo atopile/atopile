@@ -306,6 +306,36 @@ test "is_connected_to" {
     try std.testing.expect(Node.is_same(path.get_last_node().node, bn2.node));
 }
 
+test "up_connect" {
+    // P1     P2
+    //  |      |
+    // HV --> HV
+    // LV --> LV
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+
+    var tg = TypeGraph.init(&g);
+    const ElectricPowerType = try tg.add_type("ElectricPower");
+    const ElectricalType = try tg.add_type("Electrical");
+
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
+    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+
+    const P1 = try tg.instantiate_node(ElectricPowerType);
+    const P2 = try tg.instantiate_node(ElectricPowerType);
+    const HV_1 = EdgeComposition.get_child_by_identifier(P1, "HV").?;
+    const LV_1 = EdgeComposition.get_child_by_identifier(P1, "LV").?;
+    const HV_2 = EdgeComposition.get_child_by_identifier(P2, "HV").?;
+    const LV_2 = EdgeComposition.get_child_by_identifier(P2, "LV").?;
+
+    _ = try EdgeInterfaceConnection.connect(HV_1, HV_2);
+    _ = try EdgeInterfaceConnection.connect(LV_1, LV_2);
+
+    var path = try EdgeInterfaceConnection.is_connected_to(a, P1, P2);
+    defer path.deinit();
+    try std.testing.expect(Node.is_same(path.get_last_node().node, P2.node));
+}
+
 test "down_connect" {
     // P1 --> P2
     //  |      |
