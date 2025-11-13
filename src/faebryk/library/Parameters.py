@@ -22,6 +22,8 @@ class is_parameter_operatable(fabll.Node):
     ) -> T | None:
         # 1. find all Is! expressions parameter is involved in
         # 2. for each of those check if they have a literal operand of the correct type
+        from faebryk.library.Expressions import Is as IsT
+        from faebryk.library.Expressions import IsConstrained
 
         class E_Ctx:
             lit: T | None = None
@@ -29,7 +31,7 @@ class is_parameter_operatable(fabll.Node):
             Lit = lit_type.bind_typegraph(tg=self.tg)
             LitT = lit_type
 
-        Is = F.Expressions.Is.bind_typegraph(tg=self.tg)
+        Is = IsT.bind_typegraph(tg=self.tg)
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             class Ctx:
@@ -37,9 +39,9 @@ class is_parameter_operatable(fabll.Node):
 
             # check if Is is constrained
             expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
-            is_expr = F.Expressions.Is.bind_instance(instance=edge.g().bind(node=expr))
+            is_expr = IsT.bind_instance(instance=edge.g().bind(node=expr))
             print(f"is_expr: {is_expr.get_full_name(types=True)}")
-            if not is_expr.has_trait(F.Expressions.IsConstrained):
+            if not is_expr.has_trait(IsConstrained):
                 return
 
             print("constrained")
@@ -213,22 +215,28 @@ class StringParameter(fabll.Node):
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
+        from faebryk.library.Literals import Strings
+
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=F.Literals.Strings
+            lit_type=Strings
         )
 
     def force_extract_literal(self) -> "Literals.Strings":
+        from faebryk.library.Literals import Strings
+
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=F.Literals.Strings
+            lit_type=Strings
         )
 
     def constrain_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
+        from faebryk.library.Literals import Strings
+
         self._is_parameter_operatable.get().constrain_to_literal(
             g=g,
-            value=F.Literals.Strings.bind_typegraph_from_instance(
+            value=Strings.bind_typegraph_from_instance(
                 instance=self.instance
-            ).create_instance(g, attributes=F.Literals.Strings.Attributes(value=value)),
+            ).create_instance(g, attributes=Strings.Attributes(value=value)),
         )
 
 
@@ -240,22 +248,28 @@ class BooleanParameter(fabll.Node):
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
+        from faebryk.library.Literals import Booleans
+
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=F.Literals.Booleans
+            lit_type=Booleans
         )
 
     def force_extract_literal(self) -> "Literals.Booleans":
+        from faebryk.library.Literals import Booleans
+
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=F.Literals.Booleans
+            lit_type=Booleans
         )
 
     def extract_single(self) -> bool:
         return self.force_extract_literal().get_single()
 
     def constrain_to_single(self, value: bool) -> None:
+        from faebryk.library.Literals import Booleans
+
         self._is_parameter_operatable.get().constrain_to_literal(
             g=self.instance.g(),
-            value=Literals.Booleans.bind_typegraph_from_instance(instance=self.instance)
+            value=Booleans.bind_typegraph_from_instance(instance=self.instance)
             .create_instance(self.instance.g())
             .setup(value),
         )
@@ -303,7 +317,9 @@ class NumericParameter(fabll.Node):
     # domain = fabll.ChildField(NumberDomain)
 
     def get_units(self) -> "Units.IsUnit":
-        return self.get_trait(Units.HasUnit).get_unit()
+        from faebryk.library.Units import HasUnit
+
+        return self.get_trait(HasUnit).get_unit()
 
     def get_domain(self) -> "NumberDomain":
         # TODO
@@ -355,15 +371,18 @@ class NumericParameter(fabll.Node):
         zero_allowed: bool = True,
     ):
         out = fabll._ChildField(cls)
-        unit_instance = fabll._ChildField(unit, identifier=None)
-        out.add_dependant(unit_instance)
-        out.add_dependant(
-            fabll.MakeEdge(
-                [out],
-                [unit_instance],
-                edge=fbrk.EdgePointer.build(identifier="unit", order=None),
-            )
-        )
+        # unit_instance = fabll._ChildField(unit, identifier=None)
+        # out.add_dependant(unit_instance)
+        # out.add_dependant(
+        #     fabll.MakeEdge(
+        #         [out],
+        #         [unit_instance],
+        #         edge=fbrk.EdgePointer.build(identifier="unit", order=None),
+        #     )
+        # )
+        from faebryk.library.Units import HasUnit
+
+        out.add_dependant(fabll.Traits.MakeEdge(HasUnit.MakeChild(unit)))
         # out.add_dependant(
         #     *NumberDomain.MakeEdges(
         #         ref=[out, cls.domain],

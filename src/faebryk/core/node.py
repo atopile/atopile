@@ -1884,43 +1884,31 @@ def test_type_children():
     print(indented_container([c.get_full_name(types=True) for c in children]))
 
 
-def test_manual_resistor_def():
+def test_resistor_instantiation():
     import faebryk.library._F as F
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    # create electrical type node and insert into type graph
-    _ = F.Electrical.bind_typegraph(tg=tg).get_or_create_type()
-
-    # create resistor type node and insert into type graph
-    # add make child nodes for p1 and p2, insert into type graph
     Resistor = F.Resistor.bind_typegraph(tg=tg)
-
     resistor_instance = Resistor.create_instance(g=g)
     assert resistor_instance
-    print("resistor_instance:", resistor_instance.instance.node().get_dynamic_attrs())
-    print(resistor_instance._type_identifier())
+    assert resistor_instance._type_identifier() == "Resistor"
 
     # Electrical make child
-    p1 = fbrk.EdgeComposition.get_child_by_identifier(
+    p1_child_field = fbrk.EdgeComposition.get_child_by_identifier(
         bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
     )
-    assert p1 is not None
-    p1_fab = resistor_instance.unnamed[0].get()
-    assert p1_fab.instance.node().is_same(other=p1.node())
-    print("p1:", p1)
+    assert p1_child_field is not None
+    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
+    assert resistor_instance.resistance.get().get_name() == "resistance"
+    print(resistor_instance.resistance.get().get_units())
 
-    # unconstrained Parameter make child
-    resistance = fbrk.EdgeComposition.get_child_by_identifier(
-        bound_node=resistor_instance.instance, child_identifier="resistance"
-    )
-    assert resistance is not None
     print(
         "resistance is type Parameter:",
         fbrk.EdgeType.is_node_instance_of(
             bound_node=resistance,
-            node_type=Parameter.bind_typegraph(tg=tg).get_or_create_type().node(),
+            node_type=F.Parameters.bind_typegraph(tg=tg).get_or_create_type().node(),
         ),
     )
 
@@ -2158,5 +2146,5 @@ if __name__ == "__main__":
 
     # test_manual_resistor_def()
 
-    typer.run(test_string_param)
+    typer.run(test_resistor_instantiation)
     # typer.run(test_string_param)
