@@ -126,15 +126,17 @@ class is_parameter_operatable(fabll.Node):
     def is_expresssion(self) -> "Expressions.is_expression | None":
         return fabll.Traits(self).try_get_trait_of_obj(Expressions.is_expression)
 
-    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
-        return fabll.Traits(self).get_trait_of_obj(t)
-
-    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
-        return fabll.Traits(self).try_get_trait_of_obj(t)
-
-    def get_operations(self) -> set["Expressions.is_expression"]:
+    def get_operations[T: "fabll.NodeT"](
+        self,
+        types: type[T] = fabll.Node,
+        constrained_only: bool = False,
+        recursive: bool = False,
+    ) -> set[T]:
         # TODO
         pass
+
+    def get_obj(self) -> "fabll.Node":
+        return fabll.Traits(self).get_obj_raw()
 
 
 class is_parameter(fabll.Node):
@@ -157,12 +159,6 @@ class is_parameter(fabll.Node):
     def as_parameter_operatable(self) -> "is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
 
-    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
-        return fabll.Traits(self).get_trait_of_obj(t)
-
-    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
-        return fabll.Traits(self).try_get_trait_of_obj(t)
-
 
 class can_be_operand(fabll.Node):
     """
@@ -176,12 +172,6 @@ class can_be_operand(fabll.Node):
 
     def is_parameter_operatable(self) -> "is_parameter_operatable | None":
         return fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable)
-
-    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
-        return fabll.Traits(self).get_trait_of_obj(t)
-
-    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
-        return fabll.Traits(self).try_get_trait_of_obj(t)
 
 
 class ParameterIsNotConstrainedToLiteral(Exception):

@@ -21,6 +21,9 @@ class is_literal(fabll.Node):
 
     def op_is_equal(self, other: "LiteralNodes") -> "Booleans": ...
 
+    @staticmethod
+    def intersect_all(*objs: "is_literal") -> "is_literal": ...
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str

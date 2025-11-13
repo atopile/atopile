@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Self, Sequence, cast
+from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -201,11 +201,17 @@ class is_expression(fabll.Node):
         # TODO
         pass
 
-    def as_trait_of[T: fabll.NodeT](self, t: type[T]) -> T:
-        return fabll.Traits(self).get_trait_of_obj(t)
-
-    def is_trait_of[T: fabll.NodeT](self, t: type[T]) -> T | None:
-        return fabll.Traits(self).try_get_trait_of_obj(t)
+    @staticmethod
+    def sort_by_depth[T: fabll.NodeT](exprs: Iterable[T], ascending: bool) -> list[T]:
+        """
+        Ascending:
+        ```
+        (A + B) + (C + D)
+        -> [A, B, C, D, (A+B), (C+D), (A+B)+(C+D)]
+        ```
+        """
+        # TODO
+        pass
 
 
 # TODO
