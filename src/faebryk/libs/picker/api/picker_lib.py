@@ -36,7 +36,6 @@ from faebryk.libs.picker.picker import (
     PickError,
     does_not_require_picker_check,
 )
-from faebryk.libs.sets.sets import EnumSet, P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (

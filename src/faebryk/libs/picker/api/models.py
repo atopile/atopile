@@ -15,7 +15,6 @@ from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list, once
 
 logger = logging.getLogger(__name__)

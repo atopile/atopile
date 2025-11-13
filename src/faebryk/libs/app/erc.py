@@ -9,9 +9,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
-from faebryk.core.node import Trait
 from faebryk.libs.exceptions import accumulate
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +53,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: graph.GraphView, voltage_limit=1e5 * P.V):
+def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
     """Simple ERC check.
 
     This function will check for the following ERC violations:

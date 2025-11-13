@@ -22,7 +22,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get_graphs
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,

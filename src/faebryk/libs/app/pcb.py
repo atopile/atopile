@@ -7,6 +7,7 @@ from pathlib import Path
 
 import psutil
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer

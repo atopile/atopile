@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-
-import faebryk.core.faebrykpy as fbrk
 
 
 class Battery(fabll.Node):

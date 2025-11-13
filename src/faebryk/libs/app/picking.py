@@ -13,7 +13,6 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import KeyErrorNotFound
 
 NO_LCSC_DISPLAY = "No LCSC number"

@@ -83,6 +83,10 @@ class Numbers(fabll.Node):
         # TODO
         return self
 
+    def setup_from_singleton(self, value: float, unit: fabll.NodeT) -> Self:
+        #TODO
+        return self
+
     @classmethod
     def bind_from_interval(cls, tg: graph.TypeGraph, g: graph.GraphView):
         class NumbersBound:
