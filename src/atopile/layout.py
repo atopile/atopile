@@ -166,10 +166,10 @@ def attach_sub_pcbs_to_entry_points(app: fabll.Node):
 
 
 def attach_subaddresses_to_modules(app: fabll.Node):
-    pcb_modules = app.bind_typegraph_from_self().nodes_with_trait(has_subpcb)
+    pcb_modules = fabll.Traits.get_implementor_objects(has_subpcb, app.tg)
     in_sub_pcb_bound = in_sub_pcb.bind_typegraph_from_instance(app.instance)
     g = app.instance.g()
-    for module, _ in pcb_modules:
+    for module in pcb_modules:
         for footprint_child, _ in module.iter_children_with_trait(F.has_footprint):
             footprint_child.connect(
                 in_sub_pcb_bound.create_instance(g=g).setup(sub_root_module=module),

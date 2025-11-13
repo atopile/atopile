@@ -1521,7 +1521,6 @@ class is_module(Node):
         return Traits.get_obj_raw(Traits.bind(self))
 
 
-# wraps the raw fbrk.EdgeInterfaceConnection functions into fabll nodes
 class is_interface(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
