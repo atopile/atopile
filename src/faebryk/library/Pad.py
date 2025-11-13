@@ -3,6 +3,7 @@
 
 
 from typing import TYPE_CHECKING
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
