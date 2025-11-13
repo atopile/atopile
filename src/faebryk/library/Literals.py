@@ -7,8 +7,7 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
-if TYPE_CHECKING:
-    from faebryk.library import Units
+from faebryk.library import Parameters, Units
 
 
 class is_literal(fabll.Node):
@@ -39,7 +38,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(F.Parameters.can_be_operand)
+        fabll._ChildField(Parameters.can_be_operand)
     )
 
     def setup(self, value: str) -> Self:
@@ -68,7 +67,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
 class Numbers(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeChild_Trait(
-        F.Parameters.can_be_operand.MakeChild()
+        Parameters.can_be_operand.MakeChild()
     )
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
@@ -186,7 +185,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = is_literal.MakeChild()
     _can_be_operand = fabll.Traits.MakeChild_Trait(
-        F.Parameters.can_be_operand.MakeChild()
+        Parameters.can_be_operand.MakeChild()
     )
 
     def setup(self, *values: bool) -> Self:
@@ -223,7 +222,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
 class Enums(fabll.Node):
     _is_literal = fabll.Traits.MakeChild_Trait(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeChild_Trait(
-        F.Parameters.can_be_operand.MakeChild()
+        Parameters.can_be_operand.MakeChild()
     )
 
     def setup[T: Enum](self, enum: type[T], *values: T) -> Self:

@@ -205,7 +205,7 @@ class StringParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll._ChildField(can_be_operand))
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -234,7 +234,7 @@ class BooleanParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll._ChildField(can_be_operand))
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -263,7 +263,7 @@ class EnumParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll._ChildField(can_be_operand))
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]):
@@ -295,7 +295,7 @@ class NumericParameter(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeChild_Trait(
         fabll._ChildField(is_parameter_operatable)
     )
-    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll.ChildField(can_be_operand))
+    _can_be_operand = fabll.Traits.MakeChild_Trait(fabll._ChildField(can_be_operand))
 
     # domain = fabll.ChildField(NumberDomain)
 

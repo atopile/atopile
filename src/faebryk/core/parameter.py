@@ -18,8 +18,6 @@ from typing import (
     override,
 )
 
-import f_field
-
 import faebryk.core.node as fabll
 from faebryk.core.core import Namespace
 
