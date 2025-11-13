@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Self
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -51,7 +50,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
     ) -> fabll._ChildField:
         assert isinstance(value, str), "Value of string literal must be a string"
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -71,8 +70,16 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: "type[fabll.NodeT] | Units.IsUnit | None" = None,
+        unit: "type[fabll.NodeT] | IsUnit | None" = None,
     ) -> Self:
+        # TODO
+        return self
+
+    def setup_from_singleton(self, value: float, unit: fabll.NodeT) -> Self:
+        # TODO
+        return self
+
+    def deserialize(self, data: dict) -> Self:
         # TODO
         return self
 
@@ -87,7 +94,7 @@ class Numbers(fabll.Node):
                 self,
                 lower: float | None,
                 upper: float | None,
-                unit: type[fabll.NodeT] = Units.Dimensionless,
+                unit: type[fabll.NodeT] = Dimensionless,
             ) -> Self:
                 return (
                     cls.bind_typegraph(tg=tg)
@@ -114,7 +121,7 @@ class Numbers(fabll.Node):
         )
         value = float(value)
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -171,7 +178,7 @@ class Numbers(fabll.Node):
     def to_dimensionless(self) -> "Numbers": ...
 
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
-    def are_units_compatible(self, unit: "Units.IsUnit") -> bool: ...
+    def are_units_compatible(self, unit: "IsUnit") -> bool: ...
 
 
 class Booleans(fabll.Node[LiteralsAttributes]):
@@ -196,7 +203,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     ) -> fabll._ChildField:
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 

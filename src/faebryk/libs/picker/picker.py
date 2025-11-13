@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from textwrap import indent
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -22,7 +22,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get_graphs
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
@@ -115,7 +114,7 @@ class NotCompatibleException(Exception):
         module: fabll.Node,
         component: "Component",
         param: Parameter | None = None,
-        c_range: P_Set | None = None,
+        c_range: F.Literals.is_literal[Any] | None = None,
     ):
         self.module = module
         self.component = component

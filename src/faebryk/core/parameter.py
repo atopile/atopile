@@ -18,8 +18,6 @@ from typing import (
     override,
 )
 
-import f_field
-
 import faebryk.core.node as fabll
 from faebryk.core.core import Namespace
 
@@ -37,7 +35,6 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Set_Discrete,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set, as_lit
 from faebryk.libs.units import (
     HasUnit,
     Quantity,

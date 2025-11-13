@@ -1,11 +1,21 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Self, Sequence, cast
+from typing import Any, Self, Sequence, TYPE_CHECKING, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.library.Collections import (
+    AbstractPointer,
+    AbstractSequence,
+    AbstractSet,
+    PointerProtocol,
+)
+from faebryk.library.Parameters import (
+    ReprContext,
+    can_be_operand,
+    is_parameter_operatable,
+)
 
 if TYPE_CHECKING:
     from faebryk.library import Parameters
@@ -80,21 +90,21 @@ def _retrieve_operands(node: fabll.NodeT, identifier: str | None) -> list[fabll.
     return Ctx.operands
 
 
-OperandPointer = F.Collections.AbstractPointer(
+OperandPointer = AbstractPointer(
     edge_factory=lambda identifier: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
     retrieval_function=lambda node: _retrieve_operands(node, None)[0],
 )
 
-OperandSequence = F.Collections.AbstractSequence(
+OperandSequence = AbstractSequence(
     edge_factory=lambda identifier, order: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,
 )
 
-OperandSet = F.Collections.AbstractSet(
+OperandSet = AbstractSet(
     edge_factory=lambda identifier, order: fbrk.EdgeOperand.build(
         operand_identifier=identifier
     ),
@@ -140,29 +150,25 @@ class is_expression(fabll.Node):
 
     def get_operands(self) -> list["Parameters.can_be_operand"]:
         node = fabll.Traits(self).get_obj_raw()
-        operands: list[F.Parameters.can_be_operand] = []
+        operands: list[can_be_operand] = []
         pointers = node.get_children(
             direct_only=True,
             types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
         )
         for pointer in pointers:
-            child = cast(F.Collections.PointerProtocol, pointer)
+            child = cast(PointerProtocol, pointer)
             li = child.as_list()
-            assert all(c.isinstance(F.Parameters.can_be_operand) for c in li)
-            li = cast(list[F.Parameters.can_be_operand], li)
+            assert all(c.isinstance(can_be_operand) for c in li)
+            li = cast(list[can_be_operand], li)
             operands.extend(li)
 
         return operands
 
-    def get_operand_operatables(self) -> set["Parameters.is_parameter_operatable"]:
+    def get_operand_operatables(self) -> set["is_parameter_operatable"]:
         return {
             po
             for op in self.get_operands()
-            if (
-                po := fabll.Traits(op).try_get_trait_of_obj(
-                    F.Parameters.is_parameter_operatable
-                )
-            )
+            if (po := fabll.Traits(op).try_get_trait_of_obj(is_parameter_operatable))
         }
 
     @staticmethod
@@ -176,13 +182,13 @@ class is_expression(fabll.Node):
         raise NotImplementedError("Not implemented")
 
     def compact_repr(
-        self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
+        self, context: "ReprContext | None" = None, use_name: bool = False
     ) -> str:
         # TODO
         raise NotImplementedError()
 
-    def as_parameter_operatable(self) -> "Parameters.is_parameter_operatable":
-        return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter_operatable)
+    def as_parameter_operatable(self) -> "is_parameter_operatable":
+        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
 
     def is_congruent_to_factory(
         self,
@@ -605,8 +611,8 @@ class Floor(fabll.Node):
 
 
 class Ceil(fabll.Node):
-    _can_be_operand = F.Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = F.Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = can_be_operand.MakeChild()
+    _is_parameter_operatable = is_parameter_operatable.MakeChild()
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⌈",

@@ -6,6 +6,7 @@ import re
 from dataclasses import fields
 from enum import StrEnum
 from socket import gaierror
+from typing import Any
 
 import more_itertools
 
@@ -36,7 +37,6 @@ from faebryk.libs.picker.picker import (
     PickError,
     does_not_require_picker_check,
 )
-from faebryk.libs.sets.sets import EnumSet, P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -309,7 +309,9 @@ def _get_compatible_parameters(
                 " module/component in your design."
             )
 
-    def _map_param(name: str, param: Parameter) -> tuple[Parameter, P_Set]:
+    def _map_param(
+        name: str, param: Parameter
+    ) -> tuple[Parameter, F.Literals.is_literal[Any]]:
         c_range = component_params.get(name)
         if c_range is None:
             c_range = param.domain.unbounded(param)

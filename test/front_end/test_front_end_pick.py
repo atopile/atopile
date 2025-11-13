@@ -10,7 +10,6 @@ from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.picker.picker import pick_part_recursively
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 

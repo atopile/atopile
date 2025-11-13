@@ -7,8 +7,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
-import faebryk.core.node as fabll
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
 from faebryk.exporters.netlist.netlist import FBRKNetlist
@@ -668,7 +668,7 @@ def _assign_prefix_for_net(
         and not net_name.required_suffix
     )
 
-    if should_use_owner
+    if should_use_owner:
         if owner_name := _get_owner_module_name(net):
             net_name.prefix = owner_name
             return

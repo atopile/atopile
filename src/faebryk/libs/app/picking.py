@@ -13,7 +13,6 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import KeyErrorNotFound
 
 NO_LCSC_DISPLAY = "No LCSC number"
@@ -116,7 +115,7 @@ def load_part_info_from_pcb(G: graph.GraphView):
                 )
                 continue
             param_value = json.loads(value)
-            param_value = P_Set.deserialize(param_value)
+            param_value = F.Literals.Numbers.deserialize(param_value)
             assert isinstance(param, Parameter)
             param.alias_is(param_value)
 
@@ -149,7 +148,7 @@ def save_part_info_to_pcb(G: graph.GraphView):
             lit = p.try_get_literal()
             if lit is None:
                 continue
-            lit = P_Set.from_value(lit)
+            lit = F.Literals.Numbers.setup_from_singleton(value=lit)
             key = f"{Properties.param_prefix}{p.get_name()}"
             value = json.dumps(lit.serialize())
             fabll.Traits.create_and_add_instance_to(
