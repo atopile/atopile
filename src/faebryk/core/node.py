@@ -6,7 +6,6 @@ from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, ove
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
-import faebryk
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.libs.util import (
@@ -523,7 +522,8 @@ class Path:
     Wrapper around Zig's graph.BFSPath object.
 
     This is a lightweight Python wrapper around a path object that lives in Zig memory.
-    The underlying graph.BFSPath is automatically freed when this Python object is garbage collected.
+    The underlying graph.BFSPath is automatically freed when this Python object
+    is garbage collected.
 
     Access path information via properties that call back into Zig:
     - length: Number of edges in the path
@@ -1259,6 +1259,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
         )
 
+    # traits ---------------------------------------------------------------------------
+    def get_sibling_trait[TR: NodeT](self, trait: type[TR]) -> TR:
+        """
+        Only call this on traits!
+        Convenience function to get a trait of the owner of this trait.
+        """
+        return Traits(self).get_obj_raw().get_trait(trait)
+
+    def try_get_sibling_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
+        """
+        Only call this on traits!
+        Convenience function to check if the owner of this trait has the given trait.
+        """
+        return Traits(self).get_obj_raw().try_get_trait(trait)
+
 
 type NodeT = Node[Any]
 
@@ -1480,7 +1495,9 @@ class MakeChild(Node):
     """
 
     def get_child_type(self) -> graph.BoundNode:
-        return fbrk.EdgePointer.get_referenced_node_from_node(node=self.instance)
+        return not_none(
+            fbrk.EdgePointer.get_referenced_node_from_node(node=self.instance)
+        )
 
 
 class is_module(Node):
@@ -1908,7 +1925,9 @@ def test_resistor_instantiation():
         "resistance is type Parameter:",
         fbrk.EdgeType.is_node_instance_of(
             bound_node=resistance,
-            node_type=F.Parameters.bind_typegraph(tg=tg).get_or_create_type().node(),
+            node_type=F.Parameters.NumericParameter.bind_typegraph(tg=tg)
+            .get_or_create_type()
+            .node(),
         ),
     )
 
@@ -2078,7 +2097,8 @@ def test_lightweight():
         direct_only=True, types=F.SerializableMetadata
     )
     print(
-        f"SerializableMetadata: {F.SerializableMetadata.get_properties(node=resistor_instance)}"
+        f"SerializableMetadata:"
+        f" {F.SerializableMetadata.get_properties(node=resistor_instance)}"
     )
     # print(F.SerializableMetadata.get_properties(node=resistor_instance))
 
@@ -2097,7 +2117,7 @@ def test_string_param():
         g=g
     )
     string_param.constrain_to_single(value="TEST")
-    print(string_param.try_extract_constrained_literal().get_value())
+    print(not_none(string_param.try_extract_constrained_literal()).get_value())
     print(string_param.get_full_name(types=True))
 
 
@@ -2118,12 +2138,16 @@ def test_kicad_footprint():
         )
     )
     print(
-        f"kicad_footprint.get_kicad_footprint(): {kicad_footprint.get_kicad_footprint()}"
+        f"kicad_footprint.get_kicad_footprint():"
+        f" {kicad_footprint.get_kicad_footprint()}"
     )
     print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
 
 def test2():
+    import faebryk.library._F as F
+
+    g, tg = _make_graph_and_typegraph()
     strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(
         g=g, attributes=F.Literals.Strings.Attributes(value="test")
     )
@@ -2146,5 +2170,5 @@ if __name__ == "__main__":
 
     # test_manual_resistor_def()
 
-    typer.run(test_resistor_instantiation)
-    # typer.run(test_string_param)
+    # typer.run(test_resistor_instantiation)
+    typer.run(test_string_param)
