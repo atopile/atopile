@@ -82,8 +82,8 @@ class RP2040(fabll.Node):
     power_usb_phy: F.ElectricPower
     core_regulator: CoreRegulator
 
-    io = fabll.list_field(30, F.Electrical)
-    io_soft = fabll.list_field(6, F.Electrical)
+    io = [F.Electrical.MakeChild() for _ in range(30)]
+    io_soft = [F.Electrical.MakeChild() for _ in range(6)]
 
     # IO
     qspi = fabll.f_field(F.MultiSPI)(data_lane_count=4)
@@ -96,15 +96,15 @@ class RP2040(fabll.Node):
     usb_power_control: USBPowerControl
 
     # peripherals
-    spi = fabll.list_field(2, SPI)
-    pwm = fabll.list_field(8, PWM)
-    i2c = fabll.list_field(2, F.I2C)
-    uart = fabll.list_field(2, UART)
-    pio = fabll.list_field(2, PIO)
-    adc = fabll.list_field(4, ADC)
-    clock_in = fabll.list_field(2, F.ElectricLogic)
-    clock_out = fabll.list_field(4, F.ElectricLogic)
-    gpio = fabll.list_field(30 + 6, F.ElectricLogic)
+    spi = [SPI.MakeChild() for _ in range(2)]
+    pwm = [PWM.MakeChild() for _ in range(8)]
+    i2c = [F.I2C.MakeChild() for _ in range(2)]
+    uart = [UART.MakeChild() for _ in range(2)]
+    pio = [PIO.MakeChild() for _ in range(2)]
+    adc = [ADC.MakeChild() for _ in range(4)]
+    clock_in = [F.ElectricLogic.MakeChild() for _ in range(2)]
+    clock_out = [F.ElectricLogic.MakeChild() for _ in range(4)]
+    gpio = [F.ElectricLogic.MakeChild() for _ in range(30 + 6)]
 
     def __preinit__(self):
         # TODO get tolerance

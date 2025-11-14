@@ -10,13 +10,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-
-# from faebryk.core.link import (
-#     LinkDirect,
-#     LinkDirectConditional,
-#     LinkDirectConditionalFilterResult,
-#     LinkDirectDerived,
-# )
 from faebryk.core.node import IMPLIED_PATHS
 from faebryk.libs.app.erc import (
     ERCFaultShortedInterfaces,
@@ -24,12 +17,6 @@ from faebryk.libs.app.erc import (
     simple_erc,
 )
 from faebryk.libs.util import times
-
-# from test.common.resources.fabll_modules.ButtonCell import ButtonCell
-# from test.common.resources.fabll_modules.RP2040 import RP2040
-# from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-#     RP2040_ReferenceDesign,
-# )
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +243,7 @@ def test_split_chain_double_flat_no_inter():
         lower2: Low
 
     class App(fabll.Node):
-        high = fabll.list_field(4, High)
+        high = [High.MakeChild() for _ in range(4)]
 
     app = App()
 
@@ -299,7 +286,7 @@ def test_split_chain_double_flat_inter():
         lower2: Low
 
     class App(fabll.Node):
-        high = fabll.list_field(4, High)
+        high = [High.MakeChild() for _ in range(4)]
 
     app = App()
 
@@ -339,8 +326,8 @@ def test_split_chain_double_hierarchy():
         high: High
 
     class App(fabll.Node):
-        high = fabll.list_field(3, High)
-        higher = fabll.list_field(2, Higher)
+        high = [High.MakeChild() for _ in range(3)]
+        higher = [Higher.MakeChild() for _ in range(2)]
 
     app = App()
 
@@ -376,7 +363,7 @@ def test_split_chain_flip():
         lower2: Low
 
     class App(fabll.Node):
-        high = fabll.list_field(4, High)
+        high = [High.MakeChild() for _ in range(4)]
 
     app = App()
 
@@ -583,9 +570,9 @@ def test_up_connect_simple_two_negative():
     tg = fbrk.TypeGraph.create(g=g)
 
     class High(fabll.Node):
-        _is_interface = fabll.is_interface.MakeChild()
-        lower1 = fabll.ModuleInterface.MakeChild()
-        lower2 = fabll.ModuleInterface.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+        lower1 = F.Electrical.MakeChild()
+        lower2 = F.Electrical.MakeChild()
 
     highType = High.bind_typegraph(tg)
     high1 = highType.create_instance(g=g)
@@ -609,10 +596,10 @@ def test_up_connect_simple_multiple_negative():
     tg = fbrk.TypeGraph.create(g=g)
 
     class High(fabll.Node):
-        _is_interface = fabll.is_interface.MakeChild()
-        lower1 = fabll.ModuleInterface.MakeChild()
-        lower2 = fabll.ModuleInterface.MakeChild()
-        lower3 = fabll.ModuleInterface.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+        lower1 = F.Electrical.MakeChild()
+        lower2 = F.Electrical.MakeChild()
+        lower3 = F.Electrical.MakeChild()
 
     highType = High.bind_typegraph(tg)
     high1 = highType.create_instance(g=g)
@@ -939,30 +926,28 @@ def test_shallow_bridge_full():
     """
 
     class Buffer(fabll.Node):
-        ins = fabll.list_field(2, F.Electrical)
-        outs = fabll.list_field(2, F.Electrical)
+        ins = [F.Electrical.MakeChild() for _ in range(2)]
+        outs = [F.Electrical.MakeChild() for _ in range(2)]
 
-        ins_l = fabll.list_field(2, F.ElectricLogic)
-        outs_l = fabll.list_field(2, F.ElectricLogic)
+        ins_l = [F.ElectricLogic.MakeChild() for _ in range(2)]
+        outs_l = [F.ElectricLogic.MakeChild() for _ in range(2)]
+
+        _single_electric_reference = fabll.Traits.MakeEdge(
+            F.has_single_electric_reference.MakeChild()
+        )
 
         def __preinit__(self) -> None:
-            assert (
-                self.ins_l[0].reference
-                is self.ins_l[0]
-                .get_trait(F.has_single_electric_reference)
-                .get_reference()
-            )
+            logic_trait = self.ins_l[0].get_trait(F.has_single_electric_reference)
+            assert self.ins_l[0].reference is logic_trait.get_reference()
 
-            for el, lo in chain(
+            for electrical, logic in chain(
                 zip(self.ins, self.ins_l),
                 zip(self.outs, self.outs_l),
             ):
-                lo.line.connect(el)
+                logic.line.connect(electrical)
 
-            for l1, l2 in zip(self.ins_l, self.outs_l):
-                l1.connect_shallow(l2)
-
-        _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
+            for src_logic, dst_logic in zip(self.ins_l, self.outs_l):
+                src_logic.connect_shallow(dst_logic)
 
     class UARTBuffer(fabll.Node):
         buf: Buffer

@@ -21,7 +21,7 @@ class USB_C_PSU_Vertical(fabll.Node):
     # components
 
     usb_connector: USB_Type_C_Receptacle_14_pin_Vertical  # TODO: make generic
-    configuration_resistors = fabll.list_field(2, F.Resistor)
+    configuration_resistors = [F.Resistor.MakeChild() for _ in range(2)]
     gnd_resistor: F.Resistor
     gnd_capacitor: F.Capacitor
     esd: USB2_0_ESD_Protection

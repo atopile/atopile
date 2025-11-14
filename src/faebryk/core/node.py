@@ -828,7 +828,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         cls._add_instance_child(child)
 
     @classmethod
-    def MakeChild(cls) -> _ChildField[Self]:
+    def zMakeChild(cls) -> _ChildField[Self]:
         return _ChildField(cls)
 
     def setup(self) -> Self:

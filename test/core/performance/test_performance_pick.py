@@ -84,8 +84,8 @@ def test_performance_pick_rc_formulas():
     TOLERANCE = 20 * P.percent
 
     class App(fabll.Node):
-        alias_res = fabll.list_field(_GROUPS, F.Resistor)
-        res = fabll.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
+        alias_res = [F.Resistor.MakeChild() for _ in range(_GROUPS)]
+        res = [F.Resistor.MakeChild() for _ in range(_GROUPS * _GROUP_SIZE)]
 
         def __preinit__(self):
             increase = fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(

@@ -19,7 +19,7 @@ class USB2_0_ESD_Protection(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    usb = fabll.list_field(2, F.USB2_0)
+    usb = [F.USB2_0.MakeChild() for _ in range(2)]
 
     vbus_esd_protection = fabll.p_field(domain=fabll.Domains.BOOL())
     data_esd_protection = fabll.p_field(domain=fabll.Domains.BOOL())

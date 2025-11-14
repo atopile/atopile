@@ -14,7 +14,7 @@ from faebryk.libs.exceptions import UserDesignCheckException
 class ConfigurableI2CClient(fabll.Node):
     addressor = fabll.f_field(F.Addressor)(address_bits=3)
     i2c: F.I2C
-    config = fabll.list_field(3, F.ElectricLogic)
+    config = [F.ElectricLogic.MakeChild() for _ in range(3)]
     ref: F.ElectricPower
 
     _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
@@ -44,7 +44,7 @@ def test_addressor():
 
 class I2CBusTopology(fabll.Node):
     server: F.I2C
-    clients = fabll.list_field(3, ConfigurableI2CClient)
+    clients = [ConfigurableI2CClient.MakeChild() for _ in range(3)]
 
     def __init__(self, isolated=False):
         super().__init__()

@@ -29,7 +29,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
 
     def _factory_simple_resistors():
         class App(fabll.Node):
-            resistors = fabll.list_field(count, F.Resistor)
+            resistors = [F.Resistor.MakeChild() for _ in range(count)]
 
             def __init__(self, timings: Times) -> None:
                 super().__init__()
@@ -42,7 +42,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
 
     def _factory_interconnected_resistors():
         class App(fabll.Node):
-            resistors = fabll.list_field(count, F.Resistor)
+            resistors = [F.Resistor.MakeChild() for _ in range(count)]
 
             def __init__(self, timings: Times) -> None:
                 super().__init__()

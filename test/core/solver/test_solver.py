@@ -116,12 +116,7 @@ def test_solve_phase_one():
 
 def test_simplify():
     class App(fabll.Node):
-        ops = fabll.list_field(
-            10,
-            lambda: Parameter(
-                units=dimensionless, within=Range(0, 1, units=dimensionless)
-            ),
-        )
+        ops = [Parameter.MakeChild() for _ in range(10)]
 
     app = App()
 
@@ -153,7 +148,7 @@ def test_simplify():
 
 def test_simplify_logic_and():
     class App(fabll.Node):
-        p = fabll.list_field(4, lambda: Parameter(domain=fabll.Domains.BOOL()))
+        p = [Parameter.MakeChild() for _ in range(4)]
 
     app = App()
     anded = And(app.p[0], True)
@@ -181,7 +176,7 @@ def test_shortcircuit_logic_and():
 
 def test_shortcircuit_logic_or():
     class App(fabll.Node):
-        p = fabll.list_field(4, lambda: Parameter(domain=fabll.Domains.BOOL()))
+        p = [Parameter.MakeChild() for _ in range(4)]
 
     app = App()
     ored = Or(app.p[0], True)

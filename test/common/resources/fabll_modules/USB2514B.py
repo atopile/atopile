@@ -160,7 +160,7 @@ class USB2514B(fabll.Node):
     power_io: F.ElectricPower
 
     usb_upstream: F.USB2_0_IF.Data
-    configurable_downstream_usb = fabll.list_field(4, ConfigurableUSB)
+    configurable_downstream_usb = [ConfigurableUSB.MakeChild() for _ in range(4)]
 
     xtal_if: F.XtalIF
     external_clock_input: F.ElectricLogic
@@ -172,8 +172,10 @@ class USB2514B(fabll.Node):
     reset: F.ElectricLogic
     local_power_detection: F.ElectricSignal
 
-    usb_removability_configuration_intput = fabll.list_field(2, F.ElectricLogic)
-    configuration_source_input = fabll.list_field(2, F.ElectricLogic)
+    usb_removability_configuration_intput = [
+        F.ElectricLogic.MakeChild() for _ in range(2)
+    ]
+    configuration_source_input = [F.ElectricLogic.MakeChild() for _ in range(2)]
 
     suspense_indicator: F.ElectricLogic
     high_speed_upstream_indicator: F.ElectricLogic
