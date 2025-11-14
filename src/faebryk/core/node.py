@@ -1640,11 +1640,6 @@ def _make_graph_and_typegraph():
     return g, tg
 
 
-def isparameteroperable(candidate: object) -> bool:
-    """Temporary compatibility shim until ParameterOperatable migrates to Zig."""
-    return isinstance(candidate, Node)
-
-
 def test_fabll_basic():
     @dataclass(frozen=True)
     class FileLocationAttributes(NodeAttributes):

@@ -58,7 +58,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
     ge_exprs = {
         e
-        for e in mutator.get_expressions(GreaterOrEqual, sort_by_depth=True)
+        for e in mutator.get_typed_expressions(GreaterOrEqual, sort_by_depth=True)
         # Look for expressions with only one non-literal operand
         if e.constrained
         and len([op for op in e.operands if fabll.isparameteroperable(op)]) == 1
@@ -110,7 +110,7 @@ def remove_unconstrained(mutator: Mutator):
     or expressions with side effects
     Note: Not possible for Parameters, want to keep those around for REPR
     """
-    objs = mutator.get_expressions()
+    objs = mutator.get_typed_expressions()
     for obj in objs:
         if obj.constrained:
             continue
@@ -137,7 +137,7 @@ def remove_congruent_expressions(mutator: Mutator):
     # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
     # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
 
-    all_exprs = mutator.get_expressions(sort_by_depth=True)
+    all_exprs = mutator.get_typed_expressions(sort_by_depth=True)
     # optimization: can't be congruent if they have uncorrelated literals
     all_exprs = [e for e in all_exprs if not e.get_uncorrelatable_literals()]
     # TODO is this fully correct?
@@ -380,7 +380,7 @@ def empty_set(mutator: Mutator):
     """
 
     # A is {} -> False
-    for e in mutator.get_expressions(Is):
+    for e in mutator.get_typed_expressions(Is):
         lits = cast(dict[int, SolverLiteral], e.get_operand_literals())
         if not lits:
             continue
@@ -429,7 +429,7 @@ def predicate_flat_terminate(mutator: Mutator):
 
     Terminates all (dis)proven predicates that contain no expressions.
     """
-    predicates = mutator.get_expressions(ConstrainableExpression)
+    predicates = mutator.get_typed_expressions(ConstrainableExpression)
     for p in predicates:
         if not p.constrained:
             continue
@@ -450,7 +450,7 @@ def predicate_terminated_is_true(mutator: Mutator):
     P!! is! True -> P!! is!! True
     """
 
-    for p in mutator.get_expressions(Is):
+    for p in mutator.get_typed_expressions(Is):
         if not p.constrained:
             continue
         if mutator.is_predicate_terminated(p):
@@ -473,7 +473,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     A is [True], A ^ B -> [True] ^ B
     """
 
-    exprs = mutator.get_expressions(Expression, sort_by_depth=True)
+    exprs = mutator.get_typed_expressions(Expression, sort_by_depth=True)
     for e in exprs:
         if mutator.utils.is_pure_literal_expression(e):
             continue
@@ -624,7 +624,7 @@ def isolate_lone_params(mutator: Mutator):
 
             # TODO: check for no further progress
 
-    exprs = mutator.get_expressions(Is, sort_by_depth=True)
+    exprs = mutator.get_typed_expressions(Is, sort_by_depth=True)
     for expr in exprs:
         if mutator.utils.try_extract_literal(expr) is None:
             continue
@@ -696,7 +696,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     A op! B | A or B unconstrained -> A op!! B
     """
 
-    preds = mutator.get_expressions(ConstrainableExpression)
+    preds = mutator.get_typed_expressions(ConstrainableExpression)
     for p in preds:
         if not p.constrained:
             continue

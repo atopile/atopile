@@ -28,7 +28,7 @@
   - [ ] refactor all traits
   - [ ] replace <node>.add(<trait>) with Traits.add_to(<node>, <trait>)
   - [ ] replace all trait inits `<trait>()`
-  - [ ] handle_duplicate 
+  - [ ] handle_duplicate
 - [ ] Parameter
   - [ ] literals (fabll.Range...)
 - [ ] Links
@@ -39,6 +39,14 @@
 - [ ] Figure out how to convert ChildField to instance
 - [ ] composition name optional? (currently id() hack)
 
+SOLVER:
+
+- [ ] use F imports
+- [ ] think and fix Graph handling in mutator
+- [WIP] fix type errors in all algos
+- [ ] check for `type` and `isinstance` and `cast`
+- [ ] consider renaming parameter_operatable to something shorter and better (now that we have operand)
+
 ##
 
 - node.get_children
@@ -46,6 +54,7 @@
 ## Strategy
 
 ## Notes
+
 - rename node.py to fabll.py
-- use graph.py as graph 
+- use graph.py as graph
 - use faebrykpy.py as fbrk (consider renaming to fbrk)

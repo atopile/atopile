@@ -71,7 +71,7 @@ def fold_literals[T: CanonicalExpression](
     Not(Not(A)) -> neutralize=replace: A
     ```
     """
-    exprs = mutator.get_expressions(expr_type, sort_by_depth=True, new_only=False)
+    exprs = mutator.get_typed_expressions(expr_type, sort_by_depth=True, new_only=False)
     for expr in exprs:
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
@@ -86,7 +86,9 @@ def fold_literals[T: CanonicalExpression](
 @algorithm("Expression-wise", terminal=False)
 def expression_wise(mutator: Mutator):
     for expr_type, algo in expr_wise_algos.items():
-        exprs = mutator.get_expressions(expr_type, sort_by_depth=True, new_only=False)
+        exprs = mutator.get_typed_expressions(
+            expr_type, sort_by_depth=True, new_only=False
+        )
         for expr in exprs:
             if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
                 continue

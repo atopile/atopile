@@ -3,22 +3,11 @@
 
 
 import logging
-from typing import cast
 
-import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.library.Expressions import (
-    has_idempotent_operands,
-    has_unary_identity,
-    is_fully_associative,
-    is_idempotent,
-    is_involutory,
-    is_reflexive,
-)
-from faebryk.libs.util import (
-    unique,
-)
+from faebryk.libs.util import unique
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +22,20 @@ def reflexive_predicates(mutator: Mutator):
     """
 
     predicates = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(is_reflexive,)
+        sort_by_depth=True, required_traits=(F.Expressions.is_reflexive,)
     )
     for pred in predicates:
-        if not pred.operatable_operands:
+        if not pred.as_parameter_operatable().get_operations():
             continue
-        if not fabll.isparameteroperable(pred.operands[0]):
+        operands = pred.get_operands()
+        if operands[0].try_get_sibling_trait(F.Literals.is_literal):
             continue
-        if pred.operands[0] is not pred.operands[1]:
+        if operands[0] is not operands[1]:
             continue
 
-        mutator.utils.alias_is_literal_and_check_predicate_eval(pred, True)
+        mutator.utils.alias_is_literal_and_check_predicate_eval(
+            pred.as_parameter_operatable(), mutator.make_lit(True)
+        )
 
 
 @algorithm("Idempotent deduplicate", terminal=False)
@@ -55,11 +47,11 @@ def idempotent_deduplicate(mutator: Mutator):
     """
 
     exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(has_idempotent_operands,)
+        sort_by_depth=True, required_traits=(F.Expressions.has_idempotent_operands,)
     )
     for expr in exprs:
-        unique_operands = unique(expr.operands, key=lambda x: x)
-        if len(unique_operands) != len(expr.operands):
+        unique_operands = unique(expr.get_operands(), key=lambda x: x)
+        if len(unique_operands) != len(expr.get_operands()):
             mutator.mutate_expression(expr, operands=unique_operands)
 
 
@@ -70,12 +62,12 @@ def idempotent_unpack(mutator: Mutator):
     """
 
     exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(is_idempotent,)
+        sort_by_depth=True, required_traits=(F.Expressions.is_idempotent,)
     )
     for expr in exprs:
-        assert len(expr.operands) == 1
-        inner = expr.operands[0]
-        if type(inner) is not type(expr):
+        assert len(expr.get_operands()) == 1
+        inner = expr.get_operands()[0]
+        if inner.get_obj_type_node() != expr.get_type_node():
             continue
         mutator.mutate_unpack_expression(expr)
 
@@ -89,12 +81,12 @@ def unary_identity_unpack(mutator: Mutator):
     """
 
     exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(has_unary_identity,)
+        sort_by_depth=True, required_traits=(F.Expressions.has_unary_identity,)
     )
     for expr in exprs:
-        if len(expr.operands) != 1:
+        if len(expr.get_operands()) != 1:
             continue
-        inner = expr.operands[0]
+        inner = expr.get_operands()[0]
         if mutator.utils.is_literal(inner):
             mutator.utils.alias_to(expr, inner, terminate=True)
         else:
@@ -108,16 +100,15 @@ def involutory_fold(mutator: Mutator):
     """
 
     exprs = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(is_involutory,)
+        sort_by_depth=True, required_traits=(F.Expressions.is_involutory,)
     )
     for expr in exprs:
-        if len(expr.operands) != 1:
+        if len(expr.get_operands()) != 1:
             continue
-        inner = expr.operands[0]
-        if type(inner) is not type(expr):
+        inner = expr.get_operands()[0]
+        if inner.get_obj_type_node() != expr.get_obj_type_node():
             continue
-        assert Expressions.isinstance_node(inner, type(expr))
-        innest = inner.operands[0]
+        innest = inner.get_sibling_trait(F.Expressions.is_expression).get_operands()[0]
         if mutator.utils.is_literal(innest):
             mutator.utils.alias_to(expr, innest, terminate=True)
         else:
@@ -136,24 +127,31 @@ def associative_flatten(mutator: Mutator):
 
     for +, *, and, or, &, |, ^
     """
-    ops = cast(
-        list[fabll.Node],
-        mutator.get_expressions(
-            sort_by_depth=True, required_traits=(is_fully_associative,)
-        ),
+    ops = mutator.get_expressions(
+        sort_by_depth=True, required_traits=(F.Expressions.is_fully_associative,)
     )
     # get out deepest expr in compressable tree
-    root_ops = [e for e in ops if type(e) not in {type(n) for n in e.get_operations()}]
+    root_ops = [
+        e
+        for e in ops
+        if e.get_obj_type_node()
+        not in {n.get_type_node() for n in e.as_parameter_operatable().get_operations()}
+    ]
 
-    def is_replacable(to_replace: Expression, parent_expr: Expression) -> bool:
+    def is_replacable(
+        to_replace: F.Expressions.is_expression,
+        parent_expr: F.Expressions.is_expression,
+    ) -> bool:
         """
         Check if an expression can be replaced.
         Only possible if not in use somewhere else or already mapped to new expr
         """
         # overly restrictive: equivalent replacement would be ok
-        if mutator.has_been_mutated(to_replace):
+        if mutator.has_been_mutated(to_replace.as_parameter_operatable()):
             return False
-        if to_replace.get_operations() != {parent_expr}:
+        if to_replace.as_parameter_operatable().get_operations() != {
+            parent_expr.as_parameter_operatable()
+        }:
             return False
         return True
 
@@ -162,7 +160,7 @@ def associative_flatten(mutator: Mutator):
         if not res.destroyed_operations:
             continue
 
-        mutator.remove(*res.destroyed_operations)
+        mutator.remove(*[e.as_parameter_operatable() for e in res.destroyed_operations])
 
         mutator.mutate_expression(
             expr,

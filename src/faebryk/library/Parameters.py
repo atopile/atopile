@@ -40,11 +40,8 @@ class is_parameter_operatable(fabll.Node):
             # check if Is is constrained
             expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
             is_expr = IsT.bind_instance(instance=edge.g().bind(node=expr))
-            print(f"is_expr: {is_expr.get_full_name(types=True)}")
             if not is_expr.has_trait(IsConstrained):
                 return
-
-            print("constrained")
 
             # for each of those check if they have a literal operand
             def visit(ctx: Ctx, edge: graph.BoundEdge) -> None:
@@ -86,7 +83,8 @@ class is_parameter_operatable(fabll.Node):
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            operands=[fabll.Traits(self).get_obj_raw(), value], constrain=True
+            operands=[self.as_operand(), value.get_trait(can_be_operand)],
+            constrain=True,
         )
 
     def compact_repr(
@@ -174,6 +172,9 @@ class can_be_operand(fabll.Node):
 
     def is_parameter_operatable(self) -> "is_parameter_operatable | None":
         return fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable)
+
+    def get_obj_type_node(self) -> graph.BoundNode:
+        return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
 
 class ParameterIsNotConstrainedToLiteral(Exception):

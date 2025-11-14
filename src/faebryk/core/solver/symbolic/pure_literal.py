@@ -85,7 +85,7 @@ def _exec_pure_literal_expressions(
 
 @algorithm("Fold pure literal expressions", terminal=False)
 def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.get_expressions(
+    exprs = mutator.get_typed_expressions(
         sort_by_depth=True, required_traits=(F.Expressions.is_canonical,)
     )
 

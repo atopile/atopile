@@ -549,7 +549,7 @@ class MutatorUtils:
         if literal_expr:
             lit_ops = {
                 op
-                for op in self.mutator.get_expressions(
+                for op in self.mutator.get_typed_expressions(
                     expr_factory, created_only=False, include_terminated=True
                 )
                 if self.is_literal_expression(op)
@@ -579,14 +579,14 @@ class MutatorUtils:
     def get_all_aliases(self) -> set[Is]:
         return {
             op
-            for op in self.mutator.get_expressions(Is, include_terminated=True)
+            for op in self.mutator.get_typed_expressions(Is, include_terminated=True)
             if op.constrained
         }
 
     def get_all_subsets(self) -> set[IsSubset]:
         return {
             op
-            for op in self.mutator.get_expressions(IsSubset, include_terminated=True)
+            for op in self.mutator.get_typed_expressions(IsSubset, include_terminated=True)
             if op.constrained
         }
 

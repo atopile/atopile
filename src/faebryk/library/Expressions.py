@@ -6,6 +6,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
     from faebryk.library import Parameters
@@ -184,6 +185,9 @@ class is_expression(fabll.Node):
     def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(F.Parameters.is_parameter_operatable)
 
+    def as_operand(self) -> "F.Parameters.can_be_operand":
+        return fabll.Traits(self).get_trait_of_obj(F.Parameters.can_be_operand)
+
     def is_congruent_to_factory(
         self,
         other_factory: "type[fabll.NodeT]",
@@ -206,6 +210,9 @@ class is_expression(fabll.Node):
         """
         # TODO
         pass
+
+    def get_obj_type_node(self) -> graph.BoundNode:
+        return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
 
 # TODO
@@ -237,6 +244,8 @@ class IsConstrained(fabll.Node):
 
 class is_arithmetic(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    _unit = F.Units.HasUnit.MakeChild()
 
 
 class is_additive(fabll.Node):

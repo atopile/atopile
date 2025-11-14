@@ -6,7 +6,7 @@ import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence, overload
 
 from more_itertools import first
 from rich.table import Table
@@ -1029,6 +1029,18 @@ class AlgoResult:
 
 class Mutator:
     # Algorithm Interface --------------------------------------------------------------
+    @overload
+    def make_lit(self, value: bool) -> F.Literals.Booleans: ...
+
+    @overload
+    def make_lit(self, value: float) -> F.Literals.Numbers: ...
+
+    @overload
+    def make_lit(self, value: Enum) -> F.Literals.Enums: ...
+
+    @overload
+    def make_lit(self, value: str) -> F.Literals.Strings: ...
+
     def make_lit(self, value: F.Literals.LiteralValues) -> F.Literals.LiteralNodes:
         return F.Literals.make_lit(self.tg, value)
 
@@ -1096,7 +1108,7 @@ class Mutator:
                 F.Parameters.NumericParameter.bind_typegraph_from_instance(
                     param.instance
                 )
-                .create_instance(self.G)
+                .create_instance(self.G_in)
                 .setup(
                     units=units if units is not None else p.get_units(),
                     within=within if override_within else p.get_within(),
@@ -1116,7 +1128,7 @@ class Mutator:
                 F.Parameters.BooleanParameter.bind_typegraph_from_instance(
                     param.instance
                 )
-                .create_instance(self.G)
+                .create_instance(self.G_in)
                 .setup()
             )
         elif p := param_obj.try_cast(F.Parameters.StringParameter):
@@ -1124,13 +1136,13 @@ class Mutator:
                 F.Parameters.StringParameter.bind_typegraph_from_instance(
                     param.instance
                 )
-                .create_instance(self.G)
+                .create_instance(self.G_in)
                 .setup()
             )
         elif p := param_obj.try_cast(F.Parameters.EnumParameter):
             new_param = (
                 F.Parameters.EnumParameter.bind_typegraph_from_instance(param.instance)
-                .create_instance(self.G)
+                .create_instance(self.G_in)
                 .setup(enum=p.get_enum())
             )
         else:
@@ -1528,7 +1540,7 @@ class Mutator:
     ) -> set[F.Parameters.is_parameter_operatable]:
         out = set(
             fabll.Traits.get_implementors(
-                F.Parameters.is_parameter_operatable.bind_typegraph(self.tg), self.G
+                F.Parameters.is_parameter_operatable.bind_typegraph(self.tg), self.G_in
             )
         )
 
@@ -1555,18 +1567,21 @@ class Mutator:
     def get_parameters(self) -> set[F.Parameters.is_parameter]:
         return set(
             fabll.Traits.get_implementors(
-                F.Parameters.is_parameter.bind_typegraph(self.tg), self.G
+                F.Parameters.is_parameter.bind_typegraph(self.tg), self.G_in
             )
         )
 
-    def get_expressions[T: "fabll.Node"](
+    def get_parameters_of_type[T: fabll.NodeT](self, t: type[T]) -> set[T]:
+        return set(t.bind_typegraph(self.tg).get_instances(self.G_in))
+
+    def get_typed_expressions[T: "fabll.NodeT"](
         self,
-        t: type[T] = fabll.Node,
+        t: type[T] = fabll.Node[Any],
         sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
         include_terminated: bool = False,
-        required_traits: tuple[type[fabll.Node], ...] = (),
+        required_traits: tuple[type[fabll.NodeT], ...] = (),
     ) -> list[T] | set[T]:
         assert not new_only or not created_only
 
@@ -1583,7 +1598,7 @@ class Mutator:
                 if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
             }
         else:
-            out = t.bind_typegraph(self.tg).get_instances(self.G)
+            out = t.bind_typegraph(self.tg).get_instances(self.G_in)
 
         if not include_terminated:
             out = {
@@ -1600,6 +1615,27 @@ class Mutator:
 
         return out
 
+    def get_expressions(
+        self,
+        sort_by_depth: bool = False,
+        created_only: bool = False,
+        new_only: bool = False,
+        include_terminated: bool = False,
+        required_traits: tuple[type[fabll.NodeT], ...] = (),
+    ) -> set[F.Expressions.is_expression]:
+        # TODO make this first class instead of calling
+        return {
+            e.get_trait(F.Expressions.is_expression)
+            for e in self.get_typed_expressions(
+                t=fabll.Node,
+                sort_by_depth=sort_by_depth,
+                created_only=created_only,
+                new_only=new_only,
+                include_terminated=include_terminated,
+                required_traits=required_traits,
+            )
+        }
+
     @property
     def non_copy_mutated(self) -> set[F.Expressions.is_canonical]:
         if self._mutations_since_last_iteration is None:
@@ -1612,9 +1648,9 @@ class Mutator:
         literal
         """
 
-        aliases: set[CanonicalExpression]
+        aliases: set[F.Expressions.is_expression]
         aliases = set(
-            self.get_expressions(Is, new_only=new_only, include_terminated=True)
+            self.get_typed_expressions(Is, new_only=new_only, include_terminated=True)
         )
 
         if new_only and self._mutations_since_last_iteration is not None:
@@ -1637,7 +1673,9 @@ class Mutator:
     def _get_literal_subsets(self, new_only: bool = True):
         subsets: set[F.Expressions.IsSubset]
         subsets = set(
-            self.get_expressions(IsSubset, new_only=new_only, include_terminated=True)
+            self.get_typed_expressions(
+                IsSubset, new_only=new_only, include_terminated=True
+            )
         )
 
         if new_only and self._mutations_since_last_iteration is not None:
@@ -1739,7 +1777,8 @@ class Mutator:
         self.utils = MutatorUtils(self)
 
         # TODO
-        self.G = mutation_map.output_graph
+        self.G_in = mutation_map.output_graph
+        self.G_out: graph.GraphView = None
         self.tg: fbrk.TypeGraph = mutation_map.tg
 
         self.print_context = mutation_map.output_print_context
@@ -1786,7 +1825,7 @@ class Mutator:
 
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
-        untouched_graphs = self.G - _touched_graphs
+        untouched_graphs = self.G_in - _touched_graphs
         for p in fabll.Node.bind_typegraph(*untouched_graphs).nodes_of_type(
             F.Parameters.is_parameter_operatable
         ):
@@ -1806,11 +1845,11 @@ class Mutator:
         removed_compact = [op.compact_repr(self.print_context) for op in removed]
         added_compact = [op.compact_repr(self.print_context) for op in added]
         assert not removed, (
-            f"Mutator {self.G, self.algo.name} untracked removed "
+            f"Mutator {self.G_in, self.algo.name} untracked removed "
             f"{indented_container(removed_compact)}"
         )
         assert not added, (
-            f"Mutator {self.G, self.algo.name} untracked added "
+            f"Mutator {self.G_in, self.algo.name} untracked added "
             f"{indented_container(added_compact)}"
         )
 
@@ -1832,7 +1871,7 @@ class Mutator:
             # FIXME: this is currently hit during legitimate build
             with downgrade(AssertionError, logger=logger, to_level=logging.DEBUG):
                 assert False, (
-                    f"Mutator {self.G} has non-registered new ops: "
+                    f"Mutator {self.G_in} has non-registered new ops: "
                     f"{indented_container(compact)}."
                     f"{indented_container(graphs)}"
                 )
