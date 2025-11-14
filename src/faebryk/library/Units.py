@@ -45,8 +45,8 @@ class HasUnit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     unit = F.Collections.Pointer.MakeChild()
 
-    def get_unit(self) -> IsUnit:
-        return self.unit.get().deref().get_trait(IsUnit)
+    def get_unit(self) -> fabll.Node:
+        return self.unit.get().deref()
 
     @classmethod
     def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:
