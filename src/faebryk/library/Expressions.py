@@ -1295,7 +1295,10 @@ class Is(fabll.Node):
         cls, operands: list[fabll.RefPath]
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        out.add_dependant(IsConstrained.MakeChild(), identifier="constrain")
+        out.add_dependant(
+            fabll.Traits.MakeEdge(IsConstrained.MakeChild(), [out]),
+            identifier="constrain",
+        )
         out.add_dependant(
             *OperandSet.MakeEdges([out, cls.operands], operands),
             identifier="connect_operands",

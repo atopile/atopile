@@ -255,14 +255,19 @@ class BooleanParameter(fabll.Node):
     def extract_single(self) -> bool:
         return self.force_extract_literal().get_single()
 
-    def constrain_to_single(self, value: bool) -> None:
+    def constrain_to_single(
+        self, value: bool, g: graph.GraphView | None = None
+    ) -> None:
+        g = g or self.instance.g()
         from faebryk.library.Literals import Booleans
 
         self._is_parameter_operatable.get().constrain_to_literal(
-            g=self.instance.g(),
-            value=Booleans.bind_typegraph_from_instance(instance=self.instance)
-            .create_instance(self.instance.g())
-            .setup(value),
+            g=g,
+            value=Booleans.bind_typegraph_from_instance(
+                instance=self.instance
+            ).create_instance(
+                self.instance.g(), attributes=Booleans.Attributes(value=value)
+            ),
         )
 
 
@@ -280,13 +285,17 @@ class EnumParameter(fabll.Node):
         return out
 
     def try_extract_constrained_literal(self) -> "Literals.Enums | None":
+        from faebryk.library.Literals import Enums
+
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=Literals.Enums
+            lit_type=Enums
         )
 
     def force_extract_literal(self) -> "Literals.Enums":
+        from faebryk.library.Literals import Enums
+
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=Literals.Enums
+            lit_type=Enums
         )
 
     def setup(self, enum: type[Enum]) -> Self:
@@ -307,7 +316,7 @@ class NumericParameter(fabll.Node):
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "Units.IsUnit":
+    def get_units(self) -> "fabll.Node":
         from faebryk.library.Units import HasUnit
 
         return self.get_trait(HasUnit).get_unit()
@@ -373,7 +382,7 @@ class NumericParameter(fabll.Node):
         # )
         from faebryk.library.Units import HasUnit
 
-        out.add_dependant(fabll.Traits.MakeEdge(HasUnit.MakeChild(unit)))
+        out.add_dependant(fabll.Traits.MakeEdge(HasUnit.MakeChild(unit), [out]))
         # out.add_dependant(
         #     *NumberDomain.MakeEdges(
         #         ref=[out, cls.domain],

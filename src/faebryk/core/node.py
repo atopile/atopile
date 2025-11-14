@@ -8,6 +8,7 @@ from typing_extensions import Callable, deprecated
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -1411,6 +1412,21 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
                 return True
         return False
 
+    def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
+        impl = fbrk.Trait.try_get_trait(
+            target=self.get_or_create_type(),
+            trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
+        )
+        if impl is None:
+            return None
+        return trait.bind_instance(instance=impl)
+
+    def get_trait[TR: Node](self, trait: type[TR]) -> TR:
+        impl = self.try_get_trait(trait)
+        if impl is None:
+            raise TraitNotFound(f"No trait {trait} found")
+        return impl
+
 
 # ------------------------------------------------------------
 
@@ -1911,217 +1927,69 @@ def test_resistor_instantiation():
     tg = fbrk.TypeGraph.create(g=g)
 
     Resistor = F.Resistor.bind_typegraph(tg=tg)
-    resistor_instance = Resistor.create_instance(g=g)
-    assert resistor_instance
-    assert resistor_instance._type_identifier() == "Resistor"
-
-    # Electrical make child
-    p1_child_field = fbrk.EdgeComposition.get_child_by_identifier(
-        bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
+    res_inst = Resistor.create_instance(g=g)
+    assert Resistor.get_trait(F.has_usage_example)
+    assert res_inst
+    assert res_inst._type_identifier() == "Resistor"
+    assert res_inst.unnamed[0].get().get_name() == "unnamed[0]"
+    assert res_inst.resistance.get().get_name() == "resistance"
+    assert res_inst.resistance.get().get_units().get_type_name() == "Ohm"
+    assert res_inst.get_trait(fabll.is_module)
+    electricals = (
+        res_inst.get_trait(F.can_attach_to_footprint_symmetrically)
+        .electricals_.get()
+        .as_list()
     )
-    assert p1_child_field is not None
-    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
-    assert resistor_instance.resistance.get().get_name() == "resistance"
-    print(resistor_instance.resistance.get().get_units())
-
-    print(
-        "resistance is type Parameter:",
-        fbrk.EdgeType.is_node_instance_of(
-            bound_node=resistance,
-            node_type=F.Parameters.NumericParameter.bind_typegraph(tg=tg)
-            .get_or_create_type()
-            .node(),
-        ),
+    assert electricals[0].get_name() == "unnamed[0]"
+    assert electricals[1].get_name() == "unnamed[1]"
+    assert (
+        res_inst._is_pickable.get().get_param("resistance").get_name() == "resistance"
     )
-
-    # Constrained parameter type child
-    designator_prefix = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=resistor_instance.instance,
-            child_identifier="designator_prefix",
-        )
-    )
-    prefix_param = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=designator_prefix,
-            child_identifier="prefix_param",
-        )
-    )
-    constraint_edge = not_none(
-        fbrk.EdgeOperand.get_expression_edge(bound_node=prefix_param)
-    )
-    expression_node = not_none(
-        fbrk.EdgeOperand.get_expression_node(edge=constraint_edge.edge())
-    )
-    expression_bnode = g.bind(node=expression_node)
-
-    operands: list[graph.BoundNode] = []
-    fbrk.EdgeOperand.visit_operand_edges(
-        bound_node=expression_bnode,
-        ctx=operands,
-        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
-    )
-    for operand in operands:
-        attrs = fbrk.EdgeType.get_type_node(
-            edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=operand)).edge()
-        ).get_dynamic_attrs()
-        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
-
-    expression_bnode = g.bind(node=expression_node)
-    operands2: list[graph.BoundNode] = []
-    fbrk.EdgeOperand.visit_operand_edges(
-        bound_node=expression_bnode,
-        ctx=operands2,
-        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
-    )
-    for operand in operands2:
-        attrs = fbrk.EdgeType.get_type_node(
-            edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=operand)).edge()
-        ).get_dynamic_attrs()
-        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
-
-    # Is pickable by type
-    ipbt = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=resistor_instance.instance,
-            child_identifier="_is_pickable",
-        )
-    )
-    ipbt_params = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=ipbt,
-            child_identifier="params_",
-        )
-    )
-    variables: list[graph.BoundNode] = []
-    ipbt_params.visit_edges_of_type(
-        edge_type=fbrk.EdgePointer.get_tid(),
-        ctx=variables,
-        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
-    )
-    print(
-        "ipbt_params:",
-        [
-            fbrk.EdgeComposition.get_name(
-                edge=not_none(
-                    fbrk.EdgeComposition.get_parent_edge(bound_node=variable)
-                ).edge()
-            )
-            for variable in variables
-        ],
-    )
-
-
-def test_lightweight():
-    g, tg = _make_graph_and_typegraph()
-    import faebryk.library._F as F
-
-    resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
-    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
-
-    # Test list fields
-    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
-    assert resistor_instance.unnamed[1].get().get_name() == "unnamed[1]"
-
-    # Test is pickable by type
-    ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
-    sorted_params = sorted(param.get_name() for param in ipbt.params)
-    print(ipbt)
-    assert sorted_params == ["max_power", "max_voltage", "resistance"]
-    assert ipbt.get_param("resistance").get_name() == "resistance"
-
-    # TODO: test endpoint extraction from endpoint property
-    # assert endpoint == "resistors"
-
-    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
-    _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
-    # pat = not_none(
-    #     fbrk.EdgePointer.get_pointed_node_by_identifier(
-    #         bound_node=bjt_instance.emitter.get().instance,
-    #         identifier="pin_association_table_set",
-    #     )
-    # )
-    # for lit in Set.bind_instance(instance=pat).as_list():
-    #     lit = LiteralNode.bind_instance(instance=lit.instance)
-    #     print(lit.get_value())
-
-    # print(pah.get_nc_literals())
-    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
-    bjt_instance = F.BJT.bind_typegraph(tg=tg).create_instance(g=g)
-    pah = bjt_instance.get_trait(F.has_pin_association_heuristic)
-    #
-    # print(nc_set)
-    # print(pah.nc.get())
-    # print(pah.nc.get().as_list())
-    # print(pah.get_nc_literals())
-    print(pah.get_mapping_as_dict())
-    print(pah.get_pins(pins=[("1", "E"), ("2", "Collector"), ("3", "B")]))
-
-    # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
-    # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
-
-    # TODO: Fix this to pull traits from the type node
-    # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
-    # print(resistor_instance.get_trait(F.has_usage_example).language)
-
-    simple_repr = resistor_instance.get_trait(F.has_simple_value_representation)
-    print(simple_repr.get_specs())
-    specs_set = simple_repr.specs_set_.get()
-    assert isinstance(specs_set, F.Collections.PointerSet)
-    print(simple_repr.get_params())
-    print(simple_repr.get_value())
-
-    _ = F.Battery.bind_typegraph(tg=tg).get_or_create_type()
-    battery_instance = F.Battery.bind_typegraph(tg=tg).create_instance(g=g)
-    # ref = battery_instance.get_trait(F.has_single_electric_reference).get_reference()
-    # print(ref)
-    # assert (
-    #     battery_instance.power.get().hv.get().get_trait(F.has_net_name).level
-    #     == None  # F.has_net_name.Level.SUGGESTED
-    # )
-    # print(battery_instance.power.get().hv.get().get_trait(F.has_net_name).name)
-    # assert (
-    #     battery_instance.power.get().hv.get().get_trait(F.has_net_name).name
-    #     == "BAT_VCC"
-    # )
-
-    _ = F.OpAmp.bind_typegraph(tg=tg).get_or_create_type()
-    op_amp_instance = F.OpAmp.bind_typegraph(tg=tg).create_instance(g=g)
-    print(
-        op_amp_instance.get_trait(F.has_pin_association_heuristic).get_mapping_as_dict()
-    )
-
-    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
-    footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
-
-    # print(resistor_instance.get_trait(F.has_footprint))
-    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
-    metadata = resistor_instance.get_children(
-        direct_only=True, types=F.SerializableMetadata
-    )
-    print(
-        f"SerializableMetadata:"
-        f" {F.SerializableMetadata.get_properties(node=resistor_instance)}"
-    )
-    # print(F.SerializableMetadata.get_properties(node=resistor_instance))
-
-    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
-
-    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
-    sym = resistor_instance.get_trait(F.can_attach_to_footprint_symmetrically)
-    print(sym.electricals_.get().as_list())
 
 
 def test_string_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
 
-    string_param = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(
-        g=g
-    )
-    string_param.constrain_to_single(value="TEST")
-    print(not_none(string_param.try_extract_constrained_literal()).get_value())
-    print(string_param.get_full_name(types=True))
+    string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    string_p.constrain_to_single(value="IG constrained")
+    assert string_p.force_extract_literal().get_value() == "IG constrained"
+
+    class ExampleStringParameter(fabll.Node):
+        string_p_tg = F.Parameters.StringParameter.MakeChild()
+        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            [string_p_tg], "TG constrained"
+        )
+
+    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
+
+
+def test_boolean_param():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
+    boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    boolean_p.constrain_to_single(value=True)
+    assert boolean_p.force_extract_literal().get_value()
+
+    class ExampleBooleanParameter(fabll.Node):
+        boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
+        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            [boolean_p_tg], True
+        )
+
+    ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_value()
+
+
+def test_make_lit():
+    import faebryk.library._F as F
+
+    g, tg = _make_graph_and_typegraph()
+    assert F.Literals.make_lit(tg, value=True).get_value()
+    assert F.Literals.make_lit(tg, value=3).get_value() == 3
+    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
 
 
 def test_kicad_footprint():
@@ -2147,25 +2015,6 @@ def test_kicad_footprint():
     print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
 
-def test2():
-    import faebryk.library._F as F
-
-    g, tg = _make_graph_and_typegraph()
-    strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(
-        g=g, attributes=F.Literals.Strings.Attributes(value="test")
-    )
-    print(strings.get_value())
-
-    number = F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(
-        g=g, attributes=F.Literals.LiteralsAttributes(value=3)
-    )
-    print(number.get_value())
-
-    assert F.Literals.make_lit(tg, value=True).get_value()
-    assert F.Literals.make_lit(tg, value=3).get_value() == 3
-    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
-
-
 if __name__ == "__main__":
     import typer
 
@@ -2174,4 +2023,4 @@ if __name__ == "__main__":
     # test_manual_resistor_def()
 
     # typer.run(test_resistor_instantiation)
-    typer.run(test_string_param)
+    typer.run(test_make_lit)
