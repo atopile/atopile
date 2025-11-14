@@ -35,11 +35,11 @@ logger = logging.getLogger(__name__)
 
 
 def ensure_typegraph(node: fabll.Node) -> fabll.Node:
-    """Build TypeGraph, instantiate, and bind for the node's tree."""
+    """Build fbrk.GraphView, instantiate, and bind for the node's tree."""
     root = node._get_root()
 
     # Assert not already built
-    assert not root.get_lifecycle_stage() == "runtime", "TypeGraph already built"
+    assert not root.get_lifecycle_stage() == "runtime", "fbrk.GraphView already built"
     assert not getattr(root, "_instance_bound", None), "Instance already bound"
 
     # Instantiate graph and execute runtime hooks
@@ -58,9 +58,10 @@ def bind_to_module(*nodes: fabll.Node) -> fabll.Module:
 
 
 def test_self():
-    g = GraphView.create()
-    mif = fabll.ModuleInterface._create_instance(TypeGraph.create(g=g), g)
-    assert mif.get_trait(fabll.is_interface).is_connected_to(mif)
+    g=graph.GraphView.create()
+    tg=fbrk.TypeGraph.create(g=g)
+    elec = F.Electrical.bind_typegraph(tg).create_instance(g=g)
+    assert elec.get_trait(fabll.is_interface).is_connected_to(elec)
 
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
@@ -578,8 +579,8 @@ def test_up_connect_simple_two_negative():
      L2      L2
     ```
     """
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     class High(fabll.Node):
         _is_interface = fabll.is_interface.MakeChild()
@@ -604,8 +605,8 @@ def test_up_connect_simple_multiple_negative():
     ```
     """
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     class High(fabll.Node):
         _is_interface = fabll.is_interface.MakeChild()
@@ -667,8 +668,8 @@ def test_down_connect():
     ```
     """
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricPowerType = F.ElectricPower.bind_typegraph(tg)
     ep = [electricPowerType.create_instance(g=g) for _ in range(2)]
@@ -686,8 +687,8 @@ def test_chains_direct():
     M1 --> M2 --> M3
     ```
     """
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricalType = F.Electrical.bind_typegraph(tg)
     electrics = [electricalType.create_instance(g=g) for _ in range(3)]
@@ -704,8 +705,8 @@ def test_chains_double_shallow_flat():
     ```
     """
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricalType = F.Electrical.bind_typegraph(tg)
     electrics = [electricalType.create_instance(g=g) for _ in range(3)]
@@ -722,8 +723,8 @@ def test_chains_mixed_shallow_flat():
     ```
     """
 
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricalType = F.Electrical.bind_typegraph(tg)
     electrics = [electricalType.create_instance(g=g) for _ in range(3)]
@@ -744,8 +745,8 @@ def test_chains_mixed_shallow_nested():
     ```
     """
     # Test hierarchy down filter & chain resolution
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricalLogicType = F.ElectricLogic.bind_typegraph(tg)
     el = [electricalLogicType.create_instance(g=g) for _ in range(3)]
@@ -800,8 +801,8 @@ def test_chains_mixed_shallow_nested():
 
 def test_loooooong_chain():
     """Let's make it hard"""
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricPowerType = F.ElectricPower.bind_typegraph(tg)
     ep = [electricPowerType.create_instance(g=g) for _ in range(2**10)]
@@ -817,8 +818,8 @@ def test_loooooong_chain():
 @pytest.mark.parametrize("length", [16])
 def test_alternating_long_chain(length):
     """Let's make it hard"""
-    g = GraphView.create()
-    tg = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     electricPowerType = F.ElectricPower.bind_typegraph(tg)
     ep = [electricPowerType.create_instance(g=g) for _ in range(length)]
@@ -1139,8 +1140,8 @@ def test_isolated_connect_simple():
 
 
 def test_basic_i2c():
-    g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    g = graph.graph.GraphView.create()
+    tg = graph.fbrk.TypeGraph.create(g=g)
 
     I2CType = F.I2C.bind_typegraph(tg)
     i2c1 = I2CType.create_instance(g=g)
@@ -1335,8 +1336,8 @@ def test_shallow_implied_paths():
 
 
 def test_direct_shallow_instance():
-    g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    g = graph.graph.GraphView.create()
+    tg = graph.fbrk.TypeGraph.create(g=g)
 
     electricalType = F.Electrical.bind_typegraph(tg)
     electrical1 = electricalType.create_instance(g=g)
@@ -1350,8 +1351,8 @@ def test_direct_shallow_instance():
 
 
 def test_connect_incompatible():
-    g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    g = graph.graph.GraphView.create()
+    tg = graph.fbrk.TypeGraph.create(g=g)
 
     class A(fabll.Node):
         _is_interface = fabll.is_interface.MakeChild()
@@ -1369,8 +1370,8 @@ def test_connect_incompatible():
 
 
 def test_connect_incompatible_hierarchical():
-    g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    g = graph.graph.GraphView.create()
+    tg = graph.fbrk.TypeGraph.create(g=g)
 
     class B(fabll.Node):
         _is_interface = fabll.is_interface.MakeChild()
@@ -1388,8 +1389,8 @@ def test_connect_incompatible_hierarchical():
 
 
 def test_connect_incompatible_hierarchical_regression():
-    g = graph.GraphView.create()
-    tg = graph.TypeGraph.create(g=g)
+    g = graph.graph.GraphView.create()
+    tg = graph.fbrk.TypeGraph.create(g=g)
 
     electricPowerType = F.ElectricPower.bind_typegraph(tg)
     electricalType = F.Electrical.bind_typegraph(tg)

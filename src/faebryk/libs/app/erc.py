@@ -53,7 +53,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
+def simple_erc(G: graph.GraphView):
     """Simple ERC check.
 
     This function will check for the following ERC violations:

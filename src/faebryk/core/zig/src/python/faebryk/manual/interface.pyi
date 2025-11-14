@@ -23,7 +23,7 @@ class EdgeInterfaceConnection:
     @staticmethod
     def is_connected_to(
         *, source: BoundNode, target: BoundNode
-    ) -> list[int]: ...  # TODO: return proper BFSPath list
+    ) -> BFSPath: ...
     @staticmethod
     def get_connected(
         *, source: BoundNode, include_self: bool = True

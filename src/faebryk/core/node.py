@@ -557,21 +557,30 @@ class Path:
     def get_end_node(self) -> "Node[Any]":
         return Node[Any].bind_instance(instance=self.end_node)
 
-    def from_connection(self, a: "Node[Any]", b: "Node[Any]") -> "Path | None":
-        if paths := a.get_trait(is_interface).is_connected_to(b):
-            # this was a node on the previous implementation
-            # basically we can do this more efficiently
+    @staticmethod
+    def from_connection(a: "Node[Any]", b: "Node[Any]") -> "Path | None":
+        bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
+            source=a.instance, target=b.instance
+        )
+        path = Path(bfs_path)
 
-            # FIXME: Notes: from the master of graphs:
-            #  - iterate through all paths
-            #  - make a helper function
-            #    Path.get_subpaths(path: Path, search: SubpathSearch)
-            #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
-            #  - choose out of subpaths
-            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
-            #      is derived, save it as candidate and only yield it if no other found)
-            #    - choose first shortest
-            return Path(paths[0])
+        # this was a node on the previous implementation
+        # basically we can do this more efficiently
+
+        # FIXME: Notes: from the master of graphs:
+        #  - iterate through all paths
+        #  - make a helper function
+        #    Path.get_subpaths(path: Path, search: SubpathSearch)
+        #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
+        #  - choose out of subpaths
+        #    - be careful with LinkDirectDerived edges (if there is a faulting edge
+        #      is derived, save it as candidate and only yield it if no other found)
+        #    - choose first shortest
+
+        end_node = path.end_node.node()
+        if end_node.is_same(other=b.instance.node()):
+            # TODO: support implied paths yielding multiple results again
+            return path
         return None
 
     def __repr__(self) -> str:
@@ -1569,11 +1578,11 @@ class is_interface(Node):
 
     def is_connected_to(self, other: "NodeT") -> bool:
         self_node = self.get_obj()
-        path = fbrk.EdgeInterfaceConnection.is_connected_to(
+        bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
             source=self_node.instance, target=other.instance
         )
 
-        return path[0] > 0 if path else False
+        return bfs_path.get_end_node().node().is_same(other=other.instance.node())
 
     def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
         self_node = self.get_obj()
