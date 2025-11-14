@@ -2,16 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Self
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 
 class has_designator_prefix(fabll.Node):
-    @classmethod
-    def __create_type__(cls, t: fabll.BoundNodeType[fabll.Node, Any]) -> None:
-        cls.prefix_param = t.Child(nodetype=fabll.Parameter)
-
     class Prefix(StrEnum):
         A = "A"
         """Separable assembly or sub-assembly (e.g. printed circuit assembly)"""
@@ -230,9 +227,22 @@ class has_designator_prefix(fabll.Node):
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
-    # def __init__(self, prefix: str | Prefix) -> None:
-    #     super().__init__()
-    #     self.prefix = prefix
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    prefix_param_ = F.Parameters.EnumParameter.MakeChild(enum_t=Prefix)
 
-    # def get_prefix(self) -> str:
-    #     return self.prefix
+    @classmethod
+    def MakeChild(cls, value: Prefix) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        # out.add_dependant(
+        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
+        #         [out, cls.prefix_param_], value
+        #     )
+        # )
+        return out
+
+    def get_prefix(self) -> str:
+        return str(self.prefix_param_.get().try_extract_constrained_literal())
+
+    def setup(self, designator_prefix: str) -> Self:
+        # self.prefix_param_.get().constrain_to_single(value=designator_prefix)
+        return self

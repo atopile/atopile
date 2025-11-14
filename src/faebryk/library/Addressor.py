@@ -1,33 +1,28 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
+from typing import Self
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
-from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
-class Addressor(ModuleInterface):
-    address = L.p_field(domain=L.Domains.Numbers.NATURAL())
-    offset = L.p_field(domain=L.Domains.Numbers.NATURAL())
-    base = L.p_field(domain=L.Domains.Numbers.NATURAL())
+class Addressor(fabll.Node):
+    address = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    offset = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    base = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
 
-    @L.rt_field
-    def address_lines(self):
-        return times(self._address_bits, F.ElectricLogic)
+    # def address_lines(self):
+    #     return times(self._address_bits, F.ElectricLogic)
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    address_lines_ = [F.ElectricLogic.MakeChild() for _ in range(4)]
 
-    def __init__(self, address_bits: int):
-        self._address_bits = address_bits
-        super().__init__()
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     def __preinit__(self) -> None:
         for x in (self.address, self.offset, self.base):
@@ -52,8 +47,40 @@ class Addressor(ModuleInterface):
                 F.has_net_name(f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
             )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    @property
+    def address_lines(self) -> list[F.ElectricLogic]:
+        return [
+            F.ElectricLogic.bind_instance(line.instance) for line in self.address_lines_
+        ]
+
+    @classmethod
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                [out, cls.address_bits_], address_bits
+            )
+        )
+        for i in range(address_bits):
+            cls.address_lines[i].add_dependant(
+                F.has_net_name.MakeChild(
+                    name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED
+                )
+            )
+
+    def setup(self, address_bits: int) -> Self:
+        self.address_bits_.get().constrain_to_literal(
+            g=self.instance.g(), value=address_bits
+        )
+        for i, line in enumerate(self.address_lines_):
+            fabll.Traits.create_and_add_instance_to(
+                node=line.get(), trait=F.has_net_name
+            ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
+        return self
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Addressor, I2C, ElectricPower
 
         # For I2C device with 2 address pins (4 possible addresses)
@@ -74,5 +101,6 @@ class Addressor(ModuleInterface):
         assert i2c_bus.address is addressor.address
         device.i2c ~ i2c_bus
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

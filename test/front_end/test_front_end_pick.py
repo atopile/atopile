@@ -3,15 +3,13 @@ from textwrap import dedent
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.datatypes import TypeRef
 from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
-from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
@@ -37,7 +35,7 @@ def test_ato_pick_resistor_shim(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
@@ -67,7 +65,7 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
@@ -102,7 +100,7 @@ def test_ato_pick_capacitor_shim(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Capacitor)
@@ -129,7 +127,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Capacitor)
@@ -148,13 +146,13 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
             SMDSize.I0402,
             "L0402",
             "100nH +/- 20%",
-            L.Range.from_center_rel(100 * P.nH, 0.2),
+            fabll.Range.from_center_rel(100 * P.nH, 0.2),
         ),
         (
             SMDSize.SMD4x4mm,
             "SMD4x4mm",
             "2.2uH +/- 20%",
-            L.Range.from_center_rel(2.2 * P.uH, 0.2),
+            fabll.Range.from_center_rel(2.2 * P.uH, 0.2),
         ),
     ],
 )
@@ -180,7 +178,7 @@ def test_ato_pick_inductor(
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     inductor = bob.resolve_field_shortcut(node, "inductor")
     assert isinstance(inductor, F.Inductor)
@@ -219,12 +217,14 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    r1, r2 = node.get_children_modules(direct_only=True, types=Module)
+    r1, r2 = node.get_children(
+        direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+    )
     assert r1.has_trait(F.has_part_picked)
     assert r2.has_trait(F.has_part_picked)
 
@@ -252,12 +252,14 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    rs = node.get_children(
+        direct_only=False, types=F.Resistor, required_trait=fabll.is_module
+    )
     for r in rs:
         assert r.has_trait(F.has_part_picked)
 
@@ -285,11 +287,13 @@ def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["App"]))
 
-    assert isinstance(node, L.Module)
+    assert node.has_trait(fabll.is_module)
 
     solver = DefaultSolver()
     pick_part_recursively(node, solver)
 
-    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    rs = node.get_children(
+        direct_only=False, types=F.Resistor, required_trait=fabll.is_module
+    )
     for r in rs:
         assert r.has_trait(F.has_part_picked)

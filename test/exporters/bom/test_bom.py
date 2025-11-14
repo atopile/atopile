@@ -4,17 +4,16 @@
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import _get_bomline
 from faebryk.libs.app.designators import attach_random_designators, load_designators
-from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.units import P
 
 
-def _build(app: Module):
+def _build(app: fabll.Node):
     load_designators(app.get_graph(), attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
@@ -24,7 +23,7 @@ def _build(app: Module):
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
     r = F.Resistor()
-    r.resistance.constrain_subset(L.Range.from_center_rel(10 * P.kohm, 0.01))
+    r.resistance.constrain_subset(fabll.Range.from_center_rel(10 * P.kohm, 0.01))
 
     _build(r)
 
@@ -34,7 +33,7 @@ def test_bom_picker_pick():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_explicit_pick():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     m.add(F.has_explicit_part.by_supplier("C25804", pinmap={}))
     _build(m)
@@ -45,7 +44,7 @@ def test_bom_explicit_pick():
 
 
 def test_bom_kicad_footprint_no_lcsc():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     fp = F.KicadFootprint(pin_names=["1", "2"])
     fp.add(
@@ -61,7 +60,7 @@ def test_bom_kicad_footprint_no_lcsc():
 
 
 def test_bom_kicad_footprint_lcsc_verbose():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     fp = F.KicadFootprint(pin_names=["1", "2"])
     fp.add(
@@ -81,7 +80,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
 
 
 def test_bom_kicad_footprint_lcsc_compact():
-    m = Module()
+    m = fabll.Module()
     m.add(F.can_attach_to_footprint_symmetrically())
     m.add(
         F.has_explicit_part.by_supplier(

@@ -20,8 +20,8 @@ from hypothesis.strategies._internal.lazy import LazyStrategy
 from rich.console import Console
 from rich.table import Table
 
+import faebryk.core.node as fabll
 from faebryk.core.core import Namespace
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -45,7 +45,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, get_graphs
-from faebryk.libs.library.L import Range
 from faebryk.libs.sets.numeric_sets import float_round
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -149,7 +148,7 @@ class Filters(Namespace):
     @staticmethod
     def _unwrap_param(value: ValueT) -> Quantity_Interval_Disjoint:
         # TODO where is this coming from?
-        if isinstance(value, Range):
+        if isinstance(value, fabll.Range):
             return lit(value)
         assert isinstance(value, ValueT)
         if isinstance(value, Parameter):
@@ -285,7 +284,7 @@ class st_values(Namespace):
     small_numeric = _numbers_with_limit(1e2, 1e-1)
 
     ranges = st.builds(
-        lambda values: lit(Range(*sorted(values))),
+        lambda values: lit(fabll.Range(*sorted(values))),
         st.tuples(
             st.one_of(st.just(-inf), numeric),
             st.one_of(st.just(inf), numeric),
@@ -293,7 +292,7 @@ class st_values(Namespace):
     )
 
     small_ranges = st.builds(
-        lambda values: lit(Range(*sorted(values))),
+        lambda values: lit(fabll.Range(*sorted(values))),
         st.tuples(small_numeric, small_numeric),
     )
 
@@ -651,7 +650,7 @@ def debug_fix_literal_folding(expr: Arithmetic):
         Sin(
             Subtract(
                 lit(1),
-                p(Range(-inf, inf)),
+                p(fabll.Range(-inf, inf)),
             ),
         ),
     ),
@@ -660,7 +659,7 @@ def debug_fix_literal_folding(expr: Arithmetic):
     Divide(
         Add(
             Subtract(lit(0), lit(1)),
-            Abs(lit(Range(-inf, inf))),
+            Abs(lit(fabll.Range(-inf, inf))),
         ),
         lit(1),
     ),
@@ -669,14 +668,14 @@ def debug_fix_literal_folding(expr: Arithmetic):
     Add(
         lit(1),
         Abs(
-            Add(p(Range(-inf, inf)), p(Range(-inf, inf))),
+            Add(p(fabll.Range(-inf, inf)), p(fabll.Range(-inf, inf))),
         ),
     ),
 )
 @example(
     Add(
         Sqrt(lit(1)),
-        Abs(lit(Range(-inf, inf))),
+        Abs(lit(fabll.Range(-inf, inf))),
     ),
 )
 @example(
@@ -701,18 +700,18 @@ def debug_fix_literal_folding(expr: Arithmetic):
     expr=Subtract(
         Subtract(
             lit(1),
-            lit(Range(-inf, inf)),
+            lit(fabll.Range(-inf, inf)),
         ),
         Add(lit(0)),
     ),
 )
 @example(
     Subtract(
-        Abs(p(Range(-inf, inf))),
-        Abs(p(Range(-inf, inf))),
+        Abs(p(fabll.Range(-inf, inf))),
+        Abs(p(fabll.Range(-inf, inf))),
     )
 )
-@example(Subtract(Abs(p(Range(5, 6))), Abs(p(Range(5, 6)))))
+@example(Subtract(Abs(p(fabll.Range(5, 6))), Abs(p(fabll.Range(5, 6)))))
 @example(
     expr=Multiply(
         Sqrt(Sqrt(lit(2))),
@@ -721,8 +720,8 @@ def debug_fix_literal_folding(expr: Arithmetic):
 )
 @example(
     expr=Subtract(
-        Round(lit(Range(2, 10))),
-        Round(lit(Range(2, 10))),
+        Round(lit(fabll.Range(2, 10))),
+        Round(lit(fabll.Range(2, 10))),
     ),
 )
 @example(
@@ -730,26 +729,26 @@ def debug_fix_literal_folding(expr: Arithmetic):
         Round(
             Subtract(
                 lit(0),
-                lit(Range(-999_999_999_905, -0.3333333333333333)),
+                lit(fabll.Range(-999_999_999_905, -0.3333333333333333)),
             ),
         ),
         Subtract(
             lit(-999_999_983_213),
-            p(Range(-17297878, 999_999_992_070)),
+            p(fabll.Range(-17297878, 999_999_992_070)),
         ),
     ),
 )
-@example(Abs(Round(lit(Range(-inf, inf)))))
+@example(Abs(Round(lit(fabll.Range(-inf, inf)))))
 @example(
     expr=Divide(
         Divide(
             lit(0),
-            lit(Range(-1, -2.2250738585072014e-308)),
+            lit(fabll.Range(-1, -2.2250738585072014e-308)),
         ),
-        lit(Range(-1, -2.2250738585072014e-308)),
+        lit(fabll.Range(-1, -2.2250738585072014e-308)),
     ),
 )
-@example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
+@example(Multiply(Add(lit(0)), Abs(lit(fabll.Range(-inf, inf)))))
 @example(Add(Add(lit(0)), Abs(p(-1))))
 @example(Abs(p(-1)))
 @example(expr=Round(Add(Abs(lit(0)), Round(lit(-1)))))
@@ -830,7 +829,9 @@ class Stats:
         table.add_column("Type", justify="left")
         table.add_column("count", justify="right")
 
-        all_exprs = GraphFunctions(*get_graphs(self.exprs)).nodes_of_type(Arithmetic)
+        all_exprs = fabll.Node.bind_typegraph(*get_graphs(self.exprs)).nodes_of_type(
+            Arithmetic
+        )
         expr_types = groupby(all_exprs, type)
         for expr_type, exprs_for_type in expr_types.items():
             table.add_row(expr_type.__name__, str(len(exprs_for_type)))

@@ -80,7 +80,8 @@ pub const EdgePointer = struct {
         };
 
         var visit = Visit{ .cb_ctx = ctx, .cb = f };
-        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit);
+        // directed = true: from is source, to is target
+        return bound_node.visit_edges_of_type(tid, T, &visit, Visit.visit, true);
     }
 
     pub fn visit_pointed_edges_with_identifier(
@@ -97,6 +98,7 @@ pub const EdgePointer = struct {
 
             pub fn visit(self_ptr: *anyopaque, bound_edge: BoundEdgeReference) visitor.VisitResult(T) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                // Direction filtering is handled by visit_pointed_edges with directed=true
                 if (bound_edge.edge.attributes.name) |name| {
                     if (!std.mem.eql(u8, name, self.identifier)) {
                         return visitor.VisitResult(T){ .CONTINUE = {} };

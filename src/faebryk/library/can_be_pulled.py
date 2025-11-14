@@ -1,0 +1,158 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
+from functools import reduce
+from typing import Self
+
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+from faebryk.libs.util import cast_assert
+
+
+class can_be_pulled(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
+
+    reference_ = F.Collections.Pointer.MakeChild()
+    line_ = F.Collections.Pointer.MakeChild()
+
+    @property
+    def reference(self) -> F.ElectricPower:
+        return F.ElectricPower.bind_instance(self.reference_.get().deref().instance)
+
+    @property
+    def line(self) -> F.Electrical:
+        return F.Electrical.bind_instance(self.line_.get().deref().instance)
+
+    def pull(self, up: bool, owner: fabll.Node):
+        obj = self.get_parent_force()[0]
+
+        up_r, down_r = None, None
+        if obj.has_trait(F.has_pulls):
+            up_r, down_r = obj.get_trait(F.has_pulls).get_pulls()
+
+        if up and up_r:
+            return up_r
+        if not up and down_r:
+            return down_r
+
+        resistor = F.Resistor.bind_typegraph(self.tg).create_instance(
+            g=self.tg.get_graph_view()
+        )
+        name = obj.get_name(accept_no_parent=True)
+        # TODO handle collisions
+        if up:
+            fbrk.EdgeComposition.add_child(
+                bound_node=owner.instance,
+                child=resistor.instance.node(),
+                child_identifier=f"pull_up_{name}",
+            )
+            up_r = resistor
+        else:
+            fbrk.EdgeComposition.add_child(
+                bound_node=owner.instance,
+                child=resistor.instance.node(),
+                child_identifier=f"pull_down_{name}",
+            )
+            down_r = resistor
+
+        resistor._can_bridge.get().bridge(
+            self.line,
+            self.reference.hv.get() if up else self.reference.lv.get(),
+        )
+
+        fabll.Traits.create_and_add_instance_to(node=obj, trait=F.has_pulls).setup(
+            up_r, down_r
+        )
+        return resistor
+
+    @classmethod
+    def MakeChild(
+        cls: type[Self],
+        line: fabll._ChildField[F.Electrical],
+        reference: fabll._ChildField[F.ElectricPower],
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.line_],
+                [line],
+            )
+        )
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.reference_],
+                [reference],
+            )
+        )
+        return out
+
+    def setup(self, line: F.Electrical, reference: F.ElectricPower) -> Self:
+        self.reference_.get().point(reference)
+        self.line_.get().point(line)
+        return self
+
+    @property
+    def pull_resistance(self):
+        """Calculate the effective pull resistance by finding parallel resistors
+        connected between the line and the reference power rail."""
+        if (
+            connected_to := self.line.get_trait(fabll.is_interface).get_connected()
+        ) is None:
+            return None
+
+        parallel_resistors: list[F.Resistor] = []
+        for mif, _ in connected_to.items():
+            if (maybe_parent := mif.get_parent()) is None:
+                continue
+            parent, _ = maybe_parent
+
+            if not isinstance(parent, F.Resistor):
+                continue
+
+            other_side = [x for x in parent.unnamed if x is not mif]
+            assert len(other_side) == 1, "Resistors are bilateral"
+
+            if (
+                self.reference.hv
+                not in other_side[0].get_trait(fabll.is_interface).get_connected()
+            ):
+                # cannot trivially determine effective resistance
+                return None
+
+            parallel_resistors.append(parent)
+
+        if len(parallel_resistors) == 0:
+            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
+        elif len(parallel_resistors) == 1:
+            (resistor,) = parallel_resistors
+            return resistor.resistance.try_get_literal_subset()
+        else:
+            resistances = [
+                resistor.resistance.try_get_literal_subset()
+                for resistor in parallel_resistors
+            ]
+
+            if any(r is None for r in resistances):
+                # incomplete solution
+                return None
+
+            if any(not isinstance(r, Quantity_Interval) for r in resistances):
+                # invalid resistance value
+                return None
+
+            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+            try:
+                return cast_assert(
+                    (Quantity_Interval, Quantity_Interval_Disjoint),
+                    reduce(
+                        lambda a, b: a + b,
+                        [
+                            cast_assert(Quantity_Interval, r).op_invert()
+                            for r in resistances
+                        ],
+                    ),
+                ).op_invert()
+            except ZeroDivisionError:
+                return None

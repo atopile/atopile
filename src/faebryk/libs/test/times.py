@@ -11,7 +11,6 @@ from typing import Callable
 from rich.table import Table
 
 from faebryk.libs.logging import rich_to_string
-from faebryk.libs.units import P, Quantity, to_si
 from faebryk.libs.util import is_numeric_str
 
 

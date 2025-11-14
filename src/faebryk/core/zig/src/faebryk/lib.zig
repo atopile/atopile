@@ -6,5 +6,6 @@ pub const next = @import("next.zig");
 pub const pointer = @import("pointer.zig");
 pub const trait = @import("trait.zig");
 pub const edgebuilder = @import("edgebuilder.zig");
+pub const nodebuilder = @import("nodebuilder.zig");
 pub const operand = @import("operand.zig");
 pub const typegraph = @import("typegraph.zig");

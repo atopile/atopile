@@ -5,10 +5,10 @@ import logging
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.graph import InstanceGraphFunctions
 from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 from test.common.resources.fabll_modules.RP2040 import RP2040
@@ -20,9 +20,8 @@ from test.common.resources.fabll_modules.USB2514B import USB2514B
 logger = logging.getLogger(__name__)
 
 
-def ensure_typegraph(node: Node) -> None:
+def ensure_typegraph(node: fabll.Node) -> None:
     """Build TypeGraph, instantiate, and bind for the node's tree."""
-    from faebryk.core.graph import InstanceGraphFunctions
 
     root = node._get_root()
 
@@ -33,7 +32,7 @@ def ensure_typegraph(node: Node) -> None:
     # Build type graph
     typegraph, _ = root.create_typegraph()
 
-    # Instantiate instance graph (independent of Node)
+    # Instantiate instance graph (independent of fabll.Node)
     instance_root = InstanceGraphFunctions.create(typegraph, type(root).__qualname__)
 
     # Bind instance to tree
@@ -47,7 +46,7 @@ def ensure_typegraph(node: Node) -> None:
     "mif_type",
     [
         GraphInterface,
-        ModuleInterface,
+        fabll.ModuleInterface,
         F.Electrical,
         F.ElectricPower,
         F.ElectricLogic,
@@ -81,7 +80,7 @@ def test_performance_mifs_connect_check(mif_type):
     "mif_type",
     [
         GraphInterface,
-        ModuleInterface,
+        fabll.ModuleInterface,
         F.Electrical,
         F.ElectricPower,
         F.ElectricLogic,
@@ -107,7 +106,7 @@ def test_performance_mifs_connect_hull(mif_type):
     assert instances[0].is_connected_to(instances[-1])
     timings.add(name, "is_connected")
 
-    if issubclass(mif_type, ModuleInterface):
+    if issubclass(mif_type, fabll.ModuleInterface):
         ensure_typegraph(instances[0])
         list(instances[0].get_connected())
     else:

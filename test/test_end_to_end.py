@@ -7,6 +7,7 @@ import pytest
 from rich.console import Console
 from rich.table import Table
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import config
 from atopile.build_steps import muster
@@ -15,7 +16,6 @@ from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert
 
 
@@ -68,7 +68,7 @@ def test_memory_usage():
     tree = parse_text_as_file(text)
     mem = measure_memory("Parse", mem)
 
-    node = cast_assert(L.Module, bob.build_ast(tree, TypeRef(["App"])))
+    node = cast_assert(fabll.Module, bob.build_ast(tree, TypeRef(["App"])))
     mem = measure_memory("AST", mem)
 
     pcb = F.PCB(layout_path)

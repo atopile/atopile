@@ -2,30 +2,40 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
-class Ethernet(ModuleInterface):
+class Ethernet(fabll.Node):
     """
     1000BASE-T Gigabit Ethernet Interface
     """
 
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+
     # Ethernet pairs
-    pairs = L.list_field(4, F.DifferentialPair)
+    pairs = [F.ElectricSignal.MakeChild() for _ in range(4)]
 
     # Status LEDs
-    led_speed: F.ElectricLogic  # Speed LED
-    led_link: F.ElectricLogic  # Link LED
+    led_speed = F.ElectricLogic.MakeChild()  # Speed LED
+    led_link = F.ElectricLogic.MakeChild()  # Link LED
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     def __postinit__(self, *args, **kwargs):
         super().__postinit__(*args, **kwargs)
@@ -43,8 +53,9 @@ class Ethernet(ModuleInterface):
                 F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
             )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Ethernet, ElectricPower
 
         ethernet = new Ethernet
@@ -65,5 +76,6 @@ class Ethernet(ModuleInterface):
         ethernet.led_speed ~ speed_led_output
         ethernet.led_link ~ link_led_output
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

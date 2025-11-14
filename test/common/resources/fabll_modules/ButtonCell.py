@@ -4,9 +4,9 @@
 
 from enum import IntEnum, StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.parameter import ParameterOperatable
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
@@ -53,17 +53,17 @@ class ButtonCell(F.Battery):
         N_2430 = 2430
         N_2450 = 2450
 
-    material = L.p_field(
-        domain=L.Domains.ENUM(Material),
+    material = fabll.p_field(
+        domain=fabll.Domains.ENUM(Material),
     )
-    shape = L.p_field(
-        domain=L.Domains.ENUM(Shape),
+    shape = fabll.p_field(
+        domain=fabll.Domains.ENUM(Shape),
     )
-    size = L.p_field(
-        domain=L.Domains.ENUM(Size),
+    size = fabll.p_field(
+        domain=fabll.Domains.ENUM(Size),
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix)(
+    designator_prefix = fabll.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.B
     )
 
