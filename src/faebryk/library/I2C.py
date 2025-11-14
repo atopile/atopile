@@ -3,16 +3,22 @@
 import logging
 from enum import Enum
 
-from more_itertools import first
-
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import invert_dict, md_list, partition_as_list
 
 logger = logging.getLogger(__name__)
 
 
 class I2C(fabll.Node):
+    # ----------------------------------------
+    #                 enums
+    # ----------------------------------------
+    class SpeedMode(Enum):
+        low_speed = 10  # * P.khertz
+        standard_speed = 100  # * P.khertz
+        fast_speed = 400  # * P.khertz
+        high_speed = 3.4  # * P.Mhertz
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -26,54 +32,31 @@ class I2C(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     # ----------------------------------------
-    #                 WIP
+    #                 functions
     # ----------------------------------------
 
-    # def requires_pulls(self):
-    #     def pred(signal: F.ElectricSignal, bus: set[fabll.Node]):
-    #         interface = signal.get_parent_of_type(I2C)
-
-    #         assert interface in bus
-
-    #         return (
-    #             len(bus) > 1
-    #             # arbitrarily choose an interface to represent the bus for this check
-    #             and first(sorted(bus, key=lambda n: str(n))) is interface
-    #             # indicates usage
-    #             and signal.line.net_crosses_pad_boundary()
-    #         )
-
-    #     return F.requires_pulls(
-    #         self.scl,
-    #         self.sda,
-    #         pred=pred,
-    #         required_resistance=fabll.Range(
-    #             1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
-    #         ),
-    #     )
-
-    # def bus_crosses_pad_boundary(self):
-    #     return (
-    #         self.scl.line.net_crosses_pad_boundary()
-    #         or self.sda.line.net_crosses_pad_boundary()
-    #     )
+    def requires_pulls(self):
+        self._requires_pulls = F.requires_pulls.MakeChild(
+            self.scl,
+            self.sda,
+            interface_type=I2C,
+            required_resistance=fabll.Range(
+                1000 * (1 - 0.1) * F.Units.Ohm, 10000 * (1 + 0.1) * F.Units.Ohm
+            ),
+        )
 
     # def terminate(self, owner: fabll.Node):
     #     # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
     #     self.pull_up_sda = self.sda.pulled.pull(up=True, owner=owner)
     #     self.pull_up_scl = self.scl.pulled.pull(up=True, owner=owner)
-
-    # class SpeedMode(Enum):
-    #     low_speed = 10  # * P.khertz
-    #     standard_speed = 100  # * P.khertz
-    #     fast_speed = 400  # * P.khertz
-    #     high_speed = 3.4  # * P.Mhertz
 
     # @staticmethod
     # def define_max_frequency_capability(mode: SpeedMode):
@@ -157,25 +140,27 @@ class I2C(fabll.Node):
 
     # address_check = requires_unique_addresses.MakeChild()
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import I2C, ElectricPower
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import I2C, ElectricPower
 
-        i2c_bus = new I2C
-        i2c_bus.frequency = 400kHz  # Fast mode
-        i2c_bus.address = 0x48  # Device address
+            i2c_bus = new I2C
+            i2c_bus.frequency = 400kHz  # Fast mode
+            i2c_bus.address = 0x48  # Device address
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        i2c_bus.scl.reference ~ power_3v3
-        i2c_bus.sda.reference ~ power_3v3
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            i2c_bus.scl.reference ~ power_3v3
+            i2c_bus.sda.reference ~ power_3v3
 
-        # Connect to microcontroller
-        microcontroller.i2c ~ i2c_bus
+            # Connect to microcontroller
+            microcontroller.i2c ~ i2c_bus
 
-        # Connect to I2C sensor
-        sensor.i2c ~ i2c_bus
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            # Connect to I2C sensor
+            sensor.i2c ~ i2c_bus
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

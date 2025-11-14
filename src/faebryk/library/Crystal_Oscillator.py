@@ -24,7 +24,7 @@ class Crystal_Oscillator(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     # ----------------------------------------
     #                WIP
@@ -52,8 +52,9 @@ class Crystal_Oscillator(fabll.Node):
             in_=self.xtal_if.get().xin, out_=self.xtal_if.get().xout
         )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Crystal_Oscillator, ElectricPower
 
         crystal_osc = new Crystal_Oscillator
@@ -83,5 +84,6 @@ class Crystal_Oscillator(fabll.Node):
         # Common frequencies: 8MHz, 12MHz, 16MHz, 20MHz, 25MHz
         # Used for: microcontroller clocks, RTC, timing references
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

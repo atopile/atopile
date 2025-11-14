@@ -8,6 +8,7 @@ from itertools import count
 from types import SimpleNamespace
 from typing import Any, override
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library.Expressions as Expressions
 from faebryk.core.parameter import (
@@ -15,7 +16,6 @@ from faebryk.core.parameter import (
     Expression,
     IfThenElse,
     Parameter,
-    F.Parameters.is_parameter_operatable,
     Predicate,
 )
 from faebryk.core.solver.algorithm import SolverAlgorithm
@@ -24,6 +24,7 @@ from faebryk.core.solver.mutator import (
     MutationStage,
     Mutator,
     Transformations,
+    is_terminated,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.core.solver.symbolic import (
@@ -171,7 +172,7 @@ class DefaultSolver(Solver):
     def _create_or_resume_state(
         self,
         print_context: F.Parameters.ReprContext | None,
-        *gs: fabll.Graph | fabll.Node,
+        *gs: graph.GraphView | fabll.Node,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
         _gs = get_graphs(gs)
@@ -187,7 +188,9 @@ class DefaultSolver(Solver):
             raise ValueError("print_context not allowed when using reusable state")
 
         mutation_map = self.reusable_state.data.mutation_map
-        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(F.Parameters.is_parameter_operatable)
+        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(
+            F.Parameters.is_parameter_operatable
+        )
         new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
         # TODO consider using mutator
@@ -218,7 +221,9 @@ class DefaultSolver(Solver):
 
         # inject new expressions
         new_exprs = {e for e in new_p_ops if Expressions.is_expression_node(e)}
-        for e in F.Parameters.is_parameter_operatable.sort_by_depth(new_exprs, ascending=True):
+        for e in F.Parameters.is_parameter_operatable.sort_by_depth(
+            new_exprs, ascending=True
+        ):
             if S_LOG:
                 logger.debug(
                     f"injecting {e.compact_repr(mutation_map.input_print_context)}"
@@ -261,7 +266,7 @@ class DefaultSolver(Solver):
     @times_out(TIMEOUT)
     def simplify_symbolically(
         self,
-        *gs: fabll.Graph | fabll.Node,
+        *gs: graph.GraphView | fabll.Node,
         print_context: F.Parameters.ReprContext | None = None,
         terminal: bool = True,
     ) -> SolverState:
@@ -377,7 +382,7 @@ class DefaultSolver(Solver):
             ConstrainableExpression
         )
         not_deduced = [
-            p for p in new_preds if p.constrained and not p._solver_terminated
+            p for p in new_preds if p.constrained and not p.has_trait(is_terminated)
         ]
 
         if not_deduced:
@@ -410,7 +415,7 @@ class DefaultSolver(Solver):
         return True
 
     @override
-    def simplify(self, *gs: fabll.Graph | fabll.Node):
+    def simplify(self, *gs: graph.GraphView | fabll.Node):
         self.simplify_symbolically(*gs, terminal=False)
 
     def update_superset_cache(self, *nodes: fabll.Node):

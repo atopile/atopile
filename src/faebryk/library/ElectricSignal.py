@@ -21,17 +21,22 @@ class ElectricSignal(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.ChildField(fabll.is_interface)
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
-    _can_be_pulled = can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+    _can_be_pulled = fabll.Traits.MakeEdge(
+        can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    )
 
     @property
     def pull_resistance(self):
         """Delegate to the can_be_pulled trait to calculate pull resistance."""
         return self._can_be_pulled.get().pull_resistance
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import ElectricSignal, ElectricPower
 
         signal = new ElectricSignal
@@ -51,5 +56,6 @@ class ElectricSignal(fabll.Node):
         diff_pos.reference ~ power_3v3
         diff_neg.reference ~ power_3v3
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

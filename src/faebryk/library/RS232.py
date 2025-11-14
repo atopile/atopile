@@ -21,9 +21,11 @@ class RS232(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     # ----------------------------------------
     #                WIP

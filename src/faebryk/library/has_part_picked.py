@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class has_part_picked(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     # Manual storage of the PickedPart dataclass
     manufacturer_ = F.Parameters.StringParameter.MakeChild()
@@ -53,25 +53,25 @@ class has_part_picked(fabll.Node):
         return self.has_trait(F.has_part_removed)
 
     @classmethod
-    def MakeChild(cls, picked_part: "PickedPart") -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, picked_part: "PickedPart") -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.manufacturer_], picked_part.manufacturer
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.partno_], picked_part.partno
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.supplier_partno_], picked_part.supplier_partno
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.supplier_id_], picked_part.supplier.supplier_id
             )
         )
@@ -80,7 +80,7 @@ class has_part_picked(fabll.Node):
     @classmethod
     def by_supplier(
         cls, supplier_id: str, supplier_partno: str, manufacturer: str, partno: str
-    ) -> fabll.ChildField[Self]:
+    ) -> fabll._ChildField[Self]:
         from faebryk.libs.picker.lcsc import PickedPartLCSC
 
         match supplier_id:

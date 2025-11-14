@@ -13,14 +13,14 @@ class has_package_requirements(fabll.Node):
     Collection of constraints for package of module.
     """
 
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     # size = fabll.p_field(domain=EnumDomain(SMDSize))
     size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 
     @classmethod
     def MakeChild(cls, size: SMDSize):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         # TODO: Constrain to ENUM value
         # out.add_dependant(
         # F.Expressions.Is.MakeChild_ConstrainToLiteral(

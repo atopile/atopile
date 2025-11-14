@@ -7,6 +7,7 @@ from pathlib import Path
 
 import psutil
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -65,7 +66,7 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def load_net_names(graph: fabll.Graph, raise_duplicates: bool = True) -> set[F.Net]:
+def load_net_names(graph: graph.GraphView, raise_duplicates: bool = True) -> set[F.Net]:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
@@ -91,7 +92,7 @@ def load_net_names(graph: fabll.Graph, raise_duplicates: bool = True) -> set[F.N
     return set(net_names.keys())
 
 
-def check_net_names(graph: fabll.Graph):
+def check_net_names(graph: graph.GraphView):
     """Raise an error if any nets have the same name."""
     gf = fabll.Node.bind_typegraph(graph)
     nets = gf.nodes_of_type(F.Net)

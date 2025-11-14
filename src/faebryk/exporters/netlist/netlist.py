@@ -4,6 +4,7 @@
 import logging
 from dataclasses import dataclass
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -35,7 +36,7 @@ class FBRKNetlist:
     comps: list[Component]
 
 
-def make_fbrk_netlist_from_graph(G: fabll.Graph) -> FBRKNetlist:
+def make_fbrk_netlist_from_graph(G: graph.GraphView) -> FBRKNetlist:
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 
     nets = fabll.Node.bind_typegraph(G).nodes_of_type(F.Net)

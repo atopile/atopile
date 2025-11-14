@@ -8,13 +8,12 @@ import faebryk.library._F as F
 
 
 class is_pickable_by_supplier_id(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    supplier_part_id_ = fabll.ChildField(F.Parameters.StringParameter)
-    supplier_ = fabll.ChildField(F.Parameters.StringParameter)
-
+    supplier_part_id_ = fabll._ChildField(F.Parameters.StringParameter)
+    supplier_ = fabll._ChildField(F.Parameters.StringParameter)
     # TODO: Forward this trait to parent
-    _is_pickable = fabll.ChildField(F.is_pickable)
+    _is_pickable = fabll.Traits.MakeEdge(F.is_pickable.MakeChild())
 
     class Supplier(Enum):
         LCSC = auto()
@@ -28,15 +27,15 @@ class is_pickable_by_supplier_id(fabll.Node):
     @classmethod
     def MakeChild(
         cls, supplier_part_id: str, supplier: Supplier = Supplier.LCSC
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.supplier_part_id_], supplier_part_id
             )
         )
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.supplier_], supplier.name
             )
         )

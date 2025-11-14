@@ -6,17 +6,18 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from atopile.errors import UserBadParameterError
 from faebryk.core.parameter import Expression, Is, Parameter, Predicate
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: fabll.Graph) -> list[set[Parameter]]:
+def parameter_alias_classes(G: graph.GraphView) -> list[set[Parameter]]:
     full_eq = EquivalenceClasses[Parameter](
         fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
     )
@@ -39,7 +40,7 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_dependency_classes(G: fabll.Graph) -> list[set[Parameter]]:
+def parameter_dependency_classes(G: graph.GraphView) -> list[set[Parameter]]:
     related = EquivalenceClasses[Parameter](
         fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
     )
@@ -57,7 +58,7 @@ def parameter_dependency_classes(G: fabll.Graph) -> list[set[Parameter]]:
     return related.get()
 
 
-def parameter_report(G: fabll.Graph, path: Path):
+def parameter_report(G: graph.GraphView, path: Path):
     params = fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
     exprs = fabll.Node.bind_typegraph(G).nodes_of_type(Expression)
     predicates = {e for e in exprs if isinstance(e, Predicate)}
@@ -156,7 +157,9 @@ def parameter_report(G: fabll.Graph, path: Path):
     path.write_text(out, encoding="utf-8")
 
 
-def _generate_json_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str:
+def _generate_json_parameters(
+    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+) -> str:
     json_parameters = {
         module_name: {
             param_name: str(param_value)
@@ -169,7 +172,9 @@ def _generate_json_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> s
     return json.dumps(json_parameters, indent=2)
 
 
-def _generate_md_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str:
+def _generate_md_parameters(
+    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+) -> str:
     out = "# Module Parameters\n"
     out += "| Module | Parameter | Value |\n"
     out += "| --- | --- | --- |\n"
@@ -197,7 +202,9 @@ def _generate_md_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str
     return out
 
 
-def _generate_txt_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str:
+def _generate_txt_parameters(
+    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+) -> str:
     out = ""
     for module_name, paras in sorted(parameters.items()):
         if paras:
@@ -217,7 +224,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 
-    parameters = dict[str, dict[str, P_Set[Any]]]()
+    parameters = dict[str, dict[str, F.Literals.is_literal[Any]]]()
 
     for m in module.get_children(
         direct_only=False,

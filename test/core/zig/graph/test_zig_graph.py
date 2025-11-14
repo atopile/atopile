@@ -1,4 +1,5 @@
-from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 
 
 def test_load_graph_module():
@@ -48,111 +49,115 @@ def test_minimal_graph():
         print(edge)
 
 
-def test_edge_composition_create():
-    from faebryk.core.zig.gen.faebryk.composition import EdgeComposition  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import Node  # type: ignore
-
-    parent = Node.create()
-    child = Node.create()
-
-    edge = EdgeComposition.create(parent=parent, child=child, child_identifier="kid")
-
-    assert EdgeComposition.is_instance(edge=edge) is True
-    assert edge.directional() is True
-    assert EdgeComposition.get_name(edge=edge) == "kid"
-    assert EdgeComposition.get_tid() == edge.edge_type()
-
-
-def test_edge_composition_add_child_and_visit():
-    from faebryk.core.zig.gen.faebryk.composition import (  # type: ignore
-        EdgeComposition,
-    )
+def test_node_count():
     from faebryk.core.zig.gen.graph.graph import (  # type: ignore
         GraphView,
         Node,
     )
 
-    graph = GraphView.create()
-    parent = Node.create()
-    child_a = Node.create()
-    child_b = Node.create()
+    g = GraphView.create()
 
-    parent_bound = graph.insert_node(node=parent)
-    child_a_bound = graph.insert_node(node=child_a)
-    child_b_bound = graph.insert_node(node=child_b)
+    # GraphView starts with 1 node (the self_node)
+    assert g.get_node_count() == 1
 
-    edge_a = EdgeComposition.add_child(
+    n1 = Node.create()
+    n2 = Node.create()
+    n3 = Node.create()
+
+    g.insert_node(node=n1)
+    assert g.get_node_count() == 2
+
+    g.insert_node(node=n2)
+    assert g.get_node_count() == 3
+
+    g.insert_node(node=n3)
+    assert g.get_node_count() == 4
+
+
+def test_edge_composition_create():
+    parent = graph.Node.create()
+    child = graph.Node.create()
+
+    edge = fbrk.EdgeComposition.create(
+        parent=parent, child=child, child_identifier="kid"
+    )
+
+    assert fbrk.EdgeComposition.is_instance(edge=edge) is True
+    assert edge.directional() is True
+    assert fbrk.EdgeComposition.get_name(edge=edge) == "kid"
+    assert fbrk.EdgeComposition.get_tid() == edge.edge_type()
+
+
+def test_edge_composition_add_child_and_visit():
+    g = graph.GraphView.create()
+    parent = graph.Node.create()
+    child_a = graph.Node.create()
+    child_b = graph.Node.create()
+
+    parent_bound = g.insert_node(node=parent)
+    child_a_bound = g.insert_node(node=child_a)
+    child_b_bound = g.insert_node(node=child_b)
+
+    edge_a = fbrk.EdgeComposition.add_child(
         bound_node=parent_bound, child=child_a, child_identifier="kid_a"
     )
-    edge_b = EdgeComposition.add_child(
+    edge_b = fbrk.EdgeComposition.add_child(
         bound_node=parent_bound, child=child_b, child_identifier="kid_b"
     )
 
     collected = []
-    EdgeComposition.visit_children_edges(
+    fbrk.EdgeComposition.visit_children_edges(
         bound_node=parent_bound,
         ctx=collected,
         f=lambda ctx, bound_edge: ctx.append(
-            EdgeComposition.get_name(edge=bound_edge.edge())
+            fbrk.EdgeComposition.get_name(edge=bound_edge.edge())
         ),
     )
 
     assert collected == ["kid_a", "kid_b"]
 
-    parent_edge_a = EdgeComposition.get_parent_edge(bound_node=child_a_bound)
+    parent_edge_a = fbrk.EdgeComposition.get_parent_edge(bound_node=child_a_bound)
     assert parent_edge_a is not None
     assert parent_edge_a.edge().is_same(other=edge_a.edge())
 
-    parent_edge_b = EdgeComposition.get_parent_edge(bound_node=child_b_bound)
+    parent_edge_b = fbrk.EdgeComposition.get_parent_edge(bound_node=child_b_bound)
     assert parent_edge_b is not None
     assert parent_edge_b.edge().is_same(other=edge_b.edge())
 
-    assert EdgeComposition.get_parent_edge(bound_node=parent_bound) is None
+    assert fbrk.EdgeComposition.get_parent_edge(bound_node=parent_bound) is None
 
 
 def test_edge_type_create():
-    from faebryk.core.zig.gen.faebryk.node_type import EdgeType  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import Node  # type: ignore
+    type_node = graph.Node.create()
+    instance_node = graph.Node.create()
+    edge = fbrk.EdgeType.create(type_node=type_node, instance_node=instance_node)
 
-    type_node = Node.create()
-    instance_node = Node.create()
-    edge = EdgeType.create(type_node=type_node, instance_node=instance_node)
+    assert fbrk.EdgeType.is_instance(edge=edge) is True
+    assert type_node.is_same(other=fbrk.EdgeType.get_type_node(edge=edge))
 
-    assert EdgeType.is_instance(edge=edge) is True
-    assert type_node.is_same(other=EdgeType.get_type_node(edge=edge))
-
-    get_instance_node = EdgeType.get_instance_node(edge=edge)
-    assert isinstance(get_instance_node, Node)
+    get_instance_node = fbrk.EdgeType.get_instance_node(edge=edge)
+    assert isinstance(get_instance_node, graph.Node)
     assert instance_node.is_same(other=get_instance_node)
 
 
 def test_edge_next():
-    from faebryk.core.zig.gen.faebryk.next import EdgeNext  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import GraphView, Node  # type: ignore
+    g = graph.GraphView.create()
 
-    graph = GraphView.create()
-
-    previous_node = Node.create()
-    next_node = Node.create()
-    previous_bound = graph.insert_node(node=previous_node)
-    _ = graph.insert_node(node=next_node)
-    edge = EdgeNext.create(previous_node=previous_node, next_node=next_node)
-    _ = graph.insert_edge(edge=edge)
-    assert EdgeNext.is_instance(edge=edge) is True
-    get_next_node = EdgeNext.get_next_node_from_node(node=previous_bound)
-    assert isinstance(get_next_node, Node)
+    previous_node = graph.Node.create()
+    next_node = graph.Node.create()
+    previous_bound = g.insert_node(node=previous_node)
+    _ = g.insert_node(node=next_node)
+    edge = fbrk.EdgeNext.create(previous_node=previous_node, next_node=next_node)
+    _ = g.insert_edge(edge=edge)
+    assert fbrk.EdgeNext.is_instance(edge=edge) is True
+    get_next_node = fbrk.EdgeNext.get_next_node_from_node(node=previous_bound)
+    assert isinstance(get_next_node, graph.Node)
     assert next_node.is_same(other=get_next_node)
 
 
 def test_typegraph_instantiate():
-    from faebryk.core.zig.gen.faebryk.composition import EdgeComposition  # type: ignore
-    from faebryk.core.zig.gen.faebryk.linker import Linker  # type: ignore
-    from faebryk.core.zig.gen.faebryk.pointer import EdgePointer  # type: ignore
-    from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph  # type: ignore
-    from faebryk.core.zig.gen.graph.graph import BoundEdge, GraphView  # type: ignore
-
-    g = GraphView.create()
-    type_graph = TypeGraph.create(g=g)
+    g = graph.GraphView.create()
+    type_graph = fbrk.TypeGraph.create(g=g)
 
     type_graph.add_type(identifier="Electrical")
     Resistor = type_graph.add_type(identifier="Resistor")
@@ -194,9 +199,12 @@ def test_typegraph_instantiate():
 
     type_graph.add_make_link(
         type_node=Resistor,
-        lhs_reference=rp1_ref,
-        rhs_reference=rp2_ref,
-        edge_attributes=edge_attrs,
+        lhs_reference_node=rp1_ref.node(),
+        rhs_reference_node=rp2_ref.node(),
+        edge_type=fbrk.EdgePointer.get_tid(),
+        edge_directional=True,
+        edge_name="test",
+        edge_attributes={"test_key": "test_value"},
     )
 
     resistor_instance = type_graph.instantiate(
@@ -204,27 +212,27 @@ def test_typegraph_instantiate():
     )
 
     collected = []
-    EdgeComposition.visit_children_edges(
+    fbrk.EdgeComposition.visit_children_edges(
         bound_node=resistor_instance,
         ctx=collected,
         f=lambda ctx, bound_edge: ctx.append(
-            EdgeComposition.get_name(edge=bound_edge.edge())
+            fbrk.EdgeComposition.get_name(edge=bound_edge.edge())
         ),
     )
 
     assert collected == ["p1", "p2"]
 
-    rp1 = EdgeComposition.get_child_by_identifier(
+    rp1 = fbrk.EdgeComposition.get_child_by_identifier(
         bound_node=resistor_instance, child_identifier="p1"
     )
-    rp2 = EdgeComposition.get_child_by_identifier(
+    rp2 = fbrk.EdgeComposition.get_child_by_identifier(
         bound_node=resistor_instance, child_identifier="p2"
     )
     assert rp1 is not None
     assert rp2 is not None
-    collect = list[BoundEdge]()
+    collect = list[graph.BoundEdge]()
     rp1.visit_edges_of_type(
-        edge_type=EdgePointer.get_tid(),
+        edge_type=fbrk.EdgePointer.get_tid(),
         ctx=collect,
         f=lambda ctx, bound_edge: ctx.append(bound_edge),
     )
@@ -239,6 +247,7 @@ def test_typegraph_instantiate():
 
 if __name__ == "__main__":
     test_minimal_graph()
+    test_node_count()
     test_edge_composition_create()
     test_edge_composition_add_child_and_visit()
     test_edge_type_create()

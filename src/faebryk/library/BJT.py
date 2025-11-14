@@ -32,13 +32,13 @@ class BJT(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.Traits.MakeChild_Trait(fabll.is_module.MakeChild())
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_bridge = fabll.Traits.MakeChild_Trait(
+    _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=collector, out_=emitter)
     )
 
-    _pin_association_heuristic = fabll.Traits.MakeChild_Trait(
+    _pin_association_heuristic = fabll.Traits.MakeEdge(
         F.has_pin_association_heuristic.MakeChild(
             mapping={
                 emitter: ["E", "Emitter"],
@@ -50,14 +50,14 @@ class BJT(fabll.Node):
         )
     )
 
-    designator_prefix = fabll.Traits.MakeChild_Trait(
+    designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
     )
 
     # doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
     # operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
 
-    usage_example = fabll.Traits.MakeChild_Trait(
+    usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""
         import BJT, Resistor, ElectricPower

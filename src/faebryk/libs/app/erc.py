@@ -3,16 +3,13 @@
 
 import inspect
 import logging
-from typing import Callable, Iterable, cast
+from typing import Callable, Iterable
 
-from more_itertools import first
-
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
-from faebryk.core.node import Trait
 from faebryk.libs.exceptions import accumulate
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +53,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
+def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
     """Simple ERC check.
 
     This function will check for the following ERC violations:
@@ -175,9 +172,7 @@ def simple_erc(G: fabll.Graph, voltage_limit=1e5 * P.V):
                 ):
                     continue
 
-                if path := fabll.Path.from_connection(
-                    comp.unnamed[0], comp.unnamed[1]
-                ):
+                if path := fabll.Path.from_connection(comp.unnamed[0], comp.unnamed[1]):
                     raise ERCFaultShortedInterfaces.from_path(path)
 
         ## unmapped Electricals
@@ -219,7 +214,7 @@ def check_library_for_erc(lib):
 
 # TODO split this up
 class needs_erc_check(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     design_check = F.implements_design_check.MakeChild()
 

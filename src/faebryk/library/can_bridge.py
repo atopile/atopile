@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class can_bridge(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
 
     in_ = F.Collections.Pointer.MakeChild()
     out_ = F.Collections.Pointer.MakeChild()
@@ -30,16 +30,16 @@ class can_bridge(fabll.Node):
         return out_
 
     @classmethod
-    def MakeChild(cls, in_: fabll.ChildField, out_: fabll.ChildField):
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, in_: fabll._ChildField, out_: fabll._ChildField):
+        out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Collections.Pointer.EdgeField(
+            F.Collections.Pointer.MakeEdge(
                 [out, cls.in_],
                 [in_],
             )
         )
         out.add_dependant(
-            F.Collections.Pointer.EdgeField(
+            F.Collections.Pointer.MakeEdge(
                 [out, cls.out_],
                 [out_],
             )

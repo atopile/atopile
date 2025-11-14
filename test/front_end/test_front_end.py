@@ -13,7 +13,6 @@ from atopile.datatypes import TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
@@ -1954,7 +1953,11 @@ class ModuleWithTypingUnionEnumOrNone(fabll.Node):
         ("ModuleWithOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
         # Optional enums with typing syntax
         ("ModuleWithTypingOptionalEnum", "", {"_color": None}),
-        ("ModuleWithTypingOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
+        (
+            "ModuleWithTypingOptionalEnum",
+            '<color="RED">',
+            {"_color": F.LED.Color.RED},
+        ),
         # Enum | None variations
         ("ModuleWithEnumOrNone", "", {"_channel": None}),
         (

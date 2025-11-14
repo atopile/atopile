@@ -3,6 +3,7 @@
 
 
 from typing import TYPE_CHECKING
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
@@ -21,11 +22,7 @@ class Pad(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
-
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     def attach(self, intf: F.Electrical):
         self.net.get().get_trait(fabll.is_interface).connect_to(intf)
@@ -67,12 +64,14 @@ class Pad(fabll.Node):
     def get_fp(self) -> F.Footprint:
         return not_none(self.get_parent_of_type(F.Footprint))
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import Pad
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import Pad
 
-        pad = new Pad
-        electrical_signal ~ pad.net
-        """,
-        language=F.has_usage_example.Language.ato,
+            pad = new Pad
+            electrical_signal ~ pad.net
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

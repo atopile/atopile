@@ -1,16 +1,20 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.library.Literals import Booleans, Numbers
+from faebryk.library.Parameters import BooleanParameter
+
+if TYPE_CHECKING:
+    from faebryk.library import Literals
 
 
 class NumberDomain(fabll.Node):
-    negative = F.Parameters.BooleanParameter.MakeChild()
-    zero_allowed = F.Parameters.BooleanParameter.MakeChild()
-    integer = F.Parameters.BooleanParameter.MakeChild()
+    negative = BooleanParameter.MakeChild()
+    zero_allowed = BooleanParameter.MakeChild()
+    integer = BooleanParameter.MakeChild()
 
     def setup(
         self, negative: bool = False, zero_allowed: bool = True, integer: bool = False
@@ -27,9 +31,9 @@ class NumberDomain(fabll.Node):
         zero_allowed: bool = True,
         integer: bool = False,
     ):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         out.add_dependant(
-            *cls.EdgeFields(
+            *cls.MakeEdges(
                 ref=[out],
                 negative=negative,
                 zero_allowed=zero_allowed,
@@ -39,25 +43,23 @@ class NumberDomain(fabll.Node):
         return out
 
     @classmethod
-    def EdgeFields(
+    def MakeEdges(
         cls,
-        ref: list[str | fabll.ChildField[Any]],
+        ref: list[str | fabll._ChildField[Any]],
         negative: bool = False,
         zero_allowed: bool = True,
         integer: bool = False,
     ):
         out = [
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [*ref, cls.negative], negative
-            ),
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            Booleans.MakeChild_ConstrainToLiteral([*ref, cls.negative], negative),
+            Booleans.MakeChild_ConstrainToLiteral(
                 [*ref, cls.zero_allowed], zero_allowed
             ),
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([*ref, cls.integer], integer),
+            Booleans.MakeChild_ConstrainToLiteral([*ref, cls.integer], integer),
         ]
         return out
 
-    def unbounded(self, units: type[fabll.NodeT]) -> "F.Literals.Numbers":
+    def unbounded(self, units: type[fabll.NodeT]) -> "Literals.Numbers":
         if self.integer.get().extract_single():
             # TODO
             pass
@@ -67,7 +69,7 @@ class NumberDomain(fabll.Node):
         if self.negative.get().extract_single():
             # TODO
             pass
-        return F.Literals.Numbers.unbounded(units=units)
+        return Numbers.unbounded(units=units)
 
     @classmethod
     def get_shared_domain(cls, *domains: "NumberDomain") -> "NumberDomain":

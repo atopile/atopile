@@ -7,12 +7,14 @@ from faebryk.library import _F as F
 
 
 class can_attach_to_footprint_symmetrically(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
     electricals_ = F.Collections.PointerSet.MakeChild()
 
     # TODO: Forward this trait to parent
-    _can_attach_to_footprint = fabll.ChildField(F.can_attach_to_footprint)
+    _can_attach_to_footprint = fabll.Traits.MakeEdge(
+        (F.can_attach_to_footprint.MakeChild())
+    )
 
     def attach(self, footprint: F.Footprint):
         # TODO: Forward this trait to parent*2
@@ -29,12 +31,12 @@ class can_attach_to_footprint_symmetrically(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, *electricals: fabll.ChildField[F.Electrical]
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        cls, *electricals: fabll._ChildField[F.Electrical]
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         for electrical in electricals:
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField(
+                F.Collections.PointerSet.MakeEdge(
                     [out, cls.electricals_],
                     [electrical],
                 )

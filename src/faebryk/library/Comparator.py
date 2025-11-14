@@ -46,23 +46,26 @@ class Comparator(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(common_mode_rejection_ratio, prefix="CMRR"),
-        S(input_bias_current, prefix="Ib"),
-        S(input_hysteresis_voltage, prefix="Vhys"),
-        S(input_offset_voltage, prefix="Vos"),
-        S(propagation_delay, prefix="tpd"),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(common_mode_rejection_ratio, prefix="CMRR"),
+            S(input_bias_current, prefix="Ib"),
+            S(input_hysteresis_voltage, prefix="Vhys"),
+            S(input_offset_voltage, prefix="Vos"),
+            S(propagation_delay, prefix="tpd"),
+        )
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.U
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.U)
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Comparator, Resistor, ElectricPower, Electrical
 
         comparator = new Comparator
@@ -98,5 +101,6 @@ class Comparator(fabll.Node):
 
         # Output will be HIGH when input_signal > reference_voltage
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

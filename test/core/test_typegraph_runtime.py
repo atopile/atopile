@@ -3,10 +3,9 @@
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 from faebryk.core.graph import InstanceGraphFunctions
-from faebryk.core.trait import Trait
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 
 
 def test_moduleinterface_get_connected_requires_typegraph():

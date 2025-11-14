@@ -741,6 +741,59 @@ fn wrap_edge_operand_visit_operand_edges() type {
     };
 }
 
+fn wrap_edge_operand_visit_operands_of_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "visit_operands_of_type",
+            .doc = "Invoke a callback for operands of the requested type on an expression node",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                operand_type: *graph.Node,
+                f: *py.PyObject,
+                ctx: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .operand_type = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            var visit_ctx = graph_py.BoundEdgeVisitor{
+                .py_ctx = kwarg_obj.ctx,
+                .callable = kwarg_obj.f,
+            };
+
+            const result = faebryk.operand.EdgeOperand.visit_operands_of_type(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.operand_type,
+                void,
+                @ptrCast(&visit_ctx),
+                graph_py.BoundEdgeVisitor.call,
+            );
+
+            if (visit_ctx.had_error) {
+                return null;
+            }
+
+            switch (result) {
+                .ERROR => {
+                    py.PyErr_SetString(py.PyExc_ValueError, "visit_operands_of_type failed");
+                    return null;
+                },
+                else => {},
+            }
+
+            py.Py_INCREF(py.Py_None());
+            return py.Py_None();
+        }
+    };
+}
+
 fn wrap_edge_operand_visit_expression_edges() type {
     return struct {
         pub const descr = method_descr{
@@ -826,6 +879,30 @@ fn wrap_edge_operand_get_expression_node() type {
             .name = "get_expression_node",
             .doc = "Get the expression node associated with an EdgeOperand edge",
             .args_def = struct {
+                bound_edge: *graph.BoundEdgeReference,
+
+                pub const fields_meta = .{
+                    .bound_edge = bind.ARG{ .Wrapper = BoundEdgeWrapper, .storage = &graph_py.bound_edge_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const node_ref = faebryk.operand.EdgeOperand.get_expression_node(kwarg_obj.bound_edge.*);
+            return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+        }
+    };
+}
+
+fn wrap_edge_operand_get_operand_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_operand_node",
+            .doc = "Return the operand node referenced by the EdgeOperand edge",
+            .args_def = struct {
                 edge: *graph.Edge,
 
                 pub const fields_meta = .{
@@ -838,8 +915,64 @@ fn wrap_edge_operand_get_expression_node() type {
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            const node_ref = faebryk.operand.EdgeOperand.get_expression_node(kwarg_obj.edge);
+            const node_ref = faebryk.operand.EdgeOperand.get_operand_node(kwarg_obj.edge);
             return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, node_ref);
+        }
+    };
+}
+
+fn wrap_edge_operand_get_operand_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_operand_of",
+            .doc = "Return the operand node reachable from the provided node via the edge, if any",
+            .args_def = struct {
+                edge: *graph.Edge,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .edge = bind.ARG{ .Wrapper = EdgeWrapper, .storage = &graph_py.edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.operand.EdgeOperand.get_operand_of(kwarg_obj.edge, kwarg_obj.node)) |operand| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, operand);
+            }
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_edge_operand_get_expression_of() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_expression_of",
+            .doc = "Return the expression node reachable from the provided operand via the edge, if any",
+            .args_def = struct {
+                bound_edge: *graph.BoundEdgeReference,
+                node: *graph.Node,
+
+                pub const fields_meta = .{
+                    .bound_edge = bind.ARG{ .Wrapper = BoundEdgeWrapper, .storage = &graph_py.bound_edge_type },
+                    .node = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            if (faebryk.operand.EdgeOperand.get_expression_of(kwarg_obj.bound_edge.*, kwarg_obj.node)) |expression| {
+                return bind.wrap_obj("Node", &graph_py.node_type, NodeWrapper, expression);
+            }
+            return bind.wrap_none();
         }
     };
 }
@@ -1045,10 +1178,14 @@ fn wrap_edge_operand(root: *py.PyObject) void {
         wrap_edge_operand_build(),
         wrap_edge_operand_is_instance(),
         wrap_edge_operand_visit_operand_edges(),
+        wrap_edge_operand_visit_operands_of_type(),
         wrap_edge_operand_visit_expression_edges(),
         wrap_edge_operand_visit_expression_edges_of_type(),
         wrap_edge_operand_get_expression_edge(),
         wrap_edge_operand_get_expression_node(),
+        wrap_edge_operand_get_operand_node(),
+        wrap_edge_operand_get_operand_of(),
+        wrap_edge_operand_get_expression_of(),
         wrap_edge_operand_add_operand(),
         wrap_edge_operand_get_name(),
         wrap_edge_operand_get_tid(),

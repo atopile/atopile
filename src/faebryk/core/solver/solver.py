@@ -4,6 +4,7 @@
 import logging
 from typing import Any, Protocol
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import ConfigFlag
@@ -80,4 +81,4 @@ class Solver(Protocol):
 
     def update_superset_cache(self, *nodes: fabll.Node): ...
 
-    def simplify(self, *gs: fabll.Graph | fabll.Node): ...
+    def simplify(self, *gs: graph.GraphView | fabll.Node): ...

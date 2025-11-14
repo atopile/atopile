@@ -9,7 +9,7 @@ import faebryk.library._F as F
 
 
 class has_linked_pad(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     pad_ptr_ = F.Collections.Pointer.MakeChild()
 
     def get_pads(self) -> set["F.Pad"]:
@@ -27,8 +27,8 @@ class has_linked_pad(fabll.Node):
     #     return False
 
     @classmethod
-    def MakeChild(cls, pad: fabll.ChildField["F.Pad"]) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, pad: fabll._ChildField["F.Pad"]) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(pad)
         return out
 

@@ -1,5 +1,6 @@
 from typing import Any, override
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
@@ -41,5 +42,5 @@ class NullSolver(Solver):
         return as_lit(lit)
 
     @override
-    def simplify(self, *gs: fabll.Graph | fabll.Node):
+    def simplify(self, *gs: graph.GraphView | fabll.Node):
         pass

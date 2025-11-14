@@ -28,7 +28,9 @@ class FilterElectricalRC(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(
+        fabll.is_module.MakeChild()
+    )
 
     # ----------------------------------------
     #                WIP
@@ -59,9 +61,11 @@ class FilterElectricalRC(fabll.Node):
         # Set the max voltage of the capacitor to min 1.5 times the output voltage
         self.capacitor.max_voltage.constrain_ge(self.out.reference.voltage * 1.5)
 
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
-    can_bridge = F.can_bridge.MakeChild(in_=in_, out_=out)
+    can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(in_=in_, out_=out)
+    )
 
     # @classmethod
     # def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
@@ -77,28 +81,30 @@ class FilterElectricalRC(fabll.Node):
     #     out.cutoff_frequency.constrain_subset(cutoff_frequency)
     #     return out
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import FilterElectricalRC, ElectricSignal, ElectricPower
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import FilterElectricalRC, ElectricSignal, ElectricPower
 
-        # Create low-pass RC filter
-        rc_filter = new FilterElectricalRC
-        rc_filter.cutoff_frequency = 1kHz +/- 10%
+            # Create low-pass RC filter
+            rc_filter = new FilterElectricalRC
+            rc_filter.cutoff_frequency = 1kHz +/- 10%
 
-        # Connect power reference
-        power_supply = new ElectricPower
-        assert power_supply.voltage within 5V +/- 5%
-        rc_filter.in_.reference ~ power_supply
-        rc_filter.out.reference ~ power_supply
+            # Connect power reference
+            power_supply = new ElectricPower
+            assert power_supply.voltage within 5V +/- 5%
+            rc_filter.in_.reference ~ power_supply
+            rc_filter.out.reference ~ power_supply
 
-        # Connect input and output signals
-        input_signal = new ElectricSignal
-        output_signal = new ElectricSignal
-        input_signal ~ rc_filter.in_
-        rc_filter.out ~ output_signal
+            # Connect input and output signals
+            input_signal = new ElectricSignal
+            output_signal = new ElectricSignal
+            input_signal ~ rc_filter.in_
+            rc_filter.out ~ output_signal
 
-        # Alternative: use hardcoded values for faster solving
-        rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            # Alternative: use hardcoded values for faster solving
+            rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

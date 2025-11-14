@@ -10,16 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class has_usage_example(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
-
     class Language(StrEnum):
         python = "python"
         fabll = "fabll"
         ato = "ato"
 
-    # LanguageEnumT = enum_sets.EnumsFactory(Language)
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    example_ = fabll.ChildField(F.Parameters.StringParameter)
+    example_ = fabll._ChildField(F.Parameters.StringParameter)
     language_ = F.Parameters.EnumParameter.MakeChild(enum_t=Language)
 
     @property
@@ -31,8 +29,8 @@ class has_usage_example(fabll.Node):
         return str(self.language_.get().try_extract_constrained_literal())
 
     @classmethod
-    def MakeChild(cls, example: str, language: Language) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, example: str, language: Language) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.example_], example

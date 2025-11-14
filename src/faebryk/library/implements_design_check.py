@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class implements_design_check(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     class CheckStage(Enum):
         POST_DESIGN = auto()

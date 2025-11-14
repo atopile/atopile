@@ -4,6 +4,7 @@
 import itertools
 import logging
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
@@ -95,7 +96,7 @@ def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
     )
 
 
-def attach_kicad_info(G: fabll.Graph) -> None:
+def attach_kicad_info(G: graph.GraphView) -> None:
     """Attach kicad info to the footprints in the graph."""
     # group comps & fps
     node_fps = {

@@ -54,7 +54,7 @@ class LED(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     # ----------------------------------------
     #                WIP
@@ -68,33 +68,37 @@ class LED(fabll.Node):
     #     self.brightness.alias_is(intensity * self.max_brightness)
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(max_brightness),
-        S(color),
-        # S(diode.get().forward_voltage, prefix="Vf"), calling get before instantiation is not allowed
-        # S(diode.get().current, prefix="If"),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(max_brightness),
+            S(color),
+            # S(diode.get().forward_voltage, prefix="Vf"), calling get before instantiation is not allowed
+            # S(diode.get().current, prefix="If"),
+        )
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import LED, Resistor, ElectricPower
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import LED, Resistor, ElectricPower
 
-        led = new LED
-        led.forward_voltage = 2.1V +/- 10%
-        led.current = 1mA +/- 50%
-        led.max_current = 10mA
-        led.color = LED.Color.RED
-        led.brightness = 100mcd
-        led.package = "0603"
+            led = new LED
+            led.forward_voltage = 2.1V +/- 10%
+            led.current = 1mA +/- 50%
+            led.max_current = 10mA
+            led.color = LED.Color.RED
+            led.brightness = 100mcd
+            led.package = "0603"
 
-        # Connect with current limiting resistor
-        res = new Resistor
-        power = new ElectricPower
-        assert power.voltage within 5V +/- 5%
+            # Connect with current limiting resistor
+            res = new Resistor
+            power = new ElectricPower
+            assert power.voltage within 5V +/- 5%
 
-        assert (power.voltage-led.forward_voltage) / res.resistance within led.current
+            assert (power.voltage-led.forward_voltage) / res.resistance within led.current
 
-        power.hv ~> res ~> led ~> power.lv
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            power.hv ~> res ~> led ~> power.lv
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

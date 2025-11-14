@@ -21,7 +21,7 @@ class ElectricPower(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.ChildField(fabll.is_interface)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     voltage = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Volt,
@@ -34,9 +34,9 @@ class ElectricPower(fabll.Node):
         unit=F.Units.Ampere,
     )
 
-
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import ElectricPower
 
         power_5v = new ElectricPower
@@ -49,5 +49,6 @@ class ElectricPower(fabll.Node):
         # Connect an example bypass capacitor
         power_5v.hv ~> example_capacitor ~> power_5v.lv
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

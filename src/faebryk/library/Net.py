@@ -20,7 +20,7 @@ class Net(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     # ----------------------------------------
     #                WIP
@@ -52,8 +52,8 @@ class Net(fabll.Node):
             return up
 
     @classmethod
-    def MakeChild(cls, name: str) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, name: str) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(F.has_overriden_name.MakeChild(name))
         return out
 

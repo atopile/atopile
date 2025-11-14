@@ -15,11 +15,12 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-from faebryk.library import Units
-from faebryk.library import Collections
+import faebryk.library.Parameters as Parameters
+import faebryk.library.Collections as Collections
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
+from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_solver import has_solver
@@ -27,27 +28,26 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_pickable import is_pickable
-from faebryk.library import Expressions
+import faebryk.library.Expressions as Expressions
+import faebryk.library.Units as Units
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
-from faebryk.library import Literals
+from faebryk.library.has_package_requirements import has_package_requirements
+from faebryk.library.is_auto_generated import is_auto_generated
+import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.PCB import PCB
 from faebryk.library.requires_external_usage import requires_external_usage
-from faebryk.library import Parameters
-from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_overriden_name import has_overriden_name
-from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_usage_example import has_usage_example
-from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
@@ -61,9 +61,7 @@ from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.Comparator import Comparator
-from faebryk.library.Relay import Relay
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
-from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
@@ -74,6 +72,8 @@ from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
 from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.Battery import Battery
+from faebryk.library.ElectricLogic import ElectricLogic
+from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
@@ -82,13 +82,6 @@ from faebryk.library.Resistor import Resistor
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.LED import LED
-from faebryk.library.MultiCapacitor import MultiCapacitor
-from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.ElectricSignal import ElectricSignal
-from faebryk.library.ResistorArray import ResistorArray
-from faebryk.library.has_explicit_part import has_explicit_part
-from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
@@ -99,46 +92,131 @@ from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
-from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.Ethernet import Ethernet
-from faebryk.library.FilterElectricalLC import FilterElectricalLC
-from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.requires_pulls import requires_pulls
+from faebryk.library.MultiCapacitor import MultiCapacitor
+from faebryk.library.FilterElectricalLC import FilterElectricalLC
+from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
+from faebryk.library.DifferentialPair import DifferentialPair
+from faebryk.library.FilterElectricalRC import FilterElectricalRC
+from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.has_pulls import has_pulls
+from faebryk.library.has_explicit_part import has_explicit_part
+from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
+from faebryk.library.I2C import I2C
 from faebryk.library.CAN import CAN
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
-from faebryk.library.I2C import I2C
+from faebryk.library.can_be_pulled import can_be_pulled
+from faebryk.library.HDMI import HDMI
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
-from faebryk.library.HDMI import HDMI
 from faebryk.library.USB3 import USB3
 from faebryk.library.USB_C import USB_C
 
 __all__ = [
     "Parameters",
-    "Units",
-    "Literals",
-    "NumberDomain",
-    "Expressions",
-    "can_bridge",
     "Collections",
-    "Logic",
-    "has_single_electric_reference",
     "Footprint",
     "Logic",
     "Mechanical",
-    "Power",
+    "NumberDomain",
     "Signal",
-    "has_part_picked",
-    "is_auto_generated",
     "is_app_root",
     "has_solver",
     "can_attach_to_footprint",
-    "can_bridge_by_name",
-    "has_datasheet",
     "is_lazy",
     "has_part_removed",
+    "is_pickable",
+    "Expressions",
+    "Units",
+    "can_bridge",
+    "has_footprint",
+    "implements_design_check",
+    "has_package_requirements",
+    "is_auto_generated",
+    "Literals",
+    "can_bridge_by_name",
+    "PCB",
+    "requires_external_usage",
+    "SerializableMetadata",
+    "has_datasheet",
+    "has_designator",
+    "has_designator_prefix",
+    "has_net_name",
+    "has_overriden_name",
+    "has_part_picked",
+    "has_simple_value_representation",
+    "has_usage_example",
+    "is_pickable_by_part_number",
+    "is_pickable_by_supplier_id",
+    "is_pickable_by_type",
+    "Electrical",
+    "ElectricPower",
+    "Filter",
+    "Pad",
+    "Symbol",
+    "TestPoint",
+    "XtalIF",
+    "has_net_name_affix",
+    "has_pin_association_heuristic",
+    "Comparator",
+    "has_single_electric_reference",
+    "Net",
+    "can_attach_to_footprint_symmetrically",
+    "can_attach_via_pinmap",
+    "has_kicad_footprint",
+    "has_linked_pad",
+    "BJT",
+    "CapacitorElectrolytic",
+    "Diode",
+    "MOSFET",
+    "Battery",
+    "ElectricLogic",
+    "ElectricSignal",
+    "Capacitor",
+    "Crystal",
+    "Fuse",
+    "Inductor",
+    "Resistor",
+    "can_attach_to_footprint_via_pinmap",
+    "KicadFootprint",
+    "LED",
+    "Addressor",
+    "CAN_TTL",
+    "I2S",
+    "JTAG",
+    "MultiSPI",
+    "PDM",
+    "RS232",
+    "SPI",
+    "SWD",
+    "UART_Base",
+    "Ethernet",
+    "requires_pulls",
+    "MultiCapacitor",
+    "FilterElectricalLC",
+    "Crystal_Oscillator",
+    "DifferentialPair",
+    "FilterElectricalRC",
+    "ResistorArray",
+    "has_pulls",
+    "has_explicit_part",
+    "is_atomic_part",
+    "SPIFlash",
+    "UART",
+    "I2C",
+    "CAN",
+    "OpAmp",
+    "RS485HalfDuplex",
+    "USB2_0_IF",
+    "can_be_pulled",
+    "HDMI",
+    "USB2_0",
+    "USB3_IF",
+    "USB3",
+    "USB_C",
 ]

@@ -43,21 +43,26 @@ class Crystal(fabll.Node):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_attach = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint_symmetrically.MakeChild()
+    )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.XTAL
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.XTAL)
     )
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(frequency, tolerance=True),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(frequency, tolerance=True),
+        )
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Crystal, Capacitor
 
         crystal = new Crystal
@@ -79,5 +84,6 @@ class Crystal(fabll.Node):
         crystal.unnamed[1] ~> load_cap2 ~> crystal.gnd
         crystal.gnd ~ power_supply.lv
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

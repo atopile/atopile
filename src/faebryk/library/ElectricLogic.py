@@ -35,9 +35,13 @@ class ElectricLogic(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.ChildField(fabll.is_interface)
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
-    _can_be_pulled = can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+    _can_be_pulled = fabll.Traits.MakeEdge(
+        can_be_pulled.can_be_pulled.MakeChild(line, reference)
+    )
 
     # ----------------------------------------
     #                functions
@@ -58,8 +62,14 @@ class ElectricLogic(fabll.Node):
         """
         return self.get_trait(can_be_pulled.can_be_pulled).pull(up=on, owner=owner)
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    @property
+    def pull_resistance(self):
+        """Expose effective pull resistance like ElectricSignal."""
+        return self.get_trait(can_be_pulled.can_be_pulled).pull_resistance
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import ElectricLogic
 
         logic_signal = new ElectricLogic
@@ -72,5 +82,6 @@ class ElectricLogic(fabll.Node):
         # OR
         logic_signal.line ~> example_resistor ~> electrical
         """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

@@ -15,6 +15,8 @@ class has_single_electric_reference(fabll.Node):
     Connect all electric references of a module into a single reference.
     """
 
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
     reference_ptr_ = F.Collections.Pointer.MakeChild()
     ground_only_ = F.Parameters.BooleanParameter.MakeChild()
     exclude_ = F.Collections.PointerSet.MakeChild()
@@ -38,7 +40,9 @@ class has_single_electric_reference(fabll.Node):
         self.reference_ptr_.get().point(reference)
 
         nodes = parent_node.get_children(
-            direct_only=True, types=(fabll.Node)
+            direct_only=True,
+            types=(fabll.Node),
+            required_trait=fabll.is_interface,
         ).difference(set(exclude))
 
         refs = {
@@ -76,9 +80,9 @@ class has_single_electric_reference(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, ground_only: bool = False, exclude: list[fabll.ChildField] = []
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        cls, ground_only: bool = False, exclude: list[fabll._ChildField] = []
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         # Reference pointer does not exist yet. Created when added to obj
         out.add_dependant(
             F.Literals.Booleans.MakeChild_ConstrainToLiteral(

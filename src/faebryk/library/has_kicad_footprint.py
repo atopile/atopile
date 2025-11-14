@@ -13,7 +13,7 @@ class has_kicad_footprint(fabll.Node):
 
     def get_kicad_footprint(self) -> str | None:
         literal = self.kicad_identifier_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        return None if literal is None else literal.get_value()
 
     def get_pin_names(self) -> dict[F.Pad, str]:
         pin_names = {}
@@ -25,9 +25,9 @@ class has_kicad_footprint(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, kicad_identifier: str, pinmap: dict[fabll.ChildField[F.Pad], str]
-    ) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+        cls, kicad_identifier: str, pinmap: dict[fabll._ChildField[F.Pad], str]
+    ) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.kicad_identifier_], kicad_identifier
@@ -40,7 +40,7 @@ class has_kicad_footprint(fabll.Node):
             out.add_dependant(pin_tuple)
             # Add tuple to pinmap set
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField(
+                F.Collections.PointerSet.MakeEdge(
                     [out, cls.pinmap_],
                     [pin_tuple],
                 )
@@ -64,7 +64,9 @@ class has_kicad_footprint(fabll.Node):
         return out
 
     def setup(self, kicad_identifier: str, pinmap: dict[F.Pad, str]) -> Self:
-        self.kicad_identifier_.get().constrain_to_single(value=kicad_identifier)
+        self.kicad_identifier_.get().constrain_to_single(
+            g=self.instance.g(), value=kicad_identifier
+        )
         for pad, pad_str in pinmap.items():
             # Create pin_tuple instance
             pin_tuple = F.Collections.PointerTuple.bind_typegraph(

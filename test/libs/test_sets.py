@@ -23,7 +23,6 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     Quantity_Set_Discrete,
 )
-from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
 from faebryk.libs.units import P, Unit, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 

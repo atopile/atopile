@@ -3,7 +3,6 @@
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import times
 
 
 class MultiSPI(fabll.Node):
@@ -17,12 +16,11 @@ class MultiSPI(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_interface = fabll.is_interface.MakeChild()
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    def data(self):
-        return times(self._data_lane_count, F.ElectricLogic)
-
-    _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
 
     # self.clock.line.add(
     #     F.has_net_name("clock", level=F.has_net_name.Level.SUGGESTED)
@@ -35,7 +33,7 @@ class MultiSPI(fabll.Node):
 
     @classmethod
     def MakeChild(cls, data_lane_count: int):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Numbers.MakeChild_ConstrainToLiteral(
                 [out, cls.data_lanes], data_lane_count
@@ -46,18 +44,20 @@ class MultiSPI(fabll.Node):
     # ----------------------------------------
     #              usage example
     # ----------------------------------------
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import MultiSPI, SPI
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import MultiSPI, SPI
 
-        # Microcontroller SPI peripheral
-        mcu_spi = new SPI
+            # Microcontroller SPI peripheral
+            mcu_spi = new SPI
 
-        # Quad-SPI flash interface (4 data lanes)
-        qspi = new MultiSPI<int_=4>
+            # Quad-SPI flash interface (4 data lanes)
+            qspi = new MultiSPI<int_=4>
 
-        # Connect the buses
-        mcu_spi ~ qspi
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            # Connect the buses
+            mcu_spi ~ qspi
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

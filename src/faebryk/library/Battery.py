@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -21,26 +22,26 @@ class Battery(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.Traits.MakeChild_Trait(fabll.is_module.MakeChild())
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _single_electric_reference = fabll.Traits.MakeChild_Trait(
-        fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        fabll._ChildField(F.has_single_electric_reference)
     )
 
     # TODO: Add trait edge to power.hv
-    # _net_name = fabll.Traits.MakeChild_Trait(
-    #     F.has_net_name.MakeChild(
-    #         name="BAT_VCC",
-    #         level=F.has_net_name.Level.SUGGESTED,
-    #     ),
-    #     [power, "hv"],
-    # )
+    _net_name = fabll.Traits.MakeEdge(
+        child_field=F.has_net_name.MakeChild(
+            name="BAT_VCC",
+            level=F.has_net_name.Level.SUGGESTED,
+        ),
+        owner=[power, "hv"],
+    )
 
-    designator_prefix = fabll.Traits.MakeChild_Trait(
+    designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.BAT)
     )
 
-    usage_example = fabll.Traits.MakeChild_Trait(
+    usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""
         import Battery, ElectricPower

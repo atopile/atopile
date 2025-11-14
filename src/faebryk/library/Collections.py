@@ -1,41 +1,40 @@
 from typing import TYPE_CHECKING, Any, Callable, Protocol, Self
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
-from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode
 from faebryk.library import Literals
 
 RefPath = fabll.RefPath
-EdgeField = fabll.EdgeField
+EdgeField = fabll._EdgeField
 
 
 def _get_pointer_references(
     node: fabll.NodeT, identifier: str | None = None
 ) -> "list[fabll.NodeT]":
-    references: list[tuple[int | None, BoundNode]] = []
+    references: list[tuple[int | None, graph.BoundNode]] = []
 
     def _collect(
-        ctx: list[tuple[int | None, BoundNode]], bound_edge: BoundEdge
+        ctx: list[tuple[int | None, graph.BoundNode]], bound_edge: graph.BoundEdge
     ) -> None:
         edge_name = bound_edge.edge().name()
         if identifier is not None and edge_name != identifier:
             return
-        target = EdgePointer.get_referenced_node(edge=bound_edge.edge())
+        target = fbrk.EdgePointer.get_referenced_node(edge=bound_edge.edge())
         if target is None:
             return
-        edge_order = EdgePointer.get_order(edge=bound_edge.edge())
+        edge_order = fbrk.EdgePointer.get_order(edge=bound_edge.edge())
         node = bound_edge.g().bind(node=target)
         ctx.append((edge_order, node))
 
     if identifier is None:
-        EdgePointer.visit_pointed_edges(
+        fbrk.EdgePointer.visit_pointed_edges(
             bound_node=node.instance,
             ctx=references,
             f=_collect,
         )
     else:
-        EdgePointer.visit_pointed_edges_with_identifier(
+        fbrk.EdgePointer.visit_pointed_edges_with_identifier(
             bound_node=node.instance,
             identifier=identifier,
             ctx=references,
@@ -48,7 +47,7 @@ def _get_pointer_references(
 
 
 class PointerEdgeFactory(Protocol):
-    def __call__(self, identifier: str | None) -> EdgeCreationAttributes: ...
+    def __call__(self, identifier: str | None) -> fbrk.EdgeCreationAttributes: ...
 
 
 class CollectionProtocol(Protocol):
@@ -60,9 +59,9 @@ class PointerProtocol(CollectionProtocol):
     def point(self, node: fabll.NodeT) -> None: ...
 
     @classmethod
-    def MakeChild(cls) -> fabll.ChildField[Self]: ...  # type: ignore
+    def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
     @classmethod
-    def EdgeField(cls, pointer_ref: RefPath, elef_ref: RefPath) -> fabll.EdgeField: ...
+    def MakeEdge(cls, pointer_ref: RefPath, elef_ref: RefPath) -> fabll._EdgeField: ...
 
 
 def AbstractPointer(
@@ -83,8 +82,8 @@ def AbstractPointer(
             self.connect(node, type(self)._edge_factory(identifier=None))
 
         @classmethod
-        def EdgeField(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll.EdgeField:
-            return fabll.EdgeField(
+        def MakeEdge(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
+            return fabll._EdgeField(
                 pointer_ref,
                 elem_ref,
                 edge=cls._edge_factory(identifier=None),
@@ -98,15 +97,13 @@ class SequenceProtocol(CollectionProtocol):
     def append(self, *elems: fabll.NodeT) -> Self: ...
 
     @classmethod
-    def MakeChild(cls) -> fabll.ChildField[Self]: ...  # type: ignore
+    def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
 
     @classmethod
-    def EdgeField(
-        cls, seq_ref: RefPath, elem_ref: RefPath, order: int
-    ) -> EdgeField: ...
+    def MakeEdge(cls, seq_ref: RefPath, elem_ref: RefPath, order: int) -> EdgeField: ...
 
     @classmethod
-    def EdgeFields(
+    def MakeEdges(
         cls, seq_ref: RefPath, elem_ref: list[RefPath]
     ) -> "list[EdgeField]": ...
 
@@ -114,7 +111,7 @@ class SequenceProtocol(CollectionProtocol):
 class SequenceEdgeFactory(Protocol):
     def __call__(
         self, identifier: str, order: int | None
-    ) -> EdgeCreationAttributes: ...
+    ) -> fbrk.EdgeCreationAttributes: ...
 
 
 def AbstractSequence(
@@ -146,10 +143,10 @@ def AbstractSequence(
             return type(self)._retrieval_function(self, self._elem_identifier)
 
         @classmethod
-        def EdgeField(
+        def MakeEdge(
             cls, seq_ref: RefPath, elem_ref: RefPath, order: int
-        ) -> fabll.EdgeField:
-            return fabll.EdgeField(
+        ) -> fabll._EdgeField:
+            return fabll._EdgeField(
                 seq_ref,
                 elem_ref,
                 edge=type(cls)._edge_factory(
@@ -158,10 +155,10 @@ def AbstractSequence(
             )
 
         @classmethod
-        def EdgeFields(
+        def MakeEdges(
             cls, seq_ref: RefPath, elem_ref: list[RefPath]
-        ) -> "list[fabll.EdgeField]":
-            return [cls.EdgeField(seq_ref, elem, i) for i, elem in enumerate(elem_ref)]
+        ) -> "list[fabll._EdgeField]":
+            return [cls.MakeEdge(seq_ref, elem, i) for i, elem in enumerate(elem_ref)]
 
     ConcreteSequence.__name__ = f"ConcreteSequence_{id(ConcreteSequence):x}"
     return ConcreteSequence  # type: ignore
@@ -172,19 +169,19 @@ class SetProtocol(Protocol):
     def as_list(self) -> list[fabll.NodeT]: ...
     def as_set(self) -> set[fabll.NodeT]: ...
     @classmethod
-    def MakeChild(cls, *elems: RefPath) -> fabll.ChildField[Any]: ...
+    def MakeChild(cls, *elems: RefPath) -> fabll._ChildField[Self]: ...
     @classmethod
-    def EdgeField(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll.EdgeField: ...
+    def MakeEdge(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField: ...
     @classmethod
-    def EdgeFields(
+    def MakeEdges(
         cls, set_ref: RefPath, elem_ref: list[RefPath]
-    ) -> "list[fabll.EdgeField]": ...
+    ) -> "list[fabll._EdgeField]": ...
 
 
 class SetEdgeFactory(Protocol):
     def __call__(
         self, identifier: str, order: int | None
-    ) -> EdgeCreationAttributes: ...
+    ) -> fbrk.EdgeCreationAttributes: ...
 
 
 def AbstractSet(
@@ -204,35 +201,33 @@ def AbstractSet(
                 by_uuid.pop(node.instance.node().get_uuid(), None)
 
             for i, elem in enumerate(by_uuid.values()):
-                self.connect(
-                    elem,
-                    type(self)._edge_factory(
-                        identifier=self._elem_identifier, order=cur_len + i
-                    ),
+                edge_attrs = type(self)._edge_factory(
+                    identifier=self._elem_identifier, order=cur_len + i
                 )
+                self.connect(elem, edge_attrs)
 
             return self
 
         @classmethod
-        def EdgeField(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll.EdgeField:
-            return fabll.EdgeField(
+        def MakeEdge(cls, set_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
+            return fabll._EdgeField(
                 set_ref,
                 elem_ref,
                 edge=cls._edge_factory(identifier=cls._elem_identifier, order=None),
             )
 
         @classmethod
-        def EdgeFields(
+        def MakeEdges(
             cls, set_ref: RefPath, elem_ref: list[RefPath]
-        ) -> "list[fabll.EdgeField]":
-            return [cls.EdgeField(set_ref, elem) for elem in elem_ref]
+        ) -> "list[fabll._EdgeField]":
+            return [cls.MakeEdge(set_ref, elem) for elem in elem_ref]
 
         @classmethod
         def MakeChild(cls, *elems: RefPath):
-            out = fabll.ChildField(cls)
+            out = fabll._ChildField(cls)
             for elem in elems:
                 out.add_dependant(
-                    fabll.EdgeField(
+                    fabll._EdgeField(
                         [out],
                         elem,
                         edge=cls._edge_factory(
@@ -259,21 +254,21 @@ def AbstractSet(
 # get rid of the abstract bs and just reimplement sets wherever needed
 
 Pointer = AbstractPointer(
-    edge_factory=lambda identifier: EdgePointer.build(
+    edge_factory=lambda identifier: fbrk.EdgePointer.build(
         identifier=identifier, order=None
     ),
     retrieval_function=lambda node: _get_pointer_references(node, None)[0],
 )
 
 PointerSequence = AbstractSequence(
-    edge_factory=lambda identifier, order: EdgePointer.build(
+    edge_factory=lambda identifier, order: fbrk.EdgePointer.build(
         identifier=identifier, order=order
     ),
     retrieval_function=_get_pointer_references,
 )
 
 PointerSet = AbstractSet(
-    edge_factory=lambda identifier, order: EdgePointer.build(
+    edge_factory=lambda identifier, order: fbrk.EdgePointer.build(
         identifier=identifier, order=order
     ),
     retrieval_function=_get_pointer_references,
@@ -286,19 +281,19 @@ class PointerTuple(fabll.Node):
     literals = PointerSet.MakeChild()
 
     @classmethod
-    def SetPointer(cls, tup_ref: RefPath, elem_ref: RefPath) -> fabll.EdgeField:
+    def SetPointer(cls, tup_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
         ptr_ref = tup_ref
         ptr_ref.append(cls.pointer)
-        return Pointer.EdgeField(
+        return Pointer.MakeEdge(
             ptr_ref,
             elem_ref,
         )
 
     @classmethod
-    def AppendLiteral(cls, tup_ref: RefPath, elem_ref: RefPath) -> fabll.EdgeField:
+    def AppendLiteral(cls, tup_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
         set_ref = tup_ref  # TODO: Can this be done in a more elegant way?
         set_ref.append(cls.literals)
-        return PointerSet.EdgeField(
+        return PointerSet.MakeEdge(
             tup_ref,
             elem_ref,
         )
@@ -315,7 +310,8 @@ class PointerTuple(fabll.Node):
 
     def append_literal(self, literal: fabll.LiteralT) -> None:
         lit = Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
-            g=self.instance.g(), attributes=Literals.LiteralsAttributes(value=literal)
+            g=self.instance.g(),
+            attributes=Literals.LiteralsAttributes(value=literal),
         )
         self.literals.get().append(lit)
 
@@ -335,15 +331,19 @@ def test_pointer_helpers():
     left_child = parent.left.get()
     right_child = parent.right.get()
 
-    parent.connect(left_child, EdgePointer.build(identifier="left_ptr", order=None))
-    parent.connect(right_child, EdgePointer.build(identifier="right_ptr", order=None))
+    parent.connect(
+        left_child, fbrk.EdgePointer.build(identifier="left_ptr", order=None)
+    )
+    parent.connect(
+        right_child, fbrk.EdgePointer.build(identifier="right_ptr", order=None)
+    )
 
     pointed_edges: list[str | None] = []
 
-    def _collect(names: list[str | None], edge: BoundEdge):
+    def _collect(names: list[str | None], edge: graph.BoundEdge):
         names.append(edge.edge().name())
 
-    EdgePointer.visit_pointed_edges(
+    fbrk.EdgePointer.visit_pointed_edges(
         bound_node=parent.instance,
         ctx=pointed_edges,
         f=_collect,
@@ -351,29 +351,29 @@ def test_pointer_helpers():
     assert pointed_edges.count("left_ptr") == 1
     assert pointed_edges.count("right_ptr") == 1
 
-    left = EdgePointer.get_pointed_node_by_identifier(
+    left = fbrk.EdgePointer.get_pointed_node_by_identifier(
         bound_node=parent.instance,
         identifier="left_ptr",
     )
     assert left is not None
     assert left.node().is_same(other=left_child.instance.node())
 
-    right = EdgePointer.get_pointed_node_by_identifier(
+    right = fbrk.EdgePointer.get_pointed_node_by_identifier(
         bound_node=parent.instance,
         identifier="right_ptr",
     )
     assert right is not None
     assert right.node().is_same(other=right_child.instance.node())
 
-    parent.connect(left_child, EdgePointer.build(identifier="shared", order=None))
-    parent.connect(right_child, EdgePointer.build(identifier="shared", order=None))
+    parent.connect(left_child, fbrk.EdgePointer.build(identifier="shared", order=None))
+    parent.connect(right_child, fbrk.EdgePointer.build(identifier="shared", order=None))
 
-    shared_edges: list[BoundEdge] = []
+    shared_edges: list[graph.BoundEdge] = []
 
-    def _collect_shared(ctx: list[BoundEdge], edge: BoundEdge):
+    def _collect_shared(ctx: list[graph.BoundEdge], edge: graph.BoundEdge):
         ctx.append(edge)
 
-    EdgePointer.visit_pointed_edges_with_identifier(
+    fbrk.EdgePointer.visit_pointed_edges_with_identifier(
         bound_node=parent.instance,
         identifier="shared",
         ctx=shared_edges,

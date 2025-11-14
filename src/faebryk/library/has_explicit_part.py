@@ -8,6 +8,8 @@ import faebryk.library._F as F
 
 
 class has_explicit_part(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
     mfr_ = F.Parameters.StringParameter.MakeChild()
     partno_ = F.Parameters.StringParameter.MakeChild()
     supplier_id_ = F.Parameters.StringParameter.MakeChild()
@@ -20,9 +22,9 @@ class has_explicit_part(fabll.Node):
         cls,
         mfr: str,
         partno: str,
-        pinmap: dict[str, fabll.ChildField[F.Electrical] | None] | None = None,
-        override_footprint: tuple[fabll.ChildField[F.Footprint], str] | None = None,
-    ) -> fabll.ChildField[Self]:
+        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
+        override_footprint: tuple[fabll._ChildField[F.Footprint], str] | None = None,
+    ) -> fabll._ChildField[Self]:
         return cls.MakeChild(mfr, partno, None, None, pinmap, override_footprint)
 
     @classmethod
@@ -30,9 +32,9 @@ class has_explicit_part(fabll.Node):
         cls,
         supplier_partno: str,
         supplier_id: str = "lcsc",
-        pinmap: dict[str, fabll.ChildField[F.Electrical] | None] | None = None,
-        override_footprint: tuple[fabll.ChildField[F.Footprint], str] | None = None,
-    ) -> fabll.ChildField[Self]:
+        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
+        override_footprint: tuple[fabll._ChildField[F.Footprint], str] | None = None,
+    ) -> fabll._ChildField[Self]:
         if supplier_id != "lcsc":
             raise NotImplementedError(f"Supplier {supplier_id} not supported")
         return cls.MakeChild(
@@ -116,7 +118,7 @@ class has_explicit_part(fabll.Node):
         return pinmap
 
     @property
-    def override_footprint(self) -> tuple[fabll.ChildField[F.Footprint], str] | None:
+    def override_footprint(self) -> tuple[fabll._ChildField[F.Footprint], str] | None:
         literal = F.Collections.PointerTuple.bind_instance(
             self.override_footprint_.get().instance
         ).get_literals_as_list()
@@ -132,30 +134,30 @@ class has_explicit_part(fabll.Node):
         partno: str | None,
         supplier_id: str | None,
         supplier_partno: str | None,
-        pinmap: dict[str, fabll.ChildField[F.Electrical] | None] | None,
-        override_footprint: tuple[fabll.ChildField[F.Footprint], str] | None = None,
+        pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None,
+        override_footprint: tuple[fabll._ChildField[F.Footprint], str] | None = None,
     ):
-        out = fabll.ChildField(cls)
+        out = fabll._ChildField(cls)
         # Literals
         if mfr is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.mfr_], mfr)
+                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.mfr_], mfr)
             )
         if partno is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.partno_], partno
                 )
             )
         if supplier_id is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.supplier_id_], supplier_id
                 )
             )
         if supplier_partno is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.supplier_partno_], supplier_partno
                 )
             )
@@ -167,13 +169,13 @@ class has_explicit_part(fabll.Node):
                 out.add_dependant(pin_tuple)
                 # Add tuple to pinmap set
                 out.add_dependant(
-                    F.Collections.PointerSet.EdgeField(
+                    F.Collections.PointerSet.MakeEdge(
                         [out, cls.pinmap_],
                         [pin_tuple],
                     )
                 )
                 # Pin Str
-                lit = fabll.LiteralNode.MakeChild(value=pin_str)
+                lit = F.Literals.Strings.MakeChild(value=pin_str)
                 out.add_dependant(lit)
                 out.add_dependant(
                     F.Collections.PointerTuple.AppendLiteral(
@@ -191,7 +193,7 @@ class has_explicit_part(fabll.Node):
         # Override footprint
         if override_footprint is not None:
             # Footprint Str
-            lit = fabll.LiteralNode.MakeChild(value=override_footprint[1])
+            lit = F.Literals.Strings.MakeChild(value=override_footprint[1])
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(

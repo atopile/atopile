@@ -18,7 +18,9 @@ class KicadFootprint(fabll.Node):
         Direct reference to a KiCAD footprint file
         """
 
-        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
         file_ = F.Parameters.StringParameter.MakeChild()
 
@@ -31,7 +33,9 @@ class KicadFootprint(fabll.Node):
             return self
 
     class has_kicad_identifier(fabll.Node):
-        _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
         kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
 
@@ -82,8 +86,8 @@ class KicadFootprint(fabll.Node):
         return [F.Pad.bind_instance(pin_pad.instance) for pin_pad in pin_pads]
 
     @classmethod
-    def MakeChild(cls, pin_names: list[str]) -> fabll.ChildField:
-        out = fabll.ChildField(cls)
+    def MakeChild(cls, pin_names: list[str]) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
         for pin_name in pin_names:
             pin_parameter = F.Parameters.StringParameter.MakeChild()
             out.add_dependant(pin_parameter)
@@ -91,12 +95,12 @@ class KicadFootprint(fabll.Node):
                 F.Expressions.Is.MakeChild_ConstrainToLiteral([pin_parameter], pin_name)
             )
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField([out, cls.pin_names_], [pin_name])
+                F.Collections.PointerSet.MakeEdge([out, cls.pin_names_], [pin_name])
             )
             pin_pad = F.Pad.MakeChild()
             out.add_dependant(pin_pad)
             out.add_dependant(
-                F.Collections.PointerSet.EdgeField([out, cls.pins_], [pin_pad])
+                F.Collections.PointerSet.MakeEdge([out, cls.pins_], [pin_pad])
             )
         return out
 

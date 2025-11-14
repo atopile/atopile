@@ -649,6 +649,10 @@ pub const GraphView = struct {
         };
     }
 
+    pub fn get_node_count(g: *const @This()) usize {
+        return g.nodes.items.len;
+    }
+
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
         g.edges.append(edge) catch @panic("OOM appending edge");
         edge._ref_count.inc(g);

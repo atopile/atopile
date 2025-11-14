@@ -33,46 +33,58 @@ class Fuse(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(
+        fabll.is_module.MakeChild()
+    )
 
-    _can_attach = F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_attach = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint_symmetrically.MakeChild()
+    )
 
-    _can_bridge = F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
+    _can_bridge = fabll.Traits.MakeEdge(
+        F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
+    )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.F
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(
+            F.has_designator_prefix.Prefix.F
+        )
     )
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(trip_current, prefix="It"),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(trip_current, prefix="It"),
+        )
     )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
-        import Fuse, ElectricPower
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
+            import Fuse, ElectricPower
 
-        fuse = new Fuse
-        fuse.trip_current = 2A +/- 10%
-        fuse.fuse_type = Fuse.FuseType.NON_RESETTABLE
-        fuse.response_type = Fuse.ResponseType.FAST
-        fuse.package = "1206"
+            fuse = new Fuse
+            fuse.trip_current = 2A +/- 10%
+            fuse.fuse_type = Fuse.FuseType.NON_RESETTABLE
+            fuse.response_type = Fuse.ResponseType.FAST
+            fuse.package = "1206"
 
-        # Connect fuse in series with power supply
-        power_input = new ElectricPower
-        protected_power = new ElectricPower
+            # Connect fuse in series with power supply
+            power_input = new ElectricPower
+            protected_power = new ElectricPower
 
-        # Fuse protects the circuit from overcurrent
-        power_input.hv ~> fuse ~> protected_power.hv
-        power_input.lv ~ protected_power.lv
+            # Fuse protects the circuit from overcurrent
+            power_input.hv ~> fuse ~> protected_power.hv
+            power_input.lv ~ protected_power.lv
 
-        # For resettable fuse (PTC)
-        ptc_fuse = new Fuse
-        ptc_fuse.trip_current = 500mA +/- 20%
-        ptc_fuse.fuse_type = Fuse.FuseType.RESETTABLE
-        ptc_fuse.response_type = Fuse.ResponseType.SLOW
+            # For resettable fuse (PTC)
+            ptc_fuse = new Fuse
+            ptc_fuse.trip_current = 500mA +/- 20%
+            ptc_fuse.fuse_type = Fuse.FuseType.RESETTABLE
+            ptc_fuse.response_type = Fuse.ResponseType.SLOW
 
-        # Common applications: USB power protection, battery protection
-        """,
-        language=F.has_usage_example.Language.ato,
-    ).put_on_type()
+            # Common applications: USB power protection, battery protection
+            """,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+    )

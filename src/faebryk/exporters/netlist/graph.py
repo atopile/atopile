@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class can_represent_kicad_footprint(fabll.Node):
     kicad_footprint = FBRKNetlist.Component
 
-    def __init__(self, component: fabll.Node, graph: fabll.Graph) -> None:
+    def __init__(self, component: fabll.Node, graph: graph.GraphView) -> None:
         """
         graph has to be electrically closed
         """
@@ -102,7 +103,7 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets(G: fabll.Graph) -> set[F.Net]:
+def attach_nets(G: graph.GraphView) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
     pad_mifs = [pad.net for pad in fabll.Node.bind_typegraph(G).nodes_of_type(F.Pad)]
     # Sort pad interfaces by stable node name to ensure deterministic bus grouping
@@ -667,7 +668,7 @@ def _assign_prefix_for_net(
         and not net_name.required_suffix
     )
 
-    if should_use_owner
+    if should_use_owner:
         if owner_name := _get_owner_module_name(net):
             net_name.prefix = owner_name
             return

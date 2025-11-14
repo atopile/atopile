@@ -26,27 +26,31 @@ class Diode(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.is_module.MakeChild()
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
+    _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=anode, out_=cathode))
 
     S = F.has_simple_value_representation.Spec
-    _simple_repr = F.has_simple_value_representation.MakeChild(
-        S(forward_voltage, tolerance=True, prefix="Vf"),
-        S(current, prefix="If"),
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(forward_voltage, tolerance=True, prefix="Vf"),
+            S(current, prefix="If"),
+        )
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.D
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.D)
     )
 
-    _pin_association_heuristic = F.has_pin_association_heuristic.MakeChild(
-        mapping={
-            anode: ["A", "Anode", "+"],
-            cathode: ["K", "C", "Cathode", "-"],
-        },
-        accept_prefix=False,
-        case_sensitive=False,
+    _pin_association_heuristic = fabll.Traits.MakeEdge(
+        F.has_pin_association_heuristic.MakeChild(
+            mapping={
+                anode: ["A", "Anode", "+"],
+                cathode: ["K", "C", "Cathode", "-"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )
     )
 
     # ----------------------------------------
@@ -60,8 +64,9 @@ class Diode(fabll.Node):
     #     F.has_net_name.MakeChild(name="cathode", level=F.has_net_name.Level.SUGGESTED)
     # )
 
-    usage_example = F.has_usage_example.MakeChild(
-        example="""
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Diode, Resistor, ElectricPower
 
         diode = new Diode
@@ -78,5 +83,6 @@ class Diode(fabll.Node):
         # With current limiting resistor
         power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

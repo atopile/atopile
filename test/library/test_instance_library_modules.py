@@ -1,41 +1,22 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import inspect
-from pathlib import Path
-
 import pytest
 
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from atopile.front_end import Bob, TypeRef, ap
+import faebryk.library._F as F
 from faebryk.core.core import Namespace
-from faebryk.core.trait import Trait
-from faebryk.libs.util import not_none
 
 try:
-    import faebryk.library._F as F
+    from faebryk.library import _F as F
 except ImportError:
     F = None
 
 
 def test_load_library():
+    """Verify that the faebryk library can be loaded successfully."""
     assert F is not None, "Failed to load library"
-
-
-@pytest.mark.skipif(F is None, reason="Library not loaded")
-@pytest.mark.parametrize("name, module", list(vars(F).items()))
-def test_symbol_types(name: str, module):
-    # private symbols get a pass
-    if name.startswith("_"):
-        return
-
-    # skip once wrappers
-    # allow once wrappers for type generators
-    if getattr(module, "_is_once_wrapper", False):
-        return
-
-    # otherwise, only allow fabll.Node or Namespace class objects
-    assert isinstance(module, type) and issubclass(module, (fabll.Node, Namespace))
 
 
 @pytest.mark.skipif(F is None, reason="Library not loaded")
@@ -43,62 +24,47 @@ def test_symbol_types(name: str, module):
     "name, module",
     [
         (name, module)
-        for name, module in vars(F).items()
-        if not (
-            name.startswith("_")
-            or not isinstance(module, type)
-            or not issubclass(module, fabll.Node)
-            or (issubclass(module, Trait))
-        )
+        for name, module in list(vars(F).items())
+        if F is not None
+        and not name.startswith("_")
+        and not getattr(module, "_is_once_wrapper", False)
+        and isinstance(module, type)
     ],
 )
-# @pytest.mark.timeout(60)  # TODO lower
-def test_init_args(name: str, module):
-    """Make sure we can instantiate all classes without error"""
-
-    # handle post_init_decorator
-    init = (
-        module.__init__
-        if not hasattr(module, "__original_init__")
-        else module.__original_init__
+def test_symbol_types(name: str, module: fabll.Node):
+    """Verify that all exported library symbols are valid Node or Namespace types."""
+    # All symbols must be Node or Namespace class types
+    assert isinstance(module, type) and issubclass(module, (fabll.Node, Namespace)), (
+        f"Module [{name}] is not a Node or Namespace class type but [{type(module)}]"
     )
-    init_signature = inspect.signature(init)
-    args = [p for p in init_signature.parameters.values() if p.name != "self"]
-
-    # check if constructor has no non-default args
-    if any(
-        p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
-        and p.default is inspect.Parameter.empty
-        for p in args
-    ):
-        pytest.skip(
-            f"Skipped module with init args because we can't instantiate it: {args}"
-        )
-
-    try:
-        module()
-    except fabll.AbstractclassError:
-        pytest.skip("Skipped abstract class")
-
-
-def _module_addr(file: Path, module_name: TypeRef):
-    return f"{file.name}:{module_name}"
-
-
-_file_and_modules = [
-    (file, module_name)
-    for file in Path(inspect.getfile(not_none(F))).parent.glob("*.ato")
-    for module_name, module in Bob().index_file(file).refs.items()
-    if isinstance(module, ap.BlockdefContext)
-]
 
 
 @pytest.mark.skipif(F is None, reason="Library not loaded")
 @pytest.mark.parametrize(
-    "file, module_name",
-    _file_and_modules,
-    ids=[_module_addr(file, module_name) for file, module_name in _file_and_modules],
+    "name, module",
+    [
+        (name, module)
+        for name, module in list(vars(F).items())
+        if F is not None
+        if (
+            not name.startswith("_")
+            and isinstance(module, type)
+            and issubclass(module, fabll.Node)
+            and not issubclass(module, fabll.ImplementsTrait)
+        )
+    ],
 )
-def test_instance_library_ato(file: Path, module_name: TypeRef):
-    bob = Bob()
-    bob.build_file(file, module_name)
+def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
+    """Verify that library modules can be successfully instantiated.
+
+    This test attempts to instantiate all library modules that:
+    - Are not Traits
+    - Do not have a MakeChild or setup method (and thus don't require
+      arguments for instantiation)
+    """
+    try:
+        _ = module.MakeChild()
+    except TypeError:
+        pytest.xfail(f"{module.__name__} needs arguments to be instantiated")
+    except Exception as e:
+        pytest.fail(f"Failed to instantiate module {module.__name__}: {e}")

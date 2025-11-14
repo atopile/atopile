@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class has_solver(fabll.Node):
-    _is_trait = fabll.ChildField(fabll.ImplementsTrait).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     # def setup(self, solver: Solver) -> Self:
     #     # TODO: Figure out python pointer
