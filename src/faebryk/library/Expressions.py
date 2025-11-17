@@ -9,7 +9,7 @@ import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
-    from faebryk.library import Parameters
+    from faebryk.library import Literals, Parameters
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -165,11 +165,13 @@ class is_expression(fabll.Node):
             if (t := fabll.Traits(op).try_get_trait_of_obj(trait))
         }
 
-    def get_operand_literals(self) -> dict[int, "F.Literals.is_literal"]:
+    def get_operand_literals(self) -> dict[int, "Literals.is_literal"]:
+        from faebryk.library import Literals
+
         return {
             i: t
             for i, op in enumerate(self.get_operands())
-            if (t := fabll.Traits(op).try_get_trait_of_obj(F.Literals.is_literal))
+            if (t := fabll.Traits(op).try_get_trait_of_obj(Literals.is_literal))
         }
 
     @staticmethod
@@ -220,7 +222,7 @@ class is_expression(fabll.Node):
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
-    def get_uncorrelatable_literals(self) -> list[F.Literals.is_literal]:
+    def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
         # TODO
         raise NotImplementedError
 
