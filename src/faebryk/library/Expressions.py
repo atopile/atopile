@@ -156,14 +156,20 @@ class is_expression(fabll.Node):
         return operands
 
     def get_operand_operatables(self) -> set["F.Parameters.is_parameter_operatable"]:
+        return self.get_operands_with_trait(F.Parameters.is_parameter_operatable)
+
+    def get_operands_with_trait[T: fabll.NodeT](self, trait: type[T]) -> set[T]:
         return {
-            po
+            t
             for op in self.get_operands()
-            if (
-                po := fabll.Traits(op).try_get_trait_of_obj(
-                    F.Parameters.is_parameter_operatable
-                )
-            )
+            if (t := fabll.Traits(op).try_get_trait_of_obj(trait))
+        }
+
+    def get_operand_literals(self) -> dict[int, "F.Literals.is_literal"]:
+        return {
+            i: t
+            for i, op in enumerate(self.get_operands())
+            if (t := fabll.Traits(op).try_get_trait_of_obj(F.Literals.is_literal))
         }
 
     @staticmethod
@@ -213,6 +219,29 @@ class is_expression(fabll.Node):
 
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
+
+    def get_uncorrelatable_literals(self) -> list[F.Literals.is_literal]:
+        # TODO
+        raise NotImplementedError
+
+    def expr_isinstance(self, *expr_types: type[fabll.NodeT]) -> bool:
+        return fabll.Traits(self).get_obj_raw().isinstance(*expr_types)
+
+    def expr_try_cast[T: fabll.NodeT](self, t: type[T]) -> T | None:
+        return fabll.Traits(self).get_obj_raw().try_cast(t)
+
+    def expr_cast[T: fabll.NodeT](self, t: type[T], check: bool = True) -> T:
+        return fabll.Traits(self).get_obj_raw().cast(t, check=check)
+
+    def is_congruent_to(
+        self,
+        other: "fabll.NodeT",
+        recursive: bool = False,
+        allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
+    ) -> bool:
+        # TODO
+        raise NotImplementedError
 
 
 # TODO

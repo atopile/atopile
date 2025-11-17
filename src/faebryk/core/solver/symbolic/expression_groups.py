@@ -34,7 +34,7 @@ def reflexive_predicates(mutator: Mutator):
             continue
 
         mutator.utils.alias_is_literal_and_check_predicate_eval(
-            pred.as_parameter_operatable(), mutator.make_lit(True)
+            pred, mutator.make_lit(True)
         )
 
 

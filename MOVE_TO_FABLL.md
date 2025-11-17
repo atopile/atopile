@@ -43,9 +43,14 @@ SOLVER:
 
 - [ ] use F imports
 - [ ] think and fix Graph handling in mutator
-- [WIP] fix type errors in all algos
 - [ ] check for `type` and `isinstance` and `cast`
 - [ ] consider renaming parameter_operatable to something shorter and better (now that we have operand)
+- [WIP] fix type errors in all algos
+  - [x] canonical
+  - [x] expression_groups
+  - [x, revisit after util] expression_wise
+  - [x] pure_literal
+  - [ ] structural
 
 ##
 

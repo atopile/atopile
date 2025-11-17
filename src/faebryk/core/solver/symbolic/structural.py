@@ -60,45 +60,61 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         e
         for e in mutator.get_typed_expressions(GreaterOrEqual, sort_by_depth=True)
         # Look for expressions with only one non-literal operand
-        if e.constrained
-        and len([op for op in e.operands if fabll.isparameteroperable(op)]) == 1
+        if e.try_get_trait(F.Expressions.IsConstrained)
+        and len(
+            [
+                op
+                for op in e.get_trait(F.Expressions.is_expression).get_operands()
+                if op.is_parameter_operatable()
+            ]
+        )
+        == 1
     }
 
     for ge in ge_exprs:
-        is_left = ge.operands[0] is next(iter(ge.operatable_operands))
+        ge_e = ge.get_trait(F.Expressions.is_expression)
+        op_0 = ge_e.get_operands()[0]
+        op_1 = ge_e.get_operands()[1]
+        is_left = op_0.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
 
         if is_left:
-            param = ge.operands[0]
-            lit = Quantity_Interval_Disjoint.from_value(ge.operands[1])
-            boundary = lit.max_elem
-            if math.isinf(boundary):
-                if ge.constrained:
+            param = op_0
+            lit = op_1.get_sibling_trait(F.Literals.is_literal)
+            lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
+            boundary = lit_n.max_elem()
+            if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
+                if ge.try_get_trait(F.Expressions.IsConstrained):
                     raise Contradiction(
                         "GreaterEqual inf not possible",
-                        involved=[param],
+                        involved=[param.as_parameter_operatable()],
                         mutator=mutator,
                     )
-                mutator.utils.alias_is_literal_and_check_predicate_eval(ge, False)
+                mutator.utils.alias_is_literal_and_check_predicate_eval(
+                    ge_e, mutator.make_lit(False)
+                )
                 continue
-            interval = Quantity_Interval_Disjoint(Quantity_Interval(min=boundary))
+            interval = boundary
         else:
-            param = ge.operands[1]
-            lit = Quantity_Interval_Disjoint.from_value(ge.operands[0])
-            boundary = lit.min_elem
-            if math.isinf(boundary):
-                if ge.constrained:
+            param = op_1
+            lit = op_0.get_sibling_trait(F.Literals.is_literal)
+            lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
+            boundary = lit_n.min_elem()
+            if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
+                if ge.try_get_trait(F.Expressions.IsConstrained):
                     raise Contradiction(
                         "LessEqual -inf not possible",
-                        involved=[param],
+                        involved=[param.as_parameter_operatable()],
                         mutator=mutator,
                     )
-                mutator.utils.alias_is_literal_and_check_predicate_eval(ge, False)
+                mutator.utils.alias_is_literal_and_check_predicate_eval(
+                    ge_e, mutator.make_lit(False)
+                )
                 continue
-            interval = Quantity_Interval_Disjoint(Quantity_Interval(max=boundary))
+            interval = boundary
 
         mutator.mutate_expression(
-            ge,
-            operands=[param, interval],
+            ge_e,
+            operands=[param, interval.get_trait(F.Parameters.can_be_operand)],
             expression_factory=IsSubset,
         )
 
@@ -112,16 +128,17 @@ def remove_unconstrained(mutator: Mutator):
     """
     objs = mutator.get_typed_expressions()
     for obj in objs:
-        if obj.constrained:
+        obj_po = obj.get_trait(F.Parameters.is_parameter_operatable)
+        if obj.try_get_trait(F.Expressions.IsConstrained):
             continue
         if obj.has_trait(Expressions.has_side_effects):
             continue
         if any(
             e.constrained or e.has_trait(Expressions.has_side_effects)
-            for e in mutator.utils.get_expressions_involved_in(obj)
+            for e in mutator.utils.get_expressions_involved_in(obj_po)
         ):
             continue
-        mutator.remove(obj)
+        mutator.remove(obj_po)
 
 
 @algorithm("Remove congruent expressions", terminal=False)
@@ -137,7 +154,7 @@ def remove_congruent_expressions(mutator: Mutator):
     # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
     # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
 
-    all_exprs = mutator.get_typed_expressions(sort_by_depth=True)
+    all_exprs = mutator.get_expressions(sort_by_depth=True)
     # optimization: can't be congruent if they have uncorrelated literals
     all_exprs = [e for e in all_exprs if not e.get_uncorrelatable_literals()]
     # TODO is this fully correct?
@@ -146,8 +163,8 @@ def remove_congruent_expressions(mutator: Mutator):
         e
         for e in all_exprs
         if not (
-            Expressions.isinstance_any(e, Expressions.Is, Expressions.IsSubset)
-            and e.constrained
+            e.expr_isinstance(F.Expressions.Is, F.Expressions.IsSubset)
+            and e.try_get_sibling_trait(F.Expressions.IsConstrained)
             and e.get_operand_literals()
         )
     ]
@@ -155,11 +172,13 @@ def remove_congruent_expressions(mutator: Mutator):
         all_exprs,
         lambda e: (
             type(e),
-            len(e.operands),
-            None if not Expressions.is_constrainable_node(e) else e.constrained,
+            len(e.get_operands()),
+            None
+            if not e.try_get_trait(F.Expressions.IsConstrainable)
+            else e.try_get_trait(F.Expressions.IsConstrained),
         ),
     )
-    full_eq = EquivalenceClasses[Expression](all_exprs)
+    full_eq = EquivalenceClasses[fabll.NodeT](all_exprs)
 
     for exprs in exprs_by_type.values():
         if len(exprs) <= 1:
@@ -184,7 +203,6 @@ def remove_congruent_expressions(mutator: Mutator):
 
             # propagate constrained & terminate
             if Expressions.is_constrainable_node(representative):
-                eq_class = cast(set[ConstrainableExpression], eq_class)
                 representative.constrained = any(e.constrained for e in eq_class)
                 if any(mutator.is_predicate_terminated(e) for e in eq_class):
                     mutator.predicate_terminate(representative)
@@ -219,7 +237,7 @@ def resolve_alias_classes(mutator: Mutator):
     # A is B, B is C, D is E, F, G is (A+B)
     # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
     param_ops = mutator.get_parameter_operatables()
-    full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
+    full_eq = EquivalenceClasses[fabll.NodeT](param_ops)
     is_exprs = mutator.utils.get_all_aliases()
     for is_expr in is_exprs:
         ops = {

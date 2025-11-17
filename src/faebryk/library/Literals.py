@@ -24,6 +24,18 @@ class is_literal(fabll.Node):
     @staticmethod
     def intersect_all(*objs: "is_literal") -> "is_literal": ...
 
+    def equals(self, other) -> bool:
+        # TODO
+        pass
+
+    def is_single_element(self) -> bool:
+        # TODO
+        pass
+
+    def is_empty(self) -> bool:
+        # TODO
+        pass
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str

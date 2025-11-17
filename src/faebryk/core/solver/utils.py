@@ -156,6 +156,11 @@ class MutatorUtils:
     def __init__(self, mutator: "Mutator"):
         self.mutator = mutator
 
+
+    def make_number_literal_from_range(self, lower: float, upper: float) -> F.Literals.Numbers:
+        return F.Literals.Numbers.bind_typegraph(self.mutator.tg).create_instance(self.mutator.G_in).setup_from_interval(lower=lower, upper=upper)
+
+
     # TODO should be part of mutator
     def try_extract_literal(
         self,
@@ -487,7 +492,7 @@ class MutatorUtils:
 
     def alias_is_literal_and_check_predicate_eval(
         self,
-        expr: F.Parameters.is_parameter_operatable,
+        expr: F.Expressions.is_expression,
         value: F.Literals.Booleans,
     ):
         """
@@ -700,7 +705,7 @@ class MutatorUtils:
         return F.Parameters.is_parameter_operatable.is_literal(po)
 
     @staticmethod
-    def is_numeric_literal(po: F.Parameters.is_parameter_operatable) -> TypeGuard[CanonicalNumber]:
+    def is_numeric_literal(po: F.Parameters.can_be_operand) -> F.Literals.Numbers:
         return MutatorUtils.is_literal(po) and isinstance(po, CanonicalNumber)
 
     @staticmethod
