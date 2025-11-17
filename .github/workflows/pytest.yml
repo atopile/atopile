@@ -92,9 +92,22 @@ jobs:
         status = os.getenv("STATUS", "unknown")
         run_url = os.getenv("RUN_URL", "")
 
-        git_sha = os.getenv("GITHUB_SHA")
+        # Prefer the actual head sha for the PR (or push) instead of the merge commit.
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        event = {}
+        if event_path and os.path.exists(event_path):
+            import json
+
+            with open(event_path, "r", encoding="utf-8") as f:
+                event = json.load(f)
+
+        pr = event.get("pull_request") or {}
+        head_sha = (pr.get("head") or {}).get("sha") or event.get("after") or os.getenv("GITHUB_SHA")
+
         commit_time = commit_author = commit_message = "unknown"
-        if git_sha:
+        if head_sha:
+            # Make sure the commit exists locally (PR workflows often check out a merge commit).
+            subprocess.run(["git", "-C", ".", "fetch", "--no-tags", "origin", head_sha], check=False)
             try:
                 output = subprocess.check_output(
                     [
@@ -104,7 +117,7 @@ jobs:
                         "show",
                         "-s",
                         "--format=%cI%n%an%n%s",
-                        git_sha,
+                        head_sha,
                     ],
                     text=True,
                     stderr=subprocess.DEVNULL,
@@ -135,17 +148,17 @@ jobs:
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Pytest results</title>
           <style>
-            body {{ font-family: Arial, sans-serif; padding: 24px; max-width: 720px; margin: auto; color: #111827; background: #f8fafc; }}
+            body {{ font-family: Arial, sans-serif; padding: 24px; max-width: 720px; margin: auto; color: #e8ecff; background: #070a23; }}
             h1 {{ margin-bottom: 8px; }}
             .status {{ font-size: 1rem; margin-bottom: 16px; }}
-            .pill {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 600; background: #e5e7eb; }}
-            .bar {{ display: flex; height: 24px; border-radius: 12px; overflow: hidden; background: #e5e7eb; box-shadow: inset 0 1px 2px rgba(0,0,0,0.08); }}
+            .pill {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 600; background: #f95015; color: #070a23; }}
+            .bar {{ display: flex; height: 24px; border-radius: 12px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
             .seg {{ height: 100%; }}
             ul {{ list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }}
-            li {{ background: white; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
-            .label {{ color: #4b5563; }}
-            .count {{ font-weight: 700; float: right; }}
-            .meta a {{ color: #2563eb; text-decoration: none; }}
+            li {{ background: #0f1433; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+            .label {{ color: #cbd3ff; }}
+            .count {{ font-weight: 700; float: right; color: #ffffff; }}
+            .meta a {{ color: #f95015; text-decoration: none; }}
           </style>
         </head>
         <body>
