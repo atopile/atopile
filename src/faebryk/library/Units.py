@@ -160,9 +160,9 @@ class Natural(fabll.Node):
 
 
 class AmpereHour(fabll.Node):
-    _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild("Ah", [(Ampere, 1), (Second, 3600)])
-    )
+    _is_unit = IsUnit.MakeChild(
+        "Ah", [(Ampere, 1), (Second, 3600)]
+    )  # TODO: This exponent should be 1, we need some represenation of multiplying
 
 
 class Decibel(fabll.Node):
@@ -174,7 +174,9 @@ class BitPerSecond(fabll.Node):
 
 
 class Byte(fabll.Node):
-    _is_unit = fabll.Traits.MakeEdge(IsUnit.MakeChild("B", [(Dimensionless, 8)]))
+    _is_unit = IsUnit.MakeChild(
+        "B", [(Dimensionless, 8)]
+    )  # TODO: exponent should be 1, we need some represenation of multiplying
 
 
 class VoltsPerSecond(fabll.Node):
