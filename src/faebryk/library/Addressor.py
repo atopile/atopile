@@ -24,59 +24,73 @@ class Addressor(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def __preinit__(self) -> None:
-        for x in (self.address, self.offset, self.base):
-            x.constrain_ge(0)
-
-        self.offset.constrain_le(1 << self._address_bits)
-
-        self.address.alias_is(self.base + self.offset)
-        # TODO: not implemented yet
-        # self.offset.constrain_cardinality(1)
-
-        for i, line in enumerate(self.address_lines):
-            (self.offset.operation_is_bit_set(i)).if_then_else(
-                lambda line=line: line.set(True),
-                lambda line=line: line.set(False),
-            )
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        for i, line in enumerate(self.address_lines):
-            line.add(
-                F.has_net_name(f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
-            )
-
     @property
     def address_lines(self) -> list[F.ElectricLogic]:
         return [
-            F.ElectricLogic.bind_instance(line.instance) for line in self.address_lines_
+            F.ElectricLogic.bind_instance(line.get().instance)
+            for line in self.address_lines_
         ]
 
     @classmethod
     def MakeChild(cls, address_bits: int) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
+            F.Literals.Numbers.MakeChild_ConstrainToLiteral(
                 [out, cls.address_bits_], address_bits
             )
         )
         for i in range(address_bits):
-            cls.address_lines[i].add_dependant(
+            cls.address_lines_[i].add_dependant(
                 F.has_net_name.MakeChild(
                     name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED
                 )
             )
+        return out
 
     def setup(self, address_bits: int) -> Self:
         self.address_bits_.get().constrain_to_literal(
-            g=self.instance.g(), value=address_bits
+            g=self.instance.g(),
+            value=F.Literals.Numbers.MakeChild(value=address_bits).get(),
         )
         for i, line in enumerate(self.address_lines_):
             fabll.Traits.create_and_add_instance_to(
                 node=line.get(), trait=F.has_net_name
             ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
         return self
+
+    def on_obj_set(self):
+        # set net names for address lines
+        for i, line in enumerate(self.address_lines):
+            fabll.Traits.create_and_add_instance_to(
+                node=line, trait=F.has_net_name
+            ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
+
+        # constrain parameters
+        for x in (self.address, self.offset, self.base):
+            x.get().force_extract_literal().op_greater_or_equal(
+                F.Literals.Numbers.MakeChild(value=0).get()
+            )
+
+        # TODO: ops not implemented yet
+        # self.offset.get().force_extract_literal().op_less_or_equal(
+        #     F.Literals.Numbers.MakeChild(
+        #        value=1 << self.address_bits_.get().force_extract_literal().get_value()
+        #     ).get()
+        # )
+
+        # self.address.get().force_extract_literal().alias_is(self.base + self.offset)
+        # # TODO: not implemented yet
+        # # self.offset.constrain_cardinality(1)
+
+        # for i, line in enumerate(self.address_lines):
+        #     (
+        #         self.offset.get()
+        #         .force_extract_literal()
+        #         .op_is_bit_set(F.Literals.Numbers.MakeChild(value=i).get())
+        #     ).if_then_else(
+        #         lambda line=line: line.set(True),
+        #         lambda line=line: line.set(False),
+        #     )
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
