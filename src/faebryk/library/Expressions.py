@@ -104,6 +104,8 @@ OperandSet = F.Collections.AbstractSet(
 
 
 class is_expression(fabll.Node):
+    from faebryk.library import Literals
+
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @dataclass(frozen=True)
@@ -166,8 +168,6 @@ class is_expression(fabll.Node):
         }
 
     def get_operand_literals(self) -> dict[int, "Literals.is_literal"]:
-        from faebryk.library import Literals
-
         return {
             i: t
             for i, op in enumerate(self.get_operands())
