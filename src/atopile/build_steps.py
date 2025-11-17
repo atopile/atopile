@@ -60,7 +60,6 @@ from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import (
     DAG,
-    KeyErrorAmbiguous,
     md_table,
 )
 
@@ -236,7 +235,7 @@ def post_design_checks(
 def load_pcb(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    pcb.load()
+    pcb.setup()
     if config.build.keep_designators:
         load_designators(pcb.get_graph(), attach=True)
 

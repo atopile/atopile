@@ -543,7 +543,7 @@ class PartLifecycle:
             # All modules MUST have a designator by this point
             ref = component.get_trait(F.has_designator).get_designator()
 
-            pcb_fp_t = f_fp.try_get_trait(PCB_Transformer.has_linked_kicad_footprint)
+            pcb_fp_t = f_fp.try_get_trait(F.PCBTransformer.has_linked_kicad_footprint)
             new_fp = pcb_fp_t is None
 
             ## Update existing footprint
@@ -572,7 +572,7 @@ class PartLifecycle:
                 # Components and footprints MUST have the same linking by this point
                 # This should be enforced through attach, and bind_footprint
                 assert not component.has_trait(
-                    PCB_Transformer.has_linked_kicad_footprint
+                    F.PCBTransformer.has_linked_kicad_footprint
                 )
 
                 logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")

@@ -16,7 +16,6 @@ from typing import (
     Mapping,
     Optional,
     Protocol,
-    Self,
     Sequence,
     TypeVar,
 )
@@ -167,62 +166,6 @@ def get_all_geos(obj: KiCadPCB | KiCadFootprint) -> list[Geom]:
 
 
 class PCB_Transformer:
-    class has_linked_kicad_footprint(fabll.Node):
-        """
-        Link applied to:
-        - Modules which are represented in the PCB
-        - F.Footprint which are represented in the PCB
-        """
-
-        fp: KiCadFootprint
-        transformer: "PCB_Transformer"
-
-        def setup(self, fp: KiCadFootprint, transformer: "PCB_Transformer") -> Self:
-            self.fp = fp
-            self.transformer = transformer
-            return self
-
-        def get_fp(self) -> KiCadFootprint:
-            return self.fp
-
-        def get_transformer(self):
-            return self.transformer
-
-    class has_linked_kicad_pad(fabll.Node):
-        def __init__(
-            self,
-            fp: KiCadFootprint,
-            pad: list[KiCadPad],
-            transformer: "PCB_Transformer",
-        ) -> None:
-            super().__init__()
-            self.fp = fp
-            self.pad = pad
-            self.transformer = transformer
-
-        def get_pad(self):
-            return self.fp, self.pad
-
-        def get_transformer(self):
-            return self.transformer
-
-    class has_linked_kicad_net(fabll.Node):
-        def __init__(self, net: KiCadNet, transformer: "PCB_Transformer") -> None:
-            super().__init__()
-            self.net = net
-            self.transformer = transformer
-
-        def get_net(self):
-            return self.net
-
-        def get_transformer(self):
-            return self.transformer
-
-        def setup(self, net: KiCadNet, transformer: "PCB_Transformer") -> Self:
-            self.net = net
-            self.transformer = transformer
-            return self
-
     def __init__(self, pcb: KiCadPCB, graph: graph.GraphView, app: fabll.Node) -> None:
         self.pcb = pcb
         self.app = app
@@ -260,7 +203,7 @@ class PCB_Transformer:
                 self.bind_footprint(fp, node)
             else:
                 _ = fabll.Traits.create_and_add_instance_to(
-                    node=node, trait=PCB_Transformer.has_linked_kicad_footprint
+                    node=node, trait=F.PCBTransformer.has_linked_kicad_footprint
                 ).setup(fp, self)
 
             fp_props = {
@@ -294,7 +237,7 @@ class PCB_Transformer:
             for node, trait in fabll.Node.bind_typegraph(self.g).nodes_with_trait(
                 F.has_footprint
             )
-            if not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
+            if not node.has_trait(F.PCBTransformer.has_linked_kicad_footprint)
         }
         if unattached_nodes:
             raise UserException(
@@ -339,13 +282,13 @@ class PCB_Transformer:
         import faebryk.library._F as F
 
         fabll.Traits.create_and_add_instance_to(
-            node=module, trait=PCB_Transformer.has_linked_kicad_footprint
+            node=module, trait=F.PCBTransformer.has_linked_kicad_footprint
         ).setup(pcb_fp, self)
 
         # By now, the node being bound MUST have a footprint
         g_fp = module.get_trait(F.has_footprint).get_footprint()
         fabll.Traits.create_and_add_instance_to(
-            node=g_fp, trait=PCB_Transformer.has_linked_kicad_footprint
+            node=g_fp, trait=F.PCBTransformer.has_linked_kicad_footprint
         ).setup(pcb_fp, self)
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
@@ -403,7 +346,7 @@ class PCB_Transformer:
 
             for ato_pad, ato_fp in net.get_connected_pads().items():
                 if pcb_pad_t := ato_pad.try_get_trait(
-                    PCB_Transformer.has_linked_kicad_pad
+                    F.PCBTransformer.has_linked_kicad_pad
                 ):
                     # In the (strange) case something's handeled by another transformer,
                     # we skip it without counting it towards the total pads.
@@ -449,7 +392,7 @@ class PCB_Transformer:
 
     def bind_net(self, pcb_net: KiCadNet, net: "F.Net"):
         fabll.Traits.create_and_add_instance_to(
-            node=net, trait=PCB_Transformer.has_linked_kicad_net
+            node=net, trait=F.PCBTransformer.has_linked_kicad_net
         ).setup(pcb_net, self)
 
     @staticmethod
@@ -469,13 +412,13 @@ class PCB_Transformer:
     # Getter ---------------------------------------------------------------------------
     @staticmethod
     def get_fp(cmp: fabll.Node) -> KiCadFootprint:
-        return cmp.get_trait(PCB_Transformer.has_linked_kicad_footprint).get_fp()
+        return cmp.get_trait(F.PCBTransformer.has_linked_kicad_footprint).get_fp()
 
     def get_all_footprints(self) -> List[tuple[fabll.Module, KiCadFootprint]]:
         return [
             (cast_assert(fabll.Module, cmp), t.get_fp())
             for cmp, t in fabll.Node.bind_typegraph(self.g).nodes_with_trait(
-                PCB_Transformer.has_linked_kicad_footprint
+                F.PCBTransformer.has_linked_kicad_footprint
             )
         ]
 
@@ -727,7 +670,7 @@ class PCB_Transformer:
 
     @staticmethod
     def get_fpad_pos(fpad: "F.Pad"):
-        fp, pad = fpad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
+        fp, pad = fpad.get_trait(F.PCBTransformer.has_linked_kicad_pad).get_pad()
         if len(pad) > 1:
             raise NotImplementedError(
                 f"Multiple same pads is not implemented: {fpad} {pad}"
@@ -737,7 +680,7 @@ class PCB_Transformer:
         point3d = abs_pos(fp.at, pad.at)
 
         transformer = fpad.get_trait(
-            PCB_Transformer.has_linked_kicad_pad
+            F.PCBTransformer.has_linked_kicad_pad
         ).get_transformer()
 
         layers = transformer.get_copper_layers_pad(pad)

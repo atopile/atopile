@@ -11,7 +11,6 @@ from natsort import natsorted
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
 from faebryk.libs.util import duplicates, groupby, md_list
@@ -90,14 +89,14 @@ def load_designators(
     def _get_reference(fp: kicad.pcb.Footprint):
         return Property.try_get_property(fp.propertys, "Reference")
 
-    def _get_pcb_designator(fp_trait: PCB_Transformer.has_linked_kicad_footprint):
+    def _get_pcb_designator(fp_trait: F.PCBTransformer.has_linked_kicad_footprint):
         fp = fp_trait.get_fp()
         if not fp.name:
             return None
         return _get_reference(fp)
 
     nodes = fabll.Node.bind_typegraph(graph).nodes_with_trait(
-        PCB_Transformer.has_linked_kicad_footprint
+        F.PCBTransformer.has_linked_kicad_footprint
     )
 
     known_designators = {
