@@ -13,7 +13,6 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.cpp import Graph
 from faebryk.core.node import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.core.parameter import (
     Abs,
@@ -72,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 def _create_letters(
     n: int, units=dimensionless
-) -> tuple[F.Parameters.ReprContext, list[Parameter], Graph]:
+) -> tuple[F.Parameters.ReprContext, list[Parameter], fabll.Graph]:
     context = F.Parameters.ReprContext()
 
     out = []

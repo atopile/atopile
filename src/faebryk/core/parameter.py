@@ -26,23 +26,23 @@ from faebryk.core.core import Namespace
 # or appropriate interface wrapper from faebryk.core.zig.gen.*).
 from faebryk.core.node import Traits
 from faebryk.library.Expressions import is_commutative
-from faebryk.libs.sets.numeric_sets import NumberLike
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-    Quantity_Set,
-    Quantity_Set_Discrete,
-    QuantityLikeR,
-)
-from faebryk.libs.units import (
-    HasUnit,
-    Quantity,
-    Unit,
-    UnitCompatibilityError,
-    assert_compatible_units,
-    dimensionless,
-    quantity,
-)
+# from faebryk.libs.sets.numeric_sets import NumberLike
+# from faebryk.libs.sets.quantity_sets import (
+#     Quantity_Interval,
+#     Quantity_Interval_Disjoint,
+#     Quantity_Set,
+#     Quantity_Set_Discrete,
+#     QuantityLikeR,
+# )
+# from faebryk.libs.units import (
+#     HasUnit,
+#     Quantity,
+#     Unit,
+#     UnitCompatibilityError,
+#     assert_compatible_units,
+#     dimensionless,
+#     quantity,
+# )
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
     KeyErrorNotFound,
