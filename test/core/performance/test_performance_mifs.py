@@ -8,14 +8,8 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.graph import InstanceGraphFunctions
-from faebryk.core.graphinterface import GraphInterface
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
-from test.common.resources.fabll_modules.USB2514B import USB2514B
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +39,7 @@ def ensure_typegraph(node: fabll.Node) -> None:
 @pytest.mark.parametrize(
     "mif_type",
     [
-        GraphInterface,
-        fabll.ModuleInterface,
+        fabll.Node,
         F.Electrical,
         F.ElectricPower,
         F.ElectricLogic,
@@ -79,8 +72,7 @@ def test_performance_mifs_connect_check(mif_type):
 @pytest.mark.parametrize(
     "mif_type",
     [
-        GraphInterface,
-        fabll.ModuleInterface,
+        fabll.Node,
         F.Electrical,
         F.ElectricPower,
         F.ElectricLogic,

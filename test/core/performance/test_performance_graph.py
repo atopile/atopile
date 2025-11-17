@@ -8,7 +8,6 @@ import pytest
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graphinterface import GraphInterface
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 
@@ -103,10 +102,10 @@ def test_performance_graph_merge_rec():
     count = 2**14
     logger.info(f"Count: {count}")
 
-    gs = times(count, GraphInterface)
+    gs = times(count, fabll.Node)
     timings.add("instance")
 
-    def rec_connect(gs_sub: list[GraphInterface]):
+    def rec_connect(gs_sub: list[fabll.Node]):
         if len(gs_sub) == 1:
             return gs_sub[0]
 
@@ -136,7 +135,7 @@ def test_performance_graph_merge_it():
     count = 2**14
     logger.info(f"Count: {count}")
 
-    gs = times(count, GraphInterface)
+    gs = times(count, fabll.Node)
     timings.add("instance")
 
     for gl, gr in pairwise(gs):
