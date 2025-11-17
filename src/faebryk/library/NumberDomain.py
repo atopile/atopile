@@ -4,7 +4,7 @@
 from typing import TYPE_CHECKING, Any, Self
 
 import faebryk.core.node as fabll
-from faebryk.library.Literals import Booleans, Numbers
+from faebryk.library import Literals
 from faebryk.library.Parameters import BooleanParameter
 
 if TYPE_CHECKING:
