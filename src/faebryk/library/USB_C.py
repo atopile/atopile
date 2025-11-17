@@ -6,9 +6,6 @@ import faebryk.library._F as F
 
 
 class USB_C(fabll.Node):
-    # ----------------------------------------
-    #     modules, interfaces, parameters
-    # ----------------------------------------
     usb3 = F.USB3.MakeChild()
     cc1 = F.Electrical.MakeChild()
     cc2 = F.Electrical.MakeChild()
@@ -16,6 +13,8 @@ class USB_C(fabll.Node):
     sbu2 = F.Electrical.MakeChild()
     rx = F.DifferentialPair.MakeChild()
     tx = F.DifferentialPair.MakeChild()
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     # self.cc1.add(F.has_net_name("CC1", level=F.has_net_name.Level.SUGGESTED))
     # self.cc2.add(F.has_net_name("CC2", level=F.has_net_name.Level.SUGGESTED))

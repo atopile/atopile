@@ -3,6 +3,7 @@
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -50,7 +51,6 @@ def test_symbol_types(name: str, module: fabll.Node):
             not name.startswith("_")
             and isinstance(module, type)
             and issubclass(module, fabll.Node)
-            and not issubclass(module, fabll.ImplementsTrait)
         )
     ],
 )
@@ -62,8 +62,16 @@ def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
     - Do not have a MakeChild or setup method (and thus don't require
       arguments for instantiation)
     """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
     try:
-        _ = module.MakeChild()
+        instance = module.bind_typegraph(tg=tg).create_instance(g=g)
+        assert (
+            instance.try_get_trait(fabll.is_module)
+            or instance.try_get_trait(fabll.ImplementsTrait)
+            or instance.try_get_trait(fabll.is_interface)
+        )
+
     except TypeError:
         pytest.xfail(f"{module.__name__} needs arguments to be instantiated")
     except Exception as e:

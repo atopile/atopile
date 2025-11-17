@@ -27,7 +27,7 @@ class is_parameter_operatable(fabll.Node):
 
         class E_Ctx:
             lit: T | None = None
-            node = fabll.Traits(self).get_obj_raw()
+            node = self.as_operand()
             Lit = lit_type.bind_typegraph(tg=self.tg)
             LitT = lit_type
 
@@ -45,11 +45,15 @@ class is_parameter_operatable(fabll.Node):
 
             # for each of those check if they have a literal operand
             def visit(ctx: Ctx, edge: graph.BoundEdge) -> None:
-                operand = fabll.Node.bind_instance(
+                can_be_operand = fabll.Node.bind_instance(
                     edge.g().bind(node=edge.edge().target())
                 )
-                if e_ctx.Lit.isinstance(instance=operand):
-                    ctx.lit = e_ctx.LitT.bind_instance(operand.instance)
+                if e_ctx.Lit.isinstance(
+                    instance=fabll.Traits(can_be_operand).get_obj_raw()
+                ):
+                    ctx.lit = e_ctx.LitT.bind_instance(
+                        fabll.Traits(can_be_operand).get_obj_raw().instance
+                    )
 
             ctx = Ctx()
             fbrk.EdgeOperand.visit_operand_edges(
