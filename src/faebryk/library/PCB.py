@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import ctypes
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
@@ -27,8 +28,8 @@ class PCB(fabll.Node):
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     path_ = F.Parameters.StringParameter.MakeChild()
-    pcb_file_ = F.Collections.Pointer.MakeChild()
-    transformer_ = F.Collections.Pointer.MakeChild()
+    pcb_file_ = F.Parameters.StringParameter.MakeChild()
+    transformer_ = F.Parameters.StringParameter.MakeChild()
     app_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
@@ -41,42 +42,46 @@ class PCB(fabll.Node):
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.path_], path)
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.path_], str(path))
         )
         out.add_dependant(
-            F.Collections.Pointer.EdgeField([out, cls.pcb_file_], [pcb_file])
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.pcb_file_], str(id(pcb_file))
+            )
         )
         out.add_dependant(
-            F.Collections.Pointer.EdgeField([out, cls.transformer_], [transformer])
+            F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                [out, cls.transformer_], str(id(transformer))
+            )
         )
-        out.add_dependant(F.Collections.Pointer.EdgeField([out, cls.app_], [app]))
+        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.app_], app))
         return out
 
-    def setup(self) -> Self:
-        pcb = kicad.loads(kicad.pcb.PcbFile, Path(self.path))
-        pcb_file = F.Parameters.Pointer.bind_typegraph_from_instance(
-            instance=self.instance
-        ).create_instance(g=self.instance.g())
-        pcb_file.constrain_to_single(value=pcb)
-        self.pcb_file_.get().point(pcb_file)
-
-        transformer = PCB_Transformer(pcb.kicad_pcb, self.app)
-        tf = F.Parameters.Pointer.bind_typegraph_from_instance(
-            instance=self.instance
-        ).create_instance(g=self.instance.g())
-        tf.constrain_to_single(value=transformer)
-        self.transformer_.get().point(tf)
+    def setup(
+        self,
+        path: Path,
+        pcb_file: kicad.pcb.PcbFile,
+        transformer: "PCB_Transformer",
+        app: fabll.Node,
+    ) -> Self:
+        self.path_.get().constrain_to_single(value=str(path))
+        self.pcb_file_.get().constrain_to_single(value=str(id(pcb_file)))
+        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
+        self.app_.get().point(app)
         return self
 
     @property
     def transformer(self) -> "PCB_Transformer":
-        # TODO
-        return self.transformer_.get()
+        transformer_id = int(
+            self.transformer_.get().force_extract_literal().get_value()
+        )
+
+        return ctypes.cast(transformer_id, ctypes.py_object).value
 
     @property
     def pcb_file(self) -> kicad.pcb.PcbFile:
-        # TODO
-        return self.pcb_file_.get()
+        pcb_file_id = int(self.pcb_file_.get().force_extract_literal().get_value())
+        return ctypes.cast(pcb_file_id, ctypes.py_object).value
 
     @property
     def path(self) -> Path:
@@ -172,7 +177,7 @@ class PCB(fabll.Node):
     class has_pcb(fabll.Node):
         _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
-        pcb_ptr_ = F.Collections.Pointer.MakeChild()
+        pcb_ptr_ = F.Parameters.StringParameter.MakeChild()
 
         class has_pcb_ref(fabll.Node):
             _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
@@ -182,17 +187,20 @@ class PCB(fabll.Node):
         def MakeChild(cls, pcb: "PCB") -> fabll._ChildField[Self]:
             out = fabll._ChildField(cls)
             out.add_dependant(
-                F.Collections.Pointer.EdgeField([out, cls.pcb_ptr_], [pcb])
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [out, cls.pcb_ptr_], str(id(pcb))
+                )
             )
             return out
 
         @property
         def pcbs(self) -> set["PCB"]:
-            return {PCB.bind_instance(self.pcb_ptr_.get().deref().instance)}
+            pcb_id = int(self.pcb_ptr_.get().force_extract_literal().get_value())
+            return {ctypes.cast(pcb_id, ctypes.py_object).value}
 
         def get_pcb_by_path(self, path: Path) -> "PCB":
             return find(self.pcbs, lambda pcb: pcb.path == path)
 
         def setup(self, pcb: "PCB") -> Self:
-            self.pcb_ptr_.get().point(pcb)
+            self.pcb_ptr_.get().constrain_to_single(value=str(id(pcb)))
             return self
