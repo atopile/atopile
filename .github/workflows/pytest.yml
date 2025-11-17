@@ -58,8 +58,10 @@ jobs:
       run: |
         python - <<'PY'
         from pathlib import Path
+        import json
         import os
         import xml.etree.ElementTree as ET
+        from datetime import datetime, timezone
 
         artifacts = Path("artifacts")
         junit = artifacts / "junit.xml"
@@ -89,6 +91,33 @@ jobs:
 
         status = os.getenv("STATUS", "unknown")
         run_url = os.getenv("RUN_URL", "")
+
+        with open(os.environ["GITHUB_EVENT_PATH"], "r", encoding="utf-8") as f:
+            event = json.load(f)
+
+        ts = event.get("head_commit", {}).get("timestamp")
+        pr = event.get("pull_request") or {}
+        commit_message = event.get("head_commit", {}).get("message")
+        commit_author = (event.get("head_commit", {}).get("author") or {}).get("name")
+        if not ts:
+            ts = pr.get("head", {}).get("repo", {}).get("pushed_at") or pr.get("pushed_at")
+        if not ts:
+            ts = event.get("repository", {}).get("pushed_at")
+        if not commit_message and pr:
+            commit_message = pr.get("title")
+        if not commit_author and pr:
+            commit_author = (pr.get("user") or {}).get("login")
+
+        def normalize(value):
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+            return value
+
+        commit_time = normalize(ts) or "unknown"
+        commit_message = (commit_message or "unknown").strip()
+        commit_author = commit_author or "unknown"
 
         def segment_html(label, count, color):
             pct = (count / total) * 100
@@ -128,6 +157,9 @@ jobs:
           <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#e5e7eb"></div>'}</div>
           <ul>{summary_items}</ul>
           <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
+          <div class="meta">Commit pushed at: {commit_time}</div>
+          <div class="meta">Commit message: {commit_message}</div>
+          <div class="meta">Commit author: {commit_author}</div>
         </body>
         </html>
         """
