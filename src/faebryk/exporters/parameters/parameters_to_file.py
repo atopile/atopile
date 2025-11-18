@@ -9,45 +9,44 @@ from typing import Any, Callable, Iterable
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.errors import UserBadParameterError
-from faebryk.core.parameter import Expression, Is, Parameter, Predicate
+from atopile.errors import UserBadParametersError
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: graph.GraphView) -> list[set[Parameter]]:
-    full_eq = EquivalenceClasses[Parameter](
-        fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+def parameter_alias_classes(G: graph.GraphView) -> list[set[F.Parameters.is_parameter]]:
+    full_eq = EquivalenceClasses[F.Parameters.is_parameter](
+        fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
     )
 
     is_exprs = [
-        e for e in fabll.Node.bind_typegraph(G).nodes_of_type(Is) if e.constrained
+        e for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.Is) if e.constrained
     ]
 
     for is_expr in is_exprs:
-        params_ops = [op for op in is_expr.operands if isinstance(op, Parameter)]
+        params_ops = [op for op in is_expr.operands if isinstance(op, F.Parameters.is_parameter)]
         full_eq.add_eq(*params_ops)
 
     return full_eq.get()
 
 
-def get_params_for_expr(expr: Expression) -> set[Parameter]:
-    param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
-    expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
+def get_params_for_expr(expr: F.Expressions.is_expression) -> set[F.Parameters.is_parameter]:
+    param_ops = {op for op in expr.operatable_operands if isinstance(op, F.Parameters.is_parameter)}
+    expr_ops = {op for op in expr.operatable_operands if isinstance(op, F.Expressions.is_expression)}
 
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_dependency_classes(G: graph.GraphView) -> list[set[Parameter]]:
-    related = EquivalenceClasses[Parameter](
-        fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+def parameter_dependency_classes(G: graph.GraphView) -> list[set[F.Parameters.is_parameter]]:
+    related = EquivalenceClasses[F.Parameters.is_parameter](
+        fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
     )
 
     eq_exprs = [
         e
-        for e in fabll.Node.bind_typegraph(G).nodes_of_type(Predicate)
+        for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.IsConstrainable)
         if e.constrained
     ]
 
@@ -59,22 +58,22 @@ def parameter_dependency_classes(G: graph.GraphView) -> list[set[Parameter]]:
 
 
 def parameter_report(G: graph.GraphView, path: Path):
-    params = fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
-    exprs = fabll.Node.bind_typegraph(G).nodes_of_type(Expression)
-    predicates = {e for e in exprs if isinstance(e, Predicate)}
+    params = fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
+    exprs = fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.is_expression)
+    predicates = {e for e in exprs if isinstance(e, F.Expressions.IsConstrainable)}
     exprs.difference_update(predicates)
     alias_classes = parameter_alias_classes(G)
     eq_classes = parameter_dependency_classes(G)
     unused = [
         p
         for p in params
-        if not any(isinstance(e.node, Expression) for e in p.operated_on.edges)
+        if not any(isinstance(e.node, F.Expressions.is_expression) for e in p.operated_on.edges)
     ]
 
-    def non_empty(classes: list[set[Parameter]]):
+    def non_empty(classes: list[set[F.Parameters.is_parameter]]):
         return [c for c in classes if len(c) > 1]
 
-    def bound(classes: list[set[Parameter]]):
+    def bound(classes: list[set[F.Parameters.is_parameter]]):
         return sum(len(c) for c in non_empty(classes))
 
     infostr = (
@@ -109,7 +108,7 @@ def parameter_report(G: graph.GraphView, path: Path):
         out += f"{header}{'-' * 80}\n{ind(out_str)}\n"
 
     block(
-        "Parameters",
+        "F.Parameters.is_parameters",
         lines=sorted([p.get_full_name(types=True) for p in params]),
     )
 
@@ -118,7 +117,7 @@ def parameter_report(G: graph.GraphView, path: Path):
         lines=sorted([p.get_full_name(types=True) for p in unused]),
     )
 
-    def Eq(classes: list[set[Parameter]]):
+    def Eq(classes: list[set[F.Parameters.is_parameter]]):
         stream = ""
         for eq_class in classes:
             if len(eq_class) <= 1:
@@ -175,8 +174,8 @@ def _generate_json_parameters(
 def _generate_md_parameters(
     parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
 ) -> str:
-    out = "# Module Parameters\n"
-    out += "| Module | Parameter | Value |\n"
+    out = "# Module F.Parameters.is_parameters\n"
+    out += "| Module | F.Parameters.is_parameter | Value |\n"
     out += "| --- | --- | --- |\n"
     for module_name, paras in sorted(parameters.items()):
         if paras:
@@ -234,7 +233,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     ):
         module_name = m.get_full_name(types=True)
         module_params = m.get_children(
-            direct_only=True, include_root=True, types=Parameter
+            direct_only=True, include_root=True, types=F.Parameters.is_parameter
         )
         param_names = [param.get_full_name().split(".")[-1] for param in module_params]
         param_values = [
@@ -254,7 +253,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
         case ".json":
             out = _generate_json_parameters(parameters)
         case _:
-            raise UserBadParameterError(
+            raise UserBadExportError(
                 f"Export to file extension [{path.suffix}] not supported in {path}"
             )
 

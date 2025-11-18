@@ -10,16 +10,19 @@ from faebryk.core.graph import InstanceGraphFunctions
 
 
 def test_moduleinterface_get_connected_requires_typegraph():
+    class NodeWithInterface(fabll.Node):
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
     class Harness(fabll.Node):
-        left: fabll.ModuleInterface
-        right: fabll.ModuleInterface
+        left: NodeWithInterface
+        right: NodeWithInterface
 
     app = Harness()
-    app.left.connect(app.right)
+    app.left.get_trait(fabll.is_interface).connect(app.right)
 
     # Before TypeGraph: requires TypeGraph to be built
     with pytest.raises(RuntimeError, match="requires runtime graph access"):
-        app.left.get_connected()
+        app.left.get_trait(fabll.is_interface).get_connected()
 
     typegraph, _ = app.create_typegraph()
 

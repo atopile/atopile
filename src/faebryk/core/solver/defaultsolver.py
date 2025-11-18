@@ -454,8 +454,8 @@ class DefaultSolver(Solver):
         self,
         operatable: F.Parameters,
         lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
+        suppose_constraint: F.Expressions.IsConstrainable | None = None,
+        minimize: F.Expressions.is_expression | None = None,
     ) -> Any:
         # TODO
         if suppose_constraint is not None:

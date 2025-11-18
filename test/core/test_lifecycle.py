@@ -11,8 +11,7 @@ class _Bare(fabll.Node):
 
 
 class _Harness(fabll.Node):
-    iface: fabll.ModuleInterface
-
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
 def test_lifecycle_transitions_and_guards():
     collection_root = _Bare()
