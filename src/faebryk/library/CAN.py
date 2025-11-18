@@ -29,12 +29,14 @@ class CAN(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # self.diff_pair.p.line.add(
-    #     F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # self.diff_pair.n.line.add(
-    #     F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
-    # )
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.diff_pair.get().p.get(), trait=F.has_net_name
+        ).setup(name="CAN_H", level=F.has_net_name.Level.SUGGESTED)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=self.diff_pair.get().n.get(), trait=F.has_net_name
+        ).setup(name="CAN_L", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

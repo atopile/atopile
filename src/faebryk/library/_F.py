@@ -93,7 +93,6 @@ from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
-from faebryk.library.Ethernet import Ethernet
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
@@ -108,6 +107,7 @@ from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
 from faebryk.library.I2C import I2C
 from faebryk.library.CAN import CAN
+from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
@@ -197,7 +197,6 @@ __all__ = [
     "SPI",
     "SWD",
     "UART_Base",
-    "Ethernet",
     "requires_pulls",
     "MultiCapacitor",
     "FilterElectricalLC",
@@ -212,6 +211,7 @@ __all__ = [
     "UART",
     "I2C",
     "CAN",
+    "Ethernet",
     "OpAmp",
     "RS485HalfDuplex",
     "USB2_0_IF",
