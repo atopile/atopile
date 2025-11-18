@@ -6,7 +6,8 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 # import faebryk.library._F as F
-from faebryk.library import Literals, Collections, Parameters
+import faebryk.library.Collections as Collections
+import faebryk.library.Parameters as Parameters
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
@@ -105,8 +106,6 @@ OperandSet = Collections.AbstractSet(
 
 
 class is_expression(fabll.Node):
-    from faebryk.library import Literals
-
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @dataclass(frozen=True)
@@ -169,6 +168,8 @@ class is_expression(fabll.Node):
         }
 
     def get_operand_literals(self) -> dict[int, "Literals.is_literal"]:
+        from faebryk.library import Literals
+
         return {
             i: t
             for i, op in enumerate(self.get_operands())
@@ -224,6 +225,8 @@ class is_expression(fabll.Node):
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
+        from faebryk.library import Literals
+
         # TODO
         raise NotImplementedError
 

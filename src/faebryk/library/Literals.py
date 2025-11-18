@@ -1,10 +1,14 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.library import Expressions, Parameters, Units
+import faebryk.library.Expressions as Expressions
+import faebryk.library.Parameters as Parameters
+
+if TYPE_CHECKING:
+    from faebryk.library import Units
 
 
 class is_literal(fabll.Node):
@@ -85,7 +89,7 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: "type[fabll.NodeT] | Units.IsUnit | None" = None,
+        unit: type[fabll.NodeT] | "Units.IsUnit" | None = None,
     ) -> Self:
         # TODO
         return self
@@ -109,8 +113,12 @@ class Numbers(fabll.Node):
                 self,
                 lower: float | None,
                 upper: float | None,
-                unit: type[fabll.NodeT] = Units.Dimensionless,
+                unit: type[fabll.NodeT] | None = None,
             ) -> Self:
+                if unit is None:
+                    from faebryk.library import Units
+
+                    unit = Units.Dimensionless
                 return (
                     cls.bind_typegraph(tg=tg)
                     .create_instance(g=g)
