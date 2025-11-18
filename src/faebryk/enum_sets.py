@@ -84,7 +84,8 @@ def EnumsFactory(enum_type: type[Enum]) -> type[EnumsProtocol]:
     return cast(type[EnumsProtocol], ConcreteEnums)
 
 
-def test_enums_basic():
+# pytest /Users/narayanpowderly/projects/atopile/src/faebryk/enum_sets.py::test_enums
+def test_enums():
     from faebryk.core.node import _make_graph_and_typegraph
 
     g, tg = _make_graph_and_typegraph()
@@ -97,5 +98,15 @@ def test_enums_basic():
     EnumT = EnumsFactory(MyEnum)
 
     my_enum_set = EnumT.create_instance(tg=tg, g=g).setup(MyEnum.A, MyEnum.D)
-    for e_val in my_enum_set.get_elements():
-        print(e_val.get_name(), e_val.get_value())
+    elements = my_enum_set.get_elements()
+    assert len(elements) == 2
+    assert elements[0].get_name() == "A"
+    element_0_value = (
+        elements[0].get_value().instance.node().get_dynamic_attrs()["value"]
+    )
+    assert element_0_value == MyEnum.A.value
+    assert elements[1].get_name() == "D"
+    element_1_value = (
+        elements[1].get_value().instance.node().get_dynamic_attrs()["value"]
+    )
+    assert element_1_value == MyEnum.D.value
