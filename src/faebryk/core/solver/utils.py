@@ -197,9 +197,7 @@ class MutatorUtils:
     ) -> tuple[F.Literals.is_literal, F.Expressions.Is | F.Expressions.IsSubset] | None:
         aliases = self.get_aliases(po)
         alias_lits = [
-            (k_lit, v)
-            for k, v in aliases.items()
-            if (k_lit := self.is_literal(k.as_operand()))
+            (k_lit, v) for k, v in aliases.items() if (k_lit := self.is_literal(k))
         ]
         if alias_lits:
             unique_lits = unique(alias_lits, lambda x: x[0])
@@ -912,27 +910,21 @@ class MutatorUtils:
     def get_lit_mapping_from_lit_expr(
         expr: F.Expressions.Is | F.Expressions.IsSubset,
     ) -> tuple[F.Parameters.is_parameter_operatable, F.Literals.is_literal]:
-        assert MutatorUtils.is_alias_is_literal(expr) or MutatorUtils.is_subset_literal(
-            expr
+        e = expr.get_trait(F.Expressions.is_expression)
+        e_po = e.as_parameter_operatable()
+        assert MutatorUtils.is_alias_is_literal(e) or MutatorUtils.is_subset_literal(
+            e_po
         )
-        return next(iter(expr.operatable_operands)), next(
-            iter(expr.get_operand_literals().values())
+        return next(iter(e.get_operand_operatables())), next(
+            iter(e.get_operand_literals().values())
         )
 
     @staticmethod
     def get_params_for_expr(
         expr: F.Expressions.is_expression,
     ) -> set[F.Parameters.is_parameter]:
-        param_ops = {
-            op
-            for op in expr.operatable_operands
-            if F.Expressions.isinstance_node(op, fabll.Parameter)
-        }
-        expr_ops = {
-            op
-            for op in expr.operatable_operands
-            if F.Expressions.is_expression_node(op)
-        }
+        param_ops = expr.get_operands_with_trait(F.Parameters.is_parameter)
+        expr_ops = expr.get_operands_with_trait(F.Expressions.is_expression)
 
         return param_ops | {
             op for e in expr_ops for op in MutatorUtils.get_params_for_expr(e)
@@ -945,16 +937,26 @@ class MutatorUtils:
         type_filter: type[T] = fabll.Node,
         include_root: bool = False,
         up_only: bool = True,
+        require_trait: type[fabll.NodeT] | None = None,
     ) -> set[T]:
         dependants = p.get_operations(recursive=True)
-        if F.Expressions.is_expression_node(p):
+        if e := p.try_get_sibling_trait(F.Expressions.is_expression):
             if include_root:
                 dependants.add(p)
 
             if not up_only:
-                dependants.update(p.get_operand_expressions(recursive=True))
+                dependants.update(
+                    e.get_operands_with_trait(
+                        F.Expressions.is_expression, recursive=True
+                    )
+                )
 
-        res = {p for p in dependants if F.Expressions.isinstance_node(p, type_filter)}
+        res = {
+            t
+            for p in dependants
+            if (t := p.try_cast(type_filter))
+            and (not require_trait or p.has_trait(require_trait))
+        }
         return res
 
     @staticmethod
@@ -962,12 +964,9 @@ class MutatorUtils:
         p: F.Parameters.is_parameter_operatable,
         type_filter: type[T] = fabll.Node,
     ) -> set[T]:
-        res = {
-            p
-            for p in MutatorUtils.get_expressions_involved_in(p, type_filter)
-            if MutatorUtils.is_constrained(p)
-        }
-        return res
+        return MutatorUtils.get_expressions_involved_in(
+            p, type_filter, require_trait=F.Expressions.IsConstrained
+        )
 
     @staticmethod
     def get_correlations(
@@ -981,21 +980,24 @@ class MutatorUtils:
 
         exclude.add(expr)
         excluded = {
-            e
-            for e in exclude
-            if F.Expressions.is_constrainable_node(e) and e.constrained
+            e for e in exclude if e.try_get_sibling_trait(F.Expressions.IsConstrained)
         }
         excluded.update(
-            MutatorUtils.get_constrained_expressions_involved_in(expr, F.Expressions.Is)
+            is_.get_trait(F.Expressions.is_expression)
+            for is_ in MutatorUtils.get_constrained_expressions_involved_in(
+                expr.as_parameter_operatable(), F.Expressions.Is
+            )
         )
 
-        operables = [o for o in expr.operands if fabll.isparameteroperable(o)]
+        operables = [
+            o_po for o in expr.get_operands() if (o_po := o.is_parameter_operatable())
+        ]
         op_set = set(operables)
 
         def _get(e: F.Parameters.is_parameter_operatable):
             vs = {e}
-            if F.Expressions.is_expression_node(e):
-                vs = e.get_operand_leaves_operatable()
+            if e_expr := e.try_get_sibling_trait(F.Expressions.is_expression):
+                vs = e_expr.get_operand_leaves_operatable()
             return {
                 o
                 for v in vs
@@ -1017,15 +1019,15 @@ class MutatorUtils:
     def find_unique_params(
         po: F.Parameters.can_be_operand,
     ) -> set[F.Parameters.is_parameter_operatable]:
-        match po:
-            case Parameter():
-                return {po}
-            case Expression():
-                return {
-                    p for op in po.operands for p in MutatorUtils.find_unique_params(op)
-                }
-            case _:
-                return set()
+        if po.try_get_sibling_trait(F.Parameters.is_parameter):
+            return {po.as_parameter_operatable()}
+        if po_expr := po.try_get_sibling_trait(F.Expressions.is_expression):
+            return {
+                p
+                for op in po_expr.get_operands()
+                for p in MutatorUtils.find_unique_params(op)
+            }
+        return set()
 
     @staticmethod
     def count_param_occurrences(
@@ -1033,16 +1035,14 @@ class MutatorUtils:
     ) -> dict[F.Parameters.is_parameter, int]:
         counts: dict[F.Parameters.is_parameter, int] = defaultdict(int)
 
-        match po:
-            case Parameter():
-                counts[po] += 1
-            case Expression():
-                for op in po.operands:
-                    for param, count in MutatorUtils.count_param_occurrences(
-                        op
-                    ).items():
-                        counts[param] += count
-
+        if p := po.try_get_sibling_trait(F.Parameters.is_parameter):
+            counts[p] += 1
+        if po_expr := po.try_get_sibling_trait(F.Expressions.is_expression):
+            for op in po_expr.get_operands():
+                if not (op_po := op.is_parameter_operatable()):
+                    continue
+                for param, count in MutatorUtils.count_param_occurrences(op_po).items():
+                    counts[param] += count
         return counts
 
     @staticmethod
@@ -1058,9 +1058,13 @@ class MutatorUtils:
         ss = [
             e
             for e in op.get_operations(F.Expressions.IsSubset, constrained_only=True)
-            if e.operands[0] is op
+            if e.get_trait(F.Expressions.is_expression)
+            .get_operands()[0]
+            .is_same(op.as_operand())
         ]
-        return groupby(ss, key=lambda e: e.operands[1])
+        return groupby(
+            ss, key=lambda e: e.get_trait(F.Expressions.is_expression).get_operands()[1]
+        )
 
     @staticmethod
     def get_aliases(
@@ -1071,45 +1075,95 @@ class MutatorUtils:
             for e in op.get_operations(F.Expressions.Is, constrained_only=True)
         }
 
-    @staticmethod
     def merge_parameters(
+        self,
         params: Iterable[F.Parameters.is_parameter],
     ) -> F.Parameters.is_parameter:
         params = list(params)
+        if not params:
+            raise ValueError("No parameters provided")
 
-        domain = Domain.get_shared_domain(*(p.domain for p in params))
-        # intersect ranges
+        likely_constrained = any(p.get_likely_constrained() for p in params)
 
-        # heuristic:
-        # intersect soft sets
-        soft_sets = {p.soft_set for p in params if p.soft_set is not None}
-        soft_set = None
-        if soft_sets:
-            soft_set = Quantity_Interval_Disjoint.op_intersect_intervals(*soft_sets)
+        p_type_repr = fabll.Traits(params[0]).get_obj_raw()
 
-        # heuristic:
-        # get median
-        guesses = {p.guess for p in params if p.guess is not None}
-        guess = None
-        if guesses:
-            guess = median(guesses)  # type: ignore
+        if p_type_repr.isinstance(F.Parameters.NumericParameter):
+            numberdomains = [
+                np.get_domain()
+                for p in params
+                if (
+                    np := fabll.Traits(p)
+                    .get_obj_raw()
+                    .try_cast(F.Parameters.NumericParameter)
+                )
+            ]
+            domain = F.NumberDomain.get_shared_domain(*numberdomains)
+            nps = [
+                fabll.Traits(p).get_obj(F.Parameters.NumericParameter) for p in params
+            ]
+            # intersect ranges
 
-        # heuristic:
-        # max tolerance guess
-        tolerance_guesses = {
-            p.tolerance_guess for p in params if p.tolerance_guess is not None
-        }
-        tolerance_guess = None
-        if tolerance_guesses:
-            tolerance_guess = max(tolerance_guesses)
+            # heuristic:
+            # intersect soft sets
+            soft_sets = {ss for p in nps if (ss := p.get_soft_set()) is not None}
+            soft_set = None
+            if soft_sets:
+                soft_set = F.Literals.Numbers.op_intersect_intervals(*soft_sets)
 
-        likely_constrained = any(p.likely_constrained for p in params)
+            # heuristic:
+            # get median
+            guesses = {guess for np in nps if (guess := np.get_guess()) is not None}
+            guess = None
+            if guesses:
+                guess = median(guesses)  # type: ignore
 
-        return Parameter(
-            domain=domain,
-            # In stage-0 removed: within, units
-            soft_set=soft_set,
-            guess=guess,
-            tolerance_guess=tolerance_guess,
-            likely_constrained=likely_constrained,
-        )
+            # heuristic:
+            # max tolerance guess
+            tolerance_guesses = {
+                tolerance_guess
+                for np in nps
+                if (tolerance_guess := np.get_tolerance_guess()) is not None
+            }
+            tolerance_guess = None
+            if tolerance_guesses:
+                tolerance_guess = max(tolerance_guesses)
+
+            new = (
+                F.Parameters.NumericParameter.bind_typegraph(self.mutator.tg)
+                .create_instance(self.mutator.G_out)
+                .setup(
+                    # In canonicalization removed: within, units
+                    domain=domain,
+                    likely_constrained=likely_constrained,
+                    soft_set=soft_set,
+                    guess=guess,
+                    tolerance_guess=tolerance_guess,
+                )
+            )
+            return new.get_trait(F.Parameters.is_parameter)
+        elif p_type_repr.isinstance(F.Parameters.BooleanParameter):
+            new = (
+                F.Parameters.BooleanParameter.bind_typegraph(self.mutator.tg)
+                .create_instance(self.mutator.G_out)
+                .setup()
+            )
+            return new.get_trait(F.Parameters.is_parameter)
+        elif p_type_repr.isinstance(F.Parameters.StringParameter):
+            new = (
+                F.Parameters.StringParameter.bind_typegraph(self.mutator.tg)
+                .create_instance(self.mutator.G_out)
+                .setup()
+            )
+            return new.get_trait(F.Parameters.is_parameter)
+        elif p_type_repr.isinstance(F.Parameters.EnumParameter):
+            enum = F.Parameters.EnumParameter.check_single_single_enum(
+                [fabll.Traits(p).get_obj(F.Parameters.EnumParameter) for p in params]
+            )
+            new = (
+                F.Parameters.EnumParameter.bind_typegraph(self.mutator.tg)
+                .create_instance(self.mutator.G_out)
+                .setup(enum=enum)
+            )
+            return new.get_trait(F.Parameters.is_parameter)
+        else:
+            raise TypeError(f"Unknown parameter type: {p_type_repr}")

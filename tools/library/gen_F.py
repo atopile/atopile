@@ -20,7 +20,7 @@ OUT = LIBRARY_DIR / "_F.py"
 def topo_sort(modules_out: dict[str, tuple[Path, str]]):
     def find_deps(module_path: Path) -> set[str]:
         f = module_path.read_text(encoding="utf-8")
-        p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
+        p = re.compile(r"[^\"a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
         return set(p.findall(f))
 
     if True:

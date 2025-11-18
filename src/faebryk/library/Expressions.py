@@ -169,7 +169,7 @@ class is_expression(fabll.Node):
             }
             | {
                 inner
-                for t_e in self.get_operands_with_trait(F.Expressions.is_expression)
+                for t_e in self.get_operands_with_trait(is_expression)
                 for inner in t_e.get_operands_with_trait(trait, recursive=recursive)
             }
             if recursive
@@ -182,6 +182,12 @@ class is_expression(fabll.Node):
             for i, op in enumerate(self.get_operands())
             if (t := fabll.Traits(op).try_get_trait_of_obj(Literals.is_literal))
         }
+
+    def get_operand_leaves_operatable(
+        self,
+    ) -> set["F.Parameters.is_parameter_operatable"]:
+        # TODO
+        raise NotImplementedError
 
     @staticmethod
     def get_all_expressions_involved_in(

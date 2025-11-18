@@ -10,10 +10,7 @@ import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import (
-    Contradiction,
-    ContradictionByLiteral
-)
+from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.util import (
     EquivalenceClasses,
     groupby,
@@ -344,12 +341,7 @@ def resolve_alias_classes(mutator: Mutator):
                 representative = mutator.register_created_parameter(
                     F.Parameters.NumericParameter.bind_typegraph(mutator.tg)
                     .create_instance(g=mutator.G_out)
-                    .setup(
-                        domain=domain,
-                        units=F.Units.Dimensionless.bind_typegraph(mutator.tg)
-                        .create_instance(mutator.G_out)
-                        .get_trait(F.Units.IsUnit),
-                    )
+                    .setup(domain=domain)
                     .get_trait(F.Parameters.is_parameter),
                     from_ops=list(eq_class),
                 ).as_parameter_operatable()
@@ -635,7 +627,9 @@ def isolate_lone_params(mutator: Mutator):
                     Multiply,
                     op_without_param,
                     op_or_create_expr(
-                        Power, op_or_create_expr(Multiply, *moved_ops), mutator.make_lit(-1)
+                        Power,
+                        op_or_create_expr(Multiply, *moved_ops),
+                        mutator.make_lit(-1),
                     ),
                 ),
             )

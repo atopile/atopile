@@ -11,7 +11,10 @@ import faebryk.library._F as F
 from faebryk.libs.util import not_none
 
 if TYPE_CHECKING:
-    from faebryk.library import Expressions, Literals, NumberDomain, Units
+    import faebryk.library.Expressions as Expressions
+    import faebryk.library.Literals as Literals
+    import faebryk.library.Units as Units
+    from faebryk.library.NumberDomain import NumberDomain
 
 
 class is_parameter_operatable(fabll.Node):
@@ -310,6 +313,13 @@ class EnumParameter(fabll.Node):
         # TODO
         pass
 
+    @staticmethod
+    def check_single_single_enum(params: list["EnumParameter"]) -> type[Enum]:
+        enums = {p.get_enum() for p in params}
+        if len(enums) != 1:
+            raise ValueError("Multiple enum types found")
+        return next(iter(enums))
+
 
 class NumericParameter(fabll.Node):
     _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
@@ -325,7 +335,7 @@ class NumericParameter(fabll.Node):
 
         return self.get_trait(HasUnit).get_unit()
 
-    def get_domain(self) -> "F.NumberDomain":
+    def get_domain(self) -> "NumberDomain":
         # TODO
         pass
 
@@ -353,7 +363,7 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        units: "Units.IsUnit",
+        units: "Units.IsUnit | None" = None,
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,

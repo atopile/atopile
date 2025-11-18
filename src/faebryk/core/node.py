@@ -1253,7 +1253,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     __rich_repr__.angular = True
 
-    def __eq__(self, other: object) -> bool:
+    def is_same(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
         match other:
             case Node():
                 other_node = other.instance.node()
@@ -1262,9 +1262,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             case graph.BoundNode():
                 other_node = other.node()
             case _:
-                return False
+                raise TypeError(f"Invalid type: {type(other)}")
 
         return self.instance.node().is_same(other=other_node)
+
+    def __eq__(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
+        return self.is_same(other)
 
     def __hash__(self) -> int:
         return self.instance.node().get_uuid()
