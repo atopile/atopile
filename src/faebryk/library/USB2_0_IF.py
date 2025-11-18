@@ -17,8 +17,10 @@ class USB2_0_IF(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # self.d.p.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
-    # self.d.n.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
-    # self.buspower.hv.add(
-    #     F.has_net_name("USB_VBUS", level=F.has_net_name.Level.SUGGESTED)
-    # )
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.d.get(), trait=F.has_net_name
+        ).setup(name="DATA", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.buspower.get(), trait=F.has_net_name
+        ).setup(name="VBUS", level=F.has_net_name.Level.SUGGESTED)

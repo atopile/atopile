@@ -23,18 +23,19 @@ class SWD(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    # self.clk.line.add(
-    #     F.has_net_name("SWD_CLK", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # self.dio.line.add(
-    #     F.has_net_name("SWD_DIO", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # self.swo.line.add(
-    #     F.has_net_name("SWD_SWO", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # self.reset.line.add(
-    #     F.has_net_name("SWD_RESET", level=F.has_net_name.Level.SUGGESTED)
-    # )
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.clk.get(), trait=F.has_net_name
+        ).setup(name="CLK", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dio.get(), trait=F.has_net_name
+        ).setup(name="DIO", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.swo.get(), trait=F.has_net_name
+        ).setup(name="SWO", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.reset.get(), trait=F.has_net_name
+        ).setup(name="RESET", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

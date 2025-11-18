@@ -14,11 +14,8 @@ class Addressor(fabll.Node):
     offset = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
     base = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
 
-    # def address_lines(self):
-    #     return times(self._address_bits, F.ElectricLogic)
-
     address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
-    address_lines_ = [F.ElectricLogic.MakeChild() for _ in range(4)]
+    address_lines_ = F.Collections.PointerSet.MakeChild()
 
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
@@ -27,8 +24,8 @@ class Addressor(fabll.Node):
     @property
     def address_lines(self) -> list[F.ElectricLogic]:
         return [
-            F.ElectricLogic.bind_instance(line.get().instance)
-            for line in self.address_lines_
+            F.ElectricLogic.bind_instance(line.instance)
+            for line in self.address_lines_.get().as_list()
         ]
 
     @classmethod
@@ -39,18 +36,15 @@ class Addressor(fabll.Node):
                 [out, cls.address_bits_], address_bits
             )
         )
+        for i in range(address_bits):
+            address_line = F.ElectricLogic.MakeChild()
+            out.add_dependant(address_line)
+            out.add_dependant(
+                F.Collections.PointerSet.MakeEdge(
+                    [out, cls.address_lines_], [address_line]
+                )
+            )
         return out
-
-    def setup(self, address_bits: int) -> Self:
-        self.address_bits_.get().constrain_to_literal(
-            g=self.instance.g(),
-            value=F.Literals.Numbers.MakeChild(value=address_bits).get(),
-        )
-        for i, line in enumerate(self.address_lines_):
-            fabll.Traits.create_and_add_instance_to(
-                node=line.get(), trait=F.has_net_name
-            ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
-        return self
 
     def on_obj_set(self):
         # set net names for address lines

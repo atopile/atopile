@@ -27,6 +27,28 @@ class RS232(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tx.get(), trait=F.has_net_name
+        ).setup(name="TX", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rx.get(), trait=F.has_net_name
+        ).setup(name="RX", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dtr.get(), trait=F.has_net_name
+        ).setup(name="DTR", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dcd.get(), trait=F.has_net_name
+        ).setup(name="DCD", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dsr.get(), trait=F.has_net_name
+        ).setup(name="DSR", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.ri.get(), trait=F.has_net_name
+        ).setup(name="RI", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rts.get(), trait=F.has_net_name
+        ).setup(name="RTS", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.cts.get(), trait=F.has_net_name
+        ).setup(name="CTS", level=F.has_net_name.Level.SUGGESTED)

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Self, cast
+from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -69,10 +69,11 @@ class Net(fabll.Node):
         self = self.setup(name=name)
         return self
 
-    def find_nets_for_mif(self, mif: F.Electrical) -> set["Net"]:
+    @staticmethod
+    def find_nets_for_mif(mif: F.Electrical) -> set["Net"]:
         """Return all nets that are connected to this mif"""
         return {
             net
             for net_mif in mif.get_trait(fabll.is_interface).get_connected()
-            if (net := self.setup_from_part_of_mif(mif=cast(F.Electrical, net_mif)))
+            if (net := mif.get_parent_of_type(Net)) is not None
         }

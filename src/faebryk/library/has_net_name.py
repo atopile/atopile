@@ -53,3 +53,10 @@ class has_net_name(fabll.Node):
         self.name_.get().constrain_to_single(value=name)
         # self.level_.get().constrain_to_literal(g=self.instance.g(), value=level.value)
         return self
+
+    @staticmethod
+    def add_net_name(node: fabll.Node, name: str, level: Level):
+        """Helper method to add a net name to a node"""
+        fabll.Traits.create_and_add_instance_to(node=node, trait=has_net_name).setup(
+            name=name, level=level
+        )

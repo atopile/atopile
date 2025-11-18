@@ -18,3 +18,11 @@ class USB3_IF(fabll.Node):
     #                 traits
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rx.get(), trait=F.has_net_name
+        ).setup(name="RX", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tx.get(), trait=F.has_net_name
+        ).setup(name="TX", level=F.has_net_name.Level.SUGGESTED)

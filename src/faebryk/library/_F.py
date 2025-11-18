@@ -15,8 +15,8 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
-import faebryk.library.Parameters as Parameters
 import faebryk.library.Collections as Collections
+import faebryk.library.Parameters as Parameters
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
@@ -28,14 +28,14 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_pickable import is_pickable
-import faebryk.library.Units as Units
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
+import faebryk.library.Units as Units
 import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
-import faebryk.library.Expressions as Expressions
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
+import faebryk.library.Expressions as Expressions
 from faebryk.library.requires_external_usage import requires_external_usage
 import faebryk.library.Literals as Literals
 from faebryk.library.has_package_requirements import has_package_requirements
@@ -119,8 +119,8 @@ from faebryk.library.USB_C import USB_C
 from faebryk.library.HDMI import HDMI
 
 __all__ = [
-    "Parameters",
     "Collections",
+    "Parameters",
     "Footprint",
     "Logic",
     "Mechanical",
@@ -132,14 +132,14 @@ __all__ = [
     "has_part_removed",
     "is_lazy",
     "is_pickable",
-    "Units",
     "can_bridge",
     "has_linked_pad",
+    "Units",
     "PCBTransformer",
     "has_footprint",
     "implements_design_check",
-    "Expressions",
     "can_bridge_by_name",
+    "Expressions",
     "requires_external_usage",
     "Literals",
     "has_package_requirements",

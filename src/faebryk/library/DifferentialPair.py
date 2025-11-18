@@ -47,14 +47,13 @@ class DifferentialPair(fabll.Node):
 
         return terminated_bus
 
-        # """Attach required net name suffixes for KiCad differential pair detection.
-
-        # Ensures nets associated with the positive and negative lines end with
-        # `_p` and `_n` respectively. The naming algorithm will append these
-        # required affixes while still deconflicting names globally.
-        # """
-        # self.p.line.add(F.has_net_name_affix.setup(suffix="_P"))
-        # self.n.line.add(F.has_net_name_affix.setup(suffix="_N"))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.p.get(), trait=F.has_net_name_affix
+        ).setup(suffix="_P")
+        fabll.Traits.create_and_add_instance_to(
+            node=self.n.get(), trait=F.has_net_name_affix
+        ).setup(suffix="_N")
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

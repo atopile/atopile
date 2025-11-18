@@ -5,7 +5,6 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,6 @@ class ResistorArray(fabll.Node):
 
     @property
     def resistors(self) -> list[F.Resistor]:
-        print(self.resistors_.get())
         return [
             F.Resistor.bind_instance(resistor.instance)
             for resistor in self.resistors_.get().as_list()

@@ -28,27 +28,34 @@ class JTAG(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
-
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.dbgrq.line.add(
-            F.has_net_name("DBGRQ", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.tdo.line.add(F.has_net_name("TDO", level=F.has_net_name.Level.SUGGESTED))
-        self.tdi.line.add(F.has_net_name("TDI", level=F.has_net_name.Level.SUGGESTED))
-        self.tms.line.add(F.has_net_name("TMS", level=F.has_net_name.Level.SUGGESTED))
-        self.tck.line.add(F.has_net_name("TCK", level=F.has_net_name.Level.SUGGESTED))
-        self.rtck.line.add(F.has_net_name("RTCK", level=F.has_net_name.Level.SUGGESTED))
-        self.n_trst.line.add(
-            F.has_net_name("N_TRST", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.n_reset.line.add(
-            F.has_net_name("N_RESET", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.vtref.add(F.has_net_name("VTREF", level=F.has_net_name.Level.SUGGESTED))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dbgrq.get(), trait=F.has_net_name
+        ).setup(name="DBGRQ", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tdo.get(), trait=F.has_net_name
+        ).setup(name="TDO", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tdi.get(), trait=F.has_net_name
+        ).setup(name="TDI", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tms.get(), trait=F.has_net_name
+        ).setup(name="TMS", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tck.get(), trait=F.has_net_name
+        ).setup(name="TCK", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rtck.get(), trait=F.has_net_name
+        ).setup(name="RTCK", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.n_trst.get(), trait=F.has_net_name
+        ).setup(name="N_TRST", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.n_reset.get(), trait=F.has_net_name
+        ).setup(name="N_RESET", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.vtref.get(), trait=F.has_net_name
+        ).setup(name="VTREF", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

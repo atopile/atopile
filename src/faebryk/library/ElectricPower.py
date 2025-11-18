@@ -34,6 +34,14 @@ class ElectricPower(fabll.Node):
         unit=F.Units.Ampere,
     )
 
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.hv.get(), trait=F.has_net_name
+        ).setup(name="hv", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.lv.get(), trait=F.has_net_name
+        ).setup(name="lv", level=F.has_net_name.Level.SUGGESTED)
+
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
             example="""
