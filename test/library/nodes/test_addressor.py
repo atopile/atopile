@@ -12,7 +12,7 @@ from faebryk.libs.exceptions import UserDesignCheckException
 
 
 class ConfigurableI2CClient(fabll.Node):
-    addressor = fabll.f_field(F.Addressor)(address_bits=3)
+    addressor = F.Addressor.MakeChild(address_bits=3)
     i2c: F.I2C
     config = [F.ElectricLogic.MakeChild() for _ in range(3)]
     ref: F.ElectricPower

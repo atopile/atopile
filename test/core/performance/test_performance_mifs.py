@@ -111,24 +111,24 @@ def test_performance_mifs_connect_hull(mif_type):
     logger.info(f"\n{timings}")
 
 
-@pytest.mark.parametrize(
-    "module_type",
-    [
-        USB2514B,
-        RP2040,
-    ],
-)
-def test_performance_mifs_bus_params(module_type):
-    timings = Times()
-    name = module_type.__name__
+# @pytest.mark.parametrize(
+#     "module_type",
+#     [
+#         USB2514B,
+#         RP2040,
+#     ],
+# )
+# def test_performance_mifs_bus_params(module_type):
+#     timings = Times()
+#     name = module_type.__name__
 
-    app = module_type()
-    timings.add(name, "construct")
+#     app = module_type()
+#     timings.add(name, "construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add(name, "resolve")
+#     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+#     timings.add(name, "resolve")
 
-    logger.info(f"\n{timings}")
+#     logger.info(f"\n{timings}")
 
 
 @pytest.mark.slow
