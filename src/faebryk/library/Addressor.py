@@ -32,19 +32,13 @@ class Addressor(fabll.Node):
         ]
 
     @classmethod
-    def MakeChild(cls, address_bits: int) -> fabll._ChildField:
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Numbers.MakeChild_ConstrainToLiteral(
                 [out, cls.address_bits_], address_bits
             )
         )
-        for i in range(address_bits):
-            cls.address_lines_[i].add_dependant(
-                F.has_net_name.MakeChild(
-                    name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED
-                )
-            )
         return out
 
     def setup(self, address_bits: int) -> Self:
