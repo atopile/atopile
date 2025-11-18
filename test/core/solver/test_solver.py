@@ -19,15 +19,9 @@ from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
 )
-from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
 from faebryk.libs.picker.picker import pick_part_recursively
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval_Disjoint,
-    Quantity_Set,
-)
-from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
 from faebryk.libs.util import cast_assert, not_none, times
 from test.common.resources.fabll_modules.RP2040 import RP2040
 from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (

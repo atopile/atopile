@@ -5,7 +5,6 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux
 
 logger = logging.getLogger(__name__)
 

@@ -9,9 +9,6 @@ import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
-from faebryk.libs.sets.sets import BoolSet
-from faebryk.libs.units import P
 from faebryk.libs.util import pairwise, times
 
 

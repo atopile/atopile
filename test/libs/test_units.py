@@ -2,13 +2,9 @@ import pytest
 
 import faebryk.library._F as F
 
-from F.Units import P
-from F.Units import assert_compatible_units
-from F.Units import Unit
-
 
 class DummyHasUnit:
-    def __init__(self, units: Unit):
+    def __init__(self, units: F.Units.IsUnit):
         self.units = units
 
 

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class PickerOption:
     part: PickedPart
-    params: dict[str, F.Parameters.is_parameter_operatable.SetLiteral] | None = None
+    params: dict[str, F.Parameters.is_parameter_operatable] | None = None
     """
     Parameters that need to be matched for this option to be valid.
 

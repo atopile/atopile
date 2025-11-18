@@ -5,7 +5,6 @@ import faebryk.library._F as F
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
 
 
 def test_i2c_requires_pulls():
@@ -65,17 +64,17 @@ def test_i2c_requires_pulls():
     check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
 
     # setting a sufficient resistance fully satisfies the check
-    app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * P.kohm)
-    app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * P.kohm)
+    app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * 1e3 * F.Units.Ohm)
+    app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * 1e3 * F.Units.Ohm)
     check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
 
 
 def test_electric_signal_parallel_pull_resistance():
     """Test that ElectricSignal correctly calculates parallel pull resistance."""
 
-    r1_value = fabll.Range.from_center_rel(10 * P.kohm, 0.02)
-    r2_value = fabll.Range.from_center_rel(20 * P.kohm, 0.02)
-    r3_value = fabll.Range.from_center_rel(30 * P.kohm, 0.02)
+    r1_value = fabll.Range.from_center_rel(10 * 1e3 * F.Units.Ohm, 0.02)
+    r2_value = fabll.Range.from_center_rel(20 * 1e3 * F.Units.Ohm, 0.02)
+    r3_value = fabll.Range.from_center_rel(30 * 1e3 * F.Units.Ohm, 0.02)
 
     class TestModule(fabll.Node):
         signal: F.ElectricSignal
@@ -111,7 +110,7 @@ def test_electric_signal_parallel_pull_resistance():
 def test_electric_signal_single_pull_resistance():
     """Test that ElectricSignal correctly handles single pull resistance."""
 
-    r1_value = fabll.Range.from_center_rel(10 * P.kohm, 0.02)
+    r1_value = fabll.Range.from_center_rel(10 * 1e3 * F.Units.Ohm, 0.02)
 
     class TestModule(fabll.Node):
         signal: F.ElectricSignal

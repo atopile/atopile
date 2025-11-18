@@ -6,6 +6,7 @@ import logging
 import pytest
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import (
@@ -15,13 +16,10 @@ from faebryk.core.solver.mutator import (
     Transformations,
 )
 from faebryk.core.solver.utils import (
-    Associative,
     ContradictionByLiteral,
-    FullyAssociative,
     MutatorUtils,
 )
 from faebryk.libs.logging import rich_to_string
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, times
 
 logger = logging.getLogger(__name__)
@@ -29,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def _create_letters(
     n: int,
-) -> tuple[F.Parameters.ReprContext, list[Parameter], Graph]:
+) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter], fabll.Graph]:
     context = F.Parameters.ReprContext()
 
     out = []

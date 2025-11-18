@@ -10,7 +10,6 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import _get_bomline
 from faebryk.libs.app.designators import attach_random_designators, load_designators
 from faebryk.libs.picker.picker import pick_part_recursively
-from faebryk.libs.units import P
 
 
 def _build(app: fabll.Node):
@@ -23,7 +22,7 @@ def _build(app: fabll.Node):
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
     r = F.Resistor()
-    r.resistance.constrain_subset(fabll.Range.from_center_rel(10 * P.kohm, 0.01))
+    r.resistance.constrain_subset(fabll.Range.from_center_rel(10 * 1e3 * F.Units.Ohm, 0.01))
 
     _build(r)
 
