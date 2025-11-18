@@ -26,7 +26,6 @@ from faebryk.core.core import Namespace
 # or appropriate interface wrapper from faebryk.core.zig.gen.*).
 from faebryk.core.node import Traits
 from faebryk.library.Expressions import is_commutative
-
 # from faebryk.libs.sets.numeric_sets import NumberLike
 # from faebryk.libs.sets.quantity_sets import (
 #     Quantity_Interval,

@@ -4,7 +4,7 @@
 from typing import Any, Self
 
 import faebryk.core.node as fabll
-from faebryk.library import Literals, Parameters
+import faebryk.library._F as F
 
 
 class SerializableMetadata(fabll.Node):
@@ -12,8 +12,8 @@ class SerializableMetadata(fabll.Node):
     Attribute that will be written to PCB footprint
     """
 
-    key_ = Parameters.StringParameter.MakeChild()
-    value_ = Parameters.StringParameter.MakeChild()
+    key_ = F.Parameters.StringParameter.MakeChild()
+    value_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def get_properties(cls, node: fabll.Node) -> dict[str, str]:
@@ -34,11 +34,11 @@ class SerializableMetadata(fabll.Node):
         return None
 
     @property
-    def key(self) -> Literals.Strings | None:
+    def key(self) -> F.Literals.Strings | None:
         return self.key_.get().try_extract_constrained_literal()
 
     @property
-    def value(self) -> Literals.Strings | None:
+    def value(self) -> F.Literals.Strings | None:
         return self.value_.get().try_extract_constrained_literal()
 
     # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
@@ -58,10 +58,10 @@ class SerializableMetadata(fabll.Node):
     def MakeChild(cls, key: str, value: str) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.key_], key)
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.key_], key)
         )
         out.add_dependant(
-            Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value_], value)
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value_], value)
         )
         return out
 

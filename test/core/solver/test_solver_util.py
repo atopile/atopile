@@ -6,7 +6,7 @@ import logging
 import pytest
 
 import faebryk.core.node as fabll
-import faebryk.library._F as F
+from faebryk.core.cpp import Graph
 from faebryk.core.parameter import (
     Add,
     And,
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 def _create_letters(
     n: int,
-) -> tuple[F.Parameters.ReprContext, list[Parameter], fabll.Graph]:
+) -> tuple[F.Parameters.ReprContext, list[Parameter], Graph]:
     context = F.Parameters.ReprContext()
 
     out = []

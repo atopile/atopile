@@ -4,11 +4,7 @@ from typing import TYPE_CHECKING, Self
 
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.library.Expressions as Expressions
-import faebryk.library.Parameters as Parameters
-
-if TYPE_CHECKING:
-    from faebryk.library import Units
+import faebryk.library._F as F
 
 
 class is_literal(fabll.Node):
@@ -53,7 +49,7 @@ class LiteralsAttributes(fabll.NodeAttributes):
 class Strings(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
     def setup(self, value: str) -> Self:
         return self
@@ -69,7 +65,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
     ) -> fabll._ChildField:
         assert isinstance(value, str), "Value of string literal must be a string"
         lit = cls.MakeChild(value=value)
-        out = Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -79,7 +75,7 @@ class Strings(fabll.Node[LiteralsAttributes]):
 
 class Numbers(fabll.Node):
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
         # TODO
@@ -89,7 +85,7 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: type[fabll.NodeT] | "Units.IsUnit" | None = None,
+        unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None,
     ) -> Self:
         # TODO
         return self
@@ -113,7 +109,7 @@ class Numbers(fabll.Node):
                 self,
                 lower: float | None,
                 upper: float | None,
-                unit: type[fabll.NodeT] | None = None,
+                unit: type[fabll.NodeT] = F.Units.Dimensionless,
             ) -> Self:
                 if unit is None:
                     from faebryk.library import Units
@@ -144,7 +140,7 @@ class Numbers(fabll.Node):
         )
         value = float(value)
         lit = cls.MakeChild(value=value)
-        out = Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -201,13 +197,13 @@ class Numbers(fabll.Node):
     def to_dimensionless(self) -> "Numbers": ...
 
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
-    def are_units_compatible(self, unit: "Units.IsUnit") -> bool: ...
+    def are_units_compatible(self, unit: "F.Units.IsUnit") -> bool: ...
 
 
 class Booleans(fabll.Node[LiteralsAttributes]):
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
     def setup(self, *values: bool) -> Self:
         # TODO
@@ -226,7 +222,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     ) -> fabll._ChildField:
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
         lit = cls.MakeChild(value=value)
-        out = Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -242,7 +238,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
 
 class Enums(fabll.Node):
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
 
     def setup[T: Enum](self, enum: type[T], *values: T) -> Self:
         # TODO

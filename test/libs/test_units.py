@@ -1,5 +1,12 @@
 import pytest
 
+from faebryk.libs.units import (
+    P,
+    Unit,
+    UnitCompatibilityError,
+    assert_compatible_units,
+)
+
 
 class DummyHasUnit:
     def __init__(self, units: Unit):

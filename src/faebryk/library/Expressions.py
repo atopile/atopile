@@ -5,14 +5,8 @@ from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, cast
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-
-# import faebryk.library._F as F
-import faebryk.library.Collections as Collections
-import faebryk.library.Parameters as Parameters
+from faebryk.library import Literals, Collections, Parameters
 from faebryk.libs.util import not_none
-
-if TYPE_CHECKING:
-    from faebryk.library import Literals, Parameters
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -169,8 +163,6 @@ class is_expression(fabll.Node):
         }
 
     def get_operand_literals(self) -> dict[int, "Literals.is_literal"]:
-        from faebryk.library import Literals
-
         return {
             i: t
             for i, op in enumerate(self.get_operands())
@@ -226,8 +218,6 @@ class is_expression(fabll.Node):
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
-        from faebryk.library import Literals
-
         # TODO
         raise NotImplementedError
 

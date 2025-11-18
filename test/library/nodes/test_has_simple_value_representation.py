@@ -9,6 +9,7 @@ import pytest
 
 import faebryk.core.node as fabll
 from faebryk.core.parameter import ParameterOperableHasNoLiteral
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
