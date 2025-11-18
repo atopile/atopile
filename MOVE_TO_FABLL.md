@@ -51,6 +51,8 @@ SOLVER:
   - [x] expression_wise
   - [x] pure_literal
   - [x] structural
+- [ ] check for sibling trait, cast, get_trait, and get_raw_obj
+- [ ] reconsider using is_canonical
 
 ##
 

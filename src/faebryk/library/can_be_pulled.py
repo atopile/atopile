@@ -5,7 +5,6 @@ from functools import reduce
 from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import cast_assert
@@ -94,7 +93,7 @@ class can_be_pulled(fabll.Node):
         return self
 
     @property
-    def pull_resistance(self):
+    def pull_resistance(self) -> F.Parameters.NumericParameter | None:
         """Calculate the effective pull resistance by finding parallel resistors
         connected between the line and the reference power rail."""
         if (
@@ -116,7 +115,7 @@ class can_be_pulled(fabll.Node):
 
             if (
                 self.reference.hv
-                not in other_side[0].get_trait(fabll.is_interface).get_connected()
+                not in other_side[0].get().get_trait(fabll.is_interface).get_connected()
             ):
                 # cannot trivially determine effective resistance
                 return None

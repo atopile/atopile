@@ -93,7 +93,6 @@ from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
-from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
@@ -105,18 +104,19 @@ from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
-from faebryk.library.I2C import I2C
 from faebryk.library.CAN import CAN
 from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
 from faebryk.library.can_be_pulled import can_be_pulled
-from faebryk.library.HDMI import HDMI
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
+from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.USB3 import USB3
+from faebryk.library.I2C import I2C
 from faebryk.library.USB_C import USB_C
+from faebryk.library.HDMI import HDMI
 
 __all__ = [
     "Parameters",
@@ -197,7 +197,6 @@ __all__ = [
     "SPI",
     "SWD",
     "UART_Base",
-    "requires_pulls",
     "MultiCapacitor",
     "FilterElectricalLC",
     "Crystal_Oscillator",
@@ -209,16 +208,17 @@ __all__ = [
     "is_atomic_part",
     "SPIFlash",
     "UART",
-    "I2C",
     "CAN",
     "Ethernet",
     "OpAmp",
     "RS485HalfDuplex",
     "USB2_0_IF",
     "can_be_pulled",
-    "HDMI",
     "USB2_0",
     "USB3_IF",
+    "requires_pulls",
     "USB3",
+    "I2C",
     "USB_C",
+    "HDMI",
 ]

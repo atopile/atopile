@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
@@ -33,6 +33,15 @@ class is_literal(fabll.Node):
         pass
 
     def is_empty(self) -> bool:
+        # TODO
+        pass
+
+    def as_operand(self) -> "F.Parameters.can_be_operand":
+        from faebryk.library.Parameters import can_be_operand
+
+        return self.get_sibling_trait(can_be_operand)
+
+    def any(self) -> "LiteralValues":
         # TODO
         pass
 

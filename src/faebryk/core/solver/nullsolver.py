@@ -36,10 +36,10 @@ class NullSolver(Solver):
     def inspect_get_known_supersets(
         self, value: F.Parameters.is_parameter
     ) -> F.Literals.is_literal:
-        lit = value.try_get_literal_subset()
+        lit = value.as_parameter_operatable().try_get_literal_subset()
         if lit is None:
             lit = value.domain_set()
-        return as_lit(lit)
+        return lit
 
     @override
     def simplify(self, *gs: graph.GraphView | fabll.Node):

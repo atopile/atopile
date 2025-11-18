@@ -108,13 +108,17 @@ class is_parameter_operatable(fabll.Node):
         # TODO
         pass
 
-    def try_get_literal(self) -> "Literals.LiteralNodes | None":
+    def try_get_literal(self) -> "F.Literals.is_literal | None":
+        # TODO
+        pass
+
+    def try_get_literal_subset(self) -> "F.Literals.is_literal | None":
         # TODO
         pass
 
     def try_extract_literal(
         self, allow_subset: bool = False
-    ) -> "Literals.LiteralNodes | None":
+    ) -> "F.Literals.is_literal | None":
         # TODO
         pass
 
@@ -155,7 +159,7 @@ class is_parameter(fabll.Node):
         # TODO
         raise NotImplementedError()
 
-    def domain_set(self) -> "Literals.LiteralNodes":
+    def domain_set(self) -> "F.Literals.is_literal":
         # TODO
         raise NotImplementedError()
 
@@ -165,6 +169,9 @@ class is_parameter(fabll.Node):
 
     def as_parameter_operatable(self) -> "is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
+
+    def as_operand(self) -> "can_be_operand":
+        return fabll.Traits(self).get_trait_of_obj(can_be_operand)
 
 
 class can_be_operand(fabll.Node):
@@ -330,7 +337,7 @@ class NumericParameter(fabll.Node):
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "fabll.Node":
+    def get_units(self) -> "Units.IsUnit":
         from faebryk.library.Units import HasUnit
 
         return self.get_trait(HasUnit).get_unit()

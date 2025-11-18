@@ -540,11 +540,12 @@ class MutationStage:
             key_from_ops = " \n  ".join(o.compact_repr(context_old) for o in from_ops)
             key_from_ops = f"  {key_from_ops}"
             value = op.compact_repr(context_new)
-            if MutatorUtils.is_alias_is_literal(op) or MutatorUtils.is_subset_literal(
-                op
+            if (op_e := op.try_get_sibling_trait(F.Expressions.is_expression)) and (
+                MutatorUtils.is_alias_is_literal(op_e)
+                or MutatorUtils.is_subset_literal(op)
             ):
-                expr = next(iter(op.operatable_operands))
-                lit = next(iter(op.get_operand_literals().values()))
+                expr = next(iter(op_e.get_operand_operatables()))
+                lit = next(iter(op_e.get_operand_literals().values()))
                 if not SHOW_SS_IS and expr in created_ops:
                     continue
                 alias_type = (
@@ -843,7 +844,7 @@ class MutationMap:
         po: F.Parameters.is_parameter_operatable,
         allow_subset: bool = False,
         domain_default: bool = False,
-    ) -> F.Literals.LiteralNodes | None:
+    ) -> F.Literals.is_literal | None:
         def _default():
             if not domain_default:
                 return None
@@ -859,13 +860,13 @@ class MutationMap:
             return _default()
         param_units = po.get_trait(F.Units.HasUnit).get_unit()
         if (
-            lit_n := lit.try_cast(F.Literals.Numbers)
+            lit_n := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers)
         ) is not None and not lit_n.are_units_compatible(param_units):
             return lit_n.op_mul_intervals(
                 F.Literals.Numbers.bind_typegraph_from_instance(lit_n.instance)
                 .create_instance(lit_n.instance.g())
                 .setup_from_interval(1, 1, unit=param_units)
-            )
+            ).get_trait(F.Literals.is_literal)
         return lit
 
     def __repr__(self) -> str:
@@ -952,9 +953,14 @@ class MutationMap:
         table.add_column("Variable name")
         table.add_column("fabll.Node name")
 
+        params = set(
+            F.Parameters.is_parameter.bind_typegraph(self.tg).get_instances(
+                g=self.input_graph
+            )
+        )
         for p in sorted(
-            fabll.Node.bind_typegraph(self.input_graph).nodes_of_type(Parameter),
-            key=Parameter.get_full_name,
+            params,
+            key=lambda p: p.get_full_name(),
         ):
             table.add_row(p.compact_repr(self.input_print_context), p.get_full_name())
 
@@ -1162,7 +1168,7 @@ class Mutator:
             for op in operands
         ]
         if non_operands is not None:
-            new_expr = expr_factory(*new_operands, non_operands=non_operands)  # type: ignore
+            new_expr = expr_factory(*new_operands, non_operands=non_operands)
         else:
             new_expr = expr_factory(*new_operands)
 
@@ -1241,8 +1247,8 @@ class Mutator:
             constrain=constrain,
         )
 
-        if expr.try_get_sibling_trait(F.Expressions.IsConstrainable) is not None:
-            if self.is_predicate_terminated(expr):
+        if expr_co := expr.try_get_sibling_trait(F.Expressions.IsConstrained):
+            if self.is_predicate_terminated(expr_co):
                 fabll.Traits.create_and_add_instance_to(
                     fabll.Traits(new_expr).get_obj_raw(), is_terminated
                 )
@@ -1287,7 +1293,9 @@ class Mutator:
                 else self.utils.get_supersets(expr.as_parameter_operatable())
             )
             if fabll.Traits(alias).get_obj_raw().isinstance(expression_factory)
-            and alias.as_expression().is_congruent_to_factory(
+            and alias.get_sibling_trait(
+                F.Expressions.is_expression
+            ).is_congruent_to_factory(
                 expression_factory, operands, allow_uncorrelated=True
             )
         }
@@ -1342,7 +1350,10 @@ class Mutator:
         )
         if unpacked is None:
             raise ValueError("Unpacked operand can't be a literal")
-        out = self._mutate(expr.as_parameter_operatable(), self.get_copy(unpacked))
+        out = self._mutate(
+            expr.as_parameter_operatable(),
+            self.get_copy(unpacked.as_operand()).as_parameter_operatable(),
+        )
         if expr.try_get_sibling_trait(F.Expressions.IsConstrained):
             self.constrain(out.get_sibling_trait(F.Expressions.IsConstrainable))
         return out
@@ -1367,7 +1378,8 @@ class Mutator:
         if not (inner_operand_po := inner_operand.as_parameter_operatable()):
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(
-            expr.as_parameter_operatable(), self.get_copy(inner_operand_po)
+            expr.as_parameter_operatable(),
+            self.get_copy(inner_operand_po.as_operand()).as_parameter_operatable(),
         )
         if expr.try_get_sibling_trait(F.Expressions.IsConstrained):
             self.constrain(out.get_sibling_trait(F.Expressions.IsConstrainable))
@@ -1396,16 +1408,16 @@ class Mutator:
         )
 
     def get_copy(
-        self, obj: F.Parameters.is_parameter_operatable, accept_soft: bool = True
-    ) -> F.Parameters.is_parameter_operatable:
-        if not fabll.isparameteroperable(obj):
+        self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
+    ) -> F.Parameters.can_be_operand:
+        if not (obj_po := obj.is_parameter_operatable()):
             return obj
 
         if accept_soft and obj in self.transformations.soft_replaced:
-            return self.transformations.soft_replaced[obj]
+            return self.transformations.soft_replaced[obj_po].as_operand()
 
-        if self.has_been_mutated(obj):
-            return self.get_mutated(obj)
+        if self.has_been_mutated(obj_po):
+            return self.get_mutated(obj_po).as_operand()
 
         # TODO: not sure if ok
         # if obj is new, no need to copy
@@ -1417,12 +1429,14 @@ class Mutator:
             return obj
 
         # purely for debug
-        self.transformations.copied.add(obj)
+        self.transformations.copied.add(obj_po)
 
-        if expr := obj.is_expresssion():
-            return self.mutate_expression(expr).as_parameter_operatable()
-        elif p := obj.is_parameter():
-            return self.mutate_parameter(p).as_parameter_operatable()
+        if expr := obj_po.is_expresssion():
+            return self.mutate_expression(expr).get_sibling_trait(
+                F.Parameters.can_be_operand
+            )
+        elif p := obj_po.is_parameter():
+            return self.mutate_parameter(p).as_operand()
 
         assert False
 
@@ -1444,9 +1458,7 @@ class Mutator:
         assert expr_bound.check_if_instance_of_type_has_trait(
             F.Expressions.is_canonical
         )
-        from_ops = [
-            x for x in unique_ref(from_ops or []) if fabll.isparameteroperable(x)
-        ]
+        from_ops = [x for x in unique_ref(from_ops or [])]
         if _relay:
             if constrain and expr_factory is IsSubset:
                 return self.utils.subset_to(operands[0], operands[1], from_ops=from_ops)
@@ -1509,7 +1521,11 @@ class Mutator:
     def constrain(self, *po: F.Expressions.IsConstrainable, terminate: bool = False):
         for p in po:
             p.constrain()
-            self.utils.alias_to(p, self.make_lit(True), terminate=terminate)
+            self.utils.alias_to(
+                p.get_sibling_trait(F.Parameters.can_be_operand),
+                self.make_lit(True).get_trait(F.Parameters.can_be_operand),
+                terminate=terminate,
+            )
 
     def predicate_terminate(self, pred: F.Expressions.IsConstrained):
         if pred.has_trait(is_terminated):
@@ -1543,7 +1559,7 @@ class Mutator:
                 n
                 for n in out
                 if not (
-                    (nc := n.try_get_trait(IsConstrained))
+                    (nc := n.try_get_trait(F.Expressions.IsConstrained))
                     and self.is_predicate_terminated(nc)
                 )
             }
@@ -1599,7 +1615,7 @@ class Mutator:
                 n
                 for n in out
                 if not (
-                    (nc := n.try_get_trait(IsConstrained))
+                    (nc := n.try_get_trait(F.Expressions.IsConstrained))
                     and self.is_predicate_terminated(nc)
                 )
             }
@@ -1698,10 +1714,12 @@ class Mutator:
             )
 
         return (
-            expr
+            ss
             for expr in subsets
-            if self.utils.is_subset_literal(
-                expr.get_trait(F.Parameters.is_parameter_operatable)
+            if (
+                ss := self.utils.is_subset_literal(
+                    expr.get_trait(F.Parameters.is_parameter_operatable)
+                )
             )
         )
 
