@@ -23,38 +23,39 @@ pub const _ContiniousQuantity = struct {
     const numeric_set_identifier = "numeric_set";
     const unit_identifier = "unit";
 
-    pub fn init(magnitude_set: MagnitudeSet, unit: BoundNodeReference) !_ContiniousQuantity {
+    pub fn init(g: *GraphView, magnitude_set: MagnitudeSet, unit: IsUnit) !_ContiniousQuantity {
+        const node = g.create_and_insert_node();
 
-        // Get the instance graph from the numeric set
-        const instance_graph = magnitude_set.set_node.g;
-
-        // Create a new node representing the quantity set
-        const node = instance_graph.create_and_insert_node();
-
-        // Add the numeric set and unit to the node
         _ = EdgeComposition.add_child(node, magnitude_set.set_node.node, numeric_set_identifier);
-
-        // Add a pointer to the unit trait
-        _ = EdgePointer.point_to(node, unit.node, unit_identifier, null);
+        _ = EdgePointer.point_to(node, unit.node.node, unit_identifier, null);
 
         // Return the quantity set
         return _ContiniousQuantity.of(node);
     }
 
-    pub fn from_center(g: *GraphView, allocator: std.mem.Allocator, center: f64, abs_tol: f64, unit: BoundNodeReference) !_ContiniousQuantity {
+    pub fn of(node: BoundNodeReference) _ContiniousQuantity {
+        return _ContiniousQuantity{ .node = node };
+    }
+
+    pub fn init_empty(g: *GraphView, allocator: std.mem.Allocator, unit: IsUnit) !_ContiniousQuantity {
+        const magnitude_set = try MagnitudeSet.init_empty(g, allocator);
+        return try _ContiniousQuantity.init(g, magnitude_set, unit);
+    }
+
+    pub fn from_center(g: *GraphView, allocator: std.mem.Allocator, center: f64, abs_tol: f64, unit: IsUnit) !_ContiniousQuantity {
         const left = center - abs_tol;
         const right = center + abs_tol;
         const magnitude_set = try MagnitudeSet.init_from_interval(g, allocator, left, right);
 
-        return try _ContiniousQuantity.init(magnitude_set, unit);
+        return try _ContiniousQuantity.init(g, magnitude_set, unit);
     }
 
-    pub fn from_center_rel(g: *GraphView, allocator: std.mem.Allocator, center: f64, rel_tol: f64, unit: BoundNodeReference) !_ContiniousQuantity {
+    pub fn from_center_rel(g: *GraphView, allocator: std.mem.Allocator, center: f64, rel_tol: f64, unit: IsUnit) !_ContiniousQuantity {
         const left = center - center * rel_tol;
         const right = center + center * rel_tol;
         const magnitude_set = try MagnitudeSet.init_from_interval(g, allocator, left, right);
 
-        return try _ContiniousQuantity.init(magnitude_set, unit);
+        return try _ContiniousQuantity.init(g, magnitude_set, unit);
     }
 
     pub fn get_magnitude_set(self: _ContiniousQuantity) MagnitudeSet {
@@ -128,8 +129,17 @@ pub const _ContiniousQuantity = struct {
         return EdgePointer.get_pointed_node_by_identifier(self.node, unit_identifier).?;
     }
 
-    pub fn of(node: BoundNodeReference) _ContiniousQuantity {
-        return _ContiniousQuantity{ .node = node };
+    pub fn op_intersect(self: _ContiniousQuantity, g: *GraphView, other: _ContiniousQuantity) !_ContiniousQuantity {
+        // Check if compatible units, if not return an empty quantity set, with self.units
+        const self_units = try self.get_unit_base_units();
+        const other_units = try other.get_unit_base_units();
+        if (self_units != other_units) {
+            return _ContiniousQuantity.init_empty(self_units);
+        }
+
+        // Intersect the magnitude sets
+        const magnitude_set = try self.get_magnitude_set().op_intersect(other.get_magnitude_set());
+        return try _ContiniousQuantity.init(g, magnitude_set, self_units);
     }
 };
 
@@ -147,7 +157,7 @@ test "QuantitySet.init" {
     const continuous_interval = try _ContinuousNumeric.init(&g, min_value, max_value);
     const magnitude_set = try MagnitudeSet.init_from_single(&g, allocator, continuous_interval);
     const unit = IsUnit._test_init(&g, unit_name);
-    const continuous_quantity = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const continuous_quantity = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     // get the numeric set and unit
     var retrieved_magnitude = continuous_quantity.get_magnitude_set();
@@ -160,6 +170,17 @@ test "QuantitySet.init" {
     try std.testing.expectEqual(intervals[0].get_max(), max_value);
 }
 
+test "QuantitySet.init_empty" {
+    var g = GraphView.init(std.testing.allocator);
+    defer g.deinit();
+    const unit = IsUnit._test_init(&g, "test");
+    const quantity_set = try _ContiniousQuantity.init_empty(&g, std.testing.allocator, unit);
+    const magnitude_set = quantity_set.get_magnitude_set();
+    const intervals = try magnitude_set.get_intervals(std.testing.allocator);
+    defer std.testing.allocator.free(intervals);
+    try std.testing.expectEqual(@as(usize, 0), intervals.len);
+}
+
 test "QuantitySet.from_center" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
@@ -167,7 +188,7 @@ test "QuantitySet.from_center" {
     const center = 1.0;
     const abs_tol = 0.1;
     const unit = IsUnit._test_init(&g, "test");
-    const quantity_set = try _ContiniousQuantity.from_center(&g, std.testing.allocator, center, abs_tol, unit.node);
+    const quantity_set = try _ContiniousQuantity.from_center(&g, std.testing.allocator, center, abs_tol, unit);
 
     const magnitude_set = quantity_set.get_magnitude_set();
     const intervals = try magnitude_set.get_intervals(std.testing.allocator);
@@ -183,7 +204,7 @@ test "QuantitySet.from_center_rel" {
     const center = 1.0;
     const rel_tol = 0.1;
     const unit = IsUnit._test_init(&g, "test");
-    const quantity_set = try _ContiniousQuantity.from_center_rel(&g, std.testing.allocator, center, rel_tol, unit.node);
+    const quantity_set = try _ContiniousQuantity.from_center_rel(&g, std.testing.allocator, center, rel_tol, unit);
 
     const magnitude_set = quantity_set.get_magnitude_set();
     const intervals = try magnitude_set.get_intervals(std.testing.allocator);
@@ -199,7 +220,7 @@ test "QuantitySet.get_min" {
     const center = 1.0;
     const abs_tol = 0.1;
     const unit = IsUnit._test_init(&g, "test");
-    const quantity_set = try _ContiniousQuantity.from_center(&g, std.testing.allocator, center, abs_tol, unit.node);
+    const quantity_set = try _ContiniousQuantity.from_center(&g, std.testing.allocator, center, abs_tol, unit);
     const min_value = try quantity_set.get_min(std.testing.allocator);
     try std.testing.expectEqual(min_value, center - abs_tol);
 }
@@ -210,7 +231,7 @@ test "QuantitySet.get_max" {
     const center = 1.0;
     const abs_tol = 0.1;
     const unit = IsUnit._test_init(&g, "test");
-    const quantity_set = try _ContiniousQuantity.from_center(&g, std.testing.allocator, center, abs_tol, unit.node);
+    const quantity_set = try _ContiniousQuantity.from_center(&g, std.testing.allocator, center, abs_tol, unit);
     const max_value = try quantity_set.get_max(std.testing.allocator);
     try std.testing.expectEqual(max_value, center + abs_tol);
 }
@@ -221,7 +242,7 @@ test "QuantitySet.is_empty false" {
 
     const unit = IsUnit._test_init(&g, "unit");
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, 0.0, 1.0);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_empty = try quantity_set.is_empty(std.testing.allocator);
     try std.testing.expect(!is_empty);
@@ -233,7 +254,7 @@ test "QuantitySet.is_empty true" {
 
     const unit = IsUnit._test_init(&g, "unit");
     const magnitude_set = try MagnitudeSet.init_empty(&g, std.testing.allocator);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_empty = try quantity_set.is_empty(std.testing.allocator);
     try std.testing.expect(is_empty);
@@ -245,7 +266,7 @@ test "QuantitySet.is_unbounded false" {
 
     const unit = IsUnit._test_init(&g, "unit");
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, -1.0, 1.0);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_unbounded = try quantity_set.is_unbounded(std.testing.allocator);
     try std.testing.expect(!is_unbounded);
@@ -258,7 +279,7 @@ test "QuantitySet.is_unbounded true" {
     const unit = IsUnit._test_init(&g, "unit");
     const inf = std.math.inf(f64);
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, -inf, inf);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_unbounded = try quantity_set.is_unbounded(std.testing.allocator);
     try std.testing.expect(is_unbounded);
@@ -271,7 +292,7 @@ test "QuantitySet.is_finite false" {
     const unit = IsUnit._test_init(&g, "unit");
     const inf = std.math.inf(f64);
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, -inf, inf);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_finite = try quantity_set.is_finite(std.testing.allocator);
     try std.testing.expect(!is_finite);
@@ -283,7 +304,7 @@ test "QuantitySet.is_finite true" {
 
     const unit = IsUnit._test_init(&g, "unit");
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, 0.0, 2.0);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_finite = try quantity_set.is_finite(std.testing.allocator);
     try std.testing.expect(is_finite);
@@ -295,7 +316,7 @@ test "QuantitySet.is_integer false" {
 
     const unit = IsUnit._test_init(&g, "unit");
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, 0.0, 1.0);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_integer = try quantity_set.is_integer(std.testing.allocator);
     try std.testing.expect(!is_integer);
@@ -307,7 +328,7 @@ test "QuantitySet.is_integer true" {
 
     const unit = IsUnit._test_init(&g, "unit");
     const magnitude_set = try MagnitudeSet.init_from_interval(&g, std.testing.allocator, 2.0, 2.0);
-    const quantity_set = try _ContiniousQuantity.init(magnitude_set, unit.node);
+    const quantity_set = try _ContiniousQuantity.init(&g, magnitude_set, unit);
 
     const is_integer = try quantity_set.is_integer(std.testing.allocator);
     try std.testing.expect(is_integer);
