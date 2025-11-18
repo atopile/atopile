@@ -46,7 +46,7 @@ class HasUnit(fabll.Node):
     unit = F.Collections.Pointer.MakeChild()
 
     def get_unit(self) -> IsUnit:
-        return self.unit.get().deref().cast(IsUnit)
+        return self.unit.get().deref().get_trait(IsUnit)
 
     @classmethod
     def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:

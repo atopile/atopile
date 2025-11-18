@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, cast
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+
 # import faebryk.library._F as F
 import faebryk.library.Collections as Collections
 import faebryk.library.Parameters as Parameters
@@ -1334,8 +1335,11 @@ class Is(fabll.Node):
             fabll.Traits.MakeEdge(IsConstrained.MakeChild(), [out]),
             identifier="constrain",
         )
-        out.add_dependant(
-            *OperandSet.MakeEdges([out, cls.operands], operands),
-            identifier="connect_operands",
-        )
+        for operand in operands:
+            # TODO: relying on a string identifier to connect to the correct trait is nasty
+            operand.append("_can_be_operand")
+            out.add_dependant(
+                OperandSet.MakeEdge([out, cls.operands], operand),
+                identifier="connect_operands",
+            )
         return out

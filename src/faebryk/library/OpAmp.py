@@ -6,9 +6,6 @@ import faebryk.library._F as F
 
 
 class OpAmp(fabll.Node):
-    # ----------------------------------------
-    #     modules, interfaces, parameters
-    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     input = F.DifferentialPair.MakeChild()
     output = F.Electrical.MakeChild()
@@ -22,6 +19,8 @@ class OpAmp(fabll.Node):
     gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
     output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(

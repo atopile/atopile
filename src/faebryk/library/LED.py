@@ -61,21 +61,22 @@ class LED(fabll.Node):
     # ----------------------------------------
     # TODO: Implement math and constraints in typegraph
     # def __preinit__(self):
-    #     self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
+    #     self.current.alias_is(self.brightness / self.max_brightness *self.max_current)
     #     self.brightness.constrain_le(self.max_brightness)
 
     # def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
     #     self.brightness.alias_is(intensity * self.max_brightness)
 
-    S = F.has_simple_value_representation.Spec
-    _simple_repr = fabll.Traits.MakeEdge(
-        F.has_simple_value_representation.MakeChild(
-            S(max_brightness),
-            S(color),
-            # S(diode.get().forward_voltage, prefix="Vf"), calling get before instantiation is not allowed
-            # S(diode.get().current, prefix="If"),
+    def on_obj_set(self):
+        S = F.has_simple_value_representation.Spec
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_simple_value_representation
+        ).MakeChild(
+            S(self.max_brightness),
+            S(self.color),
+            S(self.diode.get().forward_voltage, prefix="Vf"),
+            S(self.diode.get().current, prefix="If"),
         )
-    )
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
