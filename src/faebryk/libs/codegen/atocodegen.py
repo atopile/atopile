@@ -6,8 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 
-from atopile.front_end import _FeatureFlags
-
 logger = logging.getLogger(__name__)
 
 
@@ -44,7 +42,8 @@ class AtoCodeGen:
         name: str
         path: Path | None = None
 
-    Experiment = _FeatureFlags.Feature
+    # FIXME
+    Experiment = None  # front_end._FeatureFlags.Feature
 
     @dataclass(kw_only=True)
     class Statement:

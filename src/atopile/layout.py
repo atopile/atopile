@@ -9,7 +9,6 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import front_end
 from atopile.address import AddressError, AddrStr
 from atopile.config import ProjectConfig, config
 from faebryk.libs.util import (
@@ -102,6 +101,8 @@ class in_sub_pcb(fabll.Node):
 
 def _index_module_layouts() -> dict[type[fabll.Node], set[SubPCB]]:
     """Find, tag and return a set of all the modules with layouts."""
+    from atopile import front_end
+
     directory = config.project.paths.root
 
     pcbs: dict[Path, SubPCB] = DefaultFactoryDict(SubPCB)

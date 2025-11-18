@@ -63,3 +63,7 @@ SOLVER:
 - rename node.py to fabll.py
 - use graph.py as graph
 - use faebrykpy.py as fbrk (consider renaming to fbrk)
+
+## TESTS
+
+======= 106 failed, 462 passed, 5 skipped, 35 xfailed, 1 xpassed, 137 errors in 23.45s ========

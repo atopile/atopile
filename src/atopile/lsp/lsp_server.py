@@ -19,14 +19,12 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 import faebryk.core.node as fabll
-from atopile import front_end
 from atopile.config import find_project_dir
 from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
 from faebryk.core.parameter import Parameter
-from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 from faebryk.libs.util import debounce, not_none, once
 
