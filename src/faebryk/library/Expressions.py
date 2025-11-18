@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, cast
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.library import Literals, Collections, Parameters
+from faebryk.library import Collections, Literals, Parameters
 from faebryk.libs.util import not_none
 
 # TODO complete signatures
@@ -15,6 +15,9 @@ from faebryk.libs.util import not_none
 # TODO strategy with traits:
 # just make everything an instance trait,
 # and later when we performance optimize reconsider
+
+if TYPE_CHECKING:
+    import faebryk.library._F as F
 
 
 # solver shims TODO remove -------------------------------------------------------------
@@ -136,7 +139,7 @@ class is_expression(fabll.Node):
         out = fabll._ChildField(cls)
         return out
 
-    def get_operands(self) -> list["Parameters.can_be_operand"]:
+    def get_operands(self) -> list["F.Parameters.can_be_operand"]:
         node = fabll.Traits(self).get_obj_raw()
         operands: list[Parameters.can_be_operand] = []
         pointers = node.get_children(
@@ -152,17 +155,28 @@ class is_expression(fabll.Node):
 
         return operands
 
-    def get_operand_operatables(self) -> set["Parameters.is_parameter_operatable"]:
+    def get_operand_operatables(self) -> set["F.Parameters.is_parameter_operatable"]:
         return self.get_operands_with_trait(Parameters.is_parameter_operatable)
 
-    def get_operands_with_trait[T: fabll.NodeT](self, trait: type[T]) -> set[T]:
-        return {
-            t
-            for op in self.get_operands()
-            if (t := fabll.Traits(op).try_get_trait_of_obj(trait))
-        }
+    def get_operands_with_trait[T: fabll.NodeT](
+        self, trait: type[T], recursive: bool = False
+    ) -> set[T]:
+        return (
+            {
+                t
+                for op in self.get_operands()
+                if (t := fabll.Traits(op).try_get_trait_of_obj(trait))
+            }
+            | {
+                inner
+                for t_e in self.get_operands_with_trait(F.Expressions.is_expression)
+                for inner in t_e.get_operands_with_trait(trait, recursive=recursive)
+            }
+            if recursive
+            else set()
+        )
 
-    def get_operand_literals(self) -> dict[int, "Literals.is_literal"]:
+    def get_operand_literals(self) -> dict[int, "F.Literals.is_literal"]:
         return {
             i: t
             for i, op in enumerate(self.get_operands())
@@ -185,16 +199,16 @@ class is_expression(fabll.Node):
         # TODO
         raise NotImplementedError()
 
-    def as_parameter_operatable(self) -> "Parameters.is_parameter_operatable":
+    def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(Parameters.is_parameter_operatable)
 
-    def as_operand(self) -> "Parameters.can_be_operand":
+    def as_operand(self) -> "F.Parameters.can_be_operand":
         return fabll.Traits(self).get_trait_of_obj(Parameters.can_be_operand)
 
     def is_congruent_to_factory(
         self,
         other_factory: "type[fabll.NodeT]",
-        other_operands: Sequence["Parameters.Parameters.can_be_operand"],
+        other_operands: Sequence["F.Parameters.can_be_operand"],
         allow_uncorrelated: bool = False,
         # TODO
         check_constrained: bool = True,
@@ -242,6 +256,17 @@ class is_expression(fabll.Node):
 
     def in_operands(self, operand: "F.Parameters.can_be_operand") -> bool:
         return operand in self.get_operands()
+
+    @staticmethod
+    def are_pos_congruent(
+        left: Sequence["F.Parameters.can_be_operand"],
+        right: Sequence["F.Parameters.can_be_operand"],
+        commutative: bool = False,
+        allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
+    ) -> bool:
+        # TODO
+        raise NotImplementedError
 
 
 # TODO
@@ -320,7 +345,7 @@ class is_canonical(fabll.Node):
 
     def as_parameter_operatable(
         self,
-    ) -> "Parameters.Parameters.is_parameter_operatable":
+    ) -> "F.Parameters.is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(Parameters.is_parameter_operatable)
 
 
@@ -511,8 +536,8 @@ class Power(fabll.Node):
 
     def setup(
         self,
-        base: "Parameters.Parameters.can_be_operand",
-        exponent: "Parameters.Parameters.can_be_operand",
+        base: "F.Parameters.can_be_operand",
+        exponent: "F.Parameters.can_be_operand",
     ) -> Self:
         self.base.get().point(base)
         self.exponent.get().point(exponent)
@@ -542,8 +567,8 @@ class Log(fabll.Node):
 
     def setup(
         self,
-        operand: "Parameters.Parameters.can_be_operand",
-        base: "Parameters.Parameters.can_be_operand | None" = None,
+        operand: "F.Parameters.can_be_operand",
+        base: "F.Parameters.can_be_operand | None" = None,
     ) -> Self:
         self.operand.get().point(operand)
         if base is not None:
@@ -566,7 +591,7 @@ class Sin(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -584,7 +609,7 @@ class Cos(fabll.Node):
     )
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -605,7 +630,7 @@ class Abs(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -626,7 +651,7 @@ class Round(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -645,7 +670,7 @@ class Floor(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -662,7 +687,7 @@ class Ceil(fabll.Node):
 
     operand = OperandPointer.MakeChild()
 
-    def setup(self, operand: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
 
@@ -681,7 +706,7 @@ class Min(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -700,7 +725,7 @@ class Max(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -722,8 +747,8 @@ class Integrate(fabll.Node):
 
     def setup(
         self,
-        operand: "Parameters.Parameters.can_be_operand",
-        variable: "Parameters.Parameters.can_be_operand",
+        operand: "F.Parameters.can_be_operand",
+        variable: "F.Parameters.can_be_operand",
     ) -> Self:
         self.function.get().point(operand)
         self.variable.get().point(variable)
@@ -747,8 +772,8 @@ class Differentiate(fabll.Node):
 
     def setup(
         self,
-        operand: "Parameters.Parameters.can_be_operand",
-        variable: "Parameters.Parameters.can_be_operand",
+        operand: "F.Parameters.can_be_operand",
+        variable: "F.Parameters.can_be_operand",
     ) -> Self:
         self.function.get().point(operand)
         self.variable.get().point(variable)
@@ -772,7 +797,7 @@ class And(fabll.Node):
 
     def setup(
         self,
-        *operands: "Parameters.Parameters.can_be_operand",
+        *operands: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
@@ -806,7 +831,7 @@ class Or(fabll.Node):
 
     def setup(
         self,
-        *operands: "Parameters.Parameters.can_be_operand",
+        *operands: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
@@ -833,7 +858,7 @@ class Not(fabll.Node):
     operand = OperandPointer.MakeChild()
 
     def setup(
-        self, operand: "Parameters.Parameters.can_be_operand", constrain: bool = False
+        self, operand: "F.Parameters.can_be_operand", constrain: bool = False
     ) -> Self:
         self.operand.get().point(operand)
         if constrain:
@@ -858,7 +883,7 @@ class Xor(fabll.Node):
 
     def setup(
         self,
-        *operands: "Parameters.Parameters.can_be_operand",
+        *operands: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
@@ -883,8 +908,8 @@ class Implies(fabll.Node):
 
     def setup(
         self,
-        antecedent: "Parameters.Parameters.can_be_operand",
-        consequent: "Parameters.Parameters.can_be_operand",
+        antecedent: "F.Parameters.can_be_operand",
+        consequent: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.antecedent.get().point(antecedent)
@@ -911,9 +936,9 @@ class IfThenElse(fabll.Node):
 
     def setup(
         self,
-        condition: "Parameters.Parameters.can_be_operand",
-        then_value: "Parameters.Parameters.can_be_operand",
-        else_value: "Parameters.Parameters.can_be_operand",
+        condition: "F.Parameters.can_be_operand",
+        then_value: "F.Parameters.can_be_operand",
+        else_value: "F.Parameters.can_be_operand",
     ) -> Self:
         self.condition.get().point(condition)
         self.then_value.get().point(then_value)
@@ -943,7 +968,7 @@ class Union(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -970,7 +995,7 @@ class Intersection(fabll.Node):
 
     operands = OperandSequence.MakeChild()
 
-    def setup(self, *operands: "Parameters.Parameters.can_be_operand") -> Self:
+    def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
 
@@ -991,8 +1016,8 @@ class Difference(fabll.Node):
 
     def setup(
         self,
-        minuend: "Parameters.Parameters.can_be_operand",
-        subtrahend: "Parameters.Parameters.can_be_operand",
+        minuend: "F.Parameters.can_be_operand",
+        subtrahend: "F.Parameters.can_be_operand",
     ) -> Self:
         self.minuend.get().point(minuend)
         self.subtrahend.get().point(subtrahend)
@@ -1018,8 +1043,8 @@ class SymmetricDifference(fabll.Node):
 
     def setup(
         self,
-        left: "Parameters.Parameters.can_be_operand",
-        right: "Parameters.Parameters.can_be_operand",
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -1044,8 +1069,8 @@ class LessThan(fabll.Node):
 
     def setup(
         self,
-        left: "Parameters.Parameters.can_be_operand",
-        right: "Parameters.Parameters.can_be_operand",
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1074,8 +1099,8 @@ class GreaterThan(fabll.Node):
 
     def setup(
         self,
-        left: "Parameters.Parameters.can_be_operand",
-        right: "Parameters.Parameters.can_be_operand",
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1103,8 +1128,8 @@ class LessOrEqual(fabll.Node):
 
     def setup(
         self,
-        left: "Parameters.Parameters.can_be_operand",
-        right: "Parameters.Parameters.can_be_operand",
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1134,8 +1159,8 @@ class GreaterOrEqual(fabll.Node):
 
     def setup(
         self,
-        left: "Parameters.Parameters.can_be_operand",
-        right: "Parameters.Parameters.can_be_operand",
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1163,8 +1188,8 @@ class NotEqual(fabll.Node):
 
     def setup(
         self,
-        left: "Parameters.Parameters.can_be_operand",
-        right: "Parameters.Parameters.can_be_operand",
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.left.get().point(left)
@@ -1193,8 +1218,8 @@ class IsBitSet(fabll.Node):
 
     def setup(
         self,
-        value: "Parameters.Parameters.can_be_operand",
-        bit_index: "Parameters.Parameters.can_be_operand",
+        value: "F.Parameters.can_be_operand",
+        bit_index: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.value.get().point(value)
@@ -1224,8 +1249,8 @@ class IsSubset(fabll.Node):
 
     def setup(
         self,
-        subset: "Parameters.Parameters.can_be_operand",
-        superset: "Parameters.Parameters.can_be_operand",
+        subset: "F.Parameters.can_be_operand",
+        superset: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.subset.get().point(subset)
@@ -1253,8 +1278,8 @@ class IsSuperset(fabll.Node):
 
     def setup(
         self,
-        superset: "Parameters.Parameters.can_be_operand",
-        subset: "Parameters.Parameters.can_be_operand",
+        superset: "F.Parameters.can_be_operand",
+        subset: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.superset.get().point(superset)
@@ -1282,8 +1307,8 @@ class Cardinality(fabll.Node):
 
     def setup(
         self,
-        set: "Parameters.Parameters.can_be_operand",
-        cardinality: "Parameters.Parameters.can_be_operand",
+        set: "F.Parameters.can_be_operand",
+        cardinality: "F.Parameters.can_be_operand",
         constrain: bool = False,
     ) -> Self:
         self.set.get().point(set)
@@ -1312,7 +1337,7 @@ class Is(fabll.Node):
     operands = OperandSet.MakeChild()
 
     def setup(
-        self, operands: list["Parameters.Parameters.can_be_operand"], constrain: bool
+        self, operands: list["F.Parameters.can_be_operand"], constrain: bool
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
