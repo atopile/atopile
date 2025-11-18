@@ -71,7 +71,7 @@ class has_linked_kicad_pad(fabll.Node):
     def MakeChild(
         cls,
         footprint: "KiCadFootprint",
-        pad: "KiCadPad",
+        pad: list["KiCadPad"],
         transformer: "PCB_Transformer",
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
@@ -88,7 +88,18 @@ class has_linked_kicad_pad(fabll.Node):
         )
         return out
 
-    def get_pad(self) -> tuple[KiCadFootprint, KiCadPad]:
+    def setup(
+        self,
+        footprint: "KiCadFootprint",
+        pad: list[KiCadPad],
+        transformer: "PCB_Transformer",
+    ) -> Self:
+        self.footprint_.get().constrain_to_single(value=str(id(footprint)))
+        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
+        self.pad_.get().constrain_to_single(value=str(id(pad)))
+        return self
+
+    def get_pad(self) -> tuple[KiCadFootprint, list[KiCadPad]]:
         footprint_id = int(self.footprint_.get().force_extract_literal().get_value())
         pad_id = int(self.pad_.get().force_extract_literal().get_value())
         return (
@@ -123,6 +134,11 @@ class has_linked_kicad_net(fabll.Node):
             )
         )
         return out
+
+    def setup(self, net: "KiCadNet", transformer: "PCB_Transformer") -> Self:
+        self.net_.get().constrain_to_single(value=str(id(net)))
+        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
+        return self
 
     def get_net(self) -> KiCadNet:
         net_id = int(self.net_.get().force_extract_literal().get_value())

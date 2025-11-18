@@ -10,7 +10,6 @@ import psutil
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
@@ -74,7 +73,7 @@ def load_net_names(graph: graph.GraphView, raise_duplicates: bool = True) -> set
     net_names: dict[F.Net, str] = {
         cast_assert(F.Net, net): not_none(pcb_net_t.get_net().name)
         for net, pcb_net_t in fabll.Node.bind_typegraph(graph).nodes_with_trait(
-            PCB_Transformer.has_linked_kicad_net
+            F.PCBTransformer.has_linked_kicad_net
         )
     }
 
