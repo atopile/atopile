@@ -24,16 +24,43 @@ class IsBaseUnit(fabll.Node):
         return out
 
 
+class UnitVectorComponent(fabll.Node):
+    base_unit = F.Collections.Pointer.MakeChild()
+    exponent = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True
+    )
+
+    @classmethod
+    def MakeChild(
+        cls, base_unit: type[fabll.NodeT], exponent: int
+    ) -> fabll._ChildField[Any]:
+        out = fabll._ChildField(cls)
+        base_unit_field = fabll._ChildField(base_unit)
+        out.add_dependant(base_unit_field)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.base_unit], [base_unit_field])
+        )
+        return out
+
+
 class IsUnit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-    base_unit = fabll._ChildField(fabll.Node)
+    base_units = F.Collections.PointerSet.MakeChild()
 
     @classmethod
     def MakeChild(
         cls, symbol: str, base_units: list[tuple[type[fabll.NodeT], int]]
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
-        # TODO
+        for base_unit, exponent in base_units:
+            base_unit_field = UnitVectorComponent.MakeChild(base_unit, exponent)
+            out.add_dependant(base_unit_field)
+            out.add_dependant(
+                F.Collections.PointerSet.MakeEdge(
+                    [out, cls.base_units],
+                    [base_unit_field],
+                )
+            )
         return out
 
     def is_compatible_with(self, other: "IsUnit") -> bool:
