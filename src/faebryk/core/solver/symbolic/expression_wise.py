@@ -57,7 +57,9 @@ def fold_literals[T: fabll.NodeT](
             continue
 
         # covered by pure literal folding
-        if mutator.utils.is_pure_literal_expression(expr):
+        if mutator.utils.is_pure_literal_expression(
+            expr.get_trait(F.Parameters.can_be_operand)
+        ):
             continue
 
         f(expr, mutator)
@@ -78,7 +80,9 @@ def expression_wise(mutator: Mutator):
                 continue
 
             # covered by pure literal folding
-            if mutator.utils.is_pure_literal_expression(expr):
+            if mutator.utils.is_pure_literal_expression(
+                expr.get_trait(F.Parameters.can_be_operand)
+            ):
                 continue
             algo(expr, mutator)  # type: ignore
 
@@ -173,12 +177,12 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
         *non_replacable_nonliteral_operands,
     ]
 
-    if new_operands == expr.operands:
+    if new_operands == expr.get_trait(F.Expressions.is_expression).get_operands():
         return
 
     # unpack if single operand (operatable)
-    if len(new_operands) == 1 and new_operands[0].is_parameter_operatable():
-        mutator.mutate_unpack_expression(e, new_operands)
+    if len(new_operands) == 1 and (no_po := new_operands[0].is_parameter_operatable()):
+        mutator.mutate_unpack_expression(e, [no_po])
         return
 
     new_expr = mutator.mutate_expression(
@@ -186,7 +190,11 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     )
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        mutator.utils.alias_to(new_expr, new_operands[0], terminate=True)
+        mutator.utils.alias_to(
+            new_expr.get_sibling_trait(F.Parameters.can_be_operand),
+            new_operands[0],
+            terminate=True,
+        )
 
 
 @expression_wise_algorithm(F.Expressions.Multiply)
@@ -238,12 +246,14 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # 0 * A -> 0
         if 0 in new_operands:
-            new_operands = [mutator.make_lit(0)]
+            new_operands = [mutator.make_lit(0).get_trait(F.Parameters.can_be_operand)]
             # convert_operable_aliased_to_single_into_literal takes care of rest
 
         # unpack if single operand (operatable)
-        if len(new_operands) == 1 and new_operands[0].is_parameter_operatable():
-            mutator.mutate_unpack_expression(e, new_operands)
+        if len(new_operands) == 1 and (
+            no_po := new_operands[0].is_parameter_operatable()
+        ):
+            mutator.mutate_unpack_expression(e, [no_po])
             return
 
         if new_operands != expr.operands:
@@ -253,7 +263,11 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
             # if only one literal operand, equal to it
             if len(new_operands) == 1:
-                mutator.utils.alias_to(new_expr, new_operands[0], terminate=True)
+                mutator.utils.alias_to(
+                    new_expr.get_sibling_trait(F.Parameters.can_be_operand),
+                    new_operands[0],
+                    terminate=True,
+                )
             return
 
     # if len(expr.operands) == 2:
@@ -307,6 +321,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     # TODO if (litex0)^negative -> new constraint
 
     e = expr.get_trait(F.Expressions.is_expression)
+    e_op = e.as_operand()
     base, exp = expr.get_trait(F.Expressions.is_expression).get_operands()
 
     # All literals
@@ -318,7 +333,11 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
         except NotImplementedError:
             # TODO either fix or raise a warning
             return
-        mutator.utils.alias_to(expr, result, terminate=True)
+        mutator.utils.alias_to(
+            e.as_operand(),
+            result.get_trait(F.Parameters.can_be_operand),
+            terminate=True,
+        )
         return
 
     if mutator.utils.is_numeric_literal(exp):
@@ -328,15 +347,27 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
 
         # in python 0**0 is also 1
         if exp == 0:
-            mutator.utils.alias_to(expr, mutator.make_lit(1), terminate=True)
+            mutator.utils.alias_to(
+                e_op,
+                mutator.make_lit(1).get_trait(F.Parameters.can_be_operand),
+                terminate=True,
+            )
             return
     if mutator.utils.is_numeric_literal(base):
         if base == 0:
-            mutator.utils.alias_to(expr, mutator.make_lit(0), terminate=True)
+            mutator.utils.alias_to(
+                e_op,
+                mutator.make_lit(0).get_trait(F.Parameters.can_be_operand),
+                terminate=True,
+            )
             # FIXME: exp >! 0
             return
         if base == 1:
-            mutator.utils.alias_to(expr, mutator.make_lit(1), terminate=True)
+            mutator.utils.alias_to(
+                e_op,
+                mutator.make_lit(1).get_trait(F.Parameters.can_be_operand),
+                terminate=True,
+            )
             return
 
 
@@ -376,8 +407,10 @@ def fold_sin(expr: F.Expressions.Sin, mutator: Mutator):
     #TODO Sin(A+B) -> Sin(A)*Cos(B) + Cos(A)*Sin(B)
     """
     mutator.utils.subset_to(
-        expr,
-        mutator.utils.make_number_literal_from_range(-1, 1),
+        expr.get_trait(F.Parameters.can_be_operand),
+        mutator.utils.make_number_literal_from_range(-1, 1).get_trait(
+            F.Parameters.can_be_operand
+        ),
         from_ops=[expr.get_trait(F.Parameters.is_parameter_operatable)],
     )
 
@@ -478,7 +511,11 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                 involved=[op_po],
                 mutator=mutator,
             )
-        mutator.utils.alias_to(expr, mutator.make_lit(False), terminate=True)
+        mutator.utils.alias_to(
+            e.as_operand(),
+            mutator.make_lit(False).get_trait(F.Parameters.can_be_operand),
+            terminate=True,
+        )
         return
 
     if not mutator.has_been_mutated(op_po):
@@ -506,9 +543,9 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                 F.Expressions.IsConstrained
                             ):
                                 mutator.constrain(
-                                    mutator.get_copy(
-                                        not_op.as_parameter_operatable()
-                                    ).get_sibling_trait(F.Expressions.IsConstrainable)
+                                    mutator.get_copy(not_op).get_sibling_trait(
+                                        F.Expressions.IsConstrainable
+                                    )
                                 )
                     # ¬(A v ...)
                     elif inner_op.try_get_sibling_trait(F.Expressions.IsConstrainable):
@@ -623,7 +660,7 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
         lit = literal_operands[0]
         lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
         if not lit.is_single_element() and not lit.is_empty():
-            lit_op = lit.get_sibling_trait(F.Parameters.can_be_operand)
+            lit_op = lit.as_operand()
             if left == lit_op:
                 mutator.mutate_expression(
                     e,

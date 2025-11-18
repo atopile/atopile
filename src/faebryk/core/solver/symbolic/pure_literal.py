@@ -57,7 +57,7 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
 
 def _exec_pure_literal_operands(
     mutator: Mutator,
-    expr_type: fabll.ImplementsType,
+    expr_type: "fabll.ImplementsType",
     operands: Iterable[F.Parameters.can_be_operand],
 ) -> F.Literals.is_literal | None:
     operands = list(operands)

@@ -161,7 +161,7 @@ class MutatorUtils:
                     po, allow_subset=allow_subset
                 )
                 if lit is not None:
-                    lits.add(lit.get_trait(F.Literals.is_literal))
+                    lits.add(lit)
         except KeyErrorAmbiguous as e:
             raise ContradictionByLiteral(
                 "Duplicate unequal is literals",
@@ -210,9 +210,7 @@ class MutatorUtils:
                 )
             return alias_lits[0]
         subsets = self.get_supersets(po)
-        subset_lits = [
-            (k, vs) for k, vs in subsets.items() if self.is_literal(k.as_operand())
-        ]
+        subset_lits = [(k, vs) for k, vs in subsets.items() if self.is_literal(k)]
         # TODO this is weird
         if subset_lits:
             for k, vs in subset_lits:
@@ -257,7 +255,7 @@ class MutatorUtils:
                         F.Expressions.Is, constrained_only=True
                     ):
                         if op.get_trait(F.Expressions.is_expression).in_operands(
-                            existing.get_sibling_trait(F.Parameters.can_be_operand)
+                            existing.as_operand()
                         ):
                             self.mutator.predicate_terminate(
                                 op.get_trait(F.Expressions.IsConstrained)
@@ -290,7 +288,7 @@ class MutatorUtils:
         out = self.mutator.create_expression(
             F.Expressions.Is,
             po.as_operand(),
-            literal.get_sibling_trait(F.Parameters.can_be_operand),
+            literal.as_operand(),
             from_ops=from_ops,
             constrain=True,
             # already checked for uncorrelated lit, op needs to be correlated
@@ -338,7 +336,7 @@ class MutatorUtils:
         return self.mutator.create_expression(
             F.Expressions.IsSubset,
             po.as_operand(),
-            literal.get_sibling_trait(F.Parameters.can_be_operand),
+            literal.as_operand(),
             from_ops=from_ops,
             constrain=True,
             # already checked for uncorrelated lit, op needs to be correlated
@@ -365,7 +363,7 @@ class MutatorUtils:
                 mutator=self.mutator, expr=to_canon.as_expression()
             )
             if res is not None:
-                to = res.get_sibling_trait(F.Parameters.can_be_operand)
+                to = res.as_operand()
 
         to_is_lit = self.is_literal(to)
         po_is_lit = self.is_literal(po)
@@ -443,7 +441,7 @@ class MutatorUtils:
                 mutator=self.mutator, expr=to_canon.as_expression()
             )
             if res is not None:
-                to = res.get_sibling_trait(F.Parameters.can_be_operand)
+                to = res.as_operand()
 
         to_lit = self.is_literal(to)
         po_lit = self.is_literal(po)
@@ -566,10 +564,10 @@ class MutatorUtils:
                 for op in self.mutator.get_typed_expressions(
                     expr_factory, created_only=False, include_terminated=True
                 )
-                if self.is_literal_expression(op)
+                if self.is_literal_expression(op.get_trait(F.Parameters.can_be_operand))
                 # check congruence
                 and F.Expressions.is_expression.are_pos_congruent(
-                    op.operands,
+                    op.get_trait(F.Expressions.is_expression).get_operands(),
                     operands,
                     allow_uncorrelated=allow_uncorrelated,
                 )
@@ -1071,7 +1069,7 @@ class MutatorUtils:
         op: F.Parameters.is_parameter_operatable,
     ) -> dict[F.Parameters.can_be_operand, F.Expressions.Is]:
         return {
-            e.get_other_operand(op): e
+            e.get_other_operand(op.as_operand()): e
             for e in op.get_operations(F.Expressions.Is, constrained_only=True)
         }
 

@@ -1367,3 +1367,10 @@ class Is(fabll.Node):
                 identifier="connect_operands",
             )
         return out
+
+    def get_other_operand(
+        self, operand: "F.Parameters.can_be_operand"
+    ) -> "F.Parameters.can_be_operand":
+        return next(
+            op for op in self.get_trait(is_expression).get_operands() if op != operand
+        )

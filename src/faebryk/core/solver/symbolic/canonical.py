@@ -59,11 +59,15 @@ def constrain_within_domain(mutator: Mutator):
             override_within=True,
             within=None,
         )
-        if param.get_within() is not None:
-            mutator.utils.subset_to(new_param, param.get_within(), from_ops=[po])
+        if (within := param.get_within()) is not None:
+            mutator.utils.subset_to(
+                new_param.as_operand(),
+                within.get_trait(F.Parameters.can_be_operand),
+                from_ops=[po],
+            )
         mutator.utils.subset_to(
-            new_param,
-            p.domain_set(),
+            new_param.as_operand(),
+            p.domain_set().as_operand(),
             from_ops=[po],
         )
 
@@ -76,7 +80,10 @@ def alias_predicates_to_true(mutator: Mutator):
 
     for predicate in mutator.get_expressions(required_traits=(IsConstrained,)):
         new_predicate = mutator.mutate_expression(predicate)
-        mutator.utils.alias_to(new_predicate, mutator.make_lit(True))
+        mutator.utils.alias_to(
+            new_predicate.get_sibling_trait(F.Parameters.can_be_operand),
+            mutator.make_lit(True).get_trait(F.Parameters.can_be_operand),
+        )
         # reset solver flag
         mutator.predicate_reset_termination(new_predicate.get_trait(IsConstrained))
 
@@ -339,9 +346,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 .create_instance(mutator.G_out)
                 .setup(
                     *[
-                        mutator.get_copy(o.as_parameter_operatable()).get_trait(
-                            F.Parameters.can_be_operand
-                        )
+                        mutator.get_copy(o).get_trait(F.Parameters.can_be_operand)
                         for o in e_expr.get_operands()
                     ]
                 )

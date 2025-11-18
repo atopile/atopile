@@ -88,7 +88,7 @@ def unary_identity_unpack(mutator: Mutator):
             continue
         inner = expr.get_operands()[0]
         if mutator.utils.is_literal(inner):
-            mutator.utils.alias_to(expr, inner, terminate=True)
+            mutator.utils.alias_to(expr.as_operand(), inner, terminate=True)
         else:
             mutator.mutate_unpack_expression(expr)
 
@@ -110,7 +110,7 @@ def involutory_fold(mutator: Mutator):
             continue
         innest = inner.get_sibling_trait(F.Expressions.is_expression).get_operands()[0]
         if mutator.utils.is_literal(innest):
-            mutator.utils.alias_to(expr, innest, terminate=True)
+            mutator.utils.alias_to(expr.as_operand(), innest, terminate=True)
         else:
             mutator.mutator_neutralize_expressions(expr)
 
