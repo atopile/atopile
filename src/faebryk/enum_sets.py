@@ -101,12 +101,12 @@ def test_enums():
     elements = my_enum_set.get_elements()
     assert len(elements) == 2
     assert elements[0].get_name() == "A"
-    element_0_value = (
+    assert (
         elements[0].get_value().instance.node().get_dynamic_attrs()["value"]
+        == MyEnum.A.value
     )
-    assert element_0_value == MyEnum.A.value
     assert elements[1].get_name() == "D"
-    element_1_value = (
+    assert (
         elements[1].get_value().instance.node().get_dynamic_attrs()["value"]
+        == MyEnum.D.value
     )
-    assert element_1_value == MyEnum.D.value
