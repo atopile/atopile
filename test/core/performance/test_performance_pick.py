@@ -21,7 +21,6 @@ from faebryk.libs.picker.picker import (
     pick_topologically,
 )
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import P
 from faebryk.libs.util import ConfigFlagInt, indented_container
 from test.common.resources.fabll_modules.RP2040 import RP2040
 from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (

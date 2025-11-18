@@ -14,38 +14,8 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.node import DiscreteSet, Range, RangeWithGaps, Single
-from faebryk.core.parameter import (
-    Abs,
-    Add,
-    And,
-    Arithmetic,
-    ConstrainableExpression,
-    Expression,
-    GreaterOrEqual,
-    GreaterThan,
-    Intersection,
-    Is,
-    IsSubset,
-    IsSuperset,
-    LessOrEqual,
-    Log,
-    Max,
-    Multiply,
-    Not,
-    Or,
-    Parameter,
-    ParameterOperatable,
-    Power,
-    Round,
-    Sin,
-    Subtract,
-    SymmetricDifference,
-    Union,
-)
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import (
-    CanonicalExpression,
-    CanonicalLiteral,
     Contradiction,
     ContradictionByLiteral,
 )
@@ -58,7 +28,6 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Set,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
-from faebryk.libs.units import P, Quantity, dimensionless, quantity
 from faebryk.libs.util import cast_assert, not_none, times
 from test.common.resources.fabll_modules.RP2040 import RP2040
 from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (

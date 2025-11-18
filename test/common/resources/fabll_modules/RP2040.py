@@ -5,7 +5,6 @@ import logging
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.units import P
 from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux
 
 logger = logging.getLogger(__name__)
@@ -42,9 +41,9 @@ class RP2040(fabll.Node):
 
             # TODO get tolerance
             self.power_out.voltage.constrain_subset(
-                fabll.Range.from_center_rel(1.1 * P.V, 0.05)
+                fabll.Range.from_center_rel(1.1 * F.Units.Volt, 0.05)
             )
-            self.power_in.voltage.constrain_subset(fabll.Range(1.8 * P.V, 3.3 * P.V))
+            self.power_in.voltage.constrain_subset(fabll.Range(1.8 * F.Units.Volt, 3.3 * F.Units.Volt))
 
         @fabll.rt_field
         def bridge(self):

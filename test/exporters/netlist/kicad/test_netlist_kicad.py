@@ -18,7 +18,6 @@ from faebryk.libs.app.designators import (
 )
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +25,8 @@ logger = logging.getLogger(__name__)
 # Netlists --------------------------------------------------------------------
 @pytest.fixture
 def netlist_graph():
-    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * P.ohm))
-    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * P.ohm))
+    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * F.Units.Ohm))
+    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * F.Units.Ohm))
     power = F.ElectricPower()
 
     # net labels

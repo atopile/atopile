@@ -24,7 +24,6 @@ from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
-from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 from faebryk.libs.util import debounce, not_none, once
 

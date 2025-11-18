@@ -13,7 +13,6 @@ import more_itertools
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
-from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.http import RequestError, TimeoutException
@@ -280,7 +279,7 @@ def _attach(module: fabll.Node, c: Component):
 
 def _get_compatible_parameters(
     module: fabll.Node, c: "Component", solver: Solver
-) -> dict[Parameter, ParameterOperatable.Literal]:
+) -> dict[F.Parameters.is_parameter, F.Literals.is_literal[Any]]:
     """
     Check if the parameters of a component are compatible with the module
     """
@@ -310,8 +309,8 @@ def _get_compatible_parameters(
             )
 
     def _map_param(
-        name: str, param: Parameter
-    ) -> tuple[Parameter, F.Literals.is_literal[Any]]:
+        name: str, param: F.Parameters.is_parameter
+    ) -> tuple[F.Parameters.is_parameter, F.Literals.is_literal[Any]]:
         c_range = component_params.get(name)
         if c_range is None:
             c_range = param.domain.unbounded(param)
@@ -364,7 +363,7 @@ def _check_candidates_compatible(
         for m_param, c_range in not_none(param_mapping).items()
     )
 
-    solver.try_fulfill(And(*predicates), lock=False, allow_unknown=allow_not_deducible)
+    solver.try_fulfill(F.Expressions.And(*predicates), lock=False, allow_unknown=allow_not_deducible)
 
 
 # public -------------------------------------------------------------------------------

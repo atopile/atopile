@@ -6,24 +6,6 @@ import logging
 import pytest
 
 import faebryk.core.node as fabll
-from faebryk.core.cpp import Graph
-from faebryk.core.parameter import (
-    Add,
-    And,
-    Difference,
-    Divide,
-    Expression,
-    Intersection,
-    Is,
-    Logic,
-    Multiply,
-    Or,
-    Parameter,
-    ParameterOperatable,
-    Subtract,
-    Union,
-    Xor,
-)
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import (
