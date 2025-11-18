@@ -33,6 +33,7 @@ pub const _ContiniousQuantity = struct {
         return _ContiniousQuantity.of(node);
     }
 
+<<<<<<< Updated upstream
     pub fn of(node: BoundNodeReference) _ContiniousQuantity {
         return _ContiniousQuantity{ .node = node };
     }
@@ -43,6 +44,15 @@ pub const _ContiniousQuantity = struct {
     }
 
     pub fn from_center(g: *GraphView, allocator: std.mem.Allocator, center: f64, abs_tol: f64, unit: IsUnit) !_ContiniousQuantity {
+=======
+    pub fn init_empty(unit: BoundNodeReference) !_ContiniousQuantity {
+        const instance_graph = unit.g;
+        magnitude_set = try MagnitudeSet.init_empty(instance_graph, allocator);
+        return try _ContiniousQuantity.init(magnitude_set, unit);
+    }
+
+    pub fn from_center(g: *GraphView, allocator: std.mem.Allocator, center: f64, abs_tol: f64, unit: BoundNodeReference) !_ContiniousQuantity {
+>>>>>>> Stashed changes
         const left = center - abs_tol;
         const right = center + abs_tol;
         const magnitude_set = try MagnitudeSet.init_from_interval(g, allocator, left, right);
@@ -141,6 +151,19 @@ pub const _ContiniousQuantity = struct {
         const magnitude_set = try self.get_magnitude_set().op_intersect(other.get_magnitude_set());
         return try _ContiniousQuantity.init(g, magnitude_set, self_units);
     }
+
+    pub fn op_intersect(self: _ContiniousQuantity, other: _ContiniousQuantity) !_ContiniousQuantity {
+        // Check if compatible units, if not return an empty quantity set, with self.units
+        const self_units = self.get_unit();
+        const other_units = other.get_unit();
+        if (self_units != other_units) {
+            return _ContiniousQuantity.init_empty(self_units);
+        }
+
+        // Intersect the magnitude sets
+        const magnitude_set = try self.get_magnitude_set().op_intersect(other.get_magnitude_set());
+        return try _ContiniousQuantity.init(magnitude_set, self_units);
+    }
 };
 
 test "QuantitySet.init" {
@@ -174,7 +197,11 @@ test "QuantitySet.init_empty" {
     var g = GraphView.init(std.testing.allocator);
     defer g.deinit();
     const unit = IsUnit._test_init(&g, "test");
+<<<<<<< Updated upstream
     const quantity_set = try _ContiniousQuantity.init_empty(&g, std.testing.allocator, unit);
+=======
+    const quantity_set = try _ContiniousQuantity.init_empty(unit.node);
+>>>>>>> Stashed changes
     const magnitude_set = quantity_set.get_magnitude_set();
     const intervals = try magnitude_set.get_intervals(std.testing.allocator);
     defer std.testing.allocator.free(intervals);
