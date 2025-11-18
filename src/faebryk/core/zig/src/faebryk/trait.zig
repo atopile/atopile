@@ -198,6 +198,30 @@ pub const EdgeTrait = struct {
             .EXHAUSTED => return null,
         }
     }
+
+    pub fn try_get_trait_instance_by_identifier(bound_node: graph.BoundNodeReference, identifier: graph.str) ?graph.BoundNodeReference {
+        const Finder = struct {
+            identifier: graph.str,
+
+            pub fn visit(self_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(graph.BoundNodeReference) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                if (std.mem.eql(u8, bound_edge.edge.attributes.name.?, self.identifier)) { // TODO
+                    return visitor.VisitResult(graph.BoundNodeReference){ .OK = bound_edge.g.bind(EdgeTrait.get_trait_instance_node(bound_edge.edge)) };
+                }
+                return visitor.VisitResult(graph.BoundNodeReference){ .CONTINUE = {} };
+            }
+        };
+
+        var finder = Finder{ .identifier = identifier };
+        const result = EdgeTrait.visit_trait_instance_edges(bound_node, graph.BoundNodeReference, &finder, Finder.visit);
+        return switch (result) {
+            .OK => |found| found,
+            .CONTINUE => null,
+            .STOP => null,
+            .ERROR => null,
+            .EXHAUSTED => null,
+        };
+    }
 };
 
 //zig test --dep graph -Mroot=src/faebryk/trait.zig -Mgraph=src/graph/lib.zig
