@@ -40,13 +40,9 @@ from faebryk.core.solver.utils import (
     PRINT_START,
     S_LOG,
     TIMEOUT,
-    get_graphs,
 )
 from faebryk.libs.logging import NET_LINE_WIDTH
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
-from faebryk.libs.sets.sets import P_Set, as_lit
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import dimensionless, quantity
 from faebryk.libs.util import not_none, times_out
 
 logger = logging.getLogger(__name__)

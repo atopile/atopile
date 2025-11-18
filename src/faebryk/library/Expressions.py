@@ -240,6 +240,9 @@ class is_expression(fabll.Node):
         # TODO
         raise NotImplementedError
 
+    def in_operands(self, operand: "F.Parameters.can_be_operand") -> bool:
+        return operand in self.get_operands()
+
 
 # TODO
 class has_implicit_constraints(fabll.Node):

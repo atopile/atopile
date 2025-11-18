@@ -21,7 +21,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get_graphs
+from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
@@ -114,7 +114,7 @@ class NotCompatibleException(Exception):
         module: fabll.Node,
         component: "Component",
         param: Parameter | None = None,
-        c_range: F.Literals.is_literal[Any] | None = None,
+        c_range: F.Literals.is_literal | None = None,
     ):
         self.module = module
         self.component = component

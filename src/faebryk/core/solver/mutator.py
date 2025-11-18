@@ -24,17 +24,11 @@ from faebryk.core.solver.utils import (
     VERBOSE_TABLE,
     ContradictionByLiteral,
     MutatorUtils,
-    SolverAll,
-    SolverAllExtended,
-    SolverLiteral,
-    get_graphs,
 )
-from faebryk.library.Expressions import IsConstrainable, IsConstrained, is_canonical
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
     KeyErrorNotFound,
-    cast_assert,
     duplicates,
     groupby,
     indented_container,
@@ -743,7 +737,7 @@ class MutationMap:
         """
         return mapped param, True if removed or False if not mapped
         """
-        assert fabll.isparameteroperable(param)
+        assert param.is_parameter()
         is_root = param.get_parent() is not None
 
         if not self.non_identity_stages:

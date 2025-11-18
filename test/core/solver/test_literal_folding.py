@@ -44,14 +44,8 @@ from faebryk.core.parameter import (
     Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.utils import Contradiction, get_graphs
-from faebryk.libs.sets.numeric_sets import float_round
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-)
+from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import Quantity
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt, groupby, once
 
 logger = logging.getLogger(__name__)

@@ -325,7 +325,7 @@ class NumericParameter(fabll.Node):
 
         return self.get_trait(HasUnit).get_unit()
 
-    def get_domain(self) -> "NumberDomain":
+    def get_domain(self) -> "F.NumberDomain":
         # TODO
         pass
 

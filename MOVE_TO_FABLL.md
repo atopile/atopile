@@ -45,12 +45,12 @@ SOLVER:
 - [ ] think and fix Graph handling in mutator
 - [ ] check for `type` and `isinstance` and `cast`
 - [ ] consider renaming parameter_operatable to something shorter and better (now that we have operand)
-- [WIP] fix type errors in all algos
+- [WIP, revisit after util] fix type errors in all algos
   - [x] canonical
   - [x] expression_groups
-  - [x, revisit after util] expression_wise
+  - [x] expression_wise
   - [x] pure_literal
-  - [ ] structural
+  - [x] structural
 
 ##
 
