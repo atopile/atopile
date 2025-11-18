@@ -186,7 +186,7 @@ class Component:
         return unit_price * qty + handling_fee
 
     @functools.cached_property
-    def attribute_literals(self) -> dict[str, F.Literals.is_literal[Any] | None]:
+    def attribute_literals(self) -> dict[str, F.Literals.is_literal | None]:
         def deserialize(k, v):
             if v is None:
                 return None

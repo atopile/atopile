@@ -279,7 +279,7 @@ def _attach(module: fabll.Node, c: Component):
 
 def _get_compatible_parameters(
     module: fabll.Node, c: "Component", solver: Solver
-) -> dict[F.Parameters.is_parameter, F.Literals.is_literal[Any]]:
+) -> dict[F.Parameters.is_parameter, F.Literals.is_literal]:
     """
     Check if the parameters of a component are compatible with the module
     """
@@ -310,7 +310,7 @@ def _get_compatible_parameters(
 
     def _map_param(
         name: str, param: F.Parameters.is_parameter
-    ) -> tuple[F.Parameters.is_parameter, F.Literals.is_literal[Any]]:
+    ) -> tuple[F.Parameters.is_parameter, F.Literals.is_literal]:
         c_range = component_params.get(name)
         if c_range is None:
             c_range = param.domain.unbounded(param)

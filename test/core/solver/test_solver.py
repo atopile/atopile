@@ -23,18 +23,13 @@ from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.util import cast_assert, not_none, times
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
-from test.common.resources.fabll_modules.USB_C_PSU_Vertical import USB_C_PSU_Vertical
 
 logger = logging.getLogger(__name__)
 
 
 def _create_letters(
-    n: int, units=dimensionless
-) -> tuple[F.Parameters.ReprContext, list[Parameter], fabll.Graph]:
+    n: int, units=F.Units.Dimensionless
+) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter], fabll.Graph]:
     context = F.Parameters.ReprContext()
 
     out = []
