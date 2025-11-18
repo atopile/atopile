@@ -296,6 +296,24 @@ class IsConstrained(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
+def _make_instance_from_operand_instance[T: fabll.NodeT](
+    expr_factory: type[T],
+    operand_instances: "tuple[F.Parameters.can_be_operand, ...]",
+    g: graph.GraphView | None,
+) -> T:
+    if not operand_instances:
+        raise ValueError("At least one operand is required")
+    g = g or operand_instances[0].instance.g()
+    tg = operand_instances[0].tg
+    return expr_factory.bind_typegraph(tg=tg).create_instance(g=g)
+
+
+def _op(expr: fabll.NodeT) -> "F.Parameters.can_be_operand":
+    from faebryk.library.Parameters import can_be_operand
+
+    return expr.get_trait(can_be_operand)
+
+
 # --------------------------------------------------------------------------------------
 
 # TODO distribute
@@ -421,6 +439,23 @@ class Add(fabll.Node):
         self.operands.get().append(*operands)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g))
+
 
 class Subtract(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -446,6 +481,26 @@ class Subtract(fabll.Node):
             self.subtrahends.get().append(subtrahend)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        minuend: "F.Parameters.can_be_operand",
+        *subtrahends: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        operands = (minuend, *subtrahends)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(minuend, *subtrahends)
+
+    @classmethod
+    def c(
+        cls,
+        minuend: "F.Parameters.can_be_operand",
+        *subtrahends: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(minuend, *subtrahends, g=g))
+
 
 class Multiply(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -469,6 +524,23 @@ class Multiply(fabll.Node):
     def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g))
 
 
 class Divide(fabll.Node):
@@ -500,6 +572,26 @@ class Divide(fabll.Node):
             self.denominator.get().append(denominator)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        numerator: "F.Parameters.can_be_operand",
+        *denominators: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        operands = (numerator, *denominators)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(numerator, *denominators)
+
+    @classmethod
+    def c(
+        cls,
+        numerator: "F.Parameters.can_be_operand",
+        *denominators: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(numerator, *denominators, g=g))
+
 
 class Sqrt(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -522,6 +614,23 @@ class Sqrt(fabll.Node):
     def setup(self, operand: "Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
 
 
 class Power(fabll.Node):
@@ -548,6 +657,25 @@ class Power(fabll.Node):
         self.base.get().point(base)
         self.exponent.get().point(exponent)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        base: "F.Parameters.can_be_operand",
+        exponent: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (base, exponent), g=g)
+        return instance.setup(base, exponent)
+
+    @classmethod
+    def c(
+        cls,
+        base: "F.Parameters.can_be_operand",
+        exponent: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(base, exponent, g=g))
 
 
 class Log(fabll.Node):
@@ -581,6 +709,26 @@ class Log(fabll.Node):
             self.base.get().point(base)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        base: "F.Parameters.can_be_operand | None" = None,
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        operands = (operand, base) if base is not None else (operand,)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(operand, base)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        base: "F.Parameters.can_be_operand | None" = None,
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, base, g=g))
+
 
 class Sin(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -601,6 +749,23 @@ class Sin(fabll.Node):
         self.operand.get().point(operand)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
+
 
 class Cos(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -618,6 +783,23 @@ class Cos(fabll.Node):
     def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
 
 
 class Abs(fabll.Node):
@@ -640,6 +822,23 @@ class Abs(fabll.Node):
         self.operand.get().point(operand)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
+
 
 class Round(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -661,6 +860,23 @@ class Round(fabll.Node):
         self.operand.get().point(operand)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
+
 
 class Floor(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -680,6 +896,23 @@ class Floor(fabll.Node):
         self.operand.get().point(operand)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
+
 
 class Ceil(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -696,6 +929,23 @@ class Ceil(fabll.Node):
     def setup(self, operand: "F.Parameters.can_be_operand") -> Self:
         self.operand.get().point(operand)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g))
 
 
 class Min(fabll.Node):
@@ -716,6 +966,23 @@ class Min(fabll.Node):
         self.operands.get().append(*operands)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g))
+
 
 class Max(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -734,6 +1001,23 @@ class Max(fabll.Node):
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g))
 
 
 class Integrate(fabll.Node):
@@ -760,6 +1044,25 @@ class Integrate(fabll.Node):
         self.variable.get().point(variable)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        variable: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand, variable), g=g)
+        return instance.setup(operand, variable)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        variable: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, variable, g=g))
+
 
 class Differentiate(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -785,6 +1088,25 @@ class Differentiate(fabll.Node):
         self.variable.get().point(variable)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        variable: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand, variable), g=g)
+        return instance.setup(operand, variable)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        variable: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, variable, g=g))
+
 
 class And(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -804,12 +1126,31 @@ class And(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g, constrain=constrain))
 
 
 class Or(fabll.Node):
@@ -838,12 +1179,31 @@ class Or(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g, constrain=constrain))
 
 
 class Not(fabll.Node):
@@ -864,12 +1224,31 @@ class Not(fabll.Node):
     operand = OperandPointer.MakeChild()
 
     def setup(
-        self, operand: "F.Parameters.can_be_operand", constrain: bool = False
+        self, operand: "F.Parameters.can_be_operand", constrain: bool = True
     ) -> Self:
         self.operand.get().point(operand)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        return instance.setup(operand, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        operand: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(operand, g=g, constrain=constrain))
 
 
 class Xor(fabll.Node):
@@ -890,12 +1269,31 @@ class Xor(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g, constrain=constrain))
 
 
 class Implies(fabll.Node):
@@ -916,13 +1314,36 @@ class Implies(fabll.Node):
         self,
         antecedent: "F.Parameters.can_be_operand",
         consequent: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.antecedent.get().point(antecedent)
         self.consequent.get().point(consequent)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        antecedent: "F.Parameters.can_be_operand",
+        consequent: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(
+            cls, (antecedent, consequent), g=g
+        )
+        return instance.setup(antecedent, consequent, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        antecedent: "F.Parameters.can_be_operand",
+        consequent: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(antecedent, consequent, g=g, constrain=constrain))
 
 
 class IfThenElse(fabll.Node):
@@ -951,6 +1372,29 @@ class IfThenElse(fabll.Node):
         self.else_value.get().point(else_value)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        condition: "F.Parameters.can_be_operand",
+        then_value: "F.Parameters.can_be_operand",
+        else_value: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(
+            cls, (condition, then_value, else_value), g=g
+        )
+        return instance.setup(condition, then_value, else_value)
+
+    @classmethod
+    def c(
+        cls,
+        condition: "F.Parameters.can_be_operand",
+        then_value: "F.Parameters.can_be_operand",
+        else_value: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(condition, then_value, else_value, g=g))
+
 
 class Union(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -977,6 +1421,23 @@ class Union(fabll.Node):
     def setup(self, *operands: "F.Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g))
 
 
 class Intersection(fabll.Node):
@@ -1005,6 +1466,23 @@ class Intersection(fabll.Node):
         self.operands.get().append(*operands)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(*operands)
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g))
+
 
 class Difference(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -1028,6 +1506,25 @@ class Difference(fabll.Node):
         self.minuend.get().point(minuend)
         self.subtrahend.get().point(subtrahend)
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        minuend: "F.Parameters.can_be_operand",
+        subtrahend: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (minuend, subtrahend), g=g)
+        return instance.setup(minuend, subtrahend)
+
+    @classmethod
+    def c(
+        cls,
+        minuend: "F.Parameters.can_be_operand",
+        subtrahend: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(minuend, subtrahend, g=g))
 
 
 class SymmetricDifference(fabll.Node):
@@ -1056,6 +1553,25 @@ class SymmetricDifference(fabll.Node):
         self.right.get().point(right)
         return self
 
+    @classmethod
+    def from_operands(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        return instance.setup(left, right)
+
+    @classmethod
+    def c(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(left, right, g=g))
+
 
 class LessThan(fabll.Node):
     _can_be_operand = Parameters.can_be_operand.MakeChild()
@@ -1077,13 +1593,34 @@ class LessThan(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        return instance.setup(left, right, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(left, right, g=g, constrain=constrain))
 
 
 class GreaterThan(fabll.Node):
@@ -1107,13 +1644,34 @@ class GreaterThan(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        return instance.setup(left, right, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(left, right, g=g, constrain=constrain))
 
 
 class LessOrEqual(fabll.Node):
@@ -1136,13 +1694,34 @@ class LessOrEqual(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        return instance.setup(left, right, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(left, right, g=g, constrain=constrain))
 
 
 class GreaterOrEqual(fabll.Node):
@@ -1167,13 +1746,34 @@ class GreaterOrEqual(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        return instance.setup(left, right, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(left, right, g=g, constrain=constrain))
 
 
 class NotEqual(fabll.Node):
@@ -1196,13 +1796,34 @@ class NotEqual(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        return instance.setup(left, right, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        left: "F.Parameters.can_be_operand",
+        right: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(left, right, g=g, constrain=constrain))
 
 
 class IsBitSet(fabll.Node):
@@ -1226,13 +1847,34 @@ class IsBitSet(fabll.Node):
         self,
         value: "F.Parameters.can_be_operand",
         bit_index: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.value.get().point(value)
         self.bit_index.get().point(bit_index)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        value: "F.Parameters.can_be_operand",
+        bit_index: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (value, bit_index), g=g)
+        return instance.setup(value, bit_index, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        value: "F.Parameters.can_be_operand",
+        bit_index: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(value, bit_index, g=g, constrain=constrain))
 
 
 class IsSubset(fabll.Node):
@@ -1257,13 +1899,34 @@ class IsSubset(fabll.Node):
         self,
         subset: "F.Parameters.can_be_operand",
         superset: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.subset.get().point(subset)
         self.superset.get().point(superset)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        subset: "F.Parameters.can_be_operand",
+        superset: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (subset, superset), g=g)
+        return instance.setup(subset, superset, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        subset: "F.Parameters.can_be_operand",
+        superset: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(subset, superset, g=g, constrain=constrain))
 
 
 class IsSuperset(fabll.Node):
@@ -1286,13 +1949,34 @@ class IsSuperset(fabll.Node):
         self,
         superset: "F.Parameters.can_be_operand",
         subset: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.superset.get().point(superset)
         self.subset.get().point(subset)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        superset: "F.Parameters.can_be_operand",
+        subset: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (superset, subset), g=g)
+        return instance.setup(superset, subset, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        superset: "F.Parameters.can_be_operand",
+        subset: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(superset, subset, g=g, constrain=constrain))
 
 
 class Cardinality(fabll.Node):
@@ -1315,13 +1999,34 @@ class Cardinality(fabll.Node):
         self,
         set: "F.Parameters.can_be_operand",
         cardinality: "F.Parameters.can_be_operand",
-        constrain: bool = False,
+        constrain: bool = True,
     ) -> Self:
         self.set.get().point(set)
         self.cardinality.get().point(cardinality)
         if constrain:
             self._is_constrainable.get().constrain()
         return self
+
+    @classmethod
+    def from_operands(
+        cls,
+        set: "F.Parameters.can_be_operand",
+        cardinality: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, (set, cardinality), g=g)
+        return instance.setup(set, cardinality, constrain=constrain)
+
+    @classmethod
+    def c(
+        cls,
+        set: "F.Parameters.can_be_operand",
+        cardinality: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(set, cardinality, g=g, constrain=constrain))
 
 
 class Is(fabll.Node):
@@ -1343,7 +2048,9 @@ class Is(fabll.Node):
     operands = OperandSet.MakeChild()
 
     def setup(
-        self, operands: list["F.Parameters.can_be_operand"], constrain: bool
+        self,
+        operands: list["F.Parameters.can_be_operand"],
+        constrain: bool = True,
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
@@ -1360,7 +2067,8 @@ class Is(fabll.Node):
             identifier="constrain",
         )
         for operand in operands:
-            # TODO: relying on a string identifier to connect to the correct trait is nasty
+            # TODO: relying on a string identifier to connect to the correct
+            # trait is nasty
             operand.append("_can_be_operand")
             out.add_dependant(
                 OperandSet.MakeEdge([out, cls.operands], operand),
@@ -1374,3 +2082,25 @@ class Is(fabll.Node):
         return next(
             op for op in self.get_trait(is_expression).get_operands() if op != operand
         )
+
+    @classmethod
+    def from_operands(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> Self:
+        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        return instance.setup(
+            operands=list(operands),
+            constrain=constrain,
+        )
+
+    @classmethod
+    def c(
+        cls,
+        *operands: "F.Parameters.can_be_operand",
+        g: graph.GraphView | None = None,
+        constrain: bool = True,
+    ) -> "F.Parameters.can_be_operand":
+        return _op(cls.from_operands(*operands, g=g, constrain=constrain))
