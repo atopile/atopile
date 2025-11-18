@@ -12,8 +12,7 @@ from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     Contradiction,
-    ContradictionByLiteral,
-    make_lit,
+    ContradictionByLiteral
 )
 from faebryk.libs.util import (
     EquivalenceClasses,
@@ -624,7 +623,7 @@ def isolate_lone_params(mutator: Mutator):
                     Add,
                     op_without_param,
                     *[
-                        op_or_create_expr(Multiply, op, make_lit(-1))
+                        op_or_create_expr(Multiply, op, mutator.make_lit(-1))
                         for op in moved_ops
                     ],
                 ),
@@ -636,7 +635,7 @@ def isolate_lone_params(mutator: Mutator):
                     Multiply,
                     op_without_param,
                     op_or_create_expr(
-                        Power, op_or_create_expr(Multiply, *moved_ops), make_lit(-1)
+                        Power, op_or_create_expr(Multiply, *moved_ops), mutator.make_lit(-1)
                     ),
                 ),
             )
@@ -644,7 +643,7 @@ def isolate_lone_params(mutator: Mutator):
             return (
                 op_with_param_e.get_operands()[0],
                 op_or_create_expr(
-                    Power, op_without_param, make_lit(-1)
+                    Power, op_without_param, mutator.make_lit(-1)
                 ),  # TODO: fix exponent
             )
         else:

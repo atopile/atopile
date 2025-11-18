@@ -6,7 +6,6 @@ from typing import Optional, Union, cast
 import pytest
 
 import faebryk.core.node as fabll
-import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import address, errors
 from atopile.datatypes import TypeRef
@@ -14,7 +13,6 @@ from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
 

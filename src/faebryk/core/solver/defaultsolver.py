@@ -10,14 +10,8 @@ from typing import Any, override
 
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 import faebryk.library.Expressions as Expressions
-from faebryk.core.parameter import (
-    ConstrainableExpression,
-    Expression,
-    IfThenElse,
-    Parameter,
-    Predicate,
-)
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
@@ -345,7 +339,7 @@ class DefaultSolver(Solver):
     @override
     def try_fulfill(
         self,
-        predicate: ConstrainableExpression,
+        predicate: F.Expressions.IsConstrainable,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool | None:
@@ -423,7 +417,7 @@ class DefaultSolver(Solver):
             if self.state is None:
                 raise
 
-    def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
+    def inspect_get_known_supersets(self, value: F.Parameters) -> F.Literals.is_literal:
         """
         Careful, only use after solver ran!
         """
@@ -458,7 +452,7 @@ class DefaultSolver(Solver):
     @override
     def get_any_single(
         self,
-        operatable: Parameter,
+        operatable: F.Parameters,
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,

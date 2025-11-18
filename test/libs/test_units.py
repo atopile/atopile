@@ -1,11 +1,10 @@
 import pytest
 
-from faebryk.libs.units import (
-    P,
-    Unit,
-    UnitCompatibilityError,
-    assert_compatible_units,
-)
+import faebryk.library._F as F
+
+from F.Units import P
+from F.Units import assert_compatible_units
+from F.Units import Unit
 
 
 class DummyHasUnit:

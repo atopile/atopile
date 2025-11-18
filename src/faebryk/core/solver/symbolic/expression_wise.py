@@ -12,7 +12,6 @@ from faebryk.core.solver.algorithm import SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     Contradiction,
-    make_lit,
 )
 from faebryk.libs.util import partition_as_list
 
@@ -239,7 +238,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # 0 * A -> 0
         if 0 in new_operands:
-            new_operands = [make_lit(0)]
+            new_operands = [mutator.make_lit(0)]
             # convert_operable_aliased_to_single_into_literal takes care of rest
 
         # unpack if single operand (operatable)

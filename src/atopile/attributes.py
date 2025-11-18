@@ -7,11 +7,9 @@ import re
 from typing import Type
 
 import faebryk.core.node as fabll
-import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
-from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import md_list, not_none
@@ -67,17 +65,17 @@ class _has_local_kicad_footprint_named_defined(fabll.Node):
             self.set_footprint(fp)
             return fp
 
-    def handle_duplicate(
-        self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
-    ) -> bool:
-        if old.try_get_footprint():
-            raise RuntimeError("Too late to set footprint")
+    # def handle_duplicate(
+    #     self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
+    # ) -> bool:
+    #     if old.try_get_footprint():
+    #         raise RuntimeError("Too late to set footprint")
 
-        # Update the existing trait...
-        old.lib_reference = self.lib_reference
-        # ... and we don't need to attach the new
-        assert old.pinmap is self.pinmap, "Pinmap reference mismatch"
-        return False
+    #     # Update the existing trait...
+    #     old.lib_reference = self.lib_reference
+    #     # ... and we don't need to attach the new
+    #     assert old.pinmap is self.pinmap, "Pinmap reference mismatch"
+    #     return False
 
 
 class _has_ato_cmp_attrs(fabll.Node):
@@ -96,9 +94,9 @@ class _has_ato_cmp_attrs(fabll.Node):
         self.pinmap[pinname] = mif
         return mif
 
-    def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
-        # Don't replace the existing ato trait on addition
-        return False
+    # def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
+    #     # Don't replace the existing ato trait on addition
+    #     return False
 
 
 # FIXME: this would ideally be some kinda of mixin,
@@ -369,7 +367,6 @@ class Resistor(F.Resistor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()

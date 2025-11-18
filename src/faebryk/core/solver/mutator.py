@@ -1308,7 +1308,7 @@ class Mutator:
         self,
         soft: type[Is] | type[IsSubset],
         old: F.Parameters.is_parameter_operatable,
-        new: SolverAll,
+        new: F.Parameters.is_parameter_operatable | F.Literals.is_literal,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
     ):
         # filter A is A, A ss A
