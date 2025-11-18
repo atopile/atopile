@@ -5,10 +5,11 @@ import logging
 from collections.abc import Sequence
 from typing import Callable
 
+from more_itertools import first
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import md_list
-from more_itertools import first
+from faebryk.libs.util import md_list, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -71,18 +72,8 @@ class requires_pulls(fabll.Node):
             )
             super().__init__(message, nodes=list(bus))
 
-    def __init__(
-        self,
-        *signals: SignalLike,
-        required_resistance,
-        pred: Callable[[SignalLike, set[fabll.Node]], bool] | None = None,
-    ):
-        super().__init__()
-
-        # TODO: direction
-        self.signals: tuple[SignalLike, ...] = tuple(signals)
-        self.pred = pred
-        self.required_resistance = required_resistance
+    signals = F.Collections.PointerSet.MakeChild()
+    required_resistance = F.Parameters.NumericParameter.MakeChild(F.Units.Ohm)
 
     def _get_bus(self, signal: SignalLike):
         return {
@@ -116,14 +107,23 @@ class requires_pulls(fabll.Node):
     @classmethod
     def MakeChild(
         cls,
-        *signals: SignalLike,
-        required_resistance,
-        interface_type: type[fabll.Node],
+        *signals: fabll._ChildField[SignalLike],
+        required_resistance: F.Parameters.NumericParameter,
+        # pred: Callable[[SignalLike, set[fabll.Node]], bool] #TODO: what is this?
     ):
-        return cls(
-            *signals,
-            required_resistance=required_resistance,
-            pred=cls._first_interface_on_bus_pred(interface_type),
+        out = fabll._ChildField(cls)
+        for signal in signals:
+            out.add_dependant(
+                F.Collections.Pointer.MakeEdge(
+                    [out, cls.signals],
+                    [signal],
+                )
+            )
+        out.add_dependant(
+            F.Parameters.NumericParameter.MakeEdge(
+                [out, cls.required_resistance],
+                [required_resistance],
+            )
         )
 
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -132,24 +132,32 @@ class requires_pulls(fabll.Node):
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
         signals = (
-            self.signals
-            if self.pred is None
-            else [
-                signal
-                for signal in self.signals
-                if self.pred(signal, self._get_bus(signal))
-            ]
+            F.ElectricSignal.bind_instance(signal.instance)
+            for signal in self.signals.get().as_list()
+            # if self.pred is None #TODO: what is this?
+            # else [
+            #     signal
+            #     for signal in self.signals
+            #     if self.pred(signal, self._get_bus(signal))
+            # ]
         )
 
         maybe_unfulfilled = {
-            signal for signal in signals if signal.pull_resistance is None
+            signal
+            for signal in signals
+            if not_none(
+                signal.get_trait(F.can_be_pulled).pull_resistance
+            ).try_extract_constrained_literal
+            is not None
         }
 
         unfulfilled = {
             signal
             for signal in signals
             if signal.pull_resistance is not None
-            and not self.required_resistance.is_superset_of(signal.pull_resistance)
+            and not self.required_resistance.get()
+            .force_extract_literal()
+            .is_superset_of(signal.pull_resistance)
         }
 
         if unfulfilled:
