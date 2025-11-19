@@ -2561,7 +2561,7 @@ fn wrap_nodebuilder(root: *py.PyObject) void {
 fn wrap_edgebuilder_init() type {
     return struct {
         pub const descr = method_descr{
-            .name = "init",
+            .name = "create",
             .doc = "Create a new EdgeCreationAttributes",
             .args_def = struct {
                 edge_type: *py.PyObject,
@@ -2569,6 +2569,7 @@ fn wrap_edgebuilder_init() type {
                 name: *py.PyObject,
                 dynamic: *py.PyObject,
             },
+            .static = true,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
@@ -2586,8 +2587,7 @@ fn wrap_edgebuilder_init() type {
 
             const allocator = std.heap.c_allocator;
 
-            var dynamic = _unwrap_literal_str_dict(kwarg_obj.dynamic, allocator) catch return null;
-            defer if (dynamic != null) dynamic.?.deinit();
+            const dynamic = _unwrap_literal_str_dict(kwarg_obj.dynamic, allocator) catch return null;
 
             const attributes = allocator.create(faebryk.edgebuilder.EdgeCreationAttributes) catch {
                 py.PyErr_SetString(py.PyExc_MemoryError, "Out of memory");
