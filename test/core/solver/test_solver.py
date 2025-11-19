@@ -151,15 +151,16 @@ def test_solve_phase_one():
 
 def test_simplify():
     class App(fabll.Node):
-        ops = [Parameter.MakeChild() for _ in range(10)]
+        ops = [F.Parameters.is_parameter_operatable.MakeChild() for _ in range(10)]
 
-    app = App()
+    app_type = App.bind_typegraph(tg=tg)
+    app = app_type.create_instance(g=g)
 
     # (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)
     #  + I + 8) + J + 9) - 3) - 4) < 11
     # => (H + I + J + 17) < 11
-    constants: list[ParameterOperatable.NumberLike] = [
-        quantity(c, dimensionless) for c in range(0, 10)
+    constants: list[F.Parameters.is_parameter_operatable] = [
+        F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(g=g).setup(c) for c in range(0, 10)
     ]
     constants[5] = app.ops[0] - app.ops[0]
     constants[9] = RangeWithGaps(lit_op_range(((0, dimensionless), (1, dimensionless))))
@@ -183,18 +184,21 @@ def test_simplify():
 
 def test_simplify_logic_and():
     class App(fabll.Node):
-        p = [Parameter.MakeChild() for _ in range(4)]
+        p = [F.Parameters.is_parameter_operatable.MakeChild() for _ in range(4)]
 
-    app = App()
-    anded = And(app.p[0], True)
+    app_type = App.bind_typegraph(tg=tg)
+    app = app_type.create_instance(g=g)
+
+    anded = F.Expressions.And.bind_typegraph(tg=tg).create_instance(g=g).setup(
+        app.p[0], lit_bool(True)
+    )
     for p in app.p[1:]:
-        anded = anded & p
-    anded = anded & anded
+        anded = F.Expressions.And.from_operands(anded, p, g=g)
+    anded = F.Expressions.And.from_operands(anded, anded, g=g)
 
-    anded.assert_()
-    G = anded.get_graph()
+    anded.get_trait(F.Expressions.is_assertable).assert_()
     solver = DefaultSolver()
-    solver.simplify_symbolically(G)
+    solver.simplify_symbolically(g)
     # TODO actually test something
 
 

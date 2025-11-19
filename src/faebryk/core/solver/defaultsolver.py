@@ -165,7 +165,7 @@ class DefaultSolver(Solver):
         *gs: graph.GraphView | fabll.Node,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
-        _gs = get_graphs(gs)
+        _gs = (gs[0],) if gs else ()
 
         if self.reusable_state is None:
             return DefaultSolver.SolverState(
