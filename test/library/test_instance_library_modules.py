@@ -40,6 +40,13 @@ def test_symbol_types(name: str, module: fabll.Node):
     )
 
 
+_discovery_tg = fbrk.TypeGraph.create(g=graph.GraphView.create())
+
+
+def _is_trait(node_type_bound: fabll.TypeNodeBoundTG) -> bool:
+    return node_type_bound.try_get_type_trait(fabll.ImplementsTrait) is not None
+
+
 @pytest.mark.skipif(F is None, reason="Library not loaded")
 @pytest.mark.parametrize(
     "name, module",
@@ -51,6 +58,7 @@ def test_symbol_types(name: str, module: fabll.Node):
             not name.startswith("_")
             and isinstance(module, type)
             and issubclass(module, fabll.Node)
+            and not _is_trait(module.bind_typegraph(tg=_discovery_tg))
         )
     ],
 )
@@ -66,11 +74,12 @@ def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
     tg = fbrk.TypeGraph.create(g=g)
     try:
         instance = module.bind_typegraph(tg=tg).create_instance(g=g)
-        assert (
-            instance.try_get_trait(fabll.is_module)
-            or instance.try_get_trait(fabll.ImplementsTrait)
-            or instance.try_get_trait(fabll.is_interface)
+        assert not _is_trait(module.bind_typegraph(tg=tg)), (
+            f"Module {module.__name__} is a trait"
         )
+        assert instance.try_get_trait(fabll.is_module) or instance.try_get_trait(
+            fabll.is_interface
+        ), f"Module {module.__name__} is not a module or interface"
 
     except TypeError:
         pytest.xfail(f"{module.__name__} needs arguments to be instantiated")

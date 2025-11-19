@@ -1424,6 +1424,16 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
                 return True
         return False
 
+    def try_get_type_trait[T: NodeT](self, trait: type[T]) -> T | None:
+        trait_type = trait.bind_typegraph(tg=self.tg)
+        out = fbrk.Trait.try_get_trait(
+            target=self.get_or_create_type(),
+            trait_type=trait_type.get_or_create_type(),
+        )
+        if not out:
+            return None
+        return trait.bind_instance(instance=out)
+
     def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
         impl = fbrk.Trait.try_get_trait(
             target=self.get_or_create_type(),
@@ -1581,8 +1591,8 @@ class is_interface(Node):
     """
     group_into_buses() clusters the supplied electrical
     interfaces by their shared bus (electrical connectivity) so the exporter can treat
-    every bus once; the result is a dict whose keys are the representative bus interfaces
-    and whose values are the other Interfaces that belong to the same bus.
+    every bus once; the result is a dict whose keys are the representative bus
+    interfaces and whose values are the other Interfaces that belong to the same bus.
     """
 
     @staticmethod

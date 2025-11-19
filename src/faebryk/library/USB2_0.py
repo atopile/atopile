@@ -10,3 +10,5 @@ class USB2_0(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     usb_if = F.USB2_0_IF.MakeChild()
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())

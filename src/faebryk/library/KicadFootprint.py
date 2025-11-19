@@ -64,6 +64,8 @@ class KicadFootprint(fabll.Node):
     pin_names_ = F.Collections.PointerSet.MakeChild()
     pins_ = F.Collections.PointerSet.MakeChild()
 
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
     @property
     def pin_names(self) -> list[str]:
         pin_name_parameters = self.pin_names_.get().as_list()
