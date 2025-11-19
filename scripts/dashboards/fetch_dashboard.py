@@ -286,29 +286,33 @@ def build_html(summary: dict) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pytest results</title>
   <style>
-    body {{ font-family: Arial, sans-serif; padding: 24px; max-width: 720px; margin: auto; color: #e8ecff; background: #070a23; }}
-    h1 {{ margin-bottom: 8px; }}
-    .status {{ font-size: 1rem; margin-bottom: 16px; }}
-    .pill {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 600; background: #f95015; color: #070a23; }}
-    .bar {{ display: flex; height: 24px; border-radius: 12px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
+    body {{ font-family: Arial, sans-serif; font-size: 2rem; padding: 48px; max-width: 1440px; margin: auto; color: #e8ecff; background: #070a23; }}
+    h1 {{ margin-bottom: 16px; font-size: 3.4rem; }}
+    .status {{ font-size: 2rem; margin-bottom: 32px; }}
+    .pill {{ display: inline-block; padding: 8px 20px; border-radius: 9999px; font-weight: 600; font-size: 1.8rem; background: #f95015; color: #070a23; }}
+    .bar-row {{ display: flex; align-items: center; gap: 32px; margin: 32px 0; }}
+    .bar {{ flex: 1; display: flex; height: 48px; border-radius: 24px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
     .seg {{ height: 100%; }}
-    ul {{ list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }}
-    li {{ background: #0f1433; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+    ul {{ list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }}
+    li {{ background: #0f1433; border-radius: 20px; padding: 20px 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-size: 1.8rem; }}
     .label {{ color: #cbd3ff; }}
     .count {{ font-weight: 700; float: right; color: #ffffff; }}
+    .meta {{ font-size: 1.8rem; margin-bottom: 16px; }}
     .meta a {{ color: #f95015; text-decoration: none; }}
-    .mascot {{ display: flex; justify-content: center; margin: 24px 0; }}
-    .mascot img {{ max-width: 240px; width: 60%; height: auto; }}
+    .mascot {{ width: 140px; max-width: 20%; height: auto; display: block; }}
   </style>
 </head>
 <body>
   <h1>Pytest results</h1>
   <div class="status">Run status: <span class="pill">{status}</span></div>
   <div class="meta">Total tests: {total}</div>
-  <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#e5e7eb"></div>'}</div>
+  <div class="bar-row">
+    <img class="mascot" src="happy.jpg" alt="happy sausage" />
+    <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#e5e7eb"></div>'}</div>
+    <img class="mascot" src="angry.png" alt="angry sausage" />
+  </div>
   <ul>{summary_items}</ul>
   <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
-  <div class="mascot"><img src="sausage2.png" alt="sausage" /></div>
   <div class="meta">Commit pushed at: {commit_time}</div>
   <div class="meta">Commit message: {commit_message}</div>
   <div class="meta">Commit author: {commit_author}</div>
