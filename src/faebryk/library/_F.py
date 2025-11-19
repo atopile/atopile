@@ -17,6 +17,8 @@ This way we can add new modules without changing this file
 
 import faebryk.library.Collections as Collections
 import faebryk.library.Parameters as Parameters
+from faebryk.library.is_sink import is_sink
+from faebryk.library.is_source import is_source
 from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
@@ -121,6 +123,8 @@ from faebryk.library.HDMI import HDMI
 __all__ = [
     "Collections",
     "Parameters",
+    "is_sink",
+    "is_source",
     "Footprint",
     "Logic",
     "Mechanical",

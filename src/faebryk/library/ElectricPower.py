@@ -60,3 +60,9 @@ class ElectricPower(fabll.Node):
             language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )
+
+    def make_source(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_source).setup()
+
+    def make_sink(self):
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()

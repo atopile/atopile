@@ -4,71 +4,55 @@
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
 from faebryk.libs.util import pairwise, times
 
 
-@pytest.mark.xfail(reason="Solver not smart enough")
-def test_fused_power():
-    power_in = F.ElectricPower()
-    power_out = F.ElectricPower()
-
-    power_in.voltage.constrain_subset(10 * P.V)
-    power_in.max_current.constrain_subset(500 * P.mA)
-
-    power_in_fused = power_in.fused()
-    power_in_fused.connect(power_out)
-
-    fuse = next(iter(power_in_fused.get_children(direct_only=False, types=F.Fuse)))
-    F.is_bus_parameter.resolve_bus_parameters(fuse.get_graph())
-
-    solver = DefaultSolver()
-    assert solver.inspect_get_known_supersets(fuse.trip_current).is_subset_of(
-        fabll.Range.from_center_rel(500 * P.mA, 0.1)
-    )
-    assert solver.inspect_get_known_supersets(power_out.voltage).is_subset_of(
-        fabll.Single(10 * P.V)
-    )
-    cur = solver.inspect_get_known_supersets(power_out.max_current)
-    assert isinstance(cur, Quantity_Interval_Disjoint)
-    assert (cur <= fabll.Single(500 * P.mA)) == BoolSet(True)
+def _make_graph_and_typegraph():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    return g, tg
 
 
 def test_power_source_short():
     """
     Test that a power source is shorted when connected to another power source
     """
+    g, tg = _make_graph_and_typegraph()
 
-    power_out_1 = F.ElectricPower()
-    power_out_2 = F.ElectricPower()
+    power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+    power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
 
-    power_out_1.connect(power_out_2)
-    power_out_2.connect(power_out_1)
+    power_out_1.get_trait(fabll.is_interface).connect_to(power_out_2)
+    power_out_2.get_trait(fabll.is_interface).connect_to(power_out_1)
 
     power_out_1.make_source()
     power_out_2.make_source()
 
     with pytest.raises(ERCPowerSourcesShortedError):
-        simple_erc(power_out_1.get_graph())
+        simple_erc(tg)
 
 
 def test_power_source_no_short():
     """
     Test that a power source is not shorted when connected to another non-power source
     """
+    g, tg = _make_graph_and_typegraph()
 
-    power_out_1 = F.ElectricPower()
-    power_out_2 = F.ElectricPower()
+    power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+    power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
 
     power_out_1.make_source()
 
-    power_out_1.connect(power_out_2)
+    power_out_1.get_trait(fabll.is_interface).connect_to(power_out_2)
 
-    simple_erc(power_out_1.get_graph())
+    simple_erc(tg)
 
 
 def test_voltage_propagation():
