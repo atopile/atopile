@@ -415,11 +415,15 @@ class NumericParameter(fabll.Node):
         return out
 
     def try_extract_constrained_literal(self) -> "Literals.Numbers | None":
+        from faebryk.library.Literals import Numbers
+
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
-            lit_type=Literals.Numbers
+            lit_type=Numbers
         )
 
     def force_extract_literal(self) -> "Literals.Numbers":
+        from faebryk.library.Literals import Numbers
+
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=Literals.Numbers
+            lit_type=Numbers
         )

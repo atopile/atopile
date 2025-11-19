@@ -56,9 +56,11 @@ class LiteralsAttributes(fabll.NodeAttributes):
 
 
 class Strings(fabll.Node[LiteralsAttributes]):
+    from faebryk.library.Parameters import can_be_operand
+
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def setup(self, value: str) -> Self:
         return self
@@ -83,8 +85,10 @@ class Strings(fabll.Node[LiteralsAttributes]):
 
 
 class Numbers(fabll.Node):
+    from faebryk.library.Parameters import can_be_operand
+
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def setup(self, *intervals: fabll.NodeT, unit: fabll.NodeT) -> Self:
         # TODO
@@ -210,9 +214,11 @@ class Numbers(fabll.Node):
 
 
 class Booleans(fabll.Node[LiteralsAttributes]):
+    from faebryk.library.Parameters import can_be_operand
+
     Attributes = LiteralsAttributes
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def setup(self, *values: bool) -> Self:
         # TODO
@@ -246,8 +252,10 @@ class Booleans(fabll.Node[LiteralsAttributes]):
 
 
 class Enums(fabll.Node):
+    from faebryk.library.Parameters import can_be_operand
+
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def setup[T: Enum](self, enum: type[T], *values: T) -> Self:
         # TODO
