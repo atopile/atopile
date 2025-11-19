@@ -103,8 +103,11 @@ def lit_op_single(val: float) -> F.Parameters.can_be_operand:
 
 
 def lit_op_range(lower: float, upper: float) -> F.Parameters.can_be_operand:
-    # TODO
-    pass
+    return (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_interval(lower=lower, upper=upper)
+    ).get_trait(F.Parameters.can_be_operand)
 
 
 def op(x: fabll.NodeT) -> F.Parameters.can_be_operand:
