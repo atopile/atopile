@@ -251,14 +251,12 @@ class MutatorUtils:
         if existing is not None:
             if existing == literal:
                 if terminate:
-                    for op in po.get_operations(
-                        F.Expressions.Is, constrained_only=True
-                    ):
+                    for op in po.get_operations(F.Expressions.Is, predicates_only=True):
                         if op.get_trait(F.Expressions.is_expression).in_operands(
                             existing.as_operand()
                         ):
                             self.mutator.predicate_terminate(
-                                op.get_trait(F.Expressions.IsConstrained)
+                                op.get_trait(F.Expressions.is_predicate)
                             )
                     return self.mutator.make_lit(True)
                 return self.mutator.make_lit(True)
@@ -297,7 +295,7 @@ class MutatorUtils:
             _relay=False,
         )
         if terminate:
-            self.mutator.predicate_terminate(out.get_trait(F.Expressions.IsConstrained))
+            self.mutator.predicate_terminate(out.get_trait(F.Expressions.is_predicate))
         return out
 
     def subset_literal(
@@ -400,9 +398,9 @@ class MutatorUtils:
             and check_existing
         ):
             if overlap := (
-                po_po.get_operations(F.Expressions.Is, constrained_only=True)
+                po_po.get_operations(F.Expressions.Is, predicates_only=True)
                 & to_exp.as_parameter_operatable().get_operations(
-                    F.Expressions.Is, constrained_only=True
+                    F.Expressions.Is, predicates_only=True
                 )
             ):
                 return next(iter(overlap))
@@ -476,10 +474,10 @@ class MutatorUtils:
         ):
             if overlap := (
                 po.as_parameter_operatable().get_operations(
-                    F.Expressions.Is, constrained_only=True
+                    F.Expressions.Is, predicates_only=True
                 )
                 & to.as_parameter_operatable().get_operations(
-                    F.Expressions.Is, constrained_only=True
+                    F.Expressions.Is, predicates_only=True
                 )
             ):
                 return next(iter(overlap))
@@ -508,7 +506,7 @@ class MutatorUtils:
             value.get_trait(F.Parameters.can_be_operand),
             terminate=True,
         )
-        if not (expr_co := expr.try_get_sibling_trait(F.Expressions.IsConstrained)):
+        if not (expr_co := expr.try_get_sibling_trait(F.Expressions.is_predicate)):
             return
         expr_po = expr.as_parameter_operatable()
         # all predicates alias to True, so alias False will already throw
@@ -522,14 +520,14 @@ class MutatorUtils:
 
         # TODO is this still needed?
         # terminate all alias_is P -> True
-        for op in expr_po.get_operations(F.Expressions.Is, constrained_only=True):
+        for op in expr_po.get_operations(F.Expressions.Is, predicates_only=True):
             op_po = op.get_trait(F.Parameters.is_parameter_operatable)
             lit = self.try_extract_literal(op_po)
             if lit is None:
                 continue
             if lit != self.mutator.make_lit(True):
                 continue
-            self.mutator.predicate_terminate(op.get_trait(F.Expressions.IsConstrained))
+            self.mutator.predicate_terminate(op.get_trait(F.Expressions.is_predicate))
 
     def is_replacable_by_literal(self, op: F.Parameters.can_be_operand):
         if not (op_po := op.as_parameter_operatable()):
@@ -595,7 +593,7 @@ class MutatorUtils:
             self.mutator.get_typed_expressions(
                 F.Expressions.Is,
                 include_terminated=True,
-                required_traits=(F.Expressions.IsConstrained,),
+                required_traits=(F.Expressions.is_predicate,),
             )
         )
 
@@ -604,7 +602,7 @@ class MutatorUtils:
             self.mutator.get_typed_expressions(
                 F.Expressions.IsSubset,
                 include_terminated=True,
-                required_traits=(F.Expressions.IsConstrained,),
+                required_traits=(F.Expressions.is_predicate,),
             )
         )
 
@@ -725,11 +723,11 @@ class MutatorUtils:
         *other: F.Parameters.is_parameter_operatable,
     ) -> bool:
         return bool(
-            po.get_operations(F.Expressions.Is, constrained_only=True)
+            po.get_operations(F.Expressions.Is, predicates_only=True)
             & {
                 o
                 for o in other
-                for o in o.get_operations(F.Expressions.Is, constrained_only=True)
+                for o in o.get_operations(F.Expressions.Is, predicates_only=True)
             }
         )
 
@@ -773,7 +771,7 @@ class MutatorUtils:
     def is_alias_is_literal(po: F.Expressions.is_expression) -> F.Expressions.Is | None:
         if not (po_is := po.try_get_sibling_trait(F.Expressions.Is)):
             return None
-        if not po.try_get_sibling_trait(F.Expressions.IsConstrained):
+        if not po.try_get_sibling_trait(F.Expressions.is_predicate):
             return None
         if not po.get_operand_literals():
             return None
@@ -788,7 +786,7 @@ class MutatorUtils:
         if not (po_ss := po.try_get_sibling_trait(F.Expressions.IsSubset)):
             return None
         po_expr = po.get_trait(F.Expressions.is_expression)
-        if not po_expr.try_get_sibling_trait(F.Expressions.IsConstrained):
+        if not po_expr.try_get_sibling_trait(F.Expressions.is_predicate):
             return None
         if not po_expr.get_operand_literals():
             return None
@@ -797,24 +795,24 @@ class MutatorUtils:
         return po_ss
 
     @staticmethod
-    def no_other_constraints(
+    def no_other_predicates(
         po: F.Parameters.is_parameter_operatable,
-        *other: F.Expressions.IsConstrainable,
+        *other: F.Expressions.is_assertable,
         unfulfilled_only: bool = False,
     ) -> bool:
-        no_other_constraints = (
+        no_other_predicates = (
             len(
                 [
                     x
-                    for x in MutatorUtils.get_constrained_expressions_involved_in(
-                        po
-                    ).difference(other)
+                    for x in MutatorUtils.get_predicates_involved_in(po).difference(
+                        other
+                    )
                     if not unfulfilled_only or not x._solver_terminated
                 ]
             )
             == 0
         )
-        return no_other_constraints and not po.has_implicit_constraints_recursive()
+        return no_other_predicates and not po.has_implicit_predicates_recursive()
 
     @dataclass
     class FlattenAssociativeResult[T]:
@@ -899,12 +897,6 @@ class MutatorUtils:
         return out
 
     @staticmethod
-    def is_constrained(
-        po: F.Parameters.is_parameter_operatable,
-    ) -> F.Expressions.IsConstrainable | None:
-        return po.try_get_sibling_trait(F.Expressions.IsConstrainable)
-
-    @staticmethod
     def get_lit_mapping_from_lit_expr(
         expr: F.Expressions.Is | F.Expressions.IsSubset,
     ) -> tuple[F.Parameters.is_parameter_operatable, F.Literals.is_literal]:
@@ -958,12 +950,12 @@ class MutatorUtils:
         return res
 
     @staticmethod
-    def get_constrained_expressions_involved_in[T: fabll.NodeT](
+    def get_predicates_involved_in[T: fabll.NodeT](
         p: F.Parameters.is_parameter_operatable,
         type_filter: type[T] = fabll.Node,
     ) -> set[T]:
         return MutatorUtils.get_expressions_involved_in(
-            p, type_filter, require_trait=F.Expressions.IsConstrained
+            p, type_filter, require_trait=F.Expressions.is_predicate
         )
 
     @staticmethod
@@ -978,11 +970,11 @@ class MutatorUtils:
 
         exclude.add(expr)
         excluded = {
-            e for e in exclude if e.try_get_sibling_trait(F.Expressions.IsConstrained)
+            e for e in exclude if e.try_get_sibling_trait(F.Expressions.is_predicate)
         }
         excluded.update(
             is_.get_trait(F.Expressions.is_expression)
-            for is_ in MutatorUtils.get_constrained_expressions_involved_in(
+            for is_ in MutatorUtils.get_predicates_involved_in(
                 expr.as_parameter_operatable(), F.Expressions.Is
             )
         )
@@ -999,9 +991,7 @@ class MutatorUtils:
             return {
                 o
                 for v in vs
-                for o in MutatorUtils.get_constrained_expressions_involved_in(
-                    v, F.Expressions.Is
-                )
+                for o in MutatorUtils.get_predicates_involved_in(v, F.Expressions.Is)
             }
 
         exprs = {o: _get(o) for o in op_set}
@@ -1055,7 +1045,7 @@ class MutatorUtils:
     ) -> Mapping[F.Parameters.can_be_operand, list[F.Expressions.IsSubset]]:
         ss = [
             e
-            for e in op.get_operations(F.Expressions.IsSubset, constrained_only=True)
+            for e in op.get_operations(F.Expressions.IsSubset, predicates_only=True)
             if e.get_trait(F.Expressions.is_expression)
             .get_operands()[0]
             .is_same(op.as_operand())
@@ -1070,7 +1060,7 @@ class MutatorUtils:
     ) -> dict[F.Parameters.can_be_operand, F.Expressions.Is]:
         return {
             e.get_other_operand(op.as_operand()): e
-            for e in op.get_operations(F.Expressions.Is, constrained_only=True)
+            for e in op.get_operations(F.Expressions.Is, predicates_only=True)
         }
 
     def merge_parameters(

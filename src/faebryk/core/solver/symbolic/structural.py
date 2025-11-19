@@ -53,7 +53,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         e
         for e in mutator.get_typed_expressions(GreaterOrEqual, sort_by_depth=True)
         # Look for expressions with only one non-literal operand
-        if e.try_get_trait(F.Expressions.IsConstrained)
+        if e.try_get_trait(F.Expressions.is_predicate)
         and len(
             [
                 op
@@ -76,7 +76,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
             boundary = lit_n.max_elem()
             if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
-                if ge.try_get_trait(F.Expressions.IsConstrained):
+                if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "GreaterEqual inf not possible",
                         involved=[param.as_parameter_operatable()],
@@ -93,7 +93,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
             boundary = lit_n.min_elem()
             if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
-                if ge.try_get_trait(F.Expressions.IsConstrained):
+                if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "LessEqual -inf not possible",
                         involved=[param.as_parameter_operatable()],
@@ -115,19 +115,19 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 @algorithm("Remove unconstrained", terminal=True)
 def remove_unconstrained(mutator: Mutator):
     """
-    Remove all expressions that are not involved in any constrained predicates
+    Remove all expressions that are not involved in any predicates
     or expressions with side effects
     Note: Not possible for Parameters, want to keep those around for REPR
     """
     objs = mutator.get_typed_expressions()
     for obj in objs:
         obj_po = obj.get_trait(F.Parameters.is_parameter_operatable)
-        if obj.try_get_trait(F.Expressions.IsConstrained):
+        if obj.try_get_trait(F.Expressions.is_predicate):
             continue
         if obj.has_trait(Expressions.has_side_effects):
             continue
         if any(
-            e.try_get_trait(F.Expressions.IsConstrained)
+            e.try_get_trait(F.Expressions.is_predicate)
             or e.has_trait(Expressions.has_side_effects)
             for e in mutator.utils.get_expressions_involved_in(obj_po)
         ):
@@ -158,7 +158,7 @@ def remove_congruent_expressions(mutator: Mutator):
         for e in all_exprs
         if not (
             e.expr_isinstance(F.Expressions.Is, F.Expressions.IsSubset)
-            and e.try_get_sibling_trait(F.Expressions.IsConstrained)
+            and e.try_get_sibling_trait(F.Expressions.is_predicate)
             and e.get_operand_literals()
         )
     ]
@@ -168,8 +168,8 @@ def remove_congruent_expressions(mutator: Mutator):
             type(e),
             len(e.get_operands()),
             None
-            if not e.try_get_trait(F.Expressions.IsConstrainable)
-            else e.try_get_trait(F.Expressions.IsConstrained),
+            if not e.try_get_trait(F.Expressions.is_assertable)
+            else e.try_get_trait(F.Expressions.is_predicate),
         ),
     )
     full_eq = EquivalenceClasses[fabll.NodeT](all_exprs)
@@ -196,7 +196,7 @@ def remove_congruent_expressions(mutator: Mutator):
             repres[eq_id] = representative
 
             # propagate constrained & terminate
-            if Expressions.is_constrainable_node(representative):
+            if Expressions.is_assertable_node(representative):
                 representative.constrained = any(e.constrained for e in eq_class)
                 if any(mutator.is_predicate_terminated(e) for e in eq_class):
                     mutator.predicate_terminate(representative)
@@ -287,13 +287,13 @@ def resolve_alias_classes(mutator: Mutator):
                         (
                             e_expr := e.get_trait(F.Expressions.is_expression)
                         ).expr_isinstance(F.Expressions.Is)
-                        and e.try_get_trait(F.Expressions.IsConstrained)
+                        and e.try_get_trait(F.Expressions.is_predicate)
                     )
                     # skip literal subsets (done by distribute algo)
                     and not (
                         e_expr.expr_isinstance(F.Expressions.IsSubset)
                         and e_expr.get_operand_literals()
-                        and e.try_get_trait(F.Expressions.IsConstrained)
+                        and e.try_get_trait(F.Expressions.is_predicate)
                     )
                 }
                 if not class_expressions:
@@ -503,7 +503,7 @@ def predicate_flat_terminate(mutator: Mutator):
 
     Terminates all (dis)proven predicates that contain no expressions.
     """
-    predicates = mutator.get_expressions(required_traits=(F.Expressions.IsConstrained,))
+    predicates = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
     for p in predicates:
         p_e = p.get_trait(F.Expressions.is_expression)
         p_po = p.get_trait(F.Parameters.is_parameter_operatable)
@@ -514,7 +514,7 @@ def predicate_flat_terminate(mutator: Mutator):
         if mutator.utils.try_extract_literal(p_po) is None:
             continue
 
-        mutator.predicate_terminate(p.get_sibling_trait(F.Expressions.IsConstrained))
+        mutator.predicate_terminate(p.get_sibling_trait(F.Expressions.is_predicate))
 
 
 @algorithm("Predicate is!! True", terminal=False)
@@ -524,7 +524,7 @@ def predicate_terminated_is_true(mutator: Mutator):
     """
 
     for p in mutator.get_typed_expressions(Is):
-        if not (p_c := p.try_get_trait(F.Expressions.IsConstrained)):
+        if not (p_c := p.try_get_trait(F.Expressions.is_predicate)):
             continue
         if mutator.is_predicate_terminated(p_c):
             continue
@@ -535,7 +535,7 @@ def predicate_terminated_is_true(mutator: Mutator):
             continue
         op = next(iter(op_operatables))
         if not (
-            op_c := op.try_get_trait(F.Expressions.IsConstrained)
+            op_c := op.try_get_trait(F.Expressions.is_predicate)
         ) or not mutator.is_predicate_terminated(op_c):
             continue
 
@@ -562,10 +562,8 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         # not handling here
         if (
             e.expr_isinstance(F.Expressions.Is, F.Expressions.IsSubset)
-            and e.try_get_trait(F.Expressions.IsConstrained)
-            and any(
-                mutator.utils.is_constrained(op) for op in e.get_operand_operatables()
-            )
+            and e.try_get_trait(F.Expressions.is_predicate)
+            and any(e.get_operands_with_trait(F.Expressions.is_predicate))
         ):
             continue
 
@@ -773,7 +771,7 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
 
         non_lit_aliases = {
             e: other_p
-            for e in p.get_operations(Is, constrained_only=True)
+            for e in p.get_operations(Is, predicates_only=True)
             if not e.get_trait(F.Expressions.is_expression).get_operand_literals()
             and (other_p := e.get_other_operand(p.as_operand())) is not p
         }
@@ -802,19 +800,19 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     A op! B | A or B unconstrained -> A op!! B
     """
 
-    preds = mutator.get_expressions(required_traits=(F.Expressions.IsConstrained,))
+    preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
     for p in preds:
         if mutator.is_predicate_terminated(
-            p.get_sibling_trait(F.Expressions.IsConstrained)
+            p.get_sibling_trait(F.Expressions.is_predicate)
         ):
             continue
         if mutator.utils.is_literal_expression(p.as_operand()):
             continue
 
         for op in p.get_operand_operatables():
-            if mutator.utils.no_other_constraints(
+            if mutator.utils.no_other_predicates(
                 op,
-                p.get_sibling_trait(F.Expressions.IsConstrainable),
+                p.get_sibling_trait(F.Expressions.is_assertable),
                 unfulfilled_only=True,
             ):
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
@@ -887,7 +885,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         lit_alias_origins = {
             e
             for p in any_lit
-            for e in p.get_operations(Is, constrained_only=True)
+            for e in p.get_operations(Is, predicates_only=True)
             if e.get_trait(F.Expressions.is_expression).get_operand_literals()
         }
 
@@ -944,7 +942,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         ):
             continue
         if expr.isinstance(F.Expressions.Is) and expr.try_get_trait(
-            F.Expressions.IsConstrained
+            F.Expressions.is_predicate
         ):
             # TODO: definitely need to do something
             # just not the same what we do with the other types
@@ -963,12 +961,12 @@ def uncorrelated_alias_fold(mutator: Mutator):
         lit_alias_origins = {
             e
             for p in any_lit
-            for e in p.get_operations(Is, constrained_only=True)
+            for e in p.get_operations(Is, predicates_only=True)
             if e.get_trait(F.Expressions.is_expression).get_operand_literals()
         }
 
         # no point in op! is op! (always true)
-        if expr.try_get_trait(F.Expressions.IsConstrained):
+        if expr.try_get_trait(F.Expressions.is_predicate):
             mutator.create_expression(
                 type(expr),
                 *operands,

@@ -119,7 +119,10 @@ def test_mutator_no_graph_merge():
     assert G is not G_new
     assert alias_new.get_graph() is G_new
     assert p3_new.get_graph() is not G_new
-    assert cast_assert(F.Parameters.is_parameter, mutator.get_mutated(p1)).get_graph() is G_new
+    assert (
+        cast_assert(F.Parameters.is_parameter, mutator.get_mutated(p1)).get_graph()
+        is G_new
+    )
 
 
 def test_get_expressions_involved_in():
@@ -255,7 +258,7 @@ def test_get_correlations_shared_predicates():
     correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
 
-    E2.constrain()
+    E2.assert_()
 
     correlations = list(MutatorUtils.get_correlations(E))
     assert len(correlations) == 1

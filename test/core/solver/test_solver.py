@@ -173,7 +173,7 @@ def test_simplify():
 
     acc = (acc - quantity(3, dimensionless)) - quantity(4, dimensionless)
     assert isinstance(acc, Subtract)
-    (acc <= quantity(11, dimensionless)).constrain()
+    (acc <= quantity(11, dimensionless)).assert_()
 
     G = acc.get_graph()
     solver = DefaultSolver()
@@ -191,7 +191,7 @@ def test_simplify_logic_and():
         anded = anded & p
     anded = anded & anded
 
-    anded.constrain()
+    anded.assert_()
     G = anded.get_graph()
     solver = DefaultSolver()
     solver.simplify_symbolically(G)
@@ -201,7 +201,7 @@ def test_simplify_logic_and():
 def test_shortcircuit_logic_and():
     p0 = Parameter(domain=fabll.Domains.BOOL())
     expr = p0 & False
-    expr.constrain()
+    expr.assert_()
     G = expr.get_graph()
     solver = DefaultSolver()
 
@@ -219,7 +219,7 @@ def test_shortcircuit_logic_or():
         ored = ored | p
     ored = ored | ored
 
-    ored.constrain()
+    ored.assert_()
     G = ored.get_graph()
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(G).data.mutation_map
@@ -446,8 +446,8 @@ def test_symmetric_inequality_correlated():
     p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
     p1.alias_is(p0)
 
-    (p0 >= p1).constrain()
-    (p0 <= p1).constrain()
+    (p0 >= p1).assert_()
+    (p0 <= p1).assert_()
 
     G = p0.get_graph()
     solver = DefaultSolver()
@@ -477,7 +477,7 @@ def test_simple_literal_folds_arithmetic(
     p1.alias_is(used_operands[1])
 
     expr = expr_type(p0, p1)
-    (expr <= 100.0).constrain()
+    (expr <= 100.0).assert_()
     G = expr.get_graph()
 
     solver = DefaultSolver()
@@ -506,7 +506,7 @@ def test_super_simple_literal_folding(
     expr = expr_type(*q_operands)
     solver = DefaultSolver()
 
-    (expr <= 100.0).constrain()
+    (expr <= 100.0).assert_()
     G = expr.get_graph()
 
     repr_map = solver.simplify_symbolically(G).data.mutation_map
@@ -522,7 +522,7 @@ def test_literal_folding_add_multiplicative():
     expr = A + (A * 2) + (5 * A) + B + (A * B * 2) - B
     # expect: 8A + 2AB
 
-    (expr <= 100.0).constrain()
+    (expr <= 100.0).assert_()
 
     G = expr.get_graph()
     solver = DefaultSolver()
@@ -560,7 +560,7 @@ def test_literal_folding_add_multiplicative_2():
         + Quantity_Interval_Disjoint.from_value(0)
         + B
     )
-    (expr <= 100.0).constrain()
+    (expr <= 100.0).assert_()
 
     G = expr.get_graph()
     solver = DefaultSolver()
@@ -775,7 +775,7 @@ def test_voltage_divider_reject_invalid_r_top():
 def test_base_unit_switch():
     A = Parameter(units=P.mAh)
     A.alias_is(lit_op_range(((100, P.mAh), (600, P.mAh))))
-    (A >= (100, P.mAh)).constrain()
+    (A >= (100, P.mAh)).assert_()
 
     G = A.get_graph()
     solver = DefaultSolver()
@@ -799,8 +799,8 @@ def test_congruence_filter():
     A = Parameter(domain=fabll.Domains.ENUM(F.LED.Color))
     x = Is(A, EnumSet(F.LED.Color.EMERALD))
 
-    y1 = Not(x).constrain()
-    y2 = Not(x).constrain()
+    y1 = Not(x).assert_()
+    y2 = Not(x).assert_()
     assert y1.is_congruent_to(y2)
 
     solver = DefaultSolver()
@@ -1138,7 +1138,7 @@ def test_ss_single_into_alias():
     B = Parameter()
 
     A.alias_is(lit_op_range((5, 10)))
-    B.operation_is_subset(5).constrain()
+    B.operation_is_subset(5).assert_()
     C = A + B
 
     solver = DefaultSolver()
@@ -1174,9 +1174,9 @@ def test_find_contradiction_by_predicate(op, invert):
     B.alias_is(lit_op_range((20, 30)))
 
     if invert:
-        op(B, A).constrain()
+        op(B, A).assert_()
     else:
-        op(A, B).constrain()
+        op(A, B).assert_()
 
     solver = DefaultSolver()
 
@@ -1191,7 +1191,7 @@ def test_find_contradiction_by_gt():
     A.alias_is(lit_op_range((0, 10)))
     B.alias_is(lit_op_range((20, 30)))
 
-    (A > B).constrain()
+    (A > B).assert_()
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -1217,8 +1217,8 @@ def test_ss_estimation_ge():
     A = Parameter()
     B = Parameter()
 
-    A.operation_is_subset(lit_op_range((0, 10))).constrain()
-    (B >= A).constrain()
+    A.operation_is_subset(lit_op_range((0, 10))).assert_()
+    (B >= A).assert_()
 
     solver = DefaultSolver()
     solver.simplify_symbolically(B.get_graph())
@@ -1271,9 +1271,9 @@ def test_fold_ss_transitive():
     B = Parameter()
     C = Parameter()
 
-    C.operation_is_subset(lit_op_range((0, 10))).constrain()
-    B.operation_is_subset(C).constrain()
-    A.operation_is_subset(B).constrain()
+    C.operation_is_subset(lit_op_range((0, 10))).assert_()
+    B.operation_is_subset(C).assert_()
+    A.operation_is_subset(B).assert_()
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
@@ -1394,10 +1394,10 @@ def test_implication():
 
     A.operation_is_subset(Single(5)).operation_implies(
         B.operation_is_subset(lit_op_range_from_center_rel(100, 0.1))
-    ).constrain()
+    ).assert_()
     A.operation_is_subset(Single(10)).operation_implies(
         B.operation_is_subset(lit_op_range_from_center_rel(500, 0.1))
-    ).constrain()
+    ).assert_()
 
     A.constrain_subset(Single(10))
 
@@ -1650,8 +1650,8 @@ def test_symmetric_inequality_uncorrelated():
 
     p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
 
-    (p0 >= p1).constrain()
-    (p0 <= p1).constrain()
+    (p0 >= p1).assert_()
+    (p0 <= p1).assert_()
 
     # This would only work if p0 is alias p1
     # but we never do implicit alias, because that's very dangerous

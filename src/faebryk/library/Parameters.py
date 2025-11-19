@@ -26,7 +26,7 @@ class is_parameter_operatable(fabll.Node):
         # 1. find all Is! expressions parameter is involved in
         # 2. for each of those check if they have a literal operand of the correct type
         from faebryk.library.Expressions import Is as IsT
-        from faebryk.library.Expressions import IsConstrained
+        from faebryk.library.Expressions import is_predicate
 
         class E_Ctx:
             lit: T | None = None
@@ -43,7 +43,7 @@ class is_parameter_operatable(fabll.Node):
             # check if Is is constrained
             expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
             is_expr = IsT.bind_instance(instance=edge.g().bind(node=expr))
-            if not is_expr.has_trait(IsConstrained):
+            if not is_expr.has_trait(is_predicate):
                 return
 
             # for each of those check if they have a literal operand
@@ -140,7 +140,7 @@ class is_parameter_operatable(fabll.Node):
     def get_operations[T: "fabll.NodeT"](
         self,
         types: type[T] = fabll.Node,
-        constrained_only: bool = False,
+        predicates_only: bool = False,
         recursive: bool = False,
     ) -> set[T]:
         # TODO

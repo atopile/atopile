@@ -12,7 +12,7 @@ class NullSolver(Solver):
         self,
         operatable: F.Parameters.is_parameter,
         lock: bool,
-        suppose_constraint: F.Expressions.IsConstrainable | None = None,
+        suppose_predicate: F.Expressions.is_assertable | None = None,
         minimize: F.Expressions.is_expression | None = None,
     ) -> Any:
         return operatable.domain_set().any()
@@ -20,12 +20,12 @@ class NullSolver(Solver):
     @override
     def try_fulfill(
         self,
-        predicate: F.Expressions.IsConstrainable,
+        predicate: F.Expressions.is_assertable,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool:
         if lock:
-            predicate.constrain()
+            predicate.assert_()
         return True
 
     @override

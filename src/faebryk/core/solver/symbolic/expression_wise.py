@@ -318,7 +318,7 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
     ```
     """
 
-    # TODO if (litex0)^negative -> new constraint
+    # TODO if (litex0)^negative -> new predicate
 
     e = expr.get_trait(F.Expressions.is_expression)
     e_op = e.as_operand()
@@ -484,7 +484,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     """
     ```
     ¬(¬A) -> A
-    ¬P | P constrained -> False
+    ¬P | P! -> False
 
     ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
     ¬!A -> A is! False
@@ -502,10 +502,10 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     op_po = op.is_parameter_operatable()
     assert op_po
 
-    # ¬P | P constrained -> False
-    if op.try_get_sibling_trait(F.Expressions.IsConstrained):
-        # ¬!P! | P constrained -> Contradiction
-        if expr.try_get_trait(F.Expressions.IsConstrained):
+    # ¬P! -> False
+    if op.try_get_sibling_trait(F.Expressions.is_predicate):
+        # ¬!P! -> Contradiction
+        if expr.try_get_trait(F.Expressions.is_predicate):
             raise Contradiction(
                 "¬!P!",
                 involved=[op_po],
@@ -521,7 +521,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     if not mutator.has_been_mutated(op_po):
         # TODO this is kinda ugly, should be in Or fold if it aliases to false
         # ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
-        if expr.try_get_trait(F.Expressions.IsConstrained):
+        if expr.try_get_trait(F.Expressions.is_predicate):
             # ¬( v )
             if op_or := op.try_cast(F.Expressions.Or):
                 # FIXME remove this shortcut
@@ -538,24 +538,24 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                     if inner_op_e.try_cast(F.Expressions.Not):
                         for not_op in inner_op_e.get_operands():
                             if not_op.try_get_sibling_trait(
-                                F.Expressions.IsConstrainable
+                                F.Expressions.is_assertable
                             ) and not not_op.try_get_sibling_trait(
-                                F.Expressions.IsConstrained
+                                F.Expressions.is_predicate
                             ):
                                 mutator.constrain(
                                     mutator.get_copy(not_op).get_sibling_trait(
-                                        F.Expressions.IsConstrainable
+                                        F.Expressions.is_assertable
                                     )
                                 )
                     # ¬(A v ...)
-                    elif inner_op.try_get_sibling_trait(F.Expressions.IsConstrainable):
+                    elif inner_op.try_get_sibling_trait(F.Expressions.is_assertable):
                         parent_nots = inner_op.as_parameter_operatable().get_operations(
                             F.Expressions.Not
                         )
                         if parent_nots:
                             for n in parent_nots:
                                 mutator.constrain(
-                                    n.get_sibling_trait(F.Expressions.IsConstrainable)
+                                    n.get_sibling_trait(F.Expressions.is_assertable)
                                 )
                         else:
                             mutator.create_expression(
@@ -565,7 +565,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                 constrain=True,
                             )
 
-    if expr.try_get_trait(F.Expressions.IsConstrained):
+    if expr.try_get_trait(F.Expressions.is_predicate):
         mutator.utils.alias_is_literal_and_check_predicate_eval(
             op.get_sibling_trait(F.Expressions.is_expression), mutator.make_lit(False)
         )
@@ -581,13 +581,13 @@ def fold_is(expr: F.Expressions.Is, mutator: Mutator):
 
     e = expr.get_trait(F.Expressions.is_expression)
     is_true_alias = (
-        expr.try_get_trait(F.Expressions.IsConstrained)
+        expr.try_get_trait(F.Expressions.is_predicate)
         and mutator.make_lit(True) in e.get_operand_literals().values()
     )
     if is_true_alias:
         # P1 is! True -> P1!
         # P1 is! P2!  -> P1! (implicit)
-        for p in e.get_operands_with_trait(F.Expressions.IsConstrainable):
+        for p in e.get_operands_with_trait(F.Expressions.is_assertable):
             mutator.constrain(p)
 
 
@@ -621,10 +621,10 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
         mutator.mutate_expression(e, expression_factory=F.Expressions.Is)
         return
 
-    if e.try_get_trait(F.Expressions.IsConstrained):
+    if e.try_get_trait(F.Expressions.is_predicate):
         # P1 ss! True -> P1!
         if B_lit.equals(mutator.make_lit(True)):
-            mutator.constrain(A.get_sibling_trait(F.Expressions.IsConstrainable))
+            mutator.constrain(A.get_sibling_trait(F.Expressions.is_assertable))
         # P ss! False -> ¬!P
         if B_lit.equals(mutator.make_lit(False)):
             mutator.create_expression(
@@ -655,7 +655,7 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
 
     # A >=! X | |X| > 1 -> A >=! X.max()
     # X >=! A | |X| > 1 -> X.min() >=! A
-    if literal_operands and e.try_get_trait(F.Expressions.IsConstrained):
+    if literal_operands and e.try_get_trait(F.Expressions.is_predicate):
         assert len(literal_operands) == 1
         lit = literal_operands[0]
         lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)

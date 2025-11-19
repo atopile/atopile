@@ -64,7 +64,7 @@ class Transformations:
         list[F.Parameters.is_parameter_operatable],
     ] = field(default_factory=lambda: defaultdict(list))
     # TODO make api for contraining
-    terminated: set[F.Expressions.IsConstrained] = field(default_factory=set)
+    terminated: set[F.Expressions.is_predicate] = field(default_factory=set)
     soft_replaced: dict[
         F.Parameters.is_parameter_operatable, F.Parameters.is_parameter_operatable
     ] = field(default_factory=dict)
@@ -87,16 +87,6 @@ class Transformations:
             and not self.created
             and not self.terminated
         )
-
-    @property
-    def touched_graphs(self) -> set[graph.GraphView]:
-        """
-        Return graphs that require a copy in some form
-        - if a mutation happened we need to copy the whole graph to replace
-         the old node with the new one
-        - if a node was removed, we need to copy the graph to remove it
-        """
-        return set(get_graphs(self.removed | self.mutated.keys()))
 
     @staticmethod
     def identity(
@@ -172,9 +162,9 @@ class Transformations:
             f", terminated={terminated}"
         )
 
-    def get_new_constraints(
+    def get_new_predicates(
         self, op: F.Parameters.is_parameter_operatable
-    ) -> list[F.Expressions.IsConstrainable]:
+    ) -> list[F.Expressions.is_predicate]:
         # TODO could still happen, but then we have clash
         # keep this in mind for future
         if self.is_identity:
@@ -182,12 +172,12 @@ class Transformations:
         if op not in self.copied:
             return []
         target = self.mutated[op]
-        out = []
+        out = list[F.Expressions.is_predicate]()
         for e in self.created:
-            if not e.try_get_sibling_trait(F.Expressions.IsConstrained):
+            if not (e_co := e.try_get_sibling_trait(F.Expressions.is_predicate)):
                 continue
             if target in e.as_expression().get_operand_operatables():
-                out.append(e)
+                out.append(e_co)
         return out
 
 
@@ -560,7 +550,7 @@ class MutationStage:
             rows.append((key, value))
 
         terminated = self.transformations.terminated.difference(
-            co.try_get_sibling_trait(F.Expressions.IsConstrained) for co in created_ops
+            co.try_get_sibling_trait(F.Expressions.is_predicate) for co in created_ops
         )
         for op in terminated:
             rows.append(
@@ -592,7 +582,7 @@ class MutationStage:
             if old == new:
                 continue
             if (
-                s.has_trait(F.Expressions.IsConstrainable)
+                s.has_trait(F.Expressions.is_assertable)
                 and new.replace("✓", "") == old.replace("✓", "")
                 and d.try_get_literal() != s.try_get_literal()
                 and new.count("✓") == old.count("✓") + 1
@@ -681,8 +671,8 @@ class MutationStage:
             if len(origins) == 1:
                 origin = origins[0]
                 if origin in self.transformations.copied:
-                    new_constraints = self.transformations.get_new_constraints(origin)
-                    if new_constraints:
+                    new_predicates = self.transformations.get_new_predicates(origin)
+                    if new_predicates:
                         reason = Traceback.Type.CONSTRAINED
                         related_ = [
                             self.get_traceback_stage(
@@ -690,7 +680,7 @@ class MutationStage:
                                     F.Parameters.is_parameter_operatable
                                 )
                             )
-                            for e in new_constraints
+                            for e in new_predicates
                         ]
                         for r in related_:
                             for r_s in r.srcs:
@@ -1173,9 +1163,9 @@ class Mutator:
             new_expr = expr_factory(*new_operands)
 
         if constrain and (
-            ce := new_expr.try_get_sibling_trait(F.Expressions.IsConstrainable)
+            ce := new_expr.try_get_sibling_trait(F.Expressions.is_assertable)
         ):
-            ce.constrain()
+            ce.assert_()
             # TODO this is better, but ends up in inf loop
             # self.constrain(new_expr)
 
@@ -1239,7 +1229,7 @@ class Mutator:
                     expr.as_parameter_operatable(), self.get_copy(exists)
                 ).get_sibling_trait(F.Expressions.is_canonical)
 
-        constrain = expr.try_get_sibling_trait(F.Expressions.IsConstrained) is not None
+        constrain = expr.try_get_sibling_trait(F.Expressions.is_predicate) is not None
         new_expr = self._create_expression(
             expression_factory,
             *operands,
@@ -1247,7 +1237,7 @@ class Mutator:
             constrain=constrain,
         )
 
-        if expr_co := expr.try_get_sibling_trait(F.Expressions.IsConstrained):
+        if expr_co := expr.try_get_sibling_trait(F.Expressions.is_predicate):
             if self.is_predicate_terminated(expr_co):
                 fabll.Traits.create_and_add_instance_to(
                     fabll.Traits(new_expr).get_obj_raw(), is_terminated
@@ -1354,8 +1344,8 @@ class Mutator:
             expr.as_parameter_operatable(),
             self.get_copy(unpacked.as_operand()).as_parameter_operatable(),
         )
-        if expr.try_get_sibling_trait(F.Expressions.IsConstrained):
-            self.constrain(out.get_sibling_trait(F.Expressions.IsConstrainable))
+        if expr.try_get_sibling_trait(F.Expressions.is_predicate):
+            self.constrain(out.get_sibling_trait(F.Expressions.is_assertable))
         return out
 
     def mutator_neutralize_expressions(
@@ -1381,8 +1371,8 @@ class Mutator:
             expr.as_parameter_operatable(),
             self.get_copy(inner_operand_po.as_operand()).as_parameter_operatable(),
         )
-        if expr.try_get_sibling_trait(F.Expressions.IsConstrained):
-            self.constrain(out.get_sibling_trait(F.Expressions.IsConstrainable))
+        if expr.try_get_sibling_trait(F.Expressions.is_predicate):
+            self.constrain(out.get_sibling_trait(F.Expressions.is_assertable))
         return out
 
     def mutate_expression_with_op_map(
@@ -1495,7 +1485,7 @@ class Mutator:
             ] = from_ops
 
         # TODO double constrain ugly
-        if constrain and (co := expr.try_get_trait(F.Expressions.IsConstrainable)):
+        if constrain and (co := expr.try_get_trait(F.Expressions.is_assertable)):
             self.constrain(co)
 
         return expr
@@ -1518,16 +1508,16 @@ class Mutator:
         )
         return param
 
-    def constrain(self, *po: F.Expressions.IsConstrainable, terminate: bool = False):
+    def constrain(self, *po: F.Expressions.is_assertable, terminate: bool = False):
         for p in po:
-            p.constrain()
+            p.assert_()
             self.utils.alias_to(
                 p.get_sibling_trait(F.Parameters.can_be_operand),
                 self.make_lit(True).get_trait(F.Parameters.can_be_operand),
                 terminate=terminate,
             )
 
-    def predicate_terminate(self, pred: F.Expressions.IsConstrained):
+    def predicate_terminate(self, pred: F.Expressions.is_predicate):
         if pred.has_trait(is_terminated):
             return
         fabll.Traits.create_and_add_instance_to(
@@ -1535,14 +1525,14 @@ class Mutator:
         )
         self.transformations.terminated.add(pred)
 
-    def predicate_reset_termination(self, pred: F.Expressions.IsConstrained):
+    def predicate_reset_termination(self, pred: F.Expressions.is_predicate):
         if not pred.has_trait(is_terminated):
             return
         # TODO: remove trait
         raise NotImplementedError("Not implemented")
 
     # Algorithm Query ------------------------------------------------------------------
-    def is_predicate_terminated(self, pred: F.Expressions.IsConstrained) -> bool:
+    def is_predicate_terminated(self, pred: F.Expressions.is_predicate) -> bool:
         return pred.try_get_sibling_trait(is_terminated) is not None
 
     def get_parameter_operatables(
@@ -1559,7 +1549,7 @@ class Mutator:
                 n
                 for n in out
                 if not (
-                    (nc := n.try_get_trait(F.Expressions.IsConstrained))
+                    (nc := n.try_get_trait(F.Expressions.is_predicate))
                     and self.is_predicate_terminated(nc)
                 )
             }
@@ -1615,7 +1605,7 @@ class Mutator:
                 n
                 for n in out
                 if not (
-                    (nc := n.try_get_trait(F.Expressions.IsConstrained))
+                    (nc := n.try_get_trait(F.Expressions.is_predicate))
                     and self.is_predicate_terminated(nc)
                 )
             }
@@ -1673,7 +1663,7 @@ class Mutator:
                 old_lits = {self.utils.try_extract_literal(o) for o in olds}
                 if old_lits == {new_lit}:
                     continue
-                aliases.update(new.get_operations(Is, constrained_only=True))
+                aliases.update(new.get_operations(Is, predicates_only=True))
             aliases.update(
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
@@ -1700,7 +1690,7 @@ class Mutator:
                 }
                 if old_lits == {new_lit}:
                     continue
-                subsets.update(new.get_operations(IsSubset, constrained_only=True))
+                subsets.update(new.get_operations(IsSubset, predicates_only=True))
             subsets.update(
                 (
                     iss
@@ -1819,13 +1809,10 @@ class Mutator:
     def _copy_unmutated(
         self,
     ):
-        _touched_graphs = self.transformations.touched_graphs
-        touched = self.transformations.mutated.keys() | self.transformations.removed
-
         # TODO might not need to sort
         other_param_op = F.Expressions.is_expression.sort_by_depth(
             (
-                fabll.Node.bind_typegraph(*_touched_graphs).nodes_of_type(
+                fabll.Node.bind_typegraph(self.tg).nodes_of_type(
                     F.Parameters.is_parameter_operatable
                 )
                 - touched
@@ -1901,7 +1888,6 @@ class Mutator:
                 dirty=False,
             )
 
-        touched_pre_copy = self.transformations.touched_graphs
         self.check_no_illegal_mutations()
         self._copy_unmutated()
         stage = MutationStage(
@@ -1914,7 +1900,7 @@ class Mutator:
 
         # Check if original graphs ended up in result
         # allowed if no copy was needed for graph
-        assert not (touched_pre_copy & {stage.output_graph})
+        # TODO
 
         return AlgoResult(mutation_stage=stage, dirty=True)
 

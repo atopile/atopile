@@ -51,8 +51,8 @@ if TYPE_CHECKING:
 #     return has_trait(candidate, is_expression)
 #
 #
-# def is_constrainable_node(candidate: Any) -> bool:
-#     return has_trait(candidate, IsConstrainable)
+# def is_assertable_node(candidate: Any) -> bool:
+#     return has_trait(candidate, is_assertable)
 #
 #
 # def is_canonical_expression_node(candidate: Any) -> bool:
@@ -280,19 +280,19 @@ class has_implicit_constraints(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
-class IsConstrainable(fabll.Node):
+class is_assertable(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     # TODO: solver_terminated flag, has to be attr
 
-    def constrain(self) -> None:
+    def assert_(self) -> None:
         parent = self.get_parent_force()[0]
-        fabll.Traits.create_and_add_instance_to(node=parent, trait=IsConstrained)
+        fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
 
     def as_expression(self) -> "is_expression":
         return fabll.Traits(self).get_trait_of_obj(is_expression)
 
 
-class IsConstrained(fabll.Node):
+class is_predicate(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
@@ -339,10 +339,6 @@ class is_logic(fabll.Node):
 
 
 class is_setic(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-
-class is_predicate(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
@@ -1147,7 +1143,7 @@ class And(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1166,7 +1162,7 @@ class And(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1194,7 +1190,7 @@ class Or(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1221,7 +1217,7 @@ class Or(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1249,7 +1245,7 @@ class Not(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1268,7 +1264,7 @@ class Not(fabll.Node):
     ) -> Self:
         self.operand.get().point(operand)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1296,7 +1292,7 @@ class Xor(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1315,7 +1311,7 @@ class Xor(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1339,7 +1335,7 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1361,7 +1357,7 @@ class Implies(fabll.Node):
         self.antecedent.get().point(antecedent)
         self.consequent.get().point(consequent)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1628,7 +1624,7 @@ class LessThan(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1650,7 +1646,7 @@ class LessThan(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1680,7 +1676,7 @@ class GreaterThan(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1703,7 +1699,7 @@ class GreaterThan(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1733,7 +1729,7 @@ class LessOrEqual(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1755,7 +1751,7 @@ class LessOrEqual(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1785,7 +1781,7 @@ class GreaterOrEqual(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1809,7 +1805,7 @@ class GreaterOrEqual(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1839,7 +1835,7 @@ class NotEqual(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1861,7 +1857,7 @@ class NotEqual(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1891,7 +1887,7 @@ class IsBitSet(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1914,7 +1910,7 @@ class IsBitSet(fabll.Node):
         self.value.get().point(value)
         self.bit_index.get().point(bit_index)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1944,7 +1940,7 @@ class IsSubset(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1968,7 +1964,7 @@ class IsSubset(fabll.Node):
         self.subset.get().point(subset)
         self.superset.get().point(superset)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1998,7 +1994,7 @@ class IsSuperset(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -2020,7 +2016,7 @@ class IsSuperset(fabll.Node):
         self.superset.get().point(superset)
         self.subset.get().point(subset)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2050,7 +2046,7 @@ class Cardinality(fabll.Node):
     _is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -2072,7 +2068,7 @@ class Cardinality(fabll.Node):
         self.set.get().point(set)
         self.cardinality.get().point(cardinality)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2103,7 +2099,7 @@ class Is(fabll.Node):
         Parameters.is_parameter_operatable.MakeChild()
     )
     _is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
-    _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
+    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -2124,7 +2120,7 @@ class Is(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if constrain:
-            self._is_constrainable.get().constrain()
+            self._is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2133,7 +2129,7 @@ class Is(fabll.Node):
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
         out.add_dependant(
-            fabll.Traits.MakeEdge(IsConstrained.MakeChild(), [out]),
+            fabll.Traits.MakeEdge(is_predicate.MakeChild(), [out]),
             identifier="constrain",
         )
         for operand in operands:

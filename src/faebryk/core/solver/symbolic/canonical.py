@@ -23,7 +23,7 @@ GreaterOrEqual = F.Expressions.GreaterOrEqual
 GreaterThan = F.Expressions.GreaterThan
 Implies = F.Expressions.Implies
 Intersection = F.Expressions.Intersection
-IsConstrained = F.Expressions.IsConstrained
+is_predicate = F.Expressions.is_predicate
 IsSubset = F.Expressions.IsSubset
 IsSuperset = F.Expressions.IsSuperset
 LessOrEqual = F.Expressions.LessOrEqual
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 @algorithm("Constrain within and domain", single=True, terminal=False)
 def constrain_within_domain(mutator: Mutator):
     """
-    Translate domain and within constraints to parameter constraints.
+    Translate domain and within predicates to parameter predicates.
     """
 
     for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
@@ -78,14 +78,14 @@ def alias_predicates_to_true(mutator: Mutator):
     Alias predicates to True since we need to assume they are true.
     """
 
-    for predicate in mutator.get_expressions(required_traits=(IsConstrained,)):
+    for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
         new_predicate = mutator.mutate_expression(predicate)
         mutator.utils.alias_to(
             new_predicate.get_sibling_trait(F.Parameters.can_be_operand),
             mutator.make_lit(True).get_trait(F.Parameters.can_be_operand),
         )
         # reset solver flag
-        mutator.predicate_reset_termination(new_predicate.get_trait(IsConstrained))
+        mutator.predicate_reset_termination(new_predicate.get_trait(is_predicate))
 
 
 @algorithm("Canonical literal form", single=True, terminal=False)

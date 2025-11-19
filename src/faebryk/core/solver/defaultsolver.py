@@ -236,8 +236,8 @@ class DefaultSolver(Solver):
                 op_mapped.append(op)
             e_mapped = type(e)(*op_mapped)
             transforms.mutated[e] = e_mapped
-            if Expressions.is_constrainable_node(e) and e.constrained:
-                assert Expressions.is_constrainable_node(e_mapped)
+            if Expressions.is_assertable_node(e) and e.constrained:
+                assert Expressions.is_assertable_node(e_mapped)
                 e_mapped.constrained = True
 
         return DefaultSolver.SolverState(
@@ -339,7 +339,7 @@ class DefaultSolver(Solver):
     @override
     def try_fulfill(
         self,
-        predicate: F.Expressions.IsConstrainable,
+        predicate: F.Expressions.is_assertable,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool | None:
@@ -401,7 +401,7 @@ class DefaultSolver(Solver):
             return None
 
         if lock:
-            pred.constrain()
+            pred.assert_()
         return True
 
     @override
@@ -454,11 +454,11 @@ class DefaultSolver(Solver):
         self,
         operatable: F.Parameters,
         lock: bool,
-        suppose_constraint: F.Expressions.IsConstrainable | None = None,
+        suppose_predicate: F.Expressions.is_assertable | None = None,
         minimize: F.Expressions.is_expression | None = None,
     ) -> Any:
         # TODO
-        if suppose_constraint is not None:
+        if suppose_predicate is not None:
             raise NotImplementedError()
 
         # TODO

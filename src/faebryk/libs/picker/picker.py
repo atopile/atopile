@@ -262,7 +262,7 @@ def find_independent_groups(
         # find params related to each other
         param_eqs = EquivalenceClasses[Parameter]()
         for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(
-            F.Expressions.IsConstrainable
+            F.Expressions.is_assertable
         ):
             if not e.constrained:
                 continue

@@ -21,31 +21,47 @@ def parameter_alias_classes(G: graph.GraphView) -> list[set[F.Parameters.is_para
     )
 
     is_exprs = [
-        e for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.Is) if e.constrained
+        e
+        for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.Is)
+        if e.constrained
     ]
 
     for is_expr in is_exprs:
-        params_ops = [op for op in is_expr.operands if isinstance(op, F.Parameters.is_parameter)]
+        params_ops = [
+            op for op in is_expr.operands if isinstance(op, F.Parameters.is_parameter)
+        ]
         full_eq.add_eq(*params_ops)
 
     return full_eq.get()
 
 
-def get_params_for_expr(expr: F.Expressions.is_expression) -> set[F.Parameters.is_parameter]:
-    param_ops = {op for op in expr.operatable_operands if isinstance(op, F.Parameters.is_parameter)}
-    expr_ops = {op for op in expr.operatable_operands if isinstance(op, F.Expressions.is_expression)}
+def get_params_for_expr(
+    expr: F.Expressions.is_expression,
+) -> set[F.Parameters.is_parameter]:
+    param_ops = {
+        op
+        for op in expr.operatable_operands
+        if isinstance(op, F.Parameters.is_parameter)
+    }
+    expr_ops = {
+        op
+        for op in expr.operatable_operands
+        if isinstance(op, F.Expressions.is_expression)
+    }
 
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_dependency_classes(G: graph.GraphView) -> list[set[F.Parameters.is_parameter]]:
+def parameter_dependency_classes(
+    G: graph.GraphView,
+) -> list[set[F.Parameters.is_parameter]]:
     related = EquivalenceClasses[F.Parameters.is_parameter](
         fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
     )
 
     eq_exprs = [
         e
-        for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.IsConstrainable)
+        for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.is_assertable)
         if e.constrained
     ]
 
@@ -59,14 +75,16 @@ def parameter_dependency_classes(G: graph.GraphView) -> list[set[F.Parameters.is
 def parameter_report(G: graph.GraphView, path: Path):
     params = fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
     exprs = fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.is_expression)
-    predicates = {e for e in exprs if isinstance(e, F.Expressions.IsConstrainable)}
+    predicates = {e for e in exprs if isinstance(e, F.Expressions.is_assertable)}
     exprs.difference_update(predicates)
     alias_classes = parameter_alias_classes(G)
     eq_classes = parameter_dependency_classes(G)
     unused = [
         p
         for p in params
-        if not any(isinstance(e.node, F.Expressions.is_expression) for e in p.operated_on.edges)
+        if not any(
+            isinstance(e.node, F.Expressions.is_expression) for e in p.operated_on.edges
+        )
     ]
 
     def non_empty(classes: list[set[F.Parameters.is_parameter]]):
@@ -156,7 +174,7 @@ def parameter_report(G: graph.GraphView, path: Path):
 
 
 def _generate_json_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]],
 ) -> str:
     json_parameters = {
         module_name: {
@@ -171,7 +189,7 @@ def _generate_json_parameters(
 
 
 def _generate_md_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]],
 ) -> str:
     out = "# Module F.Parameters.is_parameters\n"
     out += "| Module | F.Parameters.is_parameter | Value |\n"
@@ -201,7 +219,7 @@ def _generate_md_parameters(
 
 
 def _generate_txt_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]],
 ) -> str:
     out = ""
     for module_name, paras in sorted(parameters.items()):
