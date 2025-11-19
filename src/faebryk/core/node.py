@@ -1463,17 +1463,17 @@ class Traits:
         return self.get_obj_raw().cast(t)
 
     @staticmethod
-    def add_to(node: NodeT, trait: NodeT) -> None:
-        fbrk.Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+    def add_to(node: NodeT, trait: NodeT) -> graph.BoundNode:
+        return fbrk.Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
 
     @staticmethod
     def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
         trait_bound = trait.bind_typegraph_from_instance(
             node.instance
         ).get_or_create_type()
-        trait_node = Node.bind_instance(instance=trait_bound)
-        Traits.add_to(node=node, trait=trait_node)
-        return node  # type: ignore
+        trait_type_node = Node.bind_instance(instance=trait_bound)
+        trait_instance_node = Traits.add_to(node=node, trait=trait_type_node)
+        return trait.bind_instance(instance=trait_instance_node)
 
     @staticmethod
     def MakeEdge[T: _ChildField](
