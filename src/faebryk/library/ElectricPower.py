@@ -30,10 +30,6 @@ class ElectricPower(fabll.Node):
         unit=F.Units.Ampere,
     )
 
-    bus_max_current_consumption_sum = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Ampere,
-    )
-
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
             node=self.hv.get(), trait=F.has_net_name
