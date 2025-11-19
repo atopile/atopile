@@ -417,8 +417,10 @@ class is_involutory(fabll.Node):
 
 
 class Add(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -458,8 +460,10 @@ class Add(fabll.Node):
 
 
 class Subtract(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -503,8 +507,10 @@ class Subtract(fabll.Node):
 
 
 class Multiply(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -544,8 +550,10 @@ class Multiply(fabll.Node):
 
 
 class Divide(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -594,8 +602,10 @@ class Divide(fabll.Node):
 
 
 class Sqrt(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -634,8 +644,10 @@ class Sqrt(fabll.Node):
 
 
 class Power(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -679,8 +691,10 @@ class Power(fabll.Node):
 
 
 class Log(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -731,8 +745,10 @@ class Log(fabll.Node):
 
 
 class Sin(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -768,8 +784,10 @@ class Sin(fabll.Node):
 
 
 class Cos(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -803,8 +821,10 @@ class Cos(fabll.Node):
 
 
 class Abs(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -841,8 +861,10 @@ class Abs(fabll.Node):
 
 
 class Round(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -879,8 +901,10 @@ class Round(fabll.Node):
 
 
 class Floor(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -915,8 +939,10 @@ class Floor(fabll.Node):
 
 
 class Ceil(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⌈",
@@ -949,8 +975,10 @@ class Ceil(fabll.Node):
 
 
 class Min(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -985,8 +1013,10 @@ class Min(fabll.Node):
 
 
 class Max(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1021,8 +1051,10 @@ class Max(fabll.Node):
 
 
 class Integrate(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1065,8 +1097,10 @@ class Integrate(fabll.Node):
 
 
 class Differentiate(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1109,8 +1143,10 @@ class Differentiate(fabll.Node):
 
 
 class And(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1154,8 +1190,10 @@ class And(fabll.Node):
 
 
 class Or(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1207,8 +1245,10 @@ class Or(fabll.Node):
 
 
 class Not(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1252,8 +1292,10 @@ class Not(fabll.Node):
 
 
 class Xor(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1397,8 +1439,10 @@ class IfThenElse(fabll.Node):
 
 
 class Union(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1441,8 +1485,10 @@ class Union(fabll.Node):
 
 
 class Intersection(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1485,8 +1531,10 @@ class Intersection(fabll.Node):
 
 
 class Difference(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1528,8 +1576,10 @@ class Difference(fabll.Node):
 
 
 class SymmetricDifference(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
@@ -1574,8 +1624,10 @@ class SymmetricDifference(fabll.Node):
 
 
 class LessThan(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1624,8 +1676,10 @@ class LessThan(fabll.Node):
 
 
 class GreaterThan(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1675,8 +1729,10 @@ class GreaterThan(fabll.Node):
 
 
 class LessOrEqual(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1725,8 +1781,10 @@ class LessOrEqual(fabll.Node):
 
 
 class GreaterOrEqual(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1777,8 +1835,10 @@ class GreaterOrEqual(fabll.Node):
 
 
 class NotEqual(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1827,8 +1887,10 @@ class NotEqual(fabll.Node):
 
 
 class IsBitSet(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1878,8 +1940,10 @@ class IsBitSet(fabll.Node):
 
 
 class IsSubset(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1930,8 +1994,10 @@ class IsSubset(fabll.Node):
 
 
 class IsSuperset(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -1980,8 +2046,10 @@ class IsSuperset(fabll.Node):
 
 
 class Cardinality(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
@@ -2030,8 +2098,10 @@ class Cardinality(fabll.Node):
 
 
 class Is(fabll.Node):
-    _can_be_operand = Parameters.can_be_operand.MakeChild()
-    _is_parameter_operatable = Parameters.is_parameter_operatable.MakeChild()
+    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     _is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
     _is_constrainable = fabll.Traits.MakeEdge(IsConstrainable.MakeChild())
     _is_expression = fabll.Traits.MakeEdge(
