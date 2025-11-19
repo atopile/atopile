@@ -902,7 +902,11 @@ class Stats:
         table.add_column("Type", justify="left")
         table.add_column("count", justify="right")
 
-        all_exprs = fabll.Node.bind_typegraph(*get_graphs(self.exprs)).nodes_of_type(
+        # TODO is this correct to get tg like this?
+        if not total:
+            return
+        tg = next(iter(self.exprs.keys())).tg
+        all_exprs = fabll.Node.bind_typegraph(tg).nodes_of_type(
             F.Expressions.is_arithmetic
         )
         expr_types = groupby(all_exprs, type)
