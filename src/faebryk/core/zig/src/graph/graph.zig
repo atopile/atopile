@@ -242,6 +242,10 @@ pub const EdgeAttributes = struct {
     directional: ?bool,
     name: ?str,
     dynamic: DynamicAttributes,
+
+    // TODO make set_name function that duplicates and owns the string and deallocates it on deinit
+    // ^ same for NodeAttributes
+    // Then ownership in python api layer also easier
 };
 
 pub fn ComptimeIntSet(max_count: usize, int_type: type) type {

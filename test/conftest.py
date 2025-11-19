@@ -54,3 +54,12 @@ def save_tmp_path_on_failure(tmp_path: Path, request: pytest.FixtureRequest):
         shutil.copytree(tmp_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
 
         raise
+
+
+# Enable this to force GC collection after each test
+# Useful for debugging memory leaks and segfaults on GC
+# @pytest.hookimpl(tryfirst=True)
+# def pytest_runtest_teardown(item, nextitem):
+#    import gc
+#
+#    gc.collect()

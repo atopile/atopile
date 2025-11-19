@@ -41,6 +41,7 @@ pub const TypeGraph = struct {
         pub const type_identifier = "type_identifier";
 
         pub fn set_type_name(self: @This(), name: str) void {
+            // TODO consider making a put_string that copies the string instead and deallocates it again
             self.node.attributes.dynamic.values.put(type_identifier, .{ .String = name }) catch unreachable;
         }
         pub fn get_type_name(self: @This()) str {
