@@ -70,6 +70,8 @@ def test_derived_pynodes():
     app = App()
     app.mif1.connect(app.mif2)
 
+    app.create_typegraph()
+
     print(app.mif1)
     print(app.mif1.get_connected())
 
