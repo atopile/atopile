@@ -8,7 +8,6 @@ from enum import StrEnum
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
 from faebryk.libs.kicad.fileformats import Property
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach

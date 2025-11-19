@@ -9,7 +9,6 @@ from typing import Any, Callable, Iterable
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.errors import UserBadParametersError
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 
@@ -157,7 +156,7 @@ def parameter_report(G: graph.GraphView, path: Path):
 
 
 def _generate_json_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]]
 ) -> str:
     json_parameters = {
         module_name: {
@@ -172,7 +171,7 @@ def _generate_json_parameters(
 
 
 def _generate_md_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]]
 ) -> str:
     out = "# Module F.Parameters.is_parameters\n"
     out += "| Module | F.Parameters.is_parameter | Value |\n"
@@ -202,7 +201,7 @@ def _generate_md_parameters(
 
 
 def _generate_txt_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]]
 ) -> str:
     out = ""
     for module_name, paras in sorted(parameters.items()):
@@ -223,7 +222,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 
-    parameters = dict[str, dict[str, F.Literals.is_literal[Any]]]()
+    parameters = dict[str, dict[str, F.Literals.is_literal]]()
 
     for m in module.get_children(
         direct_only=False,

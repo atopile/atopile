@@ -5,6 +5,7 @@ import logging
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
@@ -151,15 +152,30 @@ def test_get_expressions_involved_in():
 
 
 def test_get_correlations_basic():
-    A = F.Parameters.is_parameter()
-    B = F.Parameters.is_parameter()
-    C = F.Parameters.is_parameter()
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    param = F.Parameters.is_parameter.bind_typegraph(tg=tg)
+
+    A = param.create_instance(g)
+    B = param.create_instance(g)
+    C = param.create_instance(g)
 
     # Create correlations between parameters
-    o = A.alias_is(B)  # A and B are correlated through an Is expression
+    # A and B are correlated through an Is expression
+    o = (
+        F.Expressions.Is.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(operands=[A, B], constrain=True)
+        .get_trait(F.Expressions.is_expression)
+    )
 
     # Create an expression with correlated operands
-    expr = F.Expressions.Add(A, B, C)
+    expr = (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(A, B, C)
+        .get_trait(F.Expressions.is_expression)
+    )
 
     # Test correlations
     correlations = list(MutatorUtils.get_correlations(expr))

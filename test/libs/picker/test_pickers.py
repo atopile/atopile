@@ -19,9 +19,7 @@ from faebryk.libs.picker.api.picker_lib import (
 )
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, groupby
 
 sys.path.append(str(Path(__file__).parent))
