@@ -6,6 +6,8 @@ import logging
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.exporters.netlist.graph import attach_nets
 from faebryk.exporters.netlist.kicad.netlist_kicad import (
@@ -21,36 +23,42 @@ from faebryk.libs.smd import SMDSize
 
 logger = logging.getLogger(__name__)
 
+def make_instance[T: fabll.NodeT](tg: fbrk.TypeGraph, g: fabll.graph.GraphView, cls: type[T]) -> T:
+    return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
 # Netlists --------------------------------------------------------------------
 @pytest.fixture
 def netlist_graph():
-    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * F.Units.Ohm))
-    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * F.Units.Ohm))
-    power = F.ElectricPower()
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    resistor = F.Resistor.bind_typegraph(tg=tg)
 
-    # net labels
-    vcc = F.Net.MakeChild("+3V3")
-    gnd = F.Net.MakeChild("GND")
-    power.hv.connect(vcc.part_of)
-    power.lv.connect(gnd.part_of)
+    resistor1 = resistor.create_instance(g=g)
+    resistor2 = resistor.create_instance(g=g)
+    power = F.ElectricPower.bind_typegraph(tg=tg).create_instance(g=g)
 
-    # connect
-    resistor1.unnamed[0].connect(power.hv)
-    resistor1.unnamed[1].connect(power.lv)
-    resistor2.unnamed[0].connect(resistor1.unnamed[0])
-    resistor2.unnamed[1].connect(resistor1.unnamed[1])
+    r100 = F.Literals.Numbers.bind_typegraph(tg).create_instance(g).setup_from_singleton(value=100, unit=F.Units.Ohm)
+    r200 = F.Literals.Numbers.bind_typegraph(tg).create_instance(g).setup_from_singleton(value=200, unit=F.Units.Ohm)
+
+    resistor1.resistance.get().constrain_to_literal(g, r100)
+    resistor2.resistance.get().constrain_to_literal(g, r200)
+
+    F.has_net_name.add_net_name(power.hv.get(), name="+3V3", level=F.has_net_name.Level.EXPECTED)
+    F.has_net_name.add_net_name(power.lv.get(), name="GND", level=F.has_net_name.Level.EXPECTED)
+
+    resistor1.unnamed[0].get().get_trait(fabll.is_interface).connect_to(power.hv.get())
+    resistor1.unnamed[1].get().get_trait(fabll.is_interface).connect_to(power.lv.get())
+    resistor2.unnamed[0].get().get_trait(fabll.is_interface).connect_to(resistor1.unnamed[0].get())
+    resistor2.unnamed[1].get().get_trait(fabll.is_interface).connect_to(resistor1.unnamed[1].get())
 
     # attach footprint & designator
     for i, r in enumerate([resistor1, resistor2]):
-        r.get_trait(F.can_attach_to_footprint).attach(
-            F.SMDTwoPin(SMDSize.I0805, F.SMDTwoPin.Type.Resistor)
-        )
-        r.add(
-            F.has_designator(
-                resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
-            )
-        )
+        # r.get_trait(F.can_attach_to_footprint_symmetrically).attach(
+        #     F.SMDTwoPin(SMDSize.I0805, F.SMDTwoPin.Type.Resistor)
+        # )
+        designator = r.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
+        trait = fabll.Traits.create_and_add_instance_to(r, F.has_designator)
+        trait.setup(designator)
 
     # make netlist
     G = resistor1.get_graph
