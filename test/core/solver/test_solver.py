@@ -11,9 +11,10 @@ from typing import Any, Iterable
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -25,6 +26,83 @@ from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.util import cast_assert, not_none, times
 
 logger = logging.getLogger(__name__)
+
+Add = F.Expressions.Add
+Subtract = F.Expressions.Subtract
+Multiply = F.Expressions.Multiply
+Divide = F.Expressions.Divide
+Sqrt = F.Expressions.Sqrt
+Power = F.Expressions.Power
+Round = F.Expressions.Round
+Abs = F.Expressions.Abs
+Sin = F.Expressions.Sin
+Log = F.Expressions.Log
+Cos = F.Expressions.Cos
+Floor = F.Expressions.Floor
+Ceil = F.Expressions.Ceil
+Min = F.Expressions.Min
+Max = F.Expressions.Max
+Is = F.Expressions.Is
+IsSubset = F.Expressions.IsSubset
+IsSuperset = F.Expressions.IsSuperset
+GreaterOrEqual = F.Expressions.GreaterOrEqual
+LessOrEqual = F.Expressions.LessOrEqual
+GreaterThan = F.Expressions.GreaterThan
+LessThan = F.Expressions.LessThan
+Not = F.Expressions.Not
+And = F.Expressions.And
+Or = F.Expressions.Or
+Implies = F.Expressions.Implies
+Xor = F.Expressions.Xor
+Intersection = F.Expressions.Intersection
+Union = F.Expressions.Union
+SymmetricDifference = F.Expressions.SymmetricDifference
+
+
+_Unit = type[fabll.NodeT]
+_Quantity = tuple[float, _Unit]
+_Range = tuple[float, float] | tuple[_Quantity, _Quantity]
+
+Range = F.Literals.Numbers
+
+# TODO remove
+g = graph.GraphView.create()
+tg = fbrk.TypeGraph.create(g=g)
+
+dimensionless = F.Units.Dimensionless
+
+
+def lit_op_single(value: float | _Quantity) -> F.Parameters.can_be_operand:
+    # TODO
+    pass
+
+
+def lit_op_range(*ranges: _Range) -> F.Parameters.can_be_operand:
+    # FIXME
+    return (
+        F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(g=g)
+        # .setup_from_interval(lower=lower, upper=upper)
+    ).get_trait(F.Parameters.can_be_operand)
+
+
+def lit_op_range_from_center_rel(
+    center: _Quantity, rel: float
+) -> F.Parameters.can_be_operand:
+    # FIXME
+    return (
+        F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(g=g)
+        # .setup_from_interval(lower=lower, upper=upper)
+    ).get_trait(F.Parameters.can_be_operand)
+
+
+def lit_bool(*values: bool) -> F.Parameters.can_be_operand:
+    return (
+        F.Literals.Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup(*values)
+    ).get_trait(F.Parameters.can_be_operand)
+
+
+class P:
+    V = F.Units.Volt
 
 
 def _create_letters(
@@ -50,7 +128,7 @@ def test_solve_phase_one():
     solver = DefaultSolver()
 
     def Voltage():
-        return fabll.p_field(units=P.V, within=Range(0 * P.V, 10 * P.kV))
+        return fabll.p_field(units=P.V, within=lit_op_range(((0, P.V), (10, P.kV))))
 
     class App(fabll.Node):
         voltage1 = Voltage()
@@ -65,8 +143,8 @@ def test_solve_phase_one():
     voltage1.alias_is(voltage2)
     voltage3.alias_is(voltage1 + voltage2)
 
-    voltage1.alias_is(Range(1 * P.V, 3 * P.V))
-    voltage3.alias_is(Range(2 * P.V, 6 * P.V))
+    voltage1.alias_is(lit_op_range(((1, P.V), (3, P.V))))
+    voltage3.alias_is(lit_op_range(((2, P.V), (6, P.V))))
 
     solver.simplify_symbolically(voltage1.get_graph())
 
@@ -84,7 +162,7 @@ def test_simplify():
         quantity(c, dimensionless) for c in range(0, 10)
     ]
     constants[5] = app.ops[0] - app.ops[0]
-    constants[9] = RangeWithGaps(Range(0 * dimensionless, 1 * dimensionless))
+    constants[9] = RangeWithGaps(lit_op_range(((0, dimensionless), (1, dimensionless))))
     acc = app.ops[0]
     for i, p in enumerate(app.ops[1:3]):
         acc += p + constants[i]
@@ -145,7 +223,7 @@ def test_shortcircuit_logic_or():
     G = ored.get_graph()
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(G).data.mutation_map
-    assert repr_map.try_get_literal(ored) == BoolSet(True)
+    assert repr_map.try_get_literal(ored) == lit_bool(True)
 
 
 def test_inequality_to_set():
@@ -154,7 +232,7 @@ def test_inequality_to_set():
     p0.constrain_ge(1.0)
     solver = DefaultSolver()
     solver.update_superset_cache(p0)
-    assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((1.0, 2.0))
+    assert solver.inspect_get_known_supersets(p0) == lit_op_range((1.0, 2.0))
 
 
 def test_remove_obvious_tautologies():
@@ -172,7 +250,10 @@ def test_remove_obvious_tautologies():
 
 def test_subset_of_literal():
     p0, p1, p2 = (
-        Parameter(units=dimensionless, within=Range(0, i, units=dimensionless))
+        Parameter(
+            units=dimensionless,
+            within=lit_op_range((0, i)),
+        )
         for i in range(3)
     )
     p0.alias_is(p1)
@@ -246,19 +327,19 @@ def test_solve_realworld_biggest():
 
 
 def test_inspect_known_superranges():
-    p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
-    p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
+    p0 = Parameter(units=P.V, within=lit_op_range(((1, P.V), (10, P.V))))
+    p0.alias_is(lit_op_range(((1, P.V), (3, P.V))) + lit_op_range(((4, P.V), (6, P.V))))
     solver = DefaultSolver()
     solver.update_superset_cache(p0)
-    assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
+    assert solver.inspect_get_known_supersets(p0) == lit_op_range(((5, P.V), (9, P.V)))
 
 
 def test_obvious_contradiction_by_literal():
     p0 = Parameter(units=P.V)
     p1 = Parameter(units=P.V)
 
-    p0.alias_is(Range(0 * P.V, 10 * P.V))
-    p1.alias_is(Range(5 * P.V, 10 * P.V))
+    p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
+    p1.alias_is(lit_op_range(((5, P.V), (10, P.V))))
 
     p0.alias_is(p1)
 
@@ -271,8 +352,8 @@ def test_obvious_contradiction_by_literal():
 def test_subset_is():
     A, B = params = times(2, lambda: Parameter(domain=fabll.Domains.Numbers.REAL()))
 
-    A.alias_is(Range(0, 15))
-    B.constrain_subset(Range(5, 20))
+    A.alias_is(lit_op_range((0, 15)))
+    B.constrain_subset(lit_op_range((5, 20)))
     A.alias_is(B)
 
     context = F.Parameters.ReprContext()
@@ -292,8 +373,8 @@ def test_subset_is_expr():
         p.compact_repr(context)
 
     E = A + B
-    C.alias_is(Range(0, 15))
-    E.constrain_subset(Range(5, 20))
+    C.alias_is(lit_op_range((0, 15)))
+    E.constrain_subset(lit_op_range((5, 20)))
 
     C.alias_is(E)
 
@@ -304,11 +385,11 @@ def test_subset_is_expr():
 
 def test_subset_single_alias():
     A = Parameter(units=P.V)
-    A.constrain_subset(Single(1 * P.V))
+    A.constrain_subset(lit_op_single((1, P.V)))
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(A.get_graph()).data.mutation_map
-    assert repr_map.try_get_literal(A) == Single(1 * P.V)
+    assert repr_map.try_get_literal(A) == lit_op_single((1, P.V))
 
 
 def test_very_simple_alias_class():
@@ -330,8 +411,8 @@ def test_very_simple_alias_class():
 
 
 def test_domain():
-    p0 = Parameter(units=P.V, within=Range(0 * P.V, 10 * P.V))
-    p0.alias_is(Range(15 * P.V, 20 * P.V))
+    p0 = Parameter(units=P.V, within=lit_op_range(((0, P.V), (10, P.V))))
+    p0.alias_is(lit_op_range(((15, P.V), (20, P.V))))
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -343,10 +424,10 @@ def test_less_obvious_contradiction_by_literal():
     B = Parameter(units=P.V)
     C = Parameter(units=P.V)
 
-    A.alias_is(Range(0.0 * P.V, 10.0 * P.V))
-    B.alias_is(Range(5.0 * P.V, 10.0 * P.V))
+    A.alias_is(lit_op_range(((0.0, P.V), (10.0, P.V))))
+    B.alias_is(lit_op_range(((5.0, P.V), (10.0, P.V))))
     C.alias_is(A + B)
-    C.alias_is(Range(0.0 * P.V, 15.0 * P.V))
+    C.alias_is(lit_op_range(((0.0, P.V), (15.0, P.V))))
 
     print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
@@ -362,7 +443,7 @@ def test_symmetric_inequality_correlated():
     p0 = Parameter(units=P.V)
     p1 = Parameter(units=P.V)
 
-    p0.alias_is(Range(0 * P.V, 10 * P.V))
+    p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
     p1.alias_is(p0)
 
     (p0 >= p1).constrain()
@@ -372,7 +453,7 @@ def test_symmetric_inequality_correlated():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(G).data.mutation_map
     assert repr_map.try_get_literal(p0) == repr_map.try_get_literal(p1)
-    assert repr_map.try_get_literal(p0) == Range(0 * P.V, 10 * P.V)
+    assert repr_map.try_get_literal(p0) == lit_op_range(((0, P.V), (10, P.V)))
 
 
 @pytest.mark.parametrize(
@@ -385,7 +466,7 @@ def test_symmetric_inequality_correlated():
     ],
 )
 def test_simple_literal_folds_arithmetic(
-    expr_type: type[Arithmetic], operands: Iterable[float], expected: float
+    expr_type: type[fabll.NodeT], operands: Iterable[float], expected: float
 ):
     expected_result = Quantity_Interval_Disjoint.from_value(expected)
     used_operands = [Quantity_Interval_Disjoint.from_value(o) for o in operands]
@@ -419,7 +500,7 @@ def test_simple_literal_folds_arithmetic(
     ],
 )
 def test_super_simple_literal_folding(
-    expr_type: type[Arithmetic], operands: Iterable[Any], expected: Any
+    expr_type: type[fabll.NodeT], operands: Iterable[Any], expected: Any
 ):
     q_operands = [Quantity_Interval_Disjoint.from_value(o) for o in operands]
     expr = expr_type(*q_operands)
@@ -516,13 +597,13 @@ def test_transitive_subset():
     for p in (A, B, C):
         p.compact_repr(context)
 
-    C.alias_is(Range(0, 10))
+    C.alias_is(lit_op_range((0, 10)))
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(
         A.get_graph(), print_context=context
     ).data.mutation_map
-    assert repr_map.try_get_literal(A, allow_subset=True) == Range(0, 10)
+    assert repr_map.try_get_literal(A, allow_subset=True) == lit_op_range((0, 10))
 
 
 def test_nested_additions():
@@ -550,13 +631,15 @@ def test_combined_add_and_multiply_with_ranges():
     B = Parameter()
     C = Parameter()
 
-    A.alias_is(Range.from_center_rel(1, 0.01))
-    B.alias_is(Range.from_center_rel(2, 0.01))
+    A.alias_is(lit_op_range_from_center_rel(1, 0.01))
+    B.alias_is(lit_op_range_from_center_rel(2, 0.01))
     C.alias_is(2 * A + B)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(4, 0.01)
+    assert solver.inspect_get_known_supersets(C) == lit_op_range_from_center_rel(
+        4, 0.01
+    )
 
 
 def test_voltage_divider_find_v_out_no_division():
@@ -565,9 +648,9 @@ def test_voltage_divider_find_v_out_no_division():
     v_in = Parameter()
     v_out = Parameter()
 
-    v_in.alias_is(Range(9, 10))
-    r_top.alias_is(Range(10, 100))
-    r_bottom.alias_is(Range(10, 100))
+    v_in.alias_is(lit_op_range((9, 10)))
+    r_top.alias_is(lit_op_range((10, 100)))
+    r_bottom.alias_is(lit_op_range((10, 100)))
     v_out.alias_is(v_in * r_bottom * ((r_top + r_bottom) ** -1))
 
     solver = DefaultSolver()
@@ -576,7 +659,7 @@ def test_voltage_divider_find_v_out_no_division():
     # TODO: automatically rearrange expression to match
     # v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
+    assert solver.inspect_get_known_supersets(v_out) == lit_op_range((0.45, 50))
 
 
 def test_voltage_divider_find_v_out_with_division():
@@ -585,14 +668,14 @@ def test_voltage_divider_find_v_out_with_division():
     v_in = Parameter()
     v_out = Parameter()
 
-    v_in.alias_is(Range(9, 10))
-    r_top.alias_is(Range(10, 100))
-    r_bottom.alias_is(Range(10, 100))
+    v_in.alias_is(lit_op_range((9, 10)))
+    r_top.alias_is(lit_op_range((10, 100)))
+    r_bottom.alias_is(lit_op_range((10, 100)))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
+    assert solver.inspect_get_known_supersets(v_out) == lit_op_range((0.45, 50))
 
 
 def test_voltage_divider_find_v_out_single_variable_occurrences():
@@ -601,14 +684,14 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
     v_in = Parameter()
     v_out = Parameter()
 
-    v_in.alias_is(Range(9, 10))
-    r_top.alias_is(Range(10, 100))
-    r_bottom.alias_is(Range(10, 100))
+    v_in.alias_is(lit_op_range((9, 10)))
+    r_top.alias_is(lit_op_range((10, 100)))
+    r_bottom.alias_is(lit_op_range((10, 100)))
     v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(v_out) == Range(9 / 11, 100 / 11)
+    assert solver.inspect_get_known_supersets(v_out) == lit_op_range((9 / 11, 100 / 11))
 
 
 def test_voltage_divider_find_v_in():
@@ -617,16 +700,16 @@ def test_voltage_divider_find_v_in():
     v_in = Parameter()
     v_out = Parameter()
 
-    v_out.alias_is(Range(9, 10))
-    r_top.alias_is(Range(10, 100))
-    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(lit_op_range((9, 10)))
+    r_top.alias_is(lit_op_range((10, 100)))
+    r_bottom.alias_is(lit_op_range((10, 100)))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
 
     # TODO: should find [9.9, 100]
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(v_in) == Range(1.8, 200)
+    assert solver.inspect_get_known_supersets(v_in) == lit_op_range((1.8, 200))
 
 
 def test_voltage_divider_find_resistances():
@@ -636,16 +719,18 @@ def test_voltage_divider_find_resistances():
     v_out = Parameter(units=P.V)
     r_total = Parameter(units=P.ohm)
 
-    v_in.alias_is(Range(9 * P.V, 10 * P.V))
-    v_out.alias_is(Range(0.9 * P.V, 1 * P.V))
-    r_total.alias_is(Quantity_Interval_Disjoint.from_value(100 * P.ohm))
+    v_in.alias_is(lit_op_range(((9, P.V), (10, P.V))))
+    v_out.alias_is(lit_op_range(((0.9, P.V), (1, P.V))))
+    r_total.alias_is(Quantity_Interval_Disjoint.from_value((100, P.ohm)))
     r_total.alias_is(r_top + r_bottom)
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
     # FIXME: this test looks funky
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom, r_total)
-    assert solver.inspect_get_known_supersets(v_out) == Range(0.9 * P.V, 1 * P.V)
+    assert solver.inspect_get_known_supersets(v_out) == lit_op_range(
+        ((0.9, P.V), (1, P.V))
+    )
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
@@ -656,16 +741,16 @@ def test_voltage_divider_find_r_top():
     v_in = Parameter(units=P.V)
     v_out = Parameter(units=P.V)
 
-    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
-    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
-    r_bottom.alias_is(Range.from_center_rel(1 * P.ohm, 0.01))
+    v_in.alias_is(lit_op_range_from_center_rel((10, P.V), 0.01))
+    v_out.alias_is(lit_op_range_from_center_rel((1, P.V), 0.01))
+    r_bottom.alias_is(lit_op_range_from_center_rel((1, P.ohm), 0.01))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(r_top) == Range(
-        (10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99
+    assert solver.inspect_get_known_supersets(r_top) == lit_op_range(
+        ((10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99)
     )
 
 
@@ -675,12 +760,12 @@ def test_voltage_divider_reject_invalid_r_top():
     v_in = Parameter(units=P.V)
     v_out = Parameter(units=P.V)
 
-    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
-    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
+    v_in.alias_is(lit_op_range_from_center_rel((10, P.V), 0.01))
+    v_out.alias_is(lit_op_range_from_center_rel((1, P.V), 0.01))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
-    r_bottom.alias_is(Range.from_center_rel(1 * P.ohm, 0.01))
-    r_top.alias_is(Range.from_center_rel(999 * P.ohm, 0.01))
+    r_bottom.alias_is(lit_op_range_from_center_rel((1, P.ohm), 0.01))
+    r_top.alias_is(lit_op_range_from_center_rel((999, P.ohm), 0.01))
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -689,24 +774,24 @@ def test_voltage_divider_reject_invalid_r_top():
 
 def test_base_unit_switch():
     A = Parameter(units=P.mAh)
-    A.alias_is(Range(100 * P.mAh, 600 * P.mAh))
-    (A >= 100 * P.mAh).constrain()
+    A.alias_is(lit_op_range(((100, P.mAh), (600, P.mAh))))
+    (A >= (100, P.mAh)).constrain()
 
     G = A.get_graph()
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(G).data.mutation_map
     assert repr_map.try_get_literal(A) == RangeWithGaps.from_value(
-        (100 * P.mAh, 600 * P.mAh)
+        ((100, P.mAh), (600, P.mAh))
     )
 
 
 @pytest.mark.parametrize("predicate_type", [Is, IsSubset])
-def test_try_fulfill_super_basic(predicate_type: type[ConstrainableExpression]):
+def test_try_fulfill_super_basic(predicate_type: type[Is] | type[IsSubset]):
     p0 = Parameter(units=P.V)
-    p0.alias_is(Range(0 * P.V, 10 * P.V))
+    p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
 
     solver = DefaultSolver()
-    pred = predicate_type(p0, Range(0 * P.V, 10 * P.V))
+    pred = predicate_type(p0, lit_op_range(((0, P.V), (10, P.V))))
     assert solver.try_fulfill(pred, lock=False)
 
 
@@ -770,9 +855,9 @@ def test_simple_pick():
                 ),
                 params={
                     "color": fabll.EnumSet(F.LED.Color.EMERALD),
-                    "max_brightness": 285 * P.mcandela,
-                    "forward_voltage": fabll.Single(3.7 * P.volt),
-                    "max_current": 100 * P.mA,
+                    "max_brightness": (285, P.mcandela),
+                    "forward_voltage": fabll.Single(3.0(7, P.volt)),
+                    "max_current": (100, P.mA),
                 },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
@@ -804,9 +889,9 @@ def test_simple_negative_pick():
                 ),
                 params={
                     "color": fabll.EnumSet(F.LED.Color.EMERALD),
-                    "max_brightness": 285 * P.mcandela,
-                    "forward_voltage": fabll.Single(3.7 * P.volt),
-                    "max_current": 100 * P.mA,
+                    "max_brightness": (285, P.mcandela),
+                    "forward_voltage": fabll.Single(3.0(7, P.volt)),
+                    "max_current": (100, P.mA),
                 },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
@@ -818,9 +903,9 @@ def test_simple_negative_pick():
                 ),
                 params={
                     "color": fabll.EnumSet(F.LED.Color.BLUE),
-                    "max_brightness": 28.5 * P.mcandela,
-                    "forward_voltage": fabll.Single(3.1 * P.volt),
-                    "max_current": 100 * P.mA,
+                    "max_brightness": 28.0(5, P.mcandela),
+                    "forward_voltage": fabll.Single(3.0(1, P.volt)),
+                    "max_current": (100, P.mA),
                 },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
@@ -836,7 +921,7 @@ def test_simple_negative_pick():
 
 def test_jlcpcb_pick_resistor():
     resistor = F.Resistor()
-    resistor.resistance.constrain_subset(fabll.Range(10 * P.ohm, 100 * P.ohm))
+    resistor.resistance.constrain_subset(lit_op_range(((10, P.ohm), (100, P.ohm))))
 
     solver = DefaultSolver()
     pick_part_recursively(resistor, solver)
@@ -848,8 +933,8 @@ def test_jlcpcb_pick_resistor():
 @pytest.mark.usefixtures("setup_project_config")
 def test_jlcpcb_pick_capacitor():
     capacitor = F.Capacitor()
-    capacitor.capacitance.constrain_subset(fabll.Range(100 * P.nF, 1 * P.uF))
-    capacitor.max_voltage.constrain_ge(50 * P.V)
+    capacitor.capacitance.constrain_subset(lit_op_range(((100, P.nF), (1, P.uF))))
+    capacitor.max_voltage.constrain_ge((50, P.V))
 
     solver = DefaultSolver()
     pick_part_recursively(capacitor, solver)
@@ -862,7 +947,7 @@ def test_jlcpcb_pick_capacitor():
 def test_jlcpcb_pick_led():
     led = F.LED()
     led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
-    led.max_current.constrain_ge(10 * P.mA)
+    led.max_current.constrain_ge((10, P.mA))
 
     solver = DefaultSolver()
     pick_part_recursively(led, solver)
@@ -875,8 +960,8 @@ def test_jlcpcb_pick_led():
 def test_jlcpcb_pick_powered_led_simple():
     led = F.PoweredLED()
     led.led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
-    led.power.voltage.constrain_subset(fabll.Range(1.8 * P.V, 5.5 * P.V))
-    led.led.forward_voltage.constrain_subset(fabll.Range(1 * P.V, 4 * P.V))
+    led.power.voltage.constrain_subset(lit_op_range(((1.8, P.V), (5.5, P.V))))
+    led.led.forward_voltage.constrain_subset(lit_op_range(((1, P.V), (4, P.V))))
 
     solver = DefaultSolver()
     children_mods = led.get_children(
@@ -894,7 +979,7 @@ def test_jlcpcb_pick_powered_led_simple():
 def test_jlcpcb_pick_powered_led_regression():
     led = F.PoweredLED()
     led.led.color.constrain_subset(F.LED.Color.RED)
-    led.power.voltage.alias_is(3 * P.V)
+    led.power.voltage.alias_is((3, P.V))
     led.led.brightness.constrain_subset(
         TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
     )
@@ -918,14 +1003,14 @@ def test_jlcpcb_pick_powered_led_regression():
     [
         (
             Add,
-            Range.from_center_rel(3, 0.01),
-            Range.from_center_rel(1, 0.01),
-            Range.from_center_rel(2, 0.02),
+            lit_op_range_from_center_rel(3, 0.01),
+            lit_op_range_from_center_rel(1, 0.01),
+            lit_op_range_from_center_rel(2, 0.02),
         )
     ],
 )
 def test_simple_parameter_isolation(
-    op: type[Arithmetic], x_op_y: Range, y: Range, x_expected: Range
+    op: type[fabll.NodeT], x_op_y: Range, y: Range, x_expected: Range
 ):
     X = Parameter()
     Y = Parameter()
@@ -948,15 +1033,15 @@ def test_abstract_lowpass():
     fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
 
     # input
-    Li.alias_is(Range.from_center_rel(1 * P.uH, 0.01))
-    fc.alias_is(Range.from_center_rel(1000 * P.Hz, 0.01))
+    Li.alias_is(lit_op_range_from_center_rel((1, P.uH), 0.01))
+    fc.alias_is(lit_op_range_from_center_rel((1000, P.Hz), 0.01))
 
     # solve
     solver = DefaultSolver()
     solver.update_superset_cache(Li, C, fc)
 
-    assert solver.inspect_get_known_supersets(C) == Range(
-        6.158765796 * P.GF, 6.410118344 * P.GF
+    assert solver.inspect_get_known_supersets(C) == lit_op_range(
+        (6.0(158765796, P.GF), 6.0(410118344, P.GF))
     )
 
 
@@ -964,13 +1049,15 @@ def test_param_isolation():
     X = Parameter()
     Y = Parameter()
 
-    (X + Y).alias_is(Range.from_center_rel(3, 0.01))
-    Y.alias_is(Range.from_center_rel(1, 0.01))
+    (X + Y).alias_is(lit_op_range_from_center_rel(3, 0.01))
+    Y.alias_is(lit_op_range_from_center_rel(1, 0.01))
 
     solver = DefaultSolver()
     solver.update_superset_cache(X, Y)
 
-    assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)
+    assert solver.inspect_get_known_supersets(X) == lit_op_range_from_center_rel(
+        2, 0.02
+    )
 
 
 @pytest.mark.parametrize(
@@ -987,8 +1074,8 @@ def test_extracted_literal_folding(op):
     B = Parameter()
     C = Parameter(domain=fabll.Domains.Numbers.REAL())
 
-    lit1 = Range(0, 10)
-    lit2 = Range(10, 20)
+    lit1 = lit_op_range(((0, 10)))
+    lit2 = lit_op_range(((10, 20)))
     lito = op(lit1, lit2)
 
     A.alias_is(lit1)
@@ -1006,7 +1093,7 @@ def test_fold_pow():
     A = Parameter()
     B = Parameter()
 
-    lit = RangeWithGaps(Range(5, 6))
+    lit = lit_op_range((5, 6))
     lit_operand = 2
 
     A.alias_is(lit)
@@ -1050,7 +1137,7 @@ def test_ss_single_into_alias():
     A = Parameter()
     B = Parameter()
 
-    A.alias_is(Range(5, 10))
+    A.alias_is(lit_op_range((5, 10)))
     B.operation_is_subset(5).constrain()
     C = A + B
 
@@ -1058,7 +1145,7 @@ def test_ss_single_into_alias():
     repr_map = solver.simplify_symbolically(C.get_graph()).data.mutation_map
 
     assert repr_map.try_get_literal(B) == 5
-    assert repr_map.try_get_literal(A) == Range(5, 10)
+    assert repr_map.try_get_literal(A) == lit_op_range((5, 10))
 
 
 @pytest.mark.parametrize(
@@ -1083,8 +1170,8 @@ def test_find_contradiction_by_predicate(op, invert):
     A = Parameter()
     B = Parameter()
 
-    A.alias_is(Range(0, 10))
-    B.alias_is(Range(20, 30))
+    A.alias_is(lit_op_range((0, 10)))
+    B.alias_is(lit_op_range((20, 30)))
 
     if invert:
         op(B, A).constrain()
@@ -1101,8 +1188,8 @@ def test_find_contradiction_by_gt():
     A = Parameter()
     B = Parameter()
 
-    A.alias_is(Range(0, 10))
-    B.alias_is(Range(20, 30))
+    A.alias_is(lit_op_range((0, 10)))
+    B.alias_is(lit_op_range((20, 30)))
 
     (A > B).constrain()
 
@@ -1116,21 +1203,21 @@ def test_can_add_parameters():
     B = Parameter()
     C = Parameter()
 
-    A.alias_is(Range(10, 100))
-    B.alias_is(Range(10, 100))
+    A.alias_is(lit_op_range((10, 100)))
+    B.alias_is(lit_op_range((10, 100)))
     C.alias_is((A + B))
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
 
-    assert solver.inspect_get_known_supersets(C) == Range(20, 200)
+    assert solver.inspect_get_known_supersets(C) == lit_op_range((20, 200))
 
 
 def test_ss_estimation_ge():
     A = Parameter()
     B = Parameter()
 
-    A.operation_is_subset(Range(0, 10)).constrain()
+    A.operation_is_subset(lit_op_range((0, 10))).constrain()
     (B >= A).constrain()
 
     solver = DefaultSolver()
@@ -1143,7 +1230,7 @@ def test_fold_mul_zero():
     C = Parameter()
 
     A.alias_is(0)
-    B.alias_is(Range(10, 20))
+    B.alias_is(lit_op_range((10, 20)))
 
     (A * B).alias_is(C)
 
@@ -1164,7 +1251,7 @@ def test_fold_or_true():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(C) == BoolSet(True)
+    assert solver.inspect_get_known_supersets(C) == lit_bool(True)
 
 
 def test_fold_not():
@@ -1176,7 +1263,7 @@ def test_fold_not():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
-    assert solver.inspect_get_known_supersets(B) == BoolSet(True)
+    assert solver.inspect_get_known_supersets(B) == lit_bool(True)
 
 
 def test_fold_ss_transitive():
@@ -1184,13 +1271,13 @@ def test_fold_ss_transitive():
     B = Parameter()
     C = Parameter()
 
-    C.operation_is_subset(Range(0, 10)).constrain()
+    C.operation_is_subset(lit_op_range((0, 10))).constrain()
     B.operation_is_subset(C).constrain()
     A.operation_is_subset(B).constrain()
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(A) == Range(0, 10)
+    assert solver.inspect_get_known_supersets(A) == lit_op_range((0, 10))
 
 
 def test_ss_intersect():
@@ -1198,62 +1285,70 @@ def test_ss_intersect():
     B = Parameter()
     C = Parameter()
 
-    A.alias_is(Range(0, 15))
-    B.alias_is(Range(10, 20))
+    A.alias_is(lit_op_range((0, 15)))
+    B.alias_is(lit_op_range((10, 20)))
     C.constrain_subset(A)
     C.constrain_subset(B)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(C) == Range(10, 15)
+    assert solver.inspect_get_known_supersets(C) == lit_op_range((10, 15))
 
 
 @pytest.mark.parametrize(
     "left, right, expected",
     [
         (
-            [Range(0, 10)],
-            [Range(0, 10)],
+            [lit_op_range((0, 10))],
+            [lit_op_range((0, 10))],
             (True, False),
         ),
         (
-            [Range(0, 10)],
-            [Range(10, 20)],
+            [lit_op_range((0, 10))],
+            [lit_op_range((10, 20))],
             (False, False),
         ),
         (
-            [Add(Range(0, 10), Range(0, 20))],
-            [Add(Range(0, 10), Range(0, 20))],
+            [Add.c(lit_op_range((0, 10)), lit_op_range((0, 20)))],
+            [Add.c(lit_op_range((0, 10)), lit_op_range((0, 20)))],
             (True, False),
         ),
         (
-            [Add(Range(0, 10), Range(0, 20))],
-            [Add(Range(0, 20), Range(0, 10))],
+            [Add.c(lit_op_range((0, 10)), lit_op_range((0, 20)))],
+            [Add.c(lit_op_range((0, 20)), lit_op_range((0, 10)))],
             (True, False),
         ),
         (
-            [Not(BoolSet(True))],
-            [Not(BoolSet(True))],
+            [Not.c(lit_bool(True))],
+            [Not.c(lit_bool(True))],
             (True, True),
         ),
         (
-            [Not(Not(BoolSet(True)))],
-            [Not(Not(BoolSet(True)))],
+            [Not.c(Not.c(lit_bool(True)))],
+            [Not.c(Not.c(lit_bool(True)))],
             (True, True),
         ),
         (
-            [Multiply(Range(0, 10), Range(0, 10))],
-            [Multiply(Range(0, 10), Range(0, 10))],
+            [Multiply.c(lit_op_range((0, 10)), lit_op_range((0, 10)))],
+            [Multiply.c(lit_op_range((0, 10)), lit_op_range((0, 10)))],
             (True, False),
         ),
         (
-            [Multiply(Range(0, math.inf), Range(0, math.inf), Range(0, math.inf))],
-            [Multiply(Range(0, math.inf), Range(0, math.inf))],
+            [
+                Multiply.c(
+                    lit_op_range((0, math.inf)),
+                    lit_op_range((0, math.inf)),
+                    lit_op_range((0, math.inf)),
+                )
+            ],
+            [
+                Multiply.c(lit_op_range((0, math.inf)), lit_op_range((0, math.inf))),
+            ],
             (False, False),
         ),
         (
-            [Add(Range(0, math.inf), Range(0, math.inf))],
-            [Add(Range(0, math.inf))],
+            [Add.c(lit_op_range((0, math.inf)), lit_op_range((0, math.inf)))],
+            [Add.c(lit_op_range((0, math.inf)))],
             (False, False),
         ),
     ],
@@ -1268,11 +1363,11 @@ def test_congruence_lits(left, right, expected):
 
 def test_fold_literals():
     A = Parameter()
-    A.alias_is(Add(Range(0, 10), Range(0, 10)))
+    A.alias_is(Add(lit_op_range((0, 10)), lit_op_range((0, 10))))
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(A) == Range(0, 20)
+    assert solver.inspect_get_known_supersets(A) == lit_op_range((0, 20))
 
 
 def test_deduce_negative():
@@ -1298,17 +1393,19 @@ def test_implication():
     A.constrain_subset(DiscreteSet(5, 10))
 
     A.operation_is_subset(Single(5)).operation_implies(
-        B.operation_is_subset(Range.from_center_rel(100, 0.1))
+        B.operation_is_subset(lit_op_range_from_center_rel(100, 0.1))
     ).constrain()
     A.operation_is_subset(Single(10)).operation_implies(
-        B.operation_is_subset(Range.from_center_rel(500, 0.1))
+        B.operation_is_subset(lit_op_range_from_center_rel(500, 0.1))
     ).constrain()
 
     A.constrain_subset(Single(10))
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
-    assert solver.inspect_get_known_supersets(B) == Range.from_center_rel(500, 0.1)
+    assert solver.inspect_get_known_supersets(B) == lit_op_range_from_center_rel(
+        500, 0.1
+    )
 
 
 @pytest.mark.parametrize("A_value", [5, 10, 15])
@@ -1316,9 +1413,9 @@ def test_mapping(A_value):
     A = Parameter()
     B = Parameter()
 
-    X = Range.from_center_rel(100, 0.1)
-    Y = Range.from_center_rel(200, 0.1)
-    Z = Range.from_center_rel(300, 0.1)
+    X = lit_op_range_from_center_rel(100, 0.1)
+    Y = lit_op_range_from_center_rel(200, 0.1)
+    Z = lit_op_range_from_center_rel(300, 0.1)
 
     mapping = {5: X, 10: Y, 15: Z}
     A.constrain_mapping(B, mapping)  # type: ignore
@@ -1381,14 +1478,17 @@ def test_nested_fold_interval():
     A = Parameter()
     A.alias_is(
         Add(
-            Range.from_center_rel(1, 0.1),
-            Multiply(Range.from_center_rel(2, 0.1), Range.from_center_rel(3, 0.1)),
+            lit_op_range_from_center_rel(1, 0.1),
+            Multiply(
+                lit_op_range_from_center_rel(2, 0.1),
+                lit_op_range_from_center_rel(3, 0.1),
+            ),
         )
     )
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(A) == Range(5.76, 8.36)
+    assert solver.inspect_get_known_supersets(A) == lit_op_range((5.76, 8.36))
 
 
 def test_simplify_non_terminal_manual_test_1():
@@ -1404,7 +1504,7 @@ def test_simplify_non_terminal_manual_test_1():
     solver = DefaultSolver()
     solver.simplify(E)
     E2 = E + A
-    A.alias_is(Range(0 * P.V, 10 * P.V))
+    A.alias_is(lit_op_range(((0, P.V), (10, P.V))))
 
     solver.simplify(E2)
 
@@ -1423,10 +1523,11 @@ def test_simplify_non_terminal_manual_test_2():
     context, ps, graph = _create_letters(3, units=P.V)
     A, B, C = ps
 
-    INCREASE = 20 * P.percent
-    TOLERANCE = 5 * P.percent
+    INCREASE = (20, P.percent)
+    TOLERANCE = (5, P.percent)
     increase = as_lit(
-        fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(100 * P.percent)
+        lit_op_range_from_center_rel(INCREASE, TOLERANCE)
+        + fabll.Single((100, P.percent))
     )
     for p1, p2 in pairwise(ps):
         p2.constrain_subset(p1 * increase)
@@ -1435,7 +1536,7 @@ def test_simplify_non_terminal_manual_test_2():
     solver = DefaultSolver()
     solver.simplify_symbolically(A, terminal=False, print_context=context)
 
-    origin = 1, as_lit(Range(9 * P.V, 11 * P.V))
+    origin = 1, as_lit(lit_op_range(((9, P.V), (11, P.V))))
     ps[origin[0]].alias_is(origin[1])
     solver.simplify(A)
 
@@ -1473,8 +1574,8 @@ def test_abstract_lowpass_ss():
     fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
 
     # input
-    Li_const = RangeWithGaps(Range.from_center_rel(1 * P.uH, 0.01))
-    fc_const = RangeWithGaps(Range.from_center_rel(1000 * P.Hz, 0.01))
+    Li_const = RangeWithGaps(lit_op_range_from_center_rel((1, P.uH), 0.01))
+    fc_const = RangeWithGaps(lit_op_range_from_center_rel((1000, P.Hz), 0.01))
     Li.constrain_subset(Li_const)
     fc.constrain_subset(fc_const)
 
@@ -1499,21 +1600,21 @@ def test_voltage_divider_find_r_bottom():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     # input
-    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
-    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
-    r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
+    v_in.alias_is(lit_op_range_from_center_rel((10, P.V), 0.01))
+    v_out.alias_is(lit_op_range_from_center_rel((1, P.V), 0.01))
+    r_top.alias_is(lit_op_range_from_center_rel((9, P.ohm), 0.01))
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top)
-    assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
-        1 * P.ohm, 0.01
+    assert solver.inspect_get_known_supersets(r_bottom) == lit_op_range_from_center_rel(
+        (1, P.ohm), 0.01
     )
 
 
 @pytest.mark.xfail(reason="TODO reenable ge fold")
 def test_min_max_single():
     p0 = Parameter(units=P.V)
-    p0.alias_is(fabll.Range(0 * P.V, 10 * P.V))
+    p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
 
     p1 = Parameter(units=P.V)
     p1.alias_is(Max(p0))
@@ -1521,15 +1622,15 @@ def test_min_max_single():
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1)
     out = solver.inspect_get_known_supersets(p1)
-    assert out == fabll.Single(10 * P.V)
+    assert out == fabll.Single((10, P.V))
 
 
 @pytest.mark.xfail(reason="TODO")
 def test_min_max_multi():
     p0 = Parameter(units=P.V)
-    p0.alias_is(fabll.Range(0 * P.V, 10 * P.V))
+    p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
     p3 = Parameter(units=P.V)
-    p3.alias_is(fabll.Range(4 * P.V, 15 * P.V))
+    p3.alias_is(lit_op_range(((4, P.V), (15, P.V))))
 
     p1 = Parameter(units=P.V)
     p1.alias_is(Max(p0, p3))
@@ -1537,7 +1638,7 @@ def test_min_max_multi():
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1, p3)
     out = solver.inspect_get_known_supersets(p1)
-    assert out == fabll.Single(15 * P.V)
+    assert out == fabll.Single((15, P.V))
 
 
 @pytest.mark.xfail(
@@ -1547,7 +1648,7 @@ def test_symmetric_inequality_uncorrelated():
     p0 = Parameter(units=P.V)
     p1 = Parameter(units=P.V)
 
-    p0.alias_is(Range(0 * P.V, 10 * P.V))
+    p0.alias_is(lit_op_range(((0, P.V), (10, P.V))))
 
     (p0 >= p1).constrain()
     (p0 <= p1).constrain()
@@ -1584,7 +1685,7 @@ def test_fold_correlated():
     op = add
     op_inv = sub
 
-    lit1 = Range(5, 10)
+    lit1 = lit_op_range((5, 10))
     lit_operand = Single(5)
     lit2 = op(lit1, lit_operand)
 
@@ -1628,34 +1729,50 @@ def test_fold_correlated():
         (Multiply, [], 1),
         (Power, [2, 3], 8),
         (Round, [2.4], 2),
-        (Round, [Range(-2.6, 5.3)], Range(-3, 5)),
+        (Round, [lit_op_range((-2.6, 5.3))], lit_op_range((-3, 5))),
         (Abs, [-2], 2),
-        (Abs, [Range(-2, 3)], Range(0, 3)),
+        (Abs, [lit_op_range((-2, 3))], lit_op_range((0, 3))),
         (Sin, [0], 0),
-        (Sin, [Range(0, 2 * math.pi)], Range(-1, 1)),
+        (Sin, [lit_op_range((0, 2 * math.pi))], lit_op_range((-1, 1))),
         (Log, [10], math.log(10)),
-        (Log, [Range(1, 10)], Range(math.log(1), math.log(10))),
+        (Log, [lit_op_range(1, 10)], lit_op_range(math.log(1), math.log(10))),
         (Or, [False, False, True], True),
-        (Or, [False, BoolSet(True, False), True], True),
+        (Or, [False, lit_bool(True, False), True], True),
         (Or, [], False),
         (Not, [False], True),
-        (Intersection, [Range(0, 10), Range(10, 20)], Range(10, 10)),
-        (Union, [Range(0, 10), Range(10, 20)], Range(0, 20)),
-        (SymmetricDifference, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (
+            Intersection,
+            [lit_op_range((0, 10)), lit_op_range((10, 20))],
+            lit_op_range((10, 10)),
+        ),
+        (Union, [lit_op_range((0, 10)), lit_op_range((10, 20))], lit_op_range((0, 20))),
         (
             SymmetricDifference,
-            [Range(0, 10), Range(5, 20)],
-            RangeWithGaps(Range(0, 5), Range(10, 20)),
+            [lit_op_range((0, 10)), lit_op_range((10, 20))],
+            lit_op_range((0, 20)),
         ),
-        (Is, [Range(0, 10), Range(0, 10)], True),
-        (GreaterOrEqual, [Range(10, 20), Range(0, 10)], True),
-        (GreaterOrEqual, [Range(5, 20), Range(0, 10)], BoolSet(True, False)),
-        (GreaterThan, [Range(10, 20), Range(0, 10)], BoolSet(True, False)),
-        (GreaterThan, [Range(0, 10), Range(10, 20)], False),
-        (IsSubset, [Range(0, 10), Range(0, 20)], True),
+        (
+            SymmetricDifference,
+            [lit_op_range((0, 10)), lit_op_range((5, 20))],
+            lit_op_range((0, 5), (10, 20)),
+        ),
+        (Is, [lit_op_range(0, 10), lit_op_range(0, 10)], True),
+        (GreaterOrEqual, [lit_op_range(10, 20), lit_op_range(0, 10)], True),
+        (
+            GreaterOrEqual,
+            [lit_op_range(5, 20), lit_op_range(0, 10)],
+            lit_bool(True, False),
+        ),
+        (
+            GreaterThan,
+            [lit_op_range(10, 20), lit_op_range(0, 10)],
+            lit_bool(True, False),
+        ),
+        (GreaterThan, [lit_op_range(0, 10), lit_op_range(10, 20)], False),
+        (IsSubset, [lit_op_range(0, 10), lit_op_range(0, 20)], True),
     ],
 )
-def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expected):
+def test_exec_pure_literal_expressions(op: type[fabll.NodeT], lits, expected):
     from faebryk.core.solver.symbolic.pure_literal import (
         _exec_pure_literal_expressions,
     )
@@ -1692,18 +1809,18 @@ def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expe
 #    "v_in, v_out, total_current",
 #    [
 #        (
-#            Range(9.9 * P.V, 10.1 * P.V),
-#            Range(3.0 * P.V, 3.2 * P.V),
-#            Range(1 * P.mA, 3 * P.mA),
+#            lit_op_range(((9.9, P.V), (10.1, P.V))),
+#            lit_op_range(((3.0, P.V), (3.2, P.V))),
+#            lit_op_range(((1, P.mA), (3, P.mA))),
 #        ),
 #    ],
 # )
 # def test_solve_voltage_divider_complex(v_in, v_out, total_current):
 def test_solve_voltage_divider_complex():
     v_in, v_out, total_current = (
-        as_lit(Range(9.9 * P.V, 10.1 * P.V)),
-        as_lit(Range(3.0 * P.V, 3.2 * P.V)),
-        as_lit(Range(1 * P.mA, 3 * P.mA)),
+        lit_op_range(((9.9, P.V), (10.1, P.V))),
+        lit_op_range(((3.0, P.V), (3.2, P.V))),
+        lit_op_range(((1, P.mA), (3, P.mA))),
     )
 
     rdiv = F.ResistorVoltageDivider()
@@ -1728,7 +1845,7 @@ def test_solve_voltage_divider_complex():
     rand_ = Decimal(random())
     r_any_nominal = r_top.min_elem + rand_ * (r_top.max_elem - r_top.min_elem)
     assert isinstance(r_any_nominal, Quantity)
-    r_any = fabll.Range.from_center_rel(r_any_nominal, 0.01)
+    r_any = lit_op_range_from_center_rel(r_any_nominal, 0.01)
     rdiv.r_top.resistance.alias_is(r_any)
     print(f"Set r_top to {r_any}")
 
@@ -1760,7 +1877,7 @@ def test_solve_voltage_divider_complex():
     # check valid result
     assert res_total_current.is_subset_of(total_current)
     if not res_v_out.is_subset_of(v_out) and res_v_out.is_subset_of(
-        v_out * fabll.Range.from_center_rel(1, 0.05)
+        v_out * lit_op_range_from_center_rel(1, 0.05)
     ):
         pytest.xfail("Slightly inaccurate, need more symbolic correlation")
 
