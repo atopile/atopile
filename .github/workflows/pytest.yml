@@ -50,7 +50,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         COLUMNS: 150  # rich console width will be pulled from this
 
-    - name: Build single-page dashboard
+    - name: Export pytest summary JSON
       if: always()
       env:
         STATUS: ${{ steps.pytest.outcome }}
@@ -62,32 +62,12 @@ jobs:
         import subprocess
         import xml.etree.ElementTree as ET
         from datetime import datetime
+        import json
 
         artifacts = Path("artifacts")
         junit = artifacts / "junit.xml"
+        summary_path = artifacts / "summary.json"
         artifacts.mkdir(exist_ok=True)
-
-        passed = failed = errors = skipped = 0
-        if junit.exists():
-          tree = ET.parse(junit)
-          root = tree.getroot()
-          suites = root.findall(".//testsuite")
-          if not suites and root.tag == "testsuite":
-              suites = [root]
-          for suite in suites:
-              passed += int(suite.attrib.get("tests", 0)) - int(suite.attrib.get("failures", 0)) - int(suite.attrib.get("errors", 0)) - int(suite.attrib.get("skipped", 0))
-              failed += int(suite.attrib.get("failures", 0))
-              errors += int(suite.attrib.get("errors", 0))
-              skipped += int(suite.attrib.get("skipped", 0))
-
-        total = passed + failed + errors + skipped
-        total = total or 1  # avoid div by zero
-        segments = [
-            ("Passed", passed, "#16a34a"),
-            ("Failed", failed, "#dc2626"),
-            ("Errors", errors, "#b91c1c"),
-            ("Skipped", skipped, "#6b7280"),
-        ]
 
         status = os.getenv("STATUS", "unknown")
         run_url = os.getenv("RUN_URL", "")
@@ -129,60 +109,84 @@ jobs:
 
         commit_message = commit_message.strip() if commit_message else "unknown"
 
-        def segment_html(label, count, color):
-            pct = (count / total) * 100
-            if pct <= 0:
-                return ""
-            return f'<div class="seg" style="width:{pct:.1f}%;background:{color}" title="{label}: {count} ({pct:.1f}%)"></div>'
+        # Parse individual testcases so we can separate xfail/xpass from real skips.
+        passed = failed = errors = skipped = xfailed = xpassed = rerun = 0
+        total_tests = 0
+        if junit.exists():
+          tree = ET.parse(junit)
+          root = tree.getroot()
+          cases = root.findall(".//testcase")
+          if not cases and root.tag == "testcase":
+            cases = [root]
 
-        bar_html = "".join(segment_html(*s) for s in segments if s[1] > 0)
-        summary_items = "".join(
-            f"<li><span class='label'>{label}:</span> <span class='count'>{count}</span></li>"
-            for label, count, _ in segments
-        )
+          if cases:
+            for case in cases:
+              total_tests += 1
+              outcome = "passed"
+              for child in case:
+                tag = child.tag.lower()
+                msg = (child.attrib.get("message") or "").lower()
+                typ = (child.attrib.get("type") or "").lower()
+                meta = msg + " " + typ
+                if tag == "failure":
+                  if "xpass" in meta or "unexpected" in meta:
+                    outcome = "xpassed"
+                  else:
+                    outcome = "failed"
+                  break
+                if tag == "error":
+                  outcome = "error"
+                  break
+                if tag == "skipped":
+                  if "xfail" in meta:
+                    outcome = "xfailed"
+                  else:
+                    outcome = "skipped"
+                  break
+                if tag == "rerun":
+                  outcome = "rerun"
+                  break
 
-        html = f"""<!doctype html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Pytest results</title>
-          <style>
-            body {{ font-family: Arial, sans-serif; padding: 24px; max-width: 720px; margin: auto; color: #e8ecff; background: #070a23; }}
-            h1 {{ margin-bottom: 8px; }}
-            .status {{ font-size: 1rem; margin-bottom: 16px; }}
-            .pill {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 600; background: #f95015; color: #070a23; }}
-            .bar {{ display: flex; height: 24px; border-radius: 12px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
-            .seg {{ height: 100%; }}
-            ul {{ list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }}
-            li {{ background: #0f1433; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
-            .label {{ color: #cbd3ff; }}
-            .count {{ font-weight: 700; float: right; color: #ffffff; }}
-            .meta a {{ color: #f95015; text-decoration: none; }}
-          </style>
-        </head>
-        <body>
-          <h1>Pytest results</h1>
-          <div class="status">Run status: <span class="pill">{status}</span></div>
-          <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#e5e7eb"></div>'}</div>
-          <ul>{summary_items}</ul>
-          <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
-          <div class="meta">Commit pushed at: {commit_time}</div>
-          <div class="meta">Commit message: {commit_message}</div>
-          <div class="meta">Commit author: {commit_author}</div>
-        </body>
-        </html>
-        """
+              if outcome == "passed":
+                passed += 1
+              elif outcome == "failed":
+                failed += 1
+              elif outcome == "error":
+                errors += 1
+              elif outcome == "skipped":
+                skipped += 1
+              elif outcome == "xfailed":
+                xfailed += 1
+              elif outcome == "xpassed":
+                xpassed += 1
+              elif outcome == "rerun":
+                rerun += 1
 
-        (artifacts / "dashboard.html").write_text(html, encoding="utf-8")
+        summary = {
+            "status": status,
+            "run_url": run_url,
+            "commit_time": commit_time,
+            "commit_message": commit_message,
+            "commit_author": commit_author,
+            "passed": passed,
+            "failed": failed,
+            "errors": errors,
+            "skipped": skipped,
+            "xfailed": xfailed,
+            "xpassed": xpassed,
+            "rerun": rerun,
+            "tests": total_tests,
+        }
+
+        summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
         PY
 
-    - name: Upload dashboard artifact
+    - name: Upload summary artifact
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: pytest-dashboard
-        path: artifacts/dashboard.html
+        name: pytest-summary
+        path: artifacts/summary.json
         if-no-files-found: error
 
     - name: Upload all test logs
