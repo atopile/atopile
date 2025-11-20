@@ -368,7 +368,7 @@ class BoundLiteralContext:
         return self.create_numbers().setup_from_singleton(value=value, unit=unit)
 
     def numbers_from_interval(
-        self, lower: float | None, upper: float | None, unit: F.Units.IsUnit
+        self, lower: float | None, upper: float | None, unit: "F.Units.IsUnit"
     ) -> "Numbers":
         return self.create_numbers().setup_from_interval(
             lower=lower, upper=upper, unit=unit
@@ -382,6 +382,6 @@ def test_bound_context():
     tg = graph.TypeGraph.create(g=g)
     ctx = BoundLiteralContext(tg=tg, g=g)
 
-    my_number = ctx.numbers_from_singleton(value=1.0, unit=F.Units.Dimensionless)
+    my_number = ctx.numbers_from_singleton(value=1.0)
 
     print(my_number)
