@@ -33,6 +33,7 @@ pub const Numeric = struct {
     }
 };
 
+// TODO: rename to NumericInterval
 pub const _ContinuousNumeric = struct {
     node: BoundNodeReference,
 
@@ -415,6 +416,9 @@ pub const _ContinuousNumeric = struct {
     }
 };
 
+// TODO: add units, becomes QuantitySet
+// TODO: switch to PointerSequence structure
+// TODO: move to fabll
 pub const MagnitudeSet = struct {
     set_node: BoundNodeReference,
 
