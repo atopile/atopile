@@ -7,68 +7,13 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserException
-from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, once
 
 logger = logging.getLogger(__name__)
-
-
-class can_represent_kicad_footprint(fabll.Node):
-    kicad_footprint = FBRKNetlist.Component
-
-    def __init__(self, component: fabll.Node, graph: graph.GraphView) -> None:
-        """
-        graph has to be electrically closed
-        """
-
-        super().__init__()
-        self.component = component
-        self.graph = graph
-
-    def get_name_and_value(self):
-        return ensure_ref_and_value(self.component)
-
-    def get_pin_name(self, pin: F.Pad):
-        return self.obj.get_trait(F.has_kicad_footprint).get_pin_names()[pin]
-
-    def get_kicad_obj(self):
-        fp = self.get_obj(F.Footprint)
-
-        properties = {
-            "footprint": fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
-        }
-
-        # TODO not sure this is needed, also doing similar stuff elsewhere
-        for c in [fp, self.component]:
-            if c.has_trait(F.has_descriptive_properties):
-                properties.update(
-                    c.get_trait(F.has_descriptive_properties).get_properties()
-                )
-
-        properties["atopile_address"] = self.component.get_full_name()
-
-        name, value = self.get_name_and_value()
-
-        return can_represent_kicad_footprint.kicad_footprint(
-            name=name,
-            properties=properties,
-            value=value,
-        )
-
-
-def ensure_ref_and_value(c: fabll.Node):
-    value = (
-        c.get_trait(F.has_simple_value_representation).get_value()
-        if c.has_trait(F.has_simple_value_representation)
-        else type(c).__name__
-    )
-
-    # At this point, all components MUST have a designator
-    return c.get_trait(F.has_designator).get_designator(), value
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
@@ -103,9 +48,11 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets(G: graph.GraphView) -> set[F.Net]:
+def attach_nets(tg: fbrk.TypeGraph) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
-    pad_mifs = [pad.net for pad in fabll.Node.bind_typegraph(G).nodes_of_type(F.Pad)]
+    pad_mifs = [
+        pad.net for pad in F.Pad.bind_typegraph(tg).get_instances(tg.get_graph_view())
+    ]
     # Sort pad interfaces by stable node name to ensure deterministic bus grouping
     pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
     nets = add_or_get_nets(*pad_mifs)
@@ -738,7 +685,9 @@ def _apply_names_to_nets(names: FuncDict[F.Net, _NetName]) -> None:
     """Apply the computed names to nets, with length limiting."""
     for net, net_name in names.items():
         final_name = _truncate_long_name(net_name.name)
-        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(name=final_name)
+        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(
+            name=final_name
+        )
 
 
 def attach_net_names(nets: Iterable[F.Net]) -> None:

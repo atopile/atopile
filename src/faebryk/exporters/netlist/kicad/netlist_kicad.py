@@ -4,10 +4,9 @@
 import itertools
 import logging
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.util import duplicates
@@ -96,15 +95,12 @@ def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
     )
 
 
-def attach_kicad_info(G: graph.GraphView) -> None:
+def attach_kicad_info(tg: fbrk.TypeGraph) -> None:
     """Attach kicad info to the footprints in the graph."""
-    # group comps & fps
+    fp_traits = fabll.Traits.get_implementors(F.has_footprint.bind_typegraph(tg))
     node_fps = {
-        n: t.get_footprint()
-        # TODO maybe nicer to just look for footprints
-        # and get their respective components instead
-        for n, t in fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_footprint)
-        if n.has_trait(fabll.is_module)
+        fp_trait.get_parent_force()[0]: fp_trait.get_footprint()
+        for fp_trait in fp_traits
     }
 
     logger.info(f"Found {len(node_fps)} components with footprints")
@@ -112,7 +108,9 @@ def attach_kicad_info(G: graph.GraphView) -> None:
         logger.debug(f"node_fps: {node_fps}")
 
     # add trait/info to footprints
-    for n, fp in node_fps.items():
-        if fp.has_trait(can_represent_kicad_footprint):
+    for node, fp in node_fps.items():
+        if fp.has_trait(F.can_represent_kicad_footprint):
             continue
-        fp.add(can_represent_kicad_footprint(n, G))
+        fabll.Traits.create_and_add_instance_to(
+            node, F.can_represent_kicad_footprint
+        ).setup(component=fp)

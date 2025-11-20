@@ -84,6 +84,7 @@ from faebryk.library.Inductor import Inductor
 from faebryk.library.Resistor import Resistor
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
 from faebryk.library.KicadFootprint import KicadFootprint
+from faebryk.library.can_represent_kicad_footprint import can_represent_kicad_footprint
 from faebryk.library.LED import LED
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
@@ -190,6 +191,7 @@ __all__ = [
     "Resistor",
     "can_attach_to_footprint_via_pinmap",
     "KicadFootprint",
+    "can_represent_kicad_footprint",
     "LED",
     "Addressor",
     "CAN_TTL",
