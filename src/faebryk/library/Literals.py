@@ -5,6 +5,7 @@ from typing import Self
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.util import once
 
 
 class is_literal(fabll.Node):
@@ -319,3 +320,68 @@ def MakeChild_Literal(
             return Enums.MakeChild(enum=enum, value=value)
         case str():
             return Strings.MakeChild(value=value)
+
+
+# Binding context ----------------------------------------------------------------------
+
+
+class BoundLiteralContext:
+    def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
+        self.tg = tg
+        self.g = g
+
+    @property
+    @once
+    def Numbers(self):
+        return Numbers.bind_typegraph(tg=self.tg)
+
+    @property
+    @once
+    def Booleans(self):
+        return Booleans.bind_typegraph(tg=self.tg)
+
+    @property
+    @once
+    def Enums(self):
+        return Enums.bind_typegraph(tg=self.tg)
+
+    @property
+    @once
+    def Strings(self):
+        return Strings.bind_typegraph(tg=self.tg)
+
+    def create_numbers(self) -> "Numbers":
+        return self.Numbers.create_instance(g=self.g)
+
+    def create_booleans(self) -> "Booleans":
+        return self.Booleans.create_instance(g=self.g)
+
+    def create_enums(self) -> "Enums":
+        return self.Enums.create_instance(g=self.g)
+
+    def create_strings(self) -> "Strings":
+        return self.Strings.create_instance(g=self.g)
+
+    def numbers_from_singleton(
+        self, value: float, unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None
+    ) -> "Numbers":
+        return self.create_numbers().setup_from_singleton(value=value, unit=unit)
+
+    def numbers_from_interval(
+        self, lower: float | None, upper: float | None, unit: F.Units.IsUnit
+    ) -> "Numbers":
+        return self.create_numbers().setup_from_interval(
+            lower=lower, upper=upper, unit=unit
+        )
+
+    # TODO add other literal constructors
+
+
+def test_bound_context():
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+    ctx = BoundLiteralContext(tg=tg, g=g)
+
+    my_number = ctx.numbers_from_singleton(value=1.0, unit=F.Units.Dimensionless)
+
+    print(my_number)
