@@ -163,18 +163,18 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     factored_operands = [
         mutator.create_expression(
             F.Expressions.Multiply,
-            n,
-            m,
+            n.as_operand(),
+            m.get_trait(F.Parameters.can_be_operand),
             from_ops=[expr.get_trait(F.Parameters.is_parameter_operatable)],
-        )
+        ).as_operand()
         for n, m in new_factors.items()
     ]
 
     new_operands: list[F.Parameters.can_be_operand] = [
         *factored_operands,
-        *old_factors,
-        *literal_sum,
-        *non_replacable_nonliteral_operands,
+        *(x.get_trait(F.Parameters.can_be_operand) for x in old_factors),
+        *(x.as_operand() for x in literal_sum),
+        *(x.as_operand() for x in non_replacable_nonliteral_operands),
     ]
 
     if new_operands == expr.get_trait(F.Expressions.is_expression).get_operands():
@@ -208,6 +208,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     e_po = e.get_trait(F.Parameters.is_parameter_operatable)
     literal_operands = list(e.get_operand_literals().values())
     p_operands = e.get_operand_operatables()
+
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
         partition_as_list(lambda o: not mutator.has_been_mutated(o), p_operands)
     )
@@ -233,15 +234,20 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     ):
         # Careful, modifying old graph, but should be ok
         powered_operands = [
-            mutator.create_expression(F.Expressions.Power, n, m, from_ops=[e_po])
+            mutator.create_expression(
+                F.Expressions.Power,
+                n.as_operand(),
+                m.get_trait(F.Parameters.can_be_operand),
+                from_ops=[e_po],
+            ).as_operand()
             for n, m in new_powers.items()
         ]
 
         new_operands: list[F.Parameters.can_be_operand] = [
             *powered_operands,
-            *old_powers,
-            *literal_prod,
-            *non_replacable_nonliteral_operands,
+            *(x.get_trait(F.Parameters.can_be_operand) for x in old_powers),
+            *(x.as_operand() for x in literal_prod),
+            *(x.as_operand() for x in non_replacable_nonliteral_operands),
         ]
 
         # 0 * A -> 0

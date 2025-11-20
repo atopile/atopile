@@ -14,6 +14,7 @@ from typing import (
     Iterable,
     Mapping,
     Sequence,
+    cast,
 )
 
 import faebryk.core.node as fabll
@@ -204,13 +205,19 @@ class MutatorUtils:
             if len(unique_lits) > 1:
                 raise ContradictionByLiteral(
                     "Multiple alias literals found",
-                    involved=[po] + [x[1] for x in unique_lits],
+                    involved=[po]
+                    + [
+                        x[1].get_trait(F.Parameters.is_parameter_operatable)
+                        for x in unique_lits
+                    ],
                     literals=[x[0] for x in unique_lits],
                     mutator=self.mutator,
                 )
             return alias_lits[0]
         subsets = self.get_supersets(po)
-        subset_lits = [(k, vs) for k, vs in subsets.items() if self.is_literal(k)]
+        subset_lits = [
+            (k_lit, vs) for k, vs in subsets.items() if (k_lit := self.is_literal(k))
+        ]
         # TODO this is weird
         if subset_lits:
             for k, vs in subset_lits:
@@ -246,7 +253,7 @@ class MutatorUtils:
         literal: F.Literals.is_literal,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         terminate: bool = False,
-    ) -> F.Expressions.Is | F.Literals.is_literal:
+    ) -> F.Expressions.is_expression | F.Literals.is_literal:
         existing = self.try_extract_literal(po, check_pre_transform=True)
         if existing is not None:
             if existing == literal:
@@ -295,7 +302,9 @@ class MutatorUtils:
             _relay=False,
         )
         if terminate:
-            self.mutator.predicate_terminate(out.get_trait(F.Expressions.is_predicate))
+            self.mutator.predicate_terminate(
+                out.get_sibling_trait(F.Expressions.is_predicate)
+            )
         return out
 
     def subset_literal(
@@ -303,7 +312,7 @@ class MutatorUtils:
         po: F.Parameters.is_parameter_operatable,
         literal: F.Literals.is_literal,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
-    ) -> F.Expressions.IsSubset | F.Expressions.Is:
+    ) -> F.Expressions.is_expression:
         if literal.is_empty():
             raise ContradictionByLiteral(
                 "Tried subset to empty set",
@@ -324,24 +333,28 @@ class MutatorUtils:
                         literals=[ex_lit, literal],
                         mutator=self.mutator,
                     )
-                return ex_op
+                return ex_op.get_trait(F.Expressions.is_expression)
 
             # no point in adding more general subset
             if ex_lit.is_subset_of(literal):  # type: ignore #TODO
-                return ex_op
+                return ex_op.get_trait(F.Expressions.is_expression)
             # other cases handled by intersect subsets algo
 
-        return self.mutator.create_expression(
-            F.Expressions.IsSubset,
-            po.as_operand(),
-            literal.as_operand(),
-            from_ops=from_ops,
-            assert_=True,
-            # already checked for uncorrelated lit, op needs to be correlated
-            allow_uncorrelated=False,
-            check_exists=False,
-            _relay=False,
-        )  # type: ignore
+        return cast(
+            # cast allowed because _relay is False
+            F.Expressions.is_expression,
+            self.mutator.create_expression(
+                F.Expressions.IsSubset,
+                po.as_operand(),
+                literal.as_operand(),
+                from_ops=from_ops,
+                assert_=True,
+                # already checked for uncorrelated lit, op needs to be correlated
+                allow_uncorrelated=False,
+                check_exists=False,
+                _relay=False,
+            ),
+        )
 
     def alias_to(
         self,
@@ -350,7 +363,7 @@ class MutatorUtils:
         check_existing: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         terminate: bool = False,
-    ) -> F.Expressions.Is | F.Literals.is_literal:
+    ) -> F.Expressions.is_expression | F.Literals.is_literal:
         from faebryk.core.solver.symbolic.pure_literal import (
             _exec_pure_literal_expressions,
         )
@@ -403,7 +416,7 @@ class MutatorUtils:
                     F.Expressions.Is, predicates_only=True
                 )
             ):
-                return next(iter(overlap))
+                return next(iter(overlap)).get_trait(F.Expressions.is_expression)
 
         return self.mutator.create_expression(
             F.Expressions.Is,
@@ -414,7 +427,7 @@ class MutatorUtils:
             check_exists=check_existing,
             allow_uncorrelated=True,
             _relay=False,
-        )  # type: ignore
+        )
 
     def subset_to(
         self,
@@ -422,7 +435,7 @@ class MutatorUtils:
         to: F.Parameters.can_be_operand,
         check_existing: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
-    ) -> F.Expressions.IsSubset | F.Expressions.Is | F.Literals.is_literal:
+    ) -> F.Expressions.is_expression | F.Literals.is_literal:
         from faebryk.core.solver.symbolic.pure_literal import (
             _exec_pure_literal_expressions,
         )
@@ -479,7 +492,7 @@ class MutatorUtils:
                     F.Expressions.Is, predicates_only=True
                 )
             ):
-                return next(iter(overlap))
+                return next(iter(overlap)).get_trait(F.Expressions.is_expression)
 
         return self.mutator.create_expression(
             F.Expressions.IsSubset,
@@ -490,7 +503,7 @@ class MutatorUtils:
             check_exists=check_existing,
             allow_uncorrelated=True,
             _relay=False,
-        )  # type: ignore
+        )
 
     def alias_is_literal_and_check_predicate_eval(
         self,
@@ -609,7 +622,7 @@ class MutatorUtils:
         self,
         counter: Counter[F.Parameters.is_parameter_operatable],
         collect_type: type[T],
-    ):
+    ) -> tuple[dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers], list[T]]:
         # Convert the counter to a dict for easy manipulation
         factors: dict[
             F.Parameters.is_parameter_operatable,
@@ -636,9 +649,9 @@ class MutatorUtils:
             if not expr.get_operand_literals():
                 continue
             # handled by lit fold completely
-            if self.is_pure_literal_expression(collect_op):
+            if self.is_pure_literal_expression(collect_op.as_operand()):
                 continue
-            if not is_commutative.is_commutative_type(collect_type):
+            if not F.Expressions.is_commutative.is_commutative_type(collect_type):
                 if collect_type is not F.Expressions.Power:
                     raise NotImplementedError(
                         f"Non-commutative {collect_type.__name__} not implemented"
@@ -698,7 +711,7 @@ class MutatorUtils:
             [F.Literals.is_literal, F.Literals.is_literal], F.Literals.is_literal
         ],
         identity: F.Literals.is_literal,
-    ):
+    ) -> list[F.Literals.is_literal]:
         """
         Return 'sum' of all literals in the iterable, or empty list if sum is identity.
         """
@@ -799,6 +812,8 @@ class MutatorUtils:
         *other: F.Expressions.is_assertable,
         unfulfilled_only: bool = False,
     ) -> bool:
+        from faebryk.core.solver.mutator import is_terminated
+
         no_other_predicates = (
             len(
                 [
@@ -806,7 +821,7 @@ class MutatorUtils:
                     for x in MutatorUtils.get_predicates_involved_in(po).difference(
                         other
                     )
-                    if not unfulfilled_only or not x._solver_terminated
+                    if not unfulfilled_only or not x.has_trait(is_terminated)
                 ]
             )
             == 0
@@ -814,12 +829,12 @@ class MutatorUtils:
         return no_other_predicates and not po.has_implicit_predicates_recursive()
 
     @dataclass
-    class FlattenAssociativeResult[T]:
+    class FlattenAssociativeResult:
         extracted_operands: list[F.Parameters.can_be_operand]
         """
         Extracted operands
         """
-        destroyed_operations: set[T]
+        destroyed_operations: set[F.Expressions.is_expression]
         """
         ParameterOperables that got flattened and thus are not used anymore
         """
@@ -852,7 +867,7 @@ class MutatorUtils:
             allowed to be flattened (=destructed)
         """
 
-        out = MutatorUtils.FlattenAssociativeResult[T](
+        out = MutatorUtils.FlattenAssociativeResult(
             extracted_operands=[],
             destroyed_operations=set(),
         )
@@ -883,7 +898,10 @@ class MutatorUtils:
 
         nested_extracted_operands = []
         for nested_to_flatten in nested_compressible_operations:
-            out.destroyed_operations.add(nested_to_flatten)
+            nested_to_flatten_expr = nested_to_flatten.get_sibling_trait(
+                F.Expressions.is_expression
+            )
+            out.destroyed_operations.add(nested_to_flatten_expr)
 
             res = MutatorUtils.flatten_associative(
                 nested_to_flatten, check_destructable

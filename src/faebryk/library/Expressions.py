@@ -189,6 +189,14 @@ class is_expression(fabll.Node):
         # TODO
         pass
 
+    @staticmethod
+    def sort_by_depth_po(
+        exprs: Iterable["F.Parameters.is_parameter_operatable"],
+        ascending: bool,
+    ) -> list["F.Parameters.is_parameter_operatable"]:
+        # TODO
+        pass
+
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 

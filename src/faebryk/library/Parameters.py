@@ -150,6 +150,10 @@ class is_parameter_operatable(fabll.Node):
     def get_obj(self) -> "fabll.Node":
         return fabll.Traits(self).get_obj_raw()
 
+    def has_implicit_predicates_recursive(self) -> bool:
+        # TODO
+        pass
+
 
 class is_parameter(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())

@@ -84,8 +84,6 @@ def alias_predicates_to_true(mutator: Mutator):
             new_predicate.get_sibling_trait(F.Parameters.can_be_operand),
             mutator.make_lit(True).get_trait(F.Parameters.can_be_operand),
         )
-        # reset solver flag
-        mutator.predicate_reset_termination(new_predicate.get_trait(is_predicate))
 
 
 @algorithm("Canonical literal form", single=True, terminal=False)
@@ -166,14 +164,13 @@ def convert_to_canonical_operations(mutator: Mutator):
     }
 
     def c[T: fabll.NodeT](op: type[T], *operands: F.Parameters.can_be_operand) -> T:
-        return cast(
-            T,
+        return fabll.Traits(
             mutator.create_expression(
                 op,
                 *operands,
                 from_ops=getattr(c, "from_ops", None),
-            ),
-        )
+            )
+        ).get_obj(op)
 
     def curry(e_type: type[fabll.NodeT]):
         def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):

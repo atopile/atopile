@@ -422,12 +422,13 @@ def merge_intersect_subsets(mutator: Mutator):
                     for old_ss in old_sss
                 ],
             )
-            assert target.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
+            target_obj = fabll.Traits(target).get_obj_raw()
+            assert target_obj.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
 
         # Merge
         for old_ss in old_sss:
             old_ss_po = old_ss.get_trait(F.Parameters.is_parameter_operatable)
-            target_po = target.get_trait(F.Parameters.is_parameter_operatable)
+            target_po = target.get_sibling_trait(F.Parameters.is_parameter_operatable)
             mutator._mutate(
                 old_ss_po,
                 mutator.get_copy_po(target_po),
@@ -616,7 +617,7 @@ def isolate_lone_params(mutator: Mutator):
                 operation,
                 *operands,
                 from_ops=[from_expr.get_trait(F.Parameters.is_parameter_operatable)],
-            ).get_trait(F.Parameters.can_be_operand)
+            ).as_operand()
 
         retained_ops = [
             op

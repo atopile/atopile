@@ -1510,6 +1510,14 @@ class Traits:
         return trait.get_instances(g=g)
 
     @staticmethod
+    def get_implementor_siblings[T: NodeT](
+        trait: TypeNodeBoundTG[Any, Any],
+        sibling_trait: type[T],
+        g: graph.GraphView | None = None,
+    ) -> list[T]:
+        return [n.get_sibling_trait(sibling_trait) for n in trait.get_instances(g=g)]
+
+    @staticmethod
     def get_implementor_objects(
         trait: TypeNodeBoundTG[Any, Any], g: graph.GraphView | None = None
     ) -> list[NodeT]:

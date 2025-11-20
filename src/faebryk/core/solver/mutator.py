@@ -980,11 +980,11 @@ class MutationMap:
 
     @property
     @once
-    def non_trivial_mutated_expressions(self) -> set[F.Expressions.is_canonical]:
+    def non_trivial_mutated_expressions(self) -> set[F.Expressions.is_expression]:
         # TODO make faster, compact repr is a pretty bad one
         # consider congruence instead, but be careful since not in same graph space
         out = {
-            v.get_trait(F.Expressions.is_canonical)
+            v.get_trait(F.Expressions.is_expression)
             for v, ks in self.compressed_mapping_backwards.items()
             if v.has_trait(F.Expressions.is_canonical)
             # if all merged changed, else covered by merged
@@ -1208,20 +1208,27 @@ class Mutator:
                     self.get_copy_po(exists_po),
                 ).get_sibling_trait(F.Expressions.is_canonical)
 
-        expr_co = expr.try_get_sibling_trait(F.Expressions.is_predicate)
+        expr_pred = expr.try_get_sibling_trait(F.Expressions.is_predicate)
         new_expr = self._create_expression(
             expression_factory,
             *operands,
-            assert_=expr_co is not None,
+            assert_=expr_pred is not None,
         )
 
-        if expr_co:
-            if self.is_predicate_terminated(expr_co):
+        if expr_pred:
+            if self.is_predicate_terminated(expr_pred):
                 fabll.Traits.create_and_add_instance_to(
                     fabll.Traits(new_expr).get_obj_raw(), is_terminated
                 )
 
-        return self._mutate(expr, new_expr)  # type: ignore #TODO
+        new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
+
+        out = self._mutate(expr_po, new_expr_po)
+        # TODO: return type is incorrect, but currently nowhere really used as canonical
+        # usages are as operand or with prior knowledge with sibling trait
+        # so its fine for the sec to leave like this
+        # I think we can't guarantee new_expr_po to be canonical, but maybe im wrong
+        return out  # type: ignore
 
     def soft_replace(
         self,
@@ -1244,7 +1251,7 @@ class Mutator:
         operands: Iterable[F.Parameters.can_be_operand],
         soft: type[Is] | type[IsSubset],
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
-    ) -> F.Expressions.is_expression:
+    ):
         operands = list(operands)
         # Don't create A is A, lit is lit
         if expr.is_congruent_to_factory(
@@ -1276,7 +1283,9 @@ class Mutator:
             from_ops=[expr.as_parameter_operatable(), *(from_ops or [])],
             allow_uncorrelated=soft is IsSubset,
         )
-        self.soft_mutate(soft, expr.as_parameter_operatable(), out, from_ops=from_ops)
+        self.soft_mutate(
+            soft, expr.as_parameter_operatable(), out.as_operand(), from_ops=from_ops
+        )
         return out
 
     # TODO make more use of soft_mutate for alias & ss with non-lit
@@ -1284,16 +1293,16 @@ class Mutator:
         self,
         soft: type[Is] | type[IsSubset],
         old: F.Parameters.is_parameter_operatable,
-        new: F.Parameters.is_parameter_operatable | F.Literals.is_literal,
+        new: F.Parameters.can_be_operand,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
     ):
         # filter A is A, A ss A
-        if new is old:
+        if new.is_same(old.as_operand()):
             return
         self.create_expression(
             soft,
             old.as_operand(),
-            new.as_operand(),
+            new,
             assert_=True,
             from_ops=unique_ref([old] + list(from_ops or [])),
             # FIXME
@@ -1347,7 +1356,7 @@ class Mutator:
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(
             expr.as_parameter_operatable(),
-            self.get_copy(inner_operand_po.as_operand()).as_parameter_operatable(),
+            self.get_copy_po(inner_operand_po),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
             self.assert_(out.get_sibling_trait(F.Expressions.is_assertable))
@@ -1413,16 +1422,16 @@ class Mutator:
 
         assert False
 
-    def create_expression[T: fabll.NodeT](
+    def create_expression(
         self,
-        expr_factory: type[T],
+        expr_factory: type[fabll.NodeT],
         *operands: F.Parameters.can_be_operand,
         check_exists: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         assert_: bool = False,
         allow_uncorrelated: bool = False,
         _relay: bool = True,
-    ) -> T | IsSubset | Is | F.Literals.is_literal:
+    ) -> F.Expressions.is_expression | F.Literals.is_literal:
         from faebryk.core.solver.symbolic.pure_literal import (
             _exec_pure_literal_operands,
         )
@@ -1434,7 +1443,9 @@ class Mutator:
         from_ops = [x for x in unique_ref(from_ops or [])]
         if _relay:
             if assert_ and expr_factory is IsSubset:
-                return self.utils.subset_to(operands[0], operands[1], from_ops=from_ops)
+                return self.utils.subset_to(
+                    operands[0], operands[1], from_ops=from_ops
+                ).get_trait(F.Expressions.is_expression)
             if assert_ and expr_factory is Is:
                 return self.utils.alias_to(operands[0], operands[1], from_ops=from_ops)
             res = _exec_pure_literal_operands(
@@ -1475,13 +1486,15 @@ class Mutator:
         if assert_ and (co := expr.try_get_trait(F.Expressions.is_assertable)):
             self.assert_(co)
 
-        return expr
+        return expr.get_trait(F.Expressions.is_expression)
 
     def remove(self, *po: F.Parameters.is_parameter_operatable):
         assert not any(p in self.transformations.mutated for p in po), (
             "Object already in repr_map"
         )
-        root_pos = [p for p in po if p.get_parent() is not None]
+        root_pos = [
+            p for p in po if fabll.Traits(p).get_obj_raw().get_parent() is not None
+        ]
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
 
@@ -1512,19 +1525,16 @@ class Mutator:
         )
         self.transformations.terminated.add(pred)
 
-    def predicate_reset_termination(self, pred: F.Expressions.is_predicate):
-        if not pred.has_trait(is_terminated):
-            return
-        # TODO: remove trait
-        raise NotImplementedError("Not implemented")
-
     # Algorithm Query ------------------------------------------------------------------
     def is_predicate_terminated(self, pred: F.Expressions.is_predicate) -> bool:
         return pred.try_get_sibling_trait(is_terminated) is not None
 
     def get_parameter_operatables(
         self, include_terminated: bool = False, sort_by_depth: bool = False
-    ) -> set[F.Parameters.is_parameter_operatable]:
+    ) -> (
+        list[F.Parameters.is_parameter_operatable]
+        | set[F.Parameters.is_parameter_operatable]
+    ):
         out = set(
             fabll.Traits.get_implementors(
                 F.Parameters.is_parameter_operatable.bind_typegraph(self.tg), self.G_in
@@ -1532,22 +1542,15 @@ class Mutator:
         )
 
         if not include_terminated:
-            out = {
-                n
-                for n in out
-                if not (
-                    (nc := n.try_get_trait(F.Expressions.is_predicate))
-                    and self.is_predicate_terminated(nc)
-                )
-            }
+            terminated = fabll.Traits.get_implementor_siblings(
+                is_terminated.bind_typegraph(self.tg),
+                F.Parameters.is_parameter_operatable,
+                self.G_in,
+            )
+            out.difference_update(terminated)
 
         if sort_by_depth:
-            out = {
-                n.get_trait(F.Parameters.is_parameter_operatable)
-                for n in F.Expressions.is_expression.sort_by_depth(
-                    (n.get_obj() for n in out), ascending=True
-                )
-            }
+            out = F.Expressions.is_expression.sort_by_depth_po(out, ascending=True)
 
         return out
 
@@ -1585,17 +1588,14 @@ class Mutator:
                 if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
             }
         else:
-            out = t.bind_typegraph(self.tg).get_instances(self.G_in)
+            out = set(t.bind_typegraph(self.tg).get_instances(self.G_in))
 
         if not include_terminated:
-            out = {
-                n
-                for n in out
-                if not (
-                    (nc := n.try_get_trait(F.Expressions.is_predicate))
-                    and self.is_predicate_terminated(nc)
-                )
-            }
+            terminated = fabll.Traits.get_implementor_objects(
+                is_terminated.bind_typegraph(self.tg),
+                self.G_in,
+            )
+            out.difference_update(terminated)
 
         if sort_by_depth:
             out = F.Expressions.is_expression.sort_by_depth(out, ascending=True)
@@ -1624,21 +1624,24 @@ class Mutator:
         }
 
     @property
-    def non_copy_mutated(self) -> set[F.Expressions.is_canonical]:
+    def non_copy_mutated(self) -> set[F.Expressions.is_expression]:
         if self._mutations_since_last_iteration is None:
             return set()
         return self._mutations_since_last_iteration.non_trivial_mutated_expressions
 
     def get_literal_aliases(self, new_only: bool = True):
         """
-        Find new ops which are Is expressions between a F.Parameters.is_parameter_operatable and a
+        Find new ops which are Is expressions between a is_parameter_operatable and a
         literal
         """
 
         aliases: set[F.Expressions.is_expression]
-        aliases = set(
-            self.get_typed_expressions(Is, new_only=new_only, include_terminated=True)
-        )
+        aliases = {
+            is_.get_trait(F.Expressions.is_expression)
+            for is_ in self.get_typed_expressions(
+                Is, new_only=new_only, include_terminated=True
+            )
+        }
 
         if new_only and self._mutations_since_last_iteration is not None:
             # Taking into account if op with no literal merged into a op with literal
@@ -1650,12 +1653,19 @@ class Mutator:
                 old_lits = {self.utils.try_extract_literal(o) for o in olds}
                 if old_lits == {new_lit}:
                     continue
-                aliases.update(new.get_operations(Is, predicates_only=True))
+                aliases.update(
+                    (
+                        is_.get_trait(F.Expressions.is_expression)
+                        for is_ in new.get_operations(Is, predicates_only=True)
+                    )
+                )
             aliases.update(
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
 
-        return (expr for expr in aliases if self.utils.is_alias_is_literal(expr))
+        return (
+            is_ for expr in aliases if (is_ := self.utils.is_alias_is_literal(expr))
+        )
 
     def _get_literal_subsets(self, new_only: bool = True):
         subsets: set[F.Expressions.IsSubset]
@@ -1793,15 +1803,14 @@ class Mutator:
     def _run(self):
         self.algo(self)
 
-    def _copy_unmutated(
-        self,
-    ):
+    def _copy_unmutated(self):
         # TODO might not need to sort
         other_param_op = F.Expressions.is_expression.sort_by_depth(
             (
-                fabll.Node.bind_typegraph(self.tg).nodes_of_type(
-                    F.Parameters.is_parameter_operatable
-                )
+                {
+                    fabll.Traits(p).get_obj_raw()
+                    for p in self.get_parameter_operatables(include_terminated=True)
+                }
                 - touched
             ),
             ascending=True,
