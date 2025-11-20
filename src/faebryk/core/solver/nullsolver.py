@@ -42,5 +42,5 @@ class NullSolver(Solver):
         return lit
 
     @override
-    def simplify(self, *gs: graph.GraphView | fabll.Node):
+    def simplify(self, g: graph.GraphView):
         pass

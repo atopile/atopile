@@ -970,7 +970,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
             mutator.create_expression(
                 type(expr),
                 *operands,
-                constrain=True,
+                assert_=True,
                 allow_uncorrelated=True,
                 from_ops=[
                     expr.get_trait(F.Parameters.is_parameter_operatable),

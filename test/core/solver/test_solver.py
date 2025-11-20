@@ -159,8 +159,9 @@ def test_simplify():
     # (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)
     #  + I + 8) + J + 9) - 3) - 4) < 11
     # => (H + I + J + 17) < 11
-    constants: list[F.Parameters.is_parameter_operatable] = [
-        F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(g=g).setup(c) for c in range(0, 10)
+    constants: list[F.Parameters.can_be_operand] = [
+        F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(g=g).setup(c)
+        for c in range(0, 10)
     ]
     constants[5] = app.ops[0] - app.ops[0]
     constants[9] = RangeWithGaps(lit_op_range(((0, dimensionless), (1, dimensionless))))
@@ -189,8 +190,10 @@ def test_simplify_logic_and():
     app_type = App.bind_typegraph(tg=tg)
     app = app_type.create_instance(g=g)
 
-    anded = F.Expressions.And.bind_typegraph(tg=tg).create_instance(g=g).setup(
-        app.p[0], lit_bool(True)
+    anded = (
+        F.Expressions.And.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(app.p[0], lit_bool(True))
     )
     for p in app.p[1:]:
         anded = F.Expressions.And.from_operands(anded, p, g=g)

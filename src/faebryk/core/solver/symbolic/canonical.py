@@ -356,7 +356,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 p.get_trait(F.Parameters.can_be_operand),
                 union.get_trait(F.Parameters.can_be_operand),
                 from_ops=from_ops,
-                constrain=True,
+                assert_=True,
             )
             if e.isinstance(F.Expressions.Min):
                 mutator.create_expression(
