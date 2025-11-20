@@ -20,18 +20,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 import zipfile
-import re
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import webbrowser
-import shutil
-import subprocess
+from zoneinfo import ZoneInfo
 
 
 WORKFLOW_FILENAME = "pytest.yml"  # GitHub workflow file name
@@ -195,6 +197,20 @@ def parse_pytest_html_summary(html_text: str) -> dict:
     return summary
 
 
+def format_commit_time(iso_time: str) -> str:
+    """Format ISO timestamp to human-readable PST time."""
+    try:
+        # Parse ISO 8601 timestamp (GitHub returns UTC)
+        dt = datetime.fromisoformat(iso_time.replace("Z", "+00:00"))
+        # Convert to PST (Pacific Standard Time)
+        pst = ZoneInfo("America/Los_Angeles")
+        dt_pst = dt.astimezone(pst)
+        # Format: "Nov 20, 2025 at 3:45 PM PST"
+        return dt_pst.strftime("%b %d, %Y at %I:%M %p %Z")
+    except Exception:
+        return iso_time
+
+
 def inject_run_metadata(summary: dict, run: dict) -> None:
     head_commit = run.get("head_commit") or {}
     status = run.get("conclusion") or run.get("status")
@@ -209,9 +225,13 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
     if "run_url" not in summary:
         summary["run_url"] = ""
 
-    commit_time = head_commit.get("timestamp") or run.get("updated_at") or run.get("created_at")
+    commit_time = (
+        head_commit.get("timestamp")
+        or run.get("updated_at")
+        or run.get("created_at")
+    )
     if commit_time:
-        summary["commit_time"] = commit_time
+        summary["commit_time"] = format_commit_time(commit_time)
     if "commit_time" not in summary:
         summary["commit_time"] = "unknown"
 
@@ -221,9 +241,15 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
     if "commit_message" not in summary:
         summary["commit_message"] = "unknown"
 
-    author = (head_commit.get("author") or {}).get("name") or (head_commit.get("author") or {}).get("email")
+    author = (
+        (head_commit.get("author") or {}).get("name")
+        or (head_commit.get("author") or {}).get("email")
+    )
     if not author:
-        author = (head_commit.get("committer") or {}).get("name") or (head_commit.get("committer") or {}).get("email")
+        author = (
+            (head_commit.get("committer") or {}).get("name")
+            or (head_commit.get("committer") or {}).get("email")
+        )
     if author:
         summary["commit_author"] = author
     if "commit_author" not in summary:
@@ -294,10 +320,12 @@ def build_html(summary: dict) -> str:
     .bar {{ flex: 1; display: flex; height: 48px; border-radius: 24px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
     .seg {{ height: 100%; }}
     ul {{ list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; position: relative; z-index: 2; }}
-    li {{ background: #0f1433; border-radius: 20px; padding: 20px 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-size: 1.8rem; }}
+    li {{ background: rgba(15, 20, 51, 0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 20px; padding: 20px 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-size: 1.8rem; border: 1px solid rgba(203, 211, 255, 0.1); }}
     .label {{ color: #cbd3ff; }}
     .count {{ font-weight: 700; float: right; color: #ffffff; }}
-    .meta {{ font-size: 1.8rem; margin-bottom: 16px; position: relative; z-index: 2; }}
+    .meta-container {{ background: rgba(15, 20, 51, 0.6); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 20px; padding: 24px; margin-top: 32px; position: relative; z-index: 2; border: 1px solid rgba(203, 211, 255, 0.1); }}
+    .meta {{ font-size: 1.8rem; margin-bottom: 16px; }}
+    .meta:last-child {{ margin-bottom: 0; }}
     .meta a {{ color: #f95015; text-decoration: none; }}
     .mascot {{ width: 140px; max-width: 20%; height: auto; display: block; }}
 
@@ -452,7 +480,7 @@ def build_html(summary: dict) -> str:
     <div class="laser-source source-5"></div>
     <div class="laser laser-5"></div>
   </div>
-  <h1>Pytest results</h1>
+  <h1>Pytest Progress</h1>
   <div class="status">Run status: <span class="pill">{status}</span></div>
   <div class="meta">Total tests: {total}</div>
   <div class="bar-row">
@@ -461,10 +489,12 @@ def build_html(summary: dict) -> str:
     <img class="mascot" src="angry.png" alt="angry sausage" />
   </div>
   <ul>{summary_items}</ul>
-  <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
-  <div class="meta">Commit pushed at: {commit_time}</div>
-  <div class="meta">Commit message: {commit_message}</div>
-  <div class="meta">Commit author: {commit_author}</div>
+  <div class="meta-container">
+    <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
+    <div class="meta">Commit time: {commit_time}</div>
+    <div class="meta">Commit message: {commit_message}</div>
+    <div class="meta">Commit author: {commit_author}</div>
+  </div>
 </body>
 </html>
 """
