@@ -2040,6 +2040,47 @@ def test_kicad_footprint():
     print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
 
+def test_node_equality():
+    g, tg = _make_graph_and_typegraph()
+
+    NT1 = Node.bind_typegraph(tg=tg)
+    n1 = NT1.create_instance(g=g)
+    n2 = NT1.create_instance(g=g)
+
+    assert n1 != n2
+    assert n1 == n1
+    assert n1 is n1
+    n1_1 = Node.bind_instance(n1.instance)
+    assert n1_1 == n1
+    assert n1_1 is not n1
+
+    # equal with different type
+    class NewType(fabll.Node):
+        pass
+
+    NT2 = NewType.bind_typegraph(tg=tg)
+    n2 = NT2.create_instance(g=g)
+    n2_1 = NewType.bind_instance(n2.instance)
+    assert n2_1 == n2
+
+    n2_2 = Node.bind_instance(n2.instance)
+    assert n2_2 == n2_1
+
+    # dict behavior
+    node_set = {n1}
+    assert n1 in node_set
+    assert n2 not in node_set
+    assert n1_1 in node_set
+
+    node_set.add(n2)
+    assert n2 in node_set
+    assert n2_1 in node_set
+    assert n2_2 in node_set
+
+    node_set.add(n2_1)
+    assert len(node_set) == 2
+
+
 if __name__ == "__main__":
     import typer
 
