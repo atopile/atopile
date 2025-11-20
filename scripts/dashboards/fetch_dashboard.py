@@ -286,23 +286,172 @@ def build_html(summary: dict) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pytest results</title>
   <style>
-    body {{ font-family: Arial, sans-serif; font-size: 2rem; padding: 48px; max-width: 1440px; margin: auto; color: #e8ecff; background: #070a23; }}
-    h1 {{ margin-bottom: 16px; font-size: 3.4rem; }}
-    .status {{ font-size: 2rem; margin-bottom: 32px; }}
+    body {{ font-family: Arial, sans-serif; font-size: 2rem; padding: 48px; max-width: 1440px; margin: auto; color: #e8ecff; background: #070a23; overflow-x: hidden; position: relative; }}
+    h1 {{ margin-bottom: 16px; font-size: 3.4rem; position: relative; z-index: 2; }}
+    .status {{ font-size: 2rem; margin-bottom: 32px; position: relative; z-index: 2; }}
     .pill {{ display: inline-block; padding: 8px 20px; border-radius: 9999px; font-weight: 600; font-size: 1.8rem; background: #f95015; color: #070a23; }}
-    .bar-row {{ display: flex; align-items: center; gap: 32px; margin: 32px 0; }}
+    .bar-row {{ display: flex; align-items: center; gap: 32px; margin: 32px 0; position: relative; z-index: 2; }}
     .bar {{ flex: 1; display: flex; height: 48px; border-radius: 24px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
     .seg {{ height: 100%; }}
-    ul {{ list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }}
+    ul {{ list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; position: relative; z-index: 2; }}
     li {{ background: #0f1433; border-radius: 20px; padding: 20px 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-size: 1.8rem; }}
     .label {{ color: #cbd3ff; }}
     .count {{ font-weight: 700; float: right; color: #ffffff; }}
-    .meta {{ font-size: 1.8rem; margin-bottom: 16px; }}
+    .meta {{ font-size: 1.8rem; margin-bottom: 16px; position: relative; z-index: 2; }}
     .meta a {{ color: #f95015; text-decoration: none; }}
     .mascot {{ width: 140px; max-width: 20%; height: auto; display: block; }}
+
+    /* Laser Animation Styles */
+    .laser-overlay {{
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: hidden;
+    }}
+    .laser {{
+      position: absolute;
+      height: 8px;
+      width: 200vmax;
+      background: linear-gradient(
+        to right,
+        currentColor 0%,
+        currentColor 30%,
+        transparent 100%
+      );
+      box-shadow: 
+        0 0 40px 8px currentColor,
+        0 0 80px 15px currentColor,
+        0 0 120px 25px currentColor;
+      opacity: 0.7;
+      transform-origin: left center;
+      border-radius: 50%;
+    }}
+    .laser-source {{
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 
+        0 0 20px 5px currentColor,
+        0 0 40px 10px currentColor;
+      z-index: 2;
+    }}
+
+    /* Laser variations with visible origin points */
+    .laser-1 {{
+      top: 15%;
+      left: 10%;
+      color: #ff0055;
+      animation: scan-1 5s ease-in-out infinite alternate;
+    }}
+    .source-1 {{
+      top: 15%;
+      left: 10%;
+      color: #ff0055;
+    }}
+    .laser-2 {{
+      top: 20%;
+      right: 15%;
+      left: auto;
+      transform-origin: right center;
+      color: #00ffaa;
+      animation: scan-2 7s ease-in-out infinite alternate;
+    }}
+    .source-2 {{
+      top: 20%;
+      right: 15%;
+      color: #00ffaa;
+    }}
+    .laser-3 {{
+      bottom: 25%;
+      left: 8%;
+      top: auto;
+      color: #00aaff;
+      animation: scan-3 6s ease-in-out infinite alternate;
+    }}
+    .source-3 {{
+      bottom: 25%;
+      left: 8%;
+      color: #00aaff;
+    }}
+    .laser-4 {{
+      bottom: 20%;
+      right: 12%;
+      left: auto;
+      top: auto;
+      transform-origin: right center;
+      color: #ffcc00;
+      animation: scan-4 8s ease-in-out infinite alternate;
+    }}
+    .source-4 {{
+      bottom: 20%;
+      right: 12%;
+      color: #ffcc00;
+    }}
+    .laser-5 {{
+      top: 10%;
+      left: 50%;
+      transform-origin: left center;
+      color: #aa00ff;
+      animation: scan-5 9s ease-in-out infinite;
+    }}
+    .source-5 {{
+      top: 10%;
+      left: 50%;
+      color: #aa00ff;
+    }}
+
+    @keyframes scan-1 {{
+      0% {{ transform: rotate(20deg); opacity: 0; }}
+      15% {{ opacity: 0.8; }}
+      85% {{ opacity: 0.8; }}
+      100% {{ transform: rotate(90deg); opacity: 0; }}
+    }}
+    @keyframes scan-2 {{
+      0% {{ transform: rotate(-20deg); opacity: 0; }}
+      15% {{ opacity: 0.8; }}
+      85% {{ opacity: 0.8; }}
+      100% {{ transform: rotate(-90deg); opacity: 0; }}
+    }}
+    @keyframes scan-3 {{
+      0% {{ transform: rotate(-15deg); opacity: 0; }}
+      15% {{ opacity: 0.8; }}
+      85% {{ opacity: 0.8; }}
+      100% {{ transform: rotate(-85deg); opacity: 0; }}
+    }}
+    @keyframes scan-4 {{
+      0% {{ transform: rotate(15deg); opacity: 0; }}
+      15% {{ opacity: 0.8; }}
+      85% {{ opacity: 0.8; }}
+      100% {{ transform: rotate(85deg); opacity: 0; }}
+    }}
+    @keyframes scan-5 {{
+      0% {{ transform: translateX(-50%) rotate(30deg); opacity: 0; }}
+      20% {{ opacity: 0.9; }}
+      80% {{ opacity: 0.9; }}
+      100% {{ transform: translateX(-50%) rotate(150deg); opacity: 0; }}
+    }}
+
   </style>
 </head>
 <body>
+  <div class="laser-overlay">
+    <div class="laser-source source-1"></div>
+    <div class="laser laser-1"></div>
+    <div class="laser-source source-2"></div>
+    <div class="laser laser-2"></div>
+    <div class="laser-source source-3"></div>
+    <div class="laser laser-3"></div>
+    <div class="laser-source source-4"></div>
+    <div class="laser laser-4"></div>
+    <div class="laser-source source-5"></div>
+    <div class="laser laser-5"></div>
+  </div>
   <h1>Pytest results</h1>
   <div class="status">Run status: <span class="pill">{status}</span></div>
   <div class="meta">Total tests: {total}</div>
