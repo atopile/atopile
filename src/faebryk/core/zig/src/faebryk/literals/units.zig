@@ -20,16 +20,51 @@ const num_base_units = 8;
 
 pub const UnitVector: type = @Vector(num_base_units, u8);
 
+// TODO: to fabll
+pub const IsBaseUnit = struct {
+    node: BoundNodeReference,
+    const type_name = "IsBaseUnit";
+
+    pub fn init_type(tg: *TypeGraph) !BoundNodeReference {
+        var self_type = try tg.get_type_by_name(type_name);
+
+        if (self_type == null) {
+            self_type = try tg.add_type(type_name);
+            _ = Trait.mark_as_trait(self_type.node);
+        }
+
+        return self_type;
+    }
+
+    pub fn of(node: BoundNodeReference) IsBaseUnit {
+        return IsBaseUnit{ .node = node };
+    }
+};
+
+// TODO: to fabll
 pub const IsUnit = struct {
     node: BoundNodeReference,
+    const type_name = "IsUnit";
 
-    const name_identifier = "IsUnit";
+    pub fn init_type(tg: *TypeGraph) !BoundNodeReference {
+        var self_type = try tg.get_type_by_name(type_name);
 
-    pub fn _test_init(g: *GraphView, name: []const u8) IsUnit {
-        const node = g.create_and_insert_node();
-        node.node.attributes.put(name_identifier, .{ .String = name });
-        return IsUnit.of(node);
+        if (self_type == null) {
+            self_type = try tg.add_type(type_name);
+            _ = Trait.mark_as_trait(self_type.node);
+
+            // TODO: add symbol make_child
+            // TODO: add base_units (PointerSet) make_child
+        }
+
+        return self_type;
     }
+
+    // pub fn init(g: *GraphView, name: []const u8) IsUnit {
+    //     const node = g.create_and_insert_node();
+    //     node.node.attributes.put(name_identifier, .{ .String = name });
+    //     return IsUnit.of(node);
+    // }
 
     pub fn of(node: BoundNodeReference) IsUnit {
         return IsUnit{ .node = node };
@@ -92,23 +127,6 @@ pub const IsUnit = struct {
     }
 };
 
-pub const IsBaseUnit = struct {
-    node: BoundNodeReference,
-
-    const base_unit_identifier = "base_unit";
-
-    pub fn init(g: *GraphView, symbol: []const u8) IsBaseUnit {
-        const node = g.create_and_insert_node();
-        node.node.attributes.put(base_unit_identifier, .{ .String = symbol }); // TODO: as parameter
-        // try Trait.mark_as_trait(IsBaseUnit.of(node).node);  // FIXME
-        return IsBaseUnit.of(node);
-    }
-
-    pub fn of(node: BoundNodeReference) IsBaseUnit {
-        return IsBaseUnit{ .node = node };
-    }
-};
-
 test "IsUnit.get_base_units" {
     const a = std.testing.allocator;
     var g = GraphView.init(a);
@@ -118,11 +136,8 @@ test "IsUnit.get_base_units" {
 
     const meter_type = try tg.add_type("Meter");
 
-    const is_base_unit = try tg.add_type("IsBaseUnit");
-    Trait.mark_as_trait(is_base_unit) catch return error.FailedToMarkAsTrait;
-
-    const is_unit = try tg.add_type("IsUnit");
-    Trait.mark_as_trait(is_unit) catch return error.FailedToMarkAsTrait;
+    const is_base_unit = try IsBaseUnit.init_type(tg);
+    const is_unit = try IsUnit.init_type(tg);
 
     _ = tg.add_make_child(meter_type, is_base_unit, "_is_base_unit", null) catch return error.FailedToAddMakeChild;
     _ = tg.add_make_child(meter_type, is_unit, "_is_unit", null) catch return error.FailedToAddMakeChild;
@@ -144,3 +159,31 @@ test "IsUnit.get_base_units" {
 
     // TODO: add test for derived unit
 }
+
+const _unit_definition_is_base_unit_identifier = "_is_base_unit";
+const _unit_definition_is_unit_identifier = "_is_unit";
+
+// TODO: to fabll
+pub const Ampere = struct {
+    node: BoundNodeReference,
+    const type_name = "Ampere";
+
+    pub fn init_type(tg: *TypeGraph) !BoundNodeReference {
+        var self_type = try tg.get_type_by_name(type_name);
+
+        if (self_type == null) {
+            self_type = try tg.add_type(type_name);
+            _ = tg.add_make_child(self_type, IsBaseUnit.init_type(tg), _unit_definition_is_base_unit_identifier, null);
+
+            // TODO: set symbol
+            // TODO: set base_units
+            _ = tg.add_make_child(self_type, IsUnit.init_type(tg), _unit_definition_is_unit_identifier, null);
+        }
+
+        return self_type;
+    }
+
+    pub fn of(node: BoundNodeReference) Ampere {
+        return Ampere{ .node = node };
+    }
+};

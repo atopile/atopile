@@ -158,6 +158,12 @@ class Strings(fabll.Node):
             raise ValueError(f"Expected 1 value, got {len(values)}")
         return values[0]
 
+    @staticmethod
+    def make_lit(tg: graph.TypeGraph, value: str) -> "Strings":
+        return Strings.bind_typegraph(tg=tg).create_instance(
+            g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+        )
+
 
 class Numbers(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
@@ -291,6 +297,12 @@ class Numbers(fabll.Node):
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
     def are_units_compatible(self, unit: "F.Units.IsUnit") -> bool: ...
 
+    @staticmethod
+    def make_lit(tg: graph.TypeGraph, value: float) -> "Numbers":
+        return Numbers.bind_typegraph(tg=tg).create_instance(
+            g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+        )
+
 
 class Booleans(fabll.Node[LiteralsAttributes]):
     from faebryk.library.Parameters import can_be_operand
@@ -329,6 +341,12 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     def op_xor(self, other: "Booleans") -> "Booleans": ...
     def op_implies(self, other: "Booleans") -> "Booleans": ...
 
+    @staticmethod
+    def make_lit(tg: graph.TypeGraph, value: bool) -> "Booleans":
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+        )
+
 
 class Enums(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
@@ -350,6 +368,12 @@ class Enums(fabll.Node):
         # TODO
         pass
 
+    @staticmethod
+    def make_lit(tg: graph.TypeGraph, value: Enum) -> "Enums":
+        return Enums.bind_typegraph(tg=tg).create_instance(
+            g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+        )
+
 
 # --------------------------------------------------------------------------------------
 
@@ -361,22 +385,14 @@ LiteralLike = LiteralValues | LiteralNodes | is_literal
 def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
     match value:
         case bool():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
-            )
+            return Booleans.make_lit(tg=tg, value=value)
         case float() | int():
             value = float(value)
-            return Numbers.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
-            )
+            return Numbers.make_lit(tg=tg, value=value)
         case Enum():
-            return Enums.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
-            )
+            return Enums.make_lit(tg=tg, value=value)
         case str():
-            return Strings.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
-            )
+            return Strings.make_lit(tg=tg, value=value)
 
 
 # TODO

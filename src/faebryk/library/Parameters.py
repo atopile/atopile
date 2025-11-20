@@ -504,6 +504,12 @@ class NumericParameter(fabll.Node):
         # )
         return out
 
+    @classmethod
+    def MakeChild_UnresolvedUnits(cls) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        # TODO
+        return out
+
     def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 
