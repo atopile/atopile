@@ -80,7 +80,6 @@ def netlist_graph():
         trait.setup(designator)
 
     # make netlist
-    tg = resistor1.get_graph()
     attach_random_designators(tg)
     attach_nets(tg)
     attach_kicad_info(tg)

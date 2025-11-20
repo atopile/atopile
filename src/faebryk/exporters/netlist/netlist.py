@@ -36,8 +36,8 @@ class FBRKNetlist:
 
 
 def make_fbrk_netlist_from_graph(tg: fbrk.TypeGraph) -> FBRKNetlist:
-    nets = F.Net.bind_typegraph(tg).get_instances(tg.get_graph_view())
-    # all buses have at least one net with name at this point
+    nets = F.Net.bind_typegraph(tg).get_instances()
+
     named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
 
     fbrk_nets = [

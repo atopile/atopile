@@ -2,11 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -50,24 +48,6 @@ class Net(fabll.Node):
             return f"{up}'{self.get_trait(F.has_overriden_name).get_name()}'"
         else:
             return up
-
-    @classmethod
-    def MakeChild(cls, name: str) -> fabll._ChildField:
-        out = fabll._ChildField(cls)
-        out.add_dependant(F.has_overriden_name.MakeChild(name))
-        return out
-
-    def setup(self, name: str) -> Self:
-        fabll.Node.bind_typegraph_from_instance(instance=self.instance).create_instance(
-            g=self.instance.g()
-        ).get_trait(F.has_overriden_name).setup(name=name)
-        return self
-
-    def setup_from_part_of_mif(self, mif: F.Electrical) -> "Net":
-        """Return the Net that this "part_of" mif represents"""
-        name = not_none(mif.get_trait(F.has_overriden_name).get_name())
-        self = self.setup(name=name)
-        return self
 
     @staticmethod
     def find_nets_for_mif(mif: F.Electrical) -> set["Net"]:

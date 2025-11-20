@@ -16,17 +16,17 @@ from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, once
 logger = logging.getLogger(__name__)
 
 
-def add_or_get_nets(*interfaces: F.Electrical):
-    buses = fabll.is_interface.group_into_buses(interfaces)
-    nets_out = set()
+def add_or_get_nets(*interfaces: F.Electrical, tg: fbrk.TypeGraph) -> set[F.Net]:
+    buses = fabll.is_interface.group_into_buses(set(interfaces))
+    nets_out: set[F.Net] = set()
 
     # Iterate buses in a deterministic order by their string representation
     for bus_repr in sorted(buses.keys(), key=lambda b: str(b)):
         nets_on_bus = F.Net.find_nets_for_mif(bus_repr)
 
         if not nets_on_bus:
-            net = F.Net()
-            net.part_of.connect(bus_repr)
+            net = F.Net.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
+            net.part_of.get().get_trait(fabll.is_interface).connect_to(bus_repr)
             nets_on_bus = {net}
 
         if len(nets_on_bus) > 1:
@@ -50,12 +50,11 @@ def add_or_get_nets(*interfaces: F.Electrical):
 
 def attach_nets(tg: fbrk.TypeGraph) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
-    pad_mifs = [
-        pad.net for pad in F.Pad.bind_typegraph(tg).get_instances(tg.get_graph_view())
-    ]
+    pad_mifs = [pad.net.get() for pad in F.Pad.bind_typegraph(tg).get_instances()]
     # Sort pad interfaces by stable node name to ensure deterministic bus grouping
+    print(f"pad_mifs: {pad_mifs}")
     pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
-    nets = add_or_get_nets(*pad_mifs)
+    nets = add_or_get_nets(*pad_mifs, tg=tg)
     return nets
 
 
