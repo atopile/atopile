@@ -246,7 +246,7 @@ class MutatorUtils:
         literal: F.Literals.is_literal,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         terminate: bool = False,
-    ) -> F.Expressions.Is | F.Literals.Booleans:
+    ) -> F.Expressions.Is | F.Literals.is_literal:
         existing = self.try_extract_literal(po, check_pre_transform=True)
         if existing is not None:
             if existing == literal:
@@ -258,8 +258,8 @@ class MutatorUtils:
                             self.mutator.predicate_terminate(
                                 op.get_trait(F.Expressions.is_predicate)
                             )
-                    return self.mutator.make_lit(True)
-                return self.mutator.make_lit(True)
+                    return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
+                return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
             raise ContradictionByLiteral(
                 "Tried alias to different literal",
                 involved=[po],
@@ -274,7 +274,7 @@ class MutatorUtils:
                 .get_operand_literals()
                 .values()
             ):
-                return self.mutator.make_lit(True)
+                return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
         if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
             if not ss_lit.is_superset_of(literal):  # type: ignore
                 raise ContradictionByLiteral(
@@ -288,7 +288,7 @@ class MutatorUtils:
             po.as_operand(),
             literal.as_operand(),
             from_ops=from_ops,
-            constrain=True,
+            assert_=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
             check_exists=False,
@@ -303,7 +303,7 @@ class MutatorUtils:
         po: F.Parameters.is_parameter_operatable,
         literal: F.Literals.is_literal,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
-    ) -> F.Expressions.IsSubset | F.Expressions.Is | F.Literals.Booleans:
+    ) -> F.Expressions.IsSubset | F.Expressions.Is:
         if literal.is_empty():
             raise ContradictionByLiteral(
                 "Tried subset to empty set",
@@ -336,7 +336,7 @@ class MutatorUtils:
             po.as_operand(),
             literal.as_operand(),
             from_ops=from_ops,
-            constrain=True,
+            assert_=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
             check_exists=False,
@@ -350,7 +350,7 @@ class MutatorUtils:
         check_existing: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
         terminate: bool = False,
-    ) -> F.Expressions.Is | F.Literals.Booleans:
+    ) -> F.Expressions.Is | F.Literals.is_literal:
         from faebryk.core.solver.symbolic.pure_literal import (
             _exec_pure_literal_expressions,
         )
@@ -377,7 +377,7 @@ class MutatorUtils:
                         literals=[po, to],  # type: ignore
                         mutator=self.mutator,
                     )
-                return self.mutator.make_lit(True)
+                return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
         po_po = po.as_parameter_operatable()
         from_ops = [po_po] + list(from_ops)
         if to_is_lit:
@@ -410,7 +410,7 @@ class MutatorUtils:
             po,
             to,
             from_ops=from_ops,
-            constrain=True,
+            assert_=True,
             check_exists=check_existing,
             allow_uncorrelated=True,
             _relay=False,
@@ -422,7 +422,7 @@ class MutatorUtils:
         to: F.Parameters.can_be_operand,
         check_existing: bool = True,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
-    ) -> F.Expressions.IsSubset | F.Expressions.Is | F.Literals.Booleans:
+    ) -> F.Expressions.IsSubset | F.Expressions.Is | F.Literals.is_literal:
         from faebryk.core.solver.symbolic.pure_literal import (
             _exec_pure_literal_expressions,
         )
@@ -452,7 +452,7 @@ class MutatorUtils:
                     literals=[to_lit, po_lit],
                     mutator=self.mutator,
                 )
-            return self.mutator.make_lit(True)
+            return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
 
         if to_lit:
             assert check_existing
@@ -461,7 +461,6 @@ class MutatorUtils:
                 to_lit,
                 from_ops=from_ops,
             )
-
         if po_lit and check_existing:
             # TODO implement
             pass
@@ -487,7 +486,7 @@ class MutatorUtils:
             po,
             to,
             from_ops=from_ops,
-            constrain=True,
+            assert_=True,
             check_exists=check_existing,
             allow_uncorrelated=True,
             _relay=False,

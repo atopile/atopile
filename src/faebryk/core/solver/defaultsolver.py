@@ -118,7 +118,7 @@ class DefaultSolver(Solver):
             if PRINT_START:
                 logger.debug(
                     f"START Iteration {iterno} Phase 2.{phase_name}: {algo.name}"
-                    f" G:{len(data.mutation_map.output_graph)}"
+                    f" G:{len(data.mutation_map.G_out)}"
                 )
 
             mutator = Mutator(
@@ -138,7 +138,7 @@ class DefaultSolver(Solver):
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
-                    f"G:{len(data.mutation_map.output_graph)}"
+                    f"G:{len(data.mutation_map.G_out)}"
                 )
                 # atm only one stage
                 # expensive
@@ -185,7 +185,7 @@ class DefaultSolver(Solver):
 
         # TODO consider using mutator
         transforms = Transformations.identity(
-            *mutation_map.last_stage.output_graph,
+            *mutation_map.last_stage.G_out,
             input_print_context=mutation_map.output_print_context,
         )
 
@@ -311,7 +311,7 @@ class DefaultSolver(Solver):
             if not iteration_state.dirty:
                 break
 
-            if not len(self.state.data.mutation_map.output_graph):
+            if not len(self.state.data.mutation_map.G_out):
                 break
 
             if S_LOG:
@@ -329,7 +329,7 @@ class DefaultSolver(Solver):
             self.reusable_state = self.state
 
         ifs = fabll.Node.bind_typegraph(
-            *self.state.data.mutation_map.last_stage.output_graph
+            *self.state.data.mutation_map.last_stage.G_out
         ).nodes_of_type(IfThenElse)
         for i in ifs:
             i.try_run()
@@ -360,7 +360,7 @@ class DefaultSolver(Solver):
 
         # FIXME: is this correct?
         # definitely breaks a lot
-        new_Gs = repr_map.output_graph
+        new_Gs = repr_map.G_out
         repr_pred = repr_map.map_forward(pred).maps_to
         print_context_new = repr_map.output_print_context
 
@@ -405,8 +405,8 @@ class DefaultSolver(Solver):
         return True
 
     @override
-    def simplify(self, *gs: graph.GraphView | fabll.Node):
-        self.simplify_symbolically(*gs, terminal=False)
+    def simplify(self, g: graph.GraphView):
+        self.simplify_symbolically(g, terminal=False)
 
     def update_superset_cache(self, *nodes: fabll.Node):
         try:

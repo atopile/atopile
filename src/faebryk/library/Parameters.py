@@ -90,8 +90,9 @@ class is_parameter_operatable(fabll.Node):
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            operands=[self.as_operand(), value.get_trait(can_be_operand)],
-            constrain=True,
+            self.as_operand(),
+            value.get_trait(can_be_operand),
+            assert_=True,
         )
 
     def compact_repr(

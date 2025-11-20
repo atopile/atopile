@@ -542,7 +542,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                             ) and not not_op.try_get_sibling_trait(
                                 F.Expressions.is_predicate
                             ):
-                                mutator.constrain(
+                                mutator.assert_(
                                     mutator.get_copy(not_op).get_sibling_trait(
                                         F.Expressions.is_assertable
                                     )
@@ -554,7 +554,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                         )
                         if parent_nots:
                             for n in parent_nots:
-                                mutator.constrain(
+                                mutator.assert_(
                                     n.get_sibling_trait(F.Expressions.is_assertable)
                                 )
                         else:
@@ -562,7 +562,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                                 F.Expressions.Not,
                                 inner_op,
                                 from_ops=[expr_po],
-                                constrain=True,
+                                assert_=True,
                             )
 
     if expr.try_get_trait(F.Expressions.is_predicate):
@@ -588,7 +588,7 @@ def fold_is(expr: F.Expressions.Is, mutator: Mutator):
         # P1 is! True -> P1!
         # P1 is! P2!  -> P1! (implicit)
         for p in e.get_operands_with_trait(F.Expressions.is_assertable):
-            mutator.constrain(p)
+            mutator.assert_(p)
 
 
 @expression_wise_algorithm(F.Expressions.IsSubset)
@@ -624,14 +624,14 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
     if e.try_get_trait(F.Expressions.is_predicate):
         # P1 ss! True -> P1!
         if B_lit.equals(mutator.make_lit(True)):
-            mutator.constrain(A.get_sibling_trait(F.Expressions.is_assertable))
+            mutator.assert_(A.get_sibling_trait(F.Expressions.is_assertable))
         # P ss! False -> ¬!P
         if B_lit.equals(mutator.make_lit(False)):
             mutator.create_expression(
                 F.Expressions.Not,
                 A,
                 from_ops=[expr.get_trait(F.Parameters.is_parameter_operatable)],
-                constrain=True,
+                assert_=True,
             )
 
 

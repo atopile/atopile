@@ -1102,6 +1102,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def bind_typegraph_from_self(self) -> "TypeNodeBoundTG[Self, Any]":
         return self.bind_typegraph(tg=self.tg)
 
+    def g(self) -> graph.GraphView:
+        return self.instance.g()
+
     def get_graph(self) -> fbrk.TypeGraph:
         return self.tg
 

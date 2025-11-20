@@ -168,7 +168,7 @@ def test_get_correlations_basic():
     o = (
         F.Expressions.Is.bind_typegraph(tg)
         .create_instance(g)
-        .setup(operands=[A, B], constrain=True)
+        .setup(operands=[A, B], assert_=True)
         .get_trait(F.Expressions.is_expression)
     )
 
