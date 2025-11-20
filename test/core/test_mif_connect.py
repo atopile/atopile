@@ -924,86 +924,74 @@ def test_shallow_bridge_full():
     - IL: Input Logic
     - OL: Output Logic
     """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
     class Buffer(fabll.Node):
         ins = [F.Electrical.MakeChild() for _ in range(2)]
         outs = [F.Electrical.MakeChild() for _ in range(2)]
-
         ins_l = [F.ElectricLogic.MakeChild() for _ in range(2)]
         outs_l = [F.ElectricLogic.MakeChild() for _ in range(2)]
 
-        _single_electric_reference = fabll.Traits.MakeEdge(
-            F.has_single_electric_reference.MakeChild()
-        )
-
-        def __preinit__(self) -> None:
-            logic_trait = self.ins_l[0].get_trait(F.has_single_electric_reference)
-            assert self.ins_l[0].reference is logic_trait.get_reference()
-
-            for electrical, logic in chain(
-                zip(self.ins, self.ins_l),
-                zip(self.outs, self.outs_l),
-            ):
-                logic.line.connect(electrical)
-
-            for src_logic, dst_logic in zip(self.ins_l, self.outs_l):
-                src_logic.connect_shallow(dst_logic)
+        _single_electric_reference = fabll.Traits.MakeEdge(F.has_single_electric_reference.MakeChild())
 
     class UARTBuffer(fabll.Node):
-        buf: Buffer
-        bus_in: F.UART_Base
-        bus_out: F.UART_Base
+        buf = Buffer.MakeChild()
+        bus_in = F.UART_Base.MakeChild()
+        bus_out = F.UART_Base.MakeChild()
 
-        def __preinit__(self) -> None:
-            bus_i = self.bus_in
-            bus_o = self.bus_out
-            buf = self.buf
+        _single_electric_reference = fabll.Traits.MakeEdge(F.has_single_electric_reference.MakeChild())
 
-            bus_i.tx.line.connect(buf.ins[0])
-            bus_i.rx.line.connect(buf.ins[1])
-            bus_o.tx.line.connect(buf.outs[0])
-            bus_o.rx.line.connect(buf.outs[1])
+    app = UARTBuffer.bind_typegraph(tg).create_instance(g=g)
 
-        _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
+    for el, lo in chain(
+        zip(app.buf.get().ins, app.buf.get().ins_l),
+        zip(app.buf.get().outs, app.buf.get().outs_l),
+    ):
+        lo.get().line.get().get_trait(fabll.is_interface).connect_to(el.get())
 
-    app = UARTBuffer()
+    for l1, l2 in zip(app.buf.get().ins_l, app.buf.get().outs_l):
+        l1.get().get_trait(fabll.is_interface).connect_shallow_to(l2.get())
 
-    bus_i = app.bus_in
-    bus_o = app.bus_out
-    buf = app.buf
+    # app.get_trait(F.has_single_electric_reference).connect_all_references()
+
+    app.bus_in.get().tx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().ins[0].get())
+    app.bus_in.get().rx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().ins[1].get())
+    app.bus_out.get().tx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().outs[0].get())
+    app.bus_out.get().rx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().outs[1].get())
+
+    bus_i = app.bus_in.get()
+    bus_o = app.bus_out.get()
+    buf = app.buf.get()
 
     # Check that the two buffer sides are not connected electrically
-    assert not buf.ins[0].is_connected_to(buf.outs[0])
-    assert not buf.ins[1].is_connected_to(buf.outs[1])
-    assert not bus_i.rx.line.is_connected_to(bus_o.rx.line)
-    assert not bus_i.tx.line.is_connected_to(bus_o.tx.line)
+    assert not buf.ins[0].get().get_trait(fabll.is_interface).is_connected_to(buf.outs[0].get())
+    assert not buf.ins[1].get().get_trait(fabll.is_interface).is_connected_to(buf.outs[1].get())
+    assert not bus_i.rx.get().line.get().get_trait(fabll.is_interface).is_connected_to(bus_o.rx.get().line.get())
+    assert not bus_i.tx.get().line.get().get_trait(fabll.is_interface).is_connected_to(bus_o.tx.get().line.get())
 
     # direct connect
-    assert bus_i.tx.line.is_connected_to(buf.ins[0])
-    assert bus_i.rx.line.is_connected_to(buf.ins[1])
-    assert bus_o.tx.line.is_connected_to(buf.outs[0])
-    assert bus_o.rx.line.is_connected_to(buf.outs[1])
+    assert bus_i.tx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.ins[0].get())
+    assert bus_i.rx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.ins[1].get())
+    assert bus_o.tx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.outs[0].get())
+    assert bus_o.rx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.outs[1].get())
 
     # connect through trait
-    assert (
-        buf.ins_l[0].get_trait(F.has_single_electric_reference).get_reference()
-        is buf.ins_l[0].reference
-    )
-    assert buf.ins_l[0].reference.is_connected_to(buf.outs_l[0].reference)
-    assert buf.outs_l[1].reference.is_connected_to(buf.ins_l[0].reference)
-    assert bus_i.rx.reference.is_connected_to(bus_o.rx.reference)
+    assert buf.ins_l[0].get().get_trait(F.has_single_electric_reference).get_reference().is_connected_to(buf.outs_l[0].get().get_trait(F.has_single_electric_reference).get_reference())
+    assert buf.outs_l[1].get().get_trait(F.has_single_electric_reference).get_reference().is_connected_to(buf.ins_l[0].get().get_trait(F.has_single_electric_reference).get_reference())
+    assert bus_i.rx.get().get_trait(F.has_single_electric_reference).get_reference().is_connected_to(bus_o.rx.get().get_trait(F.has_single_electric_reference).get_reference())
 
     # connect through up
-    assert bus_i.tx.is_connected_to(buf.ins_l[0])
-    assert bus_o.tx.is_connected_to(buf.outs_l[0])
+    assert bus_i.tx.get().get_trait(fabll.is_interface).is_connected_to(buf.ins_l[0].get())
+    assert bus_o.tx.get().get_trait(fabll.is_interface).is_connected_to(buf.outs_l[0].get())
 
     # connect shallow
-    assert buf.ins_l[0].is_connected_to(buf.outs_l[0])
+    assert buf.ins_l[0].get().get_trait(fabll.is_interface).is_connected_to(buf.outs_l[0].get())
 
     # Check that the two buffer sides are connected logically
-    assert bus_i.tx.is_connected_to(bus_o.tx)
-    assert bus_i.rx.is_connected_to(bus_o.rx)
-    assert bus_i.is_connected_to(bus_o)
+    assert bus_i.tx.get().get_trait(fabll.is_interface).is_connected_to(bus_o.tx.get())
+    assert bus_i.rx.get().get_trait(fabll.is_interface).is_connected_to(bus_o.rx.get())
+    assert bus_i.get_trait(fabll.is_interface).is_connected_to(bus_o)
 
 
 class Specialized(fabll.Node): ...
