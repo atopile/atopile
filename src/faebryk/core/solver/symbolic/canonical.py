@@ -344,12 +344,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             union = (
                 Union.bind_typegraph(mutator.tg)
                 .create_instance(mutator.G_out)
-                .setup(
-                    *[
-                        mutator.get_copy(o).get_trait(F.Parameters.can_be_operand)
-                        for o in e_expr.get_operands()
-                    ]
-                )
+                .setup(*[mutator.get_copy(o) for o in e_expr.get_operands()])
             )
             mutator.create_expression(
                 IsSubset,

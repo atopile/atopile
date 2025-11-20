@@ -1164,8 +1164,9 @@ class Mutator:
         if operands is None:
             operands = expr.get_operands()
 
-        if (po := expr.as_parameter_operatable()) in self.transformations.mutated:
-            out = self.get_mutated(po)
+        # if mutated
+        if (expr_po := expr.as_parameter_operatable()) in self.transformations.mutated:
+            out = self.get_mutated(expr_po)
             out_obj = fabll.Traits(out).get_obj_raw()
             assert out.has_trait(F.Expressions.is_canonical)
             # TODO more checks
@@ -1180,11 +1181,12 @@ class Mutator:
             assert expression_factory.bind_typegraph(
                 self.tg
             ).check_if_instance_of_type_has_trait(F.Expressions.is_canonical)
-            # TODO: technically the return type is incorrect, but it's not used anywhere
-            # if run with soft_mutaste
-            return self.soft_mutate_expr(
+            self.soft_mutate_expr(
                 expression_factory, expr, operands, soft_mutate, from_ops=from_ops
             )
+            # TODO: technically the return type is incorrect, but it's not used anywhere
+            # if run with soft_mutaste
+            return "DO NOT USE THIS RETURN VALUE"  # type: ignore
 
         if from_ops is not None:
             raise NotImplementedError("only supported for soft_mutate")
@@ -1196,15 +1198,14 @@ class Mutator:
             assert expression_factory.bind_typegraph(
                 self.tg
             ).check_if_instance_of_type_has_trait(F.Expressions.is_canonical)
-            exists = self.utils.find_congruent_expression(
+
+            if exists := self.utils.find_congruent_expression(
                 expression_factory, *operands, allow_uncorrelated=False
-            )
-            if exists is not None:
+            ):
+                exists_po = exists.get_trait(F.Parameters.is_parameter_operatable)
                 return self._mutate(
-                    expr.as_parameter_operatable(),
-                    self.get_copy(
-                        exists.get_trait(F.Parameters.can_be_operand)
-                    ).as_parameter_operatable(),
+                    expr_po,
+                    self.get_copy_po(exists_po),
                 ).get_sibling_trait(F.Expressions.is_canonical)
 
         expr_co = expr.try_get_sibling_trait(F.Expressions.is_predicate)
@@ -1222,11 +1223,11 @@ class Mutator:
 
         return self._mutate(expr, new_expr)  # type: ignore #TODO
 
-    def soft_replace[T: F.Parameters.is_parameter_operatable](
+    def soft_replace(
         self,
-        current: T,
+        current: F.Parameters.is_parameter_operatable,
         new: F.Parameters.is_parameter_operatable,
-    ) -> T:
+    ) -> F.Parameters.is_parameter_operatable:
         if self.has_been_mutated(current):
             copy = self.get_mutated(current)
             exps = copy.get_operations()  # noqa: F841
@@ -1234,7 +1235,7 @@ class Mutator:
             # assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
 
         self.transformations.soft_replaced[current] = new
-        return self.get_copy(current, accept_soft=False)  # type: ignore
+        return self.get_copy_po(current, accept_soft=False)
 
     def soft_mutate_expr(
         self,
@@ -1319,7 +1320,7 @@ class Mutator:
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(
             expr.as_parameter_operatable(),
-            self.get_copy(unpacked.as_operand()).as_parameter_operatable(),
+            self.get_copy_po(unpacked),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
             self.assert_(out.get_sibling_trait(F.Expressions.is_assertable))
@@ -1380,30 +1381,35 @@ class Mutator:
         if not (obj_po := obj.is_parameter_operatable()):
             return obj
 
-        if accept_soft and obj in self.transformations.soft_replaced:
-            return self.transformations.soft_replaced[obj_po].as_operand()
+        return self.get_copy_po(obj_po, accept_soft).as_operand()
+
+    def get_copy_po(
+        self, obj_po: F.Parameters.is_parameter_operatable, accept_soft: bool = True
+    ) -> F.Parameters.is_parameter_operatable:
+        if accept_soft and obj_po in self.transformations.soft_replaced:
+            return self.transformations.soft_replaced[obj_po]
 
         if self.has_been_mutated(obj_po):
-            return self.get_mutated(obj_po).as_operand()
+            return self.get_mutated(obj_po)
 
         # TODO: not sure if ok
         # if obj is new, no need to copy
         # TODO add guard to _mutate to not let new stuff be mutated
         if (
-            obj in self.transformations.created
-            or obj in self.transformations.mutated.values()
+            obj_po in self.transformations.created
+            or obj_po in self.transformations.mutated.values()
         ):
-            return obj
+            return obj_po
 
         # purely for debug
         self.transformations.copied.add(obj_po)
 
         if expr := obj_po.is_expresssion():
             return self.mutate_expression(expr).get_sibling_trait(
-                F.Parameters.can_be_operand
+                F.Parameters.is_parameter_operatable
             )
         elif p := obj_po.is_parameter():
-            return self.mutate_parameter(p).as_operand()
+            return self.mutate_parameter(p).as_parameter_operatable()
 
         assert False
 
@@ -1801,7 +1807,7 @@ class Mutator:
             ascending=True,
         )
         for p in other_param_op:
-            self.get_copy(p)
+            self.get_copy_po(p)
 
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs

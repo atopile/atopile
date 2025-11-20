@@ -299,7 +299,7 @@ def resolve_alias_classes(mutator: Mutator):
                 if not class_expressions:
                     continue
             # else
-            mutator.get_copy(_repr_po.as_operand())
+            mutator.get_copy_po(_repr_po)
             continue
 
         # Merge param alias classes
@@ -427,10 +427,10 @@ def merge_intersect_subsets(mutator: Mutator):
         # Merge
         for old_ss in old_sss:
             old_ss_po = old_ss.get_trait(F.Parameters.is_parameter_operatable)
-            target_op = target.get_trait(F.Parameters.can_be_operand)
+            target_po = target.get_trait(F.Parameters.is_parameter_operatable)
             mutator._mutate(
                 old_ss_po,
-                mutator.get_copy(target_op).as_parameter_operatable(),
+                mutator.get_copy_po(target_po),
             )
 
 
