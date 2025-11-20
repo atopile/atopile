@@ -103,7 +103,11 @@ class Numbers(fabll.Node):
         # TODO
         return self
 
-    def setup_from_singleton(self, value: float, unit: fabll.NodeT) -> Self:
+    def setup_from_singleton(
+        self,
+        value: float,
+        unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None,
+    ) -> Self:
         # TODO
         return self
 

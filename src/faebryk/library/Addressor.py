@@ -17,6 +17,7 @@ class Addressor(fabll.Node):
     address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
     address_lines_ = F.Collections.PointerSet.MakeChild()
 
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
     _single_electric_reference = fabll.Traits.MakeEdge(
         F.has_single_electric_reference.MakeChild()
     )

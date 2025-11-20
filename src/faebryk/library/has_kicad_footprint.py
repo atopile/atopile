@@ -8,6 +8,7 @@ import faebryk.library._F as F
 
 
 class has_kicad_footprint(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
     pinmap_ = F.Collections.PointerSet.MakeChild()
 

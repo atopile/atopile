@@ -12,6 +12,9 @@ class SerializableMetadata(fabll.Node):
     Attribute that will be written to PCB footprint
     """
 
+    # TODO: this is used as trait with multi instance, but is not a trait itself.
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
     key_ = F.Parameters.StringParameter.MakeChild()
     value_ = F.Parameters.StringParameter.MakeChild()
 
