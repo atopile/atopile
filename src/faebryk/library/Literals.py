@@ -362,12 +362,12 @@ class BoundLiteralContext:
     def create_strings(self) -> "Strings":
         return self.Strings.create_instance(g=self.g)
 
-    def numbers_from_singleton(
+    def create_numbers_from_singleton(
         self, value: float, unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None
     ) -> "Numbers":
         return self.create_numbers().setup_from_singleton(value=value, unit=unit)
 
-    def numbers_from_interval(
+    def create_numbers_from_interval(
         self, lower: float | None, upper: float | None, unit: "F.Units.IsUnit"
     ) -> "Numbers":
         return self.create_numbers().setup_from_interval(
@@ -382,6 +382,6 @@ def test_bound_context():
     tg = graph.TypeGraph.create(g=g)
     ctx = BoundLiteralContext(tg=tg, g=g)
 
-    my_number = ctx.numbers_from_singleton(value=1.0)
+    my_number = ctx.create_numbers_from_singleton(value=1.0)
 
     print(my_number)

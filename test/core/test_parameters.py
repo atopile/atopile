@@ -5,7 +5,6 @@ import logging
 from typing import cast
 
 import faebryk.core.faebrykpy as fbrk
-import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import times
@@ -14,12 +13,47 @@ logger = logging.getLogger(__name__)
 
 
 def test_new_definitions():
-    _ = Parameter(
-        units=P.ohm,
-        domain=fabll.Domains.Numbers.REAL(negative=False),
-        soft_set=fabll.Range(1 * P.ohm, 10 * P.Mohm),
+    # _ = Parameter(
+    #     units=P.ohm,
+    #     domain=fabll.Domains.Numbers.REAL(negative=False),
+    #     soft_set=fabll.Range(1 * P.ohm, 10 * P.Mohm),
+    #     likely_constrained=True,
+    # )
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    literals = F.Literals.BoundLiteralContext(tg, g)
+    parameters = F.Parameters.BoundParameterContext(tg, g)
+
+    parameters.create_numeric_parameter(
+        units=F.Units.Ohm,
+        domain=F.NumberDomain.bind_typegraph(tg).create_instance(g).setup(
+            negative=False
+        ),
+        soft_set=literals.create_numbers_from_interval(1, 10e6, F.Units.Ohm),
         likely_constrained=True,
     )
+
+    # number_type = F.Literals.Numbers.bind_typegraph(tg)
+    # ohm_type = F.Units.Ohm.bind_typegraph(tg)
+
+    # F.Parameters.NumericParameter.bind_typegraph(tg).create_instance(g).setup(
+    #     units = ohm_type.create_instance(g),
+    #     domain = F.NumberDomain.bind_typegraph(tg).create_instance(g).setup(
+    #         negative=False
+    #     ),
+    #     soft_set = number_type.create_instance(g).setup_from_interval(
+    #         lower=number_type.create_instance(g).setup_from_singleton(
+    #             value=1,
+    #             unit=ohm_type.create_instance(g),
+    #         ),
+    #         upper=number_type.create_instance(g).setup_from_singleton(
+    #             value=10e6,
+    #             unit=ohm_type.create_instance(g),
+    #         ),
+    #     ),
+    #     likely_constrained=True,
+    # )
 
 
 def test_compact_repr():
