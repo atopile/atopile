@@ -505,7 +505,12 @@ class NumericParameter(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_UnresolvedUnits(cls) -> fabll._ChildField[Self]:
+    def MakeChild_UnresolvedUnits(
+        cls, integer: bool = False, negative: bool = False, zero_allowed: bool = True
+    ) -> fabll._ChildField[Self]:
+        """
+        Used for bootstrapping units — consider using Dimensionless instead
+        """
         out = fabll._ChildField(cls)
         # TODO
         return out
