@@ -8,6 +8,8 @@ Tests the complete lifecycle and validates that type graph building correctly
 separates type-level descriptors from instance graph materialization.
 """
 
+#TODO these tests don't make sense, sam needs to fix
+
 import pytest
 
 import faebryk.core.node as fabll
