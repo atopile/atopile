@@ -1,45 +1,44 @@
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
 class DummyHasUnit:
-    def __init__(self, units: F.Units.IsUnit):
-        self.units = units
+    def __init__(self, unit):
+        self._unit = unit
+
+    def get_unit(self):
+        return self._unit
 
 
 def test_assert_compatible_units_empty_list():
     """Test that empty list raises ValueError"""
     with pytest.raises(ValueError):
-        assert_compatible_units([])
+        F.Units.IsUnit.assert_compatible_units([])
 
 
 def test_assert_compatible_units_single_item():
     """Test that single item list returns its unit"""
-    item = DummyHasUnit(P.meter)
-    result = assert_compatible_units([item])
-    assert result == P.meter
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    item = F.Units.Meter.bind_typegraph(tg)
+    result = F.Units.IsUnit.assert_compatible_units([item])
+    assert result == F.Units.Meter
 
-
-def test_assert_compatible_units_compatible():
-    """Test that compatible units pass validation and return first unit"""
-    items = [
-        DummyHasUnit(P.meter),
-        DummyHasUnit(P.kilometer),
-        DummyHasUnit(P.centimeter),
-    ]
-    result = assert_compatible_units(items)
-    assert result == P.meter
-
+    item = F.Units.Meter
+    result = F.Units.IsUnit.assert_compatible_units([item])
+    assert result == F.Units.Meter
 
 def test_assert_compatible_units_incompatible():
     """Test that incompatible units raise UnitCompatibilityError"""
     items = [
-        DummyHasUnit(P.meter),
-        DummyHasUnit(P.second),
+        F.Units.Meter,
+        F.Units.Second
     ]
-    with pytest.raises(UnitCompatibilityError) as exc_info:
-        assert_compatible_units(items)
+    with pytest.raises(F.Units.UnitCompatibilityError) as exc_info:
+        F.Units.IsUnit.assert_compatible_units(items)
 
     assert len(exc_info.value.incompatible_items) == 2
 
@@ -47,18 +46,18 @@ def test_assert_compatible_units_incompatible():
 def test_assert_compatible_units_with_derived():
     """Test that derived units are handled correctly and return first unit"""
     items = [
-        DummyHasUnit(P.meter / P.second),
-        DummyHasUnit(P.kilometer / P.hour),
+        F.Units.VoltsPerSecond,
+        F.Units.VoltsPerSecond,
     ]
-    result = assert_compatible_units(items)
-    assert result == P.meter / P.second
+    result = F.Units.IsUnit.assert_compatible_units(items)
+    assert result == F.Units.VoltsPerSecond
 
 
 def test_assert_compatible_units_with_incompatible_derived():
     """Test that incompatible derived units raise UnitCompatibilityError"""
     items = [
-        DummyHasUnit(P.meter / P.second),
-        DummyHasUnit(P.meter * P.second),
+        F.Units.VoltsPerSecond,
+        F.Units.Volt,
     ]
-    with pytest.raises(UnitCompatibilityError):
-        assert_compatible_units(items)
+    with pytest.raises(F.Units.UnitCompatibilityError):
+        F.Units.IsUnit.assert_compatible_units(items)

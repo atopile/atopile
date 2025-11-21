@@ -1,7 +1,31 @@
-from typing import Any, Self
+from typing import Any, Sequence, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+
+
+class UnitCompatibilityError(ValueError):
+    def __init__(self, message: str, incompatible_items: Sequence[Any]):
+        super().__init__(message)
+        self.incompatible_items = list(incompatible_items)
+
+
+# Simple helper to normalize various unit-like objects to a class, defaulting to
+# Dimensionless when no unit information is available.
+def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
+    if isinstance(unit_like, fabll.TypeNodeBoundTG):
+        return unit_like.t
+    if isinstance(unit_like, type) and issubclass(unit_like, fabll.Node):
+        return unit_like
+    if isinstance(unit_like, fabll.Node):
+        try:
+            unit_trait = unit_like.get_trait(HasUnit).get_unit()
+            return type(unit_trait)
+        except fabll.TraitNotFound:
+            return Dimensionless
+    if hasattr(unit_like, "get_unit"):
+        return _unit_or_dimensionless(unit_like.get_unit())
+    return Dimensionless
 
 # TODO add all si units
 # TODO decide whether base units require unit trait
@@ -62,9 +86,32 @@ class IsUnit(fabll.Node):
         #    )
         return out
 
-    def is_compatible_with(self, other: "IsUnit") -> bool:
-        # TODO
-        raise NotImplementedError
+    def is_compatible_with(self, other: Any) -> bool:
+        return _unit_or_dimensionless(self) == _unit_or_dimensionless(other)
+
+    @staticmethod
+    def assert_compatible_units(items: Sequence[Any]) -> Any:
+        if not items:
+            raise ValueError("At least one item is required")
+
+        units = [_unit_or_dimensionless(item) for item in items]
+        reference = units[0]
+
+        if len(units) == 1:
+            return reference
+
+        for idx, unit in enumerate(units[1:], start=1):
+            if reference != unit:
+                raise UnitCompatibilityError(
+                    "Operands have incompatible units:\n"
+                    + "\n".join(
+                        f"`{items[i]}` ({units[i].__name__})"
+                        for i in range(len(items))
+                    ),
+                    incompatible_items=items,
+                )
+
+        return reference
 
 
 class HasUnit(fabll.Node):
