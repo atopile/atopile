@@ -3,7 +3,7 @@
 
 import logging
 from cmath import pi
-from typing import Callable, cast
+from typing import Callable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F

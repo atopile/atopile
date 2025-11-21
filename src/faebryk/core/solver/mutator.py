@@ -863,7 +863,7 @@ class MutationMap:
         )
 
     @staticmethod
-    def identity(
+    def bootstrap(
         tg: fbrk.TypeGraph,
         g: graph.GraphView,
         algorithm: SolverAlgorithm | str = "identity",
@@ -1775,9 +1775,8 @@ class Mutator:
 
         self.utils = MutatorUtils(self)
 
-        # TODO
         self.G_in = mutation_map.G_out
-        self.G_out: graph.GraphView = None
+        self.G_out: graph.GraphView = graph.GraphView.create()
         self.tg: fbrk.TypeGraph = mutation_map.tg
 
         self.print_context = mutation_map.output_print_context

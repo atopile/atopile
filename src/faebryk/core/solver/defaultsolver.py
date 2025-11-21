@@ -168,7 +168,7 @@ class DefaultSolver(Solver):
         if self.reusable_state is None:
             return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
-                    mutation_map=MutationMap.identity(
+                    mutation_map=MutationMap.bootstrap(
                         tg, g, print_context=print_context
                     )
                 ),

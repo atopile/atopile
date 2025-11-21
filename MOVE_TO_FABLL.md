@@ -69,3 +69,21 @@ SOLVER:
 ## TESTS
 
 ======= 106 failed, 462 passed, 5 skipped, 35 xfailed, 1 xpassed, 137 errors in 23.45s ========
+
+NOTE TO SElF
+
+currently busy prepping mutator for new G semantics
+
+- changed identity def to bootstrap
+- created an empty G_out in mutator
+  strat: continue in mutator close/copy_unmutated etc to see how we can copy this
+
+another challenge coming up is getting the expr_factory setup from just an instance
+
+- temp hack: just save tg->fabll dict somewhere in node
+- later solution, make is_expression function that can build automatically
+  - for that just move lhs, rhs, other operand sets into is_expression and point to them from top node
+
+Be careful with modifying G_in on first stage, modifying source graph
+
+- e.g predicate terminatation. safest is to copy on first stage
