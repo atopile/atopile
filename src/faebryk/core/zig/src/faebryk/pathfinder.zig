@@ -54,21 +54,21 @@ pub const PathFinder = struct {
     const Self = @This();
 
     allocator: std.mem.Allocator,
-    path_list: std.ArrayList(BFSPath),
+    path_list: std.ArrayList(*BFSPath),
     path_counter: u64,
     valid_path_counter: u64,
 
     pub fn init(allocator: std.mem.Allocator) PathFinder {
         return .{
             .allocator = allocator,
-            .path_list = std.ArrayList(BFSPath).init(allocator),
+            .path_list = std.ArrayList(*BFSPath).init(allocator),
             .path_counter = 0,
             .valid_path_counter = 0,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        for (self.path_list.items) |*path| {
+        for (self.path_list.items) |path| {
             path.deinit();
         }
         self.path_list.deinit();
@@ -101,7 +101,7 @@ pub const PathFinder = struct {
         // Transfer ownership to BFSPaths
         var bfs_paths = graph.BFSPaths.init(self.allocator);
         bfs_paths.paths = self.path_list;
-        self.path_list = std.ArrayList(BFSPath).init(self.allocator);
+        self.path_list = std.ArrayList(*BFSPath).init(self.allocator);
 
         return bfs_paths;
     }
@@ -122,7 +122,7 @@ pub const PathFinder = struct {
         path.visit_strength = .strong;
 
         // else save to path_list
-        var copied_path = BFSPath.init(path.start_node);
+        var copied_path = BFSPath.init(path.start_node) catch @panic("OOM");
         copied_path.traversed_edges.ensureTotalCapacity(path.traversed_edges.items.len) catch @panic("OOM");
         copied_path.traversed_edges.appendSliceAssumeCapacity(path.traversed_edges.items);
         copied_path.stop_new_path_discovery = path.stop_new_path_discovery;
@@ -356,7 +356,7 @@ test "visit_paths_bfs" {
     _ = bn2;
     _ = bn4;
 
-    const paths1 = try pf1.find_paths(bn1);
+    var paths1 = try pf1.find_paths(bn1);
     defer paths1.deinit();
 }
 
@@ -372,7 +372,7 @@ test "filter_hierarchy_stack" {
     const be2 = g.insert_edge(Edge.init(g.allocator, bn3.node, bn4.node, EdgeComposition.tid));
     const be3 = g.insert_edge(Edge.init(g.allocator, bn2.node, bn3.node, EdgeInterfaceConnection.tid));
 
-    var bfs_path = BFSPath.init(bn1);
+    var bfs_path = try BFSPath.init(bn1);
 
     try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be1.edge, .forward = false }); // bn1 -> bn2 (target -> source)
     try bfs_path.traversed_edges.append(TraversedEdge{ .edge = be3.edge, .forward = true }); // bn2 -> bn3 (source -> target)
@@ -381,5 +381,5 @@ test "filter_hierarchy_stack" {
 
     var pf = PathFinder.init(g.allocator);
     defer pf.deinit();
-    _ = pf.filter_hierarchy_stack(&bfs_path);
+    _ = pf.filter_hierarchy_stack(bfs_path);
 }

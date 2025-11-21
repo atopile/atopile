@@ -5,7 +5,7 @@ import logging
 import re
 from pathlib import Path
 
-from faebryk.core.trait import Trait
+import faebryk.core.node as fabll
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +92,12 @@ class AtoCodeParse:
 
             return trait_args
 
-        def get_trait[T: Trait](self, trait: type[T]) -> T:
+        def get_trait[T: fabll.Traits](self, trait: type[T]) -> T:
             constructor, args = self.parse_trait(trait.__name__)
             f = trait if constructor is None else getattr(trait, constructor)
             return f(**args)
 
-        def try_get_trait[T: Trait](self, trait: type[T]) -> T | None:
+        def try_get_trait[T: fabll.Traits](self, trait: type[T]) -> T | None:
             try:
                 return self.get_trait(trait)
             except AtoCodeParse.TraitNotFound:

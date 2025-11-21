@@ -6,17 +6,17 @@ import re
 from dataclasses import fields
 from enum import StrEnum
 from socket import gaierror
+from typing import Any
 
 import more_itertools
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.errors import UserInfraError
-from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.http import RequestError, TimeoutException
-from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -37,7 +37,6 @@ from faebryk.libs.picker.picker import (
     PickError,
     does_not_require_picker_check,
 )
-from faebryk.libs.sets.sets import EnumSet, P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -90,7 +89,7 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
+def _from_smd_size(cls, size: SMDSize, type: type[fabll.Module]) -> "BackendPackage":
     if issubclass(type, F.Resistor):
         prefix = "R"
     elif issubclass(type, F.Capacitor):
@@ -110,7 +109,7 @@ BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(
-    module: Module, solver: Solver
+    module: fabll.Node, solver: Solver
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
     assert module.has_trait(F.is_pickable)
     # Error can propagate through,
@@ -131,6 +130,7 @@ def _prepare_query(
             )
 
     elif trait := module.try_get_trait(F.is_pickable_by_type):
+        # TODO: Fix this
         params_t = make_params_for_type(trait.pick_type)
 
         if pkg_t := module.try_get_trait(F.has_package_requirements):
@@ -163,7 +163,9 @@ def _prepare_query(
     )
 
 
-def _process_candidates(module: Module, candidates: list[Component]) -> list[Component]:
+def _process_candidates(
+    module: fabll.Node, candidates: list[Component]
+) -> list[Component]:
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
@@ -193,8 +195,8 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
 
 
 def _find_modules(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
+    modules: Tree[fabll.Module], solver: Solver
+) -> dict[fabll.Module, list[Component]]:
     timings = Times(name="find_modules")
 
     params = {m: _prepare_query(m, solver) for m in modules}
@@ -203,7 +205,7 @@ def _find_modules(
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
 
-    def _map_response[T](results: list[T]) -> dict[Module, T]:
+    def _map_response[T](results: list[T]) -> dict[fabll.Module, T]:
         assert len(results) == len(queries)
         return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
 
@@ -254,7 +256,7 @@ def _find_modules(
     return out
 
 
-def _attach(module: Module, c: Component):
+def _attach(module: fabll.Node, c: Component):
     """
     Calls LCSC attach and wraps errors into PickError
     """
@@ -277,7 +279,7 @@ def _attach(module: Module, c: Component):
 
 
 def _get_compatible_parameters(
-    module: Module, c: "Component", solver: Solver
+    module: fabll.Node, c: "Component", solver: Solver
 ) -> dict[Parameter, ParameterOperatable.Literal]:
     """
     Check if the parameters of a component are compatible with the module
@@ -307,7 +309,9 @@ def _get_compatible_parameters(
                 " module/component in your design."
             )
 
-    def _map_param(name: str, param: Parameter) -> tuple[Parameter, P_Set]:
+    def _map_param(
+        name: str, param: Parameter
+    ) -> tuple[Parameter, F.Literals.is_literal[Any]]:
         c_range = component_params.get(name)
         if c_range is None:
             c_range = param.domain.unbounded(param)
@@ -337,7 +341,7 @@ def _get_compatible_parameters(
 
 
 def _check_candidates_compatible(
-    module_candidates: list[tuple[Module, Component]],
+    module_candidates: list[tuple[fabll.Module, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -367,7 +371,7 @@ def _check_candidates_compatible(
 
 
 def check_and_attach_candidates(
-    candidates: list[tuple[Module, Component]],
+    candidates: list[tuple[fabll.Module, Component]],
     solver: Solver,
     allow_not_deducible: bool = False,
 ):
@@ -391,8 +395,8 @@ def check_and_attach_candidates(
 
 
 def get_candidates(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
+    modules: Tree[fabll.Module], solver: Solver
+) -> dict[fabll.Module, list[Component]]:
     candidates = modules.copy()
     parts = {}
     empty = set()
@@ -420,7 +424,7 @@ def get_candidates(
     return {}
 
 
-def attach_single_no_check(cmp: Module, part: Component, solver: Solver):
+def attach_single_no_check(cmp: fabll.Node, part: Component, solver: Solver):
     """
     Attach a single component to a module
     Attention: Does not check compatibility before or after!

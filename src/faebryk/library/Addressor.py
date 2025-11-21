@@ -1,59 +1,94 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
+from typing import Self
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
-from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
-class Addressor(ModuleInterface):
-    address = L.p_field(domain=L.Domains.Numbers.NATURAL())
-    offset = L.p_field(domain=L.Domains.Numbers.NATURAL())
-    base = L.p_field(domain=L.Domains.Numbers.NATURAL())
+class Addressor(fabll.Node):
+    address = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    offset = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    base = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
 
-    @L.rt_field
-    def address_lines(self):
-        return times(self._address_bits, F.ElectricLogic)
+    # def address_lines(self):
+    #     return times(self._address_bits, F.ElectricLogic)
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
+    address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    address_lines_ = [F.ElectricLogic.MakeChild() for _ in range(4)]
+
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+
+    @property
+    def address_lines(self) -> list[F.ElectricLogic]:
+        return [
+            F.ElectricLogic.bind_instance(line.get().instance)
+            for line in self.address_lines_
+        ]
+
+    @classmethod
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.Numbers.MakeChild_ConstrainToLiteral(
+                [out, cls.address_bits_], address_bits
+            )
         )
+        return out
 
-    def __init__(self, address_bits: int):
-        self._address_bits = address_bits
-        super().__init__()
+    def setup(self, address_bits: int) -> Self:
+        self.address_bits_.get().constrain_to_literal(
+            g=self.instance.g(),
+            value=F.Literals.Numbers.MakeChild(value=address_bits).get(),
+        )
+        for i, line in enumerate(self.address_lines_):
+            fabll.Traits.create_and_add_instance_to(
+                node=line.get(), trait=F.has_net_name
+            ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
+        return self
 
-    def __preinit__(self) -> None:
+    def on_obj_set(self):
+        # set net names for address lines
+        for i, line in enumerate(self.address_lines):
+            fabll.Traits.create_and_add_instance_to(
+                node=line, trait=F.has_net_name
+            ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
+
+        # constrain parameters
         for x in (self.address, self.offset, self.base):
-            x.constrain_ge(0)
-
-        self.offset.constrain_le(1 << self._address_bits)
-
-        self.address.alias_is(self.base + self.offset)
-        # TODO: not implemented yet
-        # self.offset.constrain_cardinality(1)
-
-        for i, line in enumerate(self.address_lines):
-            (self.offset.operation_is_bit_set(i)).if_then_else(
-                lambda line=line: line.set(True),
-                lambda line=line: line.set(False),
+            x.get().force_extract_literal().op_greater_or_equal(
+                F.Literals.Numbers.MakeChild(value=0).get()
             )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        for i, line in enumerate(self.address_lines):
-            line.add(
-                F.has_net_name(f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
-            )
+        # TODO: ops not implemented yet
+        # self.offset.get().force_extract_literal().op_less_or_equal(
+        #     F.Literals.Numbers.MakeChild(
+        #        value=1 << self.address_bits_.get().force_extract_literal().get_value()
+        #     ).get()
+        # )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+        # self.address.get().force_extract_literal().alias_is(self.base + self.offset)
+        # # TODO: not implemented yet
+        # # self.offset.constrain_cardinality(1)
+
+        # for i, line in enumerate(self.address_lines):
+        #     (
+        #         self.offset.get()
+        #         .force_extract_literal()
+        #         .op_is_bit_set(F.Literals.Numbers.MakeChild(value=i).get())
+        #     ).if_then_else(
+        #         lambda line=line: line.set(True),
+        #         lambda line=line: line.set(False),
+        #     )
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import Addressor, I2C, ElectricPower
 
         # For I2C device with 2 address pins (4 possible addresses)
@@ -74,5 +109,6 @@ class Addressor(ModuleInterface):
         assert i2c_bus.address is addressor.address
         device.i2c ~ i2c_bus
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

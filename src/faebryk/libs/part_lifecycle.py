@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Sequence
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile.cli.logging_ import ALERT
 from atopile.config import (
@@ -18,7 +19,6 @@ from atopile.config import (
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
 from atopile.layout import in_sub_pcb
-from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
 from faebryk.libs.exceptions import UserResourceException, accumulate
@@ -380,7 +380,7 @@ class PartLifecycle:
             return out
 
         def get_part_from_footprint_identifier(
-            self, identifier: str, component: Module
+            self, identifier: str, component: fabll.Module
         ) -> Path:
             # TODO this is old code, avoid reading fp-lib-table
             fp_lib_path = Gcfg.build.paths.fp_lib_table
@@ -492,7 +492,7 @@ class PartLifecycle:
                 ).as_posix()
 
         def get_footprint_from_identifier(
-            self, identifier: str, component: Module
+            self, identifier: str, component: fabll.Module
         ) -> tuple[Path, kicad.footprint.FootprintFile]:
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
@@ -518,7 +518,7 @@ class PartLifecycle:
         def ingest_footprint(
             self,
             transformer: PCB_Transformer,
-            component: Module,
+            component: fabll.Node,
             logger: logging.Logger,
             insert_point: kicad.pcb.Xyr | None = None,
         ) -> tuple[kicad.pcb.Footprint, bool]:
@@ -543,7 +543,7 @@ class PartLifecycle:
             # All modules MUST have a designator by this point
             ref = component.get_trait(F.has_designator).get_designator()
 
-            pcb_fp_t = f_fp.try_get_trait(PCB_Transformer.has_linked_kicad_footprint)
+            pcb_fp_t = f_fp.try_get_trait(F.PCBTransformer.has_linked_kicad_footprint)
             new_fp = pcb_fp_t is None
 
             ## Update existing footprint
@@ -572,7 +572,7 @@ class PartLifecycle:
                 # Components and footprints MUST have the same linking by this point
                 # This should be enforced through attach, and bind_footprint
                 assert not component.has_trait(
-                    PCB_Transformer.has_linked_kicad_footprint
+                    F.PCBTransformer.has_linked_kicad_footprint
                 )
 
                 logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
@@ -601,15 +601,13 @@ class PartLifecycle:
 
             ## Apply propertys, Reference and atopile_address
             # Take any descriptive properties defined on the component
-            if c_props_t := component.try_get_trait(F.has_descriptive_properties):
-                for prop_name, prop_value in c_props_t.get_properties().items():
-                    if re_in(
-                        prop_name,
-                        PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
-                    ):
-                        Property.set_property(
-                            pcb_fp, _prop_factory(prop_name, prop_value)
-                        )
+            properties = F.SerializableMetadata.get_properties(component)
+            for prop_name, prop_value in properties.items():
+                if re_in(
+                    prop_name,
+                    PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
+                ):
+                    Property.set_property(pcb_fp, _prop_factory(prop_name, prop_value))
 
             if c_props_t := component.try_get_trait(F.has_datasheet):
                 Property.set_property(

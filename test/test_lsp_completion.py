@@ -12,8 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+import faebryk.core.node as fabll
 
 # Add the src directory to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -27,7 +26,6 @@ from atopile.lsp.lsp_server import (
     _get_node_completions,
     on_document_completion,
 )
-from faebryk.core.node import Node
 
 
 @contextmanager
@@ -145,7 +143,7 @@ class TestNodeCompletions:
     def test_get_node_completions_empty_node(self):
         """Test completion extraction from a minimal node"""
 
-        class EmptyNode(Node):
+        class EmptyNode(fabll.Node):
             pass
 
         node = EmptyNode()
@@ -227,7 +225,7 @@ class TestFieldReferenceResolution:
             """)
         with mock_file(ato) as uri:
             result = _find_field_reference_node(str(uri), ato, "resistor", 5)
-            assert isinstance(result, Module)
+            assert result.has_trait(fabll.is_module)
             result2 = _find_field_reference_node(str(uri), ato, "resistor", 8)
             assert isinstance(result2, Parameter)
 

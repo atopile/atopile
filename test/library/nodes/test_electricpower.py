@@ -4,12 +4,11 @@
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
-from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import P
@@ -32,14 +31,14 @@ def test_fused_power():
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(fuse.trip_current).is_subset_of(
-        L.Range.from_center_rel(500 * P.mA, 0.1)
+        fabll.Range.from_center_rel(500 * P.mA, 0.1)
     )
     assert solver.inspect_get_known_supersets(power_out.voltage).is_subset_of(
-        L.Single(10 * P.V)
+        fabll.Single(10 * P.V)
     )
     cur = solver.inspect_get_known_supersets(power_out.max_current)
     assert isinstance(cur, Quantity_Interval_Disjoint)
-    assert (cur <= L.Single(500 * P.mA)) == BoolSet(True)
+    assert (cur <= fabll.Single(500 * P.mA)) == BoolSet(True)
 
 
 def test_power_source_short():
@@ -79,7 +78,7 @@ def test_voltage_propagation():
     # Setup
     powers = times(4, F.ElectricPower)
 
-    X = L.Range(10 * P.V, 15 * P.V)
+    X = fabll.Range(10 * P.V, 15 * P.V)
     powers[0].voltage.constrain_subset(X)
 
     for p1, p2 in pairwise(powers):
@@ -93,7 +92,7 @@ def test_voltage_propagation():
     assert solver.inspect_get_known_supersets(powers[-1].voltage).is_subset_of(X)
 
     # Test 2, back propagate Y from p[-1] to p[0]
-    Y = L.Single(10 * P.V)
+    Y = fabll.Single(10 * P.V)
     powers[-1].voltage.constrain_subset(Y)
 
     solver.update_superset_cache(*powers)
@@ -102,7 +101,7 @@ def test_voltage_propagation():
 
 
 def test_current_consumption_sum_zero():
-    class Test(Module):
+    class Test(fabll.Node):
         p1: F.ElectricPower
         p2: F.ElectricPower
         p3: F.ElectricPower
@@ -125,11 +124,11 @@ def test_current_consumption_sum_zero():
     solver = DefaultSolver()
     solver.update_superset_cache(test)
     out = solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
-    assert out.is_subset_of(L.Single(0 * P.mA))
+    assert out.is_subset_of(fabll.Single(0 * P.mA))
 
 
 def test_current_consumption_sum_negative():
-    class Test(Module):
+    class Test(fabll.Node):
         p1: F.ElectricPower
         p2: F.ElectricPower
         p3: F.ElectricPower
