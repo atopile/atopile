@@ -5,13 +5,12 @@ import logging
 import time
 from dataclasses import dataclass
 from itertools import count
-from types import SimpleNamespace
 from typing import Any, override
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.library.Expressions as Expressions
 from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
@@ -46,16 +45,16 @@ if S_LOG:
 
 
 class DefaultSolver(Solver):
-    algorithms = SimpleNamespace(
+    class algorithms:
         # TODO: get order from topo sort
         # and types from decorator
-        pre=[
+        pre = [
             canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
             canonical.constrain_within_domain,
             canonical.alias_predicates_to_true,
-        ],
-        iterative=[
+        ]
+        iterative = [
             structural.check_literal_contradiction,
             structural.remove_unconstrained,
             structural.convert_operable_aliased_to_single_into_literal,
@@ -80,8 +79,7 @@ class DefaultSolver(Solver):
             structural.isolate_lone_params,
             structural.uncorrelated_alias_fold,
             structural.upper_estimation_of_expressions_with_subsets,
-        ],
-    )
+        ]
 
     @dataclass
     class IterationData:
@@ -118,7 +116,7 @@ class DefaultSolver(Solver):
             if PRINT_START:
                 logger.debug(
                     f"START Iteration {iterno} Phase 2.{phase_name}: {algo.name}"
-                    f" G:{len(data.mutation_map.G_out)}"
+                    f" G:{data.mutation_map.G_out.get_node_count()}"
                 )
 
             mutator = Mutator(
@@ -138,7 +136,7 @@ class DefaultSolver(Solver):
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
-                    f"G:{len(data.mutation_map.G_out)}"
+                    f"G:{data.mutation_map.G_out.get_node_count()}"
                 )
                 # atm only one stage
                 # expensive
@@ -162,92 +160,125 @@ class DefaultSolver(Solver):
     def _create_or_resume_state(
         self,
         print_context: F.Parameters.ReprContext | None,
-        *gs: graph.GraphView | fabll.Node,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
-        _gs = (gs[0],) if gs else ()
 
         if self.reusable_state is None:
             return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
-                    mutation_map=MutationMap.identity(*_gs, print_context=print_context)
+                    mutation_map=MutationMap.identity(
+                        tg, g, print_context=print_context
+                    )
                 ),
             )
+
+        raise NotImplementedError("Resuming state not supported yet in new core")
 
         if print_context is not None:
             raise ValueError("print_context not allowed when using reusable state")
 
         mutation_map = self.reusable_state.data.mutation_map
-        p_ops = fabll.Node.bind_typegraph(*_gs).nodes_of_type(
-            F.Parameters.is_parameter_operatable
+        p_ops = set(
+            fabll.Traits.get_implementors(
+                F.Parameters.is_parameter_operatable.bind_typegraph(tg), g
+            )
         )
         new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
         # TODO consider using mutator
         transforms = Transformations.identity(
-            *mutation_map.last_stage.G_out,
+            tg,
+            mutation_map.last_stage.G_out,
             input_print_context=mutation_map.output_print_context,
         )
 
         # inject new parameters
         new_params = [
-            p for p in new_p_ops if Expressions.isinstance_node(p, fabll.Parameter)
+            param
+            for p in new_p_ops
+            if (param := p.try_get_sibling_trait(F.Parameters.is_parameter))
         ]
+        # TODO
         for p in new_params:
             # strip units and copy (for decoupling from old graph)
-            transforms.mutated[p] = Parameter(
-                domain=p.domain,
-                tolerance_guess=p.tolerance_guess,
-                likely_constrained=p.likely_constrained,
-                units=dimensionless,
-                soft_set=as_lit(p.soft_set).to_dimensionless()
-                if p.soft_set is not None
-                else None,
-                within=as_lit(p.within).to_dimensionless()
-                if p.within is not None
-                else None,
-                guess=quantity(p.guess, dimensionless) if p.guess is not None else None,
-            )
+            # FIXME
+            pass
+            # transforms.mutated[p] = Parameter(
+            #    domain=p.domain,
+            #    tolerance_guess=p.tolerance_guess,
+            #    likely_constrained=p.likely_constrained,
+            #    units=dimensionless,
+            #    soft_set=as_lit(p.soft_set).to_dimensionless()
+            #    if p.soft_set is not None
+            #    else None,
+            #    within=as_lit(p.within).to_dimensionless()
+            #    if p.within is not None
+            #    else None,
+            #    guess=quantity(p.guess, dimensionless) if p.guess is not None else None,  # noqa: E501
+            # )
 
         # inject new expressions
-        new_exprs = {e for e in new_p_ops if Expressions.is_expression_node(e)}
-        for e in F.Parameters.is_parameter_operatable.sort_by_depth(
-            new_exprs, ascending=True
-        ):
+        new_exprs = {
+            expr
+            for e in new_p_ops
+            if (expr := e.try_get_sibling_trait(F.Expressions.is_expression))
+        }
+        for e in F.Expressions.is_expression.sort_by_depth(new_exprs, ascending=True):
             if S_LOG:
                 logger.debug(
                     f"injecting {e.compact_repr(mutation_map.input_print_context)}"
                 )
-            op_mapped = []
-            for op in e.operands:
-                if op in transforms.mutated:
-                    op_mapped.append(transforms.mutated[op])
-                    continue
-                if fabll.isparameteroperable(op) and mutation_map.is_removed(op):
-                    # TODO
-                    raise Exception("Using removed operand")
-                if op in mutation_map.first_stage.input_operables:
-                    op_mapped.append(not_none(mutation_map.map_forward(op).maps_to))
-                    continue
-                if F.Parameters.is_parameter_operatable.is_literal(op):
-                    op = as_lit(op)
-                    if isinstance(op, Quantity_Interval_Disjoint):
-                        op = op.to_dimensionless()
+            op_mapped = list[F.Parameters.can_be_operand]()
+            for op in e.get_operands():
+                po = op.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
+                if po:
+                    if po in transforms.mutated:
+                        op_mapped.append(transforms.mutated[po].as_operand())
+                        continue
+                    if mutation_map.is_removed(po):
+                        # TODO
+                        raise Exception("Using removed operand")
+                    if po in mutation_map.first_stage.input_operables:
+                        op_mapped.append(
+                            not_none(mutation_map.map_forward(po).maps_to).as_operand()
+                        )
+                        continue
+                elif lit := op.try_get_sibling_trait(F.Literals.is_literal):
+                    op = lit.as_operand()
+                    if (
+                        n_lit := fabll.Traits(lit)
+                        .get_obj_raw()
+                        .try_cast(F.Literals.Numbers)
+                    ):
+                        op = n_lit.to_dimensionless().get_trait(
+                            F.Parameters.can_be_operand
+                        )
                 op_mapped.append(op)
-            e_mapped = type(e)(*op_mapped)
-            transforms.mutated[e] = e_mapped
-            if Expressions.is_assertable_node(e) and e.constrained:
-                assert Expressions.is_assertable_node(e_mapped)
-                e_mapped.constrained = True
+            # TODO
+            E_factory: type[fabll.NodeT] = None
+            e_mapped = E_factory.bind_typegraph(tg).create_instance(g).setup(*op_mapped)
+            transforms.mutated[e.as_parameter_operatable()] = e_mapped.get_trait(
+                F.Parameters.is_parameter_operatable
+            )
+            if e.try_get_sibling_trait(F.Expressions.is_predicate):
+                e_mapped.get_trait(F.Expressions.is_assertable).assert_()
 
+        G_in = g
+        # TODO
+        G_out = None
         return DefaultSolver.SolverState(
             data=DefaultSolver.IterationData(
                 mutation_map.extend(
                     MutationStage(
+                        tg,
                         "resume_state",
                         iteration=0,
                         transformations=transforms,
                         print_context=mutation_map.output_print_context,
+                        G_in=G_in,
+                        G_out=G_out,
                     )
                 )
             ),
@@ -256,7 +287,8 @@ class DefaultSolver(Solver):
     @times_out(TIMEOUT)
     def simplify_symbolically(
         self,
-        *gs: graph.GraphView | fabll.Node,
+        tg: fbrk.TypeGraph,
+        g: graph.GraphView,
         print_context: F.Parameters.ReprContext | None = None,
         terminal: bool = True,
     ) -> SolverState:
@@ -271,11 +303,13 @@ class DefaultSolver(Solver):
         if LOG_PICK_SOLVE:
             logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
 
-        self.state = self._create_or_resume_state(print_context, *gs)
+        self.state = self._create_or_resume_state(print_context, g, tg)
 
         if S_LOG:
             self.state.data.mutation_map.print_name_mappings()
-            self.state.data.mutation_map.last_stage.print_graph_contents(Expression)
+            self.state.data.mutation_map.last_stage.print_graph_contents(
+                F.Expressions.is_expression
+            )
 
         pre_algos = self.algorithms.pre
         it_algos = self.algorithms.iterative
@@ -311,7 +345,7 @@ class DefaultSolver(Solver):
             if not iteration_state.dirty:
                 break
 
-            if not len(self.state.data.mutation_map.G_out):
+            if not self.state.data.mutation_map.G_out.get_node_count():
                 break
 
             if S_LOG:
@@ -328,9 +362,8 @@ class DefaultSolver(Solver):
         if not terminal:
             self.reusable_state = self.state
 
-        ifs = fabll.Node.bind_typegraph(
-            *self.state.data.mutation_map.last_stage.G_out
-        ).nodes_of_type(IfThenElse)
+        G_out = self.state.data.mutation_map.last_stage.G_out
+        ifs = F.Expressions.IfThenElse.bind_typegraph(tg).get_instances(G_out)
         for i in ifs:
             i.try_run()
 
@@ -343,43 +376,47 @@ class DefaultSolver(Solver):
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool | None:
-        pred = predicate
-        assert not pred.constrained
-        pred.constrained = True
+        assert not predicate.try_get_sibling_trait(F.Expressions.is_predicate)
+        asserted = predicate.assert_()
+
+        pred_po = predicate.get_sibling_trait(F.Parameters.is_parameter_operatable)
+
+        g = predicate.g()
+        tg = predicate.tg
 
         try:
-            solver_result = self.simplify_symbolically(pred.get_graph(), terminal=True)
+            solver_result = self.simplify_symbolically(tg, g, terminal=True)
         except TimeoutError:
             if not allow_unknown:
                 raise
             return None
         finally:
-            pred.constrained = False
+            asserted.unassert()
 
         repr_map = solver_result.data.mutation_map
 
         # FIXME: is this correct?
         # definitely breaks a lot
-        new_Gs = repr_map.G_out
-        repr_pred = repr_map.map_forward(pred).maps_to
+        G_out = repr_map.G_out
+        repr_pred = repr_map.map_forward(pred_po).maps_to
         print_context_new = repr_map.output_print_context
 
         # FIXME: workaround for above
         if repr_pred is not None:
-            new_Gs = [repr_pred.get_graph()]
+            G_out = repr_pred.g()
 
-        new_preds = fabll.Node.bind_typegraph(*new_Gs).nodes_of_type(
-            ConstrainableExpression
+        new_preds = fabll.Traits.get_implementors(
+            F.Expressions.is_predicate.bind_typegraph(tg), G_out
         )
         not_deduced = [
-            p for p in new_preds if p.constrained and not p.has_trait(is_terminated)
+            p for p in new_preds if not p.try_get_sibling_trait(is_terminated)
         ]
 
         if not_deduced:
             if not allow_unknown:
                 if LOG_PICK_SOLVE:
                     logger.warning(
-                        f"PREDICATE not deducible: {pred.compact_repr()}"
+                        f"PREDICATE not deducible: {pred_po.compact_repr()}"
                         + (
                             f" -> {repr_pred.compact_repr(print_context_new)}"
                             if repr_pred is not None
@@ -389,7 +426,12 @@ class DefaultSolver(Solver):
                     logger.warning(
                         f"NOT DEDUCED: \n    {
                             '\n    '.join(
-                                [p.compact_repr(print_context_new) for p in not_deduced]
+                                [
+                                    p.get_sibling_trait(
+                                        F.Parameters.is_parameter_operatable
+                                    ).compact_repr(print_context_new)
+                                    for p in not_deduced
+                                ]
                             )
                         }"
                     )
@@ -397,62 +439,69 @@ class DefaultSolver(Solver):
                     repr_map.print_name_mappings(log=logger.warning)
                     repr_map.last_stage.print_graph_contents(log=logger.warning)
 
-                raise NotDeducibleException(pred, not_deduced)
+                raise NotDeducibleException(predicate, not_deduced)
             return None
 
         if lock:
-            pred.assert_()
+            predicate.assert_()
         return True
 
     @override
-    def simplify(self, g: graph.GraphView):
-        self.simplify_symbolically(g, terminal=False)
+    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph):
+        self.simplify_symbolically(tg, g, terminal=False)
 
     def update_superset_cache(self, *nodes: fabll.Node):
+        if not nodes:
+            return
+        tg = nodes[0].tg
+        # TODO consider creating new graph view that contains only the nodes
+        g = nodes[0].g()
         try:
-            self.simplify_symbolically(*nodes, terminal=True)
+            self.simplify_symbolically(tg, g, terminal=True)
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise
             if self.state is None:
                 raise
 
-    def inspect_get_known_supersets(self, value: F.Parameters) -> F.Literals.is_literal:
+    def inspect_get_known_supersets(
+        self, value: F.Parameters.is_parameter
+    ) -> F.Literals.is_literal:
         """
         Careful, only use after solver ran!
         """
+        value_po = value.as_parameter_operatable()
 
-        is_lit = value.try_get_literal()
+        is_lit = value_po.try_get_literal()
         if is_lit is not None:
-            return as_lit(is_lit)
+            return is_lit
 
         if self.state is not None:
             is_solver_lit = self.state.data.mutation_map.try_get_literal(
-                value, allow_subset=False, domain_default=False
+                value_po, allow_subset=False, domain_default=False
             )
             if is_solver_lit is not None:
                 return is_solver_lit
 
-        ss_lit = value.try_get_literal_subset()
+        ss_lit = value_po.try_get_literal_subset()
         if ss_lit is None:
             ss_lit = value.domain_set()
-        ss_lit = as_lit(ss_lit)
 
         solver_lit = None
         if self.state is not None:
             solver_lit = self.state.data.mutation_map.try_get_literal(
-                value, allow_subset=True, domain_default=False
+                value_po, allow_subset=True, domain_default=False
             )
 
         if solver_lit is None:
             return ss_lit
 
-        return ss_lit & solver_lit  # type: ignore
+        return F.Literals.is_literal.intersect_all(ss_lit, solver_lit)
 
     @override
     def get_any_single(
         self,
-        operatable: F.Parameters,
+        operatable: F.Parameters.is_parameter,
         lock: bool,
         suppose_predicate: F.Expressions.is_assertable | None = None,
         minimize: F.Expressions.is_expression | None = None,
@@ -467,6 +516,11 @@ class DefaultSolver(Solver):
 
         lit = self.inspect_get_known_supersets(operatable)
         out = lit.any()
+        singleton_lit = F.Literals.make_lit(lit.tg, out)
         if lock:
-            operatable.alias_is(out)
+            F.Expressions.Is.from_operands(
+                operatable.as_operand(),
+                singleton_lit.get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            )
         return out
