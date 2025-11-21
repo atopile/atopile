@@ -223,7 +223,7 @@ def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     check_design(
-        app.get_graph(),
+        app.g(),
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -245,8 +245,8 @@ def pick_parts(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.get_graph())
-        solver.simplify(app.get_graph())
+        load_part_info_from_pcb(app.g())
+        solver.simplify(app.g(), app.tg)
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:
@@ -254,7 +254,7 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
-    save_part_info_to_pcb(app.get_graph())
+    save_part_info_to_pcb(app.g())
 
 
 @muster.register(
@@ -273,11 +273,11 @@ def prepare_nets(
     pcb.transformer.attach()
 
     if config.build.keep_net_names:
-        loaded_nets = load_net_names(app.get_graph())
+        loaded_nets = load_net_names(app.g())
         nets |= loaded_nets
 
     attach_net_names(nets)
-    check_net_names(app.get_graph())
+    check_net_names(app.g())
 
 
 @muster.register(
@@ -290,7 +290,7 @@ def post_solve_checks(
 ) -> None:
     logger.info("Running checks")
     check_design(
-        app.get_graph(),
+        app.g(),
         stage=F.implements_design_check.CheckStage.POST_SOLVE,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -438,7 +438,7 @@ def post_pcb_checks(
     pcb.add(F.PCB.requires_drc_check())
     try:
         check_design(
-            pcb.get_graph(),
+            pcb.g(),
             stage=F.implements_design_check.CheckStage.POST_PCB,
             exclude=tuple(set(config.build.exclude_checks)),
         )

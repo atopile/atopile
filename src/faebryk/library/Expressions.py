@@ -247,9 +247,9 @@ class is_assertable(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     # TODO: solver_terminated flag, has to be attr
 
-    def assert_(self) -> None:
+    def assert_(self):
         parent = self.get_parent_force()[0]
-        fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
+        return fabll.Traits.create_and_add_instance_to(node=parent, trait=is_predicate)
 
     def as_expression(self) -> "is_expression":
         return fabll.Traits(self).get_trait_of_obj(is_expression)
@@ -257,6 +257,10 @@ class is_assertable(fabll.Node):
 
 class is_predicate(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    def unassert(self):
+        # TODO
+        pass
 
 
 def _make_instance_from_operand_instance[T: fabll.NodeT](
@@ -1395,6 +1399,10 @@ class IfThenElse(fabll.Node):
         g: graph.GraphView | None = None,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(condition, then_value, else_value, g=g))
+
+    def try_run(self):
+        # TODO
+        pass
 
 
 class Union(fabll.Node):
