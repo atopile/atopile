@@ -47,7 +47,7 @@ class has_kicad_footprint(fabll.Node):
                 )
             )
             # Pad Str
-            lit = F.Literals.Strings.MakeChild(value=pad_str)
+            lit = F.Literals.Strings.MakeChild(pad_str)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(

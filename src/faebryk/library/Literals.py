@@ -56,6 +56,19 @@ class LiteralsAttributes(fabll.NodeAttributes):
     value: LiteralValues
 
 
+@dataclass(frozen=True)
+class StringLiteralSingletonAttributes(fabll.NodeAttributes):
+    value: str
+
+
+class StringLiteralSingleton(fabll.Node[StringLiteralSingletonAttributes]):
+    def get_value(self) -> str:
+        return self.attributes().value
+
+
+# from faebryk.library.Collections import PointerSet
+
+
 class Strings(fabll.Node[LiteralsAttributes]):
     from faebryk.library.Parameters import can_be_operand
 
@@ -63,22 +76,48 @@ class Strings(fabll.Node[LiteralsAttributes]):
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
-    def setup(self, value: str) -> Self:
-        return self
+    values = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, value: str) -> fabll._ChildField:
-        assert isinstance(value, str), "Value of string literal must be a string"
-        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
+    def setup_from_values(
+        cls, tg: graph.TypeGraph, g: graph.GraphView, values: list[str]
+    ) -> Self:
+        out = cls.bind_typegraph(tg=tg).create_instance(g=g)
+        StirngLitT = StringLiteralSingleton.bind_typegraph(tg=tg)
+        for value in values:
+            out.values.get().append(
+                StirngLitT.create_instance(
+                    g=g, attributes=StringLiteralSingletonAttributes(value=value)
+                )
+            )
+        return out
+
+    def get_values(self) -> list[str]:
+        return [
+            lit.cast(StringLiteralSingleton)
+            .instance.node()
+            .get_dynamic_attrs()
+            .get("value", "")
+            for lit in self.values.get().as_list()
+        ]
+
+    @classmethod
+    def MakeChild(cls, *values: str) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
+        # lits = []
+        # cls.values.get().MakeEdges()
+
+        return out
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: str
     ) -> fabll._ChildField:
-        assert isinstance(value, str), "Value of string literal must be a string"
-        lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
-        out.add_dependant(lit, identifier="lit", before=True)
+        # assert isinstance(value, str), "Value of string literal must be a string"
+        # Elit = cls.MakeChild(value=value)
+        # out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        # out.add_dependant(lit, identifier="lit", before=True)
+        out = fabll._ChildField(cls)
         return out
 
     def get_value(self) -> str:
@@ -385,3 +424,19 @@ def test_bound_context():
     my_number = ctx.create_numbers_from_singleton(value=1.0)
 
     print(my_number)
+
+
+def test_string_literal():
+    values = ["a", "b", "c"]
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+
+    string_set = Strings.setup_from_values(tg=tg, g=g, values=values)
+
+    print(string_set.get_values())
+
+
+if __name__ == "__main__":
+    import typer
+
+    typer.run(test_string_literal)

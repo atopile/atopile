@@ -52,7 +52,7 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
                 )
             )
             # Pin Str
-            lit = F.Literals.Strings.MakeChild(value=pin_str)
+            lit = F.Literals.Strings.MakeChild(pin_str)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(

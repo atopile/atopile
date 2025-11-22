@@ -86,7 +86,7 @@ class is_pickable_by_type(fabll.Node):
                 )
             )
             # Add string to tuple
-            lit = F.Literals.Strings.MakeChild(value=param_name)
+            lit = F.Literals.Strings.MakeChild(param_name)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(
