@@ -147,9 +147,29 @@ addopts = [
     "--html=artifacts/test-report.html",
     "--self-contained-html",
     "--numprocesses=auto",
+    "--ignore=test/runtest.py",
+    "--ignore=test/conftest.py",
 ]
 filterwarnings = ["ignore:.*:DeprecationWarning"]
-testpaths = ["test"]
+testpaths = ["test", "src"]
+python_files = ["test_*.py", "*_test.py", "*.py"]
+python_functions = ["test_*"]
+
+# Exclude problematic directories from test discovery
+norecursedirs = [
+    "templates",
+    "project-template",
+    "build",
+    "dist",
+    "node_modules",
+    ".git",
+    ".zig-cache",
+    "__pycache__",
+    "lsp",
+    "kicad_plugin",
+    "project-template",
+    "resources",
+]
 log_file_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
 # log_file_level = "DEBUG"  # <-- you can set this in a PR if you want to debug tests in CI
 markers = [

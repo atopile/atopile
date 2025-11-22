@@ -3,10 +3,11 @@
 
 from abc import abstractmethod
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 
 
-class can_attach_to_footprint(Module.TraitT):
-    @abstractmethod
-    def attach(self, footprint: F.Footprint): ...
+class can_attach_to_footprint(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    # Marker trait
+    pass

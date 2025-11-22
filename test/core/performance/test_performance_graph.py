@@ -6,12 +6,8 @@ from itertools import pairwise, product
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graphinterface import GraphInterface
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node
-from faebryk.libs.library import L
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
 
@@ -31,8 +27,8 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     count = 10 * 2**count_power
 
     def _factory_simple_resistors():
-        class App(Module):
-            resistors = L.list_field(count, F.Resistor)
+        class App(fabll.Node):
+            resistors = [F.Resistor.MakeChild() for _ in range(count)]
 
             def __init__(self, timings: Times) -> None:
                 super().__init__()
@@ -44,8 +40,8 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
         return App
 
     def _factory_interconnected_resistors():
-        class App(Module):
-            resistors = L.list_field(count, F.Resistor)
+        class App(fabll.Node):
+            resistors = [F.Resistor.MakeChild() for _ in range(count)]
 
             def __init__(self, timings: Times) -> None:
                 super().__init__()
@@ -76,22 +72,22 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     timings.add("get_all_nodes_graph")
 
     for n in [app, app.resistors[0]]:  # type: ignore
-        assert isinstance(n, Module)
+        assert n.has_trait(fabll.is_module)
         name = type(n).__name__[0]
 
-        n.get_children(direct_only=False, types=Node)
+        n.get_children(direct_only=False, types=fabll.Node)
         timings.add(f"get_node_children_all {name}")
 
-        n.get_tree(types=Node)
+        n.get_tree(types=fabll.Node)
         timings.add(f"get_node_tree {name}")
 
-        n.get_tree(types=ModuleInterface)
+        n.get_tree(types=fabll.ModuleInterface)
         timings.add(f"get_mif_tree {name}")
 
-        n.get_children(direct_only=True, types=Node)
+        n.get_children(direct_only=True, types=fabll.Node)
         timings.add(f"get_module_direct_children {name}")
 
-        n.get_children(direct_only=True, types=ModuleInterface)
+        n.get_children(direct_only=True, types=fabll.ModuleInterface)
         timings.add(f"get_mifs {name}")
 
     logger.info(f"{timings!r}")
@@ -106,10 +102,10 @@ def test_performance_graph_merge_rec():
     count = 2**14
     logger.info(f"Count: {count}")
 
-    gs = times(count, GraphInterface)
+    gs = times(count, fabll.Node)
     timings.add("instance")
 
-    def rec_connect(gs_sub: list[GraphInterface]):
+    def rec_connect(gs_sub: list[fabll.Node]):
         if len(gs_sub) == 1:
             return gs_sub[0]
 
@@ -139,7 +135,7 @@ def test_performance_graph_merge_it():
     count = 2**14
     logger.info(f"Count: {count}")
 
-    gs = times(count, GraphInterface)
+    gs = times(count, fabll.Node)
     timings.add("instance")
 
     for gl, gr in pairwise(gs):

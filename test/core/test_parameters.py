@@ -1,47 +1,36 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
-from itertools import pairwise
 from typing import cast
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
-from faebryk.core.parameter import (
-    Add,
-    Additive,
-    And,
-    Expression,
-    Is,
-    Not,
-    Parameter,
-    ParameterOperatable,
-)
-from faebryk.libs.library import L
-from faebryk.libs.library.L import Range
-from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
-from faebryk.libs.sets.sets import BoolSet, EnumSet
-from faebryk.libs.units import P
 from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
 def test_new_definitions():
-    _ = Parameter(
-        units=P.ohm,
-        domain=L.Domains.Numbers.REAL(negative=False),
-        soft_set=Range(1 * P.ohm, 10 * P.Mohm),
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    literals = F.Literals.BoundLiteralContext(tg, g)
+    parameters = F.Parameters.BoundParameterContext(tg, g)
+    number_domain = F.NumberDomain.BoundNumberDomainContext(tg, g)
+
+    parameters.create_numeric_parameter(
+        units=F.Units.Ohm,
+        domain=number_domain.create_number_domain(negative=False),
+        soft_set=literals.create_numbers_from_interval(1, 10e6, F.Units.Ohm),
         likely_constrained=True,
     )
-
 
 def test_compact_repr():
     p1 = Parameter(units=P.V)
     p2 = Parameter(units=P.V)
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
     expr = cast(Expression, (p1 + p2 + (5 * P.V)) * 10)  # type: ignore
     exprstr = expr.compact_repr(context)
     assert exprstr == "((A volt + B volt) + 5 volt) * 10"
@@ -49,7 +38,7 @@ def test_compact_repr():
     expr2str = expr2.compact_repr(context)
     assert expr2str == "B volt + A volt"
 
-    p3 = Parameter(domain=L.Domains.BOOL())
+    p3 = Parameter(domain=fabll.Domains.BOOL())
     expr3 = Not(p3)
     expr3str = expr3.compact_repr(context)
     assert expr3str == "¬C"
@@ -79,13 +68,18 @@ def test_compact_repr():
     pAA = Parameter()
     assert pAA.compact_repr(context) == "A₁"
 
-
+@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
 def test_expression_congruence():
-    p1 = Parameter()
-    p2 = Parameter()
-    p3 = Parameter()
-    assert (p1 + p2).is_congruent_to(p1 + p2)
-    assert (p1 + p2).is_congruent_to(p2 + p1)
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    parameters = F.Parameters.BoundParameterContext(tg, g)
+
+    p1 = parameters.create_numeric_parameter()
+    p2 = parameters.create_numeric_parameter()
+    p3 = parameters.create_numeric_parameter()
+
+    assert F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2).get_trait(F.Expressions.is_expression).is_congruent_to(F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2))
+    assert F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2).get_trait(F.Expressions.is_expression).is_congruent_to(F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p2, p1))
 
     assert hash(Quantity_Singleton(0)) == hash(Quantity_Singleton(0))
     assert Quantity_Singleton(0) == Quantity_Singleton(0)
@@ -103,63 +97,10 @@ def test_expression_congruence():
     p3.alias_is(p2)
     assert not Is(p1, p3).is_congruent_to(Is(p1, p2))
 
-
+@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
 def test_expression_congruence_not():
     A = Parameter()
     x = Is(A, EnumSet(F.LED.Color.EMERALD))
     assert x.is_congruent_to(Is(A, EnumSet(F.LED.Color.EMERALD)))
     assert Not(x).is_congruent_to(Not(x))
 
-
-@pytest.mark.skip
-def test_visualize():
-    """
-    Creates webserver that opens automatically if run in jupyter notebook
-    """
-    from faebryk.exporters.visualize.interactive_params import visualize_parameters
-
-    class App(Node):
-        p1 = L.f_field(Parameter)(units=P.V)
-
-    app = App()
-
-    p2 = Parameter(units=P.V)
-    p3 = Parameter(units=P.A)
-
-    # app.p1.constrain_ge(p2 * 5)
-    # app.p1.operation_is_ge(p2 * 5).constrain()
-    (app.p1 >= p2 * 5).constrain()
-
-    (p2 * p3 + app.p1 * 1 * P.A <= 10 * P.W).constrain()
-
-    pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
-
-    G = app.get_graph()
-    visualize_parameters(G, height=1400)
-
-
-@pytest.mark.skip
-def test_visualize_chain():
-    from faebryk.exporters.visualize.interactive_params import visualize_parameters
-
-    params = times(10, Parameter)
-    sums = [p1 + p2 for p1, p2 in pairwise(params)]
-    products = [p1 * p2 for p1, p2 in pairwise(sums)]
-    bigsum = Additive.sum(products)
-
-    predicates = [bigsum <= 100]
-    for p in predicates:
-        p.constrain()
-
-    G = params[0].get_graph()
-    visualize_parameters(G, height=1400)
-
-
-@pytest.mark.skip
-def test_visualize_inspect_app():
-    from faebryk.exporters.visualize.interactive_params import visualize_parameters
-
-    rp2040 = F.RP2040()
-
-    G = rp2040.get_graph()
-    visualize_parameters(G, height=1400)

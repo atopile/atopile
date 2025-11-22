@@ -5,25 +5,9 @@ import logging
 
 import pytest
 
-from faebryk.core.cpp import Graph
-from faebryk.core.node import Node
-from faebryk.core.parameter import (
-    Add,
-    And,
-    Difference,
-    Divide,
-    Expression,
-    Intersection,
-    Is,
-    Logic,
-    Multiply,
-    Or,
-    Parameter,
-    ParameterOperatable,
-    Subtract,
-    Union,
-    Xor,
-)
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import (
@@ -33,14 +17,10 @@ from faebryk.core.solver.mutator import (
     Transformations,
 )
 from faebryk.core.solver.utils import (
-    Associative,
     ContradictionByLiteral,
-    FullyAssociative,
     MutatorUtils,
 )
-from faebryk.libs.library import L
 from faebryk.libs.logging import rich_to_string
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, times
 
 logger = logging.getLogger(__name__)
@@ -48,15 +28,15 @@ logger = logging.getLogger(__name__)
 
 def _create_letters(
     n: int,
-) -> tuple[ParameterOperatable.ReprContext, list[Parameter], Graph]:
-    context = ParameterOperatable.ReprContext()
+) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter], fabll.Graph]:
+    context = F.Parameters.ReprContext()
 
     out = []
 
-    class App(Node):
+    class App(fabll.Node):
         def __preinit__(self) -> None:
             for _ in range(n):
-                p = Parameter()
+                p = F.Parameters.is_parameter()
                 name = p.compact_repr(context)
                 self.add(p, name)
                 out.append(p)
@@ -68,38 +48,38 @@ def _create_letters(
 @pytest.mark.parametrize(
     "op",
     [
-        Add,
-        Multiply,
-        Subtract,
-        Divide,
-        And,
-        Or,
-        Xor,
-        Union,
-        Intersection,
-        Difference,
+        F.Expressions.Add,
+        F.Expressions.Multiply,
+        F.Expressions.Subtract,
+        F.Expressions.Divide,
+        F.Expressions.And,
+        F.Expressions.Or,
+        F.Expressions.Xor,
+        F.Expressions.Union,
+        F.Expressions.Intersection,
+        F.Expressions.Difference,
     ],
 )
-def test_flatten_associative(op: type[Expression]):
+def test_flatten_associative(op: type[F.Expressions.is_expression]):
     def flatten(op):
         return MutatorUtils.flatten_associative(op, lambda _, __: True)
 
-    if issubclass(op, Logic):
-        domain = L.Domains.BOOL()
+    if issubclass(op, F.Logic):
+        domain = fabll.Domains.BOOL()
     else:
-        domain = L.Domains.Numbers.REAL()
+        domain = fabll.Domains.Numbers.REAL()
 
-    A, B, C, D, E = times(5, lambda: Parameter(domain=domain))
+    A, B, C, D, E = times(5, lambda: F.Parameters.is_parameter(domain=domain))
 
     to_flatten = op(op(A, B), C, op(D, E))
     res = flatten(to_flatten)
 
-    if not issubclass(op, Associative):
+    if not issubclass(op, F.Expressions.is_associative):
         assert len(res.destroyed_operations) == 0
         assert set(res.extracted_operands) == set(to_flatten.operands)
         return
 
-    if not issubclass(op, FullyAssociative):
+    if not issubclass(op, F.Expressions.is_fully_associative):
         assert set(res.extracted_operands) & {A, B, C}
         assert not set(res.extracted_operands) & {D, E}
         assert len(res.destroyed_operations) == 1
@@ -110,28 +90,28 @@ def test_flatten_associative(op: type[Expression]):
 
 
 def test_mutator_no_graph_merge():
-    p0 = Parameter(units=P.V)
-    p1 = Parameter(units=P.A)
-    p2 = Parameter(units=P.W)
+    p0 = F.Parameters.is_parameter(units=F.Units.Volt)
+    p1 = F.Parameters.is_parameter(units=F.Units.Ampere)
+    p2 = F.Parameters.is_parameter(units=F.Units.Watt)
     alias = p2.alias_is(p0 * p1)
 
-    p3 = Parameter(units=P.V)
+    p3 = F.Parameters.is_parameter(units=F.Units.Volt)
 
-    context = ParameterOperatable.ReprContext()
+    context = F.Parameters.ReprContext()
 
     @algorithm("")
     def algo(mutator: Mutator):
         pass
 
     mutator = Mutator(
-        MutationMap.identity(p0.get_graph(), print_context=context),
+        MutationMap.bootstrap(p0.get_graph(), print_context=context),
         algo=algo,
         iteration=0,
         terminal=True,
     )
-    p0_new = cast_assert(Parameter, mutator.get_copy(p0))
-    p3_new = cast_assert(Parameter, mutator.get_copy(p3))
-    alias_new = cast_assert(Is, mutator.get_copy(alias))
+    p0_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p0))
+    p3_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p3))
+    alias_new = cast_assert(F.Expressions.Is, mutator.get_copy(alias))
 
     G = p0.get_graph()
     G_new = p0_new.get_graph()
@@ -139,12 +119,15 @@ def test_mutator_no_graph_merge():
     assert G is not G_new
     assert alias_new.get_graph() is G_new
     assert p3_new.get_graph() is not G_new
-    assert cast_assert(Parameter, mutator.get_mutated(p1)).get_graph() is G_new
+    assert (
+        cast_assert(F.Parameters.is_parameter, mutator.get_mutated(p1)).get_graph()
+        is G_new
+    )
 
 
 def test_get_expressions_involved_in():
-    A = Parameter()
-    B = Parameter()
+    A = F.Parameters.is_parameter()
+    B = F.Parameters.is_parameter()
 
     E1 = A + B
 
@@ -172,15 +155,30 @@ def test_get_expressions_involved_in():
 
 
 def test_get_correlations_basic():
-    A = Parameter()
-    B = Parameter()
-    C = Parameter()
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    param = F.Parameters.is_parameter.bind_typegraph(tg=tg)
+
+    A = param.create_instance(g)
+    B = param.create_instance(g)
+    C = param.create_instance(g)
 
     # Create correlations between parameters
-    o = A.alias_is(B)  # A and B are correlated through an Is expression
+    # A and B are correlated through an Is expression
+    o = (
+        F.Expressions.Is.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(operands=[A, B], assert_=True)
+        .get_trait(F.Expressions.is_expression)
+    )
 
     # Create an expression with correlated operands
-    expr = Add(A, B, C)
+    expr = (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(A, B, C)
+        .get_trait(F.Expressions.is_expression)
+    )
 
     # Test correlations
     correlations = list(MutatorUtils.get_correlations(expr))
@@ -197,9 +195,9 @@ def test_get_correlations_basic():
 
 
 def test_get_correlations_nested_uncorrelated():
-    A = Parameter()
-    B = Parameter()
-    C = Parameter()
+    A = F.Parameters.is_parameter()
+    B = F.Parameters.is_parameter()
+    C = F.Parameters.is_parameter()
 
     o = A.alias_is(B)  # A and B are correlated through an Is expression
     inner = A + B
@@ -217,9 +215,9 @@ def test_get_correlations_nested_uncorrelated():
 
 
 def test_get_correlations_nested_correlated():
-    A = Parameter()
-    B = Parameter()
-    C = Parameter()
+    A = F.Parameters.is_parameter()
+    B = F.Parameters.is_parameter()
+    C = F.Parameters.is_parameter()
 
     o = A.alias_is(B)  # A and B are correlated through an Is expression
     inner = A + C
@@ -237,7 +235,7 @@ def test_get_correlations_nested_correlated():
 
 
 def test_get_correlations_self_correlated():
-    A = Parameter()
+    A = F.Parameters.is_parameter()
     E = A + A
     correlations = list(MutatorUtils.get_correlations(E))
     assert len(correlations) == 1
@@ -247,20 +245,20 @@ def test_get_correlations_self_correlated():
 
 
 def test_get_correlations_shared_predicates():
-    A = Parameter()
-    B = Parameter()
+    A = F.Parameters.is_parameter()
+    B = F.Parameters.is_parameter()
 
     E = A + B
 
     correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
 
-    E2 = Is(A * B, L.Range(0, 10))
+    E2 = F.Expressions.Is(A * B, fabll.Range(0, 10))
 
     correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
 
-    E2.constrain()
+    E2.assert_()
 
     correlations = list(MutatorUtils.get_correlations(E))
     assert len(correlations) == 1
@@ -271,11 +269,11 @@ def test_get_correlations_shared_predicates():
 
 
 def test_get_correlations_correlated_regression():
-    A = Parameter()
-    B = Parameter()
+    A = F.Parameters.is_parameter()
+    B = F.Parameters.is_parameter()
 
-    A.alias_is(L.Range(5, 10))
-    B.alias_is(L.Range(10, 15))
+    A.alias_is(fabll.Range(5, 10))
+    B.alias_is(fabll.Range(10, 15))
 
     # correlate
     o = B.alias_is(A + 5)
@@ -294,7 +292,7 @@ def test_get_correlations_correlated_regression():
 def test_mutation_map_compressed_mapping_forwards_identity():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     f = mapping.compressed_mapping_forwards
     assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
@@ -303,7 +301,7 @@ def test_mutation_map_compressed_mapping_forwards_identity():
 def test_mutation_map_compressed_mapping_backwards_identity():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     b = mapping.compressed_mapping_backwards
     assert b == {v: [v] for v in variables}
@@ -312,7 +310,7 @@ def test_mutation_map_compressed_mapping_backwards_identity():
 def test_mutation_map_compressed_mapping_backwards_copy():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(3)
 
@@ -337,7 +335,7 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 def test_mutation_map_compressed_mapping_backwards_mutate():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(3)
 
@@ -361,7 +359,7 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
 def test_mutation_map_non_copy_mutated_identity():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     res = mapping.non_trivial_mutated_expressions
     assert res == set()
@@ -370,7 +368,7 @@ def test_mutation_map_non_copy_mutated_identity():
 def test_mutation_map_non_copy_mutated_mutate():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(3)
 
@@ -392,12 +390,12 @@ def test_mutation_map_non_copy_mutated_mutate():
 
 def test_mutation_map_non_copy_mutated_mutate_expression():
     context, variables, graph = _create_letters(2)
-    op = Add(*variables)
+    op = F.Expressions.Add(*variables)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(2)
-    op_new = Multiply(*variables_new)
+    op_new = F.Expressions.Multiply(*variables_new)
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -417,12 +415,12 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
 
 def test_mutation_map_submap():
     context, variables, graph = _create_letters(2)
-    op = Add(*variables)
+    op = F.Expressions.Add(*variables)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(2)
-    op_new = Multiply(*variables_new)
+    op_new = F.Expressions.Multiply(*variables_new)
 
     mapping_new = mapping.extend(  # noqa: F841
         MutationStage(
@@ -470,8 +468,8 @@ def test_traceback_filtering_tree():
     context, variables, graph = _create_letters(3)
     A, B, C = variables
 
-    B.constrain_subset(L.Range(0, 10))
-    C.constrain_subset(L.Range(5, 15))
+    B.constrain_subset(fabll.Range(0, 10))
+    C.constrain_subset(fabll.Range(5, 15))
 
     A.constrain_subset(B)
     A.constrain_subset(C)
@@ -494,8 +492,8 @@ def test_contradiction_message_subset():
     context, variables, graph = _create_letters(1)
     (A,) = variables
 
-    A.constrain_subset(L.Range(6, 7))
-    A.alias_is(L.Range(4, 5))
+    A.constrain_subset(fabll.Range(6, 7))
+    A.alias_is(fabll.Range(4, 5))
 
     solver = DefaultSolver()
 
@@ -507,8 +505,8 @@ def test_contradiction_message_superset():
     context, variables, graph = _create_letters(1)
     (A,) = variables
 
-    A.constrain_superset(L.Range(0, 10))
-    A.alias_is(L.Range(4, 5))
+    A.constrain_superset(fabll.Range(0, 10))
+    A.alias_is(fabll.Range(4, 5))
 
     solver = DefaultSolver()
 

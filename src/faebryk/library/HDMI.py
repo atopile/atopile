@@ -2,30 +2,39 @@
 # SPDX-License-Identifier: MIT
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
-class HDMI(ModuleInterface):
+class HDMI(fabll.Node):
     """
     HDMI interface
     """
 
-    power: F.ElectricPower
-    data = L.list_field(3, F.DifferentialPair)
-    clock: F.DifferentialPair
-    i2c: F.I2C
-    cec: F.ElectricLogic
-    hotplug: F.ElectricLogic
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
 
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
+    power = F.ElectricPower.MakeChild()
+    data = [F.DifferentialPair.MakeChild() for _ in range(3)]
+    clock = F.DifferentialPair.MakeChild()
+    i2c = F.I2C.MakeChild()
+    cec = F.ElectricLogic.MakeChild()
+    hotplug = F.ElectricLogic.MakeChild()
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+    _single_electric_reference = fabll.Traits.MakeEdge(
+        F.has_single_electric_reference.MakeChild()
+    )
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
 
     # @staticmethod
     # def define_max_frequency_capability(mode: SpeedMode):
@@ -34,13 +43,12 @@ class HDMI(ModuleInterface):
     def __preinit__(self) -> None:
         pass
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        for i in range(3):
+    def on_obj_set(self):
+        for i, data in enumerate(self.data):
             net_name = f"HDMI_D{i}"
-            self.data[i].p.line.add(
-                F.has_net_name(net_name, level=F.has_net_name.Level.SUGGESTED)
-            )
-            self.data[i].n.line.add(
-                F.has_net_name(net_name, level=F.has_net_name.Level.SUGGESTED)
-            )
+            fabll.Traits.create_and_add_instance_to(
+                node=data.get().p.get(), trait=F.has_net_name
+            ).setup(name=net_name, level=F.has_net_name.Level.SUGGESTED)
+            fabll.Traits.create_and_add_instance_to(
+                node=data.get().n.get(), trait=F.has_net_name
+            ).setup(name=net_name, level=F.has_net_name.Level.SUGGESTED)

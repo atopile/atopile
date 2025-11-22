@@ -1,12 +1,15 @@
-from faebryk.core.zig.gen.graph.graph import Edge, Literal
+from faebryk.core.zig.gen.graph.graph import Edge, GraphView, Literal, Node
 
 class EdgeCreationAttributes:
-    def __init__(
-        self,
+    @staticmethod
+    def create(
         *,
         edge_type: int,
         directional: bool | None,
         name: str | None,
         dynamic: dict[str, Literal] | None,
-    ) -> None: ...
+    ) -> "EdgeCreationAttributes": ...
     def apply_to(self, *, edge: Edge) -> None: ...
+    def create_edge(self, *, source: Node, target: Node) -> Edge: ...
+    def insert_edge(self, *, g: GraphView, source: Node, target: Node) -> Edge: ...
+    def get_tid(self) -> int: ...

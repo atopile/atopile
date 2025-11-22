@@ -4,10 +4,9 @@
 import logging
 from dataclasses import dataclass
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.library import L
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P, quantity
 
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ComponentTestCase:
-    module: Module
+    module: fabll.Module
     packages: list[SMDSize]
     lcsc_id: str | None = None
     mfr_mpn: tuple[str, str] | None = None
@@ -72,7 +71,7 @@ resistors = [
         F.Resistor().builder(
             lambda r: (
                 r.resistance.constrain_subset(
-                    L.Range.from_center(10 * P.kohm, 1 * P.kohm)
+                    fabll.Range.from_center(10 * P.kohm, 1 * P.kohm)
                 ),
                 r.max_power.constrain_ge(0.05 * P.W),
                 r.max_voltage.constrain_ge(25 * P.V),
@@ -84,7 +83,7 @@ resistors = [
         F.Resistor().builder(
             lambda r: (
                 r.resistance.constrain_subset(
-                    L.Range.from_center(69 * P.kohm, 2 * P.kohm)
+                    fabll.Range.from_center(69 * P.kohm, 2 * P.kohm)
                 ),
                 r.max_power.constrain_ge(0.1 * P.W),
                 r.max_voltage.constrain_ge(50 * P.V),
@@ -96,7 +95,7 @@ resistors = [
         F.Resistor().builder(
             lambda r: (
                 r.resistance.constrain_subset(
-                    L.Range.from_center_rel(3 * P.mohm, 0.01)
+                    fabll.Range.from_center_rel(3 * P.mohm, 0.01)
                 ),
             )
         ),
@@ -109,7 +108,7 @@ capacitors = [
         F.Capacitor().builder(
             lambda c: (
                 c.capacitance.constrain_subset(
-                    L.Range.from_center(100 * P.nF, 10 * P.nF)
+                    fabll.Range.from_center(100 * P.nF, 10 * P.nF)
                 ),
                 c.max_voltage.constrain_ge(25 * P.V),
                 c.temperature_coefficient.constrain_subset(
@@ -123,7 +122,7 @@ capacitors = [
         F.Capacitor().builder(
             lambda c: (
                 c.capacitance.constrain_subset(
-                    L.Range.from_center(47 * P.pF, 4.7 * P.pF)
+                    fabll.Range.from_center(47 * P.pF, 4.7 * P.pF)
                 ),
                 c.max_voltage.constrain_ge(50 * P.V),
                 c.temperature_coefficient.constrain_subset(
@@ -139,7 +138,9 @@ inductors = [
     ComponentTestCase(
         F.Inductor().builder(
             lambda i: (
-                i.inductance.constrain_subset(L.Range.from_center(10 * P.uH, 2 * P.uH)),
+                i.inductance.constrain_subset(
+                    fabll.Range.from_center(10 * P.uH, 2 * P.uH)
+                ),
                 i.max_current.constrain_ge(0.05 * P.A),
                 i.dc_resistance.constrain_le(1.17 * P.ohm),
                 i.self_resonant_frequency.constrain_ge(30 * P.Mhertz),
@@ -151,7 +152,7 @@ inductors = [
         F.Inductor().builder(
             lambda i: (
                 i.inductance.constrain_subset(
-                    L.Range.from_center(27 * P.uH, 2.7 * P.uH)
+                    fabll.Range.from_center(27 * P.uH, 2.7 * P.uH)
                 ),
                 i.max_current.constrain_ge(0.06 * P.A),
                 i.dc_resistance.constrain_le(10.7 * P.ohm),
@@ -169,7 +170,7 @@ mosfets = [
                 m.channel_type.constrain_subset(F.MOSFET.ChannelType.N_CHANNEL),
                 m.saturation_type.constrain_subset(F.MOSFET.SaturationType.ENHANCEMENT),
                 m.gate_source_threshold_voltage.constrain_subset(
-                    L.Range.from_center(0.4 * P.V, 3 * P.V)
+                    fabll.Range.from_center(0.4 * P.V, 3 * P.V)
                 ),
                 m.max_drain_source_voltage.constrain_ge(20 * P.V),
                 m.max_continuous_drain_current.constrain_ge(2 * P.A),
@@ -236,7 +237,7 @@ ldos = [
     ComponentTestCase(
         F.LDO().builder(
             lambda u: (
-                u.output_voltage.constrain_superset(L.Single(2.8 * P.V)),
+                u.output_voltage.constrain_superset(fabll.Single(2.8 * P.V)),
                 u.output_current.constrain_ge(0.1 * P.A),
                 u.power_in.voltage.constrain_ge(5 * P.V),
                 u.dropout_voltage.constrain_le(1 * P.V),
