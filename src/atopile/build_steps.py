@@ -673,6 +673,24 @@ def generate_manufacturing_data(
 
 
 @muster.register(
+    "pogo-board",
+    dependencies=[post_pcb_checks],
+    produces_artifact=True,
+)
+def generate_pogo_board(
+    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
+    from faebryk.exporters.pcb.testpoints.testpoints import make_pogo_board
+
+    make_pogo_board(
+        app,
+        pogo_board_file=config.build.paths.output_base.with_suffix(
+            ".pogo_board.kicad_pcb"
+        ),
+    )
+
+
+@muster.register(
     "manifest",
     dependencies=[build_design],
     produces_artifact=True,

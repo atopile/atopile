@@ -211,7 +211,9 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    def __init__(self, pcb: PCB, graph: Graph, app: Module) -> None:
+    def __init__(
+        self, pcb: PCB, graph: Graph, app: Module, noattach: bool = False
+    ) -> None:
         self.pcb = pcb
         self.app = app
 
@@ -233,7 +235,8 @@ class PCB_Transformer:
 
         self.default_component_insert_point = kicad.pcb.Xyr(x=0, y=0, r=0)
 
-        self.attach()
+        if not noattach:
+            self.attach()
 
     @property
     def graph(self):
