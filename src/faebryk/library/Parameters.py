@@ -82,7 +82,7 @@ class is_parameter_operatable(fabll.Node):
             raise ParameterIsNotConstrainedToLiteral(parameter=self)
         return lit
 
-    def constrain_to_literal(
+    def alias_to_literal(
         self, g: graph.GraphView, value: "Literals.LiteralNodes"
     ) -> None:
         node = self.instance
@@ -238,17 +238,15 @@ class StringParameter(fabll.Node):
             lit_type=Strings
         )
 
-    # TODO get rid of this and replace with constrain_to_literal
-    def constrain_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
-        return self.constrain_to_literal(value, g=g)
+    # TODO get rid of this and replace with alias_to_literal
+    def alias_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
+        return self.alias_to_literal(value, g=g)
 
-    def constrain_to_literal(
-        self, *values: str, g: graph.GraphView | None = None
-    ) -> None:
+    def alias_to_literal(self, *values: str, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
         from faebryk.library.Literals import Strings
 
-        self._is_parameter_operatable.get().constrain_to_literal(
+        self._is_parameter_operatable.get().alias_to_literal(
             g=g,
             value=Strings.bind_typegraph(tg=self.tg)
             .create_instance(g=g)
@@ -280,13 +278,11 @@ class BooleanParameter(fabll.Node):
     def extract_single(self) -> bool:
         return self.force_extract_literal().get_single()
 
-    def constrain_to_single(
-        self, value: bool, g: graph.GraphView | None = None
-    ) -> None:
+    def alias_to_single(self, value: bool, g: graph.GraphView | None = None) -> None:
         g = g or self.instance.g()
         from faebryk.library.Literals import Booleans
 
-        self._is_parameter_operatable.get().constrain_to_literal(
+        self._is_parameter_operatable.get().alias_to_literal(
             g=g,
             value=Booleans.bind_typegraph_from_instance(
                 instance=self.instance
@@ -309,7 +305,7 @@ class EnumParameter(fabll.Node):
         # TODO
         return out
 
-    def try_extract_constrained_literal(self) -> "Literals.Enums | None":
+    def try_extract_aliased_literal(self) -> "Literals.Enums | None":
         from faebryk.library.Literals import Enums
 
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -373,10 +369,8 @@ class NumericParameter(fabll.Node):
         # TODO
         pass
 
-    def constrain_to_literal(
-        self, g: graph.GraphView, value: "Literals.Numbers"
-    ) -> None:
-        self.get_trait(is_parameter_operatable).constrain_to_literal(g=g, value=value)
+    def alias_to_literal(self, g: graph.GraphView, value: "Literals.Numbers") -> None:
+        self.get_trait(is_parameter_operatable).alias_to_literal(g=g, value=value)
 
     def setup(
         self,
@@ -425,7 +419,7 @@ class NumericParameter(fabll.Node):
         # )
         return out
 
-    def try_extract_constrained_literal(self) -> "Literals.Numbers | None":
+    def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 
         return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
@@ -469,12 +463,12 @@ class BoundParameterContext:
         return NumericParameter.bind_typegraph(tg=self.tg)
 
     def create_string_parameter(self, value: str) -> "StringParameter":
-        return self.StringParameter.create_instance(g=self.g).constrain_to_single(
+        return self.StringParameter.create_instance(g=self.g).alias_to_single(
             value=value, g=self.g
         )
 
     def create_boolean_parameter(self, value: bool) -> "BooleanParameter":
-        return self.BooleanParameter.create_instance(g=self.g).constrain_to_single(
+        return self.BooleanParameter.create_instance(g=self.g).alias_to_single(
             value=value, g=self.g
         )
 

@@ -26,5 +26,5 @@ class has_datasheet(fabll.Node):
         return out
 
     def setup(self, datasheet: str) -> Self:
-        self.datasheet_.get().constrain_to_single(value=datasheet)
+        self.datasheet_.get().alias_to_single(value=datasheet)
         return self

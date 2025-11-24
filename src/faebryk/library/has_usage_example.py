@@ -26,7 +26,7 @@ class has_usage_example(fabll.Node):
 
     @property  # TODO: fix to work with enum
     def language(self) -> str:
-        return str(self.language_.get().try_extract_constrained_literal())
+        return str(self.language_.get().try_extract_aliased_literal())
 
     @classmethod
     def MakeChild(cls, example: str, language: Language) -> fabll._ChildField[Any]:

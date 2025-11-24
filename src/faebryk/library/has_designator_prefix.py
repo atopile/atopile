@@ -241,8 +241,8 @@ class has_designator_prefix(fabll.Node):
         return out
 
     def get_prefix(self) -> str:
-        return str(self.prefix_param_.get().try_extract_constrained_literal())
+        return str(self.prefix_param_.get().try_extract_aliased_literal())
 
     def setup(self, designator_prefix: str) -> Self:
-        # self.prefix_param_.get().constrain_to_single(value=designator_prefix)
+        # self.prefix_param_.get().alias_to_single(value=designator_prefix)
         return self

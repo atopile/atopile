@@ -24,9 +24,9 @@ class NumberDomain(fabll.Node):
     def setup(
         self, negative: bool = False, zero_allowed: bool = True, integer: bool = False
     ) -> Self:
-        self.negative.get().constrain_to_single(value=negative)
-        self.zero_allowed.get().constrain_to_single(value=zero_allowed)
-        self.integer.get().constrain_to_single(value=integer)
+        self.negative.get().alias_to_single(value=negative)
+        self.zero_allowed.get().alias_to_single(value=zero_allowed)
+        self.integer.get().alias_to_single(value=integer)
         return self
 
     @classmethod
@@ -102,7 +102,9 @@ class NumberDomain(fabll.Node):
             return shared
         return NumberDomain.get_shared_domain(shared, *domains[2:])
 
+
 # Binding context ----------------------------------------------------------------------
+
 
 class BoundNumberDomainContext:
     def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
@@ -126,6 +128,5 @@ class BoundNumberDomainContext:
             integer=integer,
         )
 
+
 NumberDomain.BoundNumberDomainContext = BoundNumberDomainContext
-
-

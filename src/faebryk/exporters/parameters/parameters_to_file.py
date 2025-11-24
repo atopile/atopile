@@ -250,11 +250,17 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     ):
         module_name = m.get_full_name(types=True)
         module_params = m.get_children(
-            direct_only=True, include_root=True, types=F.Parameters.is_parameter
+            direct_only=True,
+            types=fabll.Node,
+            include_root=True,
+            required_trait=F.Parameters.is_parameter,
         )
         param_names = [param.get_full_name().split(".")[-1] for param in module_params]
         param_values = [
-            solver.inspect_get_known_supersets(param) for param in module_params
+            solver.inspect_get_known_supersets(
+                param.get_trait(F.Parameters.is_parameter)
+            )
+            for param in module_params
         ]
         parameters[module_name] = {
             name: value for name, value in zip(param_names, param_values)

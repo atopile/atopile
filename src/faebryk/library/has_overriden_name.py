@@ -24,5 +24,5 @@ class has_overriden_name(fabll.Node):
         return out
 
     def setup(self, name: str) -> Self:
-        self.name_.get().constrain_to_single(value=name)
+        self.name_.get().alias_to_single(value=name)
         return self

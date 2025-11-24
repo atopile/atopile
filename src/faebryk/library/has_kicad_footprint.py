@@ -65,7 +65,7 @@ class has_kicad_footprint(fabll.Node):
         return out
 
     def setup(self, kicad_identifier: str, pinmap: dict[F.Pad, str]) -> Self:
-        self.kicad_identifier_.get().constrain_to_single(
+        self.kicad_identifier_.get().alias_to_single(
             g=self.instance.g(), value=kicad_identifier
         )
         for pad, pad_str in pinmap.items():

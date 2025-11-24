@@ -51,8 +51,8 @@ def netlist_graph():
         .setup_from_singleton(value=200, unit=F.Units.Ohm)
     )
 
-    resistor1.resistance.get().constrain_to_literal(g, r100)
-    resistor2.resistance.get().constrain_to_literal(g, r200)
+    resistor1.resistance.get().alias_to_literal(g, r100)
+    resistor2.resistance.get().alias_to_literal(g, r200)
 
     F.has_net_name.add_net_name(
         power.hv.get(), name="+3V3", level=F.has_net_name.Level.EXPECTED

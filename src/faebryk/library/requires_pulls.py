@@ -147,7 +147,7 @@ class requires_pulls(fabll.Node):
             for signal in signals
             if not_none(
                 signal.get_trait(F.can_be_pulled).pull_resistance
-            ).try_extract_constrained_literal
+            ).try_extract_aliased_literal
             is not None
         }
 

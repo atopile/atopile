@@ -64,9 +64,9 @@ class PCB(fabll.Node):
         transformer: "PCB_Transformer",
         app: fabll.Node,
     ) -> Self:
-        self.path_.get().constrain_to_single(value=str(path))
-        self.pcb_file_.get().constrain_to_single(value=str(id(pcb_file)))
-        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
+        self.path_.get().alias_to_single(value=str(path))
+        self.pcb_file_.get().alias_to_single(value=str(id(pcb_file)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
         self.app_.get().point(app)
         return self
 
@@ -202,5 +202,5 @@ class PCB(fabll.Node):
             return find(self.pcbs, lambda pcb: pcb.path == path)
 
         def setup(self, pcb: "PCB") -> Self:
-            self.pcb_ptr_.get().constrain_to_single(value=str(id(pcb)))
+            self.pcb_ptr_.get().alias_to_single(value=str(id(pcb)))
             return self

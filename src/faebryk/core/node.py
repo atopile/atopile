@@ -1012,23 +1012,28 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         result: list[C] = []
 
-        def check(node: "NodeT") -> TypeGuard[C]:
-            if not node.isinstance(*type_tuple):
-                return False
-            candidate = cast(C, node)
+        def check(node: "NodeT") -> C | None:
+            if len(type_tuple) == 1:
+                candidate = node.try_cast(type_tuple[0])
+                if candidate is None:
+                    return None
+            else:
+                if not node.isinstance(*type_tuple):
+                    return None
+                candidate = cast(C, node)
             if trait_tuple and not any(node.has_trait(trait) for trait in trait_tuple):
-                return False
+                return None
             if f_filter and not f_filter(candidate):
-                return False
-            return True
+                return None
+            return candidate
 
-        if include_root and check(self):
-            result.append(self)
+        if include_root and (ok := check(self)):
+            result.append(ok)
 
         def _visit(node: "NodeT") -> None:
             for _name, child in node.get_direct_children():
-                if check(child):
-                    result.append(child)
+                if ok := check(child):
+                    result.append(ok)
                 if not direct_only:
                     _visit(child)
 
@@ -1985,7 +1990,7 @@ def test_string_param():
     import faebryk.library._F as F
 
     string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    string_p.constrain_to_single(value="IG constrained")
+    string_p.alias_to_single(value="IG constrained")
     assert string_p.force_extract_literal().get_value() == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
@@ -2003,7 +2008,7 @@ def test_boolean_param():
     import faebryk.library._F as F
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.constrain_to_single(value=True)
+    boolean_p.alias_to_single(value=True)
     assert boolean_p.force_extract_literal().get_value()
 
     class ExampleBooleanParameter(fabll.Node):
@@ -2184,9 +2189,7 @@ def test_get_children_modules_simple():
     app = App.bind_typegraph(tg).create_instance(g=g)
     m = app.m.get()
 
-    mods = app.get_children(
-        direct_only=False, types=Node, required_trait=is_module
-    )
+    mods = app.get_children(direct_only=False, types=Node, required_trait=is_module)
     assert mods == {m}
 
 

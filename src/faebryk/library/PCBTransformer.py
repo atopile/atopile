@@ -45,8 +45,8 @@ class has_linked_kicad_footprint(fabll.Node):
     def setup(
         self, footprint: "KiCadFootprint", transformer: "PCB_Transformer"
     ) -> Self:
-        self.footprint_.get().constrain_to_single(value=str(id(footprint)))
-        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
+        self.footprint_.get().alias_to_single(value=str(id(footprint)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
     def get_fp(self) -> KiCadFootprint:
@@ -94,9 +94,9 @@ class has_linked_kicad_pad(fabll.Node):
         pad: list[KiCadPad],
         transformer: "PCB_Transformer",
     ) -> Self:
-        self.footprint_.get().constrain_to_single(value=str(id(footprint)))
-        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
-        self.pad_.get().constrain_to_single(value=str(id(pad)))
+        self.footprint_.get().alias_to_single(value=str(id(footprint)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        self.pad_.get().alias_to_single(value=str(id(pad)))
         return self
 
     def get_pad(self) -> tuple[KiCadFootprint, list[KiCadPad]]:
@@ -136,8 +136,8 @@ class has_linked_kicad_net(fabll.Node):
         return out
 
     def setup(self, net: "KiCadNet", transformer: "PCB_Transformer") -> Self:
-        self.net_.get().constrain_to_single(value=str(id(net)))
-        self.transformer_.get().constrain_to_single(value=str(id(transformer)))
+        self.net_.get().alias_to_single(value=str(id(net)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
     def get_net(self) -> KiCadNet:

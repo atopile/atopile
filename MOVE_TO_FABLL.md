@@ -68,7 +68,7 @@ SOLVER:
 
 ## TESTS
 
-======= 106 failed, 462 passed, 5 skipped, 35 xfailed, 1 xpassed, 137 errors in 23.45s ========
+==== 275 failed, 545 passed, 6 skipped, 46 xfailed, 1 xpassed, 50 warnings, 17 errors in 26.08s =====
 
 NOTE TO SElF
 

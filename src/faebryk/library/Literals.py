@@ -467,7 +467,7 @@ def test_string_literal_on_type():
     # TODO
 
 
-def test_string_literal_constrain_to_literal():
+def test_string_literal_alias_to_literal():
     from faebryk.library.Parameters import StringParameter, is_parameter_operatable
 
     values = ["a", "b", "c"]

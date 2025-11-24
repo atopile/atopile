@@ -123,10 +123,10 @@ class is_atomic_part(fabll.Node):
         symbol: str,
         model: str | None = None,
     ) -> Self:
-        self.manufacturer_.get().constrain_to_single(value=manufacturer)
-        self.partnumber_.get().constrain_to_single(value=partnumber)
-        self.footprint_.get().constrain_to_single(value=footprint)
-        self.symbol_.get().constrain_to_single(value=symbol)
+        self.manufacturer_.get().alias_to_single(value=manufacturer)
+        self.partnumber_.get().alias_to_single(value=partnumber)
+        self.footprint_.get().alias_to_single(value=footprint)
+        self.symbol_.get().alias_to_single(value=symbol)
         if model is not None:
-            self.model_.get().constrain_to_single(value=model)
+            self.model_.get().alias_to_single(value=model)
         return self

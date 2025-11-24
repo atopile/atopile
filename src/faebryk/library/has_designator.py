@@ -28,5 +28,5 @@ class has_designator(fabll.Node):
         return out
 
     def setup(self, designator: str) -> Self:
-        self.designator_.get().constrain_to_single(value=designator)
+        self.designator_.get().alias_to_single(value=designator)
         return self

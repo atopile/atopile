@@ -44,14 +44,14 @@ class has_net_name(fabll.Node):
 
     @property
     def level(self) -> Level | None:
-        level_literal = self.level_.get().try_extract_constrained_literal()
+        level_literal = self.level_.get().try_extract_aliased_literal()
         if level_literal is None:
             return None
         return None  # self.Level(int(level_literal))
 
     def setup(self, name: str, level: Level) -> Self:
-        self.name_.get().constrain_to_single(value=name)
-        # self.level_.get().constrain_to_literal(g=self.instance.g(), value=level.value)
+        self.name_.get().alias_to_single(value=name)
+        # self.level_.get().alias_to_literal(g=self.instance.g(), value=level.value)
         return self
 
     @staticmethod

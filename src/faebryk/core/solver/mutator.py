@@ -6,7 +6,7 @@ import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Iterable, Sequence, overload
+from typing import Any, Callable, Iterable, Sequence, cast, overload
 
 from more_itertools import first
 from rich.table import Table
@@ -1135,9 +1135,7 @@ class Mutator:
         if assert_ and (
             ce := new_expr.try_get_sibling_trait(F.Expressions.is_assertable)
         ):
-            ce.assert_()
-            # TODO this is better, but ends up in inf loop
-            # self.assert_(new_expr)
+            self.assert_(ce, _no_alias=True)
 
         for op in new_operands:
             if op.has_trait(F.Parameters.is_parameter_operatable):
@@ -1508,14 +1506,20 @@ class Mutator:
         )
         return param
 
-    def assert_(self, *po: F.Expressions.is_assertable, terminate: bool = False):
+    def assert_(
+        self,
+        *po: F.Expressions.is_assertable,
+        terminate: bool = False,
+        _no_alias: bool = False,
+    ):
         for p in po:
             p.assert_()
-            self.utils.alias_to(
-                p.get_sibling_trait(F.Parameters.can_be_operand),
-                self.make_lit(True).get_trait(F.Parameters.can_be_operand),
-                terminate=terminate,
-            )
+            if not _no_alias:
+                self.utils.alias_to(
+                    p.get_sibling_trait(F.Parameters.can_be_operand),
+                    self.make_lit(True).get_trait(F.Parameters.can_be_operand),
+                    terminate=terminate,
+                )
 
     def predicate_terminate(self, pred: F.Expressions.is_predicate):
         if pred.has_trait(is_terminated):
@@ -1587,6 +1591,15 @@ class Mutator:
                 for n in self.transformations.created
                 if (ne := fabll.Traits(n).get_obj_raw().try_cast(t))
             }
+        elif t is fabll.Node:
+            out = cast(
+                set[T],
+                set(
+                    fabll.Traits.get_implementor_objects(
+                        F.Expressions.is_expression.bind_typegraph(self.tg), self.G_in
+                    )
+                ),
+            )
         else:
             out = set(t.bind_typegraph(self.tg).get_instances(self.G_in))
 
@@ -1596,6 +1609,9 @@ class Mutator:
                 self.G_in,
             )
             out.difference_update(terminated)
+
+        if required_traits:
+            out = {o for o in out if all(o.has_trait(t) for t in required_traits)}
 
         if sort_by_depth:
             out = F.Expressions.is_expression.sort_by_depth(out, ascending=True)
@@ -1803,27 +1819,23 @@ class Mutator:
         self.algo(self)
 
     def _copy_unmutated(self):
+        touched = self.transformations.mutated.keys() | self.transformations.removed
         # TODO might not need to sort
         other_param_op = F.Expressions.is_expression.sort_by_depth(
             (
-                {
-                    fabll.Traits(p).get_obj_raw()
-                    for p in self.get_parameter_operatables(include_terminated=True)
-                }
-                - touched
+                fabll.Traits(p).get_obj_raw()
+                for p in (
+                    set(self.get_parameter_operatables(include_terminated=True))
+                    - touched
+                )
             ),
             ascending=True,
         )
         for p in other_param_op:
-            self.get_copy_po(p)
+            self.get_copy_po(p.get_trait(F.Parameters.is_parameter_operatable))
 
-        # optimization: if just new_ops, no need to copy
-        # pass through untouched graphs
-        untouched_graphs = self.G_in - _touched_graphs
-        for p in fabll.Node.bind_typegraph(*untouched_graphs).nodes_of_type(
-            F.Parameters.is_parameter_operatable
-        ):
-            self.transformations.mutated[p] = p
+        # TODO optimization: if just new_ops, no need to copy
+        # just pass through untouched graphs
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
@@ -1836,8 +1848,8 @@ class Mutator:
         added = post_mut_nodes.difference(
             self._starting_operables, self.transformations.created
         )
-        removed_compact = [op.compact_repr(self.print_context) for op in removed]
-        added_compact = [op.compact_repr(self.print_context) for op in added]
+        removed_compact = (op.compact_repr(self.print_context) for op in removed)
+        added_compact = (op.compact_repr(self.print_context) for op in added)
         assert not removed, (
             f"Mutator {self.G_in, self.algo.name} untracked removed "
             f"{indented_container(removed_compact)}"
@@ -1847,30 +1859,10 @@ class Mutator:
             f"{indented_container(added_compact)}"
         )
 
-        # don't need to check original graph, done above seperately
-        all_new_graphs = get_graphs(self.transformations.mutated.values())
-        all_new_params = {
-            op
-            for g in all_new_graphs
-            for op in fabll.Node.bind_typegraph(g).nodes_of_type(
-                F.Parameters.is_parameter_operatable
-            )
-        }
-        non_registered = all_new_params.difference(
-            self.transformations.created, self.transformations.mutated.values()
-        )
-        if non_registered:
-            compact = (op.compact_repr(self.print_context) for op in non_registered)
-            graphs = get_graphs(non_registered)
-            # FIXME: this is currently hit during legitimate build
-            with downgrade(AssertionError, logger=logger, to_level=logging.DEBUG):
-                assert False, (
-                    f"Mutator {self.G_in} has non-registered new ops: "
-                    f"{indented_container(compact)}."
-                    f"{indented_container(graphs)}"
-                )
+        # TODO check created pos in G_out that are not in mutations.created
 
     def close(self) -> AlgoResult:
+        # optimization: if no mutations, return identity stage
         if not self.transformations.dirty:
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
@@ -1908,3 +1900,77 @@ class Mutator:
     # Debug Interface ------------------------------------------------------------------
     def __repr__(self) -> str:
         return f"Mutator('{self.algo.name}' {self.transformations})"
+
+
+# TESTS --------------------------------------------------------------------------------
+
+
+def test_mutator_basic_bootstrap():
+    from faebryk.core.solver.algorithm import algorithm
+
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        param_str = F.Parameters.StringParameter.MakeChild()
+        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+
+    app.param_str.get().alias_to_literal("a", "b", "c")
+    app.param_num.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_interval(1, 5),
+    )
+    F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
+        param_num_op,
+        param_num_op,
+    )
+
+    @algorithm("")
+    def algo(mutator: Mutator):
+        params = mutator.get_parameters()
+        assert len(params) == 2
+        exprs = mutator.get_expressions(include_terminated=True)
+        assert len(exprs) == 3
+        pos = mutator.get_parameter_operatables()
+        assert len(pos) == 5
+        is_exprs = mutator.get_typed_expressions(F.Expressions.Is)
+        assert len(is_exprs) == 2
+        preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
+        assert len(preds) == 2
+
+        mutator.create_expression(
+            F.Expressions.Multiply,
+            param_num_op,
+            param_num_op,
+        )
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    mutator = Mutator(
+        mutation_map=mut_map,
+        algo=algo,
+        iteration=0,
+        terminal=True,
+    )
+    result = mutator.run()
+    print(result)
+    print(result.mutation_stage.is_identity)
+
+    # TODO next: check that params/exprs copied
+
+
+if __name__ == "__main__":
+    import logging
+
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    logger.setLevel(logging.DEBUG)
+
+    typer.run(test_mutator_basic_bootstrap)

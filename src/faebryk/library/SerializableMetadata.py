@@ -69,6 +69,6 @@ class SerializableMetadata(fabll.Node):
         return out
 
     def setup(self, key: str, value: str) -> Self:
-        self.key_.get().constrain_to_single(value=key)
-        self.value_.get().constrain_to_single(value=value)
+        self.key_.get().alias_to_single(value=key)
+        self.value_.get().alias_to_single(value=value)
         return self

@@ -36,7 +36,7 @@ class DifferentialPair(fabll.Node):
         ]
 
         for r in rs:
-            r.resistance.get().constrain_to_literal(
+            r.resistance.get().alias_to_literal(
                 g=self.tg.get_graph_view(),
                 value=self.impedance.get().force_extract_literal(),
             )
