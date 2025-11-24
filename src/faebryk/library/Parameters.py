@@ -244,9 +244,7 @@ class StringParameter(fabll.Node):
 
         self._is_parameter_operatable.get().constrain_to_literal(
             g=g,
-            value=Strings.bind_typegraph_from_instance(
-                instance=self.instance
-            ).create_instance(g, attributes=Strings.Attributes(value=value)),
+            value=Strings.setup_from_values(value, g=g, tg=self.tg),
         )
 
 
@@ -433,7 +431,9 @@ class NumericParameter(fabll.Node):
             lit_type=Numbers
         )
 
+
 # Binding context ----------------------------------------------------------------------
+
 
 class BoundParameterContext:
     def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
@@ -461,10 +461,14 @@ class BoundParameterContext:
         return NumericParameter.bind_typegraph(tg=self.tg)
 
     def create_string_parameter(self, value: str) -> "StringParameter":
-        return self.StringParameter.create_instance(g=self.g).constrain_to_single(value=value, g=self.g)
+        return self.StringParameter.create_instance(g=self.g).constrain_to_single(
+            value=value, g=self.g
+        )
 
     def create_boolean_parameter(self, value: bool) -> "BooleanParameter":
-        return self.BooleanParameter.create_instance(g=self.g).constrain_to_single(value=value, g=self.g)
+        return self.BooleanParameter.create_instance(g=self.g).constrain_to_single(
+            value=value, g=self.g
+        )
 
     def create_enum_parameter(self, enum: type[Enum]) -> "EnumParameter":
         return self.EnumParameter.create_instance(g=self.g).setup(enum=enum)
