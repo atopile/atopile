@@ -12,9 +12,8 @@ class has_kicad_footprint(fabll.Node):
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
-    def get_kicad_footprint(self) -> str | None:
-        literal = self.kicad_identifier_.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_value()
+    def get_kicad_footprint(self) -> str:
+        return self.kicad_identifier_.get().try_extract_constrained_literal().get_values()[0]
 
     def get_pin_names(self) -> dict[F.Pad, str]:
         pin_names = {}

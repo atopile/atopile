@@ -304,17 +304,22 @@ class PointerTuple(fabll.Node):
     def get_literals_as_list(self) -> list[fabll.LiteralT]:
         from faebryk.library import Literals
 
-        return [
-            Literals.Strings.bind_instance(instance=lit.instance).get_value()
-            for lit in self.literals.get().as_list()
-        ]
+        def _lit_value(lit_node: fabll.Node) -> fabll.LiteralT:
+            string_lit = Literals.Strings.bind_instance(instance=lit_node.instance)
+            values = string_lit.get_values()
+            if not values:
+                raise ValueError("String literal has no values")
+            return values[0]
+
+        return [_lit_value(lit) for lit in self.literals.get().as_list()]
 
     def append_literal(self, literal: fabll.LiteralT) -> None:
         from faebryk.library import Literals
 
-        lit = Literals.Strings.bind_typegraph(tg=self.tg).create_instance(
-            g=self.instance.g(),
-            attributes=Literals.LiteralsAttributes(value=literal),
+        lit = (
+            Literals.Strings.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.instance.g())
+            .setup_from_values(str(literal))
         )
         self.literals.get().append(lit)
 

@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Self
 
+from typing_extensions import deprecated
+
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -122,8 +124,12 @@ class Strings(fabll.Node):
         out.add_dependant(lit, before=True)
         return out
 
+    @deprecated("Use get_values() instead")
     def get_value(self) -> str:
-        return str(self.instance.node().get_dynamic_attrs().get("value", ""))
+        values = self.get_values()
+        if len(values) != 1:
+            raise ValueError(f"Expected 1 value, got {len(values)}")
+        return values[0]
 
 
 class Numbers(fabll.Node):
