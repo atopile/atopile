@@ -238,13 +238,21 @@ class StringParameter(fabll.Node):
             lit_type=Strings
         )
 
+    # TODO get rid of this and replace with constrain_to_literal
     def constrain_to_single(self, value: str, g: graph.GraphView | None = None) -> None:
+        return self.constrain_to_literal(value, g=g)
+
+    def constrain_to_literal(
+        self, *values: str, g: graph.GraphView | None = None
+    ) -> None:
         g = g or self.instance.g()
         from faebryk.library.Literals import Strings
 
         self._is_parameter_operatable.get().constrain_to_literal(
             g=g,
-            value=Strings.setup_from_values(value, g=g, tg=self.tg),
+            value=Strings.bind_typegraph(tg=self.tg)
+            .create_instance(g=g)
+            .setup_from_values(*values),
         )
 
 

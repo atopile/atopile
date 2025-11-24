@@ -83,19 +83,16 @@ class Strings(fabll.Node):
 
     values = F.Collections.PointerSet.MakeChild()
 
-    @classmethod
-    def setup_from_values(
-        cls, *values: str, tg: graph.TypeGraph, g: graph.GraphView
-    ) -> Self:
-        out = cls.bind_typegraph(tg=tg).create_instance(g=g)
-        StirngLitT = StringLiteralSingleton.bind_typegraph(tg=tg)
+    def setup_from_values(self, *values: str) -> Self:
+        StirngLitT = StringLiteralSingleton.bind_typegraph(tg=self.tg)
         for value in values:
-            out.values.get().append(
+            self.values.get().append(
                 StirngLitT.create_instance(
-                    g=g, attributes=StringLiteralSingletonAttributes(value=value)
+                    g=self.instance.g(),
+                    attributes=StringLiteralSingletonAttributes(value=value),
                 )
             )
-        return out
+        return self
 
     def get_values(self) -> list[str]:
         return [
@@ -436,7 +433,9 @@ def test_string_literal_instance():
     g = graph.GraphView.create()
     tg = graph.TypeGraph.create(g=g)
 
-    string_set = Strings.setup_from_values(tg=tg, g=g, *values)
+    string_set = (
+        Strings.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(*values)
+    )
 
     assert string_set.get_values() == values
 
