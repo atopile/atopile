@@ -1,9 +1,10 @@
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.test.fileformats import PCBFILE
 
 
 def test_has_kicad_footprint():
@@ -29,6 +30,7 @@ def test_has_kicad_footprint():
 
 def test_pcb_transformer_traits():
     from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+    from faebryk.libs.test.fileformats import PCBFILE
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -43,3 +45,15 @@ def test_pcb_transformer_traits():
     # assert transformer.tg is app.get_graph()
     assert transformer.app is app
     assert transformer.pcb is kpcb
+
+
+def test_trait_basic_operations():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    obj = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Test obj does not have trait
+    assert not obj.has_trait(F.has_footprint)
+    with pytest.raises(fabll.TraitNotFound):
+        obj.get_trait(F.has_footprint)
