@@ -2089,6 +2089,88 @@ def test_node_equality():
     assert len(node_set) == 2
 
 
+def test_chain_names():
+    import re
+
+    g, tg = _make_graph_and_typegraph()
+
+    class N(Node):
+        pass
+
+    root = N.bind_typegraph(tg).create_instance(g=g)
+    x = root
+    for i in range(10):
+        y = N.bind_typegraph(tg).create_instance(g=g)
+        # Add y as child of x with name "i{i}"
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=y.instance.node(),
+            child_identifier=f"i{i}",
+        )
+        x = y
+
+    assert re.search(
+        r"0x[0-9A-F]+\.i0\.i1\.i2\.i3\.i4\.i5\.i6\.i7\.i8\.i9", x.get_full_name()
+    )
+
+
+def test_chain_tree():
+    import re
+
+    g, tg = _make_graph_and_typegraph()
+
+    class N(Node):
+        pass
+
+    root = N.bind_typegraph(tg).create_instance(g=g)
+    x = root
+    for i in range(10):
+        y = N.bind_typegraph(tg).create_instance(g=g)
+        z = N.bind_typegraph(tg).create_instance(g=g)
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=y.instance.node(),
+            child_identifier=f"i{i}",
+        )
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=z.instance.node(),
+            child_identifier=f"j{i}",
+        )
+        x = y
+
+    assert re.search(
+        r"0x[0-9A-F]+\.i0\.i1\.i2\.i3\.i4\.i5\.i6\.i7\.i8\.i9", x.get_full_name()
+    )
+
+
+def test_chain_tree_with_root():
+    g, tg = _make_graph_and_typegraph()
+
+    class N(Node):
+        pass
+
+    root = N.bind_typegraph(tg).create_instance(g=g)
+    root.no_include_parents_in_full_name = True
+    x = root
+    for i in range(10):
+        y = N.bind_typegraph(tg).create_instance(g=g)
+        z = N.bind_typegraph(tg).create_instance(g=g)
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=y.instance.node(),
+            child_identifier=f"i{i}",
+        )
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=z.instance.node(),
+            child_identifier=f"j{i}",
+        )
+        x = y
+
+    assert x.get_full_name() == "i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
+
+
 if __name__ == "__main__":
     import typer
 
