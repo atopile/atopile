@@ -2171,6 +2171,65 @@ def test_chain_tree_with_root():
     assert x.get_full_name() == "i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
 
 
+def test_get_children_modules_simple():
+    g, tg = _make_graph_and_typegraph()
+
+    class M(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    class App(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+        m = M.MakeChild()
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
+    m = app.m.get()
+
+    mods = app.get_children(
+        direct_only=False, types=Node, required_trait=is_module
+    )
+    assert mods == {m}
+
+
+def test_get_children_modules_tree():
+    g, tg = _make_graph_and_typegraph()
+
+    class Capacitor(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    class CapacitorContainer(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+        cap1 = Capacitor.MakeChild()
+        cap2 = Capacitor.MakeChild()
+
+    class App(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+        container1 = CapacitorContainer.MakeChild()
+        container2 = CapacitorContainer.MakeChild()
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
+    container1 = app.container1.get()
+    container2 = app.container2.get()
+
+    cap1 = container1.cap1.get()
+    cap2 = container1.cap2.get()
+    cap3 = container2.cap1.get()
+    cap4 = container2.cap2.get()
+
+    mods = container1.get_children(
+        direct_only=False,
+        types=Capacitor,
+        required_trait=is_module,
+    )
+    assert mods == {cap1, cap2}
+
+    mods = app.get_children(
+        direct_only=False,
+        types=Capacitor,
+        required_trait=is_module,
+    )
+    assert mods == {cap1, cap2, cap3, cap4}
+
+
 if __name__ == "__main__":
     import typer
 
