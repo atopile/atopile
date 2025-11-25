@@ -8,7 +8,7 @@ import faebryk.core.node as fabll
 
 # import faebryk.enum_sets as enum_sets
 import faebryk.library._F as F
-from faebryk.libs.util import not_none, once
+from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
 
 if TYPE_CHECKING:
     import faebryk.library.Expressions as Expressions
@@ -20,30 +20,45 @@ if TYPE_CHECKING:
 class is_parameter_operatable(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    def try_extract_constrained_literal[T: "Literals.LiteralNodes"](
-        self, lit_type: type[T]
+    def try_get_constrained_literal[T: "fabll.NodeT" = "F.Literals.is_literal"](
+        self,
+        lit_type: type[T] | None = None,
+        pred_type: type[fabll.NodeT] | None = None,
     ) -> T | None:
         # 1. find all Is! expressions parameter is involved in
         # 2. for each of those check if they have a literal operand of the correct type
-        from faebryk.library.Expressions import Is as IsT
-        from faebryk.library.Expressions import is_predicate
+        from faebryk.library.Expressions import Is as Is
+        from faebryk.library.Expressions import IsSubset, is_predicate
+
+        if pred_type is None:
+            pred_type = Is
+
+        # TODO: this is quite a hack
+        if pred_type not in [Is, IsSubset]:
+            raise ValueError(f"Invalid predicate type: {pred_type}")
+
+        def _get_operand(expr: fabll.NodeT) -> fabll.NodeT:
+            if pred_type is Is:
+                return cast(fabll.NodeT, cast(Is, expr).operands.get())
+            if pred_type is IsSubset:
+                return cast(fabll.NodeT, cast(IsSubset, expr).superset.get())
+            assert False
+
+        Expr = pred_type.bind_typegraph(tg=self.tg)
 
         class E_Ctx:
-            lit: T | None = None
+            lit: F.Literals.is_literal | None = None
             node = self.as_operand()
-            Lit = lit_type.bind_typegraph(tg=self.tg)
-            LitT = lit_type
-
-        Is = IsT.bind_typegraph(tg=self.tg)
+            predT = pred_type
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             class Ctx:
-                lit: T | None = None
+                lit: F.Literals.is_literal | None = None
 
             # check if Is is constrained
-            expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
-            is_expr = IsT.bind_instance(instance=edge.g().bind(node=expr))
-            if not is_expr.has_trait(is_predicate):
+            expr_node = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
+            expr = e_ctx.predT.bind_instance(instance=edge.g().bind(node=expr_node))
+            if not expr.has_trait(is_predicate):
                 return
 
             # for each of those check if they have a literal operand
@@ -51,16 +66,12 @@ class is_parameter_operatable(fabll.Node):
                 can_be_operand = fabll.Node.bind_instance(
                     edge.g().bind(node=edge.edge().target())
                 )
-                if e_ctx.Lit.isinstance(
-                    instance=fabll.Traits(can_be_operand).get_obj_raw()
-                ):
-                    ctx.lit = e_ctx.LitT.bind_instance(
-                        fabll.Traits(can_be_operand).get_obj_raw().instance
-                    )
+                if lit := can_be_operand.try_get_sibling_trait(F.Literals.is_literal):
+                    ctx.lit = lit
 
             ctx = Ctx()
             fbrk.EdgeOperand.visit_operand_edges(
-                bound_node=cast(fabll.NodeT, is_expr.operands.get()).instance,
+                bound_node=cast(fabll.NodeT, _get_operand(expr)).instance,
                 ctx=ctx,
                 f=visit,
             )
@@ -69,15 +80,22 @@ class is_parameter_operatable(fabll.Node):
         e_ctx = E_Ctx()
         fbrk.EdgeOperand.visit_expression_edges_of_type(
             bound_node=e_ctx.node.instance,
-            expression_type=Is.get_or_create_type().node(),
+            expression_type=Expr.get_or_create_type().node(),
             ctx=e_ctx,
             f=visit,
         )
 
-        return e_ctx.lit
+        if e_ctx.lit is not None and lit_type is not None:
+            if not issubclass(lit_type, F.Literals.LiteralNodes):
+                raise ValueError(f"Invalid literal type: {lit_type}")
+            return fabll.Traits(e_ctx.lit).get_obj(lit_type)
 
-    def force_extract_literal[T: "Literals.LiteralNodes"](self, lit_type: type[T]) -> T:
-        lit = self.try_extract_constrained_literal(lit_type=lit_type)
+        return cast("T|None", e_ctx.lit)
+
+    def force_extract_literal[T: "fabll.NodeT" = "F.Literals.is_literal"](
+        self, lit_type: type[T] | None = None
+    ) -> T:
+        lit = self.try_get_constrained_literal(lit_type=lit_type)
         if lit is None:
             raise ParameterIsNotConstrainedToLiteral(parameter=self)
         return lit
@@ -98,36 +116,51 @@ class is_parameter_operatable(fabll.Node):
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
     ) -> str:
+        from faebryk.library.Expressions import is_expression
+
         if p := fabll.Traits(self).try_get_trait_of_obj(is_parameter):
             return p.compact_repr(context=context, use_name=use_name)
-        if e := fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable):
+        if e := fabll.Traits(self).try_get_trait_of_obj(is_expression):
             return e.compact_repr(context=context, use_name=use_name)
 
-        raise NotImplementedError()
+        assert False
 
     def get_depth(self) -> int:
-        # TODO
-        pass
+        if expr := self.is_expresssion():
+            return expr.get_depth()
+        return 0
 
-    def try_get_literal(self) -> "F.Literals.is_literal | None":
-        # TODO
-        pass
+    def try_get_aliased_literal(self) -> "F.Literals.is_literal | None":
+        return self.try_get_constrained_literal()
 
-    def try_get_literal_subset(self) -> "F.Literals.is_literal | None":
-        # TODO
-        pass
+    def try_get_subset_or_alias_literal(self) -> "F.Literals.is_literal | None":
+        from faebryk.library.Expressions import Is, IsSubset
+
+        is_lit = self.try_get_constrained_literal(pred_type=Is)
+        ss_lit = self.try_get_constrained_literal(pred_type=IsSubset)
+        lits = [lit for lit in [is_lit, ss_lit] if lit is not None]
+        if not lits:
+            return None
+        if len(lits) == 1:
+            return next(iter(lits))
+        if not not_none(ss_lit).is_subset_of(not_none(is_lit)):
+            raise KeyErrorAmbiguous(lits)
+        return is_lit
 
     def try_extract_literal(
         self, allow_subset: bool = False
     ) -> "F.Literals.is_literal | None":
-        # TODO
-        pass
+        if allow_subset:
+            return self.try_get_subset_or_alias_literal()
+        return self.try_get_aliased_literal()
 
     def as_parameter(self) -> "is_parameter":
         return fabll.Traits(self).get_trait_of_obj(is_parameter)
 
     def as_expression(self) -> "Expressions.is_expression":
-        return fabll.Traits(self).get_trait_of_obj(Expressions.is_expression)
+        from faebryk.library.Expressions import is_expression
+
+        return fabll.Traits(self).get_trait_of_obj(is_expression)
 
     def as_operand(self) -> "can_be_operand":
         return fabll.Traits(self).get_trait_of_obj(can_be_operand)
@@ -136,7 +169,9 @@ class is_parameter_operatable(fabll.Node):
         return fabll.Traits(self).try_get_trait_of_obj(is_parameter)
 
     def is_expresssion(self) -> "Expressions.is_expression | None":
-        return fabll.Traits(self).try_get_trait_of_obj(Expressions.is_expression)
+        from faebryk.library.Expressions import is_expression
+
+        return fabll.Traits(self).try_get_trait_of_obj(is_expression)
 
     def get_operations[T: "fabll.NodeT"](
         self,
@@ -144,15 +179,67 @@ class is_parameter_operatable(fabll.Node):
         predicates_only: bool = False,
         recursive: bool = False,
     ) -> set[T]:
-        # TODO
-        pass
+        from faebryk.library.Expressions import is_predicate
+
+        class E_Ctx:
+            _self = self
+            operations: set[T] = set()
+            t = types
+            predicates_only_: bool = predicates_only
+
+        def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
+            expr = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
+            is_expr = fabll.Node.bind_instance(instance=edge.g().bind(node=expr))
+            if e_ctx.predicates_only_ and not is_expr.has_trait(is_predicate):
+                return
+
+            e_ctx.operations.add(is_expr.cast(e_ctx.t))
+
+        e_ctx = E_Ctx()
+        if types is fabll.Node:
+            fbrk.EdgeOperand.visit_expression_edges(
+                bound_node=e_ctx._self.instance,
+                ctx=e_ctx,
+                f=visit,
+            )
+        else:
+            fbrk.EdgeOperand.visit_expression_edges_of_type(
+                bound_node=e_ctx._self.instance,
+                expression_type=types.bind_typegraph(self.tg)
+                .get_or_create_type()
+                .node(),
+                ctx=e_ctx,
+                f=visit,
+            )
+
+        out = e_ctx.operations
+        if recursive:
+            for op in out:
+                op_po = op.get_trait(is_parameter_operatable)
+                out.update(
+                    op_po.get_operations(
+                        types=types,
+                        predicates_only=predicates_only,
+                        recursive=recursive,
+                    )
+                )
+
+        return out
 
     def get_obj(self) -> "fabll.Node":
         return fabll.Traits(self).get_obj_raw()
 
     def has_implicit_predicates_recursive(self) -> bool:
-        # TODO
-        pass
+        from faebryk.library.Expressions import has_implicit_constraints
+
+        if self.try_get_sibling_trait(has_implicit_constraints):
+            return True
+        if expr := self.is_expresssion():
+            return any(
+                op.has_implicit_predicates_recursive()
+                for op in expr.get_operand_operatables()
+            )
+        return False
 
 
 class is_parameter(fabll.Node):
@@ -162,11 +249,11 @@ class is_parameter(fabll.Node):
         self, context: "ReprContext | None" = None, use_name: bool = False
     ) -> str:
         # TODO
-        raise NotImplementedError()
+        pass
 
     def domain_set(self) -> "F.Literals.is_literal":
         # TODO
-        raise NotImplementedError()
+        pass
 
     def get_likely_constrained(self) -> bool:
         # TODO
@@ -227,7 +314,7 @@ class StringParameter(fabll.Node):
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         from faebryk.library.Literals import Strings
 
-        return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
+        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
             lit_type=Strings
         )
 
@@ -264,7 +351,7 @@ class BooleanParameter(fabll.Node):
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         from faebryk.library.Literals import Booleans
 
-        return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
+        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
             lit_type=Booleans
         )
 
@@ -308,7 +395,7 @@ class EnumParameter(fabll.Node):
     def try_extract_aliased_literal(self) -> "Literals.Enums | None":
         from faebryk.library.Literals import Enums
 
-        return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
+        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
             lit_type=Enums
         )
 
@@ -422,7 +509,7 @@ class NumericParameter(fabll.Node):
     def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 
-        return self.get_trait(is_parameter_operatable).try_extract_constrained_literal(
+        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
             lit_type=Numbers
         )
 
@@ -494,3 +581,44 @@ class BoundParameterContext:
             tolerance_guess=tolerance_guess,
             likely_constrained=likely_constrained,
         )
+
+
+# Tests --------------------------------------------------------------------------------
+
+
+def test_try_get():
+    from faebryk.library.Expressions import IsSubset
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    p1 = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p1.alias_to_literal("a", "b")
+    p1_po = p1.get_trait(is_parameter_operatable)
+
+    assert not_none(p1.try_extract_constrained_literal()).get_values() == ["a", "b"]
+
+    ss_lit = (
+        F.Literals.Strings.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_values("a", "b", "c")
+    )
+    IsSubset.bind_typegraph(tg).create_instance(g=g).setup(
+        subset=p1.get_trait(can_be_operand),
+        superset=ss_lit.get_trait(can_be_operand),
+        assert_=True,
+    )
+
+    ss_lit_get = p1_po.try_get_constrained_literal(pred_type=IsSubset)
+    assert ss_lit_get is not None
+    assert fabll.Traits(ss_lit_get).get_obj(F.Literals.Strings).get_values() == [
+        "a",
+        "b",
+        "c",
+    ]
+
+    ss_is_lit = p1_po.try_get_subset_or_alias_literal()
+    assert ss_is_lit is not None
+    assert fabll.Traits(ss_is_lit).get_obj(F.Literals.Strings).get_values() == [
+        "a",
+        "b",
+    ]

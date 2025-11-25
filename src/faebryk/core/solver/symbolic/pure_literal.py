@@ -21,15 +21,18 @@ class _Multi:
     f: Callable[..., Any]
     init: F.Literals.LiteralValues | None = None
 
-    def run(self, mutator: Mutator, *args: Any) -> Any:
+    def run(self, mutator: Mutator, *args: F.Literals.is_literal) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_lit(mutator.tg, self.init)
+            init_lit = F.Literals.make_lit(mutator.tg, self.init).get_trait(
+                F.Literals.is_literal
+            )
             args = (init_lit, init_lit, *args)
         return functools.reduce(self.f, args)
 
 
 # TODO consider making this a trait instead
 
+# FIXME: the function take a bad mix of literalnodes and is_literal
 _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
     F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),

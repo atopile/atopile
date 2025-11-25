@@ -237,6 +237,24 @@ class is_expression(fabll.Node):
         # TODO
         raise NotImplementedError
 
+    def get_depth(self) -> int:
+        """
+        Returns depth of longest expression tree from this expression.
+        ```
+        ((A + B) + (C + D)) * 5
+            ^    ^    ^     ^
+            0    1    0     2
+
+        a = (X + (Y + Z))
+        (a + 1) + a
+         ^ ^    ^ ^
+         1 2    3 1
+        ```
+        """
+        return 1 + max(
+            [op.get_depth() for op in self.get_operands_with_trait(is_expression)] + [0]
+        )
+
 
 # TODO
 class has_implicit_constraints(fabll.Node):
