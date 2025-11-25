@@ -13,7 +13,10 @@ class has_kicad_footprint(fabll.Node):
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
     def get_kicad_footprint(self) -> str:
-        return self.kicad_identifier_.get().try_extract_constrained_literal().get_values()[0]
+        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+
+    def get_kicad_footprint_name(self) -> str:
+        return self.get_kicad_footprint().split(":")[1]
 
     def get_pin_names(self) -> dict[F.Pad, str]:
         pin_names = {}
