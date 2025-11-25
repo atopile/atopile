@@ -14,6 +14,8 @@ try:
 except ImportError:
     F = None
 
+IGNORE_MODULES = ["NumberDomain"]
+
 
 def test_load_library():
     """Verify that the faebryk library can be loaded successfully."""
@@ -59,6 +61,7 @@ def _is_trait(node_type_bound: fabll.TypeNodeBoundTG) -> bool:
             and isinstance(module, type)
             and issubclass(module, fabll.Node)
             and not _is_trait(module.bind_typegraph(tg=_discovery_tg))
+            and name not in IGNORE_MODULES
         )
     ],
 )

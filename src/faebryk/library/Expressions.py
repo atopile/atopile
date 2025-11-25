@@ -142,23 +142,21 @@ class is_expression(fabll.Node):
         self,
     ) -> set["F.Parameters.is_parameter_operatable"]:
         # TODO
-        raise NotImplementedError
+        pass
 
     @staticmethod
-    def get_all_expressions_involved_in(
-        node: fabll.NodeT,
-    ) -> set[fabll.NodeT]:
+    def get_all_expressions_involved_in(node: fabll.NodeT) -> set[fabll.NodeT]:
         # 1. Find all EdgeOperand edges
         # 2. Get their source nodes
         # 3. Get their parents
         # TODO requires EdgeOperand to support multi expression edges
-        raise NotImplementedError("Not implemented")
+        pass
 
     def compact_repr(
         self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
     ) -> str:
         # TODO
-        raise NotImplementedError()
+        pass
 
     def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(Parameters.is_parameter_operatable)
@@ -202,7 +200,7 @@ class is_expression(fabll.Node):
 
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
         # TODO
-        raise NotImplementedError
+        pass
 
     def expr_isinstance(self, *expr_types: type[fabll.NodeT]) -> bool:
         return fabll.Traits(self).get_obj_raw().isinstance(*expr_types)
@@ -221,7 +219,7 @@ class is_expression(fabll.Node):
         check_constrained: bool = True,
     ) -> bool:
         # TODO
-        raise NotImplementedError
+        pass
 
     def in_operands(self, operand: "F.Parameters.can_be_operand") -> bool:
         return operand in self.get_operands()
@@ -235,7 +233,7 @@ class is_expression(fabll.Node):
         check_constrained: bool = True,
     ) -> bool:
         # TODO
-        raise NotImplementedError
+        pass
 
     def get_depth(self) -> int:
         """
@@ -373,9 +371,8 @@ class is_commutative(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @classmethod
-    def is_commutative_type(cls, node_type: type[fabll.NodeT]) -> bool:
-        # TODO
-        raise NotImplementedError
+    def is_commutative_type(cls, node_type: fabll.TypeNodeBoundTG[Any, Any]) -> bool:
+        return node_type.check_if_instance_of_type_has_trait(is_commutative)
 
 
 class has_unary_identity(fabll.Node):

@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
+from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
@@ -1275,6 +1275,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return self.instance.node().is_same(other=other_node)
 
     def __eq__(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
+        """
+        DO NOT USE THIS! Use is_same instead!
+        ONLY HERE FOR set AND dict behavior!
+        """
         return self.is_same(other)
 
     def __hash__(self) -> int:
@@ -1804,7 +1808,7 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        _is_trait = ImplementsTrait.MakeChild().put_on_type()
+        _is_trait = Traits.MakeEdge((ImplementsTrait.MakeChild())).put_on_type()
 
     class ExampleNode(Node):
         example_trait = ExampleTrait.MakeChild()
@@ -1990,7 +1994,7 @@ def test_string_param():
     import faebryk.library._F as F
 
     string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    string_p.alias_to_single(value="IG constrained")
+    string_p.constrain_to_single(value="IG constrained")
     assert string_p.force_extract_literal().get_value() == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
@@ -2008,7 +2012,7 @@ def test_boolean_param():
     import faebryk.library._F as F
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.alias_to_single(value=True)
+    boolean_p.constrain_to_single(value=True)
     assert boolean_p.force_extract_literal().get_value()
 
     class ExampleBooleanParameter(fabll.Node):

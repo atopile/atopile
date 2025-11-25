@@ -87,3 +87,7 @@ another challenge coming up is getting the expr_factory setup from just an insta
 Be careful with modifying G_in on first stage, modifying source graph
 
 - e.g predicate terminatation. safest is to copy on first stage
+
+BIG TODO: check everywhere for `==` in solver
+also `in`
+=> had a first pass

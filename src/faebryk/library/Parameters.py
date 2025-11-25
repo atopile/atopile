@@ -86,8 +86,6 @@ class is_parameter_operatable(fabll.Node):
         )
 
         if e_ctx.lit is not None and lit_type is not None:
-            if not issubclass(lit_type, F.Literals.LiteralNodes):
-                raise ValueError(f"Invalid literal type: {lit_type}")
             return fabll.Traits(e_ctx.lit).get_obj(lit_type)
 
         return cast("T|None", e_ctx.lit)
@@ -473,7 +471,7 @@ class NumericParameter(fabll.Node):
         likely_constrained: bool = False,
     ) -> Self:
         # TODO
-        pass
+        return self
 
     @classmethod
     def MakeChild(

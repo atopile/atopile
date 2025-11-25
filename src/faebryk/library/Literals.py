@@ -40,7 +40,11 @@ class is_literal(fabll.Node):
         # TODO
         pass
 
-    def equals(self, other) -> bool:
+    def equals(self, other: "is_literal") -> bool:
+        # TODO
+        pass
+
+    def equals_singleton(self, singleton: "LiteralValues") -> bool:
         # TODO
         pass
 
@@ -60,6 +64,15 @@ class is_literal(fabll.Node):
     def any(self) -> "LiteralValues":
         # TODO
         pass
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, fabll.Node):
+            raise TypeError("DO NOT USE `==` on literals!")
+        # No operator overloading!
+        return super().__eq__(other)
 
 
 # --------------------------------------------------------------------------------------
@@ -83,7 +96,7 @@ class StringLiteralSingleton(fabll.Node[StringLiteralSingletonAttributes]):
         return self.attributes().value
 
     @classmethod
-    def MakeChild(cls, value: str) -> fabll._ChildField:
+    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(
             cls, attributes=StringLiteralSingletonAttributes(value=value)
         )
@@ -206,14 +219,14 @@ class Numbers(fabll.Node):
         return float(self.instance.node().get_dynamic_attrs().get("value", 0))
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField:
+    def MakeChild(cls, value: float) -> fabll._ChildField[Self]:
         assert isinstance(value, float), "Value of number literal must be a float"
         return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: float
-    ) -> fabll._ChildField:
+    ) -> fabll._ChildField[Self]:
         assert isinstance(value, float) or isinstance(value, int), (
             "Value of number literal must be a float or int"
         )
@@ -293,7 +306,7 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     def get_single(self) -> bool: ...
 
     @classmethod
-    def MakeChild(cls, value: bool) -> fabll._ChildField:
+    def MakeChild(cls, value: bool) -> fabll._ChildField[Self]:
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
         return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
 
@@ -328,7 +341,7 @@ class Enums(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll._ChildField:
+    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll._ChildField[Self]:
         # TODO: Make this work
         assert isinstance(value, Enum), "Value of enum literal must be an enum"
         return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
@@ -369,7 +382,12 @@ def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
 # TODO
 def MakeChild_Literal(
     value: LiteralValues, enum: type[Enum] | None = None
-) -> fabll._ChildField[LiteralNodes]:
+) -> (
+    fabll._ChildField[Strings]
+    | fabll._ChildField[Booleans]
+    | fabll._ChildField[Numbers]
+    | fabll._ChildField[Enums]
+):
     match value:
         case bool():
             return Booleans.MakeChild(value=value)

@@ -530,7 +530,9 @@ def predicate_terminated_is_true(mutator: Mutator):
         if mutator.is_predicate_terminated(p_c):
             continue
         p_e = p.get_trait(F.Expressions.is_expression)
-        if mutator.make_lit(True) not in p_e.get_operand_literals():
+        if not any(
+            lit.equals_singleton(True) for lit in p_e.get_operand_literals().values()
+        ):
             continue
         if not (op_operatables := p_e.get_operand_operatables()):
             continue
@@ -706,15 +708,14 @@ def isolate_lone_params(mutator: Mutator):
                 from_expr=expr,
             )
 
-            if (
-                new_op_with_param == op_with_param
-                and new_op_without_param == op_without_param
-            ):
+            if new_op_with_param.is_same(
+                op_with_param
+            ) and new_op_without_param.is_same(op_without_param):
                 break
 
             op_with_param, op_without_param = new_op_with_param, new_op_without_param
 
-            if op_with_param == param:
+            if op_with_param.is_same(param.as_operand()):
                 return op_with_param, op_without_param
 
             # TODO: check for no further progress
@@ -728,7 +729,9 @@ def isolate_lone_params(mutator: Mutator):
 
         # TODO why? are we trying to do only arithmetic?
         # Then why not do isinstance(expr, Arithmetic)?
-        if mutator.make_lit(True) in expr_e.get_operand_literals():
+        if any(
+            lit.equals_singleton(True) for lit in expr_e.get_operand_literals().values()
+        ):
             continue
 
         unaliased_params = {

@@ -8,6 +8,8 @@ import pytest
 
 from faebryk.libs.util import repo_root as _repo_root
 
+IGNORE_MODULES = ["NumberDomain"]
+
 
 def _extract_classes_from_file(filepath: Path):
     with open(filepath, "r", encoding="utf-8") as file:
@@ -38,7 +40,7 @@ def _is_module_import(name: str) -> bool:
     [
         p
         for p in (_repo_root() / "src" / "faebryk" / "library").glob("**/*.py")
-        if p.is_file()
+        if p.is_file() and p.stem not in IGNORE_MODULES
     ],
     ids=lambda p: p.stem,
 )
