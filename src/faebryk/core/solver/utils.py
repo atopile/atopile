@@ -535,7 +535,7 @@ class MutatorUtils:
             lit = self.try_extract_literal(op_po)
             if lit is None:
                 continue
-            if lit != self.mutator.make_lit(True):
+            if not lit.equals_singleton(True):
                 continue
             self.mutator.predicate_terminate(op.get_trait(F.Expressions.is_predicate))
 
@@ -649,7 +649,9 @@ class MutatorUtils:
             # handled by lit fold completely
             if self.is_pure_literal_expression(collect_op.as_operand()):
                 continue
-            if not F.Expressions.is_commutative.is_commutative_type(collect_type):
+            if not F.Expressions.is_commutative.is_commutative_type(
+                collect_type.bind_typegraph(self.mutator.tg)
+            ):
                 if collect_type is not F.Expressions.Power:
                     raise NotImplementedError(
                         f"Non-commutative {collect_type.__name__} not implemented"
@@ -703,12 +705,11 @@ class MutatorUtils:
 
     # TODO better name
     @staticmethod
-    def fold_op(
+    def fold_op[T: F.Literals.LiteralNodes](
         operands: Sequence[F.Literals.is_literal],
-        operator: Callable[
-            [F.Literals.is_literal, F.Literals.is_literal], F.Literals.is_literal
-        ],
-        identity: F.Literals.is_literal,
+        operator: Callable[[T, T], T],
+        lit_t: type[T],
+        identity: F.Literals.LiteralValues,
     ) -> list[F.Literals.is_literal]:
         """
         Return 'sum' of all literals in the iterable, or empty list if sum is identity.
@@ -717,15 +718,18 @@ class MutatorUtils:
             return []
 
         literal_it = iter(operands)
-        const_sum = next(literal_it)
+        const_sum = fabll.Traits(next(literal_it)).get_obj(lit_t)
         for c in literal_it:
-            const_sum = operator(const_sum, c)
+            c_lit = fabll.Traits(c).get_obj(lit_t)
+            const_sum = operator(const_sum, c_lit)
+
+        const_sum_lit = const_sum.get_trait(F.Literals.is_literal)
 
         # TODO make work with all the types
-        if const_sum == identity:
+        if const_sum_lit.equals_singleton(identity):
             return []
 
-        return [const_sum]
+        return [const_sum_lit]
 
     @staticmethod
     def are_aliased(

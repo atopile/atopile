@@ -1452,7 +1452,7 @@ class Mutator:
                 operands,
             )
             if res is not None:
-                if assert_ and not res.op_is_equal(self.make_lit(True)):
+                if assert_ and not res.equals_singleton(True):
                     raise ContradictionByLiteral(
                         "Literal is not true",
                         involved=from_ops,
