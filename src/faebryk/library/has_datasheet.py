@@ -13,7 +13,7 @@ class has_datasheet(fabll.Node):
     datasheet_ = F.Parameters.StringParameter.MakeChild()
 
     def get_datasheet(self) -> str:
-        return str(self.datasheet_.get().try_extract_constrained_literal())
+        return self.datasheet_.get().force_extract_literal().get_values()[0]
 
     @classmethod
     def MakeChild(cls, datasheet: str) -> fabll._ChildField:
