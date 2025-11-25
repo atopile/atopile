@@ -223,7 +223,7 @@ def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     check_design(
-        app.g(),
+        app.get_graph(),
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -290,7 +290,7 @@ def post_solve_checks(
 ) -> None:
     logger.info("Running checks")
     check_design(
-        app.g(),
+        app.get_graph(),
         stage=F.implements_design_check.CheckStage.POST_SOLVE,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -435,10 +435,10 @@ def update_pcb(
 def post_pcb_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    pcb.add(F.PCB.requires_drc_check())
+    _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
         check_design(
-            pcb.g(),
+            pcb.get_graph(),
             stage=F.implements_design_check.CheckStage.POST_PCB,
             exclude=tuple(set(config.build.exclude_checks)),
         )
