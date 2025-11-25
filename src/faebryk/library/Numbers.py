@@ -1,14 +1,29 @@
+import logging
+import math
+from collections.abc import Generator
 from dataclasses import dataclass
-
-# from re import I
 from typing import ClassVar
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph import graph
+
+logger = logging.getLogger(__name__)
+
+REL_DIGITS = 7  # 99.99999% precision
+ABS_DIGITS = 15  # femto
+EPSILON_REL = 10 ** -(REL_DIGITS - 1)
+EPSILON_ABS = 10**-ABS_DIGITS
+
+
+def is_int(value: float) -> bool:
+    return value == int(value)
+
+
+def ge(a: float, b: float) -> bool:
+    return a >= b
 
 
 @dataclass(frozen=True)
@@ -68,19 +83,35 @@ class NumericInterval(fabll.Node):
 
     @classmethod
     def MakeChild(cls, min: float, max: float) -> fabll._ChildField:
+        if not NumericInterval.validate_bounds(min, max):
+            raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
         min_numeric = Numeric.MakeChild(min)
         max_numeric = Numeric.MakeChild(max)
         out.add_dependant(min_numeric, identifier=cls._min_identifier)
         out.add_dependant(max_numeric, identifier=cls._max_identifier)
-        fabll.MakeEdge(lhs=[out], rhs=[min_numeric], edge=EdgeComposition)
+        out.add_dependant(
+            fabll.MakeEdge(
+                lhs=[out],
+                rhs=[min_numeric],
+                edge=EdgeComposition.build(child_identifier=cls._min_identifier),
+            ),
+            identifier=cls._min_identifier,
+        )
+        out.add_dependant(
+            fabll.MakeEdge(
+                lhs=[out],
+                rhs=[max_numeric],
+                edge=EdgeComposition.build(child_identifier=cls._max_identifier),
+            ),
+            identifier=cls._max_identifier,
+        )
         return out
 
     def get_min(self) -> Numeric:
         numeric_instance = EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._min_identifier
         )
-        print("numeric_instance:", numeric_instance)
         assert numeric_instance is not None
         return Numeric.bind_instance(numeric_instance)
 
@@ -91,36 +122,502 @@ class NumericInterval(fabll.Node):
         assert numeric_instance is not None
         return Numeric.bind_instance(numeric_instance)
 
-    def create(self, g: graph.GraphView) -> "NumericInterval":
-        return NumericInterval.bind_typegraph(tg=self.tg).create_instance(g=g)
+    def get_min_value(self) -> float:
+        return self.get_min().get_value()
 
-    # def setup(self, min: float, max: float) -> "NumericInterval":
-    #     # Validate that min is a number. Raise TypeError if not.
-    #     if not isinstance(min, (int, float)):
-    #         raise TypeError(
-    #             f"'min' must be a number (int or float), got {type(min).__name__}"
-    #         )
-    #     if not isinstance(max, (int, float)):
-    #         raise TypeError(
-    #             f"'max' must be a number (int or float), got {type(max).__name__}"
-    #         )
-    #     if min > max:
-    #         raise ValueError(
-    #             f"'min' must be less than or equal to 'max', got {min} > {max}"
-    #         )
+    def get_max_value(self) -> float:
+        return self.get_max().get_value()
 
-    #     #  Add numeric literals to the node min and max fields
-    #     g = self.instance.g()
-    #     _ = EdgeComposition.add_child(
-    #         bound_node=self.instance,
-    #         child=Numeric.init(g, min).instance.node,
-    #         child_identifier=self._min_identifier,
-    #     )
-    #     _ = EdgeComposition.add_child(
-    #         bound_node=self.instance,
-    #         child=Numeric.init(max).instance.node,
-    #         child_identifier=self._max_identifier,
-    #     )
+    @classmethod
+    def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
+        return NumericInterval.bind_typegraph(tg=tg).create_instance(g=g)
+
+    @classmethod
+    def validate_bounds(cls, min: float, max: float) -> bool:
+        if not isinstance(min, (int, float)):
+            return False
+        if not isinstance(max, (int, float)):
+            return False
+        if min > max:
+            return False
+        return True
+
+    def setup(
+        self, g: graph.GraphView, tg: TypeGraph, min: float, max: float
+    ) -> "NumericInterval":
+        if not NumericInterval.validate_bounds(min, max):
+            raise ValueError(f"Invalid interval: {min} > {max}")
+
+        #  Add numeric literals to the node min and max fields
+        min_numeric = Numeric.create_instance(g=g, tg=tg, value=min)
+        max_numeric = Numeric.create_instance(g=g, tg=tg, value=max)
+        _ = EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=min_numeric.instance.node(),
+            child_identifier=self._min_identifier,
+        )
+        _ = EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=max_numeric.instance.node(),
+            child_identifier=self._max_identifier,
+        )
+        return self
+
+    def is_empty(self) -> bool:
+        return False
+
+    def is_unbounded(self) -> bool:
+        return self.get_min_value() == -math.inf and self.get_max_value() == math.inf
+
+    def is_finite(self) -> bool:
+        return self.get_min_value() != -math.inf and self.get_max_value() != math.inf
+
+    def is_single_element(self) -> bool:
+        return self.get_min_value() == self.get_max_value()
+
+    def is_integer(self) -> bool:
+        return self.is_single_element() and is_int(self.get_min().get_value())
+
+    def as_center_rel(self) -> tuple[float, float]:
+        if self.get_min_value() == self.get_max_value():
+            return self.get_min_value(), 0.0
+        if not self.is_finite():
+            return self.get_min_value(), math.inf
+
+        center = (self.get_min_value() + self.get_max_value()) / 2
+        if center == 0:
+            rel = math.inf
+        else:
+            rel = (self.get_max_value() - self.get_min_value()) / 2 / center
+        rel = abs(rel)
+        return center, rel  # type: ignore
+
+    def is_subset_of(self, other: "NumericInterval") -> bool:
+        return ge(self.get_min_value(), other.get_min_value()) and ge(
+            other.get_max_value(), self.get_max_value()
+        )
+
+    def op_add(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericInterval":
+        """
+        Arithmetically adds two intervals.
+        """
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup(
+            g,
+            tg,
+            self.get_min_value() + other.get_min_value(),
+            self.get_max_value() + other.get_max_value(),
+        )
+        return numeric_interval
+
+    def op_negate(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
+        """
+        Arithmetically negates a interval.
+        """
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup(
+            g,
+            tg,
+            -self.get_max_value(),
+            -self.get_min_value(),
+        )
+        return numeric_interval
+
+    def op_subtract(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericInterval":
+        """
+        Arithmetically subtracts a interval from another interval.
+        """
+        return self.op_add(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
+
+    def op_multiply(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericInterval":
+        """
+        Arithmetically multiplies two intervals.
+        """
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+
+        self_min = self.get_min_value()
+        self_max = self.get_max_value()
+        other_min = other.get_min_value()
+        other_max = other.get_max_value()
+
+        def guarded_mul(a: float, b: float) -> list:
+            """
+            0 * inf -> 0
+            0 * -inf -> 0
+            """
+            if 0.0 in [a, b]:
+                return [0.0]  # type: ignore
+            prod = a * b
+            assert not math.isnan(prod)
+            return [prod]
+
+        values = [
+            res
+            for a, b in [
+                (self_min, other_min),
+                (self_min, other_max),
+                (self_max, other_min),
+                (self_max, other_max),
+            ]
+            for res in guarded_mul(a, b)
+        ]
+        _min = min(values)
+        _max = max(values)
+
+        numeric_interval.setup(
+            g,
+            tg,
+            _min,
+            _max,
+        )
+        return numeric_interval
+
+    def op_invert(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        """
+        Arithmetically inverts a interval (1/x).
+        """
+        _min = self.get_min_value()
+        _max = self.get_max_value()
+
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+
+        # Case 1
+        if _min == 0 == _max:
+            return numeric_set
+        # Case 2
+        if _min < 0 < _max:
+            return numeric_set.setup_from_values(
+                g=g, tg=tg, values=[(1 / _min, math.inf), (-math.inf, 1 / _max)]
+            )
+        # Case 3
+        elif _min < 0 == _max:
+            return numeric_set.setup_from_values(
+                g=g, tg=tg, values=[(1 / _min, math.inf)]
+            )
+        # Case 4
+        elif _min == 0 < _max:
+            return numeric_set.setup_from_values(
+                g=g, tg=tg, values=[(1 / _max, math.inf)]
+            )
+        # Case 5
+        else:
+            return numeric_set.setup_from_values(
+                g=g, tg=tg, values=[(1 / _max, 1 / _min)]
+            )
+
+    def op_pow(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericSet":
+        base = self
+        exp = other
+        base_min = self.get_min_value()
+        base_max = self.get_max_value()
+        exp_min = other.get_min_value()
+        exp_max = other.get_max_value()
+
+        if exp_max < 0:
+            return base.op_pow(g=g, tg=tg, other=exp.op_negate(g=g, tg=tg)).op_invert(
+                g=g, tg=tg
+            )
+        if exp_min < 0:
+            raise NotImplementedError("crossing zero in exp not implemented yet")
+        if base_min < 0 and not other.is_integer():
+            raise NotImplementedError(
+                "cannot raise negative base to fractional exponent (complex result)"
+            )
+
+        def _pow(x, y):
+            try:
+                return x**y
+            except OverflowError:
+                return math.inf if x > 0 else -math.inf
+
+        a, b = base_min, base_max
+        c, d = exp_min, exp_max
+
+        # see first two guards above
+        assert c >= 0
+
+        values = [
+            _pow(a, c),
+            _pow(a, d),
+            _pow(b, c),
+            _pow(b, d),
+        ]
+
+        if a < 0 < b:
+            # might be 0 exp, so just in case applying exponent
+            values.extend((0.0**c, 0.0**d))
+
+            # d odd
+            if d % 2 == 1:
+                # c < k < d
+                if (k := d - 1) > c:
+                    values.append(_pow(a, k))
+
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set.setup_from_values(g=g, tg=tg, values=[(min(values), max(values))])
+        return numeric_set
+
+    def op_div_interval(
+        self: "NumericInterval",
+        g: graph.GraphView,
+        tg: TypeGraph,
+        other: "NumericInterval",
+    ) -> "NumericSet":
+        """
+        Arithmetically divides a interval by another interval.
+        """
+
+        other_intervals = other.op_invert(g=g, tg=tg).get_intervals()
+        products = []
+        for other_interval in other_intervals:
+            products.append(self.op_multiply(g=g, tg=tg, other=other_interval))
+
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set.setup_from_intervals(g=g, tg=tg, intervals=products)
+
+        return numeric_set
+
+    def op_intersect_interval(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericSet":
+        """
+        Set intersects two intervals.
+        """
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        min_ = max(self.get_min_value(), other.get_min_value())
+        max_ = min(self.get_max_value(), other.get_max_value())
+        if min_ <= max_:
+            return numeric_set.setup_from_values(g=g, tg=tg, values=[(min_, max_)])
+        if min_ == max_:
+            return numeric_set.setup_from_values(g=g, tg=tg, values=[(min_, min_)])
+        return numeric_set
+
+    def op_difference_interval(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericSet":
+        """
+        Set difference of two intervals.
+        """
+
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+
+        # no overlap
+        if (
+            self.get_max_value() < other.get_min_value()
+            or self.get_min_value() > other.get_max_value()
+        ):
+            return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=[self])
+        # fully covered
+        if (
+            other.get_min_value() <= self.get_min_value()
+            and other.get_max_value() >= self.get_max_value()
+        ):
+            return numeric_set
+        # inner overlap
+        if (
+            self.get_min_value() < other.get_min_value()
+            and self.get_max_value() > other.get_max_value()
+        ):
+            return numeric_set.setup_from_values(
+                g=g,
+                tg=tg,
+                values=[
+                    (self.get_min_value(), other.get_min_value()),
+                    (other.get_max_value(), self.get_max_value()),
+                ],
+            )
+        # right overlap
+        if self.get_min_value() < other.get_min_value():
+            return numeric_set.setup_from_values(
+                g=g,
+                tg=tg,
+                values=[(self.get_min_value(), other.get_min_value())],
+            )
+        # left overlap
+        return numeric_set.setup_from_values(
+            g=g,
+            tg=tg,
+            values=[(other.get_max_value(), self.get_max_value())],
+        )
+
+    def op_round(
+        self, g: graph.GraphView, tg: TypeGraph, ndigits: int = 0
+    ) -> "NumericInterval":
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup(
+            g=g,
+            tg=tg,
+            min=round(self.get_min_value(), ndigits),
+            max=round(self.get_max_value(), ndigits),
+        )
+        return numeric_interval
+
+    def op_abs(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        if self.get_min_value() < 0 < self.get_max_value():
+            numeric_interval.setup(
+                g=g,
+                tg=tg,
+                min=0,
+                max=self.get_max_value(),
+            )
+            return numeric_interval
+        if self.get_min_value() < 0 and self.get_max_value() < 0:
+            numeric_interval.setup(
+                g=g,
+                tg=tg,
+                min=-self.get_max_value(),
+                max=-self.get_min_value(),
+            )
+            return numeric_interval
+        if self.get_min_value() < 0 and self.get_max_value() == 0:
+            numeric_interval.setup(
+                g=g,
+                tg=tg,
+                min=0,
+                max=-self.get_min_value(),
+            )
+            return numeric_interval
+        if self.get_min_value() == 0 and self.get_max_value() < 0:
+            numeric_interval.setup(
+                g=g,
+                tg=tg,
+                min=self.get_max_value(),
+                max=0,
+            )
+            return numeric_interval
+
+        assert self.get_min_value() >= 0 and self.get_max_value() >= 0
+        return self
+
+    def op_log(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
+        if self.get_min_value() <= 0:
+            raise ValueError(f"invalid log of {self}")
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        numeric_interval.setup(
+            g=g,
+            tg=tg,
+            min=math.log(self.get_min_value()),
+            max=math.log(self.get_max_value()),
+        )
+        return numeric_interval
+
+    @classmethod
+    def sine_on_interval(
+        cls,
+        interval: tuple[float, float],
+    ) -> tuple[float, float]:
+        """
+        Computes the overall sine range on the given x-interval.
+
+        The extreme values occur either at the endpoints or at turning points
+        of sine (x = π/2 + π*k).
+        """
+        start, end = interval
+        if start > end:
+            raise ValueError("Invalid interval: start must be <= end")
+        if math.isinf(start) or math.isinf(end):
+            return (-1, 1)
+        if end - start > 2 * math.pi:
+            return (-1, 1)
+
+        # Evaluate sine at the endpoints
+        xs = [start, end]
+
+        # Include turning points within the interval
+        k_start = math.ceil((start - math.pi / 2) / math.pi)
+        k_end = math.floor((end - math.pi / 2) / math.pi)
+        for k in range(k_start, k_end + 1):
+            xs.append(math.pi / 2 + math.pi * k)
+
+        sine_values = [math.sin(x) for x in xs]
+        return (min(sine_values), max(sine_values))
+
+    def op_sin(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
+        numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        min, max = NumericInterval.sine_on_interval(
+            (float(self.get_min_value()), float(self.get_max_value()))
+        )
+        numeric_interval.setup(g=g, tg=tg, min=min, max=max)
+        return numeric_interval
+
+    def maybe_merge_interval(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> list["NumericInterval"]:
+        """
+        Attempts to merge two intervals if they overlap or are adjacent.
+
+        Example:
+            - [1,5] and [3,7] merge to [1,7] since 3 falls within [1,5]
+            - [1,2] and [4,5] stay separate since 4 doesn't fall within [1,2]
+
+        Returns:
+            List containing either:
+            - Single merged interval if intervals overlap
+            - Both intervals in order if they don't overlap
+        """
+        is_left = self.get_min_value() <= other.get_min_value()
+        left = self if is_left else other
+        right = other if is_left else self
+        if right.get_min_value() in self:
+            numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+            numeric_interval.setup(
+                g=g,
+                tg=tg,
+                min=left.get_min_value(),
+                max=max(left.get_max_value(), right.get_max_value()),
+            )
+            return [numeric_interval]
+        return [left, right]
+
+    def __contains__(self, item: float) -> bool:
+        """
+        Set checks if a number is in a interval.
+        """
+        if not isinstance(item, float):
+            return False
+        return ge(self.get_max_value(), item) and ge(item, self.get_min_value())
+
+    def __hash__(self) -> int:
+        return hash((self.get_min_value(), self.get_max_value()))
+
+    def __repr__(self) -> str:
+        return f"_interval({self.get_min_value()}, {self.get_max_value()})"
+
+    def __str__(self) -> str:
+        if self.get_min_value() == self.get_max_value():
+            return f"[{self.get_min_value()}]"
+        center, rel = self.as_center_rel()
+        if rel < 1:
+            return f"{center} ± {rel * 100}%"
+        return f"[{self.get_min_value()}, {self.get_max_value()}]"
+
+    def any(self) -> float:
+        return self.get_min_value()
+
+    def serialize_pset(self) -> dict:
+        return {
+            "min": None
+            if math.isinf(self.get_min_value())
+            else float(self.get_min_value()),
+            "max": None
+            if math.isinf(self.get_max_value())
+            else float(self.get_max_value()),
+        }
+
+    @classmethod
+    def deserialize_pset(cls, g: graph.GraphView, tg: TypeGraph, data: dict):
+        min_ = data["min"] if data["min"] is not None else -math.inf
+        max_ = data["max"] if data["max"] is not None else math.inf
+        return cls.create_instance(g=g, tg=tg).setup(g=g, tg=tg, min=min_, max=max_)
 
 
 def test_numeric_interval_make_child():
@@ -138,125 +635,538 @@ def test_numeric_interval_make_child():
     assert app.numeric_interval.get().get_max().get_value() == expected_max
 
 
-class QuantityInterval(fabll.Node):
-    _numeric_interval_identifier: ClassVar[str] = "numeric_interval"
-    unit = F.Collections.Pointer.MakeChild()
+def test_numeric_interval_instance_setup():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    expected_min = 1.0
+    expected_max = 2.0
+
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    numeric_interval.setup(g=g, tg=tg, min=expected_min, max=expected_max)
+    assert numeric_interval.get_min().get_value() == expected_min
+    assert numeric_interval.get_max().get_value() == expected_max
+
+
+def test_numeric_interval_is_empty():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    assert not numeric_interval.is_empty()
+
+
+def test_numeric_interval_is_unbounded_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -math.inf
+    max_value = math.inf
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert numeric_interval.is_unbounded()
+
+
+def test_numeric_interval_is_unbounded_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert not numeric_interval.is_unbounded()
+
+
+def test_numeric_interval_is_finite_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert numeric_interval.is_finite()
+
+
+def test_numeric_interval_is_finite_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -math.inf
+    max_value = math.inf
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert not numeric_interval.is_finite()
+
+
+def test_numeric_interval_is_single_element_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 0.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert numeric_interval.is_single_element()
+
+
+def test_numeric_interval_is_single_element_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert not numeric_interval.is_single_element()
+
+
+def test_numeric_interval_is_integer_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 2.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert numeric_interval.is_integer()
+
+
+def test_numeric_interval_is_integer_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 1.5
+    max_value = 1.5
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert not numeric_interval.is_integer()
+
+
+def test_numeric_interval_as_center_rel():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    assert numeric_interval.as_center_rel() == (0.5, 1.0)
+
+
+def test_is_subset_of_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = -0.5
+    other_max_value = 1.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    assert numeric_interval.is_subset_of(other=other)
+
+
+def test_is_subset_of_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 1.5
+    other_max_value = 2.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    assert not numeric_interval.is_subset_of(other=other)
+
+
+def test_op_add():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 0.5
+    other_max_value = 1.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = numeric_interval.op_add(g=g, tg=tg, other=other)
+    assert result.get_min_value() == 0.5
+    assert result.get_max_value() == 2.5
+
+
+def test_op_negate():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_negate(g=g, tg=tg)
+    assert result.get_min_value() == -1.0
+    assert result.get_max_value() == -0.0
+
+
+def test_op_subtract():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 0.5
+    other_max_value = 1.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = numeric_interval.op_subtract(g=g, tg=tg, other=other)
+    assert result.get_min_value() == -1.5
+    assert result.get_max_value() == 0.5
+
+
+def test_op_multiply():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 3.0
+    max_value = 4.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 0.5
+    other_max_value = 1.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = numeric_interval.op_multiply(g=g, tg=tg, other=other)
+    assert result.get_min_value() == 1.5
+    assert result.get_max_value() == 6.0
+
+
+def test_op_multiply_negative_values():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -3.0
+    max_value = -2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 0.5
+    other_max_value = 3.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = numeric_interval.op_multiply(g=g, tg=tg, other=other)
+    assert result.get_min_value() == -10.5
+    assert result.get_max_value() == -1.0
+
+
+def test_op_multiply_zero_values():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 1.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 0.0
+    other_max_value = 0.0
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = numeric_interval.op_multiply(g=g, tg=tg, other=other)
+    assert result.get_min_value() == 0.0
+    assert result.get_max_value() == 0.0
+
+
+def test_op_invert_case_1():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 0.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_invert(g=g, tg=tg)
+    assert result.is_empty()
+
+
+def test_op_invert_case_2():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_invert(g=g, tg=tg)
+    result_intervals = result.get_intervals()
+    assert len(result_intervals) == 2
+    assert result_intervals[0].get_min_value() == -math.inf
+    assert result_intervals[0].get_max_value() == -1.0
+    assert result_intervals[1].get_min_value() == 1.0
+    assert result_intervals[1].get_max_value() == math.inf
+
+
+# assert result_intervals[0].get_min_value() == -0.5
+# assert result_intervals[0].get_max_value() == 0.5
+# assert result_intervals[1].get_min_value() == math.inf
+# assert result_intervals[1].get_max_value() == -0.5
+# assert result.get_intervals()[0].get_min_value() == -0.5
+# assert result.get_intervals()[0].get_max_value() == 0.5
+# assert result.get_intervals()[1].get_min_value() == math.inf
+# assert result.get_intervals()[1].get_max_value() == -0.5
+
+
+# def test_op_invert_case_3():
+#     g = graph.GraphView.create()
+#     tg = TypeGraph.create(g=g)
+#     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+#     min_value = 0.0
+#     max_value = 1.0
+#     numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+#     result = numeric_interval.op_invert(g=g, tg=tg)
+#     assert len(result.get_intervals()) == 1
+#     assert result.get_intervals()[0].get_min_value() == 1.0
+#     assert result.get_intervals()[0].get_max_value() == math.inf
+
+
+# def test_op_invert_case_4():
+#     g = graph.GraphView.create()
+#     tg = TypeGraph.create(g=g)
+#     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+#     min_value = -1.0
+#     max_value = 0.0
+#     numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+#     result = numeric_interval.op_invert(g=g, tg=tg)
+#     assert len(result.get_intervals()) == 1
+#     assert result.get_intervals()[0].get_min_value() == -math.inf
+#     assert result.get_intervals()[0].get_max_value() == -0.5
+
+
+# def test_op_invert_case_5():
+#     g = graph.GraphView.create()
+#     tg = TypeGraph.create(g=g)
+#     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+#     min_value = 0.0
+#     max_value = 1.0
+#     numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+#     result = numeric_interval.op_invert(g=g, tg=tg)
+#     assert len(result.get_intervals()) == 1
+#     assert result.get_intervals()[0].get_min_value() == 1.0
+#     assert result.get_intervals()[0].get_max_value() == math.inf
+
+
+class NumericSet(fabll.Node):
+    intervals = F.Collections.PointerSet.MakeChild()
 
     @classmethod
     def MakeChild(
-        cls, min: float, max: float, unit: type[fabll.Node]
+        cls, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
     ) -> fabll._ChildField:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            NumericInterval.MakeChild(min, max),
-            identifier=cls._numeric_interval_identifier,
+        sorted_and_merged_values = NumericSet.sort_merge_values(
+            g=g, tg=tg, values=values
         )
-        # TODO: Requires ref_path to support type as an input
+        _intervals = [
+            NumericInterval.MakeChild(min=value[0], max=value[1])
+            for value in sorted_and_merged_values
+        ]
         out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.unit], [unit, "_is_unit"])
+            *F.Collections.PointerSet.MakeEdges(
+                [out, cls.intervals], [[interval] for interval in _intervals]
+            )
         )
+        out.add_dependant(*_intervals, before=True)
+
         return out
 
     @classmethod
-    def MakeChild_FromCenter(
-        cls, center: float, abs_tol: float, unit: type[fabll.Node]
-    ) -> fabll._ChildField:
-        min = center - abs_tol
-        max = center + abs_tol
-        return cls.MakeChild(min, max, unit)
+    def sort_merge_intervals(
+        cls,
+        g: graph.GraphView,
+        tg: TypeGraph,
+        intervals: list["NumericInterval | NumericSet"],
+    ) -> list[NumericInterval]:
+        def gen_flat_non_empty() -> Generator[NumericInterval]:
+            for r in intervals:
+                if r.is_empty():
+                    continue
+                if isinstance(r, NumericSet):
+                    yield from r.get_intervals()
+                else:
+                    assert isinstance(r, NumericInterval)
+                    yield r
+
+        non_empty_intervals = list(gen_flat_non_empty())
+        sorted_intervals = sorted(non_empty_intervals, key=lambda e: e.get_min_value())
+
+        def gen_merge() -> Generator[NumericInterval]:
+            last = None
+            for interval in sorted_intervals:
+                if last is None:
+                    last = interval
+                else:
+                    assert isinstance(last, NumericInterval)
+                    *prefix, last = last.maybe_merge_interval(
+                        g=g, tg=tg, other=interval
+                    )
+                    yield from prefix
+            if last is not None:
+                yield last
+
+        return list(gen_merge())
 
     @classmethod
-    def MakeChild_FromCenter_Rel(
-        cls, center: float, rel_tol: float, unit: type[fabll.Node]
-    ) -> fabll._ChildField:
-        min = center - center * rel_tol
-        max = center + center * rel_tol
-        return cls.MakeChild(min, max, unit)
+    def sort_merge_values(
+        cls,
+        g: graph.GraphView,
+        tg: TypeGraph,
+        values: list[tuple[float, float]],
+    ) -> list[tuple[float, float]]:
+        intervals = []
+        for value in values:
+            intervals.append(
+                NumericInterval.create_instance(g=g, tg=tg).setup(
+                    g=g, tg=tg, min=value[0], max=value[1]
+                )
+            )
+        return_values = []
+        for interval in intervals:
+            return_values.append((interval.get_min_value(), interval.get_max_value()))
+        return return_values
 
-    def setup(self, min: float, max: float, unit: fabll.Node) -> "QuantityInterval":
-        # Add child intance of NumericInterval
-        numeric_interval = NumericInterval.create(self.instance.g())
+    def get_intervals(self) -> list[NumericInterval]:
+        return [
+            interval.cast(NumericInterval)
+            for interval in self.intervals.get().as_list()
+        ]
 
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=numeric_interval.instance.node,
-            child_identifier=QuantityInterval._numeric_interval_identifier,
+    def setup_from_values(
+        self, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
+    ) -> "NumericSet":
+        sorted_and_merged_values = NumericSet.sort_merge_values(
+            g=g, tg=tg, values=values
+        )
+        for value in sorted_and_merged_values:
+            self.intervals.get().append(
+                NumericInterval.create_instance(g=g, tg=tg).setup(
+                    g=g, tg=tg, min=value[0], max=value[1]
+                )
+            )
+        return self
+
+    def setup_from_intervals(
+        self,
+        g: graph.GraphView,
+        tg: TypeGraph,
+        intervals: list["NumericInterval | NumericSet"],
+    ) -> "NumericSet":
+        sorted_and_merged_intervals = NumericSet.sort_merge_intervals(
+            g=g, tg=tg, intervals=intervals
+        )
+        for interval in sorted_and_merged_intervals:
+            self.intervals.get().append(interval)
+        return self
+
+    @classmethod
+    def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        return NumericSet.bind_typegraph(tg=tg).create_instance(g=g)
+
+    def op_pow_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+
+        self_intervals = self.get_intervals()
+        other_intervals = other.get_intervals()
+
+        out = []
+        for self_interval in self_intervals:
+            for other_interval in other_intervals:
+                out.append(self_interval.op_pow(g=g, tg=tg, other=other_interval))
+
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=out)
+
+    def is_empty(self) -> bool:
+        return len(self.get_intervals()) == 0
+
+
+def test_sort_merge_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval_1 = NumericInterval.create_instance(g=g, tg=tg)
+    numeric_interval_1.setup(g=g, tg=tg, min=1.8, max=2.2)
+    numeric_interval_2 = NumericInterval.create_instance(g=g, tg=tg)
+    numeric_interval_2.setup(g=g, tg=tg, min=1.5, max=1.6)
+    numeric_interval_3 = NumericInterval.create_instance(g=g, tg=tg)
+    numeric_interval_3.setup(g=g, tg=tg, min=2.0, max=3.0)
+
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_intervals(
+        g=g,
+        tg=tg,
+        intervals=[numeric_interval_1, numeric_interval_2, numeric_interval_3],
+    )
+    intervals = numeric_set.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 1.5
+    assert intervals[0].get_max_value() == 1.6
+    assert intervals[1].get_min_value() == 1.8
+    assert intervals[1].get_max_value() == 3.0
+
+
+def test_numeric_set_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    interval_1_min = 0.0
+    interval_1_max = 1.0
+    interval_2_min = 1.0
+    interval_2_max = 2.0
+
+    class App(fabll.Node):
+        numeric_set = NumericSet.MakeChild(
+            g=g,
+            tg=tg,
+            values=[(interval_1_min, interval_1_max), (interval_2_min, interval_2_max)],
         )
 
-        # Get the is_unit trait from the unit node
-        is_unit = unit.get_trait(F.Units.IsUnit)
-
-        # Add pointer to the unit trait
-        EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=is_unit.instance.node(),
-            identifier=None,
-            order=None,
-        )
-
-    def create(self, min: float, max: float, unit: fabll.Node) -> "QuantityInterval":
-        tg = self.tg
-        g = self.instance.g()
-        return QuantityInterval.bind_typegraph(tg=tg).create_instance(g=g)
-
-    def get_min(self) -> "QuantityInterval":
-        interval = self.get_numeric_interval()
-        return self.base_to_units(interval.get_min())
-
-    def get_numeric_interval(self) -> "NumericInterval":
-        numeric_interval_node = EdgeComposition.get_child_by_identifier(
-            bound_node=self.instance, child_identifier=self._numeric_interval_identifier
-        )
-        assert numeric_interval_node is not None
-        return NumericInterval.bind_instance(instance=numeric_interval_node)
-
-    def get_unit(self) -> type[fabll.Node]:
-        # Get the is_unit trait that is pointed to by the unit field
-        # Get the parent unit node
-        # Return the unit node
-        raise NotImplementedError
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    intervals = app.numeric_set.get().get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == interval_1_min
+    assert intervals[0].get_max_value() == interval_1_max
+    assert intervals[1].get_min_value() == interval_2_min
+    assert intervals[1].get_max_value() == interval_2_max
 
 
-# class MagnitudeSet(fabll.Node):
-#     intervals = F.Collections.PointerSequence.MakeChild()
+def test_numeric_set_instance_setup_from_values():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    interval_1_min = 0.0
+    interval_1_max = 1.0
+    interval_2_min = 1.0
+    interval_2_max = 2.0
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(
+        g=g,
+        tg=tg,
+        values=[(interval_1_min, interval_1_max), (interval_2_min, interval_2_max)],
+    )
+    assert numeric_set.get_intervals()[0].get_min_value() == interval_1_min
+    assert numeric_set.get_intervals()[0].get_max_value() == interval_1_max
+    assert numeric_set.get_intervals()[1].get_min_value() == interval_2_min
+    assert numeric_set.get_intervals()[1].get_max_value() == interval_2_max
 
-#     @classmethod
-#     def MakeChild_Empty(cls) -> fabll._ChildField:
-#         return fabll._ChildField(cls)
 
-#     @classmethod
-#     def MakeChild(cls, min: float, max: float) -> fabll._ChildField:
-#         out = fabll._ChildField(cls)
-#         out.get().intervals.add_dependant(ContinuousNumeric.MakeChild(min, max))
-#         return out
+def test_numeric_set_instance_setup_from_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    interval_1 = NumericInterval.create_instance(g=g, tg=tg)
+    interval_1.setup(g=g, tg=tg, min=0.0, max=1.0)
+    interval_2 = NumericInterval.create_instance(g=g, tg=tg)
+    interval_2.setup(g=g, tg=tg, min=1.0, max=2.0)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_intervals(g=g, tg=tg, intervals=[interval_1, interval_2])
+    intervals = numeric_set.get_intervals()
+    assert len(intervals) == 1
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 2.0
 
 
-# class QuantitySet(fabll.Node):
-#     unit = F.Collections.Pointer.MakeChild()
-#     _magnitude_set_identifier: ClassVar[str] = "magnitude_set"
-
-#     @classmethod
-#     def MakeChild_FromRange(
-#         cls, min: float, max: float, unit: fabll._ChildField[F.Units.IsUnit]
-#     ) -> fabll._ChildField:
-#         out = fabll._ChildField(cls)
-#         magnitude_set = MagnitudeSet.MakeChild(min, max)
-#         out.add_dependant(magnitude_set, identifier=cls._magnitude_set_identifier)
-#         out.get().unit.add_dependant(
-#             F.Collections.Pointer.MakeEdge([out, cls.unit], [unit])
-#         )
-#         return out
-
-#     @classmethod
-#     def MakeChild_FromCenter(
-#         cls, center: float, abs_tol: float, unit: fabll._ChildField[F.Units.IsUnit]
-#     ) -> fabll._ChildField:
-#         min, max = center - abs_tol, center + abs_tol
-#         return cls.MakeChild_FromRange(min, max, unit)
-
-#     @classmethod
-#     def MakeChild_FromCenter_Rel(
-#         cls, center: float, rel_tol: float, unit: fabll._ChildField[F.Units.IsUnit]
-#     ) -> fabll._ChildField:
-#         min, max = center - center * rel_tol, center + center * rel_tol
-#         return cls.MakeChild_FromRange(min, max, unit)
+def test_numeric_set_instance_op_pow_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
+    result = numeric_set_1.op_pow_intervals(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 1
+    assert result.get_intervals()[0].get_min_value() == 0.0
+    assert result.get_intervals()[0].get_max_value() == 4.0
