@@ -20,7 +20,7 @@ class OpAmp(fabll.Node):
     input_offset_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
     output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
-    slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
+    # slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
@@ -33,7 +33,7 @@ class OpAmp(fabll.Node):
             S(input_offset_voltage, prefix="Vos"),
             S(gain_bandwidth_product, prefix="GBW"),
             S(output_current, prefix="Iout"),
-            S(slew_rate, prefix="SR"),
+            # S(slew_rate, prefix="SR"),
         )
     )
 

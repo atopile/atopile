@@ -1,5 +1,6 @@
 import logging
 import math
+from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import ClassVar
@@ -610,11 +611,13 @@ class NumericInterval(fabll.Node):
             else float(self.get_max_value()),
         }
 
-    @classmethod
-    def deserialize_pset(cls, g: graph.GraphView, tg: TypeGraph, data: dict):
-        min_ = data["min"] if data["min"] is not None else -math.inf
-        max_ = data["max"] if data["max"] is not None else math.inf
-        return cls.create_instance(g=g, tg=tg).setup(g=g, tg=tg, min=min_, max=max_)
+
+# TODO: Do we need something like this?
+# @classmethod
+# def deserialize_pset(cls, g: graph.GraphView, tg: TypeGraph, data: dict):
+#     min_ = data["min"] if data["min"] is not None else -math.inf
+#     max_ = data["max"] if data["max"] is not None else math.inf
+#     return cls.create_instance(g=g, tg=tg).setup(g=g, tg=tg, min=min_, max=max_)
 
 
 def test_numeric_interval_make_child():
@@ -1275,6 +1278,36 @@ class NumericSet(fabll.Node):
             for interval in self.intervals.get().as_list()
         ]
 
+    def get_min_value(self) -> float:
+        return self.get_intervals()[0].get_min_value()
+
+    def get_max_value(self) -> float:
+        return self.get_intervals()[-1].get_max_value()
+
+    def closest_elem(self, target: float) -> float:
+        assert isinstance(target, float)
+        if self.is_empty():
+            raise ValueError("empty interval cannot have closest element")
+        index = bisect(self.get_intervals(), target, key=lambda r: r.get_min_value())
+        left = self.get_intervals()[index - 1] if index > 0 else None
+        if left is not None and target in left:
+            return target
+        left_bound = left.get_max_value() if left is not None else None
+        right_bound = (
+            self.get_intervals()[index].get_min_value()
+            if index < len(self.get_intervals())
+            else None
+        )
+        try:
+            [one] = [b for b in [left_bound, right_bound] if b is not None]
+            return one
+        except ValueError:
+            assert left_bound and right_bound
+            if target - left_bound < right_bound - target:
+                return left_bound
+            return right_bound
+        assert False  # unreachable
+
     def setup_from_values(
         self, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
     ) -> "NumericSet":
@@ -1306,7 +1339,7 @@ class NumericSet(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         return NumericSet.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def op_pow_intervals(
+    def op_pow(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
@@ -1323,6 +1356,304 @@ class NumericSet(fabll.Node):
 
     def is_empty(self) -> bool:
         return len(self.get_intervals()) == 0
+
+    def is_superset_of(self, other: "NumericSet") -> bool:
+        return other == other.op_intersect_intervals(g=g, tg=tg, other=self)
+
+    def is_subset_of(self, other: "NumericSet") -> bool:
+        return other.is_superset_of(self)
+
+    def op_intersect(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_intersect(g=g, tg=tg, other=other))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_intersect_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        self_intervals = self.get_intervals()
+        other_intervals = other.get_intervals()
+        result = []
+        s, o = 0, 0
+        while s < len(self_intervals) and o < len(other_intervals):
+            rs, ro = self_intervals[s], other_intervals[o]
+            rs_min, rs_max = rs.get_min_value(), rs.get_max_value()
+            ro_min, ro_max = ro.get_min_value(), ro.get_max_value()
+            intersect = rs.op_intersect(g=g, tg=tg, other=ro)
+            if not intersect.is_empty():
+                result.append(intersect)
+
+            if rs_max < ro_min:
+                # no remaining element in other list can intersect with rs
+                s += 1
+            elif ro_max < rs_min:
+                # no remaining element in self list can intersect with ro
+                o += 1
+            elif rs_max < ro_max:
+                # rs ends before ro, so move to next in self list
+                s += 1
+            elif ro_max < rs_max:
+                # ro ends before rs, so move to next in other list
+                o += 1
+            else:
+                # rs and ro end on approximately same number, move to next in both lists
+                s += 1
+                o += 1
+
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=result)
+
+    def op_union(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = self.get_intervals() + other.get_intervals()
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=list(intervals))
+
+    def op_difference_interval(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_difference(g=g, tg=tg, other=other))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_difference_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        # TODO there is probably a more efficient way to do this
+        out = self
+        for o in other.get_intervals():
+            out = out.op_difference_interval(g=g, tg=tg, other=o)
+        return out
+
+    def op_symmetric_difference_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        return self.op_union(g=g, tg=tg, other=other).op_difference_intervals(
+            g=g, tg=tg, other=self.op_intersect_intervals(g=g, tg=tg, other=other)
+        )
+
+    def op_add_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for self_interval in self.get_intervals():
+            for other_interval in other.get_intervals():
+                intervals.append(self_interval.op_add(g=g, tg=tg, other=other_interval))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_negate(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_negate(g=g, tg=tg))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_subtract_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        return self.op_add_intervals(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
+
+    def op_mul_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for self_interval in self.get_intervals():
+            for other_interval in other.get_intervals():
+                intervals.append(
+                    self_interval.op_multiply(g=g, tg=tg, other=other_interval)
+                )
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_invert(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_invert(g=g, tg=tg))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_div_intervals(
+        self: "NumericSet",
+        g: graph.GraphView,
+        tg: TypeGraph,
+        other: "NumericSet",
+    ) -> "NumericSet":
+        return self.op_mul_intervals(g=g, tg=tg, other=other.op_invert(g=g, tg=tg))
+
+    # TODO: Requires bool sets
+    # def op_ge_intervals(self, other: "NumericSet") -> BoolSet:
+    #     if self.is_empty() or other.is_empty():
+    #         return BoolSet()
+    #     if self.min_elem >= other.max_elem:
+    #         return BoolSet(True)
+    #     if self.max_elem < other.min_elem:
+    #         return BoolSet(False)
+    #     return BoolSet(True, False)
+
+    # def op_gt_intervals(self, other: "NumericSet") -> BoolSet:
+    #     if self.is_empty() or other.is_empty():
+    #         return BoolSet()
+    #     if self.min_elem > other.max_elem:
+    #         return BoolSet(True)
+    #     if self.max_elem <= other.min_elem:
+    #         return BoolSet(False)
+    #     return BoolSet(True, False)
+
+    # def op_le_intervals(self, other: "NumericSet") -> BoolSet:
+    #     if self.is_empty() or other.is_empty():
+    #         return BoolSet()
+    #     if self.max_elem <= other.min_elem:
+    #         return BoolSet(True)
+    #     if self.min_elem > other.max_elem:
+    #         return BoolSet(False)
+    #     return BoolSet(True, False)
+
+    # def op_lt_intervals(self, other: "NumericSet") -> BoolSet:
+    #     if self.is_empty() or other.is_empty():
+    #         return BoolSet()
+    #     if self.max_elem < other.min_elem:
+    #         return BoolSet(True)
+    #     if self.min_elem >= other.max_elem:
+    #         return BoolSet(False)
+    #     return BoolSet(True, False)
+
+    def op_round(
+        self, g: graph.GraphView, tg: TypeGraph, ndigits: int = 0
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_round(g=g, tg=tg, ndigits=ndigits))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_abs(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_abs(g=g, tg=tg))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_log(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_log(g=g, tg=tg))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def op_sin(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        intervals = []
+        for interval in self.get_intervals():
+            intervals.append(interval.op_sine(g=g, tg=tg))
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
+
+    def __contains__(self, item: float) -> bool:
+        if not isinstance(item, float):
+            return False
+        for interval in self.get_intervals():
+            if item in interval:
+                return True
+        return False
+
+    def __eq__(self, value: "NumericSet") -> bool:
+        if not isinstance(value, NumericSet):
+            return False
+        self_intervals = self.get_intervals()
+        value_intervals = value.get_intervals()
+        if len(self_intervals) != len(value_intervals):
+            return False
+        for r1, r2 in zip(self_intervals, value_intervals):
+            if r1 != r2:
+                return False
+        return True
+
+    # def __ge__(self, other: "NumericSet") -> BoolSet:
+    #     return self.op_ge_intervals(other)
+
+    # def __gt__(self, other: "NumericSet") -> BoolSet:
+    #     return self.op_gt_intervals(other)
+
+    # def __le__(self, other: "NumericSet") -> BoolSet:
+    #     return self.op_le_intervals(other)
+
+    # def __lt__(self, other: "NumericSet") -> BoolSet:
+    #     return self.op_lt_intervals(other)
+
+    def __hash__(self) -> int:
+        return hash(tuple(hash(r) for r in self.get_intervals()))
+
+    def __repr__(self) -> str:
+        return f"_N_intervals({
+            ', '.join(
+                f'[{r.get_min_value()}, {r.get_max_value()}]'
+                for r in self.get_intervals()
+            )
+        })"
+
+    def __iter__(self) -> Generator["NumericInterval"]:
+        yield from self.get_intervals()
+
+    # # operators
+    # Dont think we can do these as we need to pass in the graph and typegraph
+    # def __add__(self, other: "NumericSet"):
+    #     return self.op_add_intervals(other)
+
+    # def __sub__(self, other: "NumericSet"):
+    #     return self.op_subtract_intervals(other)
+
+    # def __neg__(self):
+    #     return self.op_negate()
+
+    # def __mul__(self, other: "NumericSet"):
+    #     return self.op_mul_intervals(other)
+
+    # def __truediv__(
+    #     self: "NumericSet",
+    #     other: "NumericSet",
+    # ):
+    #     return self.op_div_intervals(other)
+
+    # def __and__(
+    #     self,
+    #     other: "Numeric_Interval_Disjoint | Numeric_Interval",
+    # ):
+    #     if isinstance(other, Numeric_Interval):
+    #         return self.op_intersect_interval(other)
+    #     return self.op_intersect_intervals(other)
+
+    # def __or__(self, other: "NumericSet"):
+    #     return self.op_union_intervals(other)
+
+    # def __pow__(self, other: "NumericSet"):
+    #     return self.op_pow_intervals(other)
+
+    def is_single_element(self) -> bool:
+        if self.is_empty():
+            return False
+        return self.get_min_value() == self.get_max_value()
+
+    def any(self) -> float:
+        return self.get_min_value()
+
+    def serialize_pset(self) -> dict:
+        return {"intervals": [r.serialize_pset() for r in self.get_intervals()]}
+
+    # TODO: Do we need something like this?
+    # @classmethod
+    # def deserialize_pset(cls, data: dict):
+    #     intervals = [
+    #         P_Set.deserialize(r) for r in data["intervals"]
+    #             for r in data["intervals"]
+    #         ]
+    #     )
 
 
 def test_sort_merge_intervals():
@@ -1415,8 +1746,8 @@ def test_numeric_set_instance_op_pow_intervals():
     numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
     numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
     numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
-    result = numeric_set_1.op_pow_intervals(g=g, tg=tg, other=numeric_set_2)
+    result = numeric_set_1.op_pow(g=g, tg=tg, other=numeric_set_2)
     intervals = result.get_intervals()
     assert len(intervals) == 1
-    assert result.get_intervals()[0].get_min_value() == 0.0
-    assert result.get_intervals()[0].get_max_value() == 4.0
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 4.0
