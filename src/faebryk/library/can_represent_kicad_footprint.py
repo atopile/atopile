@@ -51,7 +51,9 @@ class can_represent_kicad_footprint(fabll.Node):
     def get_kicad_obj(self) -> FBRKNetlist.Component:
         fp = self.component_.get().deref().get_trait(F.has_footprint).get_footprint()
 
-        kicad_footprint = fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+        kicad_footprint = fp.get_trait(
+            F.has_kicad_footprint
+        ).get_kicad_footprint_identifier()
 
         if kicad_footprint is None:
             raise ValueError("Kicad footprint is not set")

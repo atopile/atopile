@@ -613,7 +613,9 @@ class Path:
         return None
 
     def __repr__(self) -> str:
-        node_names = [node.get_full_name(types=True) for node in self._get_nodes_in_order()]
+        node_names = [
+            node.get_full_name(types=True) for node in self._get_nodes_in_order()
+        ]
         return f"Path({', '.join(node_names)})"
 
 
@@ -2099,7 +2101,7 @@ def test_kicad_footprint():
     )
     print(
         f"kicad_footprint.get_kicad_footprint():"
-        f" {kicad_footprint.get_kicad_footprint()}"
+        f" {kicad_footprint.get_kicad_footprint_identifier()}"
     )
     print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
