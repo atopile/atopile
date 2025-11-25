@@ -204,12 +204,8 @@ class IsUnit(fabll.Node):
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
 
-        # TODO: support multiple symbols (requires string set literals)
-        assert len(symbols) == 1
-        (symbol,) = symbols
-
         for child, lit in (
-            (cls.symbol, F.Literals.Strings.MakeChild(symbol)),
+            (cls.symbol, F.Literals.Strings.MakeChild(*symbols)),
             # TODO: unit?
             (cls.multiplier, F.Literals.Numbers.MakeChild(value=multiplier)),
             (cls.offset, F.Literals.Numbers.MakeChild(value=offset)),
