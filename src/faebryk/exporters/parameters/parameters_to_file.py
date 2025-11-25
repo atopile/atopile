@@ -4,9 +4,9 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Callable, Iterable
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
@@ -15,20 +15,22 @@ from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: graph.GraphView) -> list[set[F.Parameters.is_parameter]]:
+def parameter_alias_classes(tg: fbrk.TypeGraph) -> list[set[F.Parameters.is_parameter]]:
     full_eq = EquivalenceClasses[F.Parameters.is_parameter](
-        fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
+        F.Parameters.is_parameter.bind_typegraph(tg).get_instances()
     )
 
     is_exprs = [
         e
-        for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.Is)
-        if e.constrained
+        for e in F.Expressions.Is.bind_typegraph(tg).get_instances()
+        if e.has_trait(F.Expressions.is_predicate)
     ]
 
     for is_expr in is_exprs:
         params_ops = [
-            op for op in is_expr.operands if isinstance(op, F.Parameters.is_parameter)
+            op.get_trait(F.Parameters.is_parameter)
+            for op in is_expr.get_trait(F.Expressions.is_expression).get_operands()
+            if op.has_trait(F.Parameters.is_parameter)
         ]
         full_eq.add_eq(*params_ops)
 
@@ -38,31 +40,23 @@ def parameter_alias_classes(G: graph.GraphView) -> list[set[F.Parameters.is_para
 def get_params_for_expr(
     expr: F.Expressions.is_expression,
 ) -> set[F.Parameters.is_parameter]:
-    param_ops = {
-        op
-        for op in expr.operatable_operands
-        if isinstance(op, F.Parameters.is_parameter)
-    }
-    expr_ops = {
-        op
-        for op in expr.operatable_operands
-        if isinstance(op, F.Expressions.is_expression)
-    }
+    param_ops = {op for op in expr.get_operands_with_trait(F.Parameters.is_parameter)}
+    expr_ops = {op for op in expr.get_operands_with_trait(F.Expressions.is_expression)}
 
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
 def parameter_dependency_classes(
-    G: graph.GraphView,
+    tg: fbrk.TypeGraph,
 ) -> list[set[F.Parameters.is_parameter]]:
     related = EquivalenceClasses[F.Parameters.is_parameter](
-        fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
+        F.Parameters.is_parameter.bind_typegraph(tg).get_instances()
     )
 
     eq_exprs = [
-        e
-        for e in fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.is_assertable)
-        if e.constrained
+        e.as_expression()
+        for e in F.Expressions.is_assertable.bind_typegraph(tg).get_instances()
+        if e.has_trait(F.Expressions.is_predicate)
     ]
 
     for eq_expr in eq_exprs:
@@ -72,18 +66,19 @@ def parameter_dependency_classes(
     return related.get()
 
 
-def parameter_report(G: graph.GraphView, path: Path):
-    params = fabll.Node.bind_typegraph(G).nodes_of_type(F.Parameters.is_parameter)
-    exprs = fabll.Node.bind_typegraph(G).nodes_of_type(F.Expressions.is_expression)
-    predicates = {e for e in exprs if isinstance(e, F.Expressions.is_assertable)}
-    exprs.difference_update(predicates)
-    alias_classes = parameter_alias_classes(G)
-    eq_classes = parameter_dependency_classes(G)
+def parameter_report(tg: fbrk.TypeGraph, path: Path):
+    params = F.Parameters.is_parameter.bind_typegraph(tg).get_instances()
+    exprs = F.Expressions.is_expression.bind_typegraph(tg).get_instances()
+    predicates = {e for e in exprs if e.has_trait(F.Expressions.is_assertable)}
+    set(exprs).difference_update(predicates)
+    alias_classes = parameter_alias_classes(tg)
+    eq_classes = parameter_dependency_classes(tg)
     unused = [
         p
         for p in params
         if not any(
-            isinstance(e.node, F.Expressions.is_expression) for e in p.operated_on.edges
+            e.has_trait(F.Expressions.is_expression)
+            for e in p.get_trait(F.Expressions.is_expression).get_operands()
         )
     ]
 
@@ -276,7 +271,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
         case ".json":
             out = _generate_json_parameters(parameters)
         case _:
-            raise UserBadExportError(
+            raise ValueError(
                 f"Export to file extension [{path.suffix}] not supported in {path}"
             )
 
