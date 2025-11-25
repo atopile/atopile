@@ -191,7 +191,7 @@ class IsUnit(fabll.Node):
         (symbol,) = symbols
 
         for child, lit in (
-            (cls.symbol, F.Literals.Strings.MakeChild(value=symbol)),
+            (cls.symbol, F.Literals.Strings.MakeChild(symbol)),
             # TODO: unit?
             (cls.multiplier, F.Literals.Numbers.MakeChild(value=multiplier)),
             (cls.offset, F.Literals.Numbers.MakeChild(value=offset)),
