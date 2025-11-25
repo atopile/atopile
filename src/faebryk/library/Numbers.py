@@ -4,6 +4,8 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from typing import ClassVar
 
+import pytest
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
@@ -293,12 +295,12 @@ class NumericInterval(fabll.Node):
         # Case 2
         if _min < 0 < _max:
             return numeric_set.setup_from_values(
-                g=g, tg=tg, values=[(1 / _min, math.inf), (-math.inf, 1 / _max)]
+                g=g, tg=tg, values=[(-math.inf, 1 / _min), (1 / _max, math.inf)]
             )
         # Case 3
         elif _min < 0 == _max:
             return numeric_set.setup_from_values(
-                g=g, tg=tg, values=[(1 / _min, math.inf)]
+                g=g, tg=tg, values=[(-math.inf, 1 / _min)]
             )
         # Case 4
         elif _min == 0 < _max:
@@ -365,7 +367,7 @@ class NumericInterval(fabll.Node):
         numeric_set.setup_from_values(g=g, tg=tg, values=[(min(values), max(values))])
         return numeric_set
 
-    def op_div_interval(
+    def op_divide(
         self: "NumericInterval",
         g: graph.GraphView,
         tg: TypeGraph,
@@ -385,7 +387,7 @@ class NumericInterval(fabll.Node):
 
         return numeric_set
 
-    def op_intersect_interval(
+    def op_intersect(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
     ) -> "NumericSet":
         """
@@ -400,7 +402,7 @@ class NumericInterval(fabll.Node):
             return numeric_set.setup_from_values(g=g, tg=tg, values=[(min_, min_)])
         return numeric_set
 
-    def op_difference_interval(
+    def op_difference(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
     ) -> "NumericSet":
         """
@@ -462,6 +464,7 @@ class NumericInterval(fabll.Node):
 
     def op_abs(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+        # case 1: crosses zero
         if self.get_min_value() < 0 < self.get_max_value():
             numeric_interval.setup(
                 g=g,
@@ -470,6 +473,7 @@ class NumericInterval(fabll.Node):
                 max=self.get_max_value(),
             )
             return numeric_interval
+        # case 2: negative only
         if self.get_min_value() < 0 and self.get_max_value() < 0:
             numeric_interval.setup(
                 g=g,
@@ -478,20 +482,13 @@ class NumericInterval(fabll.Node):
                 max=-self.get_min_value(),
             )
             return numeric_interval
+        # case 3: max = 0 and min < 0
         if self.get_min_value() < 0 and self.get_max_value() == 0:
             numeric_interval.setup(
                 g=g,
                 tg=tg,
                 min=0,
                 max=-self.get_min_value(),
-            )
-            return numeric_interval
-        if self.get_min_value() == 0 and self.get_max_value() < 0:
-            numeric_interval.setup(
-                g=g,
-                tg=tg,
-                min=self.get_max_value(),
-                max=0,
             )
             return numeric_interval
 
@@ -541,7 +538,7 @@ class NumericInterval(fabll.Node):
         sine_values = [math.sin(x) for x in xs]
         return (min(sine_values), max(sine_values))
 
-    def op_sin(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
+    def op_sine(self, g: graph.GraphView, tg: TypeGraph) -> "NumericInterval":
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min, max = NumericInterval.sine_on_interval(
             (float(self.get_min_value()), float(self.get_max_value()))
@@ -891,53 +888,306 @@ def test_op_invert_case_2():
     assert result_intervals[1].get_max_value() == math.inf
 
 
-# assert result_intervals[0].get_min_value() == -0.5
-# assert result_intervals[0].get_max_value() == 0.5
-# assert result_intervals[1].get_min_value() == math.inf
-# assert result_intervals[1].get_max_value() == -0.5
-# assert result.get_intervals()[0].get_min_value() == -0.5
-# assert result.get_intervals()[0].get_max_value() == 0.5
-# assert result.get_intervals()[1].get_min_value() == math.inf
-# assert result.get_intervals()[1].get_max_value() == -0.5
+def test_op_invert_case_3():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 0.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_invert(g=g, tg=tg)
+    assert len(result.get_intervals()) == 1
+    assert result.get_intervals()[0].get_min_value() == -math.inf
+    assert result.get_intervals()[0].get_max_value() == -1.0
 
 
-# def test_op_invert_case_3():
-#     g = graph.GraphView.create()
-#     tg = TypeGraph.create(g=g)
-#     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-#     min_value = 0.0
-#     max_value = 1.0
-#     numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
-#     result = numeric_interval.op_invert(g=g, tg=tg)
-#     assert len(result.get_intervals()) == 1
-#     assert result.get_intervals()[0].get_min_value() == 1.0
-#     assert result.get_intervals()[0].get_max_value() == math.inf
+def test_op_invert_case_4():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 1.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_invert(g=g, tg=tg)
+    assert len(result.get_intervals()) == 1
+    assert result.get_intervals()[0].get_min_value() == 1.0
+    assert result.get_intervals()[0].get_max_value() == math.inf
 
 
-# def test_op_invert_case_4():
-#     g = graph.GraphView.create()
-#     tg = TypeGraph.create(g=g)
-#     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-#     min_value = -1.0
-#     max_value = 0.0
-#     numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
-#     result = numeric_interval.op_invert(g=g, tg=tg)
-#     assert len(result.get_intervals()) == 1
-#     assert result.get_intervals()[0].get_min_value() == -math.inf
-#     assert result.get_intervals()[0].get_max_value() == -0.5
+def test_op_invert_case_5():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 2.0
+    max_value = 4.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_invert(g=g, tg=tg)
+    assert len(result.get_intervals()) == 1
+    assert result.get_intervals()[0].get_min_value() == 0.25
+    assert result.get_intervals()[0].get_max_value() == 0.5
 
 
-# def test_op_invert_case_5():
-#     g = graph.GraphView.create()
-#     tg = TypeGraph.create(g=g)
-#     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-#     min_value = 0.0
-#     max_value = 1.0
-#     numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
-#     result = numeric_interval.op_invert(g=g, tg=tg)
-#     assert len(result.get_intervals()) == 1
-#     assert result.get_intervals()[0].get_min_value() == 1.0
-#     assert result.get_intervals()[0].get_max_value() == math.inf
+def test_op_pow_positive_base_positive_exponent():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    base = NumericInterval.create_instance(g=g, tg=tg)
+    base_min_value = 2.0
+    base_max_value = 4.0
+    base.setup(g=g, tg=tg, min=base_min_value, max=base_max_value)
+    exp = NumericInterval.create_instance(g=g, tg=tg)
+    exp_min_value = 1.0
+    exp_max_value = 2.0
+    exp.setup(g=g, tg=tg, min=exp_min_value, max=exp_max_value)
+    result = base.op_pow(g=g, tg=tg, other=exp)
+    assert len(result.get_intervals()) == 1
+    assert result.get_intervals()[0].get_min_value() == 2.0
+    assert result.get_intervals()[0].get_max_value() == 16.0
+
+
+def test_op_divide_positive_numerator_positive_denominator():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 1.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    other = NumericInterval.create_instance(g=g, tg=tg)
+    other_min_value = 0.5
+    other_max_value = 1.5
+    other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = numeric_interval.op_divide(g=g, tg=tg, other=other)
+    assert len(result.get_intervals()) == 1
+    assert result.get_intervals()[0].get_min_value() == 1.0 / 1.5
+    assert result.get_intervals()[0].get_max_value() == 4.0
+
+
+def test_op_intersect_no_overlap():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 2.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 3.0
+    other_max_value = 4.0
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_intersect(g=g, tg=tg, other=other_interval)
+    assert result.is_empty()
+
+
+def test_op_intersect_partially_covered():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 2.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 1.5
+    other_max_value = 2.5
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_intersect(g=g, tg=tg, other=other_interval)
+    result_intervals = result.get_intervals()
+    assert len(result_intervals) == 1
+    assert result_intervals[0].get_min_value() == 1.5
+    assert result_intervals[0].get_max_value() == 2.0
+
+
+def test_op_difference_no_overlap():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 2.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 3.0
+    other_max_value = 4.0
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
+    result_intervals = result.get_intervals()
+    assert len(result_intervals) == 1
+    assert result_intervals[0].get_min_value() == 1.0
+    assert result_intervals[0].get_max_value() == 2.0
+
+
+def test_op_difference_fully_covered():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 5.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 1.0
+    other_max_value = 5.0
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
+    assert result.is_empty()
+
+
+def test_op_difference_inner_overlap():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 10.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 2.5
+    other_max_value = 6.5
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
+    result_intervals = result.get_intervals()
+    assert len(result_intervals) == 2
+    assert result_intervals[0].get_min_value() == 1.0
+    assert result_intervals[0].get_max_value() == 2.5
+    assert result_intervals[1].get_min_value() == 6.5
+    assert result_intervals[1].get_max_value() == 10.0
+
+
+def test_op_difference_right_overlap():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 10.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 6.5
+    other_max_value = 10.0
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
+    result_intervals = result.get_intervals()
+    assert len(result_intervals) == 1
+    assert result_intervals[0].get_min_value() == 1.0
+    assert result_intervals[0].get_max_value() == 6.5
+
+
+def test_op_difference_left_overlap():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    self_min_value = 1.0
+    self_max_value = 10.0
+    self_interval = NumericInterval.create_instance(g=g, tg=tg)
+    self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+    other_min_value = 1.0
+    other_max_value = 6.5
+    other_interval = NumericInterval.create_instance(g=g, tg=tg)
+    other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+    result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
+    result_intervals = result.get_intervals()
+    assert len(result_intervals) == 1
+    assert result_intervals[0].get_min_value() == 6.5
+    assert result_intervals[0].get_max_value() == 10.0
+
+
+def test_op_round():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 1.9524377865952437
+    max_value = 2.4983529411764706
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_round(g=g, tg=tg, ndigits=3)
+    assert result.get_min_value() == 1.952
+    assert result.get_max_value() == 2.498
+
+
+def test_op_abs():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_abs(g=g, tg=tg)
+    assert result.get_min_value() == 0.0
+    assert result.get_max_value() == 2.0
+
+
+def test_op_abs_crosses_zero():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_abs(g=g, tg=tg)
+    assert result.get_min_value() == 0.0
+    assert result.get_max_value() == 2.0
+
+
+def test_op_abs_negative_only():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 0.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_abs(g=g, tg=tg)
+    assert result.get_min_value() == 0.0
+    assert result.get_max_value() == 1.0
+
+
+def test_op_abs_max_zero_min_negative():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 0.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_abs(g=g, tg=tg)
+    assert result.get_min_value() == 0.0
+    assert result.get_max_value() == 1.0
+
+
+def test_op_log_positive_interval():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 1.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_log(g=g, tg=tg)
+    assert result.get_min_value() == math.log(1.0)
+    assert result.get_max_value() == math.log(2.0)
+
+
+def test_op_log_negative_value():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = -1.0
+    max_value = 2.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    with pytest.raises(ValueError):
+        numeric_interval.op_log(g=g, tg=tg)
+
+
+def test_op_sine():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 0.5
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_sine(g=g, tg=tg)
+    assert result.get_min_value() == 0.0
+    assert result.get_max_value() == math.sin(0.5)
+
+
+def test_op_sine_wide_interval():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    min_value = 0.0
+    max_value = 10.0
+    numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+    result = numeric_interval.op_sine(g=g, tg=tg)
+    assert result.get_min_value() == -1.0
+    assert result.get_max_value() == 1.0
 
 
 class NumericSet(fabll.Node):
