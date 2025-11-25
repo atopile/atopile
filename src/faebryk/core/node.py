@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
+from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
@@ -1804,7 +1804,7 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        _is_trait = ImplementsTrait.MakeChild().put_on_type()
+        _is_trait = Traits.MakeEdge((ImplementsTrait.MakeChild())).put_on_type()
 
     class ExampleNode(Node):
         example_trait = ExampleTrait.MakeChild()
