@@ -585,13 +585,15 @@ def attach(
             if check_only:
                 return
 
-            component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
+            fabll.Traits.create_and_add_instance_to(
+                component, F.can_attach_to_footprint_via_pinmap
+            ).setup(pinmap)
 
-            sym = F.Symbol.with_component(component, pinmap)
-            # FIXME
-            sym.add(
-                F.Symbol.has_kicad_symbol(f"{apart.identifier}:{apart.sym_path.name}")
-            )
+            # TODO: symbol trait and module
+            # sym = F.Symbol.with_component(component, pinmap)
+            # sym.add(
+            #     F.Symbol.has_kicad_symbol(f"{apart.identifier}:{apart.sym_path.name}")
+            # )
 
         if check_only:
             return
@@ -602,6 +604,7 @@ def attach(
             .create_instance(g=component.instance.g())
             .from_path(apart.fp_path, lib_name=apart.path.name)
         )
+        # TODO: This trait is forwarded by a trait with attach function
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:

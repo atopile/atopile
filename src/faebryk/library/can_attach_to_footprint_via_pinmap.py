@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from typing import Self
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -68,3 +70,21 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
                 )
             )
         return out
+
+    def setup(
+        self,
+        pinmap: dict[str, F.Electrical | None] | dict[str, F.Electrical],
+    ) -> Self:
+        for name, electrical in pinmap.items():
+            # Create pin_tuple instance
+            pin_tuple = F.Collections.PointerTuple.bind_typegraph(
+                tg=self.tg
+            ).create_instance(g=self.instance.g())
+            if electrical is None:
+                electrical = F.Electrical.bind_typegraph(tg=self.tg).create_instance(
+                    g=self.instance.g()
+                )
+            pin_tuple.pointer.get().point(electrical)
+            pin_tuple.append_literal(name)
+            self.pinmap_.get().append(pin_tuple)
+        return self
