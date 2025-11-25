@@ -306,8 +306,6 @@ def _op(expr: fabll.NodeT) -> "F.Parameters.can_be_operand":
 class is_arithmetic(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # _unit = F.Units.HasUnit.MakeChild()
-
 
 class is_additive(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
