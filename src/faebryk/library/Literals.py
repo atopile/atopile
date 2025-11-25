@@ -74,6 +74,19 @@ class is_literal(fabll.Node):
         # No operator overloading!
         return super().__eq__(other)
 
+    def switch_cast(self) -> "LiteralNodes":
+        types = [Strings, Numbers, Booleans, Enums]
+        obj = fabll.Traits(self).get_obj_raw()
+        for t in types:
+            if obj.isinstance(t):
+                return obj.cast(t)
+        raise ValueError(f"Cannot cast literal {self} to any of {types}")
+
+    def pretty_repr(self) -> str:
+        # TODO
+        lit = self.switch_cast()
+        return f"{lit.get_type_name()}({lit})"
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str

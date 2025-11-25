@@ -239,6 +239,22 @@ class is_parameter_operatable(fabll.Node):
             )
         return False
 
+    def _get_lit_suffix(self) -> str:
+        out = ""
+        try:
+            lit = self.try_get_aliased_literal()
+        except KeyErrorAmbiguous as e:
+            return f"{{AMBIGUOUS_I: {e.duplicates}}}"
+        if lit is not None:
+            out = f"{{I|{lit.pretty_repr()}}}"
+        elif (lit := self.try_get_subset_or_alias_literal()) is not None:
+            out = f"{{S|{lit.pretty_repr()}}}"
+        if lit and lit.equals_singleton(True):
+            out = "✓"
+        elif lit and lit.equals_singleton(False):
+            out = "✗"
+        return out
+
 
 class is_parameter(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -246,8 +262,57 @@ class is_parameter(fabll.Node):
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
     ) -> str:
+        """
+        Unit only printed if not dimensionless.
+
+        Letters:
+        ```
+        A-Z, a-z, α-ω
+        A₁-Z₁, a₁-z₁, α₁-ω₁
+        A₂-Z₂, a₂-z₂, α₂-ω₂
+        ...
+        ```
+        """
+
+        def param_id_to_human_str(param_id: int) -> str:
+            assert isinstance(param_id, int)
+            alphabets = [("A", 26), ("a", 26), ("α", 25)]
+            alphabet = [
+                chr(ord(start_char) + i)
+                for start_char, char_cnt in alphabets
+                for i in range(char_cnt)
+            ]
+
+            def int_to_subscript(i: int) -> str:
+                if i == 0:
+                    return ""
+                _str = str(i)
+                return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
+
+            return alphabet[param_id % len(alphabet)] + int_to_subscript(
+                param_id // len(alphabet)
+            )
+
+        obj = fabll.Traits(self).get_obj_raw()
+        if use_name and obj.get_parent() is not None:
+            letter = obj.get_full_name()
+        else:
+            if context is None:
+                context = ReprContext()
+            if self not in context.variable_mapping.mapping:
+                next_id = context.variable_mapping.next_id
+                context.variable_mapping.mapping[self] = next_id
+                context.variable_mapping.next_id += 1
+            letter = param_id_to_human_str(context.variable_mapping.mapping[self])
+
         # TODO
-        pass
+        # unitstr = f" {self.units}" if self.units != dimensionless else ""
+        unitstr = ""
+
+        out = f"{letter}{unitstr}"
+        out += self.get_sibling_trait(is_parameter_operatable)._get_lit_suffix()
+
+        return out
 
     def domain_set(self) -> "F.Literals.is_literal":
         # TODO

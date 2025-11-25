@@ -95,18 +95,28 @@ class is_expression(fabll.Node):
         return out
 
     def get_operands(self) -> list["F.Parameters.can_be_operand"]:
+        from faebryk.library.Collections import PointerProtocol
+
         node = fabll.Traits(self).get_obj_raw()
         operands: list[Parameters.can_be_operand] = []
-        pointers = node.get_children(
-            direct_only=True,
-            types=(OperandPointer, OperandSequence, OperandSet),  # type: ignore
+        pointers: set[PointerProtocol] = (
+            node.get_children(
+                direct_only=True,
+                types=OperandPointer,  # type: ignore
+            )
+            | node.get_children(
+                direct_only=True,
+                types=OperandSequence,  # type: ignore
+            )
+            | node.get_children(
+                direct_only=True,
+                types=OperandSet,  # type: ignore
+            )
         )
         for pointer in pointers:
-            child = cast(F.Collections.PointerProtocol, pointer)
-            li = child.as_list()
-            assert all(c.isinstance(Parameters.can_be_operand) for c in li)
-            li = cast(list[Parameters.can_be_operand], li)
-            operands.extend(li)
+            li = pointer.as_list()
+            li_op = [c.cast(Parameters.can_be_operand) for c in li]
+            operands.extend(li_op)
 
         return operands
 
@@ -155,8 +165,84 @@ class is_expression(fabll.Node):
     def compact_repr(
         self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
     ) -> str:
+        if context is None:
+            context = Parameters.ReprContext()
+
         # TODO
-        pass
+        # style = type(self).REPR_STYLE
+        style = is_expression.ReprStyle(
+            symbol=fabll.Traits(self).get_obj_raw().get_type_name(),
+            placement=is_expression.ReprStyle.Placement.PREFIX,
+        )
+        symbol = style.symbol
+        if symbol is None:
+            symbol = type(self).__name__
+
+        symbol_suffix = ""
+        if self.try_get_sibling_trait(is_predicate):
+            # symbol = f"\033[4m{symbol}!\033[0m"
+            symbol_suffix += "!"
+            from faebryk.core.solver.mutator import is_terminated
+
+            if self.try_get_sibling_trait(is_terminated):
+                symbol_suffix += "!"
+        symbol += symbol_suffix
+        lit_suffix = self.as_parameter_operatable()._get_lit_suffix()
+        symbol += lit_suffix
+
+        def format_operand(op: Parameters.can_be_operand):
+            if lit := op.try_get_sibling_trait(Literals.is_literal):
+                return lit.pretty_repr()
+            if po := op.is_parameter_operatable():
+                op_out = po.compact_repr(context, use_name=use_name)
+                if (op_expr := op.try_get_sibling_trait(is_expression)) and len(
+                    op_expr.get_operands()
+                ) > 1:
+                    op_out = f"({op_out})"
+                return op_out
+            return str(op)
+
+        formatted_operands = [format_operand(op) for op in self.get_operands()]
+        out = ""
+        if style.placement == is_expression.ReprStyle.Placement.PREFIX:
+            if len(formatted_operands) == 1:
+                out = f"{symbol}{formatted_operands[0]}"
+            else:
+                out = f"{symbol}({', '.join(formatted_operands)})"
+        elif style.placement == is_expression.ReprStyle.Placement.EMBRACE:
+            out = f"{symbol}{', '.join(formatted_operands)}{style.symbol}"
+        elif len(formatted_operands) == 0:
+            out = f"{type(self).__name__}{symbol_suffix}()"
+        elif style.placement == is_expression.ReprStyle.Placement.POSTFIX:
+            if len(formatted_operands) == 1:
+                out = f"{formatted_operands[0]}{symbol}"
+            else:
+                out = f"({', '.join(formatted_operands)}){symbol}"
+        elif len(formatted_operands) == 1:
+            out = f"{type(self).__name__}{symbol_suffix}({formatted_operands[0]})"
+        elif lit_suffix and len(formatted_operands) > 2:
+            out = (
+                f"{type(self).__name__}{symbol_suffix}{lit_suffix}"
+                f"({', '.join(formatted_operands)})"
+            )
+        elif style.placement == is_expression.ReprStyle.Placement.INFIX:
+            symbol = f" {symbol} "
+            out = f"{symbol.join(formatted_operands)}"
+        elif style.placement == is_expression.ReprStyle.Placement.INFIX_FIRST:
+            if len(formatted_operands) == 2:
+                out = f"{formatted_operands[0]} {symbol} {formatted_operands[1]}"
+            else:
+                out = (
+                    f"{formatted_operands[0]}{symbol}("
+                    f"{', '.join(formatted_operands[1:])})"
+                )
+        else:
+            assert False
+        assert out
+
+        # out += self._get_lit_suffix()
+
+        return out
 
     def as_parameter_operatable(self) -> "F.Parameters.is_parameter_operatable":
         return fabll.Traits(self).get_trait_of_obj(Parameters.is_parameter_operatable)
@@ -184,16 +270,22 @@ class is_expression(fabll.Node):
         -> [A, B, C, D, (A+B), (C+D), (A+B)+(C+D)]
         ```
         """
-        # TODO
-        pass
+        return sorted(
+            exprs,
+            key=lambda e: e.get_trait(Parameters.is_parameter_operatable).get_depth(),
+            reverse=not ascending,
+        )
 
     @staticmethod
     def sort_by_depth_po(
         exprs: Iterable["F.Parameters.is_parameter_operatable"],
         ascending: bool,
     ) -> list["F.Parameters.is_parameter_operatable"]:
-        # TODO
-        pass
+        return sorted(
+            exprs,
+            key=Parameters.is_parameter_operatable.get_depth,
+            reverse=not ascending,
+        )
 
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
