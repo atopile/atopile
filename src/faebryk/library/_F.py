@@ -16,7 +16,6 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 import faebryk.library.Collections as Collections
-import faebryk.library.Parameters as Parameters
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Footprint import Footprint
@@ -30,20 +29,18 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_pickable import is_pickable
+import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
-import faebryk.library.Units as Units
-import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
+import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
-import faebryk.library.Expressions as Expressions
 from faebryk.library.requires_external_usage import requires_external_usage
-import faebryk.library.Literals as Literals
-from faebryk.library.has_package_requirements import has_package_requirements
-from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.PCB import PCB
+import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.SerializableMetadata import SerializableMetadata
+import faebryk.library.Units as Units
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_designator_prefix import has_designator_prefix
@@ -55,7 +52,10 @@ from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
+import faebryk.library.Expressions as Expressions
 from faebryk.library.Electrical import Electrical
+from faebryk.library.has_package_requirements import has_package_requirements
+from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad
@@ -123,7 +123,6 @@ from faebryk.library.HDMI import HDMI
 
 __all__ = [
     "Collections",
-    "Parameters",
     "is_sink",
     "is_source",
     "Footprint",
@@ -137,20 +136,18 @@ __all__ = [
     "has_part_removed",
     "is_lazy",
     "is_pickable",
+    "Literals",
     "can_bridge",
     "has_linked_pad",
-    "Units",
-    "PCBTransformer",
     "has_footprint",
     "implements_design_check",
+    "Parameters",
     "can_bridge_by_name",
-    "Expressions",
     "requires_external_usage",
-    "Literals",
-    "has_package_requirements",
-    "is_auto_generated",
     "PCB",
+    "PCBTransformer",
     "SerializableMetadata",
+    "Units",
     "has_datasheet",
     "has_designator",
     "has_designator_prefix",
@@ -162,7 +159,10 @@ __all__ = [
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
+    "Expressions",
     "Electrical",
+    "has_package_requirements",
+    "is_auto_generated",
     "ElectricPower",
     "Filter",
     "Pad",

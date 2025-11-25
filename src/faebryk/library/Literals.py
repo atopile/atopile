@@ -145,8 +145,10 @@ class Strings(fabll.Node):
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, *values: str
     ) -> fabll._ChildField[Self]:
+        from faebryk.library.Expressions import Is
+
         lit = cls.MakeChild(*values)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, before=True)
         return out
 
@@ -173,7 +175,7 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None,
+        unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None,
     ) -> Self:
         # TODO
         return self
@@ -181,7 +183,7 @@ class Numbers(fabll.Node):
     def setup_from_singleton(
         self,
         value: float,
-        unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None,
+        unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None,
     ) -> Self:
         # TODO
         return self
@@ -192,6 +194,8 @@ class Numbers(fabll.Node):
 
     @classmethod
     def bind_from_interval(cls, tg: graph.TypeGraph, g: graph.GraphView):
+        from faebryk.library.Units import Dimensionless
+
         class NumbersBound:
             def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
                 self.tg = tg
@@ -201,12 +205,8 @@ class Numbers(fabll.Node):
                 self,
                 lower: float | None,
                 upper: float | None,
-                unit: type[fabll.NodeT] = F.Units.Dimensionless,
+                unit: type[fabll.NodeT] = Dimensionless,
             ) -> Self:
-                if unit is None:
-                    from faebryk.library import Units
-
-                    unit = Units.Dimensionless
                 return (
                     cls.bind_typegraph(tg=tg)
                     .create_instance(g=g)
@@ -227,12 +227,14 @@ class Numbers(fabll.Node):
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: float
     ) -> fabll._ChildField[Self]:
+        from faebryk.library.Expressions import Is
+
         assert isinstance(value, float) or isinstance(value, int), (
             "Value of number literal must be a float or int"
         )
         value = float(value)
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -314,9 +316,11 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     def MakeChild_ConstrainToLiteral(
         cls, ref: fabll.RefPath, value: bool
     ) -> fabll._ChildField:
+        from faebryk.library.Expressions import Is
+
         assert isinstance(value, bool), "Value of boolean literal must be a boolean"
         lit = cls.MakeChild(value=value)
-        out = F.Expressions.Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
@@ -442,7 +446,7 @@ class BoundLiteralContext:
         return self.Strings.create_instance(g=self.g)
 
     def create_numbers_from_singleton(
-        self, value: float, unit: "type[fabll.NodeT] | F.Units.IsUnit | None" = None
+        self, value: float, unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None
     ) -> "Numbers":
         return self.create_numbers().setup_from_singleton(value=value, unit=unit)
 

@@ -257,13 +257,13 @@ def test_has_designator_prefix():
 
     class TestModule(fabll.Node):
         prefix = fabll.Traits.MakeEdge(
-            F.has_designator_prefix.MakeChild("A")
+            has_designator_prefix.MakeChild("A")
         ).put_on_type()
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
-    assert module.has_trait(F.has_designator_prefix)
-    assert module.get_trait(F.has_designator_prefix).get_prefix() == "A"
+    assert module.has_trait(has_designator_prefix)
+    assert module.get_trait(has_designator_prefix).get_prefix() == "A"
 
 
 def test_has_designator_prefix_from_enum():
@@ -272,14 +272,14 @@ def test_has_designator_prefix_from_enum():
 
     class TestModule(fabll.Node):
         prefix = fabll.Traits.MakeEdge(
-            F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.B)
+            has_designator_prefix.MakeChild(has_designator_prefix.Prefix.B)
         ).put_on_type()
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
-    assert module.has_trait(F.has_designator_prefix)
-    assert module.get_trait(F.has_designator_prefix).get_prefix() == "B"
+    assert module.has_trait(has_designator_prefix)
+    assert module.get_trait(has_designator_prefix).get_prefix() == "B"
     assert (
-        module.get_trait(F.has_designator_prefix).get_prefix()
-        == F.has_designator_prefix.Prefix.B.value
+        module.get_trait(has_designator_prefix).get_prefix()
+        == has_designator_prefix.Prefix.B.value
     )
