@@ -27,10 +27,7 @@ sys.path.append(str(Path(__file__).parent))
 if TYPE_CHECKING:
     from components import ComponentTestCase
 
-try:
-    from components import components_to_test
-except ImportError:
-    components_to_test = []
+from components import components_to_test
 
 logger = logging.getLogger(__name__)
 
