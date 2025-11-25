@@ -584,6 +584,12 @@ class NumericInterval(fabll.Node):
             return False
         return ge(self.get_max_value(), item) and ge(item, self.get_min_value())
 
+    def __eq__(self, other: "NumericInterval") -> bool:
+        return (
+            self.get_min_value() == other.get_min_value()
+            and self.get_max_value() == other.get_max_value()
+        )
+
     def __hash__(self) -> int:
         return hash((self.get_min_value(), self.get_max_value()))
 
@@ -744,7 +750,7 @@ def test_numeric_interval_as_center_rel():
     assert numeric_interval.as_center_rel() == (0.5, 1.0)
 
 
-def test_is_subset_of_true():
+def test_numeric_interval_is_subset_of_true():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -758,7 +764,7 @@ def test_is_subset_of_true():
     assert numeric_interval.is_subset_of(other=other)
 
 
-def test_is_subset_of_false():
+def test_numeric_interval_is_subset_of_false():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -772,7 +778,7 @@ def test_is_subset_of_false():
     assert not numeric_interval.is_subset_of(other=other)
 
 
-def test_op_add():
+def test_numeric_interval_op_add():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -788,7 +794,7 @@ def test_op_add():
     assert result.get_max_value() == 2.5
 
 
-def test_op_negate():
+def test_numeric_interval_op_negate():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -800,7 +806,7 @@ def test_op_negate():
     assert result.get_max_value() == -0.0
 
 
-def test_op_subtract():
+def test_numeric_interval_op_subtract():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -816,7 +822,7 @@ def test_op_subtract():
     assert result.get_max_value() == 0.5
 
 
-def test_op_multiply():
+def test_numeric_interval_op_multiply():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -832,7 +838,7 @@ def test_op_multiply():
     assert result.get_max_value() == 6.0
 
 
-def test_op_multiply_negative_values():
+def test_numeric_interval_op_multiply_negative_values():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -848,7 +854,7 @@ def test_op_multiply_negative_values():
     assert result.get_max_value() == -1.0
 
 
-def test_op_multiply_zero_values():
+def test_numeric_interval_op_multiply_zero_values():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -864,7 +870,7 @@ def test_op_multiply_zero_values():
     assert result.get_max_value() == 0.0
 
 
-def test_op_invert_case_1():
+def test_numeric_interval_op_invert_case_1():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -875,7 +881,7 @@ def test_op_invert_case_1():
     assert result.is_empty()
 
 
-def test_op_invert_case_2():
+def test_numeric_interval_op_invert_case_2():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -891,7 +897,7 @@ def test_op_invert_case_2():
     assert result_intervals[1].get_max_value() == math.inf
 
 
-def test_op_invert_case_3():
+def test_numeric_interval_op_invert_case_3():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -904,7 +910,7 @@ def test_op_invert_case_3():
     assert result.get_intervals()[0].get_max_value() == -1.0
 
 
-def test_op_invert_case_4():
+def test_numeric_interval_op_invert_case_4():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -917,7 +923,7 @@ def test_op_invert_case_4():
     assert result.get_intervals()[0].get_max_value() == math.inf
 
 
-def test_op_invert_case_5():
+def test_numeric_interval_op_invert_case_5():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -930,7 +936,7 @@ def test_op_invert_case_5():
     assert result.get_intervals()[0].get_max_value() == 0.5
 
 
-def test_op_pow_positive_base_positive_exponent():
+def test_numeric_interval_op_pow_positive_base_positive_exponent():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     base = NumericInterval.create_instance(g=g, tg=tg)
@@ -947,7 +953,7 @@ def test_op_pow_positive_base_positive_exponent():
     assert result.get_intervals()[0].get_max_value() == 16.0
 
 
-def test_op_divide_positive_numerator_positive_denominator():
+def test_numeric_interval_op_divide_positive_numerator_positive_denominator():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -964,7 +970,7 @@ def test_op_divide_positive_numerator_positive_denominator():
     assert result.get_intervals()[0].get_max_value() == 4.0
 
 
-def test_op_intersect_no_overlap():
+def test_numeric_interval_op_intersect_no_overlap():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -979,7 +985,7 @@ def test_op_intersect_no_overlap():
     assert result.is_empty()
 
 
-def test_op_intersect_partially_covered():
+def test_numeric_interval_op_intersect_partially_covered():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -997,7 +1003,7 @@ def test_op_intersect_partially_covered():
     assert result_intervals[0].get_max_value() == 2.0
 
 
-def test_op_difference_no_overlap():
+def test_numeric_interval_op_difference_no_overlap():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -1015,7 +1021,7 @@ def test_op_difference_no_overlap():
     assert result_intervals[0].get_max_value() == 2.0
 
 
-def test_op_difference_fully_covered():
+def test_numeric_interval_op_difference_fully_covered():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -1030,7 +1036,7 @@ def test_op_difference_fully_covered():
     assert result.is_empty()
 
 
-def test_op_difference_inner_overlap():
+def test_numeric_interval_op_difference_inner_overlap():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -1050,7 +1056,7 @@ def test_op_difference_inner_overlap():
     assert result_intervals[1].get_max_value() == 10.0
 
 
-def test_op_difference_right_overlap():
+def test_numeric_interval_op_difference_right_overlap():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -1068,7 +1074,7 @@ def test_op_difference_right_overlap():
     assert result_intervals[0].get_max_value() == 6.5
 
 
-def test_op_difference_left_overlap():
+def test_numeric_interval_op_difference_left_overlap():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     self_min_value = 1.0
@@ -1086,7 +1092,7 @@ def test_op_difference_left_overlap():
     assert result_intervals[0].get_max_value() == 10.0
 
 
-def test_op_round():
+def test_numeric_interval_op_round():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1098,7 +1104,7 @@ def test_op_round():
     assert result.get_max_value() == 2.498
 
 
-def test_op_abs():
+def test_numeric_interval_op_abs():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1110,7 +1116,7 @@ def test_op_abs():
     assert result.get_max_value() == 2.0
 
 
-def test_op_abs_crosses_zero():
+def test_numeric_interval_op_abs_crosses_zero():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1122,7 +1128,7 @@ def test_op_abs_crosses_zero():
     assert result.get_max_value() == 2.0
 
 
-def test_op_abs_negative_only():
+def test_numeric_interval_op_abs_negative_only():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1134,7 +1140,7 @@ def test_op_abs_negative_only():
     assert result.get_max_value() == 1.0
 
 
-def test_op_abs_max_zero_min_negative():
+def test_numeric_interval_op_abs_max_zero_min_negative():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1146,7 +1152,7 @@ def test_op_abs_max_zero_min_negative():
     assert result.get_max_value() == 1.0
 
 
-def test_op_log_positive_interval():
+def test_numeric_interval_op_log_positive_interval():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1158,7 +1164,7 @@ def test_op_log_positive_interval():
     assert result.get_max_value() == math.log(2.0)
 
 
-def test_op_log_negative_value():
+def test_numeric_interval_op_log_negative_value():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1169,7 +1175,7 @@ def test_op_log_negative_value():
         numeric_interval.op_log(g=g, tg=tg)
 
 
-def test_op_sine():
+def test_numeric_interval_op_sine():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1181,7 +1187,7 @@ def test_op_sine():
     assert result.get_max_value() == math.sin(0.5)
 
 
-def test_op_sine_wide_interval():
+def test_numeric_interval_op_sine_wide_interval():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -1191,6 +1197,16 @@ def test_op_sine_wide_interval():
     result = numeric_interval.op_sine(g=g, tg=tg)
     assert result.get_min_value() == -1.0
     assert result.get_max_value() == 1.0
+
+
+def test_numeric_set_eq_numeric_set():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1 == numeric_set_2
 
 
 class NumericSet(fabll.Node):
@@ -1311,6 +1327,7 @@ class NumericSet(fabll.Node):
     def setup_from_values(
         self, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
     ) -> "NumericSet":
+        assert self.is_empty()
         sorted_and_merged_values = NumericSet.sort_merge_values(
             g=g, tg=tg, values=values
         )
@@ -1328,6 +1345,7 @@ class NumericSet(fabll.Node):
         tg: TypeGraph,
         intervals: list["NumericInterval | NumericSet"],
     ) -> "NumericSet":
+        assert self.is_empty()
         sorted_and_merged_intervals = NumericSet.sort_merge_intervals(
             g=g, tg=tg, intervals=intervals
         )
@@ -1339,29 +1357,18 @@ class NumericSet(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         return NumericSet.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def op_pow(
-        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
-    ) -> "NumericSet":
-        numeric_set = NumericSet.create_instance(g=g, tg=tg)
-
-        self_intervals = self.get_intervals()
-        other_intervals = other.get_intervals()
-
-        out = []
-        for self_interval in self_intervals:
-            for other_interval in other_intervals:
-                out.append(self_interval.op_pow(g=g, tg=tg, other=other_interval))
-
-        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=out)
-
     def is_empty(self) -> bool:
         return len(self.get_intervals()) == 0
 
-    def is_superset_of(self, other: "NumericSet") -> bool:
+    def is_superset_of(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> bool:
         return other == other.op_intersect_intervals(g=g, tg=tg, other=self)
 
-    def is_subset_of(self, other: "NumericSet") -> bool:
-        return other.is_superset_of(self)
+    def is_subset_of(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> bool:
+        return other.is_superset_of(g=g, tg=tg, other=self)
 
     def op_intersect(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
@@ -1439,6 +1446,21 @@ class NumericSet(fabll.Node):
             g=g, tg=tg, other=self.op_intersect_intervals(g=g, tg=tg, other=other)
         )
 
+    def op_pow(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "NumericSet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+
+        self_intervals = self.get_intervals()
+        other_intervals = other.get_intervals()
+
+        out = []
+        for self_interval in self_intervals:
+            for other_interval in other_intervals:
+                out.append(self_interval.op_pow(g=g, tg=tg, other=other_interval))
+
+        return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=out)
+
     def op_add_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
@@ -1456,12 +1478,12 @@ class NumericSet(fabll.Node):
             intervals.append(interval.op_negate(g=g, tg=tg))
         return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=intervals)
 
-    def op_subtract_intervals(
+    def op_subtract(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
         return self.op_add_intervals(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
 
-    def op_mul_intervals(
+    def op_multiply(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
@@ -1486,44 +1508,55 @@ class NumericSet(fabll.Node):
         tg: TypeGraph,
         other: "NumericSet",
     ) -> "NumericSet":
-        return self.op_mul_intervals(g=g, tg=tg, other=other.op_invert(g=g, tg=tg))
+        return self.op_multiply(g=g, tg=tg, other=other.op_invert(g=g, tg=tg))
 
-    # TODO: Requires bool sets
-    # def op_ge_intervals(self, other: "NumericSet") -> BoolSet:
-    #     if self.is_empty() or other.is_empty():
-    #         return BoolSet()
-    #     if self.min_elem >= other.max_elem:
-    #         return BoolSet(True)
-    #     if self.max_elem < other.min_elem:
-    #         return BoolSet(False)
-    #     return BoolSet(True, False)
+    def op_ge_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        if self.is_empty() or other.is_empty():
+            return boolean_set
+        if self.get_min_value() >= other.get_max_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[True])
+        if self.get_max_value() < other.get_min_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[False])
+        return boolean_set.setup(g=g, tg=tg, booleans=[True, False])
 
-    # def op_gt_intervals(self, other: "NumericSet") -> BoolSet:
-    #     if self.is_empty() or other.is_empty():
-    #         return BoolSet()
-    #     if self.min_elem > other.max_elem:
-    #         return BoolSet(True)
-    #     if self.max_elem <= other.min_elem:
-    #         return BoolSet(False)
-    #     return BoolSet(True, False)
+    def op_gt_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        if self.is_empty() or other.is_empty():
+            return boolean_set
+        if self.get_min_value() > other.get_max_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[True])
+        if self.get_max_value() <= other.get_min_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[False])
+        return boolean_set.setup(g=g, tg=tg, booleans=[True, False])
 
-    # def op_le_intervals(self, other: "NumericSet") -> BoolSet:
-    #     if self.is_empty() or other.is_empty():
-    #         return BoolSet()
-    #     if self.max_elem <= other.min_elem:
-    #         return BoolSet(True)
-    #     if self.min_elem > other.max_elem:
-    #         return BoolSet(False)
-    #     return BoolSet(True, False)
+    def op_le_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        if self.is_empty() or other.is_empty():
+            return boolean_set
+        if self.get_max_value() <= other.get_min_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[True])
+        if self.get_min_value() > other.get_max_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[False])
+        return boolean_set.setup(g=g, tg=tg, booleans=[True, False])
 
-    # def op_lt_intervals(self, other: "NumericSet") -> BoolSet:
-    #     if self.is_empty() or other.is_empty():
-    #         return BoolSet()
-    #     if self.max_elem < other.min_elem:
-    #         return BoolSet(True)
-    #     if self.min_elem >= other.max_elem:
-    #         return BoolSet(False)
-    #     return BoolSet(True, False)
+    def op_lt_intervals(
+        self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
+    ) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        if self.is_empty() or other.is_empty():
+            return boolean_set
+        if self.get_max_value() < other.get_min_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[True])
+        if self.get_min_value() >= other.get_max_value():
+            return boolean_set.setup(g=g, tg=tg, booleans=[False])
+        return boolean_set.setup(g=g, tg=tg, booleans=[True, False])
 
     def op_round(
         self, g: graph.GraphView, tg: TypeGraph, ndigits: int = 0
@@ -1656,7 +1689,7 @@ class NumericSet(fabll.Node):
     #     )
 
 
-def test_sort_merge_intervals():
+def test_numeric_set_sort_merge_intervals():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_interval_1 = NumericInterval.create_instance(g=g, tg=tg)
@@ -1739,7 +1772,126 @@ def test_numeric_set_instance_setup_from_intervals():
     assert intervals[0].get_max_value() == 2.0
 
 
-def test_numeric_set_instance_op_pow_intervals():
+def test_numeric_set_is_empty():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    assert numeric_set.is_empty()
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
+    assert not numeric_set.is_empty()
+
+
+def test_numeric_set_is_superset_of_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1.is_superset_of(g=g, tg=tg, other=numeric_set_2)
+
+
+def test_numeric_set_is_superset_of_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.5), (2.0, 3.0)])
+    assert not numeric_set_1.is_superset_of(g=g, tg=tg, other=numeric_set_2)
+
+
+def test_numeric_set_is_subset_of_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1.is_subset_of(g=g, tg=tg, other=numeric_set_2)
+
+
+def test_numeric_set_is_subset_of_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.5), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert not numeric_set_1.is_subset_of(g=g, tg=tg, other=numeric_set_2)
+
+
+def test_numeric_set_op_intersect_intervals_partially_covered():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_intersect_intervals(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 0.5
+    assert intervals[0].get_max_value() == 1.0
+    assert intervals[1].get_min_value() == 2.0
+    assert intervals[1].get_max_value() == 3.0
+
+
+def test_numeric_set_op_union_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_union(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 1.5
+    assert intervals[1].get_min_value() == 1.7
+    assert intervals[1].get_max_value() == 3.6
+
+
+def test_numeric_set_op_difference_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
+    numeric_interval.setup(g=g, tg=tg, min=0.5, max=2.5)
+    result = numeric_set.op_difference_interval(g=g, tg=tg, other=numeric_interval)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 0.5
+    assert intervals[1].get_min_value() == 2.5
+    assert intervals[1].get_max_value() == 3.0
+
+
+def test_numeric_set_op_symmetric_difference_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_symmetric_difference_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    )
+    intervals = result.get_intervals()
+    assert len(intervals) == 4
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 0.5
+    assert intervals[1].get_min_value() == 1.0
+    assert intervals[1].get_max_value() == 1.5
+    assert intervals[2].get_min_value() == 1.7
+    assert intervals[2].get_max_value() == 2.0
+    assert intervals[3].get_min_value() == 3.0
+    assert intervals[3].get_max_value() == 3.6
+
+
+def test_numeric_set_op_pow_intervals():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
@@ -1751,3 +1903,525 @@ def test_numeric_set_instance_op_pow_intervals():
     assert len(intervals) == 1
     assert intervals[0].get_min_value() == 0.0
     assert intervals[0].get_max_value() == 4.0
+
+
+def test_numeric_set_op_add_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_add_intervals(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 1
+    assert intervals[0].get_min_value() == 0.5
+    assert intervals[0].get_max_value() == 6.6
+
+
+def test_numeric_set_op_negate():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    result = numeric_set.op_negate(g=g, tg=tg)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == -3.0
+    assert intervals[0].get_max_value() == -2.0
+    assert intervals[1].get_min_value() == -1.0
+    assert intervals[1].get_max_value() == 0.0
+
+
+def test_numeric_set_op_subtract_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_subtract(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 1
+    assert intervals[0].get_min_value() == -3.6
+    assert intervals[0].get_max_value() == 2.5
+
+
+def test_numeric_set_op_multiply():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_multiply(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 1
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 10.8
+
+
+def test_numeric_set_op_invert():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    result = numeric_set.op_invert(g=g, tg=tg)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 1 / 3
+    assert intervals[0].get_max_value() == 1 / 2
+    assert intervals[1].get_min_value() == 1
+    assert intervals[1].get_max_value() == math.inf
+
+
+def test_numeric_set_op_div_intervals():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.5, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+    result = numeric_set_1.op_div_intervals(g=g, tg=tg, other=numeric_set_2)
+    intervals = result.get_intervals()
+    assert len(intervals) == 1
+    assert intervals[0].get_min_value() == 0.5 / 3.6
+    assert intervals[0].get_max_value() == 6
+
+
+def test_numeric_set_op_ge_intervals_empty():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+
+    assert numeric_set_1.op_ge_intervals(g=g, tg=tg, other=numeric_set_2).is_empty()
+
+
+def test_numeric_set_op_ge_intervals_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1.op_ge_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [True]
+
+
+def test_numeric_set_op_ge_intervals_true_equal():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(1.5, 2.5), (3.0, 3.5)])
+    assert numeric_set_1.op_ge_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [True]
+
+
+def test_numeric_set_op_ge_intervals_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    assert numeric_set_1.op_ge_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [False]
+
+
+def test_numeric_set_op_gt_intervals_empty():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    assert numeric_set_1.op_gt_intervals(g=g, tg=tg, other=numeric_set_2).is_empty()
+
+
+def test_numeric_set_op_gt_intervals_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1.op_gt_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [True]
+
+
+def test_numeric_set_op_gt_intervals_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    assert numeric_set_1.op_gt_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [False]
+
+
+def test_numeric_set_op_gt_intervals_true_equal():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(1.5, 2.5), (3.0, 3.5)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(1.5, 2.5), (3.0, 3.5)])
+    assert numeric_set_1.op_gt_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [True, False]
+
+
+def test_numeric_set_op_le_intervals_empty():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    assert numeric_set_1.op_le_intervals(g=g, tg=tg, other=numeric_set_2).is_empty()
+
+
+def test_numeric_set_op_le_intervals_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    assert numeric_set_1.op_le_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [True]
+
+
+def test_numeric_set_op_le_intervals_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1.op_le_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [False]
+
+
+def test_numeric_set_op_lt_intervals_empty():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    assert numeric_set_1.op_lt_intervals(g=g, tg=tg, other=numeric_set_2).is_empty()
+
+
+def test_numeric_set_op_lt_intervals_true():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    assert numeric_set_1.op_lt_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [True]
+
+
+def test_numeric_set_op_lt_intervals_false():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1.op_lt_intervals(
+        g=g, tg=tg, other=numeric_set_2
+    ).get_boolean_values() == [False]
+
+
+def test_numeric_set_op_round():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(
+        g=g, tg=tg, values=[(0.0001, 1.0123456789), (2.4532450, 3.432520)]
+    )
+    result = numeric_set.op_round(g=g, tg=tg, ndigits=3)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 0.0
+    assert intervals[0].get_max_value() == 1.012
+    assert intervals[1].get_min_value() == 2.453
+    assert intervals[1].get_max_value() == 3.433
+
+
+def test_numeric_set_op_abs():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(-10.0, -5.0), (1.0, 3.0)])
+    result = numeric_set.op_abs(g=g, tg=tg)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == 1.0
+    assert intervals[0].get_max_value() == 3.0
+    assert intervals[1].get_min_value() == 5.0
+    assert intervals[1].get_max_value() == 10.0
+
+
+def test_numeric_set_op_log():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.1, 1.0), (2.0, 3.0)])
+    result = numeric_set.op_log(g=g, tg=tg)
+    intervals = result.get_intervals()
+    assert len(intervals) == 2
+    assert intervals[0].get_min_value() == math.log(0.1)
+    assert intervals[0].get_max_value() == math.log(1.0)
+    assert intervals[1].get_min_value() == math.log(2.0)
+    assert intervals[1].get_max_value() == math.log(3.0)
+
+
+def test_numeric_set_op_sin():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    result = numeric_set.op_sin(g=g, tg=tg)
+    intervals = result.get_intervals()
+    assert len(intervals) == 1
+    assert intervals[0].get_min_value() == math.sin(0.0)
+    assert intervals[0].get_max_value() == math.sin(2.0)
+
+
+def test_numeric_set_contains():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert 0.5 in numeric_set
+    assert 0.0 in numeric_set
+    assert 1.0 in numeric_set
+    assert 2.0 in numeric_set
+    assert 3.0 in numeric_set
+    assert 4.0 not in numeric_set
+
+
+def test_numeric_set_eq():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set_1 == numeric_set_2
+    numeric_set_3 = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_3.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 4.0)])
+    assert numeric_set_1 != numeric_set_3
+
+
+def test_numeric_repr():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert repr(numeric_set) == "_N_intervals([0.0, 1.0], [2.0, 3.0])"
+
+
+def test_numeric_iter():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+
+    for interval in numeric_set:
+        assert interval.get_min_value() >= 0.0
+        assert interval.get_max_value() <= 3.0
+
+
+def test_numeric_set_is_single_element():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set_single_element = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_single_element.setup_from_values(g=g, tg=tg, values=[(1.0, 1.0)])
+    assert numeric_set_single_element.is_single_element()
+
+    numeric_set_multiple_elements = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set_multiple_elements.setup_from_values(
+        g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)]
+    )
+    assert not numeric_set_multiple_elements.is_single_element()
+
+
+def test_numeric_set_any():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    numeric_set = NumericSet.create_instance(g=g, tg=tg)
+    numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+    assert numeric_set.any() == 0.0
+
+
+# Boolsets
+
+
+@dataclass(frozen=True)
+class BooltAttributes(fabll.NodeAttributes):
+    value: bool
+
+
+class Boolean(fabll.Node[BooltAttributes]):
+    Attributes = BooltAttributes
+
+    @classmethod
+    def MakeChild(cls, value: bool) -> fabll._ChildField:
+        return fabll._ChildField(cls, attributes=BooltAttributes(value=value))
+
+    @classmethod
+    def create_instance(
+        cls, g: graph.GraphView, tg: TypeGraph, value: bool
+    ) -> "Boolean":
+        return Boolean.bind_typegraph(tg).create_instance(
+            g=g, attributes=BooltAttributes(value=value)
+        )
+
+    def get_value(self) -> bool:
+        value = self.instance.node().get_dynamic_attrs().get("value", None)
+        if value is None:
+            raise ValueError("Boolean literal has no value")
+        return bool(value)
+
+
+def test_boolean_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        boolean = Boolean.MakeChild(value=True)
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    assert app.boolean.get().get_value()
+
+
+class BooleanSet(fabll.Node):
+    booleans = F.Collections.PointerSet.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, booleans: list[bool]) -> fabll._ChildField:
+        out = fabll._ChildField(cls)
+        booleans_makechilds = [Boolean.MakeChild(value=boolean) for boolean in booleans]
+        out.add_dependant(
+            *F.Collections.PointerSet.MakeEdges(
+                [out, cls.booleans],
+                [[boolean_makechild] for boolean_makechild in booleans_makechilds],
+            )
+        )
+        out.add_dependant(*booleans_makechilds, before=True)
+        return out
+
+    @classmethod
+    def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "BooleanSet":
+        return BooleanSet.bind_typegraph(tg=tg).create_instance(g=g)
+
+    def setup(
+        self, g: graph.GraphView, tg: TypeGraph, booleans: list[bool]
+    ) -> "BooleanSet":
+        for boolean in booleans:
+            self.booleans.get().append(
+                Boolean.create_instance(g=g, tg=tg, value=boolean)
+            )
+        return self
+
+    def get_booleans(self) -> list[Boolean]:
+        return [boolean.cast(Boolean) for boolean in self.booleans.get().as_list()]
+
+    def get_boolean_values(self) -> list[bool]:
+        return [
+            boolean.cast(Boolean).get_value()
+            for boolean in self.booleans.get().as_list()
+        ]
+
+    def op_not(self, g: graph.GraphView, tg: TypeGraph) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        boolean_set.setup(
+            g=g, tg=tg, booleans=[not boolean for boolean in self.get_boolean_values()]
+        )
+        return boolean_set
+
+    def op_and(
+        self, g: graph.GraphView, tg: TypeGraph, other: "BooleanSet"
+    ) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        booleans = []
+        for boolean in self.get_boolean_values():
+            for other_boolean in other.get_boolean_values():
+                booleans.append(boolean and other_boolean)
+        boolean_set.setup(g=g, tg=tg, booleans=booleans)
+        return boolean_set
+
+    def op_or(
+        self, g: graph.GraphView, tg: TypeGraph, other: "BooleanSet"
+    ) -> "BooleanSet":
+        boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+        booleans = []
+        for boolean in self.get_boolean_values():
+            for other_boolean in other.get_boolean_values():
+                booleans.append(boolean or other_boolean)
+        boolean_set.setup(g=g, tg=tg, booleans=booleans)
+        return boolean_set
+
+    def is_empty(self) -> bool:
+        return len(self.get_boolean_values()) == 0
+
+
+def test_boolean_set_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        boolean_set = BooleanSet.MakeChild(booleans=[True, False])
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    assert app.boolean_set.get().get_boolean_values() == [True, False]
+
+
+def test_boolean_set_create_instance():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+    boolean_set.setup(g=g, tg=tg, booleans=[True, False])
+    assert boolean_set.get_boolean_values() == [True, False]
+
+
+def test_boolean_set_op_not():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    boolean_set = BooleanSet.create_instance(g=g, tg=tg)
+    boolean_set.setup(g=g, tg=tg, booleans=[True, False])
+    result = boolean_set.op_not(g=g, tg=tg)
+    assert result.get_boolean_values() == [False, True]
+
+
+def test_boolean_set_op_and():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    boolean_set_1 = BooleanSet.create_instance(g=g, tg=tg)
+    boolean_set_1.setup(g=g, tg=tg, booleans=[True, False])
+    boolean_set_2 = BooleanSet.create_instance(g=g, tg=tg)
+    boolean_set_2.setup(g=g, tg=tg, booleans=[True, False])
+    result = boolean_set_1.op_and(g=g, tg=tg, other=boolean_set_2)
+    assert result.get_boolean_values() == [True, False, False, False]
+
+
+def test_boolean_set_op_or():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    boolean_set_1 = BooleanSet.create_instance(g=g, tg=tg)
+    boolean_set_1.setup(g=g, tg=tg, booleans=[True, False])
+    boolean_set_2 = BooleanSet.create_instance(g=g, tg=tg)
+    boolean_set_2.setup(g=g, tg=tg, booleans=[True, False])
+    result = boolean_set_1.op_or(g=g, tg=tg, other=boolean_set_2)
+    assert result.get_boolean_values() == [True, True, True, False]
