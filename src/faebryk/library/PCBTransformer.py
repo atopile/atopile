@@ -211,7 +211,7 @@ def test_has_linked_kicad_pad_trait():
     pads = footprint.pads
 
     fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_pad).setup(
-        footprint=footprint, pad=pads, transformer=transformer
+        footprint=footprint, pads=pads, transformer=transformer
     )
 
     assert module.has_trait(has_linked_kicad_pad)
