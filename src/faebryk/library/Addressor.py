@@ -10,11 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 class Addressor(fabll.Node):
-    address = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
-    offset = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
-    base = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    address = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    offset = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    base = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
 
-    address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    address_bits_ = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
     address_lines_ = F.Collections.PointerSet.MakeChild()
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
