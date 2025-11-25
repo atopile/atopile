@@ -1168,6 +1168,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         hierarchy.reverse()
         return hierarchy
 
+    def copy(self, tg: fbrk.TypeGraph, g: graph.GraphView) -> "NodeT":
+        """
+        Copy all nodes in hierarchy and edges between them and their types
+        """
+        # TODO copy types
+
+        children = self.get_children(direct_only=False, include_root=True, types=Node)
+        children_nodes = [c.instance.node() for c in children]
+        g_sub = self.g().get_subgraph_from_nodes(children_nodes)
+        g.insert_subgraph(g_sub)
+
     def get_full_name(self, types: bool = False) -> str:
         parts: list[str] = []
         if (parent := self.get_parent()) is not None:
@@ -1289,9 +1300,15 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         Low-level edge creation function.
         """
+        print("connecting", self, to)
+        # print stack trace
+        import traceback
+
+        traceback.print_stack()
         edge_attrs.insert_edge(
             g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
         )
+        print("connected")
 
     # traits ---------------------------------------------------------------------------
     def get_sibling_trait[TR: NodeT](self, trait: type[TR]) -> TR:
@@ -1318,6 +1335,10 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     Becomes available during stage 1 (typegraph creation)
     """
 
+    # TODO REMOVE THIS HACK
+    # currently needed for solver to make factories from expression instances
+    __TYPE_NODE_MAP__: dict[graph.BoundNode, "TypeNodeBoundTG[Any, Any]"] = {}
+
     def __init__(self, tg: fbrk.TypeGraph, t: type[N]) -> None:
         self.tg = tg
         self.t = t
@@ -1332,6 +1353,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         if typenode is not None:
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
+        TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
         self.t._create_type(self)
         return typenode
 

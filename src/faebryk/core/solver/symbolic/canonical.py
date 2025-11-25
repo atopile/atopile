@@ -103,8 +103,8 @@ def convert_to_canonical_literals(mutator: Mutator):
         ):
             mutator.mutate_parameter(
                 param,
-                units=F.Units.Dimensionless.bind_typegraph(mutator.tg)
-                .create_instance(mutator.G_in)
+                units=F.Units.Dimensionless.bind_typegraph(mutator.tg_out)
+                .create_instance(mutator.G_out)
                 .get_trait(F.Units.IsUnit),
                 soft_set=soft_set.to_dimensionless()
                 if (soft_set := np.get_soft_set()) is not None
@@ -159,7 +159,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         Cardinality: None,
     }
     _UnsupportedOperations = {
-        k.bind_typegraph(mutator.tg).get_or_create_type().node(): v
+        k.bind_typegraph(mutator.tg_in).get_or_create_type().node(): v
         for k, v in UnsupportedOperations.items()
     }
 
@@ -303,7 +303,7 @@ def convert_to_canonical_operations(mutator: Mutator):
     ]
 
     lookup = {
-        Convertible.bind_typegraph(mutator.tg).get_or_create_type().node(): (
+        Convertible.bind_typegraph(mutator.tg_in).get_or_create_type().node(): (
             Target,
             Converter,
         )
@@ -331,7 +331,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         # Min, Max
         if e.isinstance(F.Expressions.Min, F.Expressions.Max):
             p = (
-                F.Parameters.NumericParameter.bind_typegraph(mutator.tg)
+                F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
                 .setup(units=e.get_trait(F.Units.HasUnit).get_unit())
             )
@@ -339,7 +339,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 p.get_trait(F.Parameters.is_parameter), from_ops=from_ops
             )
             union = (
-                Union.bind_typegraph(mutator.tg)
+                Union.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
                 .setup(*[mutator.get_copy(o) for o in e_expr.get_operands()])
             )

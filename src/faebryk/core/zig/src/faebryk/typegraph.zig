@@ -565,6 +565,11 @@ pub const TypeGraph = struct {
     pub fn get_graph_view(self: *@This()) *GraphView {
         return self.self_node.g;
     }
+
+    pub fn get_type_subgraph(self: *@This()) GraphView {
+        _ = self;
+        // TODO
+    }
 };
 
 test "basic typegraph" {
