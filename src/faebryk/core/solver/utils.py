@@ -158,9 +158,7 @@ class MutatorUtils:
         lits = set[F.Literals.is_literal]()
         try:
             for po in pos:
-                lit = F.Parameters.is_parameter_operatable.try_extract_literal(
-                    po, allow_subset=allow_subset
-                )
+                lit = po.try_extract_literal(allow_subset=allow_subset)
                 if lit is not None:
                     lits.add(lit)
         except KeyErrorAmbiguous as e:
@@ -221,7 +219,7 @@ class MutatorUtils:
         # TODO this is weird
         if subset_lits:
             for k, vs in subset_lits:
-                if all(k.is_subset_of(other_k) for other_k, _ in subset_lits):  # type: ignore
+                if all(k.is_subset_of(other_k) for other_k, _ in subset_lits):
                     return k, vs[0]
         return None
 
@@ -326,7 +324,7 @@ class MutatorUtils:
         if existing is not None:
             ex_lit, ex_op = existing
             if ex_op.try_cast(F.Expressions.Is):
-                if not ex_lit.is_subset_of(literal):  # type: ignore #TODO
+                if not ex_lit.is_subset_of(literal):
                     raise ContradictionByLiteral(
                         "Tried subset to different literal",
                         involved=[po],
@@ -336,7 +334,7 @@ class MutatorUtils:
                 return ex_op.get_trait(F.Expressions.is_expression)
 
             # no point in adding more general subset
-            if ex_lit.is_subset_of(literal):  # type: ignore #TODO
+            if ex_lit.is_subset_of(literal):
                 return ex_op.get_trait(F.Expressions.is_expression)
             # other cases handled by intersect subsets algo
 

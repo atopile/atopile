@@ -13,19 +13,32 @@ from faebryk.libs.util import once
 class is_literal(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # TODO
-    def is_subset_of(self, other: "LiteralNodes") -> bool: ...
+    def is_subset_of(self, other: "is_literal") -> bool:
+        # TODO
+        return False
 
-    def op_intersect_intervals(self, other: "LiteralNodes") -> "LiteralNodes": ...
-    def op_union_intervals(self, other: "LiteralNodes") -> "LiteralNodes": ...
+    def op_intersect_intervals(self, other: "LiteralNodes") -> "LiteralNodes":
+        # TODO
+        pass
+
+    def op_union_intervals(self, other: "LiteralNodes") -> "LiteralNodes":
+        # TODO
+        pass
+
     def op_symmetric_difference_intervals(
         self, other: "LiteralNodes"
-    ) -> "LiteralNodes": ...
+    ) -> "LiteralNodes":
+        # TODO
+        pass
 
-    def op_is_equal(self, other: "LiteralNodes") -> "Booleans": ...
+    def op_is_equal(self, other: "LiteralNodes") -> "Booleans":
+        # TODO
+        pass
 
     @staticmethod
-    def intersect_all(*objs: "is_literal") -> "is_literal": ...
+    def intersect_all(*objs: "is_literal") -> "is_literal":
+        # TODO
+        pass
 
     def equals(self, other) -> bool:
         # TODO
@@ -124,6 +137,7 @@ class Strings(fabll.Node):
         out.add_dependant(lit, before=True)
         return out
 
+    # TODO fix calling sites and remove this
     @deprecated("Use get_values() instead")
     def get_value(self) -> str:
         values = self.get_values()
@@ -496,7 +510,7 @@ def test_string_literal_alias_to_literal():
 
     my_type_outer = MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
 
-    lit = is_parameter_operatable.try_extract_constrained_literal(
+    lit = is_parameter_operatable.try_get_constrained_literal(
         my_type_outer.my_type.get()
         .string_param.get()
         .get_trait(is_parameter_operatable),

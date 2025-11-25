@@ -576,7 +576,7 @@ class MutationStage:
             if (
                 s.has_trait(F.Expressions.is_assertable)
                 and new.replace("✓", "") == old.replace("✓", "")
-                and d.try_get_literal() != s.try_get_literal()
+                and d.try_get_aliased_literal() != s.try_get_aliased_literal()
                 and new.count("✓") == old.count("✓") + 1
             ):
                 # done by proven/disproven
@@ -1753,7 +1753,7 @@ class Mutator:
                         "Empty intersection", [k], ss_lits, mutator=self
                     )
                 if k in mapping_dict:
-                    if not mapping_dict[k].is_subset_of(merged_ss):  # type: ignore
+                    if not mapping_dict[k].is_subset_of(merged_ss):
                         raise ContradictionByLiteral(
                             "is lit not subset of ss lits",
                             [k],
