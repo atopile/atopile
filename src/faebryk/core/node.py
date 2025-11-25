@@ -558,6 +558,34 @@ class Path:
     def get_end_node(self) -> "Node[Any]":
         return Node[Any].bind_instance(instance=self.end_node)
 
+    def _get_nodes_in_order(self) -> list["Node[Any]"]:
+        nodes = [self.get_start_node()]
+        current_bound = nodes[0].instance
+
+        for bound_edge in self.edges:
+            edge = bound_edge.edge()
+            graph_view = bound_edge.g()
+            current_node = current_bound.node()
+
+            if current_node.is_same(other=edge.source()):
+                next_node = edge.target()
+            elif current_node.is_same(other=edge.target()):
+                next_node = edge.source()
+            else:
+                break
+
+            current_bound = graph_view.bind(node=next_node)
+            nodes.append(Node[Any].bind_instance(instance=current_bound))
+
+        end_node = self.get_end_node()
+        if not nodes[-1].is_same(end_node):
+            nodes.append(end_node)
+
+        return nodes
+
+    def __iter__(self) -> Iterator["Node[Any]"]:
+        return iter(self._get_nodes_in_order())
+
     @staticmethod
     def from_connection(a: "Node[Any]", b: "Node[Any]") -> "Path | None":
         bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
@@ -585,11 +613,8 @@ class Path:
         return None
 
     def __repr__(self) -> str:
-        start = self.start_node
-        end = self.end_node
-        start_str = f"graph.BoundNode({start.node().get_uuid()})"
-        end_str = f"graph.BoundNode({end.node().get_uuid()})"
-        return f"Path(start={start_str}, end={end_str}, length={self.length})"
+        node_names = [node.get_full_name(types=True) for node in self._get_nodes_in_order()]
+        return f"Path({', '.join(node_names)})"
 
 
 # --------------------------------------------------------------------------------------
