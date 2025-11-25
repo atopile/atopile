@@ -39,17 +39,14 @@ class has_single_electric_reference(fabll.Node):
         )
         self.reference_ptr_.get().point(reference)
 
-        nodes = parent_node.get_children(
-            direct_only=True,
-            types=(fabll.Node),
-            required_trait=fabll.is_interface,
-        ).difference(set(exclude))
-
         refs = {
-            x.get_trait(self.__class__).get_reference()
-            for x in nodes
-            if x.has_trait(self.__class__)
-        } | {x for x in nodes if isinstance(x, F.ElectricPower)}
+            x.get_trait(self.__class__).get_reference() if x.has_trait(self.__class__) else x
+            for x in parent_node.get_children(
+                direct_only=True,
+                types=fabll.Node,
+                required_trait=fabll.is_interface,
+            ).difference(set(exclude))
+        }
         assert refs
 
         if ground_only:

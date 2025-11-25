@@ -902,6 +902,25 @@ def test_shallow_bridge_partial():
     assert l1.is_connected_to(l2)
 
 
+def test_single_electric_reference_connects_children():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class WithReferences(fabll.Node):
+        power_a = F.ElectricPower.MakeChild()
+        power_b = F.ElectricPower.MakeChild()
+
+        _single_electric_reference = fabll.Traits.MakeEdge(F.has_single_electric_reference.MakeChild())
+
+    app = WithReferences.bind_typegraph(tg).create_instance(g=g)
+    app.get_trait(F.has_single_electric_reference).connect_all_references()
+    shared_ref = app.get_trait(F.has_single_electric_reference).get_reference()
+
+    assert shared_ref.get_trait(fabll.is_interface).is_connected_to(app.power_a.get())
+    assert shared_ref.get_trait(fabll.is_interface).is_connected_to(app.power_b.get())
+    assert app.power_a.get().get_trait(fabll.is_interface).is_connected_to(app.power_b.get())
+
+
 def test_shallow_bridge_full():
     """
     Test the bridge connection between two UART interfaces through a buffer:
@@ -1340,10 +1359,10 @@ def test_connect_incompatible():
     tg = fbrk.TypeGraph.create(g=g)
 
     class A(fabll.Node):
-        _is_interface = fabll.is_interface.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     class B(fabll.Node):
-        _is_interface = fabll.is_interface.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     aType = A.bind_typegraph(tg)
     bType = B.bind_typegraph(tg)
@@ -1359,10 +1378,10 @@ def test_connect_incompatible_hierarchical():
     tg = fbrk.TypeGraph.create(g=g)
 
     class B(fabll.Node):
-        _is_interface = fabll.is_interface.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     class A(fabll.Node):
-        _is_interface = fabll.is_interface.MakeChild()
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
         b = B.MakeChild()
 
     aType = A.bind_typegraph(tg)
