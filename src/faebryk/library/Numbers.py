@@ -7,12 +7,13 @@ from typing import ClassVar
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph import graph
-from faebryk.library.Units import IsUnit
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -2430,11 +2431,16 @@ class QuantitySet(fabll.Node):
     _is_literal = fabll.Traits.MakeEdge(F.Literals.is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     _numeric_set_identifier: ClassVar[str] = "numeric_set"
-    _unit_identifier: ClassVar[str] = "unit"
+    _has_unit_identifier: ClassVar[str] = "has_unit"
 
     @classmethod
     def MakeChild(
-        cls, g: graph.GraphView, tg: TypeGraph, min: float, max: float, unit: IsUnit
+        cls,
+        g: graph.GraphView,
+        tg: TypeGraph,
+        min: float,
+        max: float,
+        unit: type[fabll.NodeT],
     ) -> fabll._ChildField:
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
@@ -2451,19 +2457,25 @@ class QuantitySet(fabll.Node):
             ),
             identifier=cls._numeric_set_identifier,
         )
-
-        # TODO: add unit
+        out.add_dependant(
+            fabll.Traits.MakeEdge(F.Units.HasUnit.MakeChild(unit), [out]),
+            identifier=cls._has_unit_identifier,
+        )
 
         return out
 
     @classmethod
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
-        return QuantitySet.bind_typegraph(tg=tg).create_instance(g=g)
+        return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
     def setup(
-        self, g: graph.GraphView, tg: TypeGraph, min: float, max: float, unit: IsUnit
+        self,
+        g: graph.GraphView,
+        tg: TypeGraph,
+        min: float,
+        max: float,
+        unit: fabll.Node,
     ) -> "QuantitySet":
-        # Add numeric set
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup_from_values(g=g, tg=tg, values=[(min, max)])
         _ = EdgeComposition.add_child(
@@ -2471,7 +2483,14 @@ class QuantitySet(fabll.Node):
             child=numeric_set.instance.node(),
             child_identifier=self._numeric_set_identifier,
         )
-        # Add unit pointer
+        has_unit_instance = F.Units.HasUnit.bind_typegraph(tg=tg).create_instance(g=g)
+        has_unit_instance.setup(g=g, unit=unit)
+
+        _ = fbrk.EdgeTrait.add_trait_instance(
+            bound_node=self.instance,
+            trait_instance=has_unit_instance.instance.node(),
+        )
+
         return self
 
     def get_numeric_set(self) -> NumericSet:
@@ -2480,6 +2499,9 @@ class QuantitySet(fabll.Node):
         )
         assert numeric_set is not None
         return NumericSet.bind_instance(numeric_set)
+
+    def get_unit(self) -> "F.Units.IsUnit":
+        return self.get_trait(F.Units.HasUnit).get_unit()
 
     # def get_unit(self) -> IsUnit:
     # unit = EdgePointer.get_pointed_node_by_identifier(
@@ -2507,6 +2529,20 @@ class QuantitySet(fabll.Node):
             raise ValueError("empty interval cannot have max element")
         return self.get_numeric_set().get_max_value()
 
+    def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
+        min_value = self.get_min_value()
+        unit = self.get_unit()
+        return QuantitySet.create_instance(g=g, tg=tg).setup(
+            g=g, tg=tg, min=min_value, max=min_value, unit=unit
+        )
+
+    def get_max_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
+        max_value = self.get_max_value()
+        unit = self.get_unit()
+        return QuantitySet.create_instance(g=g, tg=tg).setup(
+            g=g, tg=tg, min=max_value, max=max_value, unit=unit
+        )
+
 
 def test_quantity_set_make_child():
     g = graph.GraphView.create()
@@ -2514,15 +2550,35 @@ def test_quantity_set_make_child():
     print(f"Creating typegraph: {tg}")
 
     class App(fabll.Node):
-        meter = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = QuantitySet.MakeChild(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter._is_unit.get()
+            g=g, tg=tg, min=0.0, max=1.0, unit=F.Units.Meter
         )
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     numeric_set = app.quantity_set.get().get_numeric_set()
     assert numeric_set.get_min_value() == 0.0
     assert numeric_set.get_max_value() == 1.0
+    assert (
+        app.quantity_set.get()
+        .get_unit()
+        .symbol.get()
+        .try_extract_constrained_literal()
+        .get_values()
+        == ["m"]
+    )
+
+
+def test_quantity_set_create_instance():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_set.setup(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
+    assert quantity_set.get_numeric_set().get_min_value() == 0.0
+    assert quantity_set.get_numeric_set().get_max_value() == 1.0
+    assert not_none(
+        quantity_set.get_unit().symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["m"]
 
 
 # def test_quantity_set_create_instance():

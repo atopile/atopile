@@ -465,6 +465,10 @@ class HasUnit(fabll.Node):
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field]))
         return out
 
+    def setup(self, g: graph.GraphView, unit: fabll.Node) -> Self:
+        self.unit.get().point(unit)
+        return self
+
     def get_unit(self) -> IsUnit:
         return self.unit.get().deref().get_trait(IsUnit)
 
