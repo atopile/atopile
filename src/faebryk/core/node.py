@@ -1853,10 +1853,10 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        _is_trait = Traits.MakeEdge((ImplementsTrait.MakeChild())).put_on_type()
+        _is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
 
     class ExampleNode(Node):
-        example_trait = ExampleTrait.MakeChild()
+        example_trait = Traits.MakeEdge(ExampleTrait.MakeChild())
 
     node = ExampleNode.bind_typegraph(tg).create_instance(g=g)
     assert node.try_get_trait(ExampleTrait) is not None
@@ -2040,7 +2040,7 @@ def test_string_param():
 
     string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
     string_p.alias_to_single(value="IG constrained")
-    assert string_p.force_extract_literal().get_value() == "IG constrained"
+    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
         string_p_tg = F.Parameters.StringParameter.MakeChild()
@@ -2049,7 +2049,7 @@ def test_string_param():
         )
 
     esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
+    assert esp.string_p_tg.get().force_extract_literal().get_values()[0] == "TG constrained"
 
 
 def test_boolean_param():
