@@ -336,8 +336,9 @@ def build_html(summary: dict) -> str:
         #020703;
       color: var(--phosphor);
       text-shadow: 0 0 12px rgba(158, 252, 141, 0.45), 0 0 28px rgba(158, 252, 141, 0.25);
-      overflow-x: hidden;
+      overflow: hidden;
       position: relative;
+      cursor: none;
     }}
     body::before {{
       content: "";
@@ -480,7 +481,8 @@ def build_html(summary: dict) -> str:
     .count {{
       float: right;
       color: var(--accent);
-      font-weight: 700;
+      font-weight: 800;
+      font-size: 2rem;
     }}
     .meta-container {{
       background: rgba(4, 14, 7, 0.65);
