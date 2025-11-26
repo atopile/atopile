@@ -1202,6 +1202,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         t_sg = self.tg.get_type_subgraph()
         g.insert_subgraph(subgraph=t_sg)
 
+        # TODO copy or handle pointers from nodes to the outside
         children = self.get_children(direct_only=False, include_root=True, types=Node)
         children_nodes = [c.instance for c in children] + t_sg.get_nodes()
         g_sub = self.g().get_subgraph_from_nodes(nodes=children_nodes)

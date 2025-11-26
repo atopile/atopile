@@ -1232,7 +1232,7 @@ class And(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
@@ -1244,7 +1244,7 @@ class And(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, operands, g=g)
         return instance.setup(*operands, assert_=assert_)
@@ -1254,7 +1254,7 @@ class And(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(*operands, g=g, assert_=assert_))
 
@@ -1287,7 +1287,7 @@ class Or(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
@@ -1299,7 +1299,7 @@ class Or(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, operands, g=g)
         return instance.setup(*operands, assert_=assert_)
@@ -1309,7 +1309,7 @@ class Or(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(*operands, g=g, assert_=assert_))
 
@@ -1334,7 +1334,7 @@ class Not(fabll.Node):
     operand = OperandPointer.MakeChild()
 
     def setup(
-        self, operand: "F.Parameters.can_be_operand", assert_: bool = True
+        self, operand: "F.Parameters.can_be_operand", assert_: bool = False
     ) -> Self:
         self.operand.get().point(operand)
         if assert_:
@@ -1346,7 +1346,7 @@ class Not(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
         return instance.setup(operand, assert_=assert_)
@@ -1356,7 +1356,7 @@ class Not(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(operand, g=g, assert_=assert_))
 
@@ -1381,7 +1381,7 @@ class Xor(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
@@ -1393,7 +1393,7 @@ class Xor(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, operands, g=g)
         return instance.setup(*operands, assert_=assert_)
@@ -1403,7 +1403,7 @@ class Xor(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(*operands, g=g, assert_=assert_))
 
@@ -1426,7 +1426,7 @@ class Implies(fabll.Node):
         self,
         antecedent: "F.Parameters.can_be_operand",
         consequent: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.antecedent.get().point(antecedent)
         self.consequent.get().point(consequent)
@@ -1440,7 +1440,7 @@ class Implies(fabll.Node):
         antecedent: "F.Parameters.can_be_operand",
         consequent: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(
             cls, (antecedent, consequent), g=g
@@ -1453,7 +1453,7 @@ class Implies(fabll.Node):
         antecedent: "F.Parameters.can_be_operand",
         consequent: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(antecedent, consequent, g=g, assert_=assert_))
 
@@ -1719,7 +1719,7 @@ class LessThan(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -1733,7 +1733,7 @@ class LessThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
         return instance.setup(left, right, assert_=assert_)
@@ -1744,7 +1744,7 @@ class LessThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(left, right, g=g, assert_=assert_))
 
@@ -1772,7 +1772,7 @@ class GreaterThan(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -1786,7 +1786,7 @@ class GreaterThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
         return instance.setup(left, right, assert_=assert_)
@@ -1797,7 +1797,7 @@ class GreaterThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(left, right, g=g, assert_=assert_))
 
@@ -1824,7 +1824,7 @@ class LessOrEqual(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -1838,7 +1838,7 @@ class LessOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
         return instance.setup(left, right, assert_=assert_)
@@ -1849,7 +1849,7 @@ class LessOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(left, right, g=g, assert_=assert_))
 
@@ -1878,7 +1878,7 @@ class GreaterOrEqual(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -1892,7 +1892,7 @@ class GreaterOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
         return instance.setup(left, right, assert_=assert_)
@@ -1903,7 +1903,7 @@ class GreaterOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(left, right, g=g, assert_=assert_))
 
@@ -1930,7 +1930,7 @@ class NotEqual(fabll.Node):
         self,
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.left.get().point(left)
         self.right.get().point(right)
@@ -1944,7 +1944,7 @@ class NotEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
         return instance.setup(left, right, assert_=assert_)
@@ -1955,7 +1955,7 @@ class NotEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(left, right, g=g, assert_=assert_))
 
@@ -1983,7 +1983,7 @@ class IsBitSet(fabll.Node):
         self,
         value: "F.Parameters.can_be_operand",
         bit_index: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.value.get().point(value)
         self.bit_index.get().point(bit_index)
@@ -1997,7 +1997,7 @@ class IsBitSet(fabll.Node):
         value: "F.Parameters.can_be_operand",
         bit_index: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (value, bit_index), g=g)
         return instance.setup(value, bit_index, assert_=assert_)
@@ -2008,7 +2008,7 @@ class IsBitSet(fabll.Node):
         value: "F.Parameters.can_be_operand",
         bit_index: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(value, bit_index, g=g, assert_=assert_))
 
@@ -2037,7 +2037,7 @@ class IsSubset(fabll.Node):
         self,
         subset: "F.Parameters.can_be_operand",
         superset: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.subset.get().point(subset)
         self.superset.get().point(superset)
@@ -2051,7 +2051,7 @@ class IsSubset(fabll.Node):
         subset: "F.Parameters.can_be_operand",
         superset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (subset, superset), g=g)
         return instance.setup(subset, superset, assert_=assert_)
@@ -2062,7 +2062,7 @@ class IsSubset(fabll.Node):
         subset: "F.Parameters.can_be_operand",
         superset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(subset, superset, g=g, assert_=assert_))
 
@@ -2089,7 +2089,7 @@ class IsSuperset(fabll.Node):
         self,
         superset: "F.Parameters.can_be_operand",
         subset: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.superset.get().point(superset)
         self.subset.get().point(subset)
@@ -2103,7 +2103,7 @@ class IsSuperset(fabll.Node):
         superset: "F.Parameters.can_be_operand",
         subset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (superset, subset), g=g)
         return instance.setup(superset, subset, assert_=assert_)
@@ -2114,7 +2114,7 @@ class IsSuperset(fabll.Node):
         superset: "F.Parameters.can_be_operand",
         subset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(superset, subset, g=g, assert_=assert_))
 
@@ -2141,7 +2141,7 @@ class Cardinality(fabll.Node):
         self,
         set: "F.Parameters.can_be_operand",
         cardinality: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.set.get().point(set)
         self.cardinality.get().point(cardinality)
@@ -2155,7 +2155,7 @@ class Cardinality(fabll.Node):
         set: "F.Parameters.can_be_operand",
         cardinality: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, (set, cardinality), g=g)
         return instance.setup(set, cardinality, assert_=assert_)
@@ -2166,7 +2166,7 @@ class Cardinality(fabll.Node):
         set: "F.Parameters.can_be_operand",
         cardinality: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(set, cardinality, g=g, assert_=assert_))
 
@@ -2194,7 +2194,7 @@ class Is(fabll.Node):
     def setup(
         self,
         *operands: "F.Parameters.can_be_operand",
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
@@ -2232,7 +2232,7 @@ class Is(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(cls, operands, g=g)
         return instance.setup(
@@ -2245,6 +2245,6 @@ class Is(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
-        assert_: bool = True,
+        assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(*operands, g=g, assert_=assert_))

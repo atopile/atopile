@@ -1164,6 +1164,8 @@ class Mutator:
     ) -> F.Expressions.is_canonical:
         expr_obj = fabll.Traits(expr).get_obj_raw()
         if expression_factory is None:
+            # TODO this is a hack, we should not do it like this
+            # better build something into is_expression trait that allows copying
             type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())
             expression_factory = fabll.TypeNodeBoundTG.__TYPE_NODE_MAP__[type_node].t
 
@@ -1393,10 +1395,16 @@ class Mutator:
     def get_copy(
         self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
     ) -> F.Parameters.can_be_operand:
-        if not (obj_po := obj.is_parameter_operatable()):
-            return obj
-
-        return self.get_copy_po(obj_po, accept_soft).as_operand()
+        if obj_po := obj.is_parameter_operatable():
+            return self.get_copy_po(obj_po, accept_soft).as_operand()
+        if obj_lit := obj.try_get_sibling_trait(F.Literals.is_literal):
+            return (
+                fabll.Traits(obj_lit)
+                .get_obj_raw()
+                .copy_into(g=self.G_out)
+                .get_trait(F.Parameters.can_be_operand)
+            )
+        return obj
 
     def get_copy_po(
         self, obj_po: F.Parameters.is_parameter_operatable, accept_soft: bool = True
@@ -1420,6 +1428,7 @@ class Mutator:
         self.transformations.copied.add(obj_po)
 
         if expr := obj_po.is_expresssion():
+            # TODO consider using copy here instead of recreating expr
             return self.mutate_expression(expr).get_sibling_trait(
                 F.Parameters.is_parameter_operatable
             )
@@ -1931,21 +1940,30 @@ def test_mutator_basic_bootstrap():
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
-        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        # TODO
+        # param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+    # param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+    param_bool_op = app.param_bool.get().get_trait(F.Parameters.can_be_operand)
 
     app.param_str.get().alias_to_literal("a", "b", "c")
-    app.param_num.get().alias_to_literal(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup_from_interval(1, 5),
-    )
-    F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
-        param_num_op,
-        param_num_op,
+    app.param_bool.get().alias_to_single(True)
+    # app.param_num.get().alias_to_literal(
+    #    g=g,
+    #    value=F.Literals.Numbers.bind_typegraph(tg=tg)
+    #    .create_instance(g=g)
+    #    .setup_from_interval(1, 5),
+    # )
+    # F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
+    #    param_num_op,
+    #    param_num_op,
+    # )
+    F.Expressions.Or.bind_typegraph(tg=tg).create_instance(g=g).setup(
+        param_bool_op,
+        param_bool_op,
+        assert_=False,
     )
 
     @algorithm("empty", force_copy=True)
@@ -1965,10 +1983,15 @@ def test_mutator_basic_bootstrap():
         preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
         assert len(preds) == 2
 
+        # mutator.create_expression(
+        #    F.Expressions.Multiply,
+        #    param_num_op,
+        #    param_num_op,
+        # )
         mutator.create_expression(
-            F.Expressions.Multiply,
-            param_num_op,
-            param_num_op,
+            F.Expressions.Not,
+            param_bool_op,
+            assert_=False,
         )
 
     mut_map = MutationMap.bootstrap(tg=tg, g=g)
@@ -1987,6 +2010,8 @@ def test_mutator_basic_bootstrap():
         terminal=True,
     )
     result = mutator.run()
+    print(mutator0)
+    print(mutator)
     print(result)
     print(result.mutation_stage.is_identity)
 
