@@ -312,188 +312,298 @@ def build_html(summary: dict) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pytest results</title>
   <style>
-    body {{ font-family: Arial, sans-serif; font-size: 2rem; padding: 48px; max-width: 1440px; margin: auto; color: #e8ecff; background: #070a23; overflow-x: hidden; position: relative; }}
-    h1 {{ margin-bottom: 16px; font-size: 3.4rem; position: relative; z-index: 2; }}
-    .status {{ font-size: 2rem; margin-bottom: 32px; position: relative; z-index: 2; }}
-    .pill {{ display: inline-block; padding: 8px 20px; border-radius: 9999px; font-weight: 600; font-size: 1.8rem; background: #f95015; color: #070a23; }}
-    .bar-row {{ display: flex; align-items: center; gap: 32px; margin: 32px 0; position: relative; z-index: 2; }}
-    .bar {{ flex: 1; display: flex; height: 48px; border-radius: 24px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
-    .seg {{ height: 100%; }}
-    ul {{ list-style: none; padding: 0; margin: 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; position: relative; z-index: 2; }}
-    li {{ background: rgba(15, 20, 51, 0.85); border-radius: 20px; padding: 20px 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.3), 0 8px 16px rgba(0,0,0,0.2); font-size: 1.8rem; border: 1px solid rgba(203, 211, 255, 0.15); }}
-    .label {{ color: #cbd3ff; }}
-    .count {{ font-weight: 700; float: right; color: #ffffff; }}
-    .meta-container {{ background: rgba(15, 20, 51, 0.85); border-radius: 20px; padding: 24px; margin-top: 32px; position: relative; z-index: 2; border: 1px solid rgba(203, 211, 255, 0.15); box-shadow: 0 2px 6px rgba(0,0,0,0.3), 0 8px 16px rgba(0,0,0,0.2); }}
-    .meta {{ font-size: 1.8rem; margin-bottom: 16px; }}
-    .meta:last-child {{ margin-bottom: 0; }}
-    .meta a {{ color: #f95015; text-decoration: none; }}
-    .mascot {{ width: 140px; max-width: 20%; height: auto; display: block; }}
-
-    /* Laser Animation Styles */
-    .laser-overlay {{
+    :root {{
+      --bg: #020703;
+      --panel: rgba(4, 18, 10, 0.82);
+      --border: #1c3a25;
+      --phosphor: #b4ffb0;
+      --muted: #7acb8e;
+      --accent: #d4ffd7;
+      --danger: #ff6b6b;
+    }}
+    * {{
+      box-sizing: border-box;
+    }}
+    body {{
+      margin: 0;
+      padding: 48px;
+      min-height: 100vh;
+      font-family: "IBM Plex Mono", "Fira Code", "SFMono-Regular", monospace;
+      background:
+        radial-gradient(circle at 50% 15%, rgba(30, 70, 40, 0.35), transparent 40%),
+        radial-gradient(circle at 20% 80%, rgba(12, 40, 20, 0.35), transparent 35%),
+        radial-gradient(circle at 80% 70%, rgba(8, 25, 15, 0.3), transparent 45%),
+        #020703;
+      color: var(--phosphor);
+      text-shadow: 0 0 12px rgba(158, 252, 141, 0.45), 0 0 28px rgba(158, 252, 141, 0.25);
+      overflow-x: hidden;
+      position: relative;
+    }}
+    body::before {{
+      content: "";
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      inset: -80px;
+      background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.65) 90%);
       pointer-events: none;
-      z-index: 1;
+      z-index: 6;
+    }}
+    .crt-frame {{
+      position: relative;
+      max-width: 1440px;
+      margin: auto;
+      padding: 32px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(4, 18, 9, 0.9), rgba(6, 28, 12, 0.92));
+      box-shadow:
+        0 0 90px rgba(12, 60, 26, 0.55),
+        0 0 40px rgba(12, 60, 26, 0.5) inset,
+        0 0 140px rgba(12, 60, 26, 0.35) inset;
       overflow: hidden;
     }}
-    .laser {{
-      position: absolute;
-      height: 8px;
-      width: 200vmax;
-      background: linear-gradient(
-        to right,
-        currentColor 0%,
-        currentColor 30%,
-        transparent 100%
-      );
-      box-shadow: 
-        0 0 40px 8px currentColor,
-        0 0 80px 15px currentColor,
-        0 0 120px 25px currentColor;
-      opacity: 0.7;
-      transform-origin: left center;
-      border-radius: 50%;
-    }}
-    .laser-source {{
-      position: absolute;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: currentColor;
-      box-shadow: 
-        0 0 20px 5px currentColor,
-        0 0 40px 10px currentColor;
+    .content {{
+      position: relative;
       z-index: 2;
     }}
-
-    /* Laser variations with visible origin points */
-    .laser-1 {{
-      top: 15%;
-      left: 10%;
-      color: #ff0055;
-      animation: scan-1 5s ease-in-out infinite alternate;
+    .glass {{
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 20% 10%, rgba(255, 255, 255, 0.08), transparent 30%),
+        radial-gradient(ellipse at 80% 0%, rgba(255, 255, 255, 0.05), transparent 28%);
+      mix-blend-mode: screen;
+      opacity: 0.6;
+      z-index: 1;
     }}
-    .source-1 {{
-      top: 15%;
-      left: 10%;
-      color: #ff0055;
+    .scanlines {{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.2) 0,
+        rgba(0, 0, 0, 0.2) 2px,
+        rgba(255, 255, 255, 0.02) 2px,
+        rgba(255, 255, 255, 0.02) 3px,
+        transparent 3px,
+        transparent 5px
+      );
+      mix-blend-mode: multiply;
+      opacity: 0.75;
+      z-index: 7;
+      animation: roll 8s linear infinite;
     }}
-    .laser-2 {{
-      top: 20%;
-      right: 15%;
-      left: auto;
-      transform-origin: right center;
-      color: #00ffaa;
-      animation: scan-2 7s ease-in-out infinite alternate;
+    .noise {{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 0);
+      background-size: 3px 3px;
+      opacity: 0.25;
+      mix-blend-mode: screen;
+      animation: jitter 1.2s steps(4, end) infinite;
+      z-index: 8;
     }}
-    .source-2 {{
-      top: 20%;
-      right: 15%;
-      color: #00ffaa;
+    .flicker {{
+      animation: flicker 4s infinite;
     }}
-    .laser-3 {{
-      bottom: 25%;
-      left: 8%;
-      top: auto;
-      color: #00aaff;
-      animation: scan-3 6s ease-in-out infinite alternate;
+    .ghost {{
+      text-shadow: 0 0 10px rgba(158, 252, 141, 0.45), 2px 0 14px rgba(158, 252, 141, 0.18);
     }}
-    .source-3 {{
-      bottom: 25%;
-      left: 8%;
-      color: #00aaff;
+    h1 {{
+      margin: 0 0 14px;
+      font-size: 3.4rem;
+      letter-spacing: 1px;
     }}
-    .laser-4 {{
-      bottom: 20%;
-      right: 12%;
-      left: auto;
-      top: auto;
-      transform-origin: right center;
-      color: #ffcc00;
-      animation: scan-4 8s ease-in-out infinite alternate;
+    .status {{
+      font-size: 1.8rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }}
-    .source-4 {{
-      bottom: 20%;
-      right: 12%;
-      color: #ffcc00;
+    .pill {{
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--phosphor);
+      box-shadow: 0 0 14px rgba(158, 252, 141, 0.35);
+      font-weight: 700;
     }}
-    .laser-5 {{
-      top: 10%;
-      left: 50%;
-      transform-origin: left center;
-      color: #aa00ff;
-      animation: scan-5 9s ease-in-out infinite;
+    .meta {{
+      font-size: 1.6rem;
+      margin: 0 0 12px;
+      color: var(--accent);
     }}
-    .source-5 {{
-      top: 10%;
-      left: 50%;
-      color: #aa00ff;
+    .bar-row {{
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      margin: 24px 0;
     }}
-
-    @keyframes scan-1 {{
-      0% {{ transform: rotate(20deg); opacity: 0; }}
-      15% {{ opacity: 0.8; }}
-      85% {{ opacity: 0.8; }}
-      100% {{ transform: rotate(90deg); opacity: 0; }}
+    .bar {{
+      flex: 1;
+      display: flex;
+      height: 42px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(2, 10, 5, 0.8);
+      border: 1px solid #183822;
+      box-shadow: 0 0 12px rgba(158, 252, 141, 0.35) inset;
     }}
-    @keyframes scan-2 {{
-      0% {{ transform: rotate(-20deg); opacity: 0; }}
-      15% {{ opacity: 0.8; }}
-      85% {{ opacity: 0.8; }}
-      100% {{ transform: rotate(-90deg); opacity: 0; }}
+    .seg {{
+      height: 100%;
+      filter: drop-shadow(0 0 6px rgba(158, 252, 141, 0.25));
     }}
-    @keyframes scan-3 {{
-      0% {{ transform: rotate(-15deg); opacity: 0; }}
-      15% {{ opacity: 0.8; }}
-      85% {{ opacity: 0.8; }}
-      100% {{ transform: rotate(-85deg); opacity: 0; }}
+    ul {{
+      list-style: none;
+      padding: 0;
+      margin: 18px 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
     }}
-    @keyframes scan-4 {{
-      0% {{ transform: rotate(15deg); opacity: 0; }}
-      15% {{ opacity: 0.8; }}
-      85% {{ opacity: 0.8; }}
-      100% {{ transform: rotate(85deg); opacity: 0; }}
+    li {{
+      background: rgba(5, 18, 10, 0.75);
+      border: 1px solid #15341f;
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 0 18px rgba(12, 60, 26, 0.35) inset;
+      font-size: 1.6rem;
     }}
-    @keyframes scan-5 {{
-      0% {{ transform: translateX(-50%) rotate(30deg); opacity: 0; }}
-      20% {{ opacity: 0.9; }}
-      80% {{ opacity: 0.9; }}
-      100% {{ transform: translateX(-50%) rotate(150deg); opacity: 0; }}
+    .label {{
+      color: var(--muted);
     }}
-
+    .count {{
+      float: right;
+      color: var(--accent);
+      font-weight: 700;
+    }}
+    .meta-container {{
+      background: rgba(4, 14, 7, 0.65);
+      border: 1px solid #173923;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 0 24px rgba(12, 60, 26, 0.4) inset;
+      margin-top: 22px;
+    }}
+    .meta-container .meta {{
+      color: var(--accent);
+    }}
+    .meta-container .meta:last-child {{
+      margin-bottom: 0;
+    }}
+    .meta-container a {{
+      color: var(--phosphor);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(158, 252, 141, 0.5);
+    }}
+    .meta-container a:hover {{
+      color: #d6ffd2;
+    }}
+    .mascot {{
+      width: 120px;
+      max-width: 20%;
+      filter: grayscale(1) brightness(1.5) contrast(1.2);
+      opacity: 0.78;
+      mix-blend-mode: screen;
+    }}
+    @keyframes roll {{
+      from {{
+        background-position: 0 0;
+      }}
+      to {{
+        background-position: 0 8px;
+      }}
+    }}
+    @keyframes jitter {{
+      0% {{
+        transform: translate(0, 0);
+      }}
+      20% {{
+        transform: translate(-1px, 0.5px);
+      }}
+      40% {{
+        transform: translate(1px, -0.5px);
+      }}
+      60% {{
+        transform: translate(-0.5px, -1px);
+      }}
+      80% {{
+        transform: translate(0.5px, 0.5px);
+      }}
+      100% {{
+        transform: translate(0, 0);
+      }}
+    }}
+    @keyframes flicker {{
+      0% {{
+        opacity: 0.96;
+      }}
+      5% {{
+        opacity: 0.85;
+      }}
+      10% {{
+        opacity: 0.98;
+      }}
+      15% {{
+        opacity: 0.92;
+      }}
+      25% {{
+        opacity: 0.97;
+      }}
+      30% {{
+        opacity: 0.88;
+      }}
+      40% {{
+        opacity: 1;
+      }}
+      50% {{
+        opacity: 0.9;
+      }}
+      60% {{
+        opacity: 0.99;
+      }}
+      70% {{
+        opacity: 0.93;
+      }}
+      80% {{
+        opacity: 0.96;
+      }}
+      90% {{
+        opacity: 0.89;
+      }}
+      100% {{
+        opacity: 0.98;
+      }}
+    }}
   </style>
 </head>
 <body>
-  <div class="laser-overlay">
-    <div class="laser-source source-1"></div>
-    <div class="laser laser-1"></div>
-    <div class="laser-source source-2"></div>
-    <div class="laser laser-2"></div>
-    <div class="laser-source source-3"></div>
-    <div class="laser laser-3"></div>
-    <div class="laser-source source-4"></div>
-    <div class="laser laser-4"></div>
-    <div class="laser-source source-5"></div>
-    <div class="laser laser-5"></div>
-  </div>
-  <h1>Pytest Progress</h1>
-  <div class="status">Run status: <span class="pill">{status}</span></div>
-  <div class="meta">Total tests: {total}</div>
-  <div class="bar-row">
-    <img class="mascot" src="happy.jpg" alt="happy sausage" />
-    <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#e5e7eb"></div>'}</div>
-    <img class="mascot" src="angry.png" alt="angry sausage" />
-  </div>
-  <ul>{summary_items}</ul>
-  <div class="meta-container">
-    <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
-    <div class="meta">Commit time: {commit_time}</div>
-    <div class="meta">Commit message: {commit_message}</div>
-    <div class="meta">Commit author: {commit_author}</div>
+  <div class="scanlines"></div>
+  <div class="noise"></div>
+  <div class="crt-frame flicker">
+    <div class="glass"></div>
+    <div class="content">
+      <h1 class="ghost">Pytest Progress</h1>
+      <div class="status ghost">Run status: <span class="pill">{status}</span></div>
+      <div class="meta ghost">Total tests: {total}</div>
+      <div class="bar-row">
+        <img class="mascot" src="happy.jpg" alt="happy sausage" />
+        <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#0f2c18"></div>'}</div>
+        <img class="mascot" src="angry.png" alt="angry sausage" />
+      </div>
+      <ul class="ghost">{summary_items}</ul>
+      <div class="meta-container ghost">
+        <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
+        <div class="meta">Commit time: {commit_time}</div>
+        <div class="meta">Commit message: {commit_message}</div>
+        <div class="meta">Commit author: {commit_author}</div>
+      </div>
+    </div>
   </div>
 </body>
 </html>
