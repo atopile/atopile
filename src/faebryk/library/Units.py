@@ -311,9 +311,11 @@ class IsUnit(fabll.Node):
             g=g,
             value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
         )
-        _BasisVector.bind_instance(self.basis_vector.get().deref().instance).setup(
-            vector=unit_vector
-        )
+
+        basis_vector = _BasisVector.bind_instance(
+            self.basis_vector.get().deref().instance
+        ).setup(vector=unit_vector)
+        self.basis_vector.get().point(basis_vector)
 
         return self
 
