@@ -2508,6 +2508,30 @@ class QuantitySet(fabll.Node):
             raise ValueError("empty interval cannot have max element")
         return self.get_numeric_set().get_max_value()
 
+
+def test_quantity_set_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    print(f"Creating typegraph: {tg}")
+
+    class App(fabll.Node):
+        meter = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        quantity_set = QuantitySet.MakeChild(
+            g=g, tg=tg, min=0.0, max=1.0, unit=meter._is_unit.get()
+        )
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    numeric_set = app.quantity_set.get().get_numeric_set()
+    assert numeric_set.get_min_value() == 0.0
+    assert numeric_set.get_max_value() == 1.0
+
+
+def test_quantity_set_create_instance():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+    assert quantity_set.is_empty()
+
     # def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
     #     min_value = self.get_min_value()
     #     unit = self.get_unit()
@@ -2936,20 +2960,3 @@ class QuantitySet(fabll.Node):
     #     return QuantitySet._from_intervals(
     #         self._intervals, dimensionless
     #     )
-
-
-def test_quantity_set_make_child():
-    g = graph.GraphView.create()
-    tg = TypeGraph.create(g=g)
-    print(f"Creating typegraph: {tg}")
-
-    class App(fabll.Node):
-        meter = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        quantity_set = QuantitySet.MakeChild(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter._is_unit.get()
-        )
-
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    numeric_set = app.quantity_set.get().get_numeric_set()
-    assert numeric_set.get_min_value() == 0.0
-    assert numeric_set.get_max_value() == 1.0
