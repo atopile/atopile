@@ -1714,7 +1714,10 @@ class is_interface(Node):
 
     def connect_to(self, *others: "NodeT") -> None:
         self_node = self.get_obj()
+
         for other in others:
+            if isinstance(other, is_interface):
+                raise ValueError("Don't call on the interface, just pass the node thx")
             fbrk.EdgeInterfaceConnection.connect(
                 bn1=self_node.instance, bn2=other.instance
             )

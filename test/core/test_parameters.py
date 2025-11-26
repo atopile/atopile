@@ -21,10 +21,10 @@ def test_new_definitions():
     number_domain = F.NumberDomain.BoundNumberDomainContext(tg, g)
 
     parameters.create_numeric_parameter(
-        units=F.Units.Ohm._is_unit.get(),
+        units=F.Units.Ohm,
         domain=number_domain.create_number_domain(negative=False),
         soft_set=literals.create_numbers_from_interval(
-            1, 10e6, F.Units.Ohm._is_unit.get()
+            1, 10e6, F.Units.Ohm
         ),
         likely_constrained=True,
     )
@@ -36,12 +36,12 @@ def test_compact_repr():
     p1 = (
         F.Parameters.NumericParameter.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup(units=F.Units.Volt._is_unit.get())
+        .setup(units=F.Units.Volt)
     )
     p2 = (
         F.Parameters.NumericParameter.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup(units=F.Units.Volt._is_unit.get())
+        .setup(units=F.Units.Volt)
     )
     context = F.Parameters.ReprContext()
     expr = cast(Expression, (p1 + p2 + (5 * P.V)) * 10)  # type: ignore

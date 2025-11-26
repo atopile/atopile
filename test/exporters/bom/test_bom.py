@@ -25,7 +25,10 @@ def _build(app: fabll.Node):
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
-    r = F.Resistor()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    r = F.Resistor.bind_typegraph(tg).create_instance(g=g)
     r.resistance.constrain_subset(fabll.Range.from_center_rel(10 * 1e3 * F.Units.Ohm, 0.01))
 
     _build(r)
