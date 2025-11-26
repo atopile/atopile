@@ -2206,7 +2206,7 @@ class Is(fabll.Node):
     _is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
-                symbol="=",
+                symbol="is",
                 placement=is_expression.ReprStyle.Placement.INFIX_FIRST,
             )
         )

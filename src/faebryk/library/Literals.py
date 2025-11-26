@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Self, cast
+from typing import Iterable, Self, cast
 
 from typing_extensions import deprecated
 
@@ -35,6 +35,9 @@ class is_literal(fabll.Node):
         # TODO
         pass
 
+    def in_container(self, other: Iterable["is_literal"]) -> bool:
+        return any(self.equals(other) for other in other)
+
     @staticmethod
     def intersect_all(*objs: "is_literal") -> "is_literal":
         # TODO
@@ -44,8 +47,8 @@ class is_literal(fabll.Node):
         return self.switch_cast().equals(other.switch_cast())
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        # TODO
-        pass
+        # TODO way more efficient way to do this
+        return self.equals(make_lit(self.tg, singleton).get_trait(is_literal))
 
     def is_single_element(self) -> bool:
         # TODO

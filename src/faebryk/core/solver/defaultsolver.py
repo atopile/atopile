@@ -539,7 +539,12 @@ def test_defaultsolver_super_basic():
     P.alias_to_single(True)
     solver = DefaultSolver()
     res = solver.simplify_symbolically(tg, g, terminal=True)
-    print(res)
+    lit = res.data.mutation_map.try_get_literal(
+        P.get_trait(F.Parameters.is_parameter_operatable)
+    )
+    assert lit
+    print(lit.pretty_repr())
+    assert lit.equals_singleton(True)
 
 
 def test_defaultsolver_basic():

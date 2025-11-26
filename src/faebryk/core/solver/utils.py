@@ -273,9 +273,8 @@ class MutatorUtils:
             )
         # prevent (A is X) is X
         if po_is := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.Is):
-            if (
-                literal
-                in po_is.get_trait(F.Expressions.is_expression)
+            if literal.in_container(
+                po_is.get_trait(F.Expressions.is_expression)
                 .get_operand_literals()
                 .values()
             ):
