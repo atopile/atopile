@@ -46,6 +46,7 @@ from faebryk.library.has_designator import has_designator
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_overriden_name import has_overriden_name
+from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
@@ -54,7 +55,6 @@ from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Expressions as Expressions
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.Electrical import Electrical
-from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
@@ -153,6 +153,7 @@ __all__ = [
     "has_designator_prefix",
     "has_net_name",
     "has_overriden_name",
+    "has_package_requirements",
     "has_part_picked",
     "has_usage_example",
     "is_pickable_by_part_number",
@@ -161,7 +162,6 @@ __all__ = [
     "Expressions",
     "has_simple_value_representation",
     "Electrical",
-    "has_package_requirements",
     "is_auto_generated",
     "ElectricPower",
     "Filter",

@@ -92,7 +92,6 @@ class is_literal(fabll.Node):
         return f"{lit.get_values()[0]}"
 
 
-
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str
 
@@ -701,7 +700,7 @@ def test_enums():
         C = "c"
         D = "d"
 
-    EnumT = F.Literals.EnumsFactory(MyEnum)
+    EnumT = EnumsFactory(MyEnum)
     enum_lit = (
         EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum.A, MyEnum.D)
     )

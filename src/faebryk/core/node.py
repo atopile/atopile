@@ -740,7 +740,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # class Resistor(Node):
         #     resistance = InstanceChildField(Parameter)
         # ```
-        for name, child in vars(cls).items():
+        attrs = dict(vars(cls))
+        if "__COPY_TYPE__" in attrs:
+            # python classes dont inherit the dict from their base classes
+            # in the copy case we need to add the attrs from above
+            attrs = dict(vars(cls.__mro__[1])) | attrs
+        for name, child in attrs.items():
             cls._handle_cls_attr(name, child)
 
     @staticmethod

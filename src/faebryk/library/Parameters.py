@@ -483,7 +483,7 @@ class EnumParameter(fabll.Node):
         self, *enum_members: Enum, g: graph.GraphView | None = None
     ) -> None:
         g = g or self.instance.g()
-        from faebryk.library.Literals import EnumsFactory, AbstractEnums
+        from faebryk.library.Literals import AbstractEnums, EnumsFactory
 
         enum_type = EnumsFactory(type(enum_members[0]))
         enum_type_node = enum_type.bind_typegraph(tg=self.tg).get_or_create_type()
@@ -733,9 +733,7 @@ def test_enum_param():
     tg = fbrk.TypeGraph.create(g=g)
     from enum import Enum
 
-    import faebryk.library._F as F
-
-    # F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+    import faebryk.library._F as TF
 
     class ExampleNode(fabll.Node):
         class MyEnum(Enum):
@@ -744,24 +742,20 @@ def test_enum_param():
             C = "c"
             D = "d"
 
-        enum_p_tg = F.Parameters.EnumParameter.MakeChild(enum_t=MyEnum)
-        constraint = F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+        enum_p_tg = EnumParameter.MakeChild(enum_t=MyEnum)
+        constraint = TF.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
             [enum_p_tg], MyEnum.B, MyEnum.C
         )
 
-        # ptr = F.Collections.Pointer.MakeChild()
-        # constraint = F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
-        #     [F.Resistor], MyEnum.B, MyEnum.C
-        # )
-        _has_usage_example = F.has_usage_example.MakeChild(
+        _has_usage_example = TF.has_usage_example.MakeChild(
             example="",
-            language=F.has_usage_example.Language.ato,
+            language=TF.has_usage_example.Language.ato,
         ).put_on_type()
 
     example_node = ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Enum Literal Type Node
-    atype = F.Literals.EnumsFactory(ExampleNode.MyEnum)
+    atype = TF.Literals.EnumsFactory(ExampleNode.MyEnum)
     cls_n = cast(type[fabll.NodeT], atype)
     enum_type_node = cls_n.bind_typegraph(tg=tg).get_or_create_type()
 
@@ -783,7 +777,7 @@ def test_enum_param():
     assert enum_lit.get_values() == ["b", "c"]
 
     # Enum Parameter from instance graph
-    enum_p_ig = F.Parameters.EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    enum_p_ig = EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
     enum_p_ig.alias_to_literal(ExampleNode.MyEnum.B, g=g)
     assert enum_p_ig.force_extract_literal().get_values() == ["b"]
 
@@ -793,12 +787,12 @@ def test_string_param():
     tg = fbrk.TypeGraph.create(g=g)
     import faebryk.library._F as F
 
-    string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    string_p = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
     string_p.alias_to_literal("IG constrained")
     assert string_p.force_extract_literal().get_value() == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
-        string_p_tg = F.Parameters.StringParameter.MakeChild()
+        string_p_tg = StringParameter.MakeChild()
         constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
             [string_p_tg], "TG constrained"
         )
@@ -812,12 +806,12 @@ def test_boolean_param():
     tg = fbrk.TypeGraph.create(g=g)
     import faebryk.library._F as F
 
-    boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    boolean_p = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True, g=g)
     assert boolean_p.force_extract_literal().get_value()
 
     class ExampleBooleanParameter(fabll.Node):
-        boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
+        boolean_p_tg = BooleanParameter.MakeChild()
         constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
             [boolean_p_tg], True
         )
