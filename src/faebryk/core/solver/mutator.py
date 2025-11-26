@@ -25,7 +25,6 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
     MutatorUtils,
 )
-from faebryk.libs.exceptions import downgrade
 from faebryk.libs.logging import rich_to_string
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -938,7 +937,7 @@ class MutationMap:
     def print_name_mappings(self, log: Callable[[str], None] = logger.debug):
         table = Table(title="Name mappings", show_lines=True)
         table.add_column("Variable name")
-        table.add_column("fabll.Node name")
+        table.add_column("Node name")
 
         params = set(
             F.Parameters.is_parameter.bind_typegraph(self.tg_in).get_instances(
@@ -949,7 +948,10 @@ class MutationMap:
             params,
             key=lambda p: p.get_full_name(),
         ):
-            table.add_row(p.compact_repr(self.input_print_context), p.get_full_name())
+            table.add_row(
+                p.compact_repr(self.input_print_context),
+                fabll.Traits(p).get_obj_raw().get_full_name(),
+            )
 
         if table.rows:
             log(rich_to_string(table))
@@ -2021,13 +2023,6 @@ def test_mutator_basic_bootstrap():
 
 
 if __name__ == "__main__":
-    import logging
-
     import typer
-
-    from faebryk.libs.logging import setup_basic_logging
-
-    setup_basic_logging()
-    logger.setLevel(logging.DEBUG)
 
     typer.run(test_mutator_basic_bootstrap)

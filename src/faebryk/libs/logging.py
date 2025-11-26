@@ -109,7 +109,7 @@ class NodeHighlighter(RegexHighlighter):
     base_style = "node."
     highlights = [
         #  r"(?P<Rest>(.*))",
-        r"(?P<fabll.Node>([/</>]))",
+        r"(?P<Node>([/</>]))",
         r"[?=\|](?P<Type>([a-zA-Z_0-9]+))[?=\>]",
         r"[\.](?P<Child>([a-zA-Z_0-9]+))[?=\[]",
         r"[\|](?P<Parent>([a-zA-Z_0-9]+))[?=\.]",
