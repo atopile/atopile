@@ -357,27 +357,14 @@ class IsUnit(fabll.Node):
         multiplier: float,
         offset: float,
     ) -> "IsUnit":
-        BoundIsUnit = IsUnit.bind_typegraph(tg=tg)
-        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=tg)
-        BoundBasisVector = _BasisVector.bind_typegraph(tg=tg)
-
-        result = BoundIsUnit.create_instance(g=g)
-        result.multiplier.get().alias_to_literal(
-            g=g,
-            value=BoundNumbers.create_instance(g=g).setup_from_singleton(
-                value=multiplier
-            ),
-        )
-        result.offset.get().alias_to_literal(
-            g=g,
-            value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
-        )
-
-        basis = BoundBasisVector.create_instance(g=g).setup(vector=vector)
-        result.basis_vector.get().point(basis)
-
         # TODO: generate symbol
-        return result
+        unit = (
+            _AnonymousUnit.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(vector=vector, multiplier=multiplier, offset=offset)
+        )
+
+        return unit.get_trait(IsUnit)
 
     def op_multiply(
         self, g: graph.GraphView, tg: graph.TypeGraph, other: "IsUnit"
@@ -524,6 +511,21 @@ def make_unit_expression_type(unit_vector: UnitVectorT) -> type[fabll.Node]:
     UnitExpression.__name__ = f"UnitExpression<{unit_vector_str}>"
 
     return UnitExpression
+
+
+class _AnonymousUnit(fabll.Node):
+    _is_unit = fabll.Traits.MakeEdge(IsUnit.MakeChild_Empty())
+
+    def setup(  # type: ignore
+        self, vector: _BasisVectorArg, multiplier: float = 1.0, offset: float = 0.0
+    ) -> Self:
+        self._is_unit.get().setup(
+            symbols=[],
+            unit_vector=vector,
+            multiplier=multiplier,
+            offset=offset,
+        )
+        return self
 
 
 class _UnitRegistry(Enum):
