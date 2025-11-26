@@ -286,6 +286,10 @@ class IsUnit(fabll.Node):
 
         return out
 
+    @classmethod
+    def MakeChild_Empty(cls) -> fabll._ChildField[Self]:  # type: ignore
+        return fabll._ChildField(cls)
+
     def setup(  # type: ignore
         self,
         symbols: list[str],
