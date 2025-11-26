@@ -4,7 +4,7 @@ Implements a unit system and associated dimensional analysis.
 All units are built on top of the SI base units, plus extensions for discrete quantities
 (described below). A derived unit in this system can be modeled as a module over the
 integers, represented by a vector of exponents for each of the base units, plus a
-multiplier and offset to represent a linear transformation.
+multiplier and offset to represent an affine transformation.
 
 Dimensional properties:
 - Units are commensurable if they share the same basis vector.
@@ -26,7 +26,7 @@ The SI system specifies units for continuous quantities only. We extend this to 
 certain discrete quantities (e.g. bits) in order to capture compatibility semantics.
 
 Non-SI quantities:
-Non-SI units are represented as a linear transformation of an SI unit.
+Non-SI units are represented as affine transformations of SI units.
 
 Angles:
 Angle and solid angle (radian and steradian) dimensions are included in the basis,
@@ -86,6 +86,7 @@ class _BasisVectorArg:
     bit: int = 0
 
 
+# TODO: iterate over _BasisVectorArg fields
 class _BasisVector(fabll.Node):
     ampere_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
         integer=True
@@ -646,7 +647,9 @@ class Lumen(fabll.Node):
 
 
 class Lux(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(candela=1, meter=-2)
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(
+        candela=1, steradian=1, meter=-2
+    )
 
     _is_unit = fabll.Traits.MakeEdge(
         IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lux], unit_vector_arg)
@@ -663,7 +666,7 @@ class Becquerel(fabll.Node):
 
 
 class Gray(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kilogram=1, meter=2)
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(meter=2, second=-2)
 
     _is_unit = fabll.Traits.MakeEdge(
         IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Gray], unit_vector_arg)
@@ -671,7 +674,7 @@ class Gray(fabll.Node):
 
 
 class Sievert(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kilogram=1, meter=2)
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(meter=2, second=-2)
 
     _is_unit = fabll.Traits.MakeEdge(
         IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Sievert], unit_vector_arg)
