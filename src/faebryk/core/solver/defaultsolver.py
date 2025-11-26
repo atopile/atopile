@@ -524,3 +524,40 @@ class DefaultSolver(Solver):
                 assert_=True,
             )
         return out
+
+
+# Tests --------------------------------------------------------------------------------
+
+
+def test_defaultsolver_basic():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    import faebryk.library._F as FT
+
+    class App(fabll.Node):
+        A = FT.Parameters.BooleanParameter.MakeChild()
+        B = FT.Parameters.BooleanParameter.MakeChild()
+        C = FT.Parameters.BooleanParameter.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app.A.get().alias_to_single(True)
+    FT.Expressions.Is.c(
+        FT.Expressions.Or.c(
+            app.A.get().get_trait(FT.Parameters.can_be_operand),
+            app.B.get().get_trait(FT.Parameters.can_be_operand),
+            assert_=False,
+        ),
+        app.C.get().get_trait(FT.Parameters.can_be_operand),
+        assert_=True,
+    )
+
+    solver = DefaultSolver()
+    res = solver.simplify_symbolically(tg, g, terminal=True)
+    print(res)
+
+
+if __name__ == "__main__":
+    import typer
+
+    typer.run(test_defaultsolver_basic)

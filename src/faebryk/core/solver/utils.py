@@ -121,7 +121,7 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
 
     def __str__(self):
-        literals_str = "\n".join(f" - {lit}" for lit in self.literals)
+        literals_str = "\n".join(f" - {lit.pretty_repr()}" for lit in self.literals)
         return f"{super().__str__()}\n\nLiterals:\n{literals_str}"
 
 
@@ -254,7 +254,7 @@ class MutatorUtils:
     ) -> F.Expressions.is_expression | F.Literals.is_literal:
         existing = self.try_extract_literal(po, check_pre_transform=True)
         if existing is not None:
-            if existing == literal:
+            if existing.equals(literal):
                 if terminate:
                     for op in po.get_operations(F.Expressions.Is, predicates_only=True):
                         if op.get_trait(F.Expressions.is_expression).in_operands(
@@ -381,11 +381,11 @@ class MutatorUtils:
                 to, po = po, to
                 to_is_lit, po_is_lit = po_is_lit, to_is_lit
             else:
-                if po != to:  # type: ignore
+                if not po_is_lit.equals(to_is_lit):
                     raise ContradictionByLiteral(
                         "Incompatible literal aliases",
                         involved=list(from_ops),
-                        literals=[po, to],  # type: ignore
+                        literals=[po_is_lit, to_is_lit],
                         mutator=self.mutator,
                     )
                 return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
@@ -520,9 +520,9 @@ class MutatorUtils:
             return
         expr_po = expr.as_parameter_operatable()
         # all predicates alias to True, so alias False will already throw
-        if value != self.mutator.make_lit(True):
+        if value.is_false():
             raise Contradiction(
-                "Constrained predicate deduced to False",
+                "Predicate deduced to False",
                 involved=[expr_po],
                 mutator=self.mutator,
             )
@@ -650,7 +650,7 @@ class MutatorUtils:
             if self.is_pure_literal_expression(collect_op.as_operand()):
                 continue
             if not F.Expressions.is_commutative.is_commutative_type(
-                collect_type.bind_typegraph(self.mutator.tg)
+                collect_type.bind_typegraph(self.mutator.tg_in)
             ):
                 if collect_type is not F.Expressions.Power:
                     raise NotImplementedError(
@@ -782,14 +782,19 @@ class MutatorUtils:
         return po_expr
 
     @staticmethod
-    def is_alias_is_literal(po: F.Expressions.is_expression) -> F.Expressions.Is | None:
-        if not (po_is := po.try_get_sibling_trait(F.Expressions.Is)):
+    def is_alias_is_literal(
+        po: F.Parameters.is_parameter_operatable,
+    ) -> F.Expressions.Is | None:
+        expr = po.is_expresssion()
+        if expr is None:
+            return None
+        if not (po_is := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.Is)):
             return None
         if not po.try_get_sibling_trait(F.Expressions.is_predicate):
             return None
-        if not po.get_operand_literals():
+        if not expr.get_operand_literals():
             return None
-        if not po.get_operand_operatables():
+        if not expr.get_operand_operatables():
             return None
         return po_is
 
@@ -906,7 +911,7 @@ class MutatorUtils:
             out.destroyed_operations.add(nested_to_flatten_expr)
 
             res = MutatorUtils.flatten_associative(
-                nested_to_flatten, check_destructable
+                nested_to_flatten.get_raw_obj(), check_destructable
             )
             nested_extracted_operands += res.extracted_operands
             out.destroyed_operations.update(res.destroyed_operations)
@@ -921,7 +926,7 @@ class MutatorUtils:
     ) -> tuple[F.Parameters.is_parameter_operatable, F.Literals.is_literal]:
         e = expr.get_trait(F.Expressions.is_expression)
         e_po = e.as_parameter_operatable()
-        assert MutatorUtils.is_alias_is_literal(e) or MutatorUtils.is_subset_literal(
+        assert MutatorUtils.is_alias_is_literal(e_po) or MutatorUtils.is_subset_literal(
             e_po
         )
         return next(iter(e.get_operand_operatables())), next(
@@ -1136,7 +1141,7 @@ class MutatorUtils:
                 tolerance_guess = max(tolerance_guesses)
 
             new = (
-                F.Parameters.NumericParameter.bind_typegraph(self.mutator.tg)
+                F.Parameters.NumericParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup(
                     # In canonicalization removed: within, units
@@ -1150,14 +1155,14 @@ class MutatorUtils:
             return new.get_trait(F.Parameters.is_parameter)
         elif p_type_repr.isinstance(F.Parameters.BooleanParameter):
             new = (
-                F.Parameters.BooleanParameter.bind_typegraph(self.mutator.tg)
+                F.Parameters.BooleanParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup()
             )
             return new.get_trait(F.Parameters.is_parameter)
         elif p_type_repr.isinstance(F.Parameters.StringParameter):
             new = (
-                F.Parameters.StringParameter.bind_typegraph(self.mutator.tg)
+                F.Parameters.StringParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup()
             )
@@ -1167,7 +1172,7 @@ class MutatorUtils:
                 [fabll.Traits(p).get_obj(F.Parameters.EnumParameter) for p in params]
             )
             new = (
-                F.Parameters.EnumParameter.bind_typegraph(self.mutator.tg)
+                F.Parameters.EnumParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup(enum=enum)
             )

@@ -97,7 +97,12 @@ def lit_op_range_from_center_rel(
 
 def lit_bool(*values: bool) -> F.Parameters.can_be_operand:
     return (
-        F.Literals.Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup(*values)
+        F.Literals.Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g,
+            attributes=F.Literals.Booleans.Attributes(
+                has_true=True in values, has_false=False in values
+            ),
+        )
     ).get_trait(F.Parameters.can_be_operand)
 
 

@@ -331,28 +331,14 @@ def resolve_alias_classes(mutator: Mutator):
             # for expressions
 
             # single domain
-            # TODO switch over param types
-            numberdomains = [
-                np.get_domain()
-                for p in eq_class
-                if (
-                    np := fabll.Traits(p)
-                    .get_obj_raw()
-                    .try_cast(F.Parameters.NumericParameter)
-                )
-            ]
-            if numberdomains:
-                domain = F.NumberDomain.get_shared_domain(*numberdomains)
-                representative = mutator.register_created_parameter(
-                    F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
-                    .create_instance(g=mutator.G_out)
-                    .setup(domain=domain)
-                    .get_trait(F.Parameters.is_parameter),
-                    from_ops=list(eq_class),
-                ).as_parameter_operatable()
-            else:
-                # FIXME non number domains
-                raise NotImplementedError("Non-number domains not implemented")
+            # TODO need to ask expression output for type
+            # .... thats annoying though
+            representative = mutator.register_created_parameter(
+                F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
+                .create_instance(g=mutator.G_out)
+                .get_trait(F.Parameters.is_parameter),
+                from_ops=list(eq_class),
+            ).as_parameter_operatable()
 
         for e in eq_class_exprs:
             mutator.soft_replace(e.as_parameter_operatable(), representative)
@@ -505,9 +491,8 @@ def predicate_flat_terminate(mutator: Mutator):
     Terminates all (dis)proven predicates that contain no expressions.
     """
     predicates = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
-    for p in predicates:
-        p_e = p.get_trait(F.Expressions.is_expression)
-        p_po = p.get_trait(F.Parameters.is_parameter_operatable)
+    for p_e in predicates:
+        p_po = p_e.as_parameter_operatable()
         if any(p_e.get_operands_with_trait(F.Expressions.is_expression)):
             continue
 
@@ -515,7 +500,7 @@ def predicate_flat_terminate(mutator: Mutator):
         if mutator.utils.try_extract_literal(p_po) is None:
             continue
 
-        mutator.predicate_terminate(p.get_sibling_trait(F.Expressions.is_predicate))
+        mutator.predicate_terminate(p_e.get_sibling_trait(F.Expressions.is_predicate))
 
 
 @algorithm("Predicate is!! True", terminal=False)
@@ -556,9 +541,9 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     for e in exprs:
         if mutator.utils.is_pure_literal_expression(e.as_operand()):
             continue
-        e_po = e.get_trait(F.Parameters.is_parameter_operatable)
+        e_po = e.as_parameter_operatable()
         # handled in _todo
-        if mutator.utils.is_alias_is_literal(e) or mutator.utils.is_subset_literal(
+        if mutator.utils.is_alias_is_literal(e_po) or mutator.utils.is_subset_literal(
             e_po
         ):
             continue
