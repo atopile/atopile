@@ -46,7 +46,7 @@ TODO:
  - check all IsUnits in compiled designs for symbol conflicts
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, ClassVar, Self
@@ -72,6 +72,15 @@ def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
     if hasattr(unit_like, "get_unit"):
         return _unit_or_dimensionless(unit_like.get_unit())
     return Dimensionless
+
+
+class UnitsNotCommensurable(Exception):
+    def __init__(self, message: str, incommensurable_items: Sequence[fabll.NodeT]):
+        self.message = message
+        self.incommensurable_items = incommensurable_items
+
+    def __str__(self) -> str:
+        return self.message
 
 
 @dataclass
@@ -315,10 +324,6 @@ class IsUnit(fabll.Node):
     def _extract_offset(self) -> float:
         return self.offset.get().force_extract_literal().get_value()
 
-    def _get_conversion_factor(self, target: "IsUnit") -> tuple[float, float]:
-        # FIXME: implement
-        return (1.0, 0.0)
-
     def is_commensurable_with(self, other: "IsUnit") -> bool:
         self_vector = self._extract_basis_vector()
         other_vector = other._extract_basis_vector()
@@ -327,8 +332,22 @@ class IsUnit(fabll.Node):
     def is_dimensionless(self) -> bool:
         return self._extract_basis_vector() == _BasisVector.ORIGIN
 
-    def to_base_units(self) -> "IsUnit":
-        return self  # FIXME: implement
+    def to_base_units(self, g: graph.GraphView, tg: graph.TypeGraph) -> "IsUnit":
+        """
+        Returns a new anonymous unit with the same basis vector, but with multiplier=1.0
+        and offset=0.0.
+
+        Examples:
+        Kilometer.to_base_units() -> Meter
+        DegreesCelsius.to_base_units() -> Kelvin
+        Newton.to_base_units() -> kg*m/s^-2 (anonymous)
+
+        # TODO: lookup and return existing named unit if available
+        """
+
+        return self._new(
+            g=g, tg=tg, vector=self._extract_basis_vector(), multiplier=1.0, offset=0.0
+        )
 
     def _new(
         self,
@@ -357,6 +376,7 @@ class IsUnit(fabll.Node):
         basis = BoundBasisVector.create_instance(g=g).setup(vector=vector)
         result.basis_vector.get().point(basis)
 
+        # TODO: generate symbol
         return result
 
     def op_multiply(
@@ -416,6 +436,21 @@ class IsUnit(fabll.Node):
             multiplier=m**exponent,
             offset=0.0,  # TODO
         )
+
+    def get_conversion_to(self, target: "IsUnit") -> tuple[float, float]:
+        if not self.is_commensurable_with(target):
+            raise UnitsNotCommensurable(
+                f"Units {self} and {target} are not commensurable",
+                incommensurable_items=[self, target],
+            )
+
+        m1, o1 = self._extract_multiplier(), self._extract_offset()
+        m2, o2 = target._extract_multiplier(), target._extract_offset()
+
+        scale = m1 / m2
+        offset = (o1 - o2) / m2
+
+        return (scale, offset)
 
 
 class HasUnit(fabll.Node):

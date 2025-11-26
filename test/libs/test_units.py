@@ -3,21 +3,11 @@ from collections.abc import Sequence
 import pytest
 
 import faebryk.core.faebrykpy as fbrk
-import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
 from faebryk.libs.util import once
 
 # TODO: move to test/library/test_units.py? or faebryk/library/Units.py?
-
-
-class UnitsNotCommensurable(Exception):
-    def __init__(self, message: str, incommensurable_items: Sequence[fabll.NodeT]):
-        self.message = message
-        self.incommensurable_items = incommensurable_items
-
-    def __str__(self) -> str:
-        return self.message
 
 
 class BoundUnitsContext:
@@ -50,7 +40,7 @@ def assert_commensurability(items: Sequence[F.Units.IsUnit]) -> F.Units.IsUnit:
     for other_unit in other_units:
         if not first_unit.is_commensurable_with(other_unit):
             symbols = [unit.symbol.get() for unit in items]
-            raise UnitsNotCommensurable(
+            raise F.Units.UnitsNotCommensurable(
                 "Operands have incommensurable units:\n"
                 + "\n".join(
                     f"`{item.__repr__()}` ({symbols[i]})"
@@ -106,7 +96,7 @@ def test_assert_commensurability(ctx: BoundUnitsContext):
 
 def test_assert_incommensurability(ctx: BoundUnitsContext):
     """Test that incompatible units raise UnitsNotCommensurable"""
-    with pytest.raises(UnitsNotCommensurable):
+    with pytest.raises(F.Units.UnitsNotCommensurable):
         assert_commensurability([ctx.Meter._is_unit.get(), ctx.Second._is_unit.get()])
 
 
