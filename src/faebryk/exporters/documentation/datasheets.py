@@ -112,8 +112,8 @@ def test_download_datasheet(caplog):
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
-    assert app.module_with_datasheet.get().has_trait(F.has_datasheet)
+    assert App.ModuleWithDatasheet.bind_typegraph(tg).try_get_type_trait(F.has_datasheet)
 
     export_datasheets(app, path=DEFAULT_PATH)
 
-    assert (DEFAULT_PATH / "LM555.pdf").exists()
+    assert (DEFAULT_PATH / "ModuleWithDatasheet.pdf").exists()

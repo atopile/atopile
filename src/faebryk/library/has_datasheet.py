@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class has_datasheet(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     datasheet_ = F.Parameters.StringParameter.MakeChild()
 
