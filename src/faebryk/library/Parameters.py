@@ -48,13 +48,13 @@ class is_parameter_operatable(fabll.Node):
         Expr = pred_type.bind_typegraph(tg=self.tg)
 
         class E_Ctx:
-            lit: Literals.is_literal | None = None
+            lit: is_literal | None = None
             node = self.as_operand()
             predT = pred_type
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             class Ctx:
-                lit: Literals.is_literal | None = None
+                lit: is_literal | None = None
 
             # check if Is is constrained
             expr_node = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
