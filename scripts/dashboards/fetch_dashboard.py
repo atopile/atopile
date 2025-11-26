@@ -507,8 +507,10 @@ def build_html(summary: dict) -> str:
       color: #d6ffd2;
     }}
     .mascot {{
-      width: 120px;
+      width: 200px;
+      height: 200px;
       max-width: 20%;
+      object-fit: contain;
       filter: grayscale(1) brightness(1.5) contrast(1.2);
       opacity: 0.78;
       mix-blend-mode: screen;
@@ -596,7 +598,7 @@ def build_html(summary: dict) -> str:
       <div class="bar-row">
         <img class="mascot" src="happy.jpg" alt="happy sausage" />
         <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#0f2c18"></div>'}</div>
-        <img class="mascot" src="angry.png" alt="angry sausage" />
+        <img class="mascot" src="funktion-1.jpeg" alt="funktion-1" />
       </div>
       <ul class="ghost">{summary_items}</ul>
       <div class="meta-container ghost">
