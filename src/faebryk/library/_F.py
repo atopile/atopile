@@ -37,7 +37,6 @@ import faebryk.library.Expressions as Expressions
 import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
-import faebryk.library.Numbers as Numbers
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
@@ -57,6 +56,7 @@ from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.PCB import PCB
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.Electrical import Electrical
+import faebryk.library.Numbers as Numbers
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad
@@ -145,7 +145,6 @@ __all__ = [
     "PCBTransformer",
     "has_footprint",
     "implements_design_check",
-    "Numbers",
     "SerializableMetadata",
     "has_datasheet",
     "has_designator",
@@ -165,6 +164,7 @@ __all__ = [
     "PCB",
     "requires_external_usage",
     "Electrical",
+    "Numbers",
     "ElectricPower",
     "Filter",
     "Pad",
