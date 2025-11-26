@@ -88,6 +88,8 @@ class _BasisVectorArg:
 
 # TODO: iterate over _BasisVectorArg fields
 class _BasisVector(fabll.Node):
+    ORIGIN: ClassVar[_BasisVectorArg] = _BasisVectorArg()
+
     ampere_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
         integer=True
     )
@@ -223,6 +225,10 @@ class IsUnit(fabll.Node):
 
         return out
 
+    def _get_conversion_factor(self, target: "IsUnit") -> tuple[float, float]:
+        # FIXME: implement
+        return (1.0, 0.0)
+
     def is_commensurable_with(self, other: "IsUnit") -> bool:
         self_unit_vector = _BasisVector.bind_instance(
             self.basis_vector.get().deref().instance
@@ -233,6 +239,29 @@ class IsUnit(fabll.Node):
         ).extract_vector()
 
         return self_unit_vector == other_unit_vector
+
+    def is_dimensionless(self) -> bool:
+        return (
+            _BasisVector.bind_instance(
+                self.basis_vector.get().deref().instance
+            ).extract_vector()
+            == _BasisVector.ORIGIN
+        )
+
+    def to_base_units(self) -> "IsUnit":
+        return self  # FIXME: implement
+
+    def op_multiply(self, other: "IsUnit") -> "IsUnit":
+        return self  # FIXME: implement
+
+    def op_divide(self, other: "IsUnit") -> "IsUnit":
+        return self  # FIXME: implement
+
+    def op_invert(self) -> "IsUnit":
+        return self  # FIXME: implement
+
+    def op_power(self, other: "IsUnit") -> "IsUnit":
+        return self  # FIXME: implement
 
 
 class HasUnit(fabll.Node):
@@ -401,12 +430,10 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
 
 # Dimensionless ------------------------------------------------------------------------
 
-_BASIS_ORIGIN = _BasisVectorArg()
-
 
 # TODO: rename to One?
 class Dimensionless(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BASIS_ORIGIN
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVector.ORIGIN
 
     _is_unit = fabll.Traits.MakeEdge(
         IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.dimensionless], unit_vector_arg)
@@ -705,7 +732,7 @@ class Bit(fabll.Node):
 
 
 class Percent(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BASIS_ORIGIN
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVector.ORIGIN
 
     _is_unit = fabll.Traits.MakeEdge(
         IsUnit.MakeChild(
@@ -715,7 +742,7 @@ class Percent(fabll.Node):
 
 
 class Ppm(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BASIS_ORIGIN
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVector.ORIGIN
 
     _is_unit = fabll.Traits.MakeEdge(
         IsUnit.MakeChild(
