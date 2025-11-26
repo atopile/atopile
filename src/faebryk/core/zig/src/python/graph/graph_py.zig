@@ -1019,6 +1019,131 @@ fn wrap_graphview_get_node_count() type {
     };
 }
 
+fn wrap_graphview_get_subgraph_from_nodes() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_subgraph_from_nodes",
+            .doc = "Create a subgraph containing only the specified nodes and their connecting edges",
+            .args_def = struct {
+                nodes: *py.PyObject,
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            // Convert Python list to ArrayList of NodeReferences
+            if (py.PyList_Check(kwarg_obj.nodes) == 0) {
+                py.PyErr_SetString(py.PyExc_TypeError, "nodes must be a list");
+                return null;
+            }
+
+            const list_size = py.PyList_Size(kwarg_obj.nodes);
+            var node_list = std.ArrayList(graph.graph.NodeReference).init(std.heap.c_allocator);
+            defer node_list.deinit();
+
+            var i: isize = 0;
+            while (i < list_size) : (i += 1) {
+                const item = py.PyList_GetItem(kwarg_obj.nodes, i);
+                if (item == null) {
+                    py.PyErr_SetString(py.PyExc_ValueError, "Failed to get list item");
+                    return null;
+                }
+
+                // Unwrap the BoundNode to get the Node
+                const bound_wrapper = bind.castWrapper("BoundNodeReference", &bound_node_type, BoundNodeWrapper, item) orelse {
+                    py.PyErr_SetString(py.PyExc_TypeError, "nodes must be a list of BoundNode");
+                    return null;
+                };
+
+                node_list.append(bound_wrapper.data.node) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to append node");
+                    return null;
+                };
+            }
+
+            // Allocate memory for the result GraphView
+            const allocator = std.heap.c_allocator;
+            const result_ptr = allocator.create(graph.graph.GraphView) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate GraphView");
+                return null;
+            };
+
+            result_ptr.* = wrapper.data.get_subgraph_from_nodes(node_list);
+
+            const pyobj = bind.wrap_obj("GraphView", &graph_view_type, GraphViewWrapper, result_ptr);
+            if (pyobj == null) {
+                result_ptr.deinit();
+                allocator.destroy(result_ptr);
+            }
+
+            return pyobj;
+        }
+    };
+}
+
+fn wrap_graphview_insert_subgraph() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "insert_subgraph",
+            .doc = "Insert all nodes and edges from a subgraph into this graph",
+            .args_def = struct {
+                subgraph: *graph.graph.GraphView,
+
+                pub const fields_meta = .{
+                    .subgraph = bind.ARG{ .Wrapper = GraphViewWrapper, .storage = &graph_view_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            wrapper.data.insert_subgraph(kwarg_obj.subgraph.*);
+
+            return bind.wrap_none();
+        }
+    };
+}
+
+fn wrap_graphview_get_nodes() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_nodes",
+            .doc = "Get all nodes in the graph as a list of BoundNode",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const nodes = wrapper.data.get_nodes();
+
+            const nodes_list = py.PyList_New(@intCast(nodes.len));
+            if (nodes_list == null) return null;
+
+            for (nodes, 0..) |node, i| {
+                const bound_node = graph.graph.BoundNodeReference{
+                    .node = node,
+                    .g = wrapper.data,
+                };
+                const py_node = makeBoundNodePyObject(bound_node);
+                if (py_node == null or py.PyList_SetItem(nodes_list, @intCast(i), py_node) < 0) {
+                    if (py_node != null) py.Py_DECREF(py_node.?);
+                    py.Py_DECREF(nodes_list.?);
+                    return null;
+                }
+            }
+
+            return nodes_list;
+        }
+    };
+}
+
 fn wrap_graphview(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_graphview_create(),
@@ -1026,6 +1151,9 @@ fn wrap_graphview(root: *py.PyObject) void {
         wrap_graphview_insert_edge(),
         wrap_graphview_bind(),
         wrap_graphview_get_node_count(),
+        wrap_graphview_get_nodes(),
+        wrap_graphview_get_subgraph_from_nodes(),
+        wrap_graphview_insert_subgraph(),
     };
     bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
     graph_view_type = type_registry.getRegisteredTypeObject("GraphView");

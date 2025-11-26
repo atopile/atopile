@@ -663,6 +663,10 @@ pub const GraphView = struct {
         return g.nodes.items.len;
     }
 
+    pub fn get_nodes(g: *const @This()) []const NodeReference {
+        return g.nodes.items;
+    }
+
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
         if (g.edges.contains(edge)) {
             return BoundEdgeReference{
@@ -802,12 +806,61 @@ pub const GraphView = struct {
     }
 
     pub fn insert_subgraph(g: *@This(), subgraph: GraphView) void {
+        // Pre-allocate for nodes
+        const added_nodes_len = subgraph.nodes.items.len;
+        g.nodes.ensureUnusedCapacity(added_nodes_len) catch @panic("OOM");
+        g.neighbors.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
+        g.neighbor_by_type.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
+
         for (subgraph.nodes.items) |node| {
-            _ = g.insert_node(node);
+            if (g.contains_node(node)) {
+                continue;
+            }
+
+            // Inline insert_node logic with assumption of capacity
+            g.nodes.appendAssumeCapacity(node);
+            node._ref_count.inc(g);
+
+            g.neighbors.putAssumeCapacity(node, std.ArrayList(EdgeReference).init(g.allocator));
+            g.neighbor_by_type.putAssumeCapacity(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator));
         }
+
+        // Pre-allocate for edges
+        const added_edges_len = subgraph.edges.count();
+        g.edges.ensureUnusedCapacity(@intCast(added_edges_len)) catch @panic("OOM");
+
         var it = subgraph.edges.keyIterator();
-        while (it.next()) |edge| {
-            _ = g.insert_edge(edge.*);
+        while (it.next()) |edge_ptr| {
+            const edge = edge_ptr.*;
+            if (g.edges.contains(edge)) {
+                continue;
+            }
+
+            // Inline insert_edge logic
+            g.edges.putAssumeCapacity(edge, {});
+            edge._ref_count.inc(g);
+
+            // handle caches
+            // We trust nodes exist now (were inserted above or already existed)
+            {
+                const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
+                const res_from = from_neighbors.getOrPut(edge.attributes.edge_type) catch @panic("OOM");
+                if (!res_from.found_existing) {
+                    res_from.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+                }
+                res_from.value_ptr.append(edge) catch @panic("OOM");
+                g.neighbors.getPtr(edge.source).?.append(edge) catch @panic("OOM");
+            }
+
+            {
+                const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
+                const res_to = to_neighbors.getOrPut(edge.attributes.edge_type) catch @panic("OOM");
+                if (!res_to.found_existing) {
+                    res_to.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+                }
+                res_to.value_ptr.append(edge) catch @panic("OOM");
+                g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM");
+            }
         }
     }
 
@@ -1078,4 +1131,32 @@ test "duplicate edge insertion" {
     _ = g.insert_edge(e1);
     try std.testing.expectEqual(@as(usize, 1), g.edges.count());
     try std.testing.expectEqual(@as(usize, 1), e1._ref_count.ref_count);
+}
+
+test "insert_subgraph performance" {
+    const a = std.testing.allocator;
+    var g1 = GraphView.init(a);
+    defer g1.deinit();
+    var g2 = GraphView.init(a);
+    defer g2.deinit();
+
+    const num_nodes = 10000;
+
+    var i: usize = 0;
+    while (i < num_nodes) : (i += 1) {
+        const n = Node.init(a);
+        _ = g1.insert_node(n);
+    }
+
+    i = 0;
+    while (i < num_nodes) : (i += 1) {
+        const n = Node.init(a);
+        _ = g2.insert_node(n);
+    }
+
+    var timer = try std.time.Timer.start();
+    g1.insert_subgraph(g2);
+    const duration = timer.read();
+
+    std.debug.print("\ninsert_subgraph with {d} nodes took {d}ns\n", .{ num_nodes, duration });
 }

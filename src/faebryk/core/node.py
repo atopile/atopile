@@ -1195,16 +1195,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         hierarchy.reverse()
         return hierarchy
 
-    def copy(self, tg: fbrk.TypeGraph, g: graph.GraphView) -> "NodeT":
+    def copy_into(self, g: graph.GraphView) -> Self:
         """
         Copy all nodes in hierarchy and edges between them and their types
         """
-        # TODO copy types
+        t_sg = self.tg.get_type_subgraph()
+        g.insert_subgraph(subgraph=t_sg)
 
         children = self.get_children(direct_only=False, include_root=True, types=Node)
-        children_nodes = [c.instance.node() for c in children]
-        g_sub = self.g().get_subgraph_from_nodes(children_nodes)
-        g.insert_subgraph(g_sub)
+        children_nodes = [c.instance for c in children] + t_sg.get_nodes()
+        g_sub = self.g().get_subgraph_from_nodes(nodes=children_nodes)
+        g.insert_subgraph(subgraph=g_sub)
+        return self.bind_instance(instance=g.bind(node=self.instance.node()))
 
     def get_full_name(self, types: bool = False) -> str:
         parts: list[str] = []
@@ -1327,15 +1329,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         Low-level edge creation function.
         """
-        print("connecting", self, to)
-        # print stack trace
-        import traceback
-
-        traceback.print_stack()
         edge_attrs.insert_edge(
             g=self.instance.g(), source=self.instance.node(), target=to.instance.node()
         )
-        print("connected")
 
     # traits ---------------------------------------------------------------------------
     def get_sibling_trait[TR: NodeT](self, trait: type[TR]) -> TR:
@@ -2043,7 +2039,7 @@ def test_string_param():
     import faebryk.library._F as F
 
     string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    string_p.constrain_to_single(value="IG constrained")
+    string_p.alias_to_single(value="IG constrained")
     assert string_p.force_extract_literal().get_value() == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
@@ -2061,7 +2057,7 @@ def test_boolean_param():
     import faebryk.library._F as F
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.constrain_to_single(value=True)
+    boolean_p.alias_to_single(value=True)
     assert boolean_p.force_extract_literal().get_value()
 
     class ExampleBooleanParameter(fabll.Node):
@@ -2286,6 +2282,37 @@ def test_get_children_modules_tree():
     assert mods == {cap1, cap2, cap3, cap4}
 
 
+def test_copy_into_basic():
+    g, tg = _make_graph_and_typegraph()
+    g_new = graph.GraphView.create()
+
+    class Inner(Node):
+        pass
+
+    class N(Node):
+        inner = Inner.MakeChild()
+
+    n = N.bind_typegraph(tg).create_instance(g=g)
+    m = N.bind_typegraph(tg).create_instance(g=g)
+    n.connect(to=m, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+
+    assert fbrk.EdgePointer.get_referenced_node_from_node(node=n.instance) == m.instance
+
+    n2 = n.copy_into(g=g_new)
+
+    assert n2.is_same(n)
+    assert n2 is not n
+    assert n2.g() != n.g()
+
+    assert not fbrk.EdgePointer.get_referenced_node_from_node(node=n2.instance)
+
+    inner2 = n2.inner.get()
+    assert inner2.is_same(n.inner.get())
+
+    assert n2.isinstance(N)
+    assert inner2.isinstance(Inner)
+
+
 if __name__ == "__main__":
     import typer
 
@@ -2294,4 +2321,4 @@ if __name__ == "__main__":
     # test_manual_resistor_def()
 
     # typer.run(test_resistor_instantiation)
-    typer.run(test_make_lit)
+    typer.run(test_copy_into_basic)
