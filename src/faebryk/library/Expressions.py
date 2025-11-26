@@ -1,10 +1,11 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, cast
+from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.library import Collections, Literals, Parameters
 from faebryk.libs.util import not_none
 
@@ -60,6 +61,8 @@ OperandSet = Collections.AbstractSet(
 
 class is_expression(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    repr_placement = F.Collections.Pointer.MakeChild()
+    repr_symbol = F.Collections.Pointer.MakeChild()
 
     @dataclass(frozen=True)
     class ReprStyle(fabll.NodeAttributes):
@@ -89,10 +92,42 @@ class is_expression(fabll.Node):
 
         placement: Placement = Placement.INFIX
 
+    _repr_enum = F.Literals.EnumsFactory(ReprStyle.Placement)
+
     @classmethod
     def MakeChild(cls, repr_style: ReprStyle) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
+        cls._MakeReprStyle(out, repr_style)
         return out
+
+    @classmethod
+    def _MakeReprStyle(cls, out: fabll._ChildField[Self], repr_style: ReprStyle):
+        Collections.Pointer.MakeEdgeForField(
+            out,
+            [out, cls.repr_placement],
+            cls._repr_enum.MakeChild(repr_style.placement),
+        )
+        Collections.Pointer.MakeEdgeForField(
+            out,
+            [out, cls.repr_symbol],
+            Literals.Strings.MakeChild(repr_style.symbol or "<NONE>"),
+        )
+
+    def get_repr_style(self) -> ReprStyle:
+        placement = is_expression.ReprStyle.Placement[
+            not_none(
+                self.repr_placement.get()
+                .deref()
+                .cast(type(self)._repr_enum)
+                .get_single_value()
+            )
+        ]
+        symbol = not_none(
+            self.repr_symbol.get().deref().cast(F.Literals.Strings)
+        ).get_values()[0]
+        if symbol == "<NONE>":
+            symbol = None
+        return is_expression.ReprStyle(placement=placement, symbol=symbol)
 
     def get_operands(self) -> list["F.Parameters.can_be_operand"]:
         from faebryk.library.Collections import PointerProtocol
@@ -166,11 +201,11 @@ class is_expression(fabll.Node):
             context = Parameters.ReprContext()
 
         # TODO
-        # style = type(self).REPR_STYLE
-        style = is_expression.ReprStyle(
-            symbol=fabll.Traits(self).get_obj_raw().get_type_name(),
-            placement=is_expression.ReprStyle.Placement.PREFIX,
-        )
+        style = self.get_repr_style()
+        # style = is_expression.ReprStyle(
+        #    symbol=fabll.Traits(self).get_obj_raw().get_type_name(),
+        #    placement=is_expression.ReprStyle.Placement.PREFIX,
+        # )
         symbol = style.symbol
         if symbol is None:
             symbol = type(self).__name__
@@ -2210,7 +2245,7 @@ class Is(fabll.Node):
         for operand in operands:
             # TODO: relying on a string identifier to connect to the correct
             # trait is nasty
-            operand = [*operand, "_can_be_operand"]
+            operand.append("_can_be_operand")
             out.add_dependant(
                 OperandSet.MakeEdge([out, cls.operands], operand),
                 identifier="connect_operands",

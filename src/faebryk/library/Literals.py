@@ -368,33 +368,34 @@ class Booleans(fabll.Node[BooleansAttributes]):
 
 
 class EnumValue(fabll.Node):
-    from faebryk.library.Parameters import StringParameter
-
-    name_ = StringParameter.MakeChild()
-    value_ = StringParameter.MakeChild()
+    name_ = F.Collections.Pointer.MakeChild()
+    value_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
     def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
+        F.Collections.Pointer.MakeEdgeForField(
+            out,
+            [out, cls.name_],
+            Strings.MakeChild(name),
         )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value_], value)
+        F.Collections.Pointer.MakeEdgeForField(
+            out,
+            [out, cls.value_],
+            Strings.MakeChild(value),
         )
         return out
 
     @property
     def name(self) -> str:
-        return self.name_.get().force_extract_literal().get_values()[0]
+        return self.name_.get().deref().cast(Strings).get_value()
 
     @property
     def value(self) -> str:
-        return self.value_.get().force_extract_literal().get_values()[0]
+        return self.value_.get().deref().cast(Strings).get_value()
 
 
 class AbstractEnums(fabll.Node):
-    from faebryk.library.Literals import is_literal
     from faebryk.library.Parameters import can_be_operand
 
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
@@ -409,7 +410,7 @@ class AbstractEnums(fabll.Node):
         raise ValueError(f"Enum member {enum_member.name} not found in enum type")
 
     def setup(self, *enum_values: Enum) -> Self:
-        atype = F.Literals.EnumsFactory(type(enum_values[0]))
+        atype = EnumsFactory(type(enum_values[0]))
         atype_n = AbstractEnums.bind_instance(
             atype.bind_typegraph(tg=self.tg).get_or_create_type()
         )
@@ -447,7 +448,7 @@ class AbstractEnums(fabll.Node):
 
     @classmethod
     def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField:
-        atype = F.Literals.EnumsFactory(type(enum_members[0]))
+        atype = EnumsFactory(type(enum_members[0]))
         cls_n = cast(type[fabll.NodeT], atype)
         out = fabll._ChildField(cls)
 
@@ -466,8 +467,10 @@ class AbstractEnums(fabll.Node):
         enum_parameter_ref: fabll.RefPath,
         *enum_members: Enum,
     ) -> fabll._ChildField["F.Expressions.Is"]:
+        from faebryk.library.Expressions import Is
+
         lit = cls.MakeChild(*enum_members)
-        out = F.Expressions.Is.MakeChild_Constrain([enum_parameter_ref, [lit]])
+        out = Is.MakeChild_Constrain([enum_parameter_ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 

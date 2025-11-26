@@ -560,4 +560,9 @@ def test_defaultsolver_basic():
 if __name__ == "__main__":
     import typer
 
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    logger.setLevel(logging.DEBUG)
+
     typer.run(test_defaultsolver_basic)
