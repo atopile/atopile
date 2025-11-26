@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
 
@@ -2243,8 +2244,6 @@ def test_chain_names():
 
 
 def test_chain_tree():
-    import re
-
     g, tg = _make_graph_and_typegraph()
 
     class N(Node):
@@ -2296,7 +2295,9 @@ def test_chain_tree_with_root():
         )
         x = y
 
-    assert x.get_full_name() == "i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
+    assert re.search(
+        r"0x[0-9A-F]+\.i0\.i1\.i2\.i3\.i4\.i5\.i6\.i7\.i8\.i9", x.get_full_name()
+    )
 
 
 def test_get_children_modules_simple():

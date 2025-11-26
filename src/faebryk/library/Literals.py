@@ -86,6 +86,12 @@ class is_literal(fabll.Node):
         lit = self.switch_cast()
         return f"{lit.get_type_name()}({lit.get_values()})"
 
+    def pretty_str(self) -> str:
+        # TODO
+        lit = self.switch_cast()
+        return f"{lit.get_values()[0]}"
+
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str
