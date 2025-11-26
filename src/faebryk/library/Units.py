@@ -46,6 +46,7 @@ TODO:
  - check all IsUnits in compiled designs for symbol conflicts
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, ClassVar, Self
@@ -84,6 +85,33 @@ class _BasisVectorArg:
     radian: int = 0
     steradian: int = 0
     bit: int = 0
+
+    def _vector_op(
+        self, other: "_BasisVectorArg", op: Callable[[int, int], int]
+    ) -> "_BasisVectorArg":
+        return _BasisVectorArg(
+            **{
+                field: op(getattr(self, field), getattr(other, field))
+                for field in self.__dataclass_fields__.keys()
+            }
+        )
+
+    def _scalar_op(self, op: Callable[[int], int]) -> "_BasisVectorArg":
+        return _BasisVectorArg(
+            **{
+                field: op(getattr(self, field))
+                for field in self.__dataclass_fields__.keys()
+            }
+        )
+
+    def multiply(self, other: "_BasisVectorArg") -> "_BasisVectorArg":
+        return self._vector_op(other, lambda x, y: x + y)
+
+    def divide(self, other: "_BasisVectorArg") -> "_BasisVectorArg":
+        return self._vector_op(other, lambda x, y: x - y)
+
+    def scalar_multiply(self, scalar: int) -> "_BasisVectorArg":
+        return self._scalar_op(lambda x: x * scalar)
 
 
 # TODO: iterate over _BasisVectorArg fields
@@ -146,6 +174,29 @@ class _BasisVector(fabll.Node):
             out.add_dependant(is_expr)
 
         return out
+
+    def setup(self, vector: _BasisVectorArg) -> Self:  # type: ignore
+        g = self.instance.g()
+        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=self.tg)
+
+        for child, exponent in (
+            (self.ampere_exponent, vector.ampere),
+            (self.second_exponent, vector.second),
+            (self.meter_exponent, vector.meter),
+            (self.kilogram_exponent, vector.kilogram),
+            (self.kelvin_exponent, vector.kelvin),
+            (self.mole_exponent, vector.mole),
+            (self.candela_exponent, vector.candela),
+            (self.radian_exponent, vector.radian),
+            (self.steradian_exponent, vector.steradian),
+            (self.bit_exponent, vector.bit),
+        ):
+            child.get().alias_to_literal(
+                g=g,
+                value=BoundNumbers.create_instance(g=g).setup_from_singleton(
+                    value=float(exponent)
+                ),
+            )
 
     def extract_vector(self) -> _BasisVectorArg:
         return _BasisVectorArg(
@@ -225,43 +276,123 @@ class IsUnit(fabll.Node):
 
         return out
 
+    def setup(  # type: ignore
+        self,
+        symbols: list[str],
+        unit_vector: _BasisVectorArg,
+        multiplier: float = 1.0,
+        offset: float = 0.0,
+    ) -> Self:
+        g = self.instance.g()
+        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=self.tg)
+
+        self.symbol.get().alias_to_literal(*symbols, g=g)
+        self.multiplier.get().alias_to_literal(
+            g=g,
+            value=BoundNumbers.create_instance(g=g).setup_from_singleton(
+                value=multiplier
+            ),
+        )
+        self.offset.get().alias_to_literal(
+            g=g,
+            value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
+        )
+        _BasisVector.bind_instance(self.basis_vector.get().deref().instance).setup(
+            vector=unit_vector
+        )
+
+        return self
+
+    def _extract_basis_vector(self) -> _BasisVectorArg:
+        return _BasisVector.bind_instance(
+            self.basis_vector.get().deref().instance
+        ).extract_vector()
+
+    def _extract_multiplier(self) -> float:
+        return self.multiplier.get().force_extract_literal().get_value()
+
+    def _extract_offset(self) -> float:
+        return self.offset.get().force_extract_literal().get_value()
+
     def _get_conversion_factor(self, target: "IsUnit") -> tuple[float, float]:
         # FIXME: implement
         return (1.0, 0.0)
 
     def is_commensurable_with(self, other: "IsUnit") -> bool:
-        self_unit_vector = _BasisVector.bind_instance(
-            self.basis_vector.get().deref().instance
-        ).extract_vector()
-
-        other_unit_vector = _BasisVector.bind_instance(
-            other.basis_vector.get().deref().instance
-        ).extract_vector()
-
-        return self_unit_vector == other_unit_vector
+        self_vector = self._extract_basis_vector()
+        other_vector = other._extract_basis_vector()
+        return self_vector == other_vector
 
     def is_dimensionless(self) -> bool:
-        return (
-            _BasisVector.bind_instance(
-                self.basis_vector.get().deref().instance
-            ).extract_vector()
-            == _BasisVector.ORIGIN
-        )
+        return self._extract_basis_vector() == _BasisVector.ORIGIN
 
     def to_base_units(self) -> "IsUnit":
         return self  # FIXME: implement
 
+    def _new(
+        self, vector: _BasisVectorArg, multiplier: float, offset: float
+    ) -> "IsUnit":
+        g = self.instance.g()
+        BoundIsUnit = IsUnit.bind_typegraph(tg=self.tg)
+        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=self.tg)
+        BoundBasisVector = _BasisVector.bind_typegraph(tg=self.tg)
+
+        result = BoundIsUnit.create_instance(g=g)
+        result.multiplier.get().alias_to_literal(
+            g=g,
+            value=BoundNumbers.create_instance(g=g).setup_from_singleton(
+                value=multiplier
+            ),
+        )
+        result.offset.get().alias_to_literal(
+            g=g,
+            value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
+        )
+
+        basis = BoundBasisVector.create_instance(g=g).setup(vector=vector)
+        result.basis_vector.get().point(basis)
+
+        return result
+
     def op_multiply(self, other: "IsUnit") -> "IsUnit":
-        return self  # FIXME: implement
+        v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
+        m1, m2 = self._extract_multiplier(), other._extract_multiplier()
+
+        new_multiplier = m1 * m2
+        new_vector = v1.multiply(v2)
+
+        return self._new(
+            vector=new_vector,
+            multiplier=new_multiplier,
+            offset=0.0,  # TODO
+        )
 
     def op_divide(self, other: "IsUnit") -> "IsUnit":
-        return self  # FIXME: implement
+        v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
+        m1, m2 = self._extract_multiplier(), other._extract_multiplier()
+
+        new_multiplier = m1 / m2
+        new_vector = v1.divide(v2)
+
+        return self._new(
+            vector=new_vector,
+            multiplier=new_multiplier,
+            offset=0.0,  # TODO
+        )
 
     def op_invert(self) -> "IsUnit":
-        return self  # FIXME: implement
+        v = self._extract_basis_vector()
+        m = self._extract_multiplier()
+        return self._new(vector=v.scalar_multiply(-1), multiplier=1.0 / m, offset=0.0)
 
-    def op_power(self, other: "IsUnit") -> "IsUnit":
-        return self  # FIXME: implement
+    def op_power(self, exponent: int) -> "IsUnit":
+        v = self._extract_basis_vector()
+        m = self._extract_multiplier()
+        return self._new(
+            vector=v.scalar_multiply(exponent),
+            multiplier=m**exponent,
+            offset=0.0,  # TODO
+        )
 
 
 class HasUnit(fabll.Node):
