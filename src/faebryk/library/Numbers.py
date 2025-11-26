@@ -2427,9 +2427,7 @@ def test_boolean_set_op_or():
 
 
 class QuantitySet(fabll.Node):
-    import F.Literals as Literals
-
-    _is_literal = fabll.Traits.MakeEdge(Literals.is_literal.MakeChild())
+    _is_literal = fabll.Traits.MakeEdge(F.Literals.is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     _numeric_set_identifier: ClassVar[str] = "numeric_set"
     _unit_identifier: ClassVar[str] = "unit"
@@ -2481,7 +2479,6 @@ class QuantitySet(fabll.Node):
             bound_node=self.instance, child_identifier=self._numeric_set_identifier
         )
         assert numeric_set is not None
-        print(f"Numeric set: {numeric_set}")
         return NumericSet.bind_instance(numeric_set)
 
     # def get_unit(self) -> IsUnit:
@@ -2528,437 +2525,437 @@ def test_quantity_set_make_child():
     assert numeric_set.get_max_value() == 1.0
 
 
-def test_quantity_set_create_instance():
-    g = graph.GraphView.create()
-    tg = TypeGraph.create(g=g)
-    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-    assert quantity_set.is_empty()
-
-    # def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
-    #     min_value = self.get_min_value()
-    #     unit = self.get_unit()
-    #     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-    #     quantity_set.setup(g=g, tg=tg, min=min_value, max=min_value, unit=unit)
-    #  return QuantitySet.MakeChild(g=g, tg=tg, min=min_value, max=min_value, unit=unit)
-
-    # def get_max_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
-    #     max_value = self.get_max_value()
-    #     unit = self.get_unit()
-    #     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-    #     quantity_set.setup(g=g, tg=tg, min=max_value, max=max_value, unit=unit)
-    #     return quantity_set
-
-    # def max_elem(self) -> float:
-    #     if self.is_empty():
-    #         raise ValueError("empty interval cannot have max element")
-    #     return self.base_to_units(self._intervals.max_elem)
-
-    # def closest_elem(self, target: Quantity) -> Quantity:
-    #     if not self.get_unit().is_compatible_with(target.units):
-    #         raise ValueError("incompatible units")
-    #     return self.base_to_units(
-    #         self._intervals.closest_elem(target.to(self.interval_units).magnitude)
-    #     )
-
-    # def is_superset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
-    #     if not self.units.is_compatible_with(other.units):
-    #         return False
-    #     return self._intervals.is_superset_of(
-    #         Quantity_Interval_Disjoint.from_value(other)._intervals
-    #     )
-
-    # def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
-    #     if not self.units.is_compatible_with(other.units):
-    #         return False
-    #     return self._intervals.is_subset_of(
-    #         Quantity_Interval_Disjoint.from_value(other)._intervals
-    #     )
-
-    # def op_intersect_interval(
-    #     self, other: "Quantity_Interval"
-    # ) -> "Quantity_Interval_Disjoint":
-    #     if not self.units.is_compatible_with(other.units):
-    #         raise ValueError("incompatible units")
-    #     _interval = self._intervals.op_intersect_interval(other._interval)
-    #     return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
-
-    # def op_intersect_intervals(
-    #     self, *other: "Quantity_Interval_Disjoint"
-    # ) -> "Quantity_Interval_Disjoint":
-    #     # TODO make pretty
-    #     def single(left, right):
-    #         if not left.units.is_compatible_with(right.units):
-    #             raise ValueError("incompatible units")
-    #         _interval = left._intervals.op_intersect_intervals(right._intervals)
-    #         return Quantity_Interval_Disjoint._from_intervals(_interval, left.units)
-
-    #     out = Quantity_Interval_Disjoint(self)
-
-    #     for o in other:
-    #         out = single(out, o)
-
-    #     return out
-
-    # def op_union_intervals(
-    #     self, other: "Quantity_Interval_Disjoint"
-    # ) -> ""QuantitySet"":
-    #     if not self.units.is_compatible_with(other.units):
-    #         raise ValueError("incompatible units")
-    #     _interval = self._intervals.op_union_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_difference_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     if not self.units.is_compatible_with(other.units):
-    #         raise ValueError("incompatible units")
-    #     _interval = self._intervals.op_difference_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_symmetric_difference_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     if not self.units.is_compatible_with(other.units):
-    #         raise ValueError("incompatible units")
-    #   _interval = self._intervals.op_symmetric_difference_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_add_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     if not self.units.is_compatible_with(other.units):
-    #         raise ValueError("incompatible units")
-    #     _interval = self._intervals.op_add_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_negate(self) -> "QuantitySet":
-    #     _interval = self._intervals.op_negate()
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_subtract_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     if not self.units.is_compatible_with(other.units):
-    #         raise ValueError("incompatible units")
-    #     _interval = self._intervals.op_subtract_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_mul_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     _interval = self._intervals.op_mul_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(
-    #         _interval, cast(Unit, self.units * other.units)
-    #     )
-
-    # def op_invert(self) -> "QuantitySet":
-    #     _interval = self._intervals.op_invert()
-    #     return QuantitySet._from_intervals(_interval, 1 / self.units)
-
-    # def op_div_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     _interval = self._intervals.op_div_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(
-    #         _interval, cast(Unit, self.units / other.units)
-    #     )
-
-    # def op_pow_intervals(
-    #     self, other: "QuantitySet"
-    # ) -> "QuantitySet":
-    #     if not other.units.is_compatible_with(dimensionless):
-    #         raise ValueError("exponent must have dimensionless units")
-    #     if other.min_elem != other.max_elem and not self.units.is_compatible_with(
-    #         dimensionless
-    #     ):
-    #         raise ValueError(
-    #             "base must have dimensionless units when exponent is interval"
-    #         )
-    #     units = self.units**other.min_elem.magnitude
-    #     _interval = self._intervals.op_pow_intervals(other._intervals)
-    #     return QuantitySet._from_intervals(_interval, units)
-
-    # def op_round(self, ndigits: int = 0) -> "QuantitySet":
-    #     _interval = self._intervals.op_round(ndigits)
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_abs(self) -> "QuantitySet":
-    #     _interval = self._intervals.op_abs()
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_log(self) -> "QuantitySet":
-    #     _interval = self._intervals.op_log()
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_sqrt(self) -> "QuantitySet":
-    #     return self**0.5
-
-    # def op_sin(self) -> "QuantitySet":
-    #     if not self.units.is_compatible_with(dimensionless):
-    #         raise ValueError("sin only defined for dimensionless quantities")
-    #     _interval = self._intervals.op_sin()
-    #     return QuantitySet._from_intervals(_interval, self.units)
-
-    # def op_cos(self) -> "QuantitySet":
-    #     return (self + quantity(math.pi / 2, self.units)).op_sin()
-
-    # def op_floor(self) -> "QuantitySet":
-    #     return (self - quantity(0.5, self.units)).op_round()
-
-    # def op_ceil(self) -> "QuantitySet":
-    #     return (self + quantity(0.5, self.units)).op_round()
-
-    # def op_total_span(self) -> Quantity:
-    #     """Returns the sum of the spans of all intervals in this disjoint set.
-    #     For a single interval, this is equivalent to max - min.
-    #     For multiple intervals, this sums the spans of each disjoint interval."""
-    #     return quantity(
-    #         sum(abs(r.max_elem - r.min_elem) for r in self._intervals), self.units
-    #     )
-
-    # def op_deviation_to(
-    #     self, other: QuantitySetLike, relative: bool = False
-    # ) -> Quantity:
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     sym_diff = self.op_symmetric_difference_intervals(other_qty)
-    #     deviation = sym_diff.op_total_span()
-    #     if relative:
-    #         deviation /= max(abs(self).max_elem, abs(other_qty).max_elem)
-    #     return deviation
-
-    # def op_is_bit_set(self, other: QuantitySetLike) -> BoolSet:
-    #     other_qty = QuantitySet.from_value(other)
-    #     if not self.is_single_element() or not other_qty.is_single_element():
-    #         return BoolSet(False, True)
-    #     # TODO more checking
-    #     return BoolSet((int(self.any()) >> int(other_qty.any())) & 1 == 1)
-
-    # def __contains__(self, item: Any) -> bool:
-    #     if isinstance(item, (float, int, Number)):
-    #         item = quantity(item)
-    #     if isinstance(item, Quantity):
-    #         if not item.units.is_compatible_with(self.units):
-    #             return False
-    #         item = item.to(self.interval_units).magnitude
-    #     if not isinstance(item, float) and not isinstance(item, int):
-    #         return False
-    #     return self._intervals.__contains__(item)
-
-    # @once
-    # def __hash__(self) -> int:
-    #     return hash((self._intervals, self.interval_units))
-
-    # @once
-    # def __repr__(self) -> str:
-    #     return f"QuantitySet({self})"
-
-    # @once
-    # def __str__(self) -> str:
-    #     def _format_interval(r: Numeric_Interval) -> str:
-    #         if r._min == r._max:
-    #             return f"[{self._format_number(r._min)}]"
-    #         try:
-    #             center, rel = r.as_center_rel()
-    #             if rel < 0.5 and round(rel, 2) == rel:
-    #                 return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
-    #         except ZeroDivisionError:
-    #             pass
-
-    #         return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
-
-    #     out = ", ".join(_format_interval(r) for r in self._intervals.intervals)
-
-    #     return f"({out})"
-
-    # def __iter__(self) -> Generator[Quantity_Interval]:
-    #     for r in self._intervals.intervals:
-    #         yield Quantity_Interval._from_interval(r, self.units)
-
-    # def is_unbounded(self) -> bool:
-    #     return self._intervals.is_unbounded()
-
-    # @override
-    # def is_finite(self) -> bool:
-    #     return self._intervals.is_finite()
-
-    # # operators
-    # @staticmethod
-    # def from_value(other: QuantitySetLike) -> "QuantitySet":
-    #     if isinstance(other, QuantitySet):
-    #         return other
-    #     if isinstance(other, Quantity_Singleton):
-    #         return Quantity_Set_Discrete(other.get_value())
-    #     if isinstance(other, Quantity_Interval):
-    #         return QuantitySet(other)
-    #     if isinstance(other, Quantity):
-    #         return Quantity_Set_Discrete(other)
-    #     if isinstance(other, tuple) and len(other) == 2:
-    #         return QuantitySet(other)
-    #     if isinstance(other, NumberLike):
-    #         return Quantity_Set_Discrete(quantity(other))
-    #     raise ValueError(f"unsupported type: {type(other)}")
-
-    # @staticmethod
-    # def intersect_all(*obj: QuantitySetLike) -> "QuantitySet":
-    #     if not obj:
-    #         return Quantity_Set_Empty()
-    #     intersected = QuantitySet.from_value(obj[0])
-    #     for o in obj[1:]:
-    #         intersected = intersected & QuantitySet.from_value(o)
-    #     return intersected
-
-    # def __eq__(self, value: Any) -> bool:
-    #     if value is None:
-    #         return False
-    #     if not isinstance(value, QuantitySetLikeR):
-    #         return False
-    #     value_q = QuantitySet.from_value(value)
-    #     return self._intervals == value_q._intervals
-
-    # def __add__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_add_intervals(other_qty)
-
-    # def __radd__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return self + other
-
-    # def __sub__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_subtract_intervals(other_qty)
-
-    # def __rsub__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return -self + other
-
-    # def __neg__(self) -> "QuantitySet":
-    #     return self.op_negate()
-
-    # def __mul__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_mul_intervals(other_qty)
-
-    # def __rmul__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return self * other
-
-    # def __truediv__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_div_intervals(other_qty)
-
-    # def __rtruediv__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return self.op_invert() * QuantitySet.from_value(other)
-
-    # def __pow__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return self.op_pow_intervals(QuantitySet.from_value(other))
-
-    # def __and__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_intersect_intervals(other_qty)
-
-    # def __rand__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return QuantitySet.from_value(other) & self
-
-    # def __or__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_union_intervals(other_qty)
-
-    # def __ror__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return QuantitySet.from_value(other) | self
-
-    # def __xor__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     try:
-    #         other_qty = QuantitySet.from_value(other)
-    #     except ValueError:
-    #         return NotImplemented
-    #     return self.op_symmetric_difference_intervals(other_qty)
-
-    # def __rxor__(self, other: QuantitySetLike) -> "QuantitySet":
-    #     return QuantitySet.from_value(other) ^ self
-
-    # def __ge__(self, other: QuantitySetLike) -> BoolSet:
-    #     other_q = QuantitySet.from_value(other)
-    #     if not self.units.is_compatible_with(other_q.units):
-    #         raise ValueError("incompatible units")
-    #     return self._intervals >= other_q._intervals
-
-    # def __gt__(self, other: QuantitySetLike) -> BoolSet:
-    #     other_q = QuantitySet.from_value(other)
-    #     if not self.units.is_compatible_with(other_q.units):
-    #         raise ValueError("incompatible units")
-    #     return self._intervals > other_q._intervals
-
-    # def __le__(self, other: QuantitySetLike) -> BoolSet:
-    #     other_q = QuantitySet.from_value(other)
-    #     if not self.units.is_compatible_with(other_q.units):
-    #         raise ValueError("incompatible units")
-    #     return self._intervals <= other_q._intervals
-
-    # def __lt__(self, other: QuantitySetLike) -> BoolSet:
-    #     other_q = QuantitySet.from_value(other)
-    #     if not self.units.is_compatible_with(other_q.units):
-    #         raise ValueError("incompatible units")
-    #     return self._intervals < other_q._intervals
-
-    # def __round__(self, ndigits: int = 0) -> "QuantitySet":
-    #     return self.op_round(ndigits)
-
-    # def __abs__(self) -> "QuantitySet":
-    #     return self.op_abs()
-
-    # @once
-    # def is_single_element(self) -> bool:
-    #     if self.is_empty():
-    #         return False
-    #     return self.min_elem == self.max_elem  # type: ignore #TODO
-
-    # @property
-    # def is_integer(self) -> bool:
-    #     return all(r.is_integer for r in self._intervals.intervals)
-
-    # def as_gapless(self) -> "Quantity_Interval":
-    #     if self.is_empty():
-    #         raise ValueError("empty interval cannot be gapless")
-    #     return Quantity_Interval(self.min_elem, self.max_elem, units=self.units)
-
-    # @override
-    # def any(self) -> Quantity:
-    #     return self.min_elem
-
-    # def serialize_pset(self) -> dict[str, Any]:
-    #     return {
-    #         "intervals": self._intervals.serialize(),
-    #         "unit": str(self.units),
-    #     }
-
-    # @override
-    # @classmethod
-    # def deserialize_pset(cls, data: dict):
-    #     from faebryk.libs.units import P
-
-    #     out = cls(units=getattr(P, data["unit"]))
-    #     out._intervals = P_Set.deserialize(data["intervals"])
-    #     return out
-
-    # def to_dimensionless(self) -> "QuantitySet":
-    #     return QuantitySet._from_intervals(
-    #         self._intervals, dimensionless
-    #     )
+# def test_quantity_set_create_instance():
+#     g = graph.GraphView.create()
+#     tg = TypeGraph.create(g=g)
+#     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+#     assert quantity_set.is_empty()
+
+# def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
+#     min_value = self.get_min_value()
+#     unit = self.get_unit()
+#     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+#     quantity_set.setup(g=g, tg=tg, min=min_value, max=min_value, unit=unit)
+#  return QuantitySet.MakeChild(g=g, tg=tg, min=min_value, max=min_value, unit=unit)
+
+# def get_max_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
+#     max_value = self.get_max_value()
+#     unit = self.get_unit()
+#     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+#     quantity_set.setup(g=g, tg=tg, min=max_value, max=max_value, unit=unit)
+#     return quantity_set
+
+# def max_elem(self) -> float:
+#     if self.is_empty():
+#         raise ValueError("empty interval cannot have max element")
+#     return self.base_to_units(self._intervals.max_elem)
+
+# def closest_elem(self, target: Quantity) -> Quantity:
+#     if not self.get_unit().is_compatible_with(target.units):
+#         raise ValueError("incompatible units")
+#     return self.base_to_units(
+#         self._intervals.closest_elem(target.to(self.interval_units).magnitude)
+#     )
+
+# def is_superset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
+#     if not self.units.is_compatible_with(other.units):
+#         return False
+#     return self._intervals.is_superset_of(
+#         Quantity_Interval_Disjoint.from_value(other)._intervals
+#     )
+
+# def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
+#     if not self.units.is_compatible_with(other.units):
+#         return False
+#     return self._intervals.is_subset_of(
+#         Quantity_Interval_Disjoint.from_value(other)._intervals
+#     )
+
+# def op_intersect_interval(
+#     self, other: "Quantity_Interval"
+# ) -> "Quantity_Interval_Disjoint":
+#     if not self.units.is_compatible_with(other.units):
+#         raise ValueError("incompatible units")
+#     _interval = self._intervals.op_intersect_interval(other._interval)
+#     return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+# def op_intersect_intervals(
+#     self, *other: "Quantity_Interval_Disjoint"
+# ) -> "Quantity_Interval_Disjoint":
+#     # TODO make pretty
+#     def single(left, right):
+#         if not left.units.is_compatible_with(right.units):
+#             raise ValueError("incompatible units")
+#         _interval = left._intervals.op_intersect_intervals(right._intervals)
+#         return Quantity_Interval_Disjoint._from_intervals(_interval, left.units)
+
+#     out = Quantity_Interval_Disjoint(self)
+
+#     for o in other:
+#         out = single(out, o)
+
+#     return out
+
+# def op_union_intervals(
+#     self, other: "Quantity_Interval_Disjoint"
+# ) -> ""QuantitySet"":
+#     if not self.units.is_compatible_with(other.units):
+#         raise ValueError("incompatible units")
+#     _interval = self._intervals.op_union_intervals(other._intervals)
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_difference_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     if not self.units.is_compatible_with(other.units):
+#         raise ValueError("incompatible units")
+#     _interval = self._intervals.op_difference_intervals(other._intervals)
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_symmetric_difference_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     if not self.units.is_compatible_with(other.units):
+#         raise ValueError("incompatible units")
+#   _interval = self._intervals.op_symmetric_difference_intervals(other._intervals)
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_add_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     if not self.units.is_compatible_with(other.units):
+#         raise ValueError("incompatible units")
+#     _interval = self._intervals.op_add_intervals(other._intervals)
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_negate(self) -> "QuantitySet":
+#     _interval = self._intervals.op_negate()
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_subtract_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     if not self.units.is_compatible_with(other.units):
+#         raise ValueError("incompatible units")
+#     _interval = self._intervals.op_subtract_intervals(other._intervals)
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_mul_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     _interval = self._intervals.op_mul_intervals(other._intervals)
+#     return QuantitySet._from_intervals(
+#         _interval, cast(Unit, self.units * other.units)
+#     )
+
+# def op_invert(self) -> "QuantitySet":
+#     _interval = self._intervals.op_invert()
+#     return QuantitySet._from_intervals(_interval, 1 / self.units)
+
+# def op_div_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     _interval = self._intervals.op_div_intervals(other._intervals)
+#     return QuantitySet._from_intervals(
+#         _interval, cast(Unit, self.units / other.units)
+#     )
+
+# def op_pow_intervals(
+#     self, other: "QuantitySet"
+# ) -> "QuantitySet":
+#     if not other.units.is_compatible_with(dimensionless):
+#         raise ValueError("exponent must have dimensionless units")
+#     if other.min_elem != other.max_elem and not self.units.is_compatible_with(
+#         dimensionless
+#     ):
+#         raise ValueError(
+#             "base must have dimensionless units when exponent is interval"
+#         )
+#     units = self.units**other.min_elem.magnitude
+#     _interval = self._intervals.op_pow_intervals(other._intervals)
+#     return QuantitySet._from_intervals(_interval, units)
+
+# def op_round(self, ndigits: int = 0) -> "QuantitySet":
+#     _interval = self._intervals.op_round(ndigits)
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_abs(self) -> "QuantitySet":
+#     _interval = self._intervals.op_abs()
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_log(self) -> "QuantitySet":
+#     _interval = self._intervals.op_log()
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_sqrt(self) -> "QuantitySet":
+#     return self**0.5
+
+# def op_sin(self) -> "QuantitySet":
+#     if not self.units.is_compatible_with(dimensionless):
+#         raise ValueError("sin only defined for dimensionless quantities")
+#     _interval = self._intervals.op_sin()
+#     return QuantitySet._from_intervals(_interval, self.units)
+
+# def op_cos(self) -> "QuantitySet":
+#     return (self + quantity(math.pi / 2, self.units)).op_sin()
+
+# def op_floor(self) -> "QuantitySet":
+#     return (self - quantity(0.5, self.units)).op_round()
+
+# def op_ceil(self) -> "QuantitySet":
+#     return (self + quantity(0.5, self.units)).op_round()
+
+# def op_total_span(self) -> Quantity:
+#     """Returns the sum of the spans of all intervals in this disjoint set.
+#     For a single interval, this is equivalent to max - min.
+#     For multiple intervals, this sums the spans of each disjoint interval."""
+#     return quantity(
+#         sum(abs(r.max_elem - r.min_elem) for r in self._intervals), self.units
+#     )
+
+# def op_deviation_to(
+#     self, other: QuantitySetLike, relative: bool = False
+# ) -> Quantity:
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     sym_diff = self.op_symmetric_difference_intervals(other_qty)
+#     deviation = sym_diff.op_total_span()
+#     if relative:
+#         deviation /= max(abs(self).max_elem, abs(other_qty).max_elem)
+#     return deviation
+
+# def op_is_bit_set(self, other: QuantitySetLike) -> BoolSet:
+#     other_qty = QuantitySet.from_value(other)
+#     if not self.is_single_element() or not other_qty.is_single_element():
+#         return BoolSet(False, True)
+#     # TODO more checking
+#     return BoolSet((int(self.any()) >> int(other_qty.any())) & 1 == 1)
+
+# def __contains__(self, item: Any) -> bool:
+#     if isinstance(item, (float, int, Number)):
+#         item = quantity(item)
+#     if isinstance(item, Quantity):
+#         if not item.units.is_compatible_with(self.units):
+#             return False
+#         item = item.to(self.interval_units).magnitude
+#     if not isinstance(item, float) and not isinstance(item, int):
+#         return False
+#     return self._intervals.__contains__(item)
+
+# @once
+# def __hash__(self) -> int:
+#     return hash((self._intervals, self.interval_units))
+
+# @once
+# def __repr__(self) -> str:
+#     return f"QuantitySet({self})"
+
+# @once
+# def __str__(self) -> str:
+#     def _format_interval(r: Numeric_Interval) -> str:
+#         if r._min == r._max:
+#             return f"[{self._format_number(r._min)}]"
+#         try:
+#             center, rel = r.as_center_rel()
+#             if rel < 0.5 and round(rel, 2) == rel:
+#                 return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+#         except ZeroDivisionError:
+#             pass
+
+#         return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
+
+#     out = ", ".join(_format_interval(r) for r in self._intervals.intervals)
+
+#     return f"({out})"
+
+# def __iter__(self) -> Generator[Quantity_Interval]:
+#     for r in self._intervals.intervals:
+#         yield Quantity_Interval._from_interval(r, self.units)
+
+# def is_unbounded(self) -> bool:
+#     return self._intervals.is_unbounded()
+
+# @override
+# def is_finite(self) -> bool:
+#     return self._intervals.is_finite()
+
+# # operators
+# @staticmethod
+# def from_value(other: QuantitySetLike) -> "QuantitySet":
+#     if isinstance(other, QuantitySet):
+#         return other
+#     if isinstance(other, Quantity_Singleton):
+#         return Quantity_Set_Discrete(other.get_value())
+#     if isinstance(other, Quantity_Interval):
+#         return QuantitySet(other)
+#     if isinstance(other, Quantity):
+#         return Quantity_Set_Discrete(other)
+#     if isinstance(other, tuple) and len(other) == 2:
+#         return QuantitySet(other)
+#     if isinstance(other, NumberLike):
+#         return Quantity_Set_Discrete(quantity(other))
+#     raise ValueError(f"unsupported type: {type(other)}")
+
+# @staticmethod
+# def intersect_all(*obj: QuantitySetLike) -> "QuantitySet":
+#     if not obj:
+#         return Quantity_Set_Empty()
+#     intersected = QuantitySet.from_value(obj[0])
+#     for o in obj[1:]:
+#         intersected = intersected & QuantitySet.from_value(o)
+#     return intersected
+
+# def __eq__(self, value: Any) -> bool:
+#     if value is None:
+#         return False
+#     if not isinstance(value, QuantitySetLikeR):
+#         return False
+#     value_q = QuantitySet.from_value(value)
+#     return self._intervals == value_q._intervals
+
+# def __add__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_add_intervals(other_qty)
+
+# def __radd__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return self + other
+
+# def __sub__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_subtract_intervals(other_qty)
+
+# def __rsub__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return -self + other
+
+# def __neg__(self) -> "QuantitySet":
+#     return self.op_negate()
+
+# def __mul__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_mul_intervals(other_qty)
+
+# def __rmul__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return self * other
+
+# def __truediv__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_div_intervals(other_qty)
+
+# def __rtruediv__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return self.op_invert() * QuantitySet.from_value(other)
+
+# def __pow__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return self.op_pow_intervals(QuantitySet.from_value(other))
+
+# def __and__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_intersect_intervals(other_qty)
+
+# def __rand__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return QuantitySet.from_value(other) & self
+
+# def __or__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_union_intervals(other_qty)
+
+# def __ror__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return QuantitySet.from_value(other) | self
+
+# def __xor__(self, other: QuantitySetLike) -> "QuantitySet":
+#     try:
+#         other_qty = QuantitySet.from_value(other)
+#     except ValueError:
+#         return NotImplemented
+#     return self.op_symmetric_difference_intervals(other_qty)
+
+# def __rxor__(self, other: QuantitySetLike) -> "QuantitySet":
+#     return QuantitySet.from_value(other) ^ self
+
+# def __ge__(self, other: QuantitySetLike) -> BoolSet:
+#     other_q = QuantitySet.from_value(other)
+#     if not self.units.is_compatible_with(other_q.units):
+#         raise ValueError("incompatible units")
+#     return self._intervals >= other_q._intervals
+
+# def __gt__(self, other: QuantitySetLike) -> BoolSet:
+#     other_q = QuantitySet.from_value(other)
+#     if not self.units.is_compatible_with(other_q.units):
+#         raise ValueError("incompatible units")
+#     return self._intervals > other_q._intervals
+
+# def __le__(self, other: QuantitySetLike) -> BoolSet:
+#     other_q = QuantitySet.from_value(other)
+#     if not self.units.is_compatible_with(other_q.units):
+#         raise ValueError("incompatible units")
+#     return self._intervals <= other_q._intervals
+
+# def __lt__(self, other: QuantitySetLike) -> BoolSet:
+#     other_q = QuantitySet.from_value(other)
+#     if not self.units.is_compatible_with(other_q.units):
+#         raise ValueError("incompatible units")
+#     return self._intervals < other_q._intervals
+
+# def __round__(self, ndigits: int = 0) -> "QuantitySet":
+#     return self.op_round(ndigits)
+
+# def __abs__(self) -> "QuantitySet":
+#     return self.op_abs()
+
+# @once
+# def is_single_element(self) -> bool:
+#     if self.is_empty():
+#         return False
+#     return self.min_elem == self.max_elem  # type: ignore #TODO
+
+# @property
+# def is_integer(self) -> bool:
+#     return all(r.is_integer for r in self._intervals.intervals)
+
+# def as_gapless(self) -> "Quantity_Interval":
+#     if self.is_empty():
+#         raise ValueError("empty interval cannot be gapless")
+#     return Quantity_Interval(self.min_elem, self.max_elem, units=self.units)
+
+# @override
+# def any(self) -> Quantity:
+#     return self.min_elem
+
+# def serialize_pset(self) -> dict[str, Any]:
+#     return {
+#         "intervals": self._intervals.serialize(),
+#         "unit": str(self.units),
+#     }
+
+# @override
+# @classmethod
+# def deserialize_pset(cls, data: dict):
+#     from faebryk.libs.units import P
+
+#     out = cls(units=getattr(P, data["unit"]))
+#     out._intervals = P_Set.deserialize(data["intervals"])
+#     return out
+
+# def to_dimensionless(self) -> "QuantitySet":
+#     return QuantitySet._from_intervals(
+#         self._intervals, dimensionless
+#     )
