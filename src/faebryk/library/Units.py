@@ -53,6 +53,7 @@ from typing import Any, ClassVar, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
 
 
 # Simple helper to normalize various unit-like objects to a class, defaulting to
@@ -330,12 +331,16 @@ class IsUnit(fabll.Node):
         return self  # FIXME: implement
 
     def _new(
-        self, vector: _BasisVectorArg, multiplier: float, offset: float
+        self,
+        g: graph.GraphView,
+        tg: graph.TypeGraph,
+        vector: _BasisVectorArg,
+        multiplier: float,
+        offset: float,
     ) -> "IsUnit":
-        g = self.instance.g()
-        BoundIsUnit = IsUnit.bind_typegraph(tg=self.tg)
-        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=self.tg)
-        BoundBasisVector = _BasisVector.bind_typegraph(tg=self.tg)
+        BoundIsUnit = IsUnit.bind_typegraph(tg=tg)
+        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=tg)
+        BoundBasisVector = _BasisVector.bind_typegraph(tg=tg)
 
         result = BoundIsUnit.create_instance(g=g)
         result.multiplier.get().alias_to_literal(
@@ -354,7 +359,9 @@ class IsUnit(fabll.Node):
 
         return result
 
-    def op_multiply(self, other: "IsUnit") -> "IsUnit":
+    def op_multiply(
+        self, g: graph.GraphView, tg: graph.TypeGraph, other: "IsUnit"
+    ) -> "IsUnit":
         v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
 
@@ -362,12 +369,16 @@ class IsUnit(fabll.Node):
         new_vector = v1.multiply(v2)
 
         return self._new(
+            g=g,
+            tg=tg,
             vector=new_vector,
             multiplier=new_multiplier,
             offset=0.0,  # TODO
         )
 
-    def op_divide(self, other: "IsUnit") -> "IsUnit":
+    def op_divide(
+        self, g: graph.GraphView, tg: graph.TypeGraph, other: "IsUnit"
+    ) -> "IsUnit":
         v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
 
@@ -375,20 +386,32 @@ class IsUnit(fabll.Node):
         new_vector = v1.divide(v2)
 
         return self._new(
+            g=g,
+            tg=tg,
             vector=new_vector,
             multiplier=new_multiplier,
             offset=0.0,  # TODO
         )
 
-    def op_invert(self) -> "IsUnit":
-        v = self._extract_basis_vector()
-        m = self._extract_multiplier()
-        return self._new(vector=v.scalar_multiply(-1), multiplier=1.0 / m, offset=0.0)
-
-    def op_power(self, exponent: int) -> "IsUnit":
+    def op_invert(self, g: graph.GraphView, tg: graph.TypeGraph) -> "IsUnit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
         return self._new(
+            g=g,
+            tg=tg,
+            vector=v.scalar_multiply(-1),
+            multiplier=1.0 / m,
+            offset=0.0,
+        )
+
+    def op_power(
+        self, g: graph.GraphView, tg: graph.TypeGraph, exponent: int
+    ) -> "IsUnit":
+        v = self._extract_basis_vector()
+        m = self._extract_multiplier()
+        return self._new(
+            g=g,
+            tg=tg,
             vector=v.scalar_multiply(exponent),
             multiplier=m**exponent,
             offset=0.0,  # TODO
