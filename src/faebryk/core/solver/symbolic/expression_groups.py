@@ -1,9 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-
 import logging
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
@@ -156,7 +156,9 @@ def associative_flatten(mutator: Mutator):
         return True
 
     for expr in root_ops:
-        res = mutator.utils.flatten_associative(expr, is_replacable)
+        res = mutator.utils.flatten_associative(
+            fabll.Traits(expr).get_obj_raw(), is_replacable
+        )
         if not res.destroyed_operations:
             continue
 

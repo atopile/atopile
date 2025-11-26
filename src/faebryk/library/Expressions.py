@@ -126,13 +126,10 @@ class is_expression(fabll.Node):
     def get_operands_with_trait[T: fabll.NodeT](
         self, trait: type[T], recursive: bool = False
     ) -> set[T]:
-        return (
+        return {
+            t for op in self.get_operands() if (t := op.try_get_sibling_trait(trait))
+        } | (
             {
-                t
-                for op in self.get_operands()
-                if (t := fabll.Traits(op).try_get_trait_of_obj(trait))
-            }
-            | {
                 inner
                 for t_e in self.get_operands_with_trait(is_expression)
                 for inner in t_e.get_operands_with_trait(trait, recursive=recursive)
@@ -145,7 +142,7 @@ class is_expression(fabll.Node):
         return {
             i: t
             for i, op in enumerate(self.get_operands())
-            if (t := fabll.Traits(op).try_get_trait_of_obj(Literals.is_literal))
+            if (t := op.try_get_sibling_trait(Literals.is_literal))
         }
 
     def get_operand_leaves_operatable(

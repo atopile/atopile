@@ -1325,12 +1325,20 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return t.bind_instance(self.instance)
 
     def __repr__(self) -> str:
-        return self.get_full_name()
+        cls_name = type(self).__name__
+        if type(self) is Node:
+            cls_id = f"{cls_name}[{self.get_type_name()}]"
+        else:
+            cls_id = cls_name
+        suffix = ""
+        if traits := Traits.is_trait(self):
+            suffix = traits.trait_repr()
+        return f"<{cls_id} '{self.get_full_name()})'{suffix}>"
 
-    def __rich_repr__(self):
-        yield self.get_full_name()
+    # def __rich_repr__(self):
+    #    yield self.get_full_name()
 
-    __rich_repr__.angular = True
+    # __rich_repr__.angular = True
 
     def is_same(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
         match other:
@@ -1518,15 +1526,25 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
                 return True
         return False
 
-    def try_get_type_trait[T: NodeT](self, trait: type[T]) -> T | None:
-        trait_type = trait.bind_typegraph(tg=self.tg)
+    @staticmethod
+    def try_get_trait_of_type[T: NodeT](
+        trait: type[T], type_node: graph.BoundNode
+    ) -> "T | None":
+        tg = fbrk.TypeGraph.of_type(type_node=type_node)
+        assert tg
+        trait_type = trait.bind_typegraph(tg=tg)
         out = fbrk.Trait.try_get_trait(
-            target=self.get_or_create_type(),
+            target=type_node,
             trait_type=trait_type.get_or_create_type(),
         )
         if not out:
             return None
         return trait.bind_instance(instance=out)
+
+    def try_get_type_trait[T: NodeT](self, trait: type[T]) -> T | None:
+        return self.try_get_trait_of_type(
+            trait=trait, type_node=self.get_or_create_type()
+        )
 
     def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
         impl = fbrk.Trait.try_get_trait(
@@ -1621,6 +1639,18 @@ class Traits:
 
     def try_get_trait_of_obj[T: NodeT](self, t: type[T]) -> T | None:
         return self.get_obj_raw().try_get_trait(t)
+
+    @staticmethod
+    def is_trait(node: NodeT) -> "Traits | None":
+        type_node = node.get_type_node()
+        if type_node is None:
+            return None
+        if TypeNodeBoundTG.try_get_trait_of_type(ImplementsTrait, type_node):
+            return Traits.bind(node)
+        return None
+
+    def trait_repr(self):
+        return f" on {self.get_obj_raw()!r}"
 
 
 class ImplementsTrait(Node):
@@ -2102,7 +2132,7 @@ def test_boolean_param():
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True)
-    assert boolean_p.force_extract_literal().get_value()
+    assert boolean_p.force_extract_literal().get_values()
 
     class ExampleBooleanParameter(fabll.Node):
         boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
@@ -2111,16 +2141,16 @@ def test_boolean_param():
         )
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert ebp.boolean_p_tg.get().force_extract_literal().get_value()
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()
 
 
 def test_make_lit():
     import faebryk.library._F as F
 
     g, tg = _make_graph_and_typegraph()
-    assert F.Literals.make_lit(tg, value=True).get_value()
-    assert F.Literals.make_lit(tg, value=3).get_value() == 3
-    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
+    assert F.Literals.make_lit(tg, value=True).get_values() == [True]
+    assert F.Literals.make_lit(tg, value=3).get_values() == [3]
+    assert F.Literals.make_lit(tg, value="test").get_values() == ["test"]
 
 
 def test_kicad_footprint():

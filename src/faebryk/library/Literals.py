@@ -41,8 +41,7 @@ class is_literal(fabll.Node):
         pass
 
     def equals(self, other: "is_literal") -> bool:
-        # TODO
-        pass
+        return self.switch_cast().equals(other.switch_cast())
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
         # TODO
@@ -85,7 +84,7 @@ class is_literal(fabll.Node):
     def pretty_repr(self) -> str:
         # TODO
         lit = self.switch_cast()
-        return f"{lit.get_type_name()}({lit})"
+        return f"{lit.get_type_name()}({lit.get_values()})"
 
 
 # --------------------------------------------------------------------------------------
@@ -319,44 +318,65 @@ class Numbers(fabll.Node):
         )
 
 
-class Booleans(fabll.Node[LiteralsAttributes]):
+@dataclass(frozen=True)
+class BooleansAttributes(fabll.NodeAttributes):
+    has_true: bool
+    has_false: bool
+
+
+class Booleans(fabll.Node[BooleansAttributes]):
     from faebryk.library.Parameters import can_be_operand
 
-    Attributes = LiteralsAttributes
+    Attributes = BooleansAttributes
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
-    def setup(self, *values: bool) -> Self:
-        # TODO
+    def setup(self) -> Self:
         return self
 
-    def get_single(self) -> bool: ...
+    def get_single(self) -> bool:
+        # TODO
+        pass
 
     @classmethod
-    def MakeChild(cls, value: bool) -> fabll._ChildField[Self]:
-        assert isinstance(value, bool), "Value of boolean literal must be a boolean"
-        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
+    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:
+        return fabll._ChildField(
+            cls,
+            attributes=BooleansAttributes(
+                has_true=True in values,
+                has_false=False in values,
+            ),
+        )
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
-        cls, ref: fabll.RefPath, value: bool
+        cls, ref: fabll.RefPath, *values: bool
     ) -> fabll._ChildField:
         from faebryk.library.Expressions import Is
 
-        assert isinstance(value, bool), "Value of boolean literal must be a boolean"
-        lit = cls.MakeChild(value=value)
+        lit = cls.MakeChild(*values)
         out = Is.MakeChild_Constrain([ref, [lit]])
-        out.add_dependant(lit, identifier="lit", before=True)
+        out.add_dependant(lit, before=True)
         return out
 
-    def get_value(self) -> bool:
-        return bool(self.instance.node().get_dynamic_attrs().get("value", None))
+    def get_values(self) -> list[bool]:
+        attrs = self.attributes()
+        return [True] * attrs.has_true + [False] * attrs.has_false
 
     def op_or(self, other: "Booleans") -> "Booleans": ...
     def op_and(self, other: "Booleans") -> "Booleans": ...
     def op_not(self) -> "Booleans": ...
     def op_xor(self, other: "Booleans") -> "Booleans": ...
     def op_implies(self, other: "Booleans") -> "Booleans": ...
+
+    def is_true(self) -> bool:
+        return self.get_values() == [True]
+
+    def is_false(self) -> bool:
+        return self.get_values() == [False]
+
+    def equals(self, other: "Booleans") -> bool:
+        return self.get_values() == other.get_values()
 
 
 class EnumValue(fabll.Node):
@@ -488,7 +508,10 @@ LiteralLike = LiteralValues | LiteralNodes | is_literal
 def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
     match value:
         case bool():
-            return Booleans.make_lit(tg=tg, value=value)
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=tg.get_graph_view(),
+                attributes=BooleansAttributes(has_true=value, has_false=not value),
+            )
         case float() | int():
             value = float(value)
             return Numbers.make_lit(tg=tg, value=value)

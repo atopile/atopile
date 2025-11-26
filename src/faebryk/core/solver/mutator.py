@@ -446,7 +446,7 @@ class MutationStage:
                 for n in pre_nodes
                 if not (
                     MutatorUtils.is_alias_is_literal(
-                        n.get_trait(F.Expressions.is_expression)
+                        n.get_trait(F.Parameters.is_parameter_operatable)
                     )
                     or MutatorUtils.is_subset_literal(
                         n.get_trait(F.Parameters.is_parameter_operatable)
@@ -527,7 +527,7 @@ class MutationStage:
             key_from_ops = f"  {key_from_ops}"
             value = op.compact_repr(context_new)
             if (op_e := op.try_get_sibling_trait(F.Expressions.is_expression)) and (
-                MutatorUtils.is_alias_is_literal(op_e)
+                MutatorUtils.is_alias_is_literal(op)
                 or MutatorUtils.is_subset_literal(op)
             ):
                 expr = next(iter(op_e.get_operand_operatables()))
@@ -724,7 +724,7 @@ class MutationMap:
         """
         return mapped param, True if removed or False if not mapped
         """
-        assert param.is_parameter()
+        # assert param.is_parameter()
         is_root = fabll.Traits(param).get_obj_raw().get_parent() is not None
 
         if not self.non_identity_stages:
@@ -1174,14 +1174,14 @@ class Mutator:
         if (expr_po := expr.as_parameter_operatable()) in self.transformations.mutated:
             out = self.get_mutated(expr_po)
             out_obj = fabll.Traits(out).get_obj_raw()
-            assert out.has_trait(F.Expressions.is_canonical)
+            canon = out.get_sibling_trait(F.Expressions.is_canonical)
             # TODO more checks
             assert out_obj.isinstance(expression_factory)
             # still need to run soft_mutate even if expr already in repr
             if soft_mutate:
                 expr = out.as_expression()
             else:
-                return out.get_sibling_trait(F.Expressions.is_canonical)
+                return canon
 
         if soft_mutate:
             assert expression_factory.bind_typegraph(
@@ -1223,9 +1223,7 @@ class Mutator:
 
         if expr_pred:
             if self.is_predicate_terminated(expr_pred):
-                fabll.Traits.create_and_add_instance_to(
-                    fabll.Traits(new_expr).get_obj_raw(), is_terminated
-                )
+                fabll.Traits.create_and_add_instance_to(new_expr, is_terminated)
 
         new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
 
@@ -1529,7 +1527,9 @@ class Mutator:
     ):
         for p in po:
             p.assert_()
-            if not _no_alias:
+            if not _no_alias and not self.utils.is_alias_is_literal(
+                p.get_sibling_trait(F.Parameters.is_parameter_operatable)
+            ):
                 self.utils.alias_to(
                     p.get_sibling_trait(F.Parameters.can_be_operand),
                     self.make_lit(True).get_trait(F.Parameters.can_be_operand),
@@ -1697,7 +1697,9 @@ class Mutator:
             )
 
         return (
-            is_ for expr in aliases if (is_ := self.utils.is_alias_is_literal(expr))
+            is_
+            for expr in aliases
+            if (is_ := self.utils.is_alias_is_literal(expr.as_parameter_operatable()))
         )
 
     def _get_literal_subsets(self, new_only: bool = True):
@@ -1945,6 +1947,8 @@ def test_mutator_basic_bootstrap():
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
     # param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
     param_bool_op = app.param_bool.get().get_trait(F.Parameters.can_be_operand)
+
+    print(repr(param_bool_op))
 
     app.param_str.get().alias_to_literal("a", "b", "c")
     app.param_bool.get().alias_to_single(True)

@@ -350,6 +350,9 @@ class can_be_operand(fabll.Node):
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
+    def get_raw_obj(self) -> fabll.Node:
+        return fabll.Traits(self).get_obj_raw()
+
 
 class ParameterIsNotConstrainedToLiteral(Exception):
     def __init__(self, parameter: fabll.Node):
@@ -442,7 +445,8 @@ class BooleanParameter(fabll.Node):
             value=Booleans.bind_typegraph_from_instance(
                 instance=self.instance
             ).create_instance(
-                self.instance.g(), attributes=Booleans.Attributes(value=value)
+                self.instance.g(),
+                attributes=Booleans.Attributes(has_true=value, has_false=not value),
             ),
         )
 
