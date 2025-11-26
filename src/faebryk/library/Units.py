@@ -222,7 +222,7 @@ class IsUnit(fabll.Node):
 
         return out
 
-    def is_compatible_with(self, other: "IsUnit") -> bool:
+    def is_commensurable_with(self, other: "IsUnit") -> bool:
         self_unit_vector = _BasisVector.bind_instance(
             self.basis_vector.get().deref().instance
         ).extract_vector()
