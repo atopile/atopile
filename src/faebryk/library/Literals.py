@@ -4,10 +4,8 @@ from typing import Self, cast
 
 from typing_extensions import deprecated
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.library.Parameters import test_try_get
 import faebryk.library._F as F
 from faebryk.libs.util import not_none, once
 

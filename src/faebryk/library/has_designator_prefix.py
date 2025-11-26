@@ -258,7 +258,7 @@ def test_has_designator_prefix():
     class TestModule(fabll.Node):
         prefix = fabll.Traits.MakeEdge(
             has_designator_prefix.MakeChild("A")
-        ).put_on_type()
+        )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
@@ -273,7 +273,7 @@ def test_has_designator_prefix_from_enum():
     class TestModule(fabll.Node):
         prefix = fabll.Traits.MakeEdge(
             has_designator_prefix.MakeChild(has_designator_prefix.Prefix.B)
-        ).put_on_type()
+        )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
