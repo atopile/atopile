@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum, auto
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -11,10 +11,10 @@ class Comparator(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    class OutputType(Enum):
-        Differential = auto()
-        PushPull = auto()
-        OpenDrain = auto()
+    class OutputType(StrEnum):
+        Differential = "Differential"
+        PushPull = "PushPull"
+        OpenDrain = "OpenDrain"
 
     # ----------------------------------------
     #     modules, interfaces, parameters

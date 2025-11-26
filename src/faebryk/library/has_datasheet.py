@@ -8,12 +8,12 @@ import faebryk.library._F as F
 
 
 class has_datasheet(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     datasheet_ = F.Parameters.StringParameter.MakeChild()
 
     def get_datasheet(self) -> str:
-        return str(self.datasheet_.get().try_extract_constrained_literal())
+        return self.datasheet_.get().force_extract_literal().get_values()[0]
 
     @classmethod
     def MakeChild(cls, datasheet: str) -> fabll._ChildField:

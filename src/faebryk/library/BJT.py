@@ -54,8 +54,8 @@ class BJT(fabll.Node):
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
     )
 
-    # doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
-    # operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
+    doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
+    operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

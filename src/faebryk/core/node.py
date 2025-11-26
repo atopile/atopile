@@ -6,6 +6,7 @@ from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
+import faebryk
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
@@ -70,8 +71,8 @@ class PathNotResolvable(NodeException):
         super().__init__(
             node,
             f"Path {path} not resolvable from '{node}'.\n"
-            f" No child found at '{error_node}' with identifier '{error_identifier}'.\n"
-            f"Available children: {indented_container(children_str)}",
+            f" No child found at '{error_node}' with identifier '{error_identifier}'.\n",
+            # f"Available children: {indented_container(children_str)}",
         )
 
 
@@ -335,20 +336,11 @@ class TypeChildBoundInstance[T: NodeT]:
         return bound
 
 
-RefPath = list[str | _ChildField[Any]]
-
-
-SELF_OWNER_PLACEHOLDER: RefPath = [""]
-"""
-When creating trait, default reference path to self is [""].
-"""
-
-
 class _EdgeField(Field):
     def __init__(
         self,
-        lhs: RefPath,
-        rhs: RefPath,
+        lhs: "RefPath",
+        rhs: "RefPath",
         *,
         edge: fbrk.EdgeCreationAttributes,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
@@ -356,7 +348,9 @@ class _EdgeField(Field):
         super().__init__(identifier=identifier)
         for arg in [lhs, rhs]:
             for r in arg:
-                if not isinstance(r, (_ChildField, str)):
+                if not (isinstance(r, (_ChildField, str))) and not (
+                    isinstance(r, type) and issubclass(r, Node)
+                ):
                     raise FabLLException(
                         f"Only ChildFields and strings are allowed, got {type(r)}"
                     )
@@ -365,53 +359,75 @@ class _EdgeField(Field):
         self.edge = edge
 
     @staticmethod
-    def _resolve_path(path: RefPath) -> list[str]:
+    def _resolve_path(path: "RefPath") -> list[str]:
         # TODO dont think we can assert here, raise FabLLException
-        return [
-            not_none(field.get_identifier())
-            if isinstance(field, _ChildField)
-            else field
-            for field in path
-        ]
+        resolved_path = []
+        for field in path:
+            if isinstance(field, _ChildField):
+                resolved_path.append(not_none(field.get_identifier()))
+            elif isinstance(field, type) and issubclass(field, Node):
+                resolved_path.append(f"<<{field._type_identifier()}")
+            else:
+                resolved_path.append(field)
+        return resolved_path
 
     @staticmethod
     def _resolve_path_from_node(
-        path: list[str] | RefPath, instance: graph.BoundNode
+        path: "list[str] | RefPath", instance: graph.BoundNode, tg: fbrk.TypeGraph
     ) -> graph.BoundNode:
         target = instance
+        # TODO: consolidate resolution logic between type_fields and instance_fields
 
         for segment in path:
-            if not isinstance(segment, str):
+            if isinstance(segment, _ChildField):
                 segment = segment.get_identifier()
-
-            if segment == SELF_OWNER_PLACEHOLDER[0]:
+            elif isinstance(segment, type) and issubclass(segment, Node):
+                segment = f"<<{segment._type_identifier()}"
+            elif segment == SELF_OWNER_PLACEHOLDER[0]:
                 # keep target unchanged (self-reference)
                 continue
+            else:
+                segment = str(segment)
 
-            child = fbrk.EdgeComposition.get_child_by_identifier(
-                bound_node=target, child_identifier=segment
-            )
-            if child is None:
-                raise PathNotResolvable(
-                    node=Node.bind_instance(instance),
-                    path=path,
-                    error_node=Node.bind_instance(target),
-                    error_identifier=segment,
+            if segment.startswith("<<"):
+                segment = segment[2:]
+                target = tg.get_type_by_name(type_identifier=segment)
+                if target is None:
+                    raise PathNotResolvable(
+                        node=Node.bind_instance(instance),
+                        path=path,
+                        error_node=Node.bind_instance(instance),
+                        error_identifier=segment,
+                    )
+            else:
+                child = fbrk.EdgeComposition.get_child_by_identifier(
+                    bound_node=target, child_identifier=segment
                 )
-            target = child
+                if child is None:
+                    raise PathNotResolvable(
+                        node=Node.bind_instance(instance),
+                        path=path,
+                        error_node=Node.bind_instance(target),
+                        error_identifier=segment,
+                    )
+                target = child
         return target
 
     def lhs_resolved(self) -> list[str]:
         return self._resolve_path(self.lhs)
 
-    def lhs_resolved_on_node(self, instance: graph.BoundNode) -> graph.BoundNode:
-        return self._resolve_path_from_node(self.lhs_resolved(), instance)
+    def lhs_resolved_on_node(
+        self, instance: graph.BoundNode, tg: fbrk.TypeGraph
+    ) -> graph.BoundNode:
+        return self._resolve_path_from_node(self.lhs_resolved(), instance, tg)
 
     def rhs_resolved(self) -> list[str]:
         return self._resolve_path(self.rhs)
 
-    def rhs_resolved_on_node(self, instance: graph.BoundNode) -> graph.BoundNode:
-        return self._resolve_path_from_node(self.rhs_resolved(), instance)
+    def rhs_resolved_on_node(
+        self, instance: graph.BoundNode, tg: fbrk.TypeGraph
+    ) -> graph.BoundNode:
+        return self._resolve_path_from_node(self.rhs_resolved(), instance, tg)
 
     def __repr__(self) -> str:
         return (
@@ -422,8 +438,8 @@ class _EdgeField(Field):
 
 
 def MakeEdge(
-    lhs: RefPath,
-    rhs: RefPath,
+    lhs: "RefPath",
+    rhs: "RefPath",
     *,
     edge: fbrk.EdgeCreationAttributes,
     identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
@@ -558,6 +574,34 @@ class Path:
     def get_end_node(self) -> "Node[Any]":
         return Node[Any].bind_instance(instance=self.end_node)
 
+    def _get_nodes_in_order(self) -> list["Node[Any]"]:
+        nodes = [self.get_start_node()]
+        current_bound = nodes[0].instance
+
+        for bound_edge in self.edges:
+            edge = bound_edge.edge()
+            graph_view = bound_edge.g()
+            current_node = current_bound.node()
+
+            if current_node.is_same(other=edge.source()):
+                next_node = edge.target()
+            elif current_node.is_same(other=edge.target()):
+                next_node = edge.source()
+            else:
+                break
+
+            current_bound = graph_view.bind(node=next_node)
+            nodes.append(Node[Any].bind_instance(instance=current_bound))
+
+        end_node = self.get_end_node()
+        if not nodes[-1].is_same(end_node):
+            nodes.append(end_node)
+
+        return nodes
+
+    def __iter__(self) -> Iterator["Node[Any]"]:
+        return iter(self._get_nodes_in_order())
+
     @staticmethod
     def from_connection(a: "Node[Any]", b: "Node[Any]") -> "Path | None":
         bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
@@ -585,11 +629,10 @@ class Path:
         return None
 
     def __repr__(self) -> str:
-        start = self.start_node
-        end = self.end_node
-        start_str = f"graph.BoundNode({start.node().get_uuid()})"
-        end_str = f"graph.BoundNode({end.node().get_uuid()})"
-        return f"Path(start={start_str}, end={end_str}, length={self.length})"
+        node_names = [
+            node.get_full_name(types=True) for node in self._get_nodes_in_order()
+        ]
+        return f"Path({', '.join(node_names)})"
 
 
 # --------------------------------------------------------------------------------------
@@ -679,7 +722,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
         # be subclassed further.
-        if len(cls.__mro__) > len(Node.__mro__) + 1:
+        if len(cls.__mro__) > len(Node.__mro__) + 1 and not getattr(
+            cls, "__COPY_TYPE__", False
+        ):
             # mro(): [Leaf, NodeType, object] is allowed (len==3),
             # deeper (len>3) is forbidden
             raise FabLLException(
@@ -696,6 +741,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # ```
         for name, child in vars(cls).items():
             cls._handle_cls_attr(name, child)
+
+    @staticmethod
+    def _copy_type[U: "type[NodeT]"](to_copy: U) -> U:
+        class _Copy(to_copy):
+            __COPY_TYPE__ = True
+            pass
+
+        return cast(U, _Copy)
 
     @classmethod
     def _exec_field(
@@ -733,8 +786,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if type_field:
                 type_node = t.get_or_create_type()
                 edge_instance = field.edge.create_edge(
-                    source=field.lhs_resolved_on_node(instance=type_node).node(),
-                    target=field.rhs_resolved_on_node(instance=type_node).node(),
+                    source=field.lhs_resolved_on_node(
+                        instance=type_node, tg=t.tg
+                    ).node(),
+                    target=field.rhs_resolved_on_node(
+                        instance=type_node, tg=t.tg
+                    ).node(),
                 )
                 type_node.g().insert_edge(edge=edge_instance)
             else:
@@ -1168,6 +1225,20 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         hierarchy.reverse()
         return hierarchy
 
+    def copy_into(self, g: graph.GraphView) -> Self:
+        """
+        Copy all nodes in hierarchy and edges between them and their types
+        """
+        t_sg = self.tg.get_type_subgraph()
+        g.insert_subgraph(subgraph=t_sg)
+
+        # TODO copy or handle pointers from nodes to the outside
+        children = self.get_children(direct_only=False, include_root=True, types=Node)
+        children_nodes = [c.instance for c in children] + t_sg.get_nodes()
+        g_sub = self.g().get_subgraph_from_nodes(nodes=children_nodes)
+        g.insert_subgraph(subgraph=g_sub)
+        return self.bind_instance(instance=g.bind(node=self.instance.node()))
+
     def get_full_name(self, types: bool = False) -> str:
         parts: list[str] = []
         if (parent := self.get_parent()) is not None:
@@ -1310,6 +1381,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
 
 type NodeT = Node[Any]
+RefPath = list[str | _ChildField[Any] | type[NodeT]]
+
+SELF_OWNER_PLACEHOLDER: RefPath = [""]
+"""
+When creating trait, default reference path to self is [""].
+"""
 
 
 class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
@@ -1317,6 +1394,10 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     (type[Node], fbrk.TypeGraph)
     Becomes available during stage 1 (typegraph creation)
     """
+
+    # TODO REMOVE THIS HACK
+    # currently needed for solver to make factories from expression instances
+    __TYPE_NODE_MAP__: dict[graph.BoundNode, "TypeNodeBoundTG[Any, Any]"] = {}
 
     def __init__(self, tg: fbrk.TypeGraph, t: type[N]) -> None:
         self.tg = tg
@@ -1332,6 +1413,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         if typenode is not None:
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
+        TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
         self.t._create_type(self)
         return typenode
 
@@ -1808,10 +1890,10 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        _is_trait = Traits.MakeEdge((ImplementsTrait.MakeChild())).put_on_type()
+        _is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
 
     class ExampleNode(Node):
-        example_trait = ExampleTrait.MakeChild()
+        example_trait = Traits.MakeEdge(ExampleTrait.MakeChild())
 
     node = ExampleNode.bind_typegraph(tg).create_instance(g=g)
     assert node.try_get_trait(ExampleTrait) is not None
@@ -1987,6 +2069,10 @@ def test_resistor_instantiation():
     assert (
         res_inst._is_pickable.get().get_param("resistance").get_name() == "resistance"
     )
+    assert (
+        res_inst.get_trait(F.has_designator_prefix).get_prefix()
+        == F.has_designator_prefix.Prefix.R
+    )
 
 
 def test_string_param():
@@ -1994,8 +2080,8 @@ def test_string_param():
     import faebryk.library._F as F
 
     string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    string_p.constrain_to_single(value="IG constrained")
-    assert string_p.force_extract_literal().get_value() == "IG constrained"
+    string_p.alias_to_single(value="IG constrained")
+    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
         string_p_tg = F.Parameters.StringParameter.MakeChild()
@@ -2004,7 +2090,10 @@ def test_string_param():
         )
 
     esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
+    assert (
+        esp.string_p_tg.get().force_extract_literal().get_values()[0]
+        == "TG constrained"
+    )
 
 
 def test_boolean_param():
@@ -2012,7 +2101,7 @@ def test_boolean_param():
     import faebryk.library._F as F
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    boolean_p.constrain_to_single(value=True)
+    boolean_p.alias_to_single(value=True)
     assert boolean_p.force_extract_literal().get_value()
 
     class ExampleBooleanParameter(fabll.Node):
@@ -2052,7 +2141,7 @@ def test_kicad_footprint():
     )
     print(
         f"kicad_footprint.get_kicad_footprint():"
-        f" {kicad_footprint.get_kicad_footprint()}"
+        f" {kicad_footprint.get_kicad_footprint_identifier()}"
     )
     print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
@@ -2237,6 +2326,37 @@ def test_get_children_modules_tree():
     assert mods == {cap1, cap2, cap3, cap4}
 
 
+def test_copy_into_basic():
+    g, tg = _make_graph_and_typegraph()
+    g_new = graph.GraphView.create()
+
+    class Inner(Node):
+        pass
+
+    class N(Node):
+        inner = Inner.MakeChild()
+
+    n = N.bind_typegraph(tg).create_instance(g=g)
+    m = N.bind_typegraph(tg).create_instance(g=g)
+    n.connect(to=m, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+
+    assert fbrk.EdgePointer.get_referenced_node_from_node(node=n.instance) == m.instance
+
+    n2 = n.copy_into(g=g_new)
+
+    assert n2.is_same(n)
+    assert n2 is not n
+    assert n2.g() != n.g()
+
+    assert not fbrk.EdgePointer.get_referenced_node_from_node(node=n2.instance)
+
+    inner2 = n2.inner.get()
+    assert inner2.is_same(n.inner.get())
+
+    assert n2.isinstance(N)
+    assert inner2.isinstance(Inner)
+
+
 if __name__ == "__main__":
     import typer
 
@@ -2245,4 +2365,4 @@ if __name__ == "__main__":
     # test_manual_resistor_def()
 
     # typer.run(test_resistor_instantiation)
-    typer.run(test_make_lit)
+    typer.run(test_copy_into_basic)

@@ -3251,7 +3251,10 @@ fn wrap_typegraph_reference_resolve() type {
                 kwarg_obj.base_node.*,
             );
 
-            return graph_py.makeBoundNodePyObject(resolved);
+            if (resolved) |node| {
+                return graph_py.makeBoundNodePyObject(node);
+            }
+            return py.Py_None();
         }
     };
 }
@@ -3292,10 +3295,7 @@ fn wrap_typegraph_get_type_by_name() type {
 
             const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
 
-            const bnode = faebryk.typegraph.TypeGraph.get_type_by_name(wrapper.data, identifier) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "get_type_by_name failed");
-                return null;
-            };
+            const bnode = faebryk.typegraph.TypeGraph.get_type_by_name(wrapper.data, identifier);
             if (bnode == null) {
                 return py.Py_None();
             }
@@ -3327,6 +3327,41 @@ fn wrap_typegraph_get_or_create_type() type {
             };
 
             return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_typegraph_get_type_subgraph() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_type_subgraph",
+            .doc = "Return a subgraph containing only the type nodes and their edges",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+
+            // Allocate memory for the result GraphView
+            const allocator = std.heap.c_allocator;
+            const result_ptr = allocator.create(graph.GraphView) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate GraphView");
+                return null;
+            };
+
+            result_ptr.* = faebryk.typegraph.TypeGraph.get_type_subgraph(wrapper.data);
+
+            const pyobj = bind.wrap_obj("GraphView", &graph_py.graph_view_type, graph_py.GraphViewWrapper, result_ptr);
+            if (pyobj == null) {
+                result_ptr.deinit();
+                allocator.destroy(result_ptr);
+            }
+
+            return pyobj;
         }
     };
 }
@@ -3372,6 +3407,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_type_by_name(),
         wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
+        wrap_typegraph_get_type_subgraph(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);

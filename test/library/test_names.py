@@ -8,8 +8,6 @@ import pytest
 
 from faebryk.libs.util import repo_root as _repo_root
 
-IGNORE_MODULES = ["NumberDomain"]
-
 
 def _extract_classes_from_file(filepath: Path):
     with open(filepath, "r", encoding="utf-8") as file:
@@ -40,16 +38,13 @@ def _is_module_import(name: str) -> bool:
     [
         p
         for p in (_repo_root() / "src" / "faebryk" / "library").glob("**/*.py")
-        if p.is_file() and p.stem not in IGNORE_MODULES
+        if p.is_file() and not p.stem.startswith("_") and not _is_module_import(p.stem)
     ],
     ids=lambda p: p.stem,
 )
 def test_class_name(py_file: Path):
     """Test that class names match their file names in the library directory."""
     classes = _extract_classes_from_file(py_file)
-    if _is_module_import(py_file.stem):
-        pytest.xfail(f"{py_file.stem} is a module import")
-    for cls in classes:
-        if cls.name.startswith("_"):
-            continue
-        assert cls.name == py_file.stem, f"Class name mismatch in {py_file}"
+    assert py_file.stem in [cls.name for cls in classes], (
+        f"Class name mismatch in {py_file}"
+    )

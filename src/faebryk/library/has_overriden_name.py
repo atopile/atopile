@@ -13,7 +13,7 @@ class has_overriden_name(fabll.Node):
     name_ = fabll._ChildField(F.Parameters.StringParameter)
 
     def get_name(self) -> str:
-        return self.name_.get().force_extract_literal().get_value()
+        return self.name_.get().force_extract_literal().get_values()[0]
 
     @classmethod
     def MakeChild(cls, name: str) -> fabll._ChildField:

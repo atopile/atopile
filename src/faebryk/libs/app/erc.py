@@ -35,7 +35,7 @@ class ERCFaultShortedInterfaces(ERCFaultShort):
         Given two shorted Interfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        return cls(f"`{' ~ '.join(mif.get_full_name() for mif in path)}`", path)
+        return cls(f"`{path!r}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):

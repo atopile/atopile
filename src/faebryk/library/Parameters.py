@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Self, cast
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 
 # import faebryk.enum_sets as enum_sets
 from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
@@ -85,6 +86,9 @@ class is_parameter_operatable(fabll.Node):
             f=visit,
         )
 
+        if isinstance(lit_type, fabll.Node):
+            return e_ctx.lit
+
         if e_ctx.lit is not None and lit_type is not None:
             return fabll.Traits(e_ctx.lit).get_obj(lit_type)
 
@@ -95,6 +99,7 @@ class is_parameter_operatable(fabll.Node):
     ) -> T:
         lit = self.try_get_constrained_literal(lit_type=lit_type)
         if lit is None:
+            print("NOT CONSTRAINED")
             raise ParameterIsNotConstrainedToLiteral(parameter=self)
         return lit
 
@@ -239,6 +244,22 @@ class is_parameter_operatable(fabll.Node):
             )
         return False
 
+    def _get_lit_suffix(self) -> str:
+        out = ""
+        try:
+            lit = self.try_get_aliased_literal()
+        except KeyErrorAmbiguous as e:
+            return f"{{AMBIGUOUS_I: {e.duplicates}}}"
+        if lit is not None:
+            out = f"{{I|{lit.pretty_repr()}}}"
+        elif (lit := self.try_get_subset_or_alias_literal()) is not None:
+            out = f"{{S|{lit.pretty_repr()}}}"
+        if lit and lit.equals_singleton(True):
+            out = "✓"
+        elif lit and lit.equals_singleton(False):
+            out = "✗"
+        return out
+
 
 class is_parameter(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -246,8 +267,57 @@ class is_parameter(fabll.Node):
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
     ) -> str:
+        """
+        Unit only printed if not dimensionless.
+
+        Letters:
+        ```
+        A-Z, a-z, α-ω
+        A₁-Z₁, a₁-z₁, α₁-ω₁
+        A₂-Z₂, a₂-z₂, α₂-ω₂
+        ...
+        ```
+        """
+
+        def param_id_to_human_str(param_id: int) -> str:
+            assert isinstance(param_id, int)
+            alphabets = [("A", 26), ("a", 26), ("α", 25)]
+            alphabet = [
+                chr(ord(start_char) + i)
+                for start_char, char_cnt in alphabets
+                for i in range(char_cnt)
+            ]
+
+            def int_to_subscript(i: int) -> str:
+                if i == 0:
+                    return ""
+                _str = str(i)
+                return "".join(chr(ord("₀") + ord(c) - ord("0")) for c in _str)
+
+            return alphabet[param_id % len(alphabet)] + int_to_subscript(
+                param_id // len(alphabet)
+            )
+
+        obj = fabll.Traits(self).get_obj_raw()
+        if use_name and obj.get_parent() is not None:
+            letter = obj.get_full_name()
+        else:
+            if context is None:
+                context = ReprContext()
+            if self not in context.variable_mapping.mapping:
+                next_id = context.variable_mapping.next_id
+                context.variable_mapping.mapping[self] = next_id
+                context.variable_mapping.next_id += 1
+            letter = param_id_to_human_str(context.variable_mapping.mapping[self])
+
         # TODO
-        pass
+        # unitstr = f" {self.units}" if self.units != dimensionless else ""
+        unitstr = ""
+
+        out = f"{letter}{unitstr}"
+        out += self.get_sibling_trait(is_parameter_operatable)._get_lit_suffix()
+
+        return out
 
     def domain_set(self) -> "Literals.is_literal":
         # TODO
@@ -383,34 +453,67 @@ class EnumParameter(fabll.Node):
         is_parameter_operatable.MakeChild()
     )
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    enum_domain_pointer = F.Collections.Pointer.MakeChild()
 
-    @classmethod
-    def MakeChild(cls, enum_t: type[Enum]):
-        out = fabll._ChildField(cls)
-        # TODO
-        return out
-
-    def try_extract_aliased_literal(self) -> "Literals.Enums | None":
-        from faebryk.library.Literals import Enums
-
-        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
-            lit_type=Enums
+    def get_enum_type(self) -> "F.Literals.AbstractEnums":
+        return F.Literals.AbstractEnums.bind_instance(
+            instance=self.enum_domain_pointer.get().deref().instance
         )
 
-    def force_extract_literal(self) -> "Literals.Enums":
-        from faebryk.library.Literals import Enums
+    def try_extract_constrained_literal[T: "F.Literals.AbstractEnums"](
+        self,
+    ) -> "F.Literals.AbstractEnums | None":
+        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
+            lit_type=F.Literals.AbstractEnums
+        )
 
+    def force_extract_literal(self) -> "F.Literals.AbstractEnums":
         return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=Enums
+            lit_type=F.Literals.AbstractEnums
         )
 
     def setup(self, enum: type[Enum]) -> Self:
         # TODO
         return self
 
-    def get_enum(self) -> type[Enum]:
-        # TODO
-        pass
+    def alias_to_literal(
+        self, *enum_members: Enum, g: graph.GraphView | None = None
+    ) -> None:
+        g = g or self.instance.g()
+        from faebryk.library.Literals import AbstractEnums, EnumsFactory
+
+        enum_type = EnumsFactory(type(enum_members[0]))
+        enum_type_node = enum_type.bind_typegraph(tg=self.tg).get_or_create_type()
+        self.enum_domain_pointer.get().point(
+            fabll.Node.bind_instance(instance=enum_type_node)
+        )
+
+        lit = (
+            AbstractEnums.bind_typegraph(tg=self.tg)
+            .create_instance(g=g)
+            .setup(*enum_members)
+        )
+
+        self._is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
+
+    @classmethod
+    def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField["Self"]:
+        atype = F.Literals.EnumsFactory(enum_t)
+        cls_n = cast(type[fabll.NodeT], atype)
+
+        out = fabll._ChildField(cls)
+        out.add_dependant(atype.MakeChild(*[member for member in enum_t]))
+        out.add_dependant(
+            fabll.MakeEdge(
+                [out, cls.enum_domain_pointer],
+                [cls_n],
+                edge=fbrk.EdgePointer.build(
+                    identifier="enum_domain_pointer", order=None
+                ),
+            )
+        )
+
+        return out
 
     @staticmethod
     def check_single_single_enum(params: list["EnumParameter"]) -> type[Enum]:

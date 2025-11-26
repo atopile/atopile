@@ -22,7 +22,7 @@ const EdgeRefMap = struct {
     }
 
     pub fn hash(_: @This(), adapted_key: EdgeReference) u64 {
-        return adapted_key.uuid;
+        return adapted_key.attributes.uuid;
     }
 
     pub fn T(V: type) type {
@@ -556,7 +556,7 @@ pub const GraphView = struct {
     base: ?*GraphView,
     allocator: std.mem.Allocator,
     nodes: std.ArrayList(NodeReference),
-    edges: std.ArrayList(EdgeReference),
+    edges: EdgeRefMap.T(void),
     self_node: NodeReference,
 
     // caches for fast lookups ---
@@ -579,7 +579,7 @@ pub const GraphView = struct {
             .base = null,
             .allocator = allocator,
             .nodes = std.ArrayList(NodeReference).init(allocator),
-            .edges = std.ArrayList(EdgeReference).init(allocator),
+            .edges = EdgeRefMap.T(void).init(allocator),
             .neighbors = NodeRefMap.T(std.ArrayList(EdgeReference)).init(allocator),
             .neighbor_by_type = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
             .self_node = Node.init(allocator),
@@ -611,8 +611,9 @@ pub const GraphView = struct {
         // delete hash map (not contents)
         g.neighbor_by_type.deinit();
 
-        for (g.edges.items) |edge| {
-            edge._ref_count.dec(g);
+        var edge_it = g.edges.keyIterator();
+        while (edge_it.next()) |edge| {
+            edge.*._ref_count.dec(g);
         }
         g.edges.deinit();
         for (g.nodes.items) |node| {
@@ -622,6 +623,10 @@ pub const GraphView = struct {
     }
 
     pub fn insert_node(g: *@This(), node: NodeReference) BoundNodeReference {
+        if (g.contains_node(node)) {
+            return g.bind(node);
+        }
+
         g.nodes.append(node) catch {
             @panic("Failed to append node");
         };
@@ -635,10 +640,11 @@ pub const GraphView = struct {
             @panic("Failed to allocate EdgeTypeMap");
         };
 
-        return BoundNodeReference{
-            .node = node,
-            .g = g,
-        };
+        return g.bind(node);
+    }
+
+    pub fn contains_node(g: *@This(), node: NodeReference) bool {
+        return g.neighbors.contains(node);
     }
 
     pub fn create_and_insert_node(g: *@This()) BoundNodeReference {
@@ -657,8 +663,24 @@ pub const GraphView = struct {
         return g.nodes.items.len;
     }
 
+    pub fn get_nodes(g: *const @This()) []const NodeReference {
+        return g.nodes.items;
+    }
+
     pub fn insert_edge(g: *@This(), edge: EdgeReference) BoundEdgeReference {
-        g.edges.append(edge) catch @panic("OOM appending edge");
+        if (g.edges.contains(edge)) {
+            return BoundEdgeReference{
+                .edge = edge,
+                .g = g,
+            };
+        }
+
+        if (!g.contains_node(edge.source) or !g.contains_node(edge.target)) {
+            // TODO consider making this an error instead of panic
+            @panic("Edge source or target not found");
+        }
+
+        g.edges.put(edge, {}) catch @panic("OOM inserting edge");
         edge._ref_count.inc(g);
 
         // handle caches
@@ -687,7 +709,8 @@ pub const GraphView = struct {
     }
 
     pub fn get_edges_of_type(g: *@This(), node: NodeReference, T: Edge.EdgeType) ?*const std.ArrayList(EdgeReference) {
-        return g.neighbor_by_type.getPtr(node).?.getPtr(T);
+        const by_type = g.neighbor_by_type.getPtr(node) orelse return null;
+        return by_type.getPtr(T);
     }
 
     pub fn visit_edges(g: *@This(), node: NodeReference, comptime T: type, ctx: *anyopaque, f: fn (*anyopaque, BoundEdgeReference) visitor.VisitResult(T)) visitor.VisitResult(T) {
@@ -748,6 +771,97 @@ pub const GraphView = struct {
         }
 
         return Result{ .EXHAUSTED = {} };
+    }
+
+    pub fn get_subgraph_from_nodes(g: *@This(), nodes: std.ArrayList(NodeReference)) GraphView {
+        // create new graph view
+        // that contains only the nodes in the list and the edges between them
+        var new_g = GraphView.init(g.allocator);
+        const EdgeVisitor = struct {
+            new_g: *GraphView,
+            nodes: std.HashMap(NodeReference, void, NodeRefMap, std.hash_map.default_max_load_percentage),
+
+            fn visit_fn(self_ptr: *anyopaque, edge: BoundEdgeReference) visitor.VisitResult(void) {
+                const self: *@This() = @ptrCast(@alignCast(self_ptr));
+                if (!self.nodes.contains(edge.edge.source) or !self.nodes.contains(edge.edge.target)) {
+                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                }
+                _ = self.new_g.insert_edge(edge.edge);
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+        var edge_visitor = EdgeVisitor{
+            .new_g = &new_g,
+            .nodes = std.HashMap(NodeReference, void, NodeRefMap, std.hash_map.default_max_load_percentage).init(g.allocator),
+        };
+        defer edge_visitor.nodes.deinit();
+        for (nodes.items) |node| {
+            _ = new_g.insert_node(node);
+            edge_visitor.nodes.put(node, {}) catch @panic("OOM");
+        }
+        for (nodes.items) |node| {
+            _ = g.visit_edges(node, void, &edge_visitor, EdgeVisitor.visit_fn);
+        }
+        return new_g;
+    }
+
+    pub fn insert_subgraph(g: *@This(), subgraph: GraphView) void {
+        // Pre-allocate for nodes
+        const added_nodes_len = subgraph.nodes.items.len;
+        g.nodes.ensureUnusedCapacity(added_nodes_len) catch @panic("OOM");
+        g.neighbors.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
+        g.neighbor_by_type.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
+
+        for (subgraph.nodes.items) |node| {
+            if (g.contains_node(node)) {
+                continue;
+            }
+
+            // Inline insert_node logic with assumption of capacity
+            g.nodes.appendAssumeCapacity(node);
+            node._ref_count.inc(g);
+
+            g.neighbors.putAssumeCapacity(node, std.ArrayList(EdgeReference).init(g.allocator));
+            g.neighbor_by_type.putAssumeCapacity(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator));
+        }
+
+        // Pre-allocate for edges
+        const added_edges_len = subgraph.edges.count();
+        g.edges.ensureUnusedCapacity(@intCast(added_edges_len)) catch @panic("OOM");
+
+        var it = subgraph.edges.keyIterator();
+        while (it.next()) |edge_ptr| {
+            const edge = edge_ptr.*;
+            if (g.edges.contains(edge)) {
+                continue;
+            }
+
+            // Inline insert_edge logic
+            g.edges.putAssumeCapacity(edge, {});
+            edge._ref_count.inc(g);
+
+            // handle caches
+            // We trust nodes exist now (were inserted above or already existed)
+            {
+                const from_neighbors = g.neighbor_by_type.getPtr(edge.source).?;
+                const res_from = from_neighbors.getOrPut(edge.attributes.edge_type) catch @panic("OOM");
+                if (!res_from.found_existing) {
+                    res_from.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+                }
+                res_from.value_ptr.append(edge) catch @panic("OOM");
+                g.neighbors.getPtr(edge.source).?.append(edge) catch @panic("OOM");
+            }
+
+            {
+                const to_neighbors = g.neighbor_by_type.getPtr(edge.target).?;
+                const res_to = to_neighbors.getOrPut(edge.attributes.edge_type) catch @panic("OOM");
+                if (!res_to.found_existing) {
+                    res_to.value_ptr.* = std.ArrayList(EdgeReference).init(g.allocator);
+                }
+                res_to.value_ptr.append(edge) catch @panic("OOM");
+                g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM");
+            }
+        }
     }
 
     // optional: filter for paths of specific edge type
@@ -943,4 +1057,106 @@ test "BFSPath detects inconsistent graph view" {
     // Restoring the original graph view before cleanup prevents the assertion from firing.
     path.g = path.start_node.g;
     try std.testing.expect(path.is_consistent());
+}
+
+test "get_subgraph_from_nodes" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const TestEdgeTypeSubgraph = 0xFBAF_0002;
+    Edge.register_type(TestEdgeTypeSubgraph) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    const n1 = Node.init(a);
+    const n2 = Node.init(a);
+    const n3 = Node.init(a);
+
+    _ = g.insert_node(n1);
+    _ = g.insert_node(n2);
+    _ = g.insert_node(n3);
+
+    const e12 = Edge.init(a, n1, n2, TestEdgeTypeSubgraph);
+    const e23 = Edge.init(a, n2, n3, TestEdgeTypeSubgraph);
+    const e13 = Edge.init(a, n1, n3, TestEdgeTypeSubgraph);
+
+    _ = g.insert_edge(e12);
+    _ = g.insert_edge(e23);
+    _ = g.insert_edge(e13);
+
+    var nodes = std.ArrayList(NodeReference).init(a);
+    defer nodes.deinit();
+    try nodes.append(n1);
+    try nodes.append(n2);
+
+    var subgraph = g.get_subgraph_from_nodes(nodes);
+    defer subgraph.deinit();
+
+    // 2 nodes + 1 self_node
+    try std.testing.expectEqual(@as(usize, 3), subgraph.get_node_count());
+
+    const sub_edges_n1 = subgraph.get_edges(n1).?;
+    try std.testing.expectEqual(@as(usize, 1), sub_edges_n1.items.len);
+    try std.testing.expectEqual(e12.attributes.uuid, sub_edges_n1.items[0].attributes.uuid);
+
+    const sub_edges_n2 = subgraph.get_edges(n2).?;
+    try std.testing.expectEqual(@as(usize, 1), sub_edges_n2.items.len);
+    try std.testing.expectEqual(e12.attributes.uuid, sub_edges_n2.items[0].attributes.uuid);
+}
+
+test "duplicate edge insertion" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const n1 = Node.init(a);
+    const n2 = Node.init(a);
+    _ = g.insert_node(n1);
+    _ = g.insert_node(n2);
+
+    const TestLinkType = 0xDEADBEEF;
+    Edge.register_type(TestLinkType) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    const e1 = Edge.init(a, n1, n2, TestLinkType);
+
+    _ = g.insert_edge(e1);
+    try std.testing.expectEqual(@as(usize, 1), g.edges.count());
+    try std.testing.expectEqual(@as(usize, 1), e1._ref_count.ref_count);
+
+    _ = g.insert_edge(e1);
+    try std.testing.expectEqual(@as(usize, 1), g.edges.count());
+    try std.testing.expectEqual(@as(usize, 1), e1._ref_count.ref_count);
+}
+
+test "insert_subgraph performance" {
+    const a = std.testing.allocator;
+    var g1 = GraphView.init(a);
+    defer g1.deinit();
+    var g2 = GraphView.init(a);
+    defer g2.deinit();
+
+    const num_nodes = 10000;
+
+    var i: usize = 0;
+    while (i < num_nodes) : (i += 1) {
+        const n = Node.init(a);
+        _ = g1.insert_node(n);
+    }
+
+    i = 0;
+    while (i < num_nodes) : (i += 1) {
+        const n = Node.init(a);
+        _ = g2.insert_node(n);
+    }
+
+    var timer = try std.time.Timer.start();
+    g1.insert_subgraph(g2);
+    const duration = timer.read();
+
+    std.debug.print("\ninsert_subgraph with {d} nodes took {d}ns\n", .{ num_nodes, duration });
 }

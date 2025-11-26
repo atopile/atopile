@@ -76,7 +76,7 @@ class ElectricPower(fabll.Node):
 
 is_interface trait example making and checking two node connections (assume setup from above)
 #### Definition Example
-```
+```python
 class Electrical(fabll.Node):
 	_is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 ```
@@ -86,8 +86,29 @@ e1 = electrical_type.create_instance(g)
 e2 = electrical_type.create_instance(g)
 e1.get_trait(fabll.is_interface).connect_to(e2)
 bool connected = e1.get_trait(fabll.is_interface).is_connected_to(e2)
-
 ```
+
+#### Checking for Traits: Instance Nodes vs Type Nodes
+
+**Instance Nodes** (runtime objects created from types):
+```python
+instance = some_type.create_instance(g)
+instance.has_trait(F.some_trait)
+instance.get_trait(F.some_trait)
+instance.try_get_trait(F.some_trait)
+```
+
+**Type Nodes** (type definitions in the typegraph):
+```python
+type_bound = SomeType.bind_typegraph(tg)
+type_bound.try_get_type_trait(F.some_trait)
+type_bound.get_type_trait(F.some_trait)
+```
+
+**Key Difference:**
+- Instance nodes: `.has_trait()`, `.try_get_trait()`, `.get_trait()`
+- Type nodes: `.try_get_type_trait()`, `.get_type_trait()` on `TypeNodeBoundTG`
+- `instance.get_type_node()` returns `BoundNodeReference` which has no trait methods - bind the type class instead
 
 ### Expressions
 Expressions are nodes that represent operations.

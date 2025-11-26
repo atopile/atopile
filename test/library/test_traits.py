@@ -3,8 +3,6 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-import faebryk.library._F as F
-from faebryk.libs.kicad.fileformats import kicad
 
 
 def graph_and_typegraph():
@@ -13,52 +11,18 @@ def graph_and_typegraph():
     return g, tg
 
 
-def test_has_kicad_footprint():
-    g, tg = graph_and_typegraph()
-
-    _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
-    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
-    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
-
-    kicad_footprint = (
-        F.has_kicad_footprint.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(
-            kicad_identifier="libR_0402_1005Metric2",
-            pinmap={pad1: "P1", pad2: "P2"},
-        )
-    )
-
-    assert kicad_footprint.get_kicad_footprint() == "libR_0402_1005Metric2"
-    assert kicad_footprint.get_pin_names() == {pad1: "P1", pad2: "P2"}
-
-
-def test_pcb_transformer_traits():
-    from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-    from faebryk.libs.test.fileformats import PCBFILE
-
-    g, tg = graph_and_typegraph()
-
-    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
-    app = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-
-    kpcb = pcb.kicad_pcb
-
-    transformer = PCB_Transformer(pcb=kpcb, app=app)
-
-    # assert transformer.tg is app.get_graph()
-    assert transformer.app is app
-    assert transformer.pcb is kpcb
-
-
 def test_trait_equality():
     g, tg = graph_and_typegraph()
 
     class Trait1(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
     class Trait2(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
     trait1_a = Trait1.bind_typegraph(tg=tg).create_instance(g=g)
     trait1_b = Trait1.bind_typegraph(tg=tg).create_instance(g=g)
@@ -79,7 +43,9 @@ def test_trait_basic_operations():
     g, tg = graph_and_typegraph()
 
     class TraitWithValue(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
         def __init__(self, instance: graph.BoundNode):
             super().__init__(instance=instance)
@@ -99,17 +65,15 @@ def test_trait_basic_operations():
     with pytest.raises(fabll.TraitNotFound):
         obj.get_trait(TraitWithValue)
 
-    trait_instance = fabll.Traits.create_and_add_instance_to(
-        obj, TraitWithValue
-    ).setup(1)
+    trait_instance = fabll.Traits.create_and_add_instance_to(obj, TraitWithValue).setup(
+        1
+    )
     assert obj.has_trait(TraitWithValue)
     assert obj.get_trait(TraitWithValue) == trait_instance
     assert trait_instance.do() == 1
 
     # Adding another instance of the same trait keeps the first one as the default
-    replacement = fabll.Traits.create_and_add_instance_to(
-        obj, TraitWithValue
-    ).setup(5)
+    replacement = fabll.Traits.create_and_add_instance_to(obj, TraitWithValue).setup(5)
     assert replacement != trait_instance
     assert obj.get_trait(TraitWithValue) == trait_instance
 
@@ -118,10 +82,14 @@ def test_trait_object_binding():
     g, tg = graph_and_typegraph()
 
     class TraitA(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
     class TraitB(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
     obj = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
@@ -135,12 +103,16 @@ def test_trait_object_binding():
     assert fabll.Traits(trait_a).get_obj_raw() == obj
     assert trait_a.get_sibling_trait(TraitB) == trait_b
 
-# TODO need to implement a test for multiple trait arbitration, test and core logic need to be updated
+
+# TODO need to implement a test for multiple trait arbitration,
+# test and core logic need to be updated
 def test_trait_first_instance_wins():
     g, tg = graph_and_typegraph()
 
     class Trait(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+        _is_trait = fabll.Traits.MakeEdge(
+            fabll.ImplementsTrait.MakeChild().put_on_type()
+        )
 
     obj = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 

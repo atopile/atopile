@@ -535,7 +535,9 @@ class PartLifecycle:
             f_fp = component.get_trait(F.has_footprint).get_footprint()
 
             # At this point, all footprints MUST have a KiCAD identifier
-            fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+            fp_id = f_fp.get_trait(
+                F.has_kicad_footprint
+            ).get_kicad_footprint_identifier()
 
             # This is the component which is being stuck on the board
             address = component.get_full_name()

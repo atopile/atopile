@@ -2427,7 +2427,9 @@ def test_boolean_set_op_or():
 
 
 class QuantitySet(fabll.Node):
-    _is_literal = fabll.Traits.MakeEdge(F.Literals.is_literal.MakeChild())
+    import F.Literals as Literals
+
+    _is_literal = fabll.Traits.MakeEdge(Literals.is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
     _numeric_set_identifier: ClassVar[str] = "numeric_set"
     _unit_identifier: ClassVar[str] = "unit"

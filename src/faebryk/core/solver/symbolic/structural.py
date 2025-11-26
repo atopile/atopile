@@ -344,7 +344,7 @@ def resolve_alias_classes(mutator: Mutator):
             if numberdomains:
                 domain = F.NumberDomain.get_shared_domain(*numberdomains)
                 representative = mutator.register_created_parameter(
-                    F.Parameters.NumericParameter.bind_typegraph(mutator.tg)
+                    F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
                     .create_instance(g=mutator.G_out)
                     .setup(domain=domain)
                     .get_trait(F.Parameters.is_parameter),

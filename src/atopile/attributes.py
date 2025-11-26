@@ -319,7 +319,7 @@ class GlobalAttributes(fabll.Node):
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
-class Resistor(F.Resistor):
+class Resistor(fabll.Node):
     """
     This resistor is replaces `generics/resistors.ato:Resistor`
     every times it's referenced.
@@ -375,7 +375,7 @@ class Resistor(F.Resistor):
         return trait
 
 
-class CommonCapacitor(F.Capacitor):
+class CommonCapacitor(fabll.Node):
     """
     These attributes are common to both electrolytic and non-electrolytic capacitors.
     """
@@ -424,13 +424,12 @@ class CommonCapacitor(F.Capacitor):
 
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class Capacitor(CommonCapacitor):
+class Capacitor(fabll.Node):
     """
     This capacitor is replaces `generics/capacitors.ato:Capacitor`
     every times it's referenced.
     """
 
-    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -442,7 +441,7 @@ class Capacitor(CommonCapacitor):
 @_register_shim(
     "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
 )
-class CapacitorElectrolytic(CommonCapacitor):
+class CapacitorElectrolytic(fabll.Node):
     """Temporary shim to translate capacitors."""
 
     anode: F.Electrical
@@ -466,7 +465,7 @@ class CapacitorElectrolytic(CommonCapacitor):
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
-class Inductor(F.Inductor):
+class Inductor(fabll.Node):
     """
     This inductor is replaces `generics/inductors.ato:Inductor`
     every times it's referenced.
@@ -480,7 +479,6 @@ class Inductor(F.Inductor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -490,7 +488,7 @@ class Inductor(F.Inductor):
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")
-class LED(F.LED):
+class LED(fabll.Node):
     """Temporary shim to translate LEDs."""
 
     @property
@@ -503,7 +501,7 @@ class LED(F.LED):
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
-class Power(F.ElectricPower):
+class Power(fabll.Node):
     """Temporary shim to translate `value` to `power`."""
 
     @property
@@ -517,7 +515,7 @@ class Power(F.ElectricPower):
 
 
 @_register_shim("generics/interfaces.ato:I2C", "import I2C")
-class I2C(F.I2C):
+class I2C(fabll.Node):
     """Temporary shim to translate I2C interfaces."""
 
     @property

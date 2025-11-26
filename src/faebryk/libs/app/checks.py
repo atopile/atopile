@@ -3,8 +3,7 @@
 
 import logging
 
-import faebryk.core.graph as graph
-import faebryk.core.node as fabll
+import faebryk.core.faebrykpy as fbrk
 import faebryk.library._F as F
 from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
 
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def check_design(
-    G: graph.GraphView,
+    tg: fbrk.TypeGraph,
     stage: F.implements_design_check.CheckStage,
     exclude: tuple[str, ...] = tuple(),
 ):
@@ -24,15 +23,13 @@ def check_design(
     logger.info(f"Running design checks for stage {stage.name}")
 
     with accumulate(UserDesignCheckException) as accumulator:
-        for _, trait in fabll.Node.bind_typegraph(G).nodes_with_trait(
-            F.implements_design_check
-        ):
-            if trait.get_name_of_test() in exclude:
+        for check in F.implements_design_check.bind_typegraph(tg).get_instances():
+            if check.get_name_of_test() in exclude:
                 continue
 
             with accumulator.collect():
                 try:
-                    trait.run(stage)
+                    check.run(stage)
                 except F.implements_design_check.MaybeUnfulfilledCheckException as e:
                     with downgrade(UserDesignCheckException):
                         raise UserDesignCheckException.from_nodes(

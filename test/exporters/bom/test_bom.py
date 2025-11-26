@@ -4,6 +4,8 @@
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -11,6 +13,8 @@ from faebryk.exporters.bom.jlcpcb import _get_bomline
 from faebryk.libs.app.designators import attach_random_designators, load_designators
 from faebryk.libs.picker.picker import pick_part_recursively
 
+g = graph.GraphView.create()
+tg = fbrk.TypeGraph.create(g=g)
 
 def _build(app: fabll.Node):
     load_designators(app.get_graph(), attach=True)
@@ -32,15 +36,17 @@ def test_bom_picker_pick():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_explicit_pick():
-    m = fabll.Module()
-    m.add(F.can_attach_to_footprint_symmetrically())
-    m.add(F.has_explicit_part.by_supplier("C25804", pinmap={}))
-    _build(m)
+    class TestComponent(fabll.Node):
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        _has_electric_reference = fabll.Traits.MakeEdge(F.has_explicit_part.setup_by_supplier("C25804"))
+        _can_attach_to_footprint = fabll.Traits.MakeEdge(F.can_attach_to_footprint_symmetrically.MakeChild())
 
-    bomline = _get_bomline(m)
+    test_component = TestComponent.bind_typegraph(tg).create_instance(g=g)
+    _build(test_component)
+
+    bomline = _get_bomline(test_component)
     assert bomline is not None
     assert bomline.LCSC_Partnumber == "C25804"
-
 
 def test_bom_kicad_footprint_no_lcsc():
     m = fabll.Module()

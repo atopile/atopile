@@ -355,7 +355,8 @@ class Traceback:
 class MutationStage:
     def __init__(
         self,
-        tg: fbrk.TypeGraph,
+        tg_in: fbrk.TypeGraph,
+        tg_out: fbrk.TypeGraph,
         algorithm: SolverAlgorithm | str,
         iteration: int,
         print_context: F.Parameters.ReprContext,
@@ -367,13 +368,14 @@ class MutationStage:
         self.iteration = iteration
         self.transformations = transformations
         self.input_print_context = print_context
-        self.tg = tg
+        self.tg_in = tg_in
+        self.tg_out = tg_out
         self.G_in = G_in
         self.G_out = G_out
 
         self.input_operables = set(
             F.Parameters.is_parameter_operatable.bind_typegraph(
-                tg=self.tg
+                tg=self.tg_in
             ).get_instances(self.G_in)
         )
 
@@ -381,9 +383,9 @@ class MutationStage:
     @once
     def output_operables(self) -> set[F.Parameters.is_parameter_operatable]:
         return set(
-            F.Parameters.is_parameter_operatable.bind_typegraph(self.tg).get_instances(
-                g=self.G_out
-            )
+            F.Parameters.is_parameter_operatable.bind_typegraph(
+                self.tg_out
+            ).get_instances(g=self.G_out)
         )
 
     @staticmethod
@@ -395,7 +397,8 @@ class MutationStage:
         iteration: int = 0,
     ) -> "MutationStage":
         return MutationStage(
-            tg,
+            tg_in=tg,
+            tg_out=tg,
             G_in=g,
             G_out=g,
             algorithm=algorithm,
@@ -413,14 +416,15 @@ class MutationStage:
 
     def as_identity(self, iteration: int = 0) -> "MutationStage":
         return MutationStage(
-            self.tg,
+            self.tg_in,
+            self.tg_out,
             G_in=self.G_in,
             G_out=self.G_out,
             algorithm="identity",
             iteration=iteration,
             print_context=self.input_print_context,
             transformations=Transformations.identity(
-                self.tg,
+                self.tg_out,
                 self.G_out,
                 input_print_context=self.output_print_context,
             ),
@@ -432,7 +436,7 @@ class MutationStage:
         log: Callable[[str], None] = logger.debug,
     ):
         pre_nodes = fabll.Traits.get_implementor_objects(
-            trait=trait_filter.bind_typegraph(tg=self.tg), g=self.G_out
+            trait=trait_filter.bind_typegraph(tg=self.tg_in), g=self.G_out
         )
         if SHOW_SS_IS:
             nodes = pre_nodes
@@ -937,7 +941,9 @@ class MutationMap:
         table.add_column("fabll.Node name")
 
         params = set(
-            F.Parameters.is_parameter.bind_typegraph(self.tg).get_instances(g=self.G_in)
+            F.Parameters.is_parameter.bind_typegraph(self.tg_in).get_instances(
+                g=self.G_in
+            )
         )
         for p in sorted(
             params,
@@ -998,8 +1004,12 @@ class MutationMap:
         return out
 
     @property
-    def tg(self) -> fbrk.TypeGraph:
-        return self.first_stage.tg
+    def tg_in(self) -> fbrk.TypeGraph:
+        return self.first_stage.tg_in
+
+    @property
+    def tg_out(self) -> fbrk.TypeGraph:
+        return self.last_stage.tg_out
 
 
 @dataclass
@@ -1017,13 +1027,13 @@ class Mutator:
     def make_lit(self, value: float) -> F.Literals.Numbers: ...
 
     @overload
-    def make_lit(self, value: Enum) -> F.Literals.Enums: ...
+    def make_lit(self, value: Enum) -> F.Literals.AbstractEnums: ...
 
     @overload
     def make_lit(self, value: str) -> F.Literals.Strings: ...
 
     def make_lit(self, value: F.Literals.LiteralValues) -> F.Literals.LiteralNodes:
-        return F.Literals.make_lit(self.tg, value)
+        return F.Literals.make_lit(self.tg_in, value)
 
     def _mutate(
         self,
@@ -1071,7 +1081,7 @@ class Mutator:
         param_obj = fabll.Traits(param).get_obj_raw()
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
             new_param = (
-                F.Parameters.NumericParameter.bind_typegraph(self.tg)
+                F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(
                     units=units if units is not None else p.get_units(),
@@ -1089,22 +1099,20 @@ class Mutator:
             )
         elif p := param_obj.try_cast(F.Parameters.BooleanParameter):
             new_param = (
-                F.Parameters.BooleanParameter.bind_typegraph(self.tg)
+                F.Parameters.BooleanParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup()
             )
         elif p := param_obj.try_cast(F.Parameters.StringParameter):
             new_param = (
-                F.Parameters.StringParameter.bind_typegraph(self.tg)
+                F.Parameters.StringParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup()
             )
         elif p := param_obj.try_cast(F.Parameters.EnumParameter):
-            new_param = (
-                F.Parameters.EnumParameter.bind_typegraph(self.tg)
-                .create_instance(self.G_out)
-                .setup(enum=p.get_enum())
-            )
+            new_param = F.Parameters.EnumParameter.bind_typegraph(
+                self.tg_out
+            ).create_instance(self.G_out)
         else:
             assert False, "Unknown parameter type"
 
@@ -1127,14 +1135,12 @@ class Mutator:
             for op in operands
         ]
         new_expr = (
-            expr_factory.bind_typegraph(self.tg)
+            expr_factory.bind_typegraph(self.tg_out)
             .create_instance(self.G_out)
             .setup(*new_operands)
         )
 
-        if assert_ and (
-            ce := new_expr.try_get_sibling_trait(F.Expressions.is_assertable)
-        ):
+        if assert_ and (ce := new_expr.try_get_trait(F.Expressions.is_assertable)):
             self.assert_(ce, _no_alias=True)
 
         for op in new_operands:
@@ -1156,8 +1162,10 @@ class Mutator:
     ) -> F.Expressions.is_canonical:
         expr_obj = fabll.Traits(expr).get_obj_raw()
         if expression_factory is None:
+            # TODO this is a hack, we should not do it like this
+            # better build something into is_expression trait that allows copying
             type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())
-            expression_factory: type[fabll.NodeT] = None  # TODO
+            expression_factory = fabll.TypeNodeBoundTG.__TYPE_NODE_MAP__[type_node].t
 
         if operands is None:
             operands = expr.get_operands()
@@ -1177,7 +1185,7 @@ class Mutator:
 
         if soft_mutate:
             assert expression_factory.bind_typegraph(
-                self.tg
+                self.tg_in
             ).check_if_instance_of_type_has_trait(F.Expressions.is_canonical)
             self.soft_mutate_expr(
                 expression_factory, expr, operands, soft_mutate, from_ops=from_ops
@@ -1194,7 +1202,7 @@ class Mutator:
         )
         if not copy_only and not ignore_existing:
             assert expression_factory.bind_typegraph(
-                self.tg
+                self.tg_in
             ).check_if_instance_of_type_has_trait(F.Expressions.is_canonical)
 
             if exists := self.utils.find_congruent_expression(
@@ -1385,10 +1393,16 @@ class Mutator:
     def get_copy(
         self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
     ) -> F.Parameters.can_be_operand:
-        if not (obj_po := obj.is_parameter_operatable()):
-            return obj
-
-        return self.get_copy_po(obj_po, accept_soft).as_operand()
+        if obj_po := obj.is_parameter_operatable():
+            return self.get_copy_po(obj_po, accept_soft).as_operand()
+        if obj_lit := obj.try_get_sibling_trait(F.Literals.is_literal):
+            return (
+                fabll.Traits(obj_lit)
+                .get_obj_raw()
+                .copy_into(g=self.G_out)
+                .get_trait(F.Parameters.can_be_operand)
+            )
+        return obj
 
     def get_copy_po(
         self, obj_po: F.Parameters.is_parameter_operatable, accept_soft: bool = True
@@ -1412,6 +1426,7 @@ class Mutator:
         self.transformations.copied.add(obj_po)
 
         if expr := obj_po.is_expresssion():
+            # TODO consider using copy here instead of recreating expr
             return self.mutate_expression(expr).get_sibling_trait(
                 F.Parameters.is_parameter_operatable
             )
@@ -1434,7 +1449,7 @@ class Mutator:
             _exec_pure_literal_operands,
         )
 
-        expr_bound = expr_factory.bind_typegraph(self.tg)
+        expr_bound = expr_factory.bind_typegraph(self.tg_out)
         assert expr_bound.check_if_instance_of_type_has_trait(
             F.Expressions.is_canonical
         )
@@ -1541,13 +1556,14 @@ class Mutator:
     ):
         out = set(
             fabll.Traits.get_implementors(
-                F.Parameters.is_parameter_operatable.bind_typegraph(self.tg), self.G_in
+                F.Parameters.is_parameter_operatable.bind_typegraph(self.tg_in),
+                self.G_in,
             )
         )
 
         if not include_terminated:
             terminated = fabll.Traits.get_implementor_siblings(
-                is_terminated.bind_typegraph(self.tg),
+                is_terminated.bind_typegraph(self.tg_in),
                 F.Parameters.is_parameter_operatable,
                 self.G_in,
             )
@@ -1561,12 +1577,12 @@ class Mutator:
     def get_parameters(self) -> set[F.Parameters.is_parameter]:
         return set(
             fabll.Traits.get_implementors(
-                F.Parameters.is_parameter.bind_typegraph(self.tg), self.G_in
+                F.Parameters.is_parameter.bind_typegraph(self.tg_in), self.G_in
             )
         )
 
     def get_parameters_of_type[T: fabll.NodeT](self, t: type[T]) -> set[T]:
-        return set(t.bind_typegraph(self.tg).get_instances(self.G_in))
+        return set(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
 
     def get_typed_expressions[T: "fabll.NodeT"](
         self,
@@ -1596,16 +1612,17 @@ class Mutator:
                 set[T],
                 set(
                     fabll.Traits.get_implementor_objects(
-                        F.Expressions.is_expression.bind_typegraph(self.tg), self.G_in
+                        F.Expressions.is_expression.bind_typegraph(self.tg_in),
+                        self.G_in,
                     )
                 ),
             )
         else:
-            out = set(t.bind_typegraph(self.tg).get_instances(self.G_in))
+            out = set(t.bind_typegraph(self.tg_in).get_instances(self.G_in))
 
         if not include_terminated:
             terminated = fabll.Traits.get_implementor_objects(
-                is_terminated.bind_typegraph(self.tg),
+                is_terminated.bind_typegraph(self.tg_in),
                 self.G_in,
             )
             out.difference_update(terminated)
@@ -1793,7 +1810,8 @@ class Mutator:
 
         self.G_in = mutation_map.G_out
         self.G_out: graph.GraphView = graph.GraphView.create()
-        self.tg: fbrk.TypeGraph = mutation_map.tg
+        self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
+        self.tg_out = fbrk.TypeGraph.create(g=self.G_out)
 
         self.print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
@@ -1851,11 +1869,11 @@ class Mutator:
         removed_compact = (op.compact_repr(self.print_context) for op in removed)
         added_compact = (op.compact_repr(self.print_context) for op in added)
         assert not removed, (
-            f"Mutator {self.G_in, self.algo.name} untracked removed "
+            f"{self.__repr__(exclude_transformations=True)} untracked removed "
             f"{indented_container(removed_compact)}"
         )
         assert not added, (
-            f"Mutator {self.G_in, self.algo.name} untracked added "
+            f"{self.__repr__(exclude_transformations=True)} untracked added "
             f"{indented_container(added_compact)}"
         )
 
@@ -1863,10 +1881,10 @@ class Mutator:
 
     def close(self) -> AlgoResult:
         # optimization: if no mutations, return identity stage
-        if not self.transformations.dirty:
+        if not self.algo.force_copy and not self.transformations.dirty:
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
-                    self.tg,
+                    self.tg_in,
                     self.mutation_map.G_out,
                     algorithm=self.algo,
                     iteration=self.iteration,
@@ -1878,7 +1896,8 @@ class Mutator:
         self.check_no_illegal_mutations()
         self._copy_unmutated()
         stage = MutationStage(
-            tg=self.tg,
+            tg_in=self.tg_in,
+            tg_out=self.tg_out,
             G_in=self.G_in,
             G_out=self.G_out,
             algorithm=self.algo,
@@ -1898,8 +1917,14 @@ class Mutator:
         return self.close()
 
     # Debug Interface ------------------------------------------------------------------
-    def __repr__(self) -> str:
-        return f"Mutator('{self.algo.name}' {self.transformations})"
+    def __repr__(self, exclude_transformations: bool = False) -> str:
+        t = f" | {self.transformations}" if not exclude_transformations else ""
+        return (
+            f"Mutator("
+            f" |G_in|={self.G_in.get_node_count()}"
+            f" |G_out|={self.G_out.get_node_count()}"
+            f" '{self.algo.name}'{t})"
+        )
 
 
 # TESTS --------------------------------------------------------------------------------
@@ -1913,24 +1938,37 @@ def test_mutator_basic_bootstrap():
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
-        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        # TODO
+        # param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+    # param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+    param_bool_op = app.param_bool.get().get_trait(F.Parameters.can_be_operand)
 
     app.param_str.get().alias_to_literal("a", "b", "c")
-    app.param_num.get().alias_to_literal(
-        g=g,
-        value=F.Literals.Numbers.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup_from_interval(1, 5),
-    )
-    F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
-        param_num_op,
-        param_num_op,
+    app.param_bool.get().alias_to_single(True)
+    # app.param_num.get().alias_to_literal(
+    #    g=g,
+    #    value=F.Literals.Numbers.bind_typegraph(tg=tg)
+    #    .create_instance(g=g)
+    #    .setup_from_interval(1, 5),
+    # )
+    # F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
+    #    param_num_op,
+    #    param_num_op,
+    # )
+    F.Expressions.Or.bind_typegraph(tg=tg).create_instance(g=g).setup(
+        param_bool_op,
+        param_bool_op,
+        assert_=False,
     )
 
-    @algorithm("")
+    @algorithm("empty", force_copy=True)
+    def algo_empty(mutator: Mutator):
+        pass
+
+    @algorithm("test")
     def algo(mutator: Mutator):
         params = mutator.get_parameters()
         assert len(params) == 2
@@ -1943,13 +1981,26 @@ def test_mutator_basic_bootstrap():
         preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
         assert len(preds) == 2
 
+        # mutator.create_expression(
+        #    F.Expressions.Multiply,
+        #    param_num_op,
+        #    param_num_op,
+        # )
         mutator.create_expression(
-            F.Expressions.Multiply,
-            param_num_op,
-            param_num_op,
+            F.Expressions.Not,
+            param_bool_op,
+            assert_=False,
         )
 
     mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    mutator0 = Mutator(
+        mutation_map=mut_map,
+        algo=algo_empty,
+        iteration=0,
+        terminal=True,
+    )
+    res0 = mutator0.run()
+    mut_map = mut_map.extend(res0.mutation_stage)
     mutator = Mutator(
         mutation_map=mut_map,
         algo=algo,
@@ -1957,6 +2008,8 @@ def test_mutator_basic_bootstrap():
         terminal=True,
     )
     result = mutator.run()
+    print(mutator0)
+    print(mutator)
     print(result)
     print(result.mutation_stage.is_identity)
 

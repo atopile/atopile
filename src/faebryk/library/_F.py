@@ -16,7 +16,6 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 import faebryk.library.Collections as Collections
-import faebryk.library.Parameters as Parameters
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Footprint import Footprint
@@ -33,10 +32,14 @@ from faebryk.library.is_pickable import is_pickable
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
-import faebryk.library.Expressions as Expressions
-import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
+import faebryk.library.Parameters as Parameters
+from faebryk.library.can_bridge_by_name import can_bridge_by_name
+from faebryk.library.requires_external_usage import requires_external_usage
+import faebryk.library.Expressions as Expressions
+from faebryk.library.PCB import PCB
+import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
@@ -44,19 +47,16 @@ from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_part_picked import has_part_picked
-from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
-from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Units as Units
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.is_auto_generated import is_auto_generated
-from faebryk.library.PCB import PCB
-from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.Electrical import Electrical
 import faebryk.library.Numbers as Numbers
+from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad
@@ -124,7 +124,6 @@ from faebryk.library.HDMI import HDMI
 
 __all__ = [
     "Collections",
-    "Parameters",
     "is_sink",
     "is_source",
     "Footprint",
@@ -141,10 +140,14 @@ __all__ = [
     "Literals",
     "can_bridge",
     "has_linked_pad",
-    "Expressions",
-    "PCBTransformer",
     "has_footprint",
     "implements_design_check",
+    "Parameters",
+    "can_bridge_by_name",
+    "requires_external_usage",
+    "Expressions",
+    "PCB",
+    "PCBTransformer",
     "SerializableMetadata",
     "has_datasheet",
     "has_designator",
@@ -152,19 +155,16 @@ __all__ = [
     "has_net_name",
     "has_overriden_name",
     "has_part_picked",
-    "has_simple_value_representation",
     "has_usage_example",
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
-    "can_bridge_by_name",
     "Units",
     "has_package_requirements",
     "is_auto_generated",
-    "PCB",
-    "requires_external_usage",
     "Electrical",
     "Numbers",
+    "has_simple_value_representation",
     "ElectricPower",
     "Filter",
     "Pad",

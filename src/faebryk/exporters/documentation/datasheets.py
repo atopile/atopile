@@ -6,6 +6,8 @@ from pathlib import Path
 
 from httpx import RequestError
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.http import http_client
@@ -90,3 +92,28 @@ def _download_datasheet(url: str, path: Path):
         raise DatasheetDownloadException(
             f"Failed to save datasheet to {path}: {e}"
         ) from e
+
+
+def test_download_datasheet(caplog):
+    URL = "https://www.ti.com/lit/ds/symlink/lm555.pdf"
+    DEFAULT_PATH = Path("build/documentation/datasheets/")
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=graph.GraphView.create())
+
+    class App(fabll.Node):
+        class ModuleWithDatasheet(fabll.Node):
+            _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+            datasheet = fabll.Traits.MakeEdge(
+                F.has_datasheet.MakeChild(datasheet=URL)
+            ).put_on_type()
+
+        module_with_datasheet = ModuleWithDatasheet.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    assert App.ModuleWithDatasheet.bind_typegraph(tg).try_get_type_trait(F.has_datasheet)
+
+    export_datasheets(app, path=DEFAULT_PATH)
+
+    assert (DEFAULT_PATH / "ModuleWithDatasheet.pdf").exists()

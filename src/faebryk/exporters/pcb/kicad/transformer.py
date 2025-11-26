@@ -359,7 +359,7 @@ class PCB_Transformer:
                     if pcb_pad_t.get_transformer() is not self:
                         continue
 
-                    pcb_fp, pcb_pads = pcb_pad_t.get_pad()
+                    pcb_fp, pcb_pads = pcb_pad_t.get_pads()
 
                     # This practically means that if the pads to which a net is
                     # connected varies within a single component, we're going to ignore
@@ -676,7 +676,7 @@ class PCB_Transformer:
 
     @staticmethod
     def get_fpad_pos(fpad: "F.Pad"):
-        fp, pad = fpad.get_trait(F.PCBTransformer.has_linked_kicad_pad).get_pad()
+        fp, pad = fpad.get_trait(F.PCBTransformer.has_linked_kicad_pad).get_pads()
         if len(pad) > 1:
             raise NotImplementedError(
                 f"Multiple same pads is not implemented: {fpad} {pad}"
@@ -2080,7 +2080,7 @@ class PCB_Transformer:
                 try:
                     pcb_pads_connected_to_pad = f_pad.get_trait(
                         F.PCBTransformer.has_linked_kicad_pad
-                    ).get_pad()[1]
+                    ).get_pads()[1]
                 except TraitNotFound as ex:
                     # FIXME: replace this with more robust
                     raise RuntimeError(

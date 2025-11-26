@@ -7,7 +7,7 @@ from pathlib import Path
 
 import psutil
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.exceptions import UserResourceException, downgrade
@@ -65,16 +65,16 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def load_net_names(graph: graph.GraphView, raise_duplicates: bool = True) -> set[F.Net]:
+def load_net_names(tg: fbrk.TypeGraph, raise_duplicates: bool = True) -> set[F.Net]:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
 
     net_names: dict[F.Net, str] = {
-        cast_assert(F.Net, net): not_none(pcb_net_t.get_net().name)
-        for net, pcb_net_t in fabll.Node.bind_typegraph(graph).nodes_with_trait(
-            F.PCBTransformer.has_linked_kicad_net
-        )
+        cast_assert(F.Net, net_t.get_net().name): not_none(net_t.get_net().name)
+        for net_t in F.PCBTransformer.has_linked_kicad_net.bind_typegraph(
+            tg
+        ).get_instances()
     }
 
     if dups := duplicates(net_names.values(), lambda x: x):
@@ -86,15 +86,14 @@ def load_net_names(graph: graph.GraphView, raise_duplicates: bool = True) -> set
             )
 
     for net, name in net_names.items():
-        net.add(F.has_overriden_name_defined(name))
+        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(name)
 
     return set(net_names.keys())
 
 
-def check_net_names(graph: graph.GraphView):
+def check_net_names(tg: fbrk.TypeGraph):
     """Raise an error if any nets have the same name."""
-    gf = fabll.Node.bind_typegraph(graph)
-    nets = gf.nodes_of_type(F.Net)
+    nets = F.Net.bind_typegraph(tg).get_instances()
 
     named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
     net_name_collisions = {
