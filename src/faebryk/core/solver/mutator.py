@@ -1027,7 +1027,7 @@ class Mutator:
     def make_lit(self, value: float) -> F.Literals.Numbers: ...
 
     @overload
-    def make_lit(self, value: Enum) -> F.Literals.Enums: ...
+    def make_lit(self, value: Enum) -> F.Literals.AbstractEnums: ...
 
     @overload
     def make_lit(self, value: str) -> F.Literals.Strings: ...
@@ -1110,11 +1110,9 @@ class Mutator:
                 .setup()
             )
         elif p := param_obj.try_cast(F.Parameters.EnumParameter):
-            new_param = (
-                F.Parameters.EnumParameter.bind_typegraph(self.tg_out)
-                .create_instance(self.G_out)
-                .setup(enum=p.get_enum())
-            )
+            new_param = F.Parameters.EnumParameter.bind_typegraph(
+                self.tg_out
+            ).create_instance(self.G_out)
         else:
             assert False, "Unknown parameter type"
 

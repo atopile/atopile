@@ -1,4 +1,4 @@
-from enum import IntEnum, auto
+from enum import StrEnum
 from typing import Any, Self
 
 import faebryk.core.node as fabll
@@ -13,9 +13,9 @@ class has_net_name(fabll.Node):
     # src/faebryk/exporters/netlist/graph.py to compute the net names
     # The intelligence of graph.py should be split and moved here
 
-    class Level(IntEnum):
-        SUGGESTED = auto()
-        EXPECTED = auto()
+    class Level(StrEnum):
+        SUGGESTED = "SUGGESTED"
+        EXPECTED = "EXPECTED"
 
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -28,12 +28,12 @@ class has_net_name(fabll.Node):
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
         )
-        # out.add_dependant(
-        #     F.Literals.Enums.MakeChild_ConstrainToLiteral(
-        #         [out, cls.level_],
-        #         str(level.value),  # TODO: Change to make literal Enum
-        #     )
-        # )
+        out.add_dependant(
+            F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+                [out, cls.level_],
+                level,
+            )
+        )
         return out
 
     @property
@@ -44,10 +44,10 @@ class has_net_name(fabll.Node):
 
     @property
     def level(self) -> Level | None:
-        level_literal = self.level_.get().try_extract_aliased_literal()
+        level_literal = self.level_.get().force_extract_literal().get_values()[0]
         if level_literal is None:
             return None
-        return None  # self.Level(int(level_literal))
+        return self.Level(level_literal)
 
     def setup(self, name: str, level: Level) -> Self:
         self.name_.get().alias_to_single(value=name)

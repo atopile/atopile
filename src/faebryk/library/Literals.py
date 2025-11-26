@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Self
+from typing import Self, cast
 
 from typing_extensions import deprecated
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+from faebryk.library.Parameters import test_try_get
 import faebryk.library._F as F
-from faebryk.libs.util import once
+from faebryk.libs.util import not_none, once
 
 
 class is_literal(fabll.Node):
@@ -75,7 +77,7 @@ class is_literal(fabll.Node):
         return super().__eq__(other)
 
     def switch_cast(self) -> "LiteralNodes":
-        types = [Strings, Numbers, Booleans, Enums]
+        types = [Strings, Numbers, Booleans, AbstractEnums]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
             if obj.isinstance(t):
@@ -347,30 +349,128 @@ class Booleans(fabll.Node[LiteralsAttributes]):
     def op_implies(self, other: "Booleans") -> "Booleans": ...
 
 
-class Enums(fabll.Node):
+class EnumValue(fabll.Node):
+    from faebryk.library.Parameters import StringParameter
+
+    name_ = StringParameter.MakeChild()
+    value_ = StringParameter.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name)
+        )
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.value_], value)
+        )
+        return out
+
+    @property
+    def name(self) -> str:
+        return self.name_.get().force_extract_literal().get_values()[0]
+
+    @property
+    def value(self) -> str:
+        return self.value_.get().force_extract_literal().get_values()[0]
+
+
+class AbstractEnums(fabll.Node):
+    from faebryk.library.Literals import is_literal
     from faebryk.library.Parameters import can_be_operand
 
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    _values = F.Collections.PointerSet.MakeChild()
 
-    def setup[T: Enum](self, enum: type[T], *values: T) -> Self:
-        # TODO
+    def get_enum_value(self, enum_member: Enum) -> EnumValue:
+        for enum_value in self.get_children(direct_only=True, types=EnumValue):
+            enum_value_bound = EnumValue.bind_instance(instance=enum_value.instance)
+            if enum_value_bound.name == enum_member.name:
+                return enum_value_bound
+        raise ValueError(f"Enum member {enum_member.name} not found in enum type")
+
+    def setup(self, *enum_values: Enum) -> Self:
+        atype = F.Literals.EnumsFactory(type(enum_values[0]))
+        atype_n = AbstractEnums.bind_instance(
+            atype.bind_typegraph(tg=self.tg).get_or_create_type()
+        )
+        for enum_value in enum_values:
+            self._values.get().append(atype_n.get_enum_value(enum_member=enum_value))
         return self
 
-    @classmethod
-    def MakeChild[T: Enum](cls, enum: type[T], value: T) -> fabll._ChildField[Self]:
-        # TODO: Make this work
-        assert isinstance(value, Enum), "Value of enum literal must be an enum"
-        return fabll._ChildField(cls, attributes=LiteralsAttributes(value=value))
+    def get_values(self) -> list[str]:
+        enum_values = list[str]()
+        values = self._values.get().as_list()
+        for value in values:
+            enum_value = EnumValue.bind_instance(instance=value.instance)
+            enum_values.append(enum_value.value)
 
-    def get_value(self):
-        # TODO
-        pass
+        return enum_values
+
+    def get_all_members(self) -> list[EnumValue]:
+        if (
+            self.get_type_node() is None
+        ):  # TODO better to do if self.try_get_trait(fabll.ImplementsType) is not None
+            return list(self.get_children(direct_only=True, types=EnumValue))
+        else:
+            return list(
+                fabll.Node.bind_instance(
+                    instance=not_none(self.get_type_node())
+                ).get_children(direct_only=True, types=EnumValue)
+            )
+
+    def get_enum_as_dict(self) -> dict[str, str]:
+        return {member.name: member.value for member in self.get_all_members()}
+
+    def get_single_value(self) -> str | None:
+        values = self.get_values()
+        return None if len(values) == 0 else values[0]
+
+    @classmethod
+    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField:
+        atype = F.Literals.EnumsFactory(type(enum_members[0]))
+        cls_n = cast(type[fabll.NodeT], atype)
+        out = fabll._ChildField(cls)
+
+        for value in enum_members:
+            out.add_dependant(
+                F.Collections.PointerSet.MakeEdge(
+                    [out, cls._values],
+                    [cls_n, value.name],
+                )
+            )
+        return out
+
+    @classmethod
+    def MakeChild_ConstrainToLiteral(
+        cls,
+        enum_parameter_ref: fabll.RefPath,
+        *enum_members: Enum,
+    ) -> fabll._ChildField["F.Expressions.Is"]:
+        lit = cls.MakeChild(*enum_members)
+        out = F.Expressions.Is.MakeChild_Constrain([enum_parameter_ref, [lit]])
+        out.add_dependant(lit, identifier="lit", before=True)
+        return out
+
+
+@once
+def EnumsFactory(enum_type: type[Enum]) -> type[AbstractEnums]:
+    ConcreteEnums = fabll.Node._copy_type(AbstractEnums)
+
+    ConcreteEnums.__name__ = f"{enum_type.__name__}"
+
+    for e_val in enum_type:
+        ConcreteEnums._add_field(
+            e_val.name,
+            EnumValue.MakeChild(name=e_val.name, value=e_val.value).put_on_type(),
+        )
+    return ConcreteEnums
 
 
 # --------------------------------------------------------------------------------------
 
-LiteralNodes = Numbers | Booleans | Enums | Strings
+LiteralNodes = Numbers | Booleans | Strings | AbstractEnums
 
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
@@ -387,7 +487,7 @@ def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
                 g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
             )
         case Enum():
-            return Enums.bind_typegraph(tg=tg).create_instance(
+            return AbstractEnums.bind_typegraph(tg=tg).create_instance(
                 g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
             )
         case str():
@@ -398,22 +498,23 @@ def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
 
 # TODO
 def MakeChild_Literal(
-    value: LiteralValues, enum: type[Enum] | None = None
+    value: LiteralValues, enum_type: type[Enum] | None = None
 ) -> (
     fabll._ChildField[Strings]
     | fabll._ChildField[Booleans]
     | fabll._ChildField[Numbers]
-    | fabll._ChildField[Enums]
+    | fabll._ChildField[AbstractEnums]
 ):
     match value:
         case bool():
             return Booleans.MakeChild(value=value)
         case float() | int():
+            value = float(value)
             return Numbers.MakeChild(value=value)
         case Enum():
-            if enum is None:
+            if enum_type is None:
                 raise ValueError("Enum must be provided when creating an enum literal")
-            return Enums.MakeChild(enum=enum, value=value)
+            return AbstractEnums.MakeChild(*enum_type)
         case str():
             return Strings.MakeChild(value)
 

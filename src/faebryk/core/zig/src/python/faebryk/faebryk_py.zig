@@ -3251,7 +3251,10 @@ fn wrap_typegraph_reference_resolve() type {
                 kwarg_obj.base_node.*,
             );
 
-            return graph_py.makeBoundNodePyObject(resolved);
+            if (resolved) |node| {
+                return graph_py.makeBoundNodePyObject(node);
+            }
+            return py.Py_None();
         }
     };
 }
@@ -3292,10 +3295,7 @@ fn wrap_typegraph_get_type_by_name() type {
 
             const identifier = bind.unwrap_str(kwarg_obj.type_identifier) orelse return null;
 
-            const bnode = faebryk.typegraph.TypeGraph.get_type_by_name(wrapper.data, identifier) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "get_type_by_name failed");
-                return null;
-            };
+            const bnode = faebryk.typegraph.TypeGraph.get_type_by_name(wrapper.data, identifier);
             if (bnode == null) {
                 return py.Py_None();
             }

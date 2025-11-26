@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import Enum, auto
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -14,13 +14,13 @@ class Fuse(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    class FuseType(Enum):
-        NON_RESETTABLE = auto()
-        RESETTABLE = auto()
+    class FuseType(StrEnum):
+        NON_RESETTABLE = "NON_RESETTABLE"
+        RESETTABLE = "RESETTABLE"
 
-    class ResponseType(Enum):
-        SLOW = auto()
-        FAST = auto()
+    class ResponseType(StrEnum):
+        SLOW = "SLOW"
+        FAST = "FAST"
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -33,9 +33,7 @@ class Fuse(fabll.Node):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    _is_module = fabll.Traits.MakeEdge(
-        fabll.is_module.MakeChild()
-    )
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     _can_attach = fabll.Traits.MakeEdge(
         F.can_attach_to_footprint_symmetrically.MakeChild()
@@ -46,9 +44,7 @@ class Fuse(fabll.Node):
     )
 
     designator_prefix = fabll.Traits.MakeEdge(
-        F.has_designator_prefix.MakeChild(
-            F.has_designator_prefix.Prefix.F
-        )
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.F)
     )
 
     S = F.has_simple_value_representation.Spec

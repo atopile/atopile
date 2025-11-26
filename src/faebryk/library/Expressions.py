@@ -2213,7 +2213,7 @@ class Is(fabll.Node):
         for operand in operands:
             # TODO: relying on a string identifier to connect to the correct
             # trait is nasty
-            operand.append("_can_be_operand")
+            operand = [*operand, "_can_be_operand"]
             out.add_dependant(
                 OperandSet.MakeEdge([out, cls.operands], operand),
                 identifier="connect_operands",

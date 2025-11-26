@@ -65,7 +65,7 @@ def _is_trait(node_type_bound: fabll.TypeNodeBoundTG) -> bool:
         )
     ],
 )
-def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
+def test_instantiate_libary_modules(name: str, module: type[fabll.Node]):
     """Verify that library modules can be successfully instantiated.
 
     This test attempts to instantiate all library modules that:
@@ -76,6 +76,7 @@ def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     try:
+        print(module.__name__)
         instance = module.bind_typegraph(tg=tg).create_instance(g=g)
         assert not _is_trait(module.bind_typegraph(tg=tg)), (
             f"Module {module.__name__} is a trait"
@@ -88,3 +89,7 @@ def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
         pytest.xfail(f"{module.__name__} needs arguments to be instantiated")
     except Exception as e:
         pytest.fail(f"Failed to instantiate module {module.__name__}: {e}")
+
+
+if __name__ == "__main__":
+    test_instantiate_libary_modules("Resistor", F.Resistor)

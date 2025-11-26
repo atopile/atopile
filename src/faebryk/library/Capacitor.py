@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import Enum, auto
+from enum import StrEnum, auto
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -14,15 +14,15 @@ class Capacitor(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    class TemperatureCoefficient(Enum):
-        Y5V = auto()
-        Z5U = auto()
-        X7S = auto()
-        X5R = auto()
-        X6R = auto()
-        X7R = auto()
-        X8R = auto()
-        C0G = auto()
+    class TemperatureCoefficient(StrEnum):
+        Y5V = "Y5V"
+        Z5U = "Z5U"
+        X7S = "X7S"
+        X5R = "X5R"
+        X6R = "X6R"
+        X7R = "X7R"
+        X8R = "X8R"
+        C0G = "C0G"
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -30,10 +30,9 @@ class Capacitor(fabll.Node):
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
     capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
     max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    # TODO: Use temperature coefficient
-    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
-    #     enum_t=TemperatureCoefficient
-    # )
+    temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
+        enum_t=TemperatureCoefficient
+    )
 
     # ----------------------------------------
     #                 traits
@@ -82,4 +81,4 @@ class Capacitor(fabll.Node):
             electrical1 ~> capacitor ~> electrical2
         """,
         F.has_usage_example.Language.ato,
-    )
+    ).put_on_type()

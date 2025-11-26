@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -10,6 +11,16 @@ logger = logging.getLogger(__name__)
 
 
 class CapacitorElectrolytic(fabll.Node):
+    class TemperatureCoefficient(StrEnum):
+        Y5V = "Y5V"
+        Z5U = "Z5U"
+        X7S = "X7S"
+        X5R = "X5R"
+        X6R = "X6R"
+        X7R = "X7R"
+        X8R = "X8R"
+        C0G = "C0G"
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -24,9 +35,9 @@ class CapacitorElectrolytic(fabll.Node):
 
     capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
     max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    # temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
-    #     enum_t=TemperatureCoefficient
-    # )
+    temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
+        enum_t=TemperatureCoefficient
+    )
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(

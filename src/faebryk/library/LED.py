@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 
-from enum import Enum, auto
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -12,35 +12,35 @@ class LED(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    class Color(Enum):
+    class Color(StrEnum):
         # Primary Colors
-        RED = auto()
-        GREEN = auto()
-        BLUE = auto()
+        RED = "RED"
+        GREEN = "GREEN"
+        BLUE = "BLUE"
 
         # Secondary and Mixed Colors
-        YELLOW = auto()
-        ORANGE = auto()
-        PURPLE = auto()
-        CYAN = auto()
-        MAGENTA = auto()
+        YELLOW = "YELLOW"
+        ORANGE = "ORANGE"
+        PURPLE = "PURPLE"
+        CYAN = "CYAN"
+        MAGENTA = "MAGENTA"
 
         # Shades of White
-        WHITE = auto()
-        WARM_WHITE = auto()
-        COLD_WHITE = auto()
-        NATURAL_WHITE = auto()
+        WHITE = "WHITE"
+        WARM_WHITE = "WARM_WHITE"
+        COLD_WHITE = "COLD_WHITE"
+        NATURAL_WHITE = "NATURAL_WHITE"
 
         # Other Colors
-        EMERALD = auto()
-        AMBER = auto()
-        PINK = auto()
-        LIME = auto()
-        VIOLET = auto()
+        EMERALD = "EMERALD"
+        AMBER = "AMBER"
+        PINK = "PINK"
+        LIME = "LIME"
+        VIOLET = "VIOLET"
 
         # Specific LED Colors
-        ULTRA_VIOLET = auto()
-        INFRA_RED = auto()
+        ULTRA_VIOLET = "ULTRA_VIOLET"
+        INFRA_RED = "INFRA_RED"
 
     # ----------------------------------------
     #     modules, interfaces, parameters
