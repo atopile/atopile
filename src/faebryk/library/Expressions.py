@@ -114,14 +114,12 @@ class is_expression(fabll.Node):
         )
 
     def get_repr_style(self) -> ReprStyle:
-        placement = is_expression.ReprStyle.Placement[
-            not_none(
-                self.repr_placement.get()
-                .deref()
-                .cast(type(self)._repr_enum)
-                .get_single_value()
-            )
-        ]
+        placement = not_none(
+            self.repr_placement.get()
+            .deref()
+            .cast(type(self)._repr_enum)
+            .get_single_value_typed(is_expression.ReprStyle.Placement)
+        )
         symbol = not_none(
             self.repr_symbol.get().deref().cast(F.Literals.Strings)
         ).get_values()[0]
@@ -200,12 +198,7 @@ class is_expression(fabll.Node):
         if context is None:
             context = Parameters.ReprContext()
 
-        # TODO
         style = self.get_repr_style()
-        # style = is_expression.ReprStyle(
-        #    symbol=fabll.Traits(self).get_obj_raw().get_type_name(),
-        #    placement=is_expression.ReprStyle.Placement.PREFIX,
-        # )
         symbol = style.symbol
         if symbol is None:
             symbol = type(self).__name__
@@ -2295,7 +2288,22 @@ def test_repr_style():
     assert or_repr.symbol == "∨"
 
 
+def test_compact_repr():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    p1 = Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p2 = Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    or_ = Or.c(
+        p1.get_trait(Parameters.can_be_operand),
+        p2.get_trait(Parameters.can_be_operand),
+        assert_=True,
+    )
+    or_repr = or_.get_sibling_trait(is_expression).compact_repr()
+    assert or_repr == "A ∨! B"
+
+
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_repr_style)
+    typer.run(test_compact_repr)

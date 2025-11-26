@@ -529,6 +529,19 @@ class DefaultSolver(Solver):
 # Tests --------------------------------------------------------------------------------
 
 
+def test_defaultsolver_super_basic():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    import faebryk.library._F as FT
+
+    P = FT.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    P.alias_to_single(True)
+    solver = DefaultSolver()
+    res = solver.simplify_symbolically(tg, g, terminal=True)
+    print(res)
+
+
 def test_defaultsolver_basic():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -565,4 +578,4 @@ if __name__ == "__main__":
     setup_basic_logging()
     logger.setLevel(logging.DEBUG)
 
-    typer.run(test_defaultsolver_basic)
+    typer.run(test_defaultsolver_super_basic)

@@ -4,12 +4,11 @@ import logging
 from typing import cast
 
 import pytest
-from shapely import force_2d
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import not_none, times
+from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 

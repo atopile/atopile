@@ -432,6 +432,13 @@ class AbstractEnums(fabll.Node):
 
         return enum_values
 
+    def get_values_typed[T: Enum](self, EnumType: type[T]) -> list[T]:
+        return [EnumType(value) for value in self.get_values()]
+
+    def get_single_value_typed[T: Enum](self, EnumType: type[T]) -> T | None:
+        values = self.get_values()
+        return None if len(values) == 0 else EnumType(values[0])
+
     def get_all_members(self) -> list[EnumValue]:
         if (
             self.get_type_node() is None
