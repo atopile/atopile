@@ -48,7 +48,6 @@ dependencies = [
     "numpy>=2.2.0",
     "ordered-set==4.1.0",
     "pathvalidate>=3.2.1",
-    "pint>=0.24.4",
     "platformdirs>=4.3.6",
     "posthog==6.0.3",                 # exact version
     "prompt-toolkit==3.0.51",         # pinned to avoid questionary compatibility issues
