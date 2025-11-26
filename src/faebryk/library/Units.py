@@ -250,6 +250,59 @@ class HasUnit(fabll.Node):
         return self.unit.get().deref().get_trait(IsUnit)
 
 
+UnitVectorT = list[tuple[type[fabll.Node], int]]
+
+
+def make_unit_expression_type(unit_vector: UnitVectorT) -> type[fabll.Node]:
+    from faebryk.library.Expressions import Multiply, Power
+
+    class UnitExpression(fabll.Node):
+        expr = F.Collections.Pointer.MakeChild()
+
+        @classmethod
+        def MakeChild(cls, *units: type[fabll.Node]) -> fabll._ChildField[Self]:  # type: ignore
+            out = fabll._ChildField(cls)
+            term_fields = []
+
+            for unit, exponent in unit_vector:
+                unit_field = unit.MakeChild()
+                out.add_dependant(unit_field)
+
+                exponent_field = (
+                    F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
+                        integer=True
+                    )
+                )
+                out.add_dependant(exponent_field)
+                exponent_lit = F.Literals.Numbers.MakeChild(value=float(exponent))
+                exponent_is_expr = F.Expressions.Is.MakeChild_Constrain(
+                    [[exponent_field], [exponent_lit]]
+                )
+                exponent_is_expr.add_dependant(
+                    exponent_lit, identifier="lit", before=True
+                )
+                out.add_dependant(exponent_is_expr)
+
+                term_field = Power.MakeChild_FromOperands(unit_field, exponent_field)
+                out.add_dependant(term_field)
+                term_fields.append(term_field)
+
+            expr_field = Multiply.MakeChild_FromOperands(*term_fields)
+            out.add_dependant(expr_field)
+            out.add_dependant(
+                F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field])
+            )
+
+            return out
+
+    unit_vector_str = "".join(
+        f"{unit.__name__}^{exponent}" for unit, exponent in unit_vector
+    )
+    UnitExpression.__name__ = f"UnitExpression<{unit_vector_str}>"
+
+    return UnitExpression
+
+
 class _UnitRegistry(Enum):
     # TODO: check all IsUnits in design for symbol conflicts
 
@@ -712,3 +765,10 @@ class AmpereHour(fabll.Node):
 
 # Logarithmic units --------------------------------------------------------------------
 # TODO: logarithmic units
+
+
+# Unit expressions ---------------------------------------------------------------------
+
+# Covers compound unit expressions used elsewhere in the stdlib
+
+VoltsPerSecond = make_unit_expression_type([(Volt, 1), (Second, -1)])

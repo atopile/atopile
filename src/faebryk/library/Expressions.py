@@ -503,6 +503,18 @@ class Multiply(fabll.Node):
 
     operands = OperandSet.MakeChild()
 
+    @classmethod
+    def MakeChild_FromOperands(
+        cls, *operand_fields: fabll._ChildField
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+
+        for operand_field in operand_fields:
+            # TODO: to can_be_operand?
+            out.add_dependant(OperandSet.MakeEdge([out, cls.operands], [operand_field]))
+
+        return out
+
     def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
@@ -636,6 +648,15 @@ class Power(fabll.Node):
 
     base = OperandPointer.MakeChild()
     exponent = OperandPointer.MakeChild()
+
+    @classmethod
+    def MakeChild_FromOperands(
+        cls, base: fabll._ChildField, exponent: fabll._ChildField
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.base], [base]))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.exponent], [exponent]))
+        return out
 
     def setup(
         self,
