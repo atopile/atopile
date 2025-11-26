@@ -2280,3 +2280,22 @@ class Is(fabll.Node):
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(*operands, g=g, assert_=assert_))
+
+
+# Tests --------------------------------------------------------------------------------
+
+
+def test_repr_style():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    or_ = Or.bind_typegraph(tg=tg).create_instance(g=g)
+
+    or_repr = or_.get_trait(is_expression).get_repr_style()
+    assert or_repr.placement == is_expression.ReprStyle.Placement.INFIX
+    assert or_repr.symbol == "∨"
+
+
+if __name__ == "__main__":
+    import typer
+
+    typer.run(test_repr_style)

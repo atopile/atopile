@@ -682,3 +682,39 @@ def test_string_literal_alias_to_literal():
     )
     assert lit
     assert lit.get_values() == values
+
+
+def test_enums():
+    """
+    Tests carried over from enum_sets.py
+    """
+    from enum import Enum
+
+    import faebryk.library._F as F
+    from faebryk.core.node import _make_graph_and_typegraph
+
+    g, tg = _make_graph_and_typegraph()
+
+    class MyEnum(Enum):
+        A = "a"
+        B = "b"
+        C = "c"
+        D = "d"
+
+    EnumT = F.Literals.EnumsFactory(MyEnum)
+    enum_lit = (
+        EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum.A, MyEnum.D)
+    )
+
+    elements = enum_lit.get_all_members()
+    assert len(elements) == 4
+    assert elements[0].name == "A"
+    assert elements[0].value == MyEnum.A.value
+    assert elements[1].name == "B"
+    assert elements[1].value == MyEnum.B.value
+    assert elements[2].name == "C"
+    assert elements[2].value == MyEnum.C.value
+    assert elements[3].name == "D"
+    assert elements[3].value == MyEnum.D.value
+
+    assert enum_lit.get_values() == ["a", "d"]
