@@ -727,3 +727,12 @@ def test_enums():
     assert elements[3].value == MyEnum.D.value
 
     assert enum_lit.get_values() == ["a", "d"]
+
+def test_make_lit():
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+    assert make_lit(tg, value=True).get_values() == [True]
+    assert make_lit(tg, value=3).get_values() == [3]
+    assert make_lit(tg, value="test").get_values() == ["test"]

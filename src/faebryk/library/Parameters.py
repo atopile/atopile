@@ -808,7 +808,7 @@ def test_boolean_param():
 
     boolean_p = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True, g=g)
-    assert boolean_p.force_extract_literal().get_value()
+    assert boolean_p.force_extract_literal().get_values()[0] == True
 
     class ExampleBooleanParameter(fabll.Node):
         boolean_p_tg = BooleanParameter.MakeChild()
@@ -817,4 +817,4 @@ def test_boolean_param():
         )
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert ebp.boolean_p_tg.get().force_extract_literal().get_value()
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0] == True

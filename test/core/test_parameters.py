@@ -137,17 +137,6 @@ def test_expression_congruence_not():
     assert x.is_congruent_to(Is(A, EnumSet(F.LED.Color.EMERALD)))
     assert Not(x).is_congruent_to(Not(x))
 
-
-def test_make_lit():
-    import faebryk.library._F as F
-
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    assert F.Literals.make_lit(tg, value=True).get_value()
-    assert F.Literals.make_lit(tg, value=3).get_value() == 3
-    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
-
-
 if __name__ == "__main__":
     # test_enums()
     test_enum_param()

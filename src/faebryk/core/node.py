@@ -2150,15 +2150,6 @@ def test_boolean_param():
     assert ebp.boolean_p_tg.get().force_extract_literal().get_values()
 
 
-def test_make_lit():
-    import faebryk.library._F as F
-
-    g, tg = _make_graph_and_typegraph()
-    assert F.Literals.make_lit(tg, value=True).get_values() == [True]
-    assert F.Literals.make_lit(tg, value=3).get_values() == [3]
-    assert F.Literals.make_lit(tg, value="test").get_values() == ["test"]
-
-
 def test_kicad_footprint():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
