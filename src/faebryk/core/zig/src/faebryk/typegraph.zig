@@ -397,15 +397,16 @@ pub const TypeGraph = struct {
         return type_node;
     }
 
-    pub fn add_trait(self: *@This()) !BoundNodeReference {
-        const trait = self.get_g().create_and_insert_node();
+    // TODO this should live in zig fabll
+    //pub fn add_trait_type(self: *@This(), identifier: str) !BoundNodeReference {
+    //    const trait_type = try self.add_type(identifier);
 
-        // Add trait trait
-        const implements_trait_instance_node = try self.instantiate_node(self.get_ImplementsTrait());
-        _ = EdgeType.add_instance(trait, implements_trait_instance_node);
+    //    // Add trait trait
+    //    const implements_trait_instance_node = try self.instantiate_node(self.get_ImplementsTrait());
+    //    _ = EdgeType.add_instance(trait_type, implements_trait_instance_node);
 
-        return trait;
-    }
+    //    return trait_type;
+    //}
 
     pub fn add_make_child(
         self: *@This(),
@@ -929,8 +930,8 @@ test "get_type_subgraph" {
     var tg = TypeGraph.init(&g);
 
     // Build type graph
-    const implements_trait_instance = try tg.add_trait();
     const SomeTrait = try tg.add_type("SomeTrait");
+    const implements_trait_instance = try tg.instantiate_node(tg.get_ImplementsTrait());
     _ = EdgeTrait.add_trait_instance(SomeTrait, implements_trait_instance.node);
     const Electrical = try tg.add_type("Electrical");
     _ = try tg.add_make_child(Electrical, SomeTrait, "trait", null);
@@ -978,13 +979,5 @@ test "get_type_subgraph" {
     // Nodes NOT in type subgraph:
     // - cap, p1, p2 (instance nodes)
     // - trait on p1, trait on p2
-    const overview = tg.get_type_instance_overview(a);
-    defer overview.deinit();
-    // TODO remove
-    std.debug.print("\nType instance overview:\n", .{});
-    for (overview.items) |item| {
-        std.debug.print("  {s}: {d} instances\n", .{ item.type_name, item.instance_count });
-    }
-
     try std.testing.expectEqual(5, g_count - type_subgraph_count);
 }
