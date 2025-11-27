@@ -1237,16 +1237,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         Copy all nodes in hierarchy and edges between them and their types
         """
-
-        # t_sg = self.tg.get_type_subgraph()
-        # g.insert_subgraph(subgraph=t_sg)
-
-        ## TODO copy or handle pointers from nodes to the outside
-        # children = self.get_children(direct_only=False, include_root=True, types=Node)
-        # children_nodes = [c.instance for c in children] + t_sg.get_nodes()
-        # g_sub = self.g().get_subgraph_from_nodes(nodes=children_nodes)
-        # g.insert_subgraph(subgraph=g_sub)
-        # return self.bind_instance(instance=g.bind(node=self.instance.node()))
         g_sub = fbrk.TypeGraph.get_subgraph_of_node(start_node=self.instance)
         g.insert_subgraph(subgraph=g_sub)
         return self.bind_instance(instance=g.bind(node=self.instance.node()))
@@ -1258,11 +1248,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if not parent_node.no_include_parents_in_full_name:
                 if (parent_full := parent_node.get_full_name(types=False)) is not None:
                     parts.append(parent_full)
-            parts.append(name)
+            parts.append(name or self.get_root_id())
         elif not self.no_include_parents_in_full_name:
             parts.append(self.get_root_id())
 
-        base = ".".join(filter(None, parts))
+        base = ".".join(parts)
         if types:
             type_name = self.get_type_name() or "<NOTYPE>"
             return f"{base}|{type_name}" if base else type_name
@@ -2374,9 +2364,15 @@ def test_copy_into_basic():
     class N(Node):
         inner = Inner.MakeChild()
 
-    n = N.bind_typegraph(tg).create_instance(g=g)
-    m = N.bind_typegraph(tg).create_instance(g=g)
-    o = N.bind_typegraph(tg).create_instance(g=g)
+    class Outer(Node):
+        n = N.MakeChild()
+        m = N.MakeChild()
+        o = N.MakeChild()
+
+    outer = Outer.bind_typegraph(tg).create_instance(g=g)
+    m = outer.m.get()
+    n = outer.n.get()
+    o = outer.o.get()
     m.connect(to=n, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
     n.connect(to=o, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
 
@@ -2384,6 +2380,41 @@ def test_copy_into_basic():
     assert fbrk.EdgePointer.get_referenced_node_from_node(node=m.instance) == n.instance
 
     n2 = n.copy_into(g=g_new)
+
+    tg_new = fbrk.TypeGraph.of_instance(instance_node=n2.instance)
+    assert tg_new is not None
+    print(
+        "tg:",
+        indented_container(
+            dict(sorted(tg.get_type_instance_overview(), key=lambda x: x[0]))
+        ),
+    )
+    print(
+        "tg_new:",
+        indented_container(
+            dict(sorted(tg_new.get_type_instance_overview(), key=lambda x: x[0]))
+        ),
+    )
+
+    def _get_name(n: graph.BoundNode) -> str:
+        f = fabll.Node.bind_instance(instance=n)
+        return repr(f)
+
+    def _container(ns: Iterable[fabll.Node]) -> str:
+        return indented_container(
+            sorted(ns, key=lambda x: repr(x)), compress_large=1000
+        )
+
+    g_nodes = {fabll.Node.bind_instance(instance=n) for n in g.get_nodes()}
+    g_new_nodes = {fabll.Node.bind_instance(instance=n) for n in g_new.get_nodes()}
+    g_diff_new = g_new_nodes - g_nodes
+    # tg.self & g_new.self
+    assert len(g_diff_new) == 2, f"g_diff_new: {_container(g_diff_new)}"
+
+    print("g", _container(g_nodes))
+    print("g_new", _container(g_new_nodes))
+    print("g_diff", _container(g_nodes - g_new_nodes))
+    print("g_diff_new", _container(g_diff_new))
 
     assert n2.is_same(n)
     assert n2 is not n
