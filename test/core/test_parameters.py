@@ -20,10 +20,10 @@ def test_new_definitions():
     parameters = F.Parameters.BoundParameterContext(tg, g)
     number_domain = F.NumberDomain.BoundNumberDomainContext(tg, g)
 
-    parameters.create_numeric_parameter(
+    parameters.NumericParameter.setup(
         units=F.Units.Ohm,
         domain=number_domain.create_number_domain(negative=False),
-        soft_set=literals.create_numbers_from_interval(
+        soft_set=literals.Numbers.setup_from_interval(
             1, 10e6, F.Units.Ohm
         ),
         likely_constrained=True,
@@ -88,9 +88,9 @@ def test_expression_congruence():
     tg = fbrk.TypeGraph.create(g=g)
     parameters = F.Parameters.BoundParameterContext(tg, g)
 
-    p1 = parameters.create_numeric_parameter()
-    p2 = parameters.create_numeric_parameter()
-    p3 = parameters.create_numeric_parameter()
+    p1 = parameters.NumericParameter
+    p2 = parameters.NumericParameter
+    p3 = parameters.NumericParameter
 
     assert (
         F.Expressions.Add.bind_typegraph(tg)

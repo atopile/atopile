@@ -8,7 +8,7 @@ import faebryk.core.node as fabll
 
 # import faebryk.enum_sets as enum_sets
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
+from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
     import faebryk.library.Expressions as Expressions
@@ -629,62 +629,39 @@ class NumericParameter(fabll.Node):
 
 
 class BoundParameterContext:
+    """
+    Convenience context for binding parameter types and creating instances.
+
+    Usage:
+        ctx = BoundParameterContext(tg=tg, g=g)
+        my_param = ctx.NumericParameter.setup(units=F.Units.Ohm)
+    """
+
     def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
+        self._bound: dict = {}
+
+    def _get_bound(self, cls: type):
+        if cls not in self._bound:
+            self._bound[cls] = cls.bind_typegraph(tg=self.tg)
+        return self._bound[cls]
 
     @property
-    @once
-    def StringParameter(self):
-        return StringParameter.bind_typegraph(tg=self.tg)
+    def StringParameter(self) -> StringParameter:
+        return self._get_bound(StringParameter).create_instance(g=self.g)
 
     @property
-    @once
-    def BooleanParameter(self):
-        return BooleanParameter.bind_typegraph(tg=self.tg)
+    def BooleanParameter(self) -> BooleanParameter:
+        return self._get_bound(BooleanParameter).create_instance(g=self.g)
 
     @property
-    @once
-    def EnumParameter(self):
-        return EnumParameter.bind_typegraph(tg=self.tg)
+    def EnumParameter(self) -> EnumParameter:
+        return self._get_bound(EnumParameter).create_instance(g=self.g)
 
     @property
-    @once
-    def NumericParameter(self):
-        return NumericParameter.bind_typegraph(tg=self.tg)
-
-    def create_string_parameter(self, value: str) -> "StringParameter":
-        return self.StringParameter.create_instance(g=self.g).alias_to_single(
-            value=value, g=self.g
-        )
-
-    def create_boolean_parameter(self, value: bool) -> "BooleanParameter":
-        return self.BooleanParameter.create_instance(g=self.g).alias_to_single(
-            value=value, g=self.g
-        )
-
-    def create_enum_parameter(self, enum: type[Enum]) -> "EnumParameter":
-        return self.EnumParameter.create_instance(g=self.g).setup(enum=enum)
-
-    def create_numeric_parameter(
-        self,
-        units: "Units.IsUnit | None" = None,
-        within: "Literals.Numbers | None" = None,
-        domain: "NumberDomain | None" = None,
-        soft_set: "Literals.Numbers | None" = None,
-        guess: "Literals.Numbers | None" = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool = False,
-    ) -> "NumericParameter":
-        return self.NumericParameter.create_instance(g=self.g).setup(
-            units=units,
-            within=within,
-            domain=domain,
-            soft_set=soft_set,
-            guess=guess,
-            tolerance_guess=tolerance_guess,
-            likely_constrained=likely_constrained,
-        )
+    def NumericParameter(self) -> NumericParameter:
+        return self._get_bound(NumericParameter).create_instance(g=self.g)
 
 
 # Tests --------------------------------------------------------------------------------

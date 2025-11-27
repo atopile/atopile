@@ -2121,8 +2121,9 @@ def test_resistor_instantiation():
 def test_string_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
+    ctx = F.Parameters.BoundParameterContext(tg=tg, g=g)
 
-    string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    string_p = ctx.StringParameter
     string_p.alias_to_single(value="IG constrained")
     assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
 
@@ -2142,6 +2143,7 @@ def test_string_param():
 def test_boolean_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
+    
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True)

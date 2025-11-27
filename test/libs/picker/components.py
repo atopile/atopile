@@ -49,7 +49,7 @@ mfr_parts = [
             .create_instance(g=_g)
             .setup(
                 r.bandwidth.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e6, F.Units.Hertz)
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -59,7 +59,7 @@ mfr_parts = [
             .setup(
                 r.common_mode_rejection_ratio.get()
                 .get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(50, F.Units.Decibel)
+                _literals.Numbers.setup_from_singleton(50, F.Units.Decibel)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -68,7 +68,7 @@ mfr_parts = [
             .create_instance(g=_g)
             .setup(
                 r.input_bias_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e-9, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(1e-9, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -77,7 +77,7 @@ mfr_parts = [
             .create_instance(g=_g)
             .setup(
                 r.input_offset_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e-3, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -86,7 +86,7 @@ mfr_parts = [
             .create_instance(g=_g)
             .setup(
                 r.gain_bandwidth_product.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e6, F.Units.Hertz)
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -95,7 +95,7 @@ mfr_parts = [
             .create_instance(g=_g)
             .setup(
                 r.output_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e-3, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -104,7 +104,7 @@ mfr_parts = [
             .create_instance(g=_g)
             .setup(
                 r.slew_rate.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e6, F.Units.VoltsPerSecond)
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.VoltsPerSecond)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -124,7 +124,7 @@ lcsc_id_parts = [
             .create_instance(g=_g)
             .setup(
                 r.bandwidth.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e6, F.Units.Hertz)
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -134,7 +134,7 @@ lcsc_id_parts = [
             .setup(
                 r.common_mode_rejection_ratio.get()
                 .get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(50, F.Units.Decibel)
+                _literals.Numbers.setup_from_singleton(50, F.Units.Decibel)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -143,7 +143,7 @@ lcsc_id_parts = [
             .create_instance(g=_g)
             .setup(
                 r.input_bias_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e-9, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(1e-9, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -152,7 +152,7 @@ lcsc_id_parts = [
             .create_instance(g=_g)
             .setup(
                 r.input_offset_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e-3, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -161,7 +161,7 @@ lcsc_id_parts = [
             .create_instance(g=_g)
             .setup(
                 r.gain_bandwidth_product.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e6, F.Units.Hertz)
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -170,7 +170,7 @@ lcsc_id_parts = [
             .create_instance(g=_g)
             .setup(
                 r.output_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e-3, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -179,7 +179,7 @@ lcsc_id_parts = [
             .create_instance(g=_g)
             .setup(
                 r.slew_rate.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1e6, F.Units.VoltsPerSecond)
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.VoltsPerSecond)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -196,7 +196,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.resistance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(9e3, 11e3, F.Units.Ohm)
+                _literals.Numbers.setup_from_interval(9e3, 11e3, F.Units.Ohm)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -204,7 +204,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.max_power.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(0.05, F.Units.Watt)
+                _literals.Numbers.setup_from_singleton(0.05, F.Units.Watt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -212,7 +212,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.max_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(25, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(25, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -226,7 +226,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.resistance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(67e3, 71e3, F.Units.Ohm)
+                _literals.Numbers.setup_from_interval(67e3, 71e3, F.Units.Ohm)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -234,7 +234,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.max_power.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(0.1, F.Units.Watt)
+                _literals.Numbers.setup_from_singleton(0.1, F.Units.Watt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -242,7 +242,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.max_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(50, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(50, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -256,7 +256,7 @@ resistors = [
             .create_instance(g=_g)
             .setup(
                 r.resistance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(
+                _literals.Numbers.setup_from_interval(
                     3e-3 * 0.99, 3e-3 * 1.01, F.Units.Ohm
                 ).get_trait(F.Parameters.can_be_operand),
                 assert_=True,
@@ -274,7 +274,7 @@ capacitors = [
             .create_instance(g=_g)
             .setup(
                 c.capacitance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(90e-9, 110e-9, F.Units.Farad)
+                _literals.Numbers.setup_from_interval(90e-9, 110e-9, F.Units.Farad)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -282,7 +282,7 @@ capacitors = [
             .create_instance(g=_g)
             .setup(
                 c.max_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(25, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(25, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -297,7 +297,7 @@ capacitors = [
             .create_instance(g=_g)
             .setup(
                 c.capacitance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(
+                _literals.Numbers.setup_from_interval(
                     42.3e-12, 51.7e-12, F.Units.Farad
                 ).get_trait(F.Parameters.can_be_operand),
                 assert_=True,
@@ -306,7 +306,7 @@ capacitors = [
             .create_instance(g=_g)
             .setup(
                 c.max_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(50, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(50, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -324,7 +324,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.inductance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(8e-6, 12e-6, F.Units.Henry)
+                _literals.Numbers.setup_from_interval(8e-6, 12e-6, F.Units.Henry)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -333,7 +333,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.max_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(0.05, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(0.05, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -342,7 +342,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.dc_resistance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1.17, F.Units.Ohm)
+                _literals.Numbers.setup_from_singleton(1.17, F.Units.Ohm)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -351,7 +351,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.self_resonant_frequency.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(30e6, F.Units.Hertz)
+                _literals.Numbers.setup_from_singleton(30e6, F.Units.Hertz)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -365,7 +365,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.inductance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(24.3e-6, 29.7e-6, F.Units.Henry)
+                _literals.Numbers.setup_from_interval(24.3e-6, 29.7e-6, F.Units.Henry)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -374,7 +374,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.max_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(0.06, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(0.06, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -383,7 +383,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.dc_resistance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(10.7, F.Units.Ohm)
+                _literals.Numbers.setup_from_singleton(10.7, F.Units.Ohm)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -392,7 +392,7 @@ inductors = [
             .create_instance(g=_g)
             .setup(
                 i.self_resonant_frequency.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(17e6, F.Units.Hertz)
+                _literals.Numbers.setup_from_singleton(17e6, F.Units.Hertz)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -411,7 +411,7 @@ mosfets = [
             .setup(
                 m.gate_source_threshold_voltage.get()
                 .get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_interval(-2.6, 3.4, F.Units.Volt)
+                _literals.Numbers.setup_from_interval(-2.6, 3.4, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -421,7 +421,7 @@ mosfets = [
             .setup(
                 m.max_drain_source_voltage.get()
                 .get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(20, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(20, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -431,7 +431,7 @@ mosfets = [
             .setup(
                 m.max_continuous_drain_current.get()
                 .get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(2, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(2, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -440,7 +440,7 @@ mosfets = [
             .create_instance(g=_g)
             .setup(
                 m.on_resistance.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(0.1, F.Units.Ohm)
+                _literals.Numbers.setup_from_singleton(0.1, F.Units.Ohm)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -458,7 +458,7 @@ diodes = [
             .create_instance(g=_g)
             .setup(
                 d.current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(1, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -467,7 +467,7 @@ diodes = [
             .create_instance(g=_g)
             .setup(
                 d.forward_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1.7, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(1.7, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -476,7 +476,7 @@ diodes = [
             .create_instance(g=_g)
             .setup(
                 d.reverse_working_voltage.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(20, F.Units.Volt)
+                _literals.Numbers.setup_from_singleton(20, F.Units.Volt)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -485,7 +485,7 @@ diodes = [
             .create_instance(g=_g)
             .setup(
                 d.reverse_leakage_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(100e-6, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(100e-6, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -494,7 +494,7 @@ diodes = [
             .create_instance(g=_g)
             .setup(
                 d.max_current.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(1, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(1, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -512,7 +512,7 @@ leds = [
             .create_instance(g=_g)
             .setup(
                 led.max_brightness.get().get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(100e-3, F.Units.Candela)
+                _literals.Numbers.setup_from_singleton(100e-3, F.Units.Candela)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),
@@ -522,7 +522,7 @@ leds = [
                 led.diode.get()
                 .max_current.get()
                 .get_trait(F.Parameters.can_be_operand),
-                _literals.create_numbers_from_singleton(20e-3, F.Units.Ampere)
+                _literals.Numbers.setup_from_singleton(20e-3, F.Units.Ampere)
                 .get_trait(F.Parameters.can_be_operand),
                 assert_=True,
             ),

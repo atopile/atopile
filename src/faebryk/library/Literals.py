@@ -560,55 +560,39 @@ def MakeChild_Literal(
 
 
 class BoundLiteralContext:
+    """
+    Convenience context for binding types and creating instances within a graph.
+
+    Usage:
+        ctx = BoundLiteralContext(tg=tg, g=g)
+        my_number = ctx.Numbers.setup_from_singleton(value=1.0)
+    """
+
     def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
+        self._bound: dict = {}
+
+    def _get_bound(self, cls: type):
+        if cls not in self._bound:
+            self._bound[cls] = cls.bind_typegraph(tg=self.tg)
+        return self._bound[cls]
 
     @property
-    @once
-    def Numbers(self):
-        return Numbers.bind_typegraph(tg=self.tg)
+    def Numbers(self) -> Numbers:
+        return self._get_bound(Numbers).create_instance(g=self.g)
 
     @property
-    @once
-    def Booleans(self):
-        return Booleans.bind_typegraph(tg=self.tg)
+    def Booleans(self) -> Booleans:
+        return self._get_bound(Booleans).create_instance(g=self.g)
 
     @property
-    @once
-    def Enums(self):
-        return Enums.bind_typegraph(tg=self.tg)
+    def Strings(self) -> Strings:
+        return self._get_bound(Strings).create_instance(g=self.g)
 
     @property
-    @once
-    def Strings(self):
-        return Strings.bind_typegraph(tg=self.tg)
-
-    def create_numbers(self) -> "Numbers":
-        return self.Numbers.create_instance(g=self.g)
-
-    def create_booleans(self) -> "Booleans":
-        return self.Booleans.create_instance(g=self.g)
-
-    def create_enums(self) -> "Enums":
-        return self.Enums.create_instance(g=self.g)
-
-    def create_strings(self) -> "Strings":
-        return self.Strings.create_instance(g=self.g)
-
-    def create_numbers_from_singleton(
-        self, value: float, unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None
-    ) -> "Numbers":
-        return self.create_numbers().setup_from_singleton(value=value, unit=unit)
-
-    def create_numbers_from_interval(
-        self, lower: float | None, upper: float | None, unit: "F.Units.IsUnit"
-    ) -> "Numbers":
-        return self.create_numbers().setup_from_interval(
-            lower=lower, upper=upper, unit=unit
-        )
-
-    # TODO add other literal constructors
+    def Enums(self) -> AbstractEnums:
+        return self._get_bound(AbstractEnums).create_instance(g=self.g)
 
 
 def test_bound_context():
@@ -616,9 +600,10 @@ def test_bound_context():
     tg = graph.TypeGraph.create(g=g)
     ctx = BoundLiteralContext(tg=tg, g=g)
 
-    my_number = ctx.create_numbers_from_singleton(value=1.0)
+    my_number = ctx.Numbers.setup_from_singleton(value=1.0)
+    my_bool = ctx.Booleans.setup()
 
-    print(my_number)
+    print(my_number, my_bool)
 
 
 def test_string_literal_instance():
