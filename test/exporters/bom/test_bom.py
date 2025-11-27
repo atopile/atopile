@@ -17,10 +17,10 @@ g = graph.GraphView.create()
 tg = fbrk.TypeGraph.create(g=g)
 
 def _build(app: fabll.Node):
-    load_designators(app.get_graph(), attach=True)
+    load_designators(app.tg, attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
-    attach_random_designators(app.get_graph())
+    attach_random_designators(app.tg)
 
 
 @pytest.mark.usefixtures("setup_project_config")

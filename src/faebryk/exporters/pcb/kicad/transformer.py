@@ -221,7 +221,7 @@ class PCB_Transformer:
             unique_fp_props = dict(fp_props.items() - node_props.items())
             for key, value in unique_fp_props.items():
                 F.SerializableMetadata.bind_typegraph(node.tg).create_instance(
-                    g=node.tg.get_graph_view()
+                    g=node.g
                 ).setup(
                     key=key,
                     value=value,

@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class FBRKNetlist:
     comps: list[Component]
 
 
-def make_fbrk_netlist_from_graph(tg: fbrk.TypeGraph) -> FBRKNetlist:
+def make_fbrk_netlist_from_graph(g: fabll.graph.GraphView, tg: fbrk.TypeGraph) -> FBRKNetlist:
     nets = F.Net.bind_typegraph(tg).get_instances()
 
     named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
@@ -60,7 +61,7 @@ def make_fbrk_netlist_from_graph(tg: fbrk.TypeGraph) -> FBRKNetlist:
 
     comps = {
         t.get_trait(F.can_represent_kicad_footprint).get_kicad_obj()
-        for t in F.Footprint.bind_typegraph(tg).get_instances(tg.get_graph_view())
+        for t in F.Footprint.bind_typegraph(tg).get_instances(g)
     }
 
     not_found = [

@@ -189,4 +189,4 @@ class needs_erc_check(fabll.Node):
     # TODO: Implement this
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
-        simple_erc(self.get_graph())
+        simple_erc(self.tg)

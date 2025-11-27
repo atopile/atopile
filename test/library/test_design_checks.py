@@ -21,7 +21,7 @@ def test_i2c_requires_pulls():
     app = App()
 
     # no issue if no pad boundary is crossed
-    check_design(app.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+    check_design(app.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
     class App2(fabll.Node):
         a: A
@@ -56,17 +56,17 @@ def test_i2c_requires_pulls():
 
     # connection crosses pad boundary, so the check now fails
     with pytest.raises(UserDesignCheckException):
-        check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+        check_design(app2.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
     # terminating the connection without providing resistance values results in a
     # warning
     app2.a.i2c.terminate(app2.a)
-    check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+    check_design(app2.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
     # setting a sufficient resistance fully satisfies the check
     app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * 1e3 * F.Units.Ohm)
     app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * 1e3 * F.Units.Ohm)
-    check_design(app2.get_graph(), F.implements_design_check.CheckStage.POST_DESIGN)
+    check_design(app2.tg, F.implements_design_check.CheckStage.POST_DESIGN)
 
 
 def test_electric_signal_parallel_pull_resistance():

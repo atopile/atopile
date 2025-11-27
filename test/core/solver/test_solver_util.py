@@ -42,7 +42,7 @@ def _create_letters(
                 out.append(p)
 
     app = App()
-    return context, out, app.get_graph()
+    return context, out, app.tg
 
 
 @pytest.mark.parametrize(
@@ -104,7 +104,7 @@ def test_mutator_no_graph_merge():
         pass
 
     mutator = Mutator(
-        MutationMap.bootstrap(p0.get_graph(), print_context=context),
+        MutationMap.bootstrap(p0.tg, print_context=context),
         algo=algo,
         iteration=0,
         terminal=True,
@@ -113,14 +113,14 @@ def test_mutator_no_graph_merge():
     p3_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p3))
     alias_new = cast_assert(F.Expressions.Is, mutator.get_copy(alias))
 
-    G = p0.get_graph()
-    G_new = p0_new.get_graph()
+    G = p0.tg
+    G_new = p0_new.tg
 
     assert G is not G_new
-    assert alias_new.get_graph() is G_new
-    assert p3_new.get_graph() is not G_new
+    assert alias_new.tg is G_new
+    assert p3_new.tg is not G_new
     assert (
-        cast_assert(F.Parameters.is_parameter, mutator.get_mutated(p1)).get_graph()
+        cast_assert(F.Parameters.is_parameter, mutator.get_mutated(p1)).tg
         is G_new
     )
 

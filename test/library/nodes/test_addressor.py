@@ -79,7 +79,7 @@ def test_i2c_unique_addresses():
     solver.simplify(app)
     app.add(F.has_solver(solver))
 
-    check_design(app.get_graph(), stage=F.implements_design_check.CheckStage.POST_SOLVE)
+    check_design(app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE)
 
 
 def test_i2c_duplicate_addresses():
@@ -95,7 +95,7 @@ def test_i2c_duplicate_addresses():
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
         check_design(
-            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_SOLVE
+            app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE
         )
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
@@ -115,7 +115,7 @@ def test_i2c_duplicate_addresses_isolated():
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
         check_design(
-            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_SOLVE
+            app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE
         )
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"

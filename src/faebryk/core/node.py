@@ -1158,10 +1158,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 if child.has_trait(trait)
             )
 
-    # TODO replace all usage of this with the tg property
-    def get_graph(self) -> fbrk.TypeGraph:
-        return self.tg
-
     @property
     def tg(self) -> fbrk.TypeGraph:
         tg = fbrk.TypeGraph.of_instance(instance_node=self.instance)

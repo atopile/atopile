@@ -175,7 +175,7 @@ def setup_pcb_transformer_test():
 def test_pcb_transformer_traits():
     _, _, app, transformer, _, _, kpcb = setup_pcb_transformer_test()
 
-    # TODO: assert transformer.tg is app.get_graph()
+    # TODO: assert transformer.tg is app.tg
     assert transformer.app is app
     assert transformer.pcb is kpcb
 
