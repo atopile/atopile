@@ -1173,7 +1173,7 @@ class MutatorUtils:
             new = (
                 F.Parameters.EnumParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
-                .setup(enum=enum)
+                .setup(enum_type=enum)
             )
             return new.get_trait(F.Parameters.is_parameter)
         else:

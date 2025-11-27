@@ -634,7 +634,7 @@ class BoundParameterContext:
 
     Usage:
         ctx = BoundParameterContext(tg=tg, g=g)
-        my_param = ctx.NumericParameter.setup(units=F.Units.Ohm)
+        my_param = ctx.NumericParameter.setup(units=F .Units.Ohm)
     """
 
     def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
