@@ -38,9 +38,7 @@ class has_net_name(fabll.Node):
 
     @property
     def name(self) -> str:
-        lit = self.name_.get().try_extract_constrained_literal()
-        print(lit)
-        return lit.get_value() if lit is not None else "fail"
+        return self.name_.get().force_extract_literal().get_values()[0]
 
     @property
     def level(self) -> Level | None:

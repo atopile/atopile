@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 
 class KicadFootprint(fabll.Node):
+    """KiCad footprint"""
+
     class has_file(fabll.Node):
         """
         Direct reference to a KiCAD footprint file
@@ -63,6 +65,7 @@ class KicadFootprint(fabll.Node):
 
     pin_names_ = F.Collections.PointerSet.MakeChild()
     pins_ = F.Collections.PointerSet.MakeChild()
+    footprint = F.Footprint.MakeChild()
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 

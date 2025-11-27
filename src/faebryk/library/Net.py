@@ -39,8 +39,11 @@ class Net(fabll.Node):
         }
 
     # TODO should this be here?
-    def get_connected_interfaces(self) -> dict[fabll.Node, fabll.Path]:
-        return self.part_of.get().get_trait(fabll.is_interface).get_connected()
+    def get_connected_interfaces(self):  # -> dict[fabll.Node, fabll.Path]:
+        # TODO: fix this, now it's getting every Electrical in the tg instead of just
+        # the ones connected to the net
+        # return self.part_of.get().get_trait(fabll.is_interface).get_connected()
+        return [e for e in F.Electrical.bind_typegraph(self.tg).get_instances()]
 
     def __repr__(self) -> str:
         up = super().__repr__()

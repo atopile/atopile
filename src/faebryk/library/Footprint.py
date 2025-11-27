@@ -6,6 +6,8 @@ import faebryk.core.node as fabll
 
 
 class Footprint(fabll.Node):
+    """Genreic footprint"""
+
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     @staticmethod

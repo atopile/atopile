@@ -20,6 +20,8 @@ from faebryk.libs.app.designators import (
 )
 from faebryk.libs.kicad.fileformats import kicad
 
+# from faebryk.libs.smd import SMDSize
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,11 +56,11 @@ def netlist_graph():
     resistor1.resistance.get().alias_to_literal(g, r100)
     resistor2.resistance.get().alias_to_literal(g, r200)
 
-    F.has_net_name.add_net_name(
-        power.hv.get(), name="+3V3", level=F.has_net_name.Level.EXPECTED
+    fabll.Traits.create_and_add_instance_to(power.hv.get(), F.has_net_name).setup(
+        name="+3V3", level=F.has_net_name.Level.EXPECTED
     )
-    F.has_net_name.add_net_name(
-        power.lv.get(), name="GND", level=F.has_net_name.Level.EXPECTED
+    fabll.Traits.create_and_add_instance_to(power.lv.get(), F.has_net_name).setup(
+        name="GND", level=F.has_net_name.Level.SUGGESTED
     )
 
     resistor1.unnamed[0].get().get_trait(fabll.is_interface).connect_to(power.hv.get())
@@ -72,9 +74,6 @@ def netlist_graph():
 
     # attach footprint & designator
     for i, r in enumerate([resistor1, resistor2]):
-        # r.get_trait(F.can_attach_to_footprint_symmetrically).attach(
-        #     F.SMDTwoPin(SMDSize.I0805, F.SMDTwoPin.Type.Resistor)
-        # )
         designator = r.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
         fabll.Traits.create_and_add_instance_to(r, F.has_designator).setup(designator)
         fabll.Traits.create_and_add_instance_to(
@@ -89,11 +88,14 @@ def netlist_graph():
             },
         )
 
+    assert power.hv.get().get_trait(F.has_net_name).name == "+3V3"
+    assert power.lv.get().get_trait(F.has_net_name).name == "GND"
+
     # make netlist
     attach_random_designators(tg)
     attach_net_names(attach_nets(tg))
     attach_kicad_info(tg)
-    return make_fbrk_netlist_from_graph(tg)
+    return make_fbrk_netlist_from_graph(g, tg)
 
 
 @pytest.fixture
