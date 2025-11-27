@@ -44,11 +44,17 @@ class is_literal(fabll.Node):
         pass
 
     def equals(self, other: "is_literal") -> bool:
-        return self.switch_cast().equals(other.switch_cast())
+        self_c = self.switch_cast()
+        other_c = other.switch_cast()
+        if type(self_c) is not type(other_c):
+            return False
+        return self_c.equals(other_c)
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        # TODO way more efficient way to do this
-        return self.equals(make_lit(self.g, self.tg, singleton).get_trait(is_literal))
+        singleton = self.switch_cast().is_singleton()
+        if singleton is None:
+            return False
+        return singleton == singleton
 
     def is_single_element(self) -> bool:
         # TODO
@@ -179,6 +185,15 @@ class Strings(fabll.Node):
         if len(values) != 1:
             raise ValueError(f"Expected 1 value, got {len(values)}")
         return values[0]
+
+    def equals(self, other: "Strings") -> bool:
+        return set(self.get_values()) == set(other.get_values())
+
+    def is_singleton(self) -> str | None:
+        vals = self.get_values()
+        if len(vals) != 1:
+            return None
+        return vals[0]
 
 
 class Numbers(fabll.Node):
@@ -374,6 +389,12 @@ class Booleans(fabll.Node[BooleansAttributes]):
     def equals(self, other: "Booleans") -> bool:
         return self.get_values() == other.get_values()
 
+    def is_singleton(self) -> bool | None:
+        vals = self.get_values()
+        if len(vals) != 1:
+            return None
+        return vals[0]
+
 
 class EnumValue(fabll.Node):
     name_ = F.Collections.Pointer.MakeChild()
@@ -511,7 +532,9 @@ LiteralNodes = Numbers | Booleans | Strings | AbstractEnums
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_lit(g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
+def make_lit(
+    g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues
+) -> LiteralNodes:
     match value:
         case bool():
             return Booleans.bind_typegraph(tg=tg).create_instance(
@@ -712,6 +735,7 @@ def test_enums():
     assert elements[3].value == MyEnum.D.value
 
     assert enum_lit.get_values() == ["a", "d"]
+
 
 def test_make_lit():
     import faebryk.library._F as F

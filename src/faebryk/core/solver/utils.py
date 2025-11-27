@@ -133,8 +133,8 @@ class MutatorUtils:
         self, lower: float, upper: float
     ) -> F.Literals.Numbers:
         return (
-            F.Literals.Numbers.bind_typegraph(self.mutator.tg)
-            .create_instance(self.mutator.G_in)
+            F.Literals.Numbers.bind_typegraph(self.mutator.tg_out)
+            .create_instance(self.mutator.G_transient)
             .setup_from_interval(lower=lower, upper=upper)
         )
 
@@ -812,14 +812,12 @@ class MutatorUtils:
             return None
         return po_ss
 
-    @staticmethod
     def no_other_predicates(
+        self,
         po: F.Parameters.is_parameter_operatable,
         *other: F.Expressions.is_assertable,
         unfulfilled_only: bool = False,
     ) -> bool:
-        from faebryk.core.solver.mutator import is_terminated
-
         no_other_predicates = (
             len(
                 [
@@ -827,7 +825,11 @@ class MutatorUtils:
                     for x in MutatorUtils.get_predicates_involved_in(po).difference(
                         other
                     )
-                    if not unfulfilled_only or not x.has_trait(is_terminated)
+                    if not unfulfilled_only
+                    or not (
+                        (pred := x.try_get_trait(F.Expressions.is_predicate))
+                        and self.mutator.is_predicate_terminated(pred)
+                    )
                 ]
             )
             == 0

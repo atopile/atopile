@@ -326,6 +326,10 @@ pub const TypeGraph = struct {
         return self.self_node.g;
     }
 
+    pub fn get_self_node(self: *const @This()) BoundNodeReference {
+        return self.self_node;
+    }
+
     pub fn of(self_node: BoundNodeReference) @This() {
         return .{ .self_node = self_node };
     }

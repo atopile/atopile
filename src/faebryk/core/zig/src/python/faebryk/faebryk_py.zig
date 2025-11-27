@@ -3279,6 +3279,26 @@ fn wrap_typegraph_get_graph_view() type {
     };
 }
 
+fn wrap_typegraph_get_self_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_self_node",
+            .doc = "Return the underlying BoundNode representing this TypeGraph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const bnode = faebryk.typegraph.TypeGraph.get_self_node(wrapper.data);
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
 fn wrap_typegraph_get_type_by_name() type {
     return struct {
         pub const descr = method_descr{
@@ -3512,6 +3532,7 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
 fn wrap_typegraph(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_init(),
+        wrap_typegraph_of(),
         wrap_typegraph_of_type(),
         wrap_typegraph_of_instance(),
         wrap_typegraph_add_type(),
@@ -3524,6 +3545,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_type_by_name(),
         wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
+        wrap_typegraph_get_self_node(),
         wrap_typegraph_get_type_subgraph(),
         wrap_typegraph_get_type_instance_overview(),
         wrap_typegraph_get_subgraph_of_node(),

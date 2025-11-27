@@ -1,14 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum
 import logging
 import math
 from decimal import Decimal
+from enum import Enum
 from itertools import pairwise
-from operator import add, mul, sub, truediv
+from operator import add, sub
 from random import random
-from typing import Any, Callable, Iterable, cast
+from typing import Any, Callable, cast
 
 import pytest
 
@@ -24,7 +24,7 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
 from faebryk.libs.picker.picker import pick_part_recursively
-from faebryk.libs.util import cast_assert, not_none, times
+from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
 

@@ -186,6 +186,7 @@ class is_expression(fabll.Node):
     ) -> set["F.Parameters.is_parameter_operatable"]:
         # TODO
         pass
+        raise NotImplementedError("get_operand_leaves_operatable not implemented")
 
     @staticmethod
     def get_all_expressions_involved_in(node: fabll.NodeT) -> set[fabll.NodeT]:
@@ -194,6 +195,7 @@ class is_expression(fabll.Node):
         # 3. Get their parents
         # TODO requires EdgeOperand to support multi expression edges
         pass
+        raise NotImplementedError("get_all_expressions_involved_in not implemented")
 
     def compact_repr(
         self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
@@ -287,6 +289,7 @@ class is_expression(fabll.Node):
         check_constrained: bool = True,
     ) -> bool:
         # TODO
+        raise NotImplementedError("is_congruent_to_factory not implemented")
         pass
 
     @staticmethod
@@ -321,6 +324,7 @@ class is_expression(fabll.Node):
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
         # TODO
         pass
+        raise NotImplementedError("get_uncorrelatable_literals not implemented")
 
     def expr_isinstance(self, *expr_types: type[fabll.NodeT]) -> bool:
         return fabll.Traits(self).get_obj_raw().isinstance(*expr_types)
@@ -340,6 +344,7 @@ class is_expression(fabll.Node):
     ) -> bool:
         # TODO
         pass
+        raise NotImplementedError("is_congruent_to not implemented")
 
     def in_operands(self, operand: "F.Parameters.can_be_operand") -> bool:
         return operand in self.get_operands()
@@ -354,6 +359,7 @@ class is_expression(fabll.Node):
     ) -> bool:
         # TODO
         pass
+        raise NotImplementedError("are_pos_congruent not implemented")
 
     def get_depth(self) -> int:
         """

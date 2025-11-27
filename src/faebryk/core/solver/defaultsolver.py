@@ -182,8 +182,8 @@ class DefaultSolver(Solver):
                 suffix = ""
                 if len({G_in_count, G_in_count_after, G_out_count}) != 1:
                     suffix += f"\n (inconsistent counts: {G_in_count}, {G_in_count_after}, {G_out_count})"
-                    suffix += f"\n {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
-                    suffix += f"\n {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
+                    suffix += f"\nG_in_diff {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
+                    suffix += f"\nIn_Out_diff {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
                 if (
                     len(
                         {
@@ -598,8 +598,13 @@ def test_defaultsolver_super_basic():
 
     import faebryk.library._F as FT
 
-    # fill typegraph
-    for E in vars(FT.Expressions).values():
+    # Fill typegraph
+    for E in (
+        list(vars(FT.Expressions).values())
+        + list(vars(FT.Parameters).values())
+        + list(vars(FT.Literals).values())
+        + [is_terminated]
+    ):
         if not isinstance(E, type) or not issubclass(E, fabll.Node):
             continue
         E.bind_typegraph(tg=tg).get_or_create_type()
@@ -621,6 +626,17 @@ def test_defaultsolver_basic():
     tg = fbrk.TypeGraph.create(g=g)
 
     import faebryk.library._F as FT
+
+    # Fill typegraph
+    for E in (
+        list(vars(FT.Expressions).values())
+        + list(vars(FT.Parameters).values())
+        + list(vars(FT.Literals).values())
+        + [is_terminated]
+    ):
+        if not isinstance(E, type) or not issubclass(E, fabll.Node):
+            continue
+        E.bind_typegraph(tg=tg).get_or_create_type()
 
     class App(fabll.Node):
         A = FT.Parameters.BooleanParameter.MakeChild()
@@ -655,4 +671,4 @@ if __name__ == "__main__":
 
     mutator_logger.setLevel(logging.DEBUG)
 
-    typer.run(test_defaultsolver_super_basic)
+    typer.run(test_defaultsolver_basic)

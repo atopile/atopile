@@ -1035,7 +1035,7 @@ class Mutator:
     def make_lit(self, value: str) -> F.Literals.Strings: ...
 
     def make_lit(self, value: F.Literals.LiteralValues) -> F.Literals.LiteralNodes:
-        return F.Literals.make_lit(self.G_in, self.tg_in, value)
+        return F.Literals.make_lit(self.G_transient, self.tg_out, value)
 
     def _mutate(
         self,
@@ -1147,9 +1147,7 @@ class Mutator:
 
         for op in new_operands:
             if op.has_trait(F.Parameters.is_parameter_operatable):
-                assert op.g == new_expr.g, (
-                    f"Graph mismatch: {op.g} != {new_expr.g}"
-                )
+                assert op.g == new_expr.g, f"Graph mismatch: {op.g} != {new_expr.g}"
 
         return new_expr
 
@@ -1225,7 +1223,9 @@ class Mutator:
 
         if expr_pred:
             if self.is_predicate_terminated(expr_pred):
-                fabll.Traits.create_and_add_instance_to(new_expr, is_terminated)
+                self.predicate_terminate(
+                    new_expr.get_trait(F.Expressions.is_predicate), new_graph=True
+                )
 
         new_expr_po = new_expr.get_trait(F.Parameters.is_parameter_operatable)
 
@@ -1393,6 +1393,9 @@ class Mutator:
     def get_copy(
         self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
     ) -> F.Parameters.can_be_operand:
+        # TODO is this ok?
+        if obj.g == self.G_out:
+            return obj
         if obj_po := obj.is_parameter_operatable():
             return self.get_copy_po(obj_po, accept_soft).as_operand()
         if obj_lit := obj.try_get_sibling_trait(F.Literals.is_literal):
@@ -1538,17 +1541,24 @@ class Mutator:
                     terminate=terminate,
                 )
 
-    def predicate_terminate(self, pred: F.Expressions.is_predicate):
-        if pred.has_trait(is_terminated):
+    def predicate_terminate(
+        self, pred: F.Expressions.is_predicate, new_graph: bool = False
+    ):
+        if self.is_predicate_terminated(pred):
             return
-        fabll.Traits.create_and_add_instance_to(
-            fabll.Traits(pred).get_obj_raw(), is_terminated
-        )
-        self.transformations.terminated.add(pred)
+        if new_graph:
+            fabll.Traits.create_and_add_instance_to(
+                fabll.Traits(pred).get_obj_raw(), is_terminated
+            )
+        else:
+            self.transformations.terminated.add(pred)
 
     # Algorithm Query ------------------------------------------------------------------
     def is_predicate_terminated(self, pred: F.Expressions.is_predicate) -> bool:
-        return pred.try_get_sibling_trait(is_terminated) is not None
+        return (
+            pred in self.transformations.terminated
+            or pred.try_get_sibling_trait(is_terminated) is not None
+        )
 
     def get_parameter_operatables(
         self, include_terminated: bool = False, sort_by_depth: bool = False
@@ -1814,8 +1824,19 @@ class Mutator:
 
         self.G_in = mutation_map.G_out
         self.G_out: graph.GraphView = graph.GraphView.create()
+        # for temporary nodes like literals
+        self.G_transient: graph.GraphView = graph.GraphView.create()
         self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
-        self.tg_out = fbrk.TypeGraph.create(g=self.G_out)
+        self.tg_out = fbrk.TypeGraph.of(
+            node=self.G_out.bind(node=self.tg_in.get_self_node().node())
+        )
+        # TODO remove hack
+        # copies tg core nodes over
+        fabll.Node.bind_instance(
+            fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
+        ).copy_into(self.G_out)
+
+        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
 
         self.print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
@@ -1841,6 +1862,9 @@ class Mutator:
         self.algo(self)
 
     def _copy_unmutated(self):
+        # copy full typegraph over
+        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
+
         touched = self.transformations.mutated.keys() | self.transformations.removed
         # TODO might not need to sort
         other_param_op = F.Expressions.is_expression.sort_by_depth(
@@ -1897,6 +1921,7 @@ class Mutator:
                 dirty=False,
             )
 
+        print("COPYING")
         self.check_no_illegal_mutations()
         self._copy_unmutated()
         stage = MutationStage(

@@ -23,9 +23,9 @@ class _Multi:
 
     def run(self, mutator: Mutator, *args: F.Literals.is_literal) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_lit(mutator.G_in, mutator.tg_in, self.init).get_trait(
-                F.Literals.is_literal
-            )
+            init_lit = F.Literals.make_lit(
+                mutator.G_in, mutator.tg_in, self.init
+            ).get_trait(F.Literals.is_literal)
             args = (init_lit, init_lit, *args)
         return functools.reduce(self.f, args)
 
@@ -111,4 +111,4 @@ def fold_pure_literal_expressions(mutator: Mutator):
         if result is None:
             continue
         # type ignore because function sig is not 100% correct
-        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)  # type: ignore
+        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)
