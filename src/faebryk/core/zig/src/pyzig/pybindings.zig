@@ -230,17 +230,16 @@ pub fn Py_None() *PyObject {
     return &_Py_NoneStruct;
 }
 
-// Reference counting - these are macros in Python, so we implement them inline
+// Reference counting
+pub extern fn Py_IncRef(o: *PyObject) void;
+pub extern fn Py_DecRef(o: *PyObject) void;
+
 pub inline fn Py_INCREF(obj: *PyObject) void {
-    // In CPython, Py_INCREF is a macro that increments ob_refcnt
-    // Since PyObject is opaque, we can't directly access ob_refcnt
-    // Instead, just don't increment for now - Python manages the refcount
-    _ = obj;
+    Py_IncRef(obj);
 }
 
 pub inline fn Py_DECREF(obj: *PyObject) void {
-    // Similarly for DECREF
-    _ = obj;
+    Py_DecRef(obj);
 }
 
 // List type for inheritance
@@ -285,6 +284,7 @@ pub extern fn PyTuple_SetItem(tuple: ?*PyObject, pos: isize, item: ?*PyObject) c
 pub extern fn PyTuple_GetItem(tuple: ?*PyObject, pos: isize) ?*PyObject;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
 pub extern fn PyDict_New() ?*PyObject;
+pub extern fn PyDict_SetItem(dict: ?*PyObject, key: ?*PyObject, value: ?*PyObject) c_int;
 pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyDict_Next(dict: ?*PyObject, pos: *isize, key: *?*PyObject, value: *?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
@@ -294,6 +294,10 @@ pub extern fn PyList_New(size: isize) ?*PyObject;
 pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c_int;
 pub extern fn PyList_Size(list: ?*PyObject) isize;
 pub extern fn PyList_GetItem(list: ?*PyObject, index: isize) ?*PyObject;
+
+// Set API
+pub extern fn PySet_New(iterable: ?*PyObject) ?*PyObject;
+pub extern fn PySet_Add(set: ?*PyObject, key: ?*PyObject) c_int;
 
 // PyList_Check is a macro in Python's C API, we need to implement it ourselves
 // We can use PyObject_IsInstance or just check with PyList_Size
@@ -316,6 +320,7 @@ pub extern fn PyObject_Call(callable: ?*PyObject, args: ?*PyObject, kwargs: ?*Py
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;
+pub extern var _Py_NotImplementedStruct: PyObject;
 
 pub fn Py_True() *PyObject {
     return &_Py_TrueStruct;
@@ -323,6 +328,10 @@ pub fn Py_True() *PyObject {
 
 pub fn Py_False() *PyObject {
     return &_Py_FalseStruct;
+}
+
+pub fn Py_NotImplemented() *PyObject {
+    return &_Py_NotImplementedStruct;
 }
 
 // Exception types

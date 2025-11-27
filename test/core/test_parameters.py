@@ -1,47 +1,50 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-
 import logging
-from itertools import pairwise
 from typing import cast
 
 import pytest
+from shapely import force_2d
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.node import Node
-from faebryk.core.parameter import (
-    Add,
-    Additive,
-    And,
-    Expression,
-    Is,
-    Not,
-    Parameter,
-    ParameterOperatable,
-)
-from faebryk.libs.library import L
-from faebryk.libs.library.L import Range
-from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
-from faebryk.libs.sets.sets import BoolSet, EnumSet
-from faebryk.libs.units import P
-from faebryk.libs.util import times
+from faebryk.libs.util import not_none, times
 
 logger = logging.getLogger(__name__)
 
 
 def test_new_definitions():
-    _ = Parameter(
-        units=P.ohm,
-        domain=L.Domains.Numbers.REAL(negative=False),
-        soft_set=Range(1 * P.ohm, 10 * P.Mohm),
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    literals = F.Literals.BoundLiteralContext(tg, g)
+    parameters = F.Parameters.BoundParameterContext(tg, g)
+    number_domain = F.NumberDomain.BoundNumberDomainContext(tg, g)
+
+    parameters.create_numeric_parameter(
+        units=F.Units.Ohm._is_unit.get(),
+        domain=number_domain.create_number_domain(negative=False),
+        soft_set=literals.create_numbers_from_interval(
+            1, 10e6, F.Units.Ohm._is_unit.get()
+        ),
         likely_constrained=True,
     )
 
 
 def test_compact_repr():
-    p1 = Parameter(units=P.V)
-    p2 = Parameter(units=P.V)
-    context = ParameterOperatable.ReprContext()
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    p1 = (
+        F.Parameters.NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(units=F.Units.Volt._is_unit.get())
+    )
+    p2 = (
+        F.Parameters.NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(units=F.Units.Volt._is_unit.get())
+    )
+    context = F.Parameters.ReprContext()
     expr = cast(Expression, (p1 + p2 + (5 * P.V)) * 10)  # type: ignore
     exprstr = expr.compact_repr(context)
     assert exprstr == "((A volt + B volt) + 5 volt) * 10"
@@ -49,7 +52,7 @@ def test_compact_repr():
     expr2str = expr2.compact_repr(context)
     assert expr2str == "B volt + A volt"
 
-    p3 = Parameter(domain=L.Domains.BOOL())
+    p3 = Parameter(domain=fabll.Domains.BOOL())
     expr3 = Not(p3)
     expr3str = expr3.compact_repr(context)
     assert expr3str == "¬C"
@@ -80,12 +83,34 @@ def test_compact_repr():
     assert pAA.compact_repr(context) == "A₁"
 
 
+@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
 def test_expression_congruence():
-    p1 = Parameter()
-    p2 = Parameter()
-    p3 = Parameter()
-    assert (p1 + p2).is_congruent_to(p1 + p2)
-    assert (p1 + p2).is_congruent_to(p2 + p1)
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    parameters = F.Parameters.BoundParameterContext(tg, g)
+
+    p1 = parameters.create_numeric_parameter()
+    p2 = parameters.create_numeric_parameter()
+    p3 = parameters.create_numeric_parameter()
+
+    assert (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(p1, p2)
+        .get_trait(F.Expressions.is_expression)
+        .is_congruent_to(
+            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2)
+        )
+    )
+    assert (
+        F.Expressions.Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(p1, p2)
+        .get_trait(F.Expressions.is_expression)
+        .is_congruent_to(
+            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p2, p1)
+        )
+    )
 
     assert hash(Quantity_Singleton(0)) == hash(Quantity_Singleton(0))
     assert Quantity_Singleton(0) == Quantity_Singleton(0)
@@ -104,62 +129,150 @@ def test_expression_congruence():
     assert not Is(p1, p3).is_congruent_to(Is(p1, p2))
 
 
+@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
 def test_expression_congruence_not():
-    A = Parameter()
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    A = F.Parameters.NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
     x = Is(A, EnumSet(F.LED.Color.EMERALD))
     assert x.is_congruent_to(Is(A, EnumSet(F.LED.Color.EMERALD)))
     assert Not(x).is_congruent_to(Not(x))
 
 
-@pytest.mark.skip
-def test_visualize():
+def test_string_param():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    import faebryk.library._F as F
+
+    string_p = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    string_p.alias_to_literal("IG constrained")
+    assert string_p.force_extract_literal().get_value() == "IG constrained"
+
+    class ExampleStringParameter(fabll.Node):
+        string_p_tg = F.Parameters.StringParameter.MakeChild()
+        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            [string_p_tg], "TG constrained"
+        )
+
+    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
+
+
+def test_boolean_param():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    import faebryk.library._F as F
+
+    boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    boolean_p.alias_to_single(value=True, g=g)
+    assert boolean_p.force_extract_literal().get_value()
+
+    class ExampleBooleanParameter(fabll.Node):
+        boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
+        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            [boolean_p_tg], True
+        )
+
+    ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_value()
+
+
+def test_make_lit():
+    import faebryk.library._F as F
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    assert F.Literals.make_lit(tg, value=True).get_value()
+    assert F.Literals.make_lit(tg, value=3).get_value() == 3
+    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
+
+
+def test_enum_param():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from enum import Enum
+
+    import faebryk.library._F as F
+
+    # F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
+
+    class ExampleNode(fabll.Node):
+        class MyEnum(Enum):
+            A = "a"
+            B = "b"
+            C = "c"
+            D = "d"
+
+        enum_p_tg = F.Parameters.EnumParameter.MakeChild(enum_t=MyEnum)
+        constraint = F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            [enum_p_tg], MyEnum.B, MyEnum.C
+        )
+
+        # ptr = F.Collections.Pointer.MakeChild()
+        # constraint = F.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+        #     [F.Resistor], MyEnum.B, MyEnum.C
+        # )
+        _has_usage_example = F.has_usage_example.MakeChild(
+            example="",
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
+
+    example_node = ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Enum Literal Type Node
+    atype = F.Literals.EnumsFactory(ExampleNode.MyEnum)
+    cls_n = cast(type[fabll.NodeT], atype)
+    enum_type_node = cls_n.bind_typegraph(tg=tg).get_or_create_type()
+
+    # Enum Parameter from TG
+    enum_param = example_node.enum_p_tg.get()
+
+    abstract_enum_type_node = enum_param.get_enum_type()
+    # assert abstract_enum_type_node.is_same(enum_type_node)
+
+    assert [(m.name, m.value) for m in abstract_enum_type_node.get_all_members()] == [
+        (m.name, m.value) for m in ExampleNode.MyEnum
+    ]
+
+    assert abstract_enum_type_node.get_enum_as_dict() == {
+        m.name: m.value for m in ExampleNode.MyEnum
+    }
+
+    enum_lit = enum_param.force_extract_literal()
+    assert enum_lit.get_values() == ["b", "c"]
+
+    # Enum Parameter from instance graph
+    enum_p_ig = F.Parameters.EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    enum_p_ig.alias_to_literal(ExampleNode.MyEnum.B, g=g)
+    assert enum_p_ig.force_extract_literal().get_values() == ["b"]
+
+
+def test_enums():
     """
-    Creates webserver that opens automatically if run in jupyter notebook
+    Tests carried over from enum_sets.py
     """
-    from faebryk.exporters.visualize.interactive_params import visualize_parameters
+    from enum import Enum
 
-    class App(Node):
-        p1 = L.f_field(Parameter)(units=P.V)
+    import faebryk.library._F as F
+    from faebryk.core.node import _make_graph_and_typegraph
 
-    app = App()
+    g, tg = _make_graph_and_typegraph()
 
-    p2 = Parameter(units=P.V)
-    p3 = Parameter(units=P.A)
+    class MyEnum(Enum):
+        A = "a"
+        D = "d"
 
-    # app.p1.constrain_ge(p2 * 5)
-    # app.p1.operation_is_ge(p2 * 5).constrain()
-    (app.p1 >= p2 * 5).constrain()
+    EnumT = F.Literals.EnumsFactory(MyEnum)
+    enum_lit = EnumT.bind_typegraph(tg=tg).create_instance(g=g)
 
-    (p2 * p3 + app.p1 * 1 * P.A <= 10 * P.W).constrain()
-
-    pytest.raises(ValueError, bool, app.p1 >= p2 * 5)
-
-    G = app.get_graph()
-    visualize_parameters(G, height=1400)
-
-
-@pytest.mark.skip
-def test_visualize_chain():
-    from faebryk.exporters.visualize.interactive_params import visualize_parameters
-
-    params = times(10, Parameter)
-    sums = [p1 + p2 for p1, p2 in pairwise(params)]
-    products = [p1 * p2 for p1, p2 in pairwise(sums)]
-    bigsum = Additive.sum(products)
-
-    predicates = [bigsum <= 100]
-    for p in predicates:
-        p.constrain()
-
-    G = params[0].get_graph()
-    visualize_parameters(G, height=1400)
+    elements = enum_lit.get_all_members()
+    assert len(elements) == 2
+    assert elements[0].name == "A"
+    assert elements[0].value == MyEnum.A.value
+    assert elements[1].name == "D"
+    assert elements[1].value == MyEnum.D.value
 
 
-@pytest.mark.skip
-def test_visualize_inspect_app():
-    from faebryk.exporters.visualize.interactive_params import visualize_parameters
-
-    rp2040 = F.RP2040()
-
-    G = rp2040.get_graph()
-    visualize_parameters(G, height=1400)
+if __name__ == "__main__":
+    # test_enums()
+    test_enum_param()

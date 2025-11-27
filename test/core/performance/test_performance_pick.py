@@ -8,13 +8,12 @@ from typing import Callable
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.core.solver.algorithm import get_algorithms
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.core.solver.utils import S_LOG, set_log_level
-from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
     PickError,
@@ -22,12 +21,7 @@ from faebryk.libs.picker.picker import (
     pick_topologically,
 )
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import P
 from faebryk.libs.util import ConfigFlagInt, indented_container
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -40,23 +34,15 @@ def _setup():
     NO_PROGRESS_BAR.set(True)
 
 
-class _RP2040_Basic(Module):
-    rp2040: RP2040
-    ldo: F.LDO
-    led: F.LED
-
-
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.parametrize(
     "module_type",
     [
-        _RP2040_Basic,
-        RP2040_ReferenceDesign,
         lambda: F.MultiCapacitor(10),
     ],
 )
-def test_performance_pick_real_module(module_type: Callable[[], Module]):
+def test_performance_pick_real_module(module_type: Callable[[], fabll.Module]):
     timings = Times()
 
     app = module_type()
@@ -84,12 +70,12 @@ def test_performance_pick_rc_formulas():
     INCREASE = 10 * P.percent
     TOLERANCE = 20 * P.percent
 
-    class App(Module):
-        alias_res = L.list_field(_GROUPS, F.Resistor)
-        res = L.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
+    class App(fabll.Node):
+        alias_res = [F.Resistor.MakeChild() for _ in range(_GROUPS)]
+        res = [F.Resistor.MakeChild() for _ in range(_GROUPS * _GROUP_SIZE)]
 
         def __preinit__(self):
-            increase = L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(
+            increase = fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(
                 100 * P.percent
             )
 
@@ -119,7 +105,9 @@ def test_performance_pick_rc_formulas():
         logger.error(f"Error picking: {e.args[0]}")
         params = {
             m.get_full_name(): "\n" + indent(m.pretty_params(solver), prefix="  ")
-            for m in app.get_children_modules(direct_only=True, types=Module)
+            for m in app.get_children(
+                direct_only=True, types=fabll.Node, required_trait=fabll.is_module
+            )
         }
         params = {k: v for k, v in sorted(params.items(), key=lambda t: t[0])}
         logger.info(f"Params:{indented_container(params, use_repr=False)}")

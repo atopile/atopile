@@ -4,8 +4,8 @@
 import logging
 from dataclasses import dataclass
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,9 @@ class FBRKNetlist:
     comps: list[Component]
 
 
-def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
-    from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
+def make_fbrk_netlist_from_graph(tg: fbrk.TypeGraph) -> FBRKNetlist:
+    nets = F.Net.bind_typegraph(tg).get_instances()
 
-    nets = GraphFunctions(G).nodes_of_type(F.Net)
-    # all buses have at least one net with name at this point
     named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
 
     fbrk_nets = [
@@ -52,7 +50,7 @@ def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
                         pin=t.get_pin_name(mif),
                     )
                     for mif, fp in net.get_connected_pads().items()
-                    if (t := fp.get_trait(can_represent_kicad_footprint)) is not None
+                    if (t := fp.get_trait(F.can_represent_kicad_footprint)) is not None
                 ],
                 key=lambda v: (v.component.name, v.pin),
             ),
@@ -61,8 +59,8 @@ def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
     ]
 
     comps = {
-        t.get_footprint().get_trait(can_represent_kicad_footprint).get_kicad_obj()
-        for _, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
+        t.get_trait(F.can_represent_kicad_footprint).get_kicad_obj()
+        for t in F.Footprint.bind_typegraph(tg).get_instances(tg.get_graph_view())
     }
 
     not_found = [
