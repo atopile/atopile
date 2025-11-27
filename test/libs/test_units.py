@@ -5,7 +5,7 @@ import pytest
 import faebryk.core.faebrykpy as fbrk
 import faebryk.library._F as F
 from faebryk.core import graph
-from faebryk.libs.util import once
+from faebryk.libs.util import not_none, once
 
 # TODO: move to test/library/test_units.py? or faebryk/library/Units.py?
 
@@ -123,3 +123,25 @@ def test_assert_incommensurability(ctx: BoundUnitsContext):
 # TODO: more tests
 # - mutually incompatible: dimensionless, radian, steradian
 # - mutually compatible: dimensionless, ppm, percent
+
+
+def test_isunit_setup(ctx):
+    is_unit = F.Units.IsUnit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+    is_unit.setup(
+        symbols=["m"],
+        unit_vector=F.Units._BasisVector.ORIGIN,
+        multiplier=1.0,
+        offset=0.0,
+    )
+    assert not_none(
+        is_unit.symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["m"]
+    assert (
+        F.Units._BasisVector.bind_instance(
+            is_unit.basis_vector.get().deref().instance
+        ).extract_vector()
+        == F.Units._BasisVector.ORIGIN
+    )
+    # TODO: pending Numbers impl
+    # assert is_unit.multiplier.get().force_extract_literal().get_value() == 1.0
+    assert is_unit.offset.get().force_extract_literal().get_value() == 0.0

@@ -208,6 +208,8 @@ class _BasisVector(fabll.Node):
                 ),
             )
 
+        return self
+
     def extract_vector(self) -> _BasisVectorArg:
         return _BasisVectorArg(
             ampere=int(self.ampere_exponent.get().force_extract_literal().get_value()),
@@ -312,9 +314,11 @@ class IsUnit(fabll.Node):
             value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
         )
 
-        basis_vector = _BasisVector.bind_instance(
-            self.basis_vector.get().deref().instance
-        ).setup(vector=unit_vector)
+        basis_vector = (
+            _BasisVector.bind_typegraph(tg=self.tg)
+            .create_instance(g=g)
+            .setup(vector=unit_vector)
+        )
         self.basis_vector.get().point(basis_vector)
 
         return self
@@ -458,7 +462,7 @@ class HasUnit(fabll.Node):
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field]))
         return out
 
-    def setup(self, g: graph.GraphView, unit: fabll.Node) -> Self:
+    def setup(self, g: graph.GraphView, unit: fabll.Node) -> Self:  # type: ignore
         self.unit.get().point(unit)
         return self
 
