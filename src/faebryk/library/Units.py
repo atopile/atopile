@@ -49,11 +49,13 @@ TODO:
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import reduce
 from typing import Any, ClassVar, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
+from faebryk.libs.util import not_none
 
 
 # Simple helper to normalize various unit-like objects to a class, defaulting to
@@ -287,15 +289,12 @@ class IsUnit(fabll.Node):
             g=g,
             value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
         )
-        print(f"setup IsUnit: {unit_vector}")
         basis_vector = (
             _BasisVector.bind_typegraph(tg=self.tg)
             .create_instance(g=g)
             .setup(vector=unit_vector)
         )
         self.basis_vector.get().point(basis_vector)
-
-        print(f"setup IsUnit finished: {self._extract_basis_vector()}")
 
         return self
 
@@ -309,6 +308,10 @@ class IsUnit(fabll.Node):
 
     def _extract_offset(self) -> float:
         return self.offset.get().force_extract_literal().get_value()
+
+    @property
+    def is_affine(self) -> bool:
+        return self._extract_offset() != 0.0
 
     def is_commensurable_with(self, other: "IsUnit") -> bool:
         self_vector = self._extract_basis_vector()
@@ -331,12 +334,13 @@ class IsUnit(fabll.Node):
         # TODO: lookup and return existing named unit if available
         """
 
-        return self._new(
+        return self.new(
             g=g, tg=tg, vector=self._extract_basis_vector(), multiplier=1.0, offset=0.0
         )
 
-    def _new(
-        self,
+    @classmethod
+    def new(
+        cls,
         g: graph.GraphView,
         tg: graph.TypeGraph,
         vector: _BasisVectorArg,
@@ -344,7 +348,6 @@ class IsUnit(fabll.Node):
         offset: float,
     ) -> "IsUnit":
         # TODO: generate symbol
-        print(f"_newvector: {vector}")
         unit = (
             _AnonymousUnit.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -362,9 +365,7 @@ class IsUnit(fabll.Node):
         new_multiplier = m1 * m2
         new_vector = v1.multiply(v2)
 
-        print(f"new_vector: {new_vector}")
-
-        return self._new(
+        return self.new(
             g=g,
             tg=tg,
             vector=new_vector,
@@ -381,7 +382,7 @@ class IsUnit(fabll.Node):
         new_multiplier = m1 / m2
         new_vector = v1.divide(v2)
 
-        return self._new(
+        return self.new(
             g=g,
             tg=tg,
             vector=new_vector,
@@ -392,7 +393,7 @@ class IsUnit(fabll.Node):
     def op_invert(self, g: graph.GraphView, tg: graph.TypeGraph) -> "IsUnit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
-        return self._new(
+        return self.new(
             g=g,
             tg=tg,
             vector=v.scalar_multiply(-1),
@@ -405,7 +406,7 @@ class IsUnit(fabll.Node):
     ) -> "IsUnit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
-        return self._new(
+        return self.new(
             g=g,
             tg=tg,
             vector=v.scalar_multiply(exponent),
@@ -452,14 +453,43 @@ class HasUnit(fabll.Node):
 UnitVectorT = list[tuple[type[fabll.Node], int]]
 
 
-def make_unit_expression_type(unit_vector: UnitVectorT) -> type[fabll.Node]:
+class is_unit_expression(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class UnitExpression(fabll.Node):
+    # TODO: tie to NewUnitExpression fields
+    _is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
+    expr = F.Collections.Pointer.MakeChild()
+    multiplier = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
+    offset = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
+
+    def get_expr(self) -> fabll.Node:
+        return self.expr.get().deref()
+
+    def get_multiplier(self) -> float:
+        multiplier_lit = self.multiplier.get().try_extract_aliased_literal()
+        return not_none(multiplier_lit).get_value()
+
+    def get_offset(self) -> float:
+        offset_lit = self.offset.get().try_extract_aliased_literal()
+        return not_none(offset_lit).get_value()
+
+
+def make_unit_expression_type(
+    unit_vector: UnitVectorT, multiplier: float = 1.0, offset: float = 0.0
+) -> type[fabll.Node]:
     from faebryk.library.Expressions import Multiply, Power
 
-    class UnitExpression(fabll.Node):
+    class NewUnitExpression(fabll.Node):
+        _is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
+
         expr = F.Collections.Pointer.MakeChild()
+        multiplier = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
+        offset = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
 
         @classmethod
-        def MakeChild(cls, *units: type[fabll.Node]) -> fabll._ChildField[Self]:  # type: ignore
+        def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore
             out = fabll._ChildField(cls)
             term_fields = []
 
@@ -492,20 +522,36 @@ def make_unit_expression_type(unit_vector: UnitVectorT) -> type[fabll.Node]:
                 F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field])
             )
 
+            multiplier_lit = F.Literals.Numbers.MakeChild(value=float(multiplier))
+            multiplier_is_expr = F.Expressions.Is.MakeChild_Constrain(
+                [[out, cls.multiplier], [multiplier_lit]]
+            )
+            multiplier_is_expr.add_dependant(
+                multiplier_lit, identifier="lit", before=True
+            )
+            out.add_dependant(multiplier_is_expr)
+
+            offset_lit = F.Literals.Numbers.MakeChild(value=float(offset))
+            offset_is_expr = F.Expressions.Is.MakeChild_Constrain(
+                [[out, cls.offset], [offset_lit]]
+            )
+            offset_is_expr.add_dependant(offset_lit, identifier="lit", before=True)
+            out.add_dependant(offset_is_expr)
+
             return out
 
     unit_vector_str = "".join(
         f"{unit.__name__}^{exponent}" for unit, exponent in unit_vector
     )
-    UnitExpression.__name__ = f"UnitExpression<{unit_vector_str}>"
+    NewUnitExpression.__name__ = f"UnitExpression<{unit_vector_str}>"
 
-    return UnitExpression
+    return NewUnitExpression
 
 
 class _AnonymousUnit(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(IsUnit.MakeChild_Empty())
 
-    def setup(
+    def setup(  # type: ignore
         self, vector: _BasisVectorArg, multiplier: float = 1.0, offset: float = 0.0
     ) -> Self:
         self._is_unit.get().setup(
@@ -515,9 +561,128 @@ class _AnonymousUnit(fabll.Node):
             offset=offset,
         )
 
-        print(f"setup _AnonymousUnit: {self._is_unit.get()._extract_basis_vector()}")
-
         return self
+
+
+class UnitExpressionError(Exception): ...
+
+
+class _UnitExpressionResolver:
+    def __init__(self, g: graph.GraphView, tg: graph.TypeGraph):
+        self.g = g
+        self.tg = tg
+
+    def visit(self, node: fabll.Node) -> IsUnit:
+        if is_unit := node.try_get_trait(IsUnit):
+            if is_unit.is_affine:
+                raise UnitExpressionError(
+                    "Cannot use affine unit in compound expression"
+                )
+            return is_unit
+
+        if node.isinstance(F.Expressions.Multiply):
+            return self.visit_multiply(node.cast(F.Expressions.Multiply))
+        elif node.isinstance(F.Expressions.Divide):
+            return self.visit_divide(node.cast(F.Expressions.Divide))
+        elif node.isinstance(F.Expressions.Power):
+            return self.visit_power(node.cast(F.Expressions.Power))
+        elif node.has_trait(is_unit_expression):
+            return self.visit_unit_expression(
+                node.cast(
+                    UnitExpression,
+                    # originally a NewUnitExpression, but the fields should match
+                    check=False,
+                )
+            )
+
+        raise UnitExpressionError(
+            f"Unsupported expression type: {node.get_type_name()}"
+        )
+
+    def visit_unit_expression(self, node: UnitExpression) -> IsUnit:
+        """Resolve a UnitExpression by traversing its expression tree."""
+
+        multiplier = node.get_multiplier()
+        offset = node.get_offset()
+
+        if offset != 0.0:
+            # TODO: document affine unit limitations
+            raise UnitExpressionError("Cannot use unit expression with non-zero offset")
+
+        inner_unit = self.visit(node.get_expr())
+        inner_vector = inner_unit._extract_basis_vector()
+        inner_multiplier = inner_unit._extract_multiplier()
+
+        return IsUnit.new(
+            g=self.g,
+            tg=self.tg,
+            vector=inner_vector,
+            multiplier=multiplier * inner_multiplier,
+            offset=0.0,
+        )
+
+    def visit_multiply(self, node: F.Expressions.Multiply) -> IsUnit:
+        operands = node.operands.get().as_list()
+
+        if not operands:
+            return IsUnit.new(
+                g=self.g,
+                tg=self.tg,
+                vector=_BasisVector.ORIGIN,
+                multiplier=1.0,
+                offset=0.0,
+            ).get_trait(IsUnit)
+
+        return reduce(
+            lambda a, b: a.op_multiply(self.g, self.tg, b),
+            (self.visit(op) for op in operands),
+        )
+
+    def visit_divide(self, node: F.Expressions.Divide) -> IsUnit:
+        return reduce(
+            lambda a, b: a.op_divide(self.g, self.tg, b),
+            (
+                self.visit(op)
+                for op in (
+                    node.numerator.get().deref(),
+                    *node.denominator.get().as_list(),
+                )
+            ),
+        )
+
+    def visit_power(self, node: F.Expressions.Power) -> IsUnit:
+        base = node.base.get().deref()
+        exponent_node = node.exponent.get().deref()
+
+        exponent_lit = (
+            not_none(exponent_node.try_get_trait(F.Parameters.is_parameter_operatable))
+            .force_extract_literal()
+            .switch_cast()
+        )
+
+        if not exponent_lit.isinstance(F.Literals.Numbers):
+            raise UnitExpressionError(
+                f"Unit exponent must be numeric, got {exponent_lit.get_type_name()}"
+            )
+
+        exponent_val = exponent_lit.cast(F.Literals.Numbers).get_value()
+
+        if not float(exponent_val).is_integer():
+            raise UnitExpressionError(
+                f"Unit exponent must be integer, got {exponent_val}"
+            )
+
+        return self.visit(base).op_power(self.g, self.tg, int(exponent_val))
+
+
+def resolve_unit_expression(
+    g: graph.GraphView, tg: graph.TypeGraph, expr: graph.BoundNode
+) -> fabll.Node:
+    resolver = _UnitExpressionResolver(g=g, tg=tg)
+    node = fabll.Node.bind_instance(expr)
+    result_unit = resolver.visit(node)
+    parent, _ = result_unit.get_parent_force()
+    return parent
 
 
 class _UnitRegistry(Enum):
