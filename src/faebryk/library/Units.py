@@ -47,7 +47,7 @@ TODO:
 """
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from functools import reduce
 from typing import Any, ClassVar, Self
@@ -87,16 +87,26 @@ class UnitsNotCommensurable(Exception):
 
 @dataclass
 class _BasisVectorArg:
-    ampere: int = 0
-    second: int = 0
-    meter: int = 0
-    kilogram: int = 0
-    kelvin: int = 0
-    mole: int = 0
-    candela: int = 0
-    radian: int = 0
-    steradian: int = 0
-    bit: int = 0
+    ampere: int = field(default=0, metadata={"symbol": "A"})
+    second: int = field(default=0, metadata={"symbol": "s"})
+    meter: int = field(default=0, metadata={"symbol": "m"})
+    kilogram: int = field(default=0, metadata={"symbol": "kg"})
+    kelvin: int = field(default=0, metadata={"symbol": "K"})
+    mole: int = field(default=0, metadata={"symbol": "mol"})
+    candela: int = field(default=0, metadata={"symbol": "cd"})
+    radian: int = field(default=0, metadata={"symbol": "rad"})
+    steradian: int = field(default=0, metadata={"symbol": "sr"})
+    bit: int = field(default=0, metadata={"symbol": "bit"})
+
+    @classmethod
+    def get_symbol(cls, field_name: str) -> str:
+        return cls.__dataclass_fields__[field_name].metadata["symbol"]
+
+    @classmethod
+    def iter_fields_and_symbols(cls) -> Sequence[tuple[str, str]]:
+        return [
+            (name, f.metadata["symbol"]) for name, f in cls.__dataclass_fields__.items()
+        ]
 
     def _vector_op(
         self, other: "_BasisVectorArg", op: Callable[[int, int], int]
@@ -403,6 +413,30 @@ class IsUnit(fabll.Node):
         offset = (o1 - o2) / m2
 
         return (scale, offset)
+
+    def compact_repr(self) -> str:
+        if symbols := self.symbol.get().force_extract_literal().get_values():
+            return symbols[0]
+
+        vector = self._extract_basis_vector()
+        multiplier = self._extract_multiplier()
+        offset = self._extract_offset()
+
+        parts = []
+        for dim_name, symbol in _BasisVectorArg.iter_fields_and_symbols():
+            exp = getattr(vector, dim_name)
+            if exp != 0:
+                parts.append(f"{symbol}^{exp}" if exp != 1 else symbol)
+
+        result = "·".join(parts) if parts else "1"
+
+        if multiplier != 1.0:
+            result = f"{multiplier}×{result}"
+
+        if offset != 0.0:
+            result = f"({result}+{offset})"
+
+        return result
 
 
 class HasUnit(fabll.Node):
