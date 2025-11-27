@@ -301,7 +301,7 @@ pub const TypeGraph = struct {
     }
 
     // TODO make cache for all these
-    fn get_Reference(self: *@This()) BoundNodeReference {
+    fn get_Reference(self: *const @This()) BoundNodeReference {
         return EdgeComposition.get_child_by_identifier(self.self_node, "Reference").?;
     }
 
@@ -309,7 +309,7 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "MakeChild").?;
     }
 
-    fn get_MakeLink(self: *@This()) BoundNodeReference {
+    fn get_MakeLink(self: *const @This()) BoundNodeReference {
         return EdgeComposition.get_child_by_identifier(self.self_node, "MakeLink").?;
     }
 
@@ -667,7 +667,12 @@ pub const TypeGraph = struct {
     }
 
     pub fn get_type_subgraph(self: *@This()) GraphView {
-        const allocator = self.self_node.g.allocator;
+        return get_subgraph_of_node(self.self_node.g.allocator, self.self_node);
+    }
+
+    pub fn get_subgraph_of_node(allocator: std.mem.Allocator, start_node: BoundNodeReference) GraphView {
+        const g = start_node.g;
+
         var collected_nodes = std.ArrayList(NodeReference).init(allocator);
         defer collected_nodes.deinit();
 
@@ -719,30 +724,46 @@ pub const TypeGraph = struct {
         };
 
         // Start with self_node
-        collector.try_add(self.self_node.node);
+        collector.try_add(start_node.node);
 
         // Process all nodes (queue-style BFS iteration over collected nodes)
         var i: usize = 0;
         while (i < collected_nodes.items.len) : (i += 1) {
             const current = collected_nodes.items[i];
-            const bound_current = self.self_node.g.bind(current);
+            const bound_current = g.bind(current);
 
-            // Follow EdgeComposition children
+            // Follow type
+            // Very important that this is first! For the i+=1 hack
+            if (EdgeType.get_type_edge(bound_current)) |type_edge| {
+                const type_node = EdgeType.get_type_node(type_edge.edge);
+                const tg = TypeGraph.of_type(g.bind(type_node)).?;
+                collector.try_add(tg.self_node.node);
+                // hack to avoid copying complete type graph
+                i += 1;
+                collector.try_add(tg.get_ImplementsTrait().node);
+                collector.try_add(tg.get_ImplementsType().node);
+                collector.try_add(tg.get_MakeChild().node);
+                collector.try_add(tg.get_MakeLink().node);
+                collector.try_add(tg.get_Reference().node);
+                collector.try_add(type_node);
+            }
+
+            // Follow children
             _ = EdgeComposition.visit_children_edges(bound_current, void, &collector, Collector.visit_composition);
 
-            // Follow EdgePointer references
+            // Follow point targets
             _ = EdgePointer.visit_pointed_edges(bound_current, void, &collector, Collector.visit_pointer);
 
-            // Follow EdgeNext sequences
+            // Follow to next items in list
             if (EdgeNext.get_next_node_from_node(bound_current)) |next_node| {
                 collector.try_add(next_node);
             }
 
-            // Follow EdgeTrait to trait instances
+            // Follow owned traits
             _ = EdgeTrait.visit_trait_instance_edges(bound_current, void, &collector, Collector.visit_trait);
         }
 
-        return self.self_node.g.get_subgraph_from_nodes(collected_nodes);
+        return g.get_subgraph_from_nodes(collected_nodes);
     }
 };
 

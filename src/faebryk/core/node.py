@@ -1235,13 +1235,17 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         Copy all nodes in hierarchy and edges between them and their types
         """
-        t_sg = self.tg.get_type_subgraph()
-        g.insert_subgraph(subgraph=t_sg)
 
-        # TODO copy or handle pointers from nodes to the outside
-        children = self.get_children(direct_only=False, include_root=True, types=Node)
-        children_nodes = [c.instance for c in children] + t_sg.get_nodes()
-        g_sub = self.g().get_subgraph_from_nodes(nodes=children_nodes)
+        # t_sg = self.tg.get_type_subgraph()
+        # g.insert_subgraph(subgraph=t_sg)
+
+        ## TODO copy or handle pointers from nodes to the outside
+        # children = self.get_children(direct_only=False, include_root=True, types=Node)
+        # children_nodes = [c.instance for c in children] + t_sg.get_nodes()
+        # g_sub = self.g().get_subgraph_from_nodes(nodes=children_nodes)
+        # g.insert_subgraph(subgraph=g_sub)
+        # return self.bind_instance(instance=g.bind(node=self.instance.node()))
+        g_sub = fbrk.TypeGraph.get_subgraph_of_node(start_node=self.instance)
         g.insert_subgraph(subgraph=g_sub)
         return self.bind_instance(instance=g.bind(node=self.instance.node()))
 
@@ -2368,9 +2372,12 @@ def test_copy_into_basic():
 
     n = N.bind_typegraph(tg).create_instance(g=g)
     m = N.bind_typegraph(tg).create_instance(g=g)
-    n.connect(to=m, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+    o = N.bind_typegraph(tg).create_instance(g=g)
+    m.connect(to=n, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+    n.connect(to=o, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
 
-    assert fbrk.EdgePointer.get_referenced_node_from_node(node=n.instance) == m.instance
+    assert fbrk.EdgePointer.get_referenced_node_from_node(node=n.instance) == o.instance
+    assert fbrk.EdgePointer.get_referenced_node_from_node(node=m.instance) == n.instance
 
     n2 = n.copy_into(g=g_new)
 
@@ -2378,7 +2385,16 @@ def test_copy_into_basic():
     assert n2 is not n
     assert n2.g() != n.g()
 
-    assert not fbrk.EdgePointer.get_referenced_node_from_node(node=n2.instance)
+    # check o is in the new graph (because we pointed to it)
+    assert (
+        not_none(fbrk.EdgePointer.get_referenced_node_from_node(node=n2.instance))
+        .node()
+        .is_same(other=o.instance.node())
+    )
+
+    # check m is not in the new graph
+    g_new_nodes = g_new.get_nodes()
+    assert not any(m.instance.node().is_same(other=node.node()) for node in g_new_nodes)
 
     inner2 = n2.inner.get()
     assert inner2.is_same(n.inner.get())

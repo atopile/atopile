@@ -36,7 +36,7 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import not_none, times_out
+from faebryk.libs.util import indented_container, not_none, times_out
 
 logger = logging.getLogger(__name__)
 
@@ -113,10 +113,34 @@ class DefaultSolver(Solver):
         for phase_name, algo in enumerate(algos):
             timings.add("_")
 
+            def _tgoverview(tg: fbrk.TypeGraph) -> dict[str, int]:
+                out = tg.get_type_instance_overview()
+                out.append(("0TOTAL", sum(x[1] for x in out)))
+                return dict(sorted(out, key=lambda x: x[0]))
+
+            def _tgdiff(
+                overview1: dict[str, int], overview2: dict[str, int]
+            ) -> dict[str, int]:
+                return {
+                    k: d
+                    for k in overview1.keys() | overview2.keys()
+                    if (d := overview2.get(k, 0) - overview1.get(k, 0))
+                }
+
+            G_in_count = data.mutation_map.G_out.get_node_count()
+            G_in_operands = set(
+                fabll.Traits.get_implementors(
+                    F.Parameters.is_parameter_operatable.bind_typegraph(
+                        data.mutation_map.tg_out
+                    ),
+                    data.mutation_map.G_out,
+                )
+            )
+            G_in_overview = _tgoverview(data.mutation_map.tg_out)
             if PRINT_START:
                 logger.debug(
-                    f"START Iteration {iterno} Phase 2.{phase_name}: {algo.name}"
-                    f" G:{data.mutation_map.G_out.get_node_count()}"
+                    f"START Iteration {iterno} Phase {phase_name}: {algo.name}"
+                    f" G_in:{G_in_count}"
                 )
 
             mutator = Mutator(
@@ -133,10 +157,46 @@ class DefaultSolver(Solver):
             timings.add("_")
             algo_result = mutator.close()
 
-            if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
+            # TODO remove True
+            if True or algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
+                G_in_operands_after = set(
+                    fabll.Traits.get_implementors(
+                        F.Parameters.is_parameter_operatable.bind_typegraph(
+                            data.mutation_map.tg_out
+                        ),
+                        data.mutation_map.G_out,
+                    )
+                )
+                G_in_overview_after = dict(_tgoverview(data.mutation_map.tg_out))
+                G_out_operands = set(
+                    fabll.Traits.get_implementors(
+                        F.Parameters.is_parameter_operatable.bind_typegraph(
+                            algo_result.mutation_stage.tg_out
+                        ),
+                        algo_result.mutation_stage.G_out,
+                    )
+                )
+                G_out_overview = dict(_tgoverview(algo_result.mutation_stage.tg_out))
+                G_in_count_after = data.mutation_map.G_out.get_node_count()
+                G_out_count = algo_result.mutation_stage.G_out.get_node_count()
+                suffix = ""
+                if len({G_in_count, G_in_count_after, G_out_count}) != 1:
+                    suffix += f"\n (inconsistent counts: {G_in_count}, {G_in_count_after}, {G_out_count})"
+                    suffix += f"\n {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
+                    suffix += f"\n {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
+                if (
+                    len(
+                        {
+                            len(G_in_operands),
+                            len(G_in_operands_after),
+                            len(G_out_operands),
+                        }
+                    )
+                    != 1
+                ):
+                    suffix += f"\n (inconsistent operand counts: {len(G_in_operands)}, {len(G_in_operands_after)}, {len(G_out_operands)})"
                 logger.debug(
-                    f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
-                    f"G:{data.mutation_map.G_out.get_node_count()}"
+                    f"DONE  Iteration {iterno} Phase {phase_name}: {algo.name}{suffix}"
                 )
                 # atm only one stage
                 # expensive
@@ -349,7 +409,10 @@ class DefaultSolver(Solver):
                 break
 
             if S_LOG:
-                self.state.data.mutation_map.last_stage.print_graph_contents()
+                # TODO remove logger.debug
+                self.state.data.mutation_map.last_stage.print_graph_contents(
+                    log=logger.debug
+                )
 
         if LOG_PICK_SOLVE:
             logger.info(
@@ -535,6 +598,12 @@ def test_defaultsolver_super_basic():
 
     import faebryk.library._F as FT
 
+    # fill typegraph
+    for E in vars(FT.Expressions).values():
+        if not isinstance(E, type) or not issubclass(E, fabll.Node):
+            continue
+        E.bind_typegraph(tg=tg).get_or_create_type()
+
     P = FT.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     P.alias_to_single(True)
     solver = DefaultSolver()
@@ -582,5 +651,8 @@ if __name__ == "__main__":
 
     setup_basic_logging()
     logger.setLevel(logging.DEBUG)
+    from faebryk.core.solver.mutator import logger as mutator_logger
+
+    mutator_logger.setLevel(logging.DEBUG)
 
     typer.run(test_defaultsolver_super_basic)

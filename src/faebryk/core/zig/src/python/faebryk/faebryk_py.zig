@@ -3445,6 +3445,44 @@ fn wrap_typegraph_get_type_instance_overview() type {
     };
 }
 
+fn wrap_typegraph_get_subgraph_of_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_subgraph_of_node",
+            .doc = "Return a subgraph containing the node and all its descendants (children, traits, pointers, etc.)",
+            .args_def = struct {
+                start_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .start_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            // Allocate memory for the result GraphView
+            const allocator = std.heap.c_allocator;
+            const result_ptr = allocator.create(graph.GraphView) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate GraphView");
+                return null;
+            };
+
+            result_ptr.* = faebryk.typegraph.TypeGraph.get_subgraph_of_node(allocator, kwarg_obj.start_node.*);
+
+            const pyobj = bind.wrap_obj("GraphView", &graph_py.graph_view_type, graph_py.GraphViewWrapper, result_ptr);
+            if (pyobj == null) {
+                result_ptr.deinit();
+                allocator.destroy(result_ptr);
+            }
+
+            return pyobj;
+        }
+    };
+}
+
 fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_make_child_node_build(),
@@ -3488,6 +3526,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_type_subgraph(),
         wrap_typegraph_get_type_instance_overview(),
+        wrap_typegraph_get_subgraph_of_node(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);
