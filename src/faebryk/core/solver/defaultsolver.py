@@ -444,7 +444,7 @@ class DefaultSolver(Solver):
 
         pred_po = predicate.get_sibling_trait(F.Parameters.is_parameter_operatable)
 
-        g = predicate.g()
+        g = predicate.g
         tg = predicate.tg
 
         try:
@@ -466,7 +466,7 @@ class DefaultSolver(Solver):
 
         # FIXME: workaround for above
         if repr_pred is not None:
-            G_out = repr_pred.g()
+            G_out = repr_pred.g
 
         new_preds = fabll.Traits.get_implementors(
             F.Expressions.is_predicate.bind_typegraph(tg), G_out
@@ -518,7 +518,7 @@ class DefaultSolver(Solver):
             return
         tg = nodes[0].tg
         # TODO consider creating new graph view that contains only the nodes
-        g = nodes[0].g()
+        g = nodes[0].g
         try:
             self.simplify_symbolically(tg, g, terminal=True)
         except TimeoutError:
@@ -579,7 +579,7 @@ class DefaultSolver(Solver):
 
         lit = self.inspect_get_known_supersets(operatable)
         out = lit.any()
-        singleton_lit = F.Literals.make_lit(lit.tg, out)
+        singleton_lit = F.Literals.make_lit(lit.g, lit.tg, out)
         if lock:
             F.Expressions.Is.from_operands(
                 operatable.as_operand(),

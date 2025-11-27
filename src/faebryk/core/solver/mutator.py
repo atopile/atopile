@@ -1035,7 +1035,7 @@ class Mutator:
     def make_lit(self, value: str) -> F.Literals.Strings: ...
 
     def make_lit(self, value: F.Literals.LiteralValues) -> F.Literals.LiteralNodes:
-        return F.Literals.make_lit(self.tg_in, value)
+        return F.Literals.make_lit(self.G_in, self.tg_in, value)
 
     def _mutate(
         self,
@@ -1147,8 +1147,8 @@ class Mutator:
 
         for op in new_operands:
             if op.has_trait(F.Parameters.is_parameter_operatable):
-                assert op.g() == new_expr.g(), (
-                    f"Graph mismatch: {op.g()} != {new_expr.g()}"
+                assert op.g == new_expr.g, (
+                    f"Graph mismatch: {op.g} != {new_expr.g}"
                 )
 
         return new_expr

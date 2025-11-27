@@ -192,11 +192,11 @@ class PCB_Transformer:
 
     @property
     def tg(self):
-        return self.app.get_graph()
+        return self.app.tg
 
     @property
     def g(self):
-        return self.tg.get_graph_view()
+        return self.app.g
 
     def attach(self):
         """Bind footprints and nets from the PCB to the graph."""

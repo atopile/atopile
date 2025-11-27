@@ -149,7 +149,7 @@ def test_performance_graph_merge_it():
         )
         timings.add("connect")
 
-    assert gs[0].g().get_node_count() >= count
+    assert gs[0].g.get_node_count() >= count
 
     logger.info(timings)
     per_connect = timings.get_formatted("connect", Times.MultiSampleStrategy.AVG)

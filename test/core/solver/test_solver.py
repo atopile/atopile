@@ -349,7 +349,7 @@ def test_simplify():
     # => (H + I + J + 17) < 11
     app_ops = [p.get().as_operand() for p in app.ops]
     constants: list[F.Parameters.can_be_operand] = [
-        F.Literals.make_lit(tg=E.tg, value=c).get_trait(F.Parameters.can_be_operand)
+        F.Literals.make_lit(g=E.g, tg=E.tg, value=c).get_trait(F.Parameters.can_be_operand)
         for c in range(0, 10)
     ]
     E.is_(constants[5], E.subtract(app_ops[0], app_ops[0]), assert_=True)

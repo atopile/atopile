@@ -26,18 +26,18 @@ class DifferentialPair(fabll.Node):
 
     def terminated(self) -> "DifferentialPair":
         terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(
-            g=self.tg.get_graph_view()
+            g=self.g
         )
         rs = [
             F.Resistor.bind_typegraph(self.tg).create_instance(
-                g=self.tg.get_graph_view()
+                g=self.g
             )
             for _ in range(2)
         ]
 
         for r in rs:
             r.resistance.get().alias_to_literal(
-                g=self.tg.get_graph_view(),
+                g=self.g,
                 value=self.impedance.get().force_extract_literal(),
             )
 

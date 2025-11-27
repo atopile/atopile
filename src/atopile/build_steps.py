@@ -245,8 +245,8 @@ def pick_parts(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.g())
-        solver.simplify(app.g(), app.tg)
+        load_part_info_from_pcb(app.g)
+        solver.simplify(app.g, app.tg)
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:
@@ -254,7 +254,7 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
-    save_part_info_to_pcb(app.g())
+    save_part_info_to_pcb(app.g)
 
 
 @muster.register(
@@ -273,11 +273,11 @@ def prepare_nets(
     pcb.transformer.attach()
 
     if config.build.keep_net_names:
-        loaded_nets = load_net_names(app.g())
+        loaded_nets = load_net_names(app.g)
         nets |= loaded_nets
 
     attach_net_names(nets)
-    check_net_names(app.g())
+    check_net_names(app.g)
 
 
 @muster.register(

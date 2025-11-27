@@ -37,7 +37,7 @@ class can_be_pulled(fabll.Node):
             return down_r
 
         resistor = F.Resistor.bind_typegraph(self.tg).create_instance(
-            g=self.tg.get_graph_view()
+            g=self.g
         )
         name = obj.get_name(accept_no_parent=True)
         # TODO handle collisions

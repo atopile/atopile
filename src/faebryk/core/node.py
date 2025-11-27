@@ -1158,6 +1158,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 if child.has_trait(trait)
             )
 
+    # TODO replace all usage of this with the tg property
+    def get_graph(self) -> fbrk.TypeGraph:
+        return self.tg
+
     @property
     def tg(self) -> fbrk.TypeGraph:
         tg = fbrk.TypeGraph.of_instance(instance_node=self.instance)
@@ -1167,14 +1171,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             )
         return tg
 
-    def bind_typegraph_from_self(self) -> "TypeNodeBoundTG[Self, Any]":
-        return self.bind_typegraph(tg=self.tg)
-
+    @property
     def g(self) -> graph.GraphView:
         return self.instance.g()
 
-    def get_graph(self) -> fbrk.TypeGraph:
-        return self.tg
+    def bind_typegraph_from_self(self) -> "TypeNodeBoundTG[Self, Any]":
+        return self.bind_typegraph(tg=self.tg)
 
     def get_type_node(self) -> graph.BoundNode | None:
         type_edge = fbrk.EdgeType.get_type_edge(bound_node=self.instance)
@@ -2143,7 +2145,7 @@ def test_string_param():
 def test_boolean_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
-    
+
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True)
@@ -2385,7 +2387,7 @@ def test_copy_into_basic():
 
     assert n2.is_same(n)
     assert n2 is not n
-    assert n2.g() != n.g()
+    assert n2.g != n.g
 
     # check o is in the new graph (because we pointed to it)
     assert (

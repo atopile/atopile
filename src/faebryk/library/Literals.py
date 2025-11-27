@@ -48,7 +48,7 @@ class is_literal(fabll.Node):
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
         # TODO way more efficient way to do this
-        return self.equals(make_lit(self.tg, singleton).get_trait(is_literal))
+        return self.equals(make_lit(self.g, self.tg, singleton).get_trait(is_literal))
 
     def is_single_element(self) -> bool:
         # TODO
@@ -511,25 +511,25 @@ LiteralNodes = Numbers | Booleans | Strings | AbstractEnums
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_lit(tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
+def make_lit(g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues) -> LiteralNodes:
     match value:
         case bool():
             return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(),
+                g=g,
                 attributes=BooleansAttributes(has_true=value, has_false=not value),
             )
         case float() | int():
             value = float(value)
             return Numbers.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+                g=g, attributes=LiteralsAttributes(value=value)
             )
         case Enum():
             return AbstractEnums.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+                g=g, attributes=LiteralsAttributes(value=value)
             )
         case str():
             return Strings.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+                g=g, attributes=LiteralsAttributes(value=value)
             )
 
 
@@ -718,6 +718,6 @@ def test_make_lit():
 
     g = graph.GraphView.create()
     tg = graph.TypeGraph.create(g=g)
-    assert make_lit(tg, value=True).get_values() == [True]
-    assert make_lit(tg, value=3).get_values() == [3]
-    assert make_lit(tg, value="test").get_values() == ["test"]
+    assert make_lit(g, tg, value=True).get_values() == [True]
+    assert make_lit(g, tg, value=3).get_values() == [3]
+    assert make_lit(g, tg, value="test").get_values() == ["test"]
