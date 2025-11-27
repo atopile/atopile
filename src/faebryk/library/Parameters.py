@@ -539,7 +539,7 @@ class NumericParameter(fabll.Node):
     def get_units(self) -> "Units.IsUnit":
         from faebryk.library.Units import HasUnit
 
-        return self.get_trait(HasUnit).get_unit()
+        return self.get_trait(HasUnit).get_is_unit()
 
     def get_domain(self) -> "NumberDomain":
         # TODO
@@ -637,6 +637,93 @@ class NumericParameter(fabll.Node):
         )
 
 
+class CountParameter(fabll.Node):
+    """
+    Parameter for integer count values.
+    Similar to NumericParameter but constrained to discrete integer counts.
+    Uses Numbers.Counts as its literal type.
+    """
+
+    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        is_parameter_operatable.MakeChild()
+    )
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+
+    def try_extract_constrained_literal(self) -> "F.Numbers.Counts | None":
+        """
+        Try to extract the constrained Counts literal from this parameter.
+        Returns None if the parameter is not constrained to a literal.
+        """
+        from faebryk.library.Numbers import Counts
+
+        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
+            lit_type=Counts
+        )
+
+    def force_extract_literal(self) -> "F.Numbers.Counts":
+        """
+        Extract the constrained Counts literal, raising if not constrained.
+        """
+        from faebryk.library.Numbers import Counts
+
+        return self.get_trait(is_parameter_operatable).force_extract_literal(
+            lit_type=Counts
+        )
+
+    def extract_single(self) -> int:
+        """
+        Extract a single integer value from this parameter.
+        Raises if not constrained to a single value.
+        """
+        return self.force_extract_literal().get_single()
+
+    def alias_to_single(self, value: int, g: graph.GraphView | None = None) -> None:
+        """
+        Constrain this parameter to a single integer value.
+        """
+        self.alias_to_literal(value, g=g)
+
+    def alias_to_literal(self, *values: int, g: graph.GraphView | None = None) -> None:
+        """
+        Constrain this parameter to a set of integer values.
+        """
+        g = g or self.instance.g()
+        from faebryk.library.Numbers import Counts
+
+        counts_lit = (
+            Counts.bind_typegraph(tg=self.tg)
+            .create_instance(g=g)
+            .setup_from_values(g=g, tg=self.tg, values=list(values))
+        )
+        # Counts has _can_be_operand trait, so it works with alias_to_literal
+        # Cast to satisfy type checker since LiteralNodes doesn't include Counts
+        self._is_parameter_operatable.get().alias_to_literal(
+            g=g,
+            value=cast("Literals.LiteralNodes", counts_lit),
+        )
+
+    def setup(
+        self,
+        *,
+        within: "F.Numbers.Counts | None" = None,
+        likely_constrained: bool = False,
+    ) -> Self:
+        """
+        Setup method for configuration (currently a placeholder for future constraints).
+        """
+        # TODO: Implement constraint logic if needed
+        return self
+
+    @classmethod
+    def MakeChild(cls) -> fabll._ChildField["Self"]:
+        """
+        Create a CountParameter as a child field.
+        """
+        out = fabll._ChildField(cls)
+        return out
+
+
 # Binding context ----------------------------------------------------------------------
 
 
@@ -665,6 +752,11 @@ class BoundParameterContext:
     def NumericParameter(self):
         return NumericParameter.bind_typegraph(tg=self.tg)
 
+    @property
+    @once
+    def CountParameter(self):
+        return CountParameter.bind_typegraph(tg=self.tg)
+
     def create_string_parameter(self, value: str) -> "StringParameter":
         return self.StringParameter.create_instance(g=self.g).alias_to_single(
             value=value, g=self.g
@@ -677,6 +769,16 @@ class BoundParameterContext:
 
     def create_enum_parameter(self, enum: type[Enum]) -> "EnumParameter":
         return self.EnumParameter.create_instance(g=self.g).setup(enum=enum)
+
+    def create_count_parameter(self, *values: int) -> "CountParameter":
+        """
+        Create a CountParameter optionally constrained to the given values.
+        If no values provided, creates an unconstrained parameter.
+        """
+        param = self.CountParameter.create_instance(g=self.g)
+        if values:
+            param.alias_to_literal(*values, g=self.g)
+        return param
 
     def create_numeric_parameter(
         self,
@@ -739,3 +841,62 @@ def test_try_get():
         "a",
         "b",
     ]
+
+
+def test_count_parameter():
+    """Test CountParameter creation and constraint extraction."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Test basic creation and aliasing
+    p1 = CountParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p1.alias_to_literal(1, 2, 3)
+
+    # Verify we can extract the constrained literal
+    lit = p1.try_extract_constrained_literal()
+    assert lit is not None
+    assert lit.get_values() == [1, 2, 3]
+
+
+def test_count_parameter_single():
+    """Test CountParameter with single value extraction."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    p1 = CountParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p1.alias_to_single(42)
+
+    # Verify single value extraction
+    assert p1.extract_single() == 42
+    lit = p1.force_extract_literal()
+    assert lit.is_single_element()
+    assert lit.get_single() == 42
+
+
+def test_count_parameter_make_child():
+    """Test CountParameter.MakeChild() class method."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        count_param = CountParameter.MakeChild()
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    app.count_param.get().alias_to_literal(5, 10, 15)
+
+    lit = app.count_param.get().try_extract_constrained_literal()
+    assert lit is not None
+    assert lit.get_values() == [5, 10, 15]
+
+
+def test_bound_parameter_context_count():
+    """Test CountParameter through BoundParameterContext."""
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    ctx = BoundParameterContext(tg=tg, g=g)
+    param = ctx.create_count_parameter(100, 200)
+
+    lit = param.try_extract_constrained_literal()
+    assert lit is not None
+    assert lit.get_values() == [100, 200]

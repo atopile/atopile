@@ -65,7 +65,7 @@ def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
         return unit_like
     if isinstance(unit_like, fabll.Node):
         try:
-            unit_trait = unit_like.get_trait(HasUnit).get_unit()
+            unit_trait = unit_like.get_trait(HasUnit).get_is_unit()
             return type(unit_trait)
         except fabll.TraitNotFound:
             return Dimensionless
@@ -128,41 +128,26 @@ class _BasisVectorArg:
 class _BasisVector(fabll.Node):
     ORIGIN: ClassVar[_BasisVectorArg] = _BasisVectorArg()
 
-    ampere_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    second_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    meter_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    kilogram_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    kelvin_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    mole_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    candela_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
+    ampere_exponent = F.Parameters.CountParameter.MakeChild()
+    second_exponent = F.Parameters.CountParameter.MakeChild()
+    meter_exponent = F.Parameters.CountParameter.MakeChild()
+    kilogram_exponent = F.Parameters.CountParameter.MakeChild()
+    kelvin_exponent = F.Parameters.CountParameter.MakeChild()
+    mole_exponent = F.Parameters.CountParameter.MakeChild()
+    candela_exponent = F.Parameters.CountParameter.MakeChild()
 
     # pseudo base units
-    radian_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
-    steradian_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-        integer=True
-    )
+    radian_exponent = F.Parameters.CountParameter.MakeChild()
+    steradian_exponent = F.Parameters.CountParameter.MakeChild()
 
     # non-SI base units
-    bit_exponent = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(integer=True)
+    bit_exponent = F.Parameters.CountParameter.MakeChild()
 
     @classmethod
     def MakeChild(cls, vector: _BasisVectorArg) -> fabll._ChildField[Self]:  # type: ignore
+        """
+        Create a _BasisVector child field with exponent values set at type level.
+        """
         out = fabll._ChildField(cls)
 
         for child, exponent in (
@@ -178,7 +163,9 @@ class _BasisVector(fabll.Node):
             (cls.bit_exponent, vector.bit),
         ):
             assert isinstance(exponent, int)
-            lit = F.Literals.Numbers.MakeChild(value=float(exponent))
+            from faebryk.library.Numbers import Counts
+
+            lit = Counts.MakeChild(exponent)
             is_expr = F.Expressions.Is.MakeChild_Constrain([[out, child], [lit]])
             is_expr.add_dependant(lit, identifier="lit", before=True)
             out.add_dependant(is_expr)
@@ -187,8 +174,6 @@ class _BasisVector(fabll.Node):
 
     def setup(self, vector: _BasisVectorArg) -> Self:  # type: ignore
         g = self.instance.g()
-        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=self.tg)
-
         for child, exponent in (
             (self.ampere_exponent, vector.ampere),
             (self.second_exponent, vector.second),
@@ -201,33 +186,22 @@ class _BasisVector(fabll.Node):
             (self.steradian_exponent, vector.steradian),
             (self.bit_exponent, vector.bit),
         ):
-            child.get().alias_to_literal(
-                g=g,
-                value=BoundNumbers.create_instance(g=g).setup_from_singleton(
-                    value=float(exponent)
-                ),
-            )
+            child.get().alias_to_literal(int(exponent), g=g)
 
         return self
 
     def extract_vector(self) -> _BasisVectorArg:
         return _BasisVectorArg(
-            ampere=int(self.ampere_exponent.get().force_extract_literal().get_value()),
-            second=int(self.second_exponent.get().force_extract_literal().get_value()),
-            meter=int(self.meter_exponent.get().force_extract_literal().get_value()),
-            kilogram=int(
-                self.kilogram_exponent.get().force_extract_literal().get_value()
-            ),
-            kelvin=int(self.kelvin_exponent.get().force_extract_literal().get_value()),
-            mole=int(self.mole_exponent.get().force_extract_literal().get_value()),
-            candela=int(
-                self.candela_exponent.get().force_extract_literal().get_value()
-            ),
-            radian=int(self.radian_exponent.get().force_extract_literal().get_value()),
-            steradian=int(
-                self.steradian_exponent.get().force_extract_literal().get_value()
-            ),
-            bit=int(self.bit_exponent.get().force_extract_literal().get_value()),
+            ampere=self.ampere_exponent.get().extract_single(),
+            second=self.second_exponent.get().extract_single(),
+            meter=self.meter_exponent.get().extract_single(),
+            kilogram=self.kilogram_exponent.get().extract_single(),
+            kelvin=self.kelvin_exponent.get().extract_single(),
+            mole=self.mole_exponent.get().extract_single(),
+            candela=self.candela_exponent.get().extract_single(),
+            radian=self.radian_exponent.get().extract_single(),
+            steradian=self.steradian_exponent.get().extract_single(),
+            bit=self.bit_exponent.get().extract_single(),
         )
 
 
@@ -313,13 +287,15 @@ class IsUnit(fabll.Node):
             g=g,
             value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
         )
-
+        print(f"setup IsUnit: {unit_vector}")
         basis_vector = (
             _BasisVector.bind_typegraph(tg=self.tg)
             .create_instance(g=g)
             .setup(vector=unit_vector)
         )
         self.basis_vector.get().point(basis_vector)
+
+        print(f"setup IsUnit finished: {self._extract_basis_vector()}")
 
         return self
 
@@ -368,6 +344,7 @@ class IsUnit(fabll.Node):
         offset: float,
     ) -> "IsUnit":
         # TODO: generate symbol
+        print(f"_newvector: {vector}")
         unit = (
             _AnonymousUnit.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -384,6 +361,8 @@ class IsUnit(fabll.Node):
 
         new_multiplier = m1 * m2
         new_vector = v1.multiply(v2)
+
+        print(f"new_vector: {new_vector}")
 
         return self._new(
             g=g,
@@ -466,7 +445,7 @@ class HasUnit(fabll.Node):
         self.unit.get().point(unit)
         return self
 
-    def get_unit(self) -> IsUnit:
+    def get_is_unit(self) -> IsUnit:
         return self.unit.get().deref().get_trait(IsUnit)
 
 
@@ -526,7 +505,7 @@ def make_unit_expression_type(unit_vector: UnitVectorT) -> type[fabll.Node]:
 class _AnonymousUnit(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(IsUnit.MakeChild_Empty())
 
-    def setup(  # type: ignore
+    def setup(
         self, vector: _BasisVectorArg, multiplier: float = 1.0, offset: float = 0.0
     ) -> Self:
         self._is_unit.get().setup(
@@ -535,6 +514,9 @@ class _AnonymousUnit(fabll.Node):
             multiplier=multiplier,
             offset=offset,
         )
+
+        print(f"setup _AnonymousUnit: {self._is_unit.get()._extract_basis_vector()}")
+
         return self
 
 
@@ -591,6 +573,9 @@ class _UnitRegistry(Enum):
     BitPerSecond = auto()
     AmpereHour = auto()
 
+    # Disgusting units
+    Farenheit = auto()
+
 
 _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
     _UnitRegistry.dimensionless: ["dimensionless"],  # TODO: allow None?
@@ -630,6 +615,7 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
     _UnitRegistry.Hour: ["h"],
     _UnitRegistry.BitPerSecond: ["bps"],
     _UnitRegistry.AmpereHour: ["Ah"],
+    _UnitRegistry.Farenheit: ["°F"],
 }
 
 
@@ -866,6 +852,19 @@ class DegreeCelsius(fabll.Node):
             unit_vector_arg,
             multiplier=1.0,
             offset=273.15,
+        )
+    )
+
+
+class Farenheit(fabll.Node):
+    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kelvin=1)
+
+    _is_unit = fabll.Traits.MakeEdge(
+        IsUnit.MakeChild(
+            _UNIT_SYMBOLS[_UnitRegistry.Farenheit],
+            unit_vector_arg,
+            multiplier=5.0 / 9.0,
+            offset=255.37,
         )
     )
 

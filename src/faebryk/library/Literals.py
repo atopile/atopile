@@ -500,6 +500,7 @@ def EnumsFactory(enum_type: type[Enum]) -> type[AbstractEnums]:
 
 # --------------------------------------------------------------------------------------
 
+
 LiteralNodes = Numbers | Booleans | Strings | AbstractEnums
 
 LiteralLike = LiteralValues | LiteralNodes | is_literal

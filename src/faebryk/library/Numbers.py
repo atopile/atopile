@@ -1461,7 +1461,7 @@ class NumericSet(fabll.Node):
 
         return numeric_set.setup_from_intervals(g=g, tg=tg, intervals=out)
 
-    def op_add_intervals(
+    def op_add(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
@@ -1481,7 +1481,7 @@ class NumericSet(fabll.Node):
     def op_subtract(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
-        return self.op_add_intervals(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
+        return self.op_add(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
 
     def op_multiply(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
@@ -1912,7 +1912,7 @@ def test_numeric_set_op_add_intervals():
     numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
     numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
     numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
-    result = numeric_set_1.op_add_intervals(g=g, tg=tg, other=numeric_set_2)
+    result = numeric_set_1.op_add(g=g, tg=tg, other=numeric_set_2)
     intervals = result.get_intervals()
     assert len(intervals) == 1
     assert intervals[0].get_min_value() == 0.5
@@ -2472,12 +2472,9 @@ class QuantitySet(fabll.Node):
         self,
         g: graph.GraphView,
         tg: TypeGraph,
-        min: float,
-        max: float,
+        numeric_set: NumericSet,
         unit: fabll.Node,
     ) -> "QuantitySet":
-        numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(min, max)])
         _ = EdgeComposition.add_child(
             bound_node=self.instance,
             child=numeric_set.instance.node(),
@@ -2493,6 +2490,19 @@ class QuantitySet(fabll.Node):
 
         return self
 
+    def setup_from_min_max(
+        self,
+        g: graph.GraphView,
+        tg: TypeGraph,
+        min: float,
+        max: float,
+        unit: fabll.Node,
+    ) -> "QuantitySet":
+        numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+            g=g, tg=tg, values=[(min, max)]
+        )
+        return self.setup(g=g, tg=tg, numeric_set=numeric_set, unit=unit)
+
     def get_numeric_set(self) -> NumericSet:
         numeric_set = EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._numeric_set_identifier
@@ -2500,8 +2510,11 @@ class QuantitySet(fabll.Node):
         assert numeric_set is not None
         return NumericSet.bind_instance(numeric_set)
 
-    def get_unit(self) -> "F.Units.IsUnit":
-        return self.get_trait(F.Units.HasUnit).get_unit()
+    def get_is_unit(self) -> "F.Units.IsUnit":
+        return self.get_trait(F.Units.HasUnit).get_is_unit()
+
+    def get_unit_node(self) -> fabll.Node:
+        return self.get_trait(F.Units.HasUnit).unit.get().deref()
 
     # def get_unit(self) -> IsUnit:
     # unit = EdgePointer.get_pointed_node_by_identifier(
@@ -2531,158 +2544,172 @@ class QuantitySet(fabll.Node):
 
     def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
         min_value = self.get_min_value()
-        unit = self.get_unit()
-        return QuantitySet.create_instance(g=g, tg=tg).setup(
+        unit = self.get_trait(F.Units.HasUnit).unit.get().deref()
+        return QuantitySet.create_instance(g=g, tg=tg).setup_from_min_max(
             g=g, tg=tg, min=min_value, max=min_value, unit=unit
         )
 
     def get_max_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
         max_value = self.get_max_value()
-        unit = self.get_unit()
-        return QuantitySet.create_instance(g=g, tg=tg).setup(
+        unit = self.get_trait(F.Units.HasUnit).unit.get().deref()
+        return QuantitySet.create_instance(g=g, tg=tg).setup_from_min_max(
             g=g, tg=tg, min=max_value, max=max_value, unit=unit
         )
 
+    # def closest_elem(
+    #     self, g: graph.GraphView, tg: TypeGraph, target: "QuantitySet"
+    # ) -> "QuantitySet":
+    #     if not self.get_unit().is_commensurable_with(target.get_unit()):
+    #         raise ValueError("incompatible units")
+    #     return self.base_to_units(
+    #         self._intervals.closest_elem(target.to(self.interval_units).magnitude)
+    #     )
 
-def test_quantity_set_make_child():
-    g = graph.GraphView.create()
-    tg = TypeGraph.create(g=g)
-    print(f"Creating typegraph: {tg}")
+    # def is_superset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
+    #     if not self.units.is_compatible_with(other.units):
+    #         return False
+    #     return self._intervals.is_superset_of(
+    #         Quantity_Interval_Disjoint.from_value(other)._intervals
+    #     )
 
-    class App(fabll.Node):
-        quantity_set = QuantitySet.MakeChild(
-            g=g, tg=tg, min=0.0, max=1.0, unit=F.Units.Meter
+    # def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
+    #     if not self.units.is_compatible_with(other.units):
+    #         return False
+    #     return self._intervals.is_subset_of(
+    #         Quantity_Interval_Disjoint.from_value(other)._intervals
+    #     )
+
+    # def op_intersect_interval(
+    #     self, other: "Quantity_Interval"
+    # ) -> "Quantity_Interval_Disjoint":
+    #     if not self.units.is_compatible_with(other.units):
+    #         raise ValueError("incompatible units")
+    #     _interval = self._intervals.op_intersect_interval(other._interval)
+    #     return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    # def op_intersect_intervals(
+    #     self, *other: "Quantity_Interval_Disjoint"
+    # ) -> "Quantity_Interval_Disjoint":
+    #     # TODO make pretty
+    #     def single(left, right):
+    #         if not left.units.is_compatible_with(right.units):
+    #             raise ValueError("incompatible units")
+    #         _interval = left._intervals.op_intersect_intervals(right._intervals)
+    #         return Quantity_Interval_Disjoint._from_intervals(_interval, left.units)
+
+    #     out = Quantity_Interval_Disjoint(self)
+
+    #     for o in other:
+    #         out = single(out, o)
+
+    #     return out
+
+    # def op_union_intervals(
+    #     self, other: "Quantity_Interval_Disjoint"
+    # ) -> ""QuantitySet"":
+    #     if not self.units.is_compatible_with(other.units):
+    #         raise ValueError("incompatible units")
+    #     _interval = self._intervals.op_union_intervals(other._intervals)
+    #     return QuantitySet._from_intervals(_interval, self.units)
+
+    # def op_difference_intervals(
+    #     self, other: "QuantitySet"
+    # ) -> "QuantitySet":
+    #     if not self.units.is_compatible_with(other.units):
+    #         raise ValueError("incompatible units")
+    #     _interval = self._intervals.op_difference_intervals(other._intervals)
+    #     return QuantitySet._from_intervals(_interval, self.units)
+
+    # def op_symmetric_difference_intervals(
+    #     self, other: "QuantitySet"
+    # ) -> "QuantitySet":
+    #     if not self.units.is_compatible_with(other.units):
+    #         raise ValueError("incompatible units")
+    #   _interval = self._intervals.op_symmetric_difference_intervals(other._intervals)
+    #     return QuantitySet._from_intervals(_interval, self.units)
+
+    def convert_to_other_unit(
+        self, g: graph.GraphView, tg: TypeGraph, other: "QuantitySet"
+    ) -> "QuantitySet":
+        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+            raise ValueError("incompatible units")
+        scale, offset = other.get_is_unit().get_conversion_to(self.get_is_unit())
+
+        # Generate a numeric set for the scale
+        scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+            g=g, tg=tg, values=[(scale, scale)]
         )
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    numeric_set = app.quantity_set.get().get_numeric_set()
-    assert numeric_set.get_min_value() == 0.0
-    assert numeric_set.get_max_value() == 1.0
-    assert (
-        app.quantity_set.get()
-        .get_unit()
-        .symbol.get()
-        .try_extract_constrained_literal()
-        .get_values()
-        == ["m"]
-    )
+        # Generate a numeric set for the offset
+        offset_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+            g=g, tg=tg, values=[(offset, offset)]
+        )
 
+        # Multiply the other numeric set by the scale
+        out_numeric_set = scale_numeric_set.op_multiply(
+            g=g, tg=tg, other=other.get_numeric_set()
+        )
 
-def test_quantity_set_create_instance():
-    g = graph.GraphView.create()
-    tg = TypeGraph.create(g=g)
-    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
-    quantity_set.setup(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
-    assert quantity_set.get_numeric_set().get_min_value() == 0.0
-    assert quantity_set.get_numeric_set().get_max_value() == 1.0
-    assert not_none(
-        quantity_set.get_unit().symbol.get().try_extract_constrained_literal()
-    ).get_values() == ["m"]
+        # Add the offset to the scaled numeric set
+        out_numeric_set = out_numeric_set.op_add(g=g, tg=tg, other=offset_numeric_set)
 
+        # Return the new quantity set
+        return QuantitySet.create_instance(g=g, tg=tg).setup(
+            g=g, tg=tg, numeric_set=out_numeric_set, unit=self.get_unit_node()
+        )
 
-# def test_quantity_set_create_instance():
-#     g = graph.GraphView.create()
-#     tg = TypeGraph.create(g=g)
-#     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-#     assert quantity_set.is_empty()
+    def op_add(
+        self, g: graph.GraphView, tg: TypeGraph, other: "QuantitySet"
+    ) -> "QuantitySet":
+        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        out_numeric_set = self.get_numeric_set().op_add(
+            g=g, tg=tg, other=other_converted.get_numeric_set()
+        )
+        quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+        return quantity_set.setup(
+            g=g,
+            tg=tg,
+            numeric_set=out_numeric_set,
+            unit=self.get_unit_node(),
+        )
 
-# def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
-#     min_value = self.get_min_value()
-#     unit = self.get_unit()
-#     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-#     quantity_set.setup(g=g, tg=tg, min=min_value, max=min_value, unit=unit)
-#  return QuantitySet.MakeChild(g=g, tg=tg, min=min_value, max=min_value, unit=unit)
+    def op_multiply(
+        self, g: graph.GraphView, tg: TypeGraph, other: "QuantitySet"
+    ) -> "QuantitySet":
+        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        out_numeric_set = self.get_numeric_set().op_multiply(
+            g=g, tg=tg, other=other_converted.get_numeric_set()
+        )
+        quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+        unit = self.get_is_unit().op_multiply(
+            g=g, tg=tg, other=other_converted.get_is_unit()
+        )
+        unit_node = fbrk.EdgeTrait.get_owner_node_of(bound_node=unit.instance)
+        assert unit_node is not None
+        unit_node = fabll.Node.bind_instance(instance=unit_node)
 
-# def get_max_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
-#     max_value = self.get_max_value()
-#     unit = self.get_unit()
-#     quantity_set = QuantitySet.create_instance(g=g, tg=tg)
-#     quantity_set.setup(g=g, tg=tg, min=max_value, max=max_value, unit=unit)
-#     return quantity_set
+        return quantity_set.setup(
+            g=g,
+            tg=tg,
+            numeric_set=out_numeric_set,
+            unit=unit_node,
+        )
 
-# def max_elem(self) -> float:
-#     if self.is_empty():
-#         raise ValueError("empty interval cannot have max element")
-#     return self.base_to_units(self._intervals.max_elem)
+    # def op_multiply(
+    #     self, g: graph.GraphView, tg: TypeGraph, other: "QuantitySet"
+    # ) -> "QuantitySet":
+    #     scale, offset = self.get_unit().get_conversion_to(other.get_unit())
+    #     scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+    #         g=g, tg=tg, values=[(scale, scale)]
+    #     )
+    #     offset_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+    #         g=g, tg=tg, values=[(offset, offset)]
+    #     )
+    #     out_numeric_set = scale_numeric_set.op_multiply(
+    #         g=g, tg=tg, other=other.get_numeric_set()
+    #     )
+    #     out_numeric_set = out_numeric_set.op_add(g=g, tg=tg, other=offset_numeric_set)
 
-# def closest_elem(self, target: Quantity) -> Quantity:
-#     if not self.get_unit().is_compatible_with(target.units):
-#         raise ValueError("incompatible units")
-#     return self.base_to_units(
-#         self._intervals.closest_elem(target.to(self.interval_units).magnitude)
-#     )
-
-# def is_superset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
-#     if not self.units.is_compatible_with(other.units):
-#         return False
-#     return self._intervals.is_superset_of(
-#         Quantity_Interval_Disjoint.from_value(other)._intervals
-#     )
-
-# def is_subset_of(self, other: "Quantity_Interval_Disjoint") -> bool:
-#     if not self.units.is_compatible_with(other.units):
-#         return False
-#     return self._intervals.is_subset_of(
-#         Quantity_Interval_Disjoint.from_value(other)._intervals
-#     )
-
-# def op_intersect_interval(
-#     self, other: "Quantity_Interval"
-# ) -> "Quantity_Interval_Disjoint":
-#     if not self.units.is_compatible_with(other.units):
-#         raise ValueError("incompatible units")
-#     _interval = self._intervals.op_intersect_interval(other._interval)
-#     return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
-
-# def op_intersect_intervals(
-#     self, *other: "Quantity_Interval_Disjoint"
-# ) -> "Quantity_Interval_Disjoint":
-#     # TODO make pretty
-#     def single(left, right):
-#         if not left.units.is_compatible_with(right.units):
-#             raise ValueError("incompatible units")
-#         _interval = left._intervals.op_intersect_intervals(right._intervals)
-#         return Quantity_Interval_Disjoint._from_intervals(_interval, left.units)
-
-#     out = Quantity_Interval_Disjoint(self)
-
-#     for o in other:
-#         out = single(out, o)
-
-#     return out
-
-# def op_union_intervals(
-#     self, other: "Quantity_Interval_Disjoint"
-# ) -> ""QuantitySet"":
-#     if not self.units.is_compatible_with(other.units):
-#         raise ValueError("incompatible units")
-#     _interval = self._intervals.op_union_intervals(other._intervals)
-#     return QuantitySet._from_intervals(_interval, self.units)
-
-# def op_difference_intervals(
-#     self, other: "QuantitySet"
-# ) -> "QuantitySet":
-#     if not self.units.is_compatible_with(other.units):
-#         raise ValueError("incompatible units")
-#     _interval = self._intervals.op_difference_intervals(other._intervals)
-#     return QuantitySet._from_intervals(_interval, self.units)
-
-# def op_symmetric_difference_intervals(
-#     self, other: "QuantitySet"
-# ) -> "QuantitySet":
-#     if not self.units.is_compatible_with(other.units):
-#         raise ValueError("incompatible units")
-#   _interval = self._intervals.op_symmetric_difference_intervals(other._intervals)
-#     return QuantitySet._from_intervals(_interval, self.units)
-
-# def op_add_intervals(
-#     self, other: "QuantitySet"
-# ) -> "QuantitySet":
-#     if not self.units.is_compatible_with(other.units):
-#         raise ValueError("incompatible units")
-#     _interval = self._intervals.op_add_intervals(other._intervals)
-#     return QuantitySet._from_intervals(_interval, self.units)
 
 # def op_negate(self) -> "QuantitySet":
 #     _interval = self._intervals.op_negate()
@@ -3015,3 +3042,255 @@ def test_quantity_set_create_instance():
 #     return QuantitySet._from_intervals(
 #         self._intervals, dimensionless
 #     )
+
+
+def test_quantity_set_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+
+    class App(fabll.Node):
+        quantity_set = QuantitySet.MakeChild(
+            g=g, tg=tg, min=0.0, max=1.0, unit=F.Units.Meter
+        )
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    numeric_set = app.quantity_set.get().get_numeric_set()
+    assert numeric_set.get_min_value() == 0.0
+    assert numeric_set.get_max_value() == 1.0
+    assert not_none(
+        app.quantity_set.get()
+        .get_is_unit()
+        .symbol.get()
+        .try_extract_constrained_literal()
+    ).get_values() == ["m"]
+
+
+def test_quantity_set_create_instance():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_set.setup_from_min_max(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
+    assert quantity_set.get_numeric_set().get_min_value() == 0.0
+    assert quantity_set.get_numeric_set().get_max_value() == 1.0
+    assert not_none(
+        quantity_set.get_is_unit().symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["m"]
+
+
+def test_quantity_set_get_min_quantity():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_set.setup_from_min_max(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
+    min_quantity = quantity_set.get_min_quantity(g=g, tg=tg)
+    assert min_quantity.get_numeric_set().get_min_value() == 0.0
+    assert not_none(
+        min_quantity.get_is_unit().symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["m"]
+
+
+def test_quantity_set_get_max_quantity():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_set = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_set.setup_from_min_max(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
+    max_quantity = quantity_set.get_max_quantity(g=g, tg=tg)
+    assert max_quantity.get_numeric_set().get_max_value() == 1.0
+    assert not_none(
+        max_quantity.get_is_unit().symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["m"]
+
+
+def test_quantity_set_op_add_same_unit():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_set_1 = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_set_1.setup_from_min_max(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
+    quantity_set_2 = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_set_2.setup_from_min_max(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
+    result = quantity_set_1.op_add(g=g, tg=tg, other=quantity_set_2)
+    assert result.get_numeric_set().get_min_value() == 0.0
+    assert result.get_numeric_set().get_max_value() == 2.0
+    assert not_none(
+        result.get_is_unit().symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["m"]
+
+
+def test_quantity_set_op_add_different_unit():
+    # returns result in the self unit
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    celsius = F.Units.DegreeCelsius.bind_typegraph(tg=tg).create_instance(g=g)
+    farenheit = F.Units.Farenheit.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_celsius = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_celsius.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=celsius)
+    quantity_farenheit = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_farenheit.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=farenheit)
+    result = quantity_farenheit.op_add(g=g, tg=tg, other=quantity_celsius)
+    result_numeric_set_rounded = result.get_numeric_set().op_round(
+        g=g, tg=tg, ndigits=2
+    )
+    assert result_numeric_set_rounded.get_min_value() == 32
+    assert not_none(
+        result.get_is_unit().symbol.get().try_extract_constrained_literal()
+    ).get_values() == ["°F"]
+
+
+def test_quantity_set_op_multiply_same_unit():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    meter_instance = F.Units.Meter.bind_typegraph(tg=tg).create_instance(g=g)
+    quantity_set_1 = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_set_1.setup_from_min_max(g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance)
+    quantity_set_2 = QuantitySet.create_instance(g=g, tg=tg)
+    quantity_set_2.setup_from_min_max(g=g, tg=tg, min=3.0, max=5.0, unit=meter_instance)
+    result = quantity_set_1.op_multiply(g=g, tg=tg, other=quantity_set_2)
+    assert result.get_numeric_set().get_min_value() == 6.0
+    assert result.get_numeric_set().get_max_value() == 20.0
+    result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+    assert result_unit_basis_vector == F.Units._BasisVectorArg(meter=2)
+
+
+@dataclass(frozen=True)
+class CountAttributes(fabll.NodeAttributes):
+    value: int
+
+
+class Count(fabll.Node[CountAttributes]):
+    Attributes = CountAttributes
+
+    @classmethod
+    def MakeChild(cls, value: int) -> fabll._ChildField:
+        out = fabll._ChildField(cls, attributes=CountAttributes(value=value))
+        return out
+
+    @classmethod
+    def create_instance(cls, g: graph.GraphView, tg: TypeGraph, value: int) -> "Count":
+        return Count.bind_typegraph(tg).create_instance(
+            g=g, attributes=CountAttributes(value=value)
+        )
+
+    def get_value(self) -> int:
+        value = self.instance.node().get_dynamic_attrs().get("value", None)
+        if value is None:
+            raise ValueError("Count literal has no value")
+        return int(value)
+
+
+def test_count_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    expected_value = 1
+
+    class App(fabll.Node):
+        count = Count.MakeChild(value=expected_value)
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+
+    assert app.count.get().get_value() == expected_value
+
+
+def test_count_create_instance():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    expected_value = 1.0
+    numeric = Numeric.create_instance(g=g, tg=tg, value=expected_value)
+    assert numeric.get_value() == expected_value
+
+
+class Counts(fabll.Node):
+    """
+    A literal representing a set of integer count values.
+    Used with CountParameter for constraining integer-valued parameters.
+    """
+
+    _is_literal = fabll.Traits.MakeEdge(F.Literals.is_literal.MakeChild())
+    _can_be_operand = fabll.Traits.MakeEdge(F.Parameters.can_be_operand.MakeChild())
+    counts = F.Collections.PointerSet.MakeChild()
+
+    @classmethod
+    def MakeChild(cls, *values: int) -> fabll._ChildField:
+        """
+        Create a Counts literal as a child field at type definition time.
+        Does not require g or tg - works at type level.
+        """
+        out = fabll._ChildField(cls)
+
+        _counts = [Count.MakeChild(value=value) for value in values]
+        out.add_dependant(
+            *F.Collections.PointerSet.MakeEdges(
+                [out, cls.counts], [[count] for count in _counts]
+            )
+        )
+        out.add_dependant(*_counts, before=True)
+
+        return out
+
+    @classmethod
+    def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "Counts":
+        return cls.bind_typegraph(tg=tg).create_instance(g=g)
+
+    def setup_from_values(
+        self, g: graph.GraphView, tg: TypeGraph, values: list[int]
+    ) -> "Counts":
+        for value in values:
+            self.counts.get().append(Count.create_instance(g=g, tg=tg, value=value))
+        return self
+
+    def get_counts(self) -> list[Count]:
+        return [count.cast(Count) for count in self.counts.get().as_list()]
+
+    def get_values(self) -> list[int]:
+        return [count.get_value() for count in self.get_counts()]
+
+    def is_empty(self) -> bool:
+        return len(self.get_counts()) == 0
+
+    def is_single_element(self) -> bool:
+        values = self.get_values()
+        return len(values) == 1
+
+    def get_single(self) -> int:
+        """
+        Returns the single value if this is a singleton set, raises otherwise.
+        """
+        values = self.get_values()
+        if len(values) != 1:
+            raise ValueError(
+                f"Expected single value, got {len(values)} values: {values}"
+            )
+        return values[0]
+
+    def get_min(self) -> int:
+        values = self.get_values()
+        if not values:
+            raise ValueError("Cannot get min of empty Counts")
+        return min(values)
+
+    def get_max(self) -> int:
+        values = self.get_values()
+        if not values:
+            raise ValueError("Cannot get max of empty Counts")
+        return max(values)
+
+    def __contains__(self, item: int) -> bool:
+        return item in self.get_values()
+
+    def __repr__(self) -> str:
+        return f"Counts({self.get_values()})"
+
+
+def test_count_set_make_child():
+    g = graph.GraphView.create()
+    tg = TypeGraph.create(g=g)
+    expected_values = [1, 2, 3]
+
+    class App(fabll.Node):
+        count_set = Counts.MakeChild(*expected_values)
+
+    app = App.bind_typegraph(tg=tg).create_instance(g=g)
+    assert app.count_set.get().get_values() == expected_values
