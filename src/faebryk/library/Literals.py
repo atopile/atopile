@@ -663,7 +663,7 @@ def test_string_literal_on_type():
     class MyType(fabll.Node):
         string_set = Strings.MakeChild(*values).put_on_type()
 
-    my_type = MyType.bind_typegraph(tg=tg).get_or_create_type()
+    _ = MyType.bind_typegraph(tg=tg).get_or_create_type()
 
     # TODO
 
@@ -707,7 +707,6 @@ def test_enums():
     """
     from enum import Enum
 
-    import faebryk.library._F as F
     from faebryk.core.node import _make_graph_and_typegraph
 
     g, tg = _make_graph_and_typegraph()
@@ -738,8 +737,6 @@ def test_enums():
 
 
 def test_make_lit():
-    import faebryk.library._F as F
-
     g = graph.GraphView.create()
     tg = graph.TypeGraph.create(g=g)
     assert make_lit(g, tg, value=True).get_values() == [True]

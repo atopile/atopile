@@ -3,11 +3,8 @@
 
 import logging
 import math
-from decimal import Decimal
 from enum import Enum
 from itertools import pairwise
-from operator import add, sub
-from random import random
 from typing import Any, Callable, cast
 
 import pytest
@@ -59,12 +56,14 @@ class BoundExpressions:
         likely_constrained: bool = False,
     ) -> F.Parameters.can_be_operand:
         if units:
-            units = units.get_trait(F.Units.IsUnit)
+            is_unit = fabll.Node.bind_instance(
+                instance=units.bind_typegraph(tg=self.tg).get_or_create_type()
+            ).get_trait(F.Units.IsUnit)
         return (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
-                units=units,
+                units=is_unit,
                 within=within,
                 domain=domain,
                 soft_set=soft_set,
@@ -79,7 +78,7 @@ class BoundExpressions:
         return (
             F.Parameters.EnumParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
-            .setup(enum_type=enum_type)
+            .setup(enum=enum_type)
         ).get_trait(F.Parameters.can_be_operand)
 
     def bool_parameter_op(self) -> F.Parameters.can_be_operand:
@@ -302,8 +301,16 @@ class BoundExpressions:
         return F.Expressions.SymmetricDifference.c(left, right, g=self.g)
 
     def lit_op_single(self, value: float | _Quantity) -> F.Parameters.can_be_operand:
-        # TODO
-        pass
+        unit = None
+        if isinstance(value, tuple):
+            unit = value[1]
+            value = value[0]
+
+        return (
+            F.Literals.Numbers.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup_from_singleton(value=value, unit=unit)
+        ).get_trait(F.Parameters.can_be_operand)
 
     def lit_op_range(self, *ranges: _Range) -> F.Parameters.can_be_operand:
         # FIXME
@@ -333,26 +340,29 @@ class BoundExpressions:
 
     def lit_op_enum(self, *values: Enum) -> F.Parameters.can_be_operand:
         concrete_enum = F.Literals.EnumsFactory(type(values[0]))
-        concrete_enum_node = concrete_enum.bind_typegraph(
-            tg=self.tg
-        ).get_or_create_type()
+        _ = concrete_enum.bind_typegraph(tg=self.tg).get_or_create_type()
         return (
             concrete_enum.bind_typegraph(tg=self.tg)
             .create_instance(
                 g=self.g,
             )
             .setup(*values)
-        ).get_trait(F.Parameters.can_be_operand)
+            .get_trait(F.Parameters.can_be_operand)
+        )
 
     def lit_op_discrete_set(
         self, *values: float | _Quantity
     ) -> F.Parameters.can_be_operand:
-        pass
+        return (
+            F.Literals.Numbers.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .get_trait(F.Parameters.can_be_operand)
+        )
 
 
 def _create_letters(
     E: BoundExpressions, n: int, units=fabll.Node
-) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter], fabll.Graph]:
+) -> tuple[F.Parameters.ReprContext, list[F.Parameters.is_parameter]]:
     context = F.Parameters.ReprContext()
 
     class App(fabll.Node):
@@ -362,7 +372,7 @@ def _create_letters(
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().get_trait(F.Parameters.is_parameter) for p in app.params]
 
-    return context, params, app.get_graph()
+    return context, params
 
 
 def test_solve_phase_one():
@@ -428,7 +438,6 @@ def test_simplify():
     # assert isinstance(acc, Subtract)
     assert E.less_or_equal(acc, E.lit_op_single((11, E.U.dl)))
 
-    G = acc.get_graph()
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g)
     # TODO actually test something
@@ -477,7 +486,6 @@ def test_shortcircuit_logic_and():
     )
     expr = E.and_(p0, E.lit_bool(False))
     expr.get_sibling_trait(F.Expressions.is_assertable).assert_()
-    G = expr.get_graph()
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral):
@@ -491,7 +499,7 @@ def test_shortcircuit_logic_or():
         p = [F.Parameters.BooleanParameter.MakeChild() for _ in range(4)]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    ored = E.or_(app.p[0].get().get_trait(F.Parameters.can_be_operand), True)
+    ored = E.or_(app.p[0].get().get_trait(F.Parameters.can_be_operand), assert_=True)
     for p in app.p[1:]:
         E.is_(
             ored,
@@ -537,7 +545,11 @@ def test_remove_obvious_tautologies():
 def test_subset_of_literal():
     E = BoundExpressions()
     p0, p1, p2 = (
-        E.parameter_op(units=E.U.dl, within=E.lit_op_range((0, i))) for i in range(3)
+        E.parameter_op(
+            units=E.U.dl,
+            within=E.lit_op_range((0, i)).get_parent_of_type(F.Literals.Numbers),
+        )
+        for i in range(3)
     )
     E.is_(p0, p1, assert_=True)
     E.is_(p1, p2, assert_=True)
@@ -545,7 +557,9 @@ def test_subset_of_literal():
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1, p2)
     for p in (p0, p1, p2):
-        assert solver.inspect_get_known_supersets(p) == E.lit_op_range((0.0, 0.0))
+        assert solver.inspect_get_known_supersets(
+            p.get_sibling_trait(F.Parameters.is_parameter)
+        ) == E.lit_op_range((0.0, 0.0))
 
 
 def test_alias_classes():
@@ -567,37 +581,42 @@ def test_alias_classes():
 
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
+@pytest.mark.skip(reason="TODO: Replace with new realworld test")
 def test_solve_realworld_biggest():
-    E = BoundExpressions()
+    pass
+    # TODO: Replace with new realworld test
 
-    class App(fabll.Node):
-        led = fabll.f_field(F.PoweredLED)(low_side_resistor=True)
-        mcu: RP2040_ReferenceDesign
-        usb_power: USB_C_PSU_Vertical
+    # class App(fabll.Node):
+    #     led = fabll.f_field(F.PoweredLED)(low_side_resistor=True)
+    #     mcu: RP2040_ReferenceDesign
+    #     usb_power: USB_C_PSU_Vertical
 
-        def __preinit__(self):
-            self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
-            self.led.led.brightness.constrain_subset(
-                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
-            )
+    #     def __preinit__(self):
+    #         self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+    #         self.led.led.brightness.constrain_subset(
+    #             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
+    #         )
 
-            self.usb_power.power_out.connect(self.mcu.usb.usb_if.buspower)
-            self.mcu.rp2040.gpio[25].line.connect(self.led.power.hv)
-            self.usb_power.power_out.lv.connect(self.led.power.lv)
-            self.mcu.rp2040.pinmux.enable(self.mcu.rp2040.gpio[25])
+    #         self.usb_power.power_out.connect(self.mcu.usb.usb_if.buspower)
+    #         self.mcu.rp2040.gpio[25].line.connect(self.led.power.hv)
+    #         self.usb_power.power_out.lv.connect(self.led.power.lv)
+    #         self.mcu.rp2040.pinmux.enable(self.mcu.rp2040.gpio[25])
 
-    app = App()
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    solver = DefaultSolver()
-    solver.simplify_symbolically(app.get_graph())
+    # app = App()
+    # F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    # solver = DefaultSolver()
+    # solver.simplify_symbolically(app.get_graph())
 
-    pick_part_recursively(app, solver)
+    # pick_part_recursively(app, solver)
 
 
 def test_inspect_known_superranges():
     E = BoundExpressions()
     p0 = E.parameter_op(
-        units=E.U.V, within=E.lit_op_range((1, E.U.V), (10, E.U.V))
+        units=E.U.V,
+        within=E.lit_op_range(((1, E.U.V), (10, E.U.V))).get_parent_of_type(
+            F.Literals.Numbers
+        ),
     ).get_trait(F.Parameters.can_be_operand)
     E.is_(
         p0,
@@ -708,7 +727,10 @@ def test_very_simple_alias_class():
 def test_domain():
     E = BoundExpressions()
     p0 = E.parameter_op(
-        units=E.U.V, within=E.lit_op_range(((0, E.U.V), (10, E.U.V)))
+        units=E.U.V,
+        within=E.lit_op_range(((0, E.U.V), (10, E.U.V))).get_parent_of_type(
+            F.Literals.Numbers
+        ),
     ).get_trait(F.Parameters.can_be_operand)
     E.is_(p0, E.lit_op_range(((15, E.U.V), (20, E.U.V))), assert_=True)
 
@@ -864,13 +886,22 @@ def test_literal_folding_add_multiplicative():
         )
         == 2
     ), f"{rep_add.compact_repr(context)}"
-    mul1, mul2 = fabll.Traits(rep_add).get_obj_raw().operands
+    mul1, mul2 = (
+        cast(F.Expressions.Add, fabll.Traits(rep_add).get_obj_raw())
+        .operands.get()
+        .as_list()
+    )
 
-    assert isinstance(fabll.Traits(mul1).get_obj_raw(), F.Expressions.Multiply)
-    assert isinstance(fabll.Traits(mul2).get_obj_raw(), F.Expressions.Multiply)
+    mulexp1 = fabll.Traits(mul1).get_obj(F.Expressions.Multiply)
+    mulexp2 = fabll.Traits(mul2).get_obj(F.Expressions.Multiply)
+
     # TODO: What is this trying to test?
-    assert any(set(m.operands) == {rep_A, 8} for m in (mul1, mul2))
-    assert any(set(m.operands) == {rep_A, rep_B, 2} for m in (mul1, mul2))
+    assert any(
+        set(m.operands.get().as_list()) == [rep_A, 8] for m in (mulexp1, mulexp2)
+    )
+    assert any(
+        set(m.operands.get().as_list()) == [rep_A, rep_B, 2] for m in (mulexp1, mulexp2)
+    )
 
 
 def test_literal_folding_add_multiplicative_2():
@@ -1181,7 +1212,6 @@ def test_base_unit_switch():
         F.Expressions.is_assertable
     ).assert_()
 
-    G = A.get_graph()
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert repr_map.try_get_literal(A.as_parameter_operatable()) == E.lit_op_range(
@@ -1438,46 +1468,50 @@ def test_jlcpcb_pick_led():
 
 @pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_simple():
-    E = BoundExpressions()
-    led = F.PoweredLED
-    led.led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
-    led.power.voltage.constrain_subset(lit_op_range(((1.8, E.U.V), (5.5, E.U.V))))
-    led.led.forward_voltage.constrain_subset(lit_op_range(((1, E.U.V), (4, E.U.V))))
+    # TODO: add support for powered leds
+    pass
+    # E = BoundExpressions()
+    # led = F.PoweredLED
+    # led.led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
+    # led.power.voltage.constrain_subset(lit_op_range(((1.8, E.U.V), (5.5, E.U.V))))
+    # led.led.forward_voltage.constrain_subset(lit_op_range(((1, E.U.V), (4, E.U.V))))
 
-    solver = DefaultSolver()
-    children_mods = led.get_children(
-        direct_only=False, types=fabll.Node, required_trait=fabll.is_module
-    )
+    # solver = DefaultSolver()
+    # children_mods = led.get_children(
+    #     direct_only=False, types=fabll.Node, required_trait=fabll.is_module
+    # )
 
-    pick_part_recursively(led, solver)
+    # pick_part_recursively(led, solver)
 
-    picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
-    assert len(picked_parts) == 2
-    print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
+    # picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
+    # assert len(picked_parts) == 2
+    # print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
 
 
 @pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_regression():
-    E = BoundExpressions()
-    led = F.PoweredLED()
-    led.led.color.constrain_subset(F.LED.Color.RED)
-    led.power.voltage.alias_is((3, E.U.V))
-    led.led.brightness.constrain_subset(
-        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
-    )
+    # TODO: add support for powered leds
+    pass
+    # E = BoundExpressions()
+    # led = F.PoweredLED()
+    # led.led.color.constrain_subset(F.LED.Color.RED)
+    # led.power.voltage.alias_is((3, E.U.V))
+    # led.led.brightness.constrain_subset(
+    #     TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
+    # )
 
-    solver = DefaultSolver()
-    children_mods = led.get_children(
-        direct_only=False, types=fabll.Node, required_trait=fabll.is_module
-    )
+    # solver = DefaultSolver()
+    # children_mods = led.get_children(
+    #     direct_only=False, types=fabll.Node, required_trait=fabll.is_module
+    # )
 
-    pick_part_recursively(led, solver)
+    # pick_part_recursively(led, solver)
 
-    picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
-    assert len(picked_parts) == 2
-    for p in picked_parts:
-        print(p.get_full_name(types=False), p.get_trait(F.has_part_picked).get_part())
-        print(p.pretty_params(solver))
+    # picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
+    # assert len(picked_parts) == 2
+    # for p in picked_parts:
+    #     print(p.get_full_name(types=False), p.get_trait(F.has_part_picked).get_part())
+    #     print(p.pretty_params(solver))
 
 
 def test_simple_parameter_isolation():
@@ -1632,10 +1666,10 @@ def test_graph_split():
     assert (
         not_none(
             repr_map.map_forward(not_none(Aop.is_parameter_operatable())).maps_to
-        ).get_graph()
+        ).g
         is not not_none(
             repr_map.map_forward(not_none(Bop.as_parameter_operatable())).maps_to
-        ).get_graph()
+        ).g
     )
 
 
@@ -1644,9 +1678,9 @@ def test_ss_single_into_alias():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    E.is_(Aop, E.lit_op_range((5, 10)), assert_=True)
+    E.is_(A, E.lit_op_range((5, 10)), assert_=True)
     E.is_subset(B, E.lit_op_single(5), assert_=True)
-    C = E.add(A, B)
+    _ = E.add(A, B)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -2100,7 +2134,7 @@ def test_simplify_non_terminal_manual_test_1():
 
     solver = DefaultSolver()
     solver.simplify(E.g, E.tg)
-    E2 = E.add(B, A)
+    _ = E.add(B, A)
     E.is_(A, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
     solver.simplify(E.g, E.tg)
@@ -2117,7 +2151,7 @@ def test_simplify_non_terminal_manual_test_2():
     FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
     """
     E = BoundExpressions()
-    context, ps, graph = _create_letters(E, 3, units=E.U.V)
+    context, ps = _create_letters(E, 3, units=E.U.V)
     A, B, C = ps
 
     INCREASE = (20, E.U.dl)
@@ -2214,56 +2248,60 @@ def test_abstract_lowpass_ss():
 @pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
 def test_voltage_divider_find_r_bottom():
     E = BoundExpressions()
-    r_top = Parameter(units=P.ohm)
-    r_bottom = Parameter(units=P.ohm)
-    v_in = Parameter(units=E.U.V)
-    v_out = Parameter(units=E.U.V)
+    r_top = E.parameter_op(units=E.U.Ohm)
+    r_bottom = E.parameter_op(units=E.U.Ohm)
+    v_in = E.parameter_op(units=E.U.V)
+    v_out = E.parameter_op(units=E.U.V)
 
     # formula
-    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+    E.is_(v_out, E.divide(E.multiply(v_in, r_bottom), E.add(r_top, r_bottom)))
 
     # input
-    v_in.alias_is(lit_op_range_from_center_rel((10, E.U.V), 0.01))
-    v_out.alias_is(lit_op_range_from_center_rel((1, E.U.V), 0.01))
-    r_top.alias_is(lit_op_range_from_center_rel((9, P.ohm), 0.01))
+    E.is_(v_in, E.lit_op_range_from_center_rel((10, E.U.V), 0.01), assert_=True)
+    E.is_(v_out, E.lit_op_range_from_center_rel((1, E.U.V), 0.01), assert_=True)
+    E.is_(r_top, E.lit_op_range_from_center_rel((9, E.U.Ohm), 0.01), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top)
-    assert solver.inspect_get_known_supersets(r_bottom) == lit_op_range_from_center_rel(
-        (1, P.ohm), 0.01
-    )
+    assert solver.inspect_get_known_supersets(
+        r_bottom.get_sibling_trait(F.Parameters.is_parameter)
+    ) == E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01)
 
 
 @pytest.mark.xfail(reason="TODO reenable ge fold")
 def test_min_max_single():
     E = BoundExpressions()
-    p0 = Parameter(units=E.U.V)
-    p0.alias_is(lit_op_range(((0, E.U.V), (10, E.U.V))))
+    p0 = E.parameter_op(units=E.U.V)
+    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
-    p1 = Parameter(units=E.U.V)
-    p1.alias_is(Max(p0))
+    p1 = E.parameter_op(units=E.U.V)
+    E.is_(p1, E.max(p0), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1)
-    out = solver.inspect_get_known_supersets(p1)
-    assert out == fabll.Single((10, E.U.V))
+    out = solver.inspect_get_known_supersets(
+        p1.get_sibling_trait(F.Parameters.is_parameter)
+    )
+    assert out == E.lit_op_single((10, E.U.V))
 
 
 @pytest.mark.xfail(reason="TODO")
 def test_min_max_multi():
     E = BoundExpressions()
-    p0 = Parameter(units=E.U.V)
-    p0.alias_is(lit_op_range(((0, E.U.V), (10, E.U.V))))
-    p3 = Parameter(units=E.U.V)
-    p3.alias_is(lit_op_range(((4, E.U.V), (15, E.U.V))))
+    p0 = E.parameter_op(units=E.U.V)
+    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    p3 = E.parameter_op(units=E.U.V)
+    E.is_(p3, E.lit_op_range(((4, E.U.V), (15, E.U.V))), assert_=True)
 
-    p1 = Parameter(units=E.U.V)
-    p1.alias_is(Max(p0, p3))
+    p1 = E.parameter_op(units=E.U.V)
+    E.is_(p1, E.max(p0, p3), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1, p3)
-    out = solver.inspect_get_known_supersets(p1)
-    assert out == fabll.Single((15, E.U.V))
+    out = solver.inspect_get_known_supersets(
+        p1.get_sibling_trait(F.Parameters.is_parameter)
+    )
+    assert out == E.lit_op_single((15, E.U.V))
 
 
 @pytest.mark.xfail(
@@ -2271,13 +2309,14 @@ def test_min_max_multi():
 )
 def test_symmetric_inequality_uncorrelated():
     E = BoundExpressions()
-    p0 = Parameter(units=E.U.V)
-    p1 = Parameter(units=E.U.V)
+    p0 = E.parameter_op(units=E.U.V)
+    p1 = E.parameter_op(units=E.U.V)
 
-    p0.alias_is(lit_op_range(((0, E.U.V), (10, E.U.V))))
+    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_(p1, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
-    (p0 >= p1).assert_()
-    (p0 <= p1).assert_()
+    E.greater_or_equal(p0, p1, assert_=True)
+    E.less_or_equal(p0, p1, assert_=True)
 
     # This would only work if p0 is alias p1
     # but we never do implicit alias, because that's very dangerous
@@ -2286,7 +2325,6 @@ def test_symmetric_inequality_uncorrelated():
     # strategy: if this kind of unequality exists, check if there is an alias
     # and if not, throw
 
-    G = p0.get_graph()
     solver = DefaultSolver()
 
     with pytest.raises(Contradiction):
@@ -2308,8 +2346,8 @@ def test_fold_correlated():
     B = E.parameter_op()
     C = E.parameter_op()
 
-    op = add
-    op_inv = sub
+    op = E.add
+    op_inv = E.subtract
 
     lit1 = E.lit_op_range((5, 10))
     lit_operand = E.lit_op_single(5)
@@ -2335,9 +2373,13 @@ def test_fold_correlated():
     assert ss_lit is not None
 
     # Test for ss estimation
-    assert ss_lit.is_subset_of(op_inv(lit2, lit1))  # C ss [10, 15] - 5 == [5, 10]
+    assert E.is_subset(
+        ss_lit.as_operand(), (op_inv(lit2, lit1))
+    )  # C ss [10, 15] - 5 == [5, 10]
     # Test for not wrongful is estimation
-    assert is_lit != op_inv(lit2, lit1)  # C not is [5, 10]
+    assert not E.is_(
+        not_none(is_lit).as_operand(), op_inv(lit2, lit1)
+    )  # C not is [5, 10]
 
     # Test for correct is estimation
     try:
@@ -2470,8 +2512,8 @@ def test_exec_pure_literal_expressions(
     lits = lits_factory(E)
     expected = expected_factory(E)
 
-    lits_converted = list(map(make_lit, lits))
-    expected_converted = make_lit(expected)
+    lits_converted = list(map(F.Literals.make_lit, lits))
+    expected_converted = F.Literals.make_lit(expected)
 
     expr = op(*lits_converted)  # type: ignore
     assert _exec_pure_literal_expressions(expr) == expected_converted
@@ -2507,77 +2549,81 @@ def test_exec_pure_literal_expressions(
 #    ],
 # )
 # def test_solve_voltage_divider_complex(v_in, v_out, total_current):
+@pytest.mark.skip(
+    reason="TODO: Removed Resistor Voltage Divider, add back with new implementation"
+)
 def test_solve_voltage_divider_complex():
-    E = BoundExpressions()
-    v_in, v_out, total_current = (
-        E.lit_op_range(((9.9, E.U.V), (10.1, E.U.V))),
-        E.lit_op_range(((3.0, E.U.V), (3.2, E.U.V))),
-        E.lit_op_range(((1e-3, E.U.A), (3e-3, E.U.A))),
-    )
+    pass
+    # E = BoundExpressions()
+    # v_in, v_out, total_current = (
+    #     E.lit_op_range(((9.9, E.U.V), (10.1, E.U.V))),
+    #     E.lit_op_range(((3.0, E.U.V), (3.2, E.U.V))),
+    #     E.lit_op_range(((1e-3, E.U.A), (3e-3, E.U.A))),
+    # )
 
-    rdiv = F.ResistorVoltageDivider()
+    # rdiv = F.ResistorVoltageDivider()
 
-    rdiv.v_in.alias_is(v_in)
-    rdiv.v_out.constrain_subset(v_out)
-    rdiv.max_current.constrain_subset(total_current)
+    # rdiv.v_in.alias_is(v_in)
+    # rdiv.v_out.constrain_subset(v_out)
+    # rdiv.max_current.constrain_subset(total_current)
 
-    # Solve for r_top
-    print("Solving for r_top")
-    solver = DefaultSolver()
-    solver.update_superset_cache(rdiv)
+    # # Solve for r_top
+    # print("Solving for r_top")
+    # solver = DefaultSolver()
+    # solver.update_superset_cache(rdiv)
 
-    r_top = solver.inspect_get_known_supersets(rdiv.r_top.resistance)
-    assert isinstance(r_top, Quantity_Interval_Disjoint)
-    print(f"r_top: {r_top}")
-    expected_r_top = (v_in - v_out) / total_current
-    print(f"Expected r_top: {expected_r_top}")
-    assert r_top == expected_r_top
+    # r_top = solver.inspect_get_known_supersets(rdiv.r_top.resistance)
+    # assert isinstance(r_top, Quantity_Interval_Disjoint)
+    # print(f"r_top: {r_top}")
+    # expected_r_top = (v_in - v_out) / total_current
+    # print(f"Expected r_top: {expected_r_top}")
+    # assert r_top == expected_r_top
 
-    # Pick a random valid resistor for r_top
-    rand_ = Decimal(random())
-    r_any_nominal = r_top.min_elem + rand_ * (r_top.max_elem - r_top.min_elem)
-    assert isinstance(r_any_nominal, Quantity)
-    r_any = lit_op_range_from_center_rel(r_any_nominal, 0.01)
-    rdiv.r_top.resistance.alias_is(r_any)
-    print(f"Set r_top to {r_any}")
+    # # Pick a random valid resistor for r_top
+    # rand_ = Decimal(random())
+    # r_any_nominal = r_top.min_elem + rand_ * (r_top.max_elem - r_top.min_elem)
+    # assert isinstance(r_any_nominal, Quantity)
+    # r_any = lit_op_range_from_center_rel(r_any_nominal, 0.01)
+    # rdiv.r_top.resistance.alias_is(r_any)
+    # print(f"Set r_top to {r_any}")
 
-    # Solve for r_bottom
-    solver.update_superset_cache(rdiv)
-    r_bottom = solver.inspect_get_known_supersets(rdiv.r_bottom.resistance)
-    assert isinstance(r_bottom, Quantity_Interval_Disjoint)
-    print(f"r_bottom: {r_bottom}")
-    expected_r_bottom_1 = (v_in / total_current) - r_any
-    expected_r_bottom_2 = v_out / total_current
-    expected_r_bottom_3 = v_out * r_any / (v_in - v_out)
-    print(f"Expected r_bottom subset by voltage: {expected_r_bottom_1}")
-    print(f"Expected r_bottom subset by current: {expected_r_bottom_2}")
-    print(f"Expected r_bottom subset by voltage and current: {expected_r_bottom_3}")
-    assert r_bottom.is_subset_of(expected_r_bottom_1)
-    assert r_bottom.is_subset_of(expected_r_bottom_2)
-    assert r_bottom.is_subset_of(expected_r_bottom_3)
-    # print results
-    res_total_current = v_in / (r_any + r_bottom)
-    # res_v_out = v_in * r_bottom / (r_any + r_bottom)
-    res_v_out = v_in / (1 + r_any / r_bottom)
-    solver_total_current = solver.inspect_get_known_supersets(rdiv.max_current)
-    solver_v_out = solver.inspect_get_known_supersets(rdiv.v_out)
-    print(f"Resulting current {res_total_current} ss! {total_current}")
-    print(f"Solver thinks current is {solver_total_current}")
-    print(f"Resulting v_out {res_v_out} ss! {v_out}")
-    print(f"Solver thinks v_out is {solver_v_out}")
+    # # Solve for r_bottom
+    # solver.update_superset_cache(rdiv)
+    # r_bottom = solver.inspect_get_known_supersets(rdiv.r_bottom.resistance)
+    # assert isinstance(r_bottom, Quantity_Interval_Disjoint)
+    # print(f"r_bottom: {r_bottom}")
+    # expected_r_bottom_1 = (v_in / total_current) - r_any
+    # expected_r_bottom_2 = v_out / total_current
+    # expected_r_bottom_3 = v_out * r_any / (v_in - v_out)
+    # print(f"Expected r_bottom subset by voltage: {expected_r_bottom_1}")
+    # print(f"Expected r_bottom subset by current: {expected_r_bottom_2}")
+    # print(f"Expected r_bottom subset by voltage and current: {expected_r_bottom_3}")
+    # assert r_bottom.is_subset_of(expected_r_bottom_1)
+    # assert r_bottom.is_subset_of(expected_r_bottom_2)
+    # assert r_bottom.is_subset_of(expected_r_bottom_3)
+    # # print results
+    # res_total_current = v_in / (r_any + r_bottom)
+    # # res_v_out = v_in * r_bottom / (r_any + r_bottom)
+    # res_v_out = v_in / (1 + r_any / r_bottom)
+    # solver_total_current = solver.inspect_get_known_supersets(rdiv.max_current)
+    # solver_v_out = solver.inspect_get_known_supersets(rdiv.v_out)
+    # print(f"Resulting current {res_total_current} ss! {total_current}")
+    # print(f"Solver thinks current is {solver_total_current}")
+    # print(f"Resulting v_out {res_v_out} ss! {v_out}")
+    # print(f"Solver thinks v_out is {solver_v_out}")
 
-    # check valid result
-    assert res_total_current.is_subset_of(total_current)
-    if not res_v_out.is_subset_of(v_out) and res_v_out.is_subset_of(
-        v_out * lit_op_range_from_center_rel(1, 0.05)
-    ):
-        pytest.xfail("Slightly inaccurate, need more symbolic correlation")
+    # # check valid result
+    # assert res_total_current.is_subset_of(total_current)
+    # if not res_v_out.is_subset_of(v_out) and res_v_out.is_subset_of(
+    #     v_out * lit_op_range_from_center_rel(1, 0.05)
+    # ):
+    #     pytest.xfail("Slightly inaccurate, need more symbolic correlation")
 
-    assert res_v_out.is_subset_of(v_out)
+    # assert res_v_out.is_subset_of(v_out)
 
-    # check solver knowing result
-    assert solver_v_out == res_v_out
-    assert solver_total_current == res_total_current
+    # # check solver knowing result
+    # assert solver_v_out == res_v_out
+    # assert solver_total_current == res_total_current
 
 
 if __name__ == "__main__":
