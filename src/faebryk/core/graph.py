@@ -3,7 +3,9 @@
 
 import io
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
+
+import pytest
 
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
@@ -20,8 +22,8 @@ from faebryk.core.zig.gen.graph.graph import (
     Node,
 )
 
-if TYPE_CHECKING:
-    import faebryk.core.node as fabll
+import faebryk.core.faebrykpy as fbrk
+import faebryk.library._F as F
 
 logger = logging.getLogger(__name__)
 
@@ -269,28 +271,27 @@ class InstanceGraphFunctions:
         return counts
 
     @staticmethod
-    def count_nodes(root: "fabll.Node") -> int:
+    def count_nodes(root: BoundNode) -> int:
         """
         Count the total number of nodes in the instance tree.
 
         Args:
-            root: A fabll.Node instance
+            root: A BoundNode instance
 
         Returns:
             Total node count (including root)
         """
-        root_bound = root.instance
-        counts = InstanceGraphFunctions._build_node_counts(root_bound)
-        root_key = InstanceGraphFunctions._node_key(root_bound)
+        counts = InstanceGraphFunctions._build_node_counts(root)
+        root_key = InstanceGraphFunctions._node_key(root)
         return counts.get(root_key, 0)
 
     @staticmethod
-    def render(root: "fabll.Node") -> str:
+    def render(root: BoundNode) -> str:
         """
-        Render an instance graph as ASCII tree starting from a fabll.Node.
+        Render an instance graph as ASCII tree.
 
         Args:
-            root: A fabll.Node instance (e.g., F.I2C instance)
+            root: A BoundNode instance
 
         Returns:
             ASCII tree representation showing type names and instance names
@@ -309,8 +310,7 @@ class InstanceGraphFunctions:
             EdgeOperand.get_tid(): "Op",
         }
 
-        # Get the underlying BoundNodeReference
-        root_bound = root.instance
+        root_bound = root
 
         # Alias for cleaner code
         node_key = InstanceGraphFunctions._node_key
@@ -413,20 +413,14 @@ __all__ = [
 ]
 
 def test_resistor_instance_visualization():
-    import faebryk.core.faebrykpy as fbrk
-    import faebryk.library._F as F
-
     g = GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
     component_instance = F.ElectricPower.bind_typegraph(tg).create_instance(g)
 
     print("=== Instance Graph ===")
-    output = InstanceGraphFunctions.render(component_instance)
+    output = InstanceGraphFunctions.render(component_instance.instance)
     print(output)
-
-
-import pytest
 
 
 def _get_component_node_count_params():
@@ -434,7 +428,6 @@ def _get_component_node_count_params():
     Generate test parameters lazily to avoid circular imports.
     Returns list of pytest.param(component_class, expected_count, id=name).
     """
-    import faebryk.library._F as F
 
     # Component class -> expected node count (None = don't assert, just print)
     component_counts: dict[type, int | None] = {
@@ -458,13 +451,11 @@ def _get_component_node_count_params():
     _get_component_node_count_params(),
 )
 def test_component_instance_count(component_type: type, expected_count: int | None):
-    import faebryk.core.faebrykpy as fbrk
-
     g = GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
     component_instance = component_type.bind_typegraph(tg).create_instance(g)
-    count = InstanceGraphFunctions.count_nodes(component_instance)
+    count = InstanceGraphFunctions.count_nodes(component_instance.instance)
     print(f"{component_type.__name__} node count: {count}")
 
     if expected_count is not None:
