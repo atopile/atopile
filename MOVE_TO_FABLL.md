@@ -94,6 +94,5 @@ also `in`
 
 NOTE TO SELF WEDNESDAY:
 
-- changing copy_into to use the typegraph subgraph stuff
-- nearly works, just isinstance not
-- after that back to checking why superbasic solver graphs expand so much
+- copy_into works
+- back to checking why superbasic solver graphs expand so much

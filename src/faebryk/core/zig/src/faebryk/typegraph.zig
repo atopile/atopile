@@ -66,8 +66,9 @@ pub const TypeGraph = struct {
     };
 
     pub const TraitNode = struct {
-        pub fn add_trait_to(target: BoundNodeReference, trait_type: BoundNodeReference) BoundNodeReference {
+        pub fn add_trait_as_child_to(target: BoundNodeReference, trait_type: BoundNodeReference) BoundNodeReference {
             const trait_instance = TypeNode.spawn_instance(trait_type);
+            _ = EdgeComposition.add_child(target, trait_instance.node, null);
             _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
             return trait_instance;
         }
@@ -369,14 +370,14 @@ pub const TypeGraph = struct {
         const implements_trait_type = TypeNode.create_and_insert(&self, "ImplementsTrait");
 
         // Assign the traits to the type-nodes
-        _ = TraitNode.add_trait_to(implements_type_type, implements_type_type);
-        _ = TraitNode.add_trait_to(implements_type_type, implements_trait_type);
-        _ = TraitNode.add_trait_to(implements_trait_type, implements_type_type);
-        _ = TraitNode.add_trait_to(implements_trait_type, implements_trait_type);
+        _ = TraitNode.add_trait_as_child_to(implements_type_type, implements_type_type);
+        _ = TraitNode.add_trait_as_child_to(implements_type_type, implements_trait_type);
+        _ = TraitNode.add_trait_as_child_to(implements_trait_type, implements_type_type);
+        _ = TraitNode.add_trait_as_child_to(implements_trait_type, implements_trait_type);
 
         const make_child_type = TypeNode.create_and_insert(&self, "MakeChild");
 
-        _ = TraitNode.add_trait_to(make_child_type, implements_type_type);
+        _ = TraitNode.add_trait_as_child_to(make_child_type, implements_type_type);
 
         _ = TypeNode.create_and_insert(&self, "MakeLink");
         _ = TypeNode.create_and_insert(&self, "Reference");
@@ -393,6 +394,7 @@ pub const TypeGraph = struct {
         // Add type trait
         const trait_implements_type_instance = try self.instantiate_node(self.get_ImplementsType());
         _ = EdgeTrait.add_trait_instance(type_node, trait_implements_type_instance.node);
+        _ = EdgeComposition.add_child(type_node, trait_implements_type_instance.node, null);
 
         return type_node;
     }
@@ -670,6 +672,17 @@ pub const TypeGraph = struct {
         return get_subgraph_of_node(self.self_node.g.allocator, self.self_node);
     }
 
+    fn _get_bootstrapped_nodes(self: *const @This(), allocator: std.mem.Allocator) std.ArrayList(NodeReference) {
+        var result = std.ArrayList(NodeReference).init(allocator);
+
+        result.append(self.get_ImplementsTrait().node) catch @panic("OOM");
+        result.append(self.get_ImplementsType().node) catch @panic("OOM");
+        result.append(self.get_MakeChild().node) catch @panic("OOM");
+        result.append(self.get_MakeLink().node) catch @panic("OOM");
+        result.append(self.get_Reference().node) catch @panic("OOM");
+        return result;
+    }
+
     pub fn get_subgraph_of_node(allocator: std.mem.Allocator, start_node: BoundNodeReference) GraphView {
         const g = start_node.g;
 
@@ -680,23 +693,33 @@ pub const TypeGraph = struct {
         var visited = graph.NodeRefMap.T(void).init(allocator);
         defer visited.deinit();
 
+        var dont_visit = graph.NodeRefMap.T(void).init(allocator);
+        defer dont_visit.deinit();
+
         // Helper struct with functions to collect nodes
         const Collector = struct {
             nodes: *std.ArrayList(NodeReference),
             visited_set: *graph.NodeRefMap.T(void),
+            dont_visit: *graph.NodeRefMap.T(void),
 
-            fn try_add(ctx: *@This(), node: NodeReference) void {
+            fn try_add(ctx: *@This(), node: NodeReference) bool {
                 if (!ctx.visited_set.contains(node)) {
                     ctx.visited_set.put(node, {}) catch @panic("OOM");
                     ctx.nodes.append(node) catch @panic("OOM");
+                    return true;
                 }
+                return false;
+            }
+
+            fn skip_visit(ctx: *@This(), node: NodeReference) void {
+                ctx.dont_visit.put(node, {}) catch @panic("OOM");
             }
 
             // Visitor for EdgeComposition children
             fn visit_composition(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 const child = EdgeComposition.get_child_node(bound_edge.edge);
-                ctx.try_add(child);
+                _ = ctx.try_add(child);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
 
@@ -704,7 +727,7 @@ pub const TypeGraph = struct {
             fn visit_pointer(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 if (EdgePointer.get_referenced_node(bound_edge.edge)) |target| {
-                    ctx.try_add(target);
+                    _ = ctx.try_add(target);
                 }
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
@@ -713,7 +736,7 @@ pub const TypeGraph = struct {
             fn visit_trait(ctx_ptr: *anyopaque, bound_edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
                 const trait_instance = EdgeTrait.get_trait_instance_node(bound_edge.edge);
-                ctx.try_add(trait_instance);
+                _ = ctx.try_add(trait_instance);
                 return visitor.VisitResult(void){ .CONTINUE = {} };
             }
         };
@@ -721,31 +744,36 @@ pub const TypeGraph = struct {
         var collector = Collector{
             .nodes = &collected_nodes,
             .visited_set = &visited,
+            .dont_visit = &dont_visit,
         };
 
         // Start with self_node
-        collector.try_add(start_node.node);
+        _ = collector.try_add(start_node.node);
 
         // Process all nodes (queue-style BFS iteration over collected nodes)
         var i: usize = 0;
         while (i < collected_nodes.items.len) : (i += 1) {
             const current = collected_nodes.items[i];
+            if (collector.dont_visit.contains(current)) {
+                continue;
+            }
             const bound_current = g.bind(current);
 
             // Follow type
-            // Very important that this is first! For the i+=1 hack
             if (EdgeType.get_type_edge(bound_current)) |type_edge| {
                 const type_node = EdgeType.get_type_node(type_edge.edge);
+                _ = collector.try_add(type_node);
+
+                // Add typegraph core nodes
                 const tg = TypeGraph.of_type(g.bind(type_node)).?;
-                collector.try_add(tg.self_node.node);
-                // hack to avoid copying complete type graph
-                i += 1;
-                collector.try_add(tg.get_ImplementsTrait().node);
-                collector.try_add(tg.get_ImplementsType().node);
-                collector.try_add(tg.get_MakeChild().node);
-                collector.try_add(tg.get_MakeLink().node);
-                collector.try_add(tg.get_Reference().node);
-                collector.try_add(type_node);
+                if (collector.try_add(tg.self_node.node)) {
+                    collector.skip_visit(tg.self_node.node);
+                    const tg_bootstrap_nodes = tg._get_bootstrapped_nodes(g.allocator);
+                    defer tg_bootstrap_nodes.deinit();
+                    for (tg_bootstrap_nodes.items) |node| {
+                        _ = collector.try_add(node);
+                    }
+                }
             }
 
             // Follow children
@@ -756,7 +784,7 @@ pub const TypeGraph = struct {
 
             // Follow to next items in list
             if (EdgeNext.get_next_node_from_node(bound_current)) |next_node| {
-                collector.try_add(next_node);
+                _ = collector.try_add(next_node);
             }
 
             // Follow owned traits
