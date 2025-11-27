@@ -541,6 +541,10 @@ class is_unit(fabll.Node):
         return result
 
 
+class is_si_unit(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
 class has_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     unit = F.Collections.Pointer.MakeChild()
@@ -925,6 +929,7 @@ class Ampere(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Ampere], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Meter(fabll.Node):
@@ -934,6 +939,7 @@ class Meter(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Meter], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Kilogram(fabll.Node):
@@ -943,6 +949,7 @@ class Kilogram(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Kilogram], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Second(fabll.Node):
@@ -952,6 +959,7 @@ class Second(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Second], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Kelvin(fabll.Node):
@@ -961,6 +969,7 @@ class Kelvin(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Kelvin], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Mole(fabll.Node):
@@ -970,6 +979,7 @@ class Mole(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Mole], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Candela(fabll.Node):
@@ -979,18 +989,19 @@ class Candela(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Candela], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
-# SI derived units ---------------------------------------------------------------------
+# SI coherent derived units ------------------------------------------------------------
 
 
-# TODO: prevent mixing Radian / Steradian / dimensionless
 class Radian(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(radian=1)
 
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Radian], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Steradian(fabll.Node):
@@ -999,6 +1010,7 @@ class Steradian(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Steradian], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Hertz(fabll.Node):
@@ -1027,6 +1039,7 @@ class Pascal(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Pascal], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Joule(fabll.Node):
@@ -1037,6 +1050,7 @@ class Joule(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Joule], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Watt(fabll.Node):
@@ -1047,6 +1061,7 @@ class Watt(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Watt], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Coulomb(fabll.Node):
@@ -1055,6 +1070,7 @@ class Coulomb(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Coulomb], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Volt(fabll.Node):
@@ -1065,6 +1081,7 @@ class Volt(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Volt], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Farad(fabll.Node):
@@ -1075,6 +1092,7 @@ class Farad(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Farad], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Ohm(fabll.Node):
@@ -1085,6 +1103,7 @@ class Ohm(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Ohm], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Siemens(fabll.Node):
@@ -1095,6 +1114,7 @@ class Siemens(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Siemens], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Weber(fabll.Node):
@@ -1105,6 +1125,7 @@ class Weber(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Weber], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Tesla(fabll.Node):
@@ -1115,6 +1136,7 @@ class Tesla(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Tesla], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Henry(fabll.Node):
@@ -1125,6 +1147,7 @@ class Henry(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Henry], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class DegreeCelsius(fabll.Node):
@@ -1134,23 +1157,10 @@ class DegreeCelsius(fabll.Node):
         is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.DegreeCelsius],
             unit_vector_arg,
-            multiplier=1.0,
             offset=273.15,
         )
     )
-
-
-class Farenheit(fabll.Node):
-    unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kelvin=1)
-
-    _is_unit = fabll.Traits.MakeEdge(
-        is_unit.MakeChild(
-            _UNIT_SYMBOLS[_UnitRegistry.Farenheit],
-            unit_vector_arg,
-            multiplier=5.0 / 9.0,
-            offset=255.37,
-        )
-    )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Lumen(fabll.Node):
@@ -1159,6 +1169,7 @@ class Lumen(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lumen], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Lux(fabll.Node):
@@ -1169,6 +1180,7 @@ class Lux(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lux], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 # TODO: prevent mixing with Hertz? also consider contexts system ala pint
@@ -1178,6 +1190,7 @@ class Becquerel(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Becquerel], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Gray(fabll.Node):
@@ -1186,6 +1199,7 @@ class Gray(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Gray], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Sievert(fabll.Node):
@@ -1194,6 +1208,7 @@ class Sievert(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Sievert], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 class Katal(fabll.Node):
@@ -1202,6 +1217,7 @@ class Katal(fabll.Node):
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Katal], unit_vector_arg)
     )
+    _is_si_unit = fabll.Traits.MakeEdge(is_si_unit.MakeChild())
 
 
 # non-SI base units --------------------------------------------------------------------
