@@ -39,10 +39,10 @@ def test_setup_populates_datasheet_literal():
 
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
     trait = fabll.Traits.create_and_add_instance_to(
-        node=module, trait=F.has_datasheet
+        node=module, trait=has_datasheet
     ).setup(datasheet=datasheet_url)
 
-    assert module.get_trait(F.has_datasheet) == trait
+    assert module.get_trait(has_datasheet) == trait
     assert trait.get_datasheet() == datasheet_url
     assert trait.datasheet_.get().force_extract_literal().get_values() == [
         datasheet_url
@@ -56,10 +56,10 @@ def test_makechild_sets_datasheet_on_instance():
 
     class ModuleWithDatasheet(fabll.Node):
         datasheet = fabll.Traits.MakeEdge(
-            F.has_datasheet.MakeChild(datasheet=datasheet_url)
+            has_datasheet.MakeChild(datasheet=datasheet_url)
         )
 
     module = ModuleWithDatasheet.bind_typegraph(tg=tg).create_instance(g=g)
 
-    assert module.has_trait(F.has_datasheet)
-    assert module.get_trait(F.has_datasheet).get_datasheet() == datasheet_url
+    assert module.has_trait(has_datasheet)
+    assert module.get_trait(has_datasheet).get_datasheet() == datasheet_url

@@ -256,9 +256,7 @@ def test_has_designator_prefix():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        prefix = fabll.Traits.MakeEdge(
-            has_designator_prefix.MakeChild("A")
-        )
+        prefix = fabll.Traits.MakeEdge(has_designator_prefix.MakeChild("A"))
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 

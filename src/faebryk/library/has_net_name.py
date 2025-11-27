@@ -51,6 +51,7 @@ class has_net_name(fabll.Node):
 
     def setup(self, name: str, level: Level) -> Self:
         self.name_.get().alias_to_single(value=name)
+        self.level_.get().alias_to_literal(level)
         return self
 
     @staticmethod

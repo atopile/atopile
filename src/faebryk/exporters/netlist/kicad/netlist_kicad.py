@@ -97,20 +97,12 @@ def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
 
 def attach_kicad_info(tg: fbrk.TypeGraph) -> None:
     """Attach kicad info to the footprints in the graph."""
-    fp_traits = fabll.Traits.get_implementors(F.has_footprint.bind_typegraph(tg))
-    node_fps = {
-        fp_trait.get_parent_force()[0]: fp_trait.get_footprint()
-        for fp_trait in fp_traits
-    }
-
-    logger.info(f"Found {len(node_fps)} components with footprints")
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"node_fps: {node_fps}")
+    fp_implementors = fabll.Traits.get_implementors(F.has_footprint.bind_typegraph(tg))
 
     # add trait/info to footprints
-    for node, fp in node_fps.items():
-        if fp.has_trait(F.can_represent_kicad_footprint):
+    for fp_implementor in fp_implementors:
+        if fp_implementor.has_trait(F.can_represent_kicad_footprint):
             continue
         fabll.Traits.create_and_add_instance_to(
-            node, F.can_represent_kicad_footprint
-        ).setup(component=fp)
+            fp_implementor, F.can_represent_kicad_footprint
+        ).setup(component=fp_implementor.get_footprint())

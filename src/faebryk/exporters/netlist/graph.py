@@ -313,7 +313,9 @@ def _process_unnamed_nets(
                 raise UserException(
                     f"Multiple conflicting required net names: {required}"
                 )
-            net.add(F.has_overriden_name(required.pop()))
+            fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(
+                name=required.pop()
+            )
             continue
 
         # Create net name entry and determine base name
