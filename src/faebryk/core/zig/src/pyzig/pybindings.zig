@@ -212,6 +212,7 @@ pub const GS_SENTINEL = PyGetSetDef{
 pub extern fn PyLong_FromLong(value: c_long) ?*PyObject;
 pub extern fn PyLong_FromLongLong(value: c_longlong) ?*PyObject;
 pub extern fn PyLong_FromUnsignedLongLong(value: c_ulonglong) ?*PyObject;
+pub extern fn PyLong_FromSize_t(value: usize) ?*PyObject;
 pub extern fn PyLong_AsLong(obj: ?*PyObject) c_long;
 pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
 pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;

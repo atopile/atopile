@@ -3366,6 +3366,85 @@ fn wrap_typegraph_get_type_subgraph() type {
     };
 }
 
+fn wrap_typegraph_get_type_instance_overview() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_type_instance_overview",
+            .doc = "Return a list of tuples (type_name, instance_count) for all types in the TypeGraph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+
+            // Get the type instance overview from Zig
+            var overview = faebryk.typegraph.TypeGraph.get_type_instance_overview(wrapper.data, allocator);
+            defer overview.deinit();
+
+            // Create a Python list
+            const py_list = py.PyList_New(@intCast(overview.items.len)) orelse {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create list");
+                return null;
+            };
+
+            // Populate the list with tuples
+            for (overview.items, 0..) |item, i| {
+                // Create tuple (type_name, instance_count)
+                const py_tuple = py.PyTuple_New(2) orelse {
+                    py.Py_DECREF(py_list);
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create tuple");
+                    return null;
+                };
+
+                // Create Python string for type_name
+                const py_name = py.PyUnicode_FromStringAndSize(item.type_name.ptr, @intCast(item.type_name.len)) orelse {
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create string");
+                    return null;
+                };
+
+                // Create Python int for instance_count
+                const py_count = py.PyLong_FromSize_t(item.instance_count) orelse {
+                    py.Py_DECREF(py_name);
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create int");
+                    return null;
+                };
+
+                // Set tuple items (steals references)
+                if (py.PyTuple_SetItem(py_tuple, 0, py_name) < 0) {
+                    py.Py_DECREF(py_count);
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+                if (py.PyTuple_SetItem(py_tuple, 1, py_count) < 0) {
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+
+                // Set list item (steals reference)
+                if (py.PyList_SetItem(py_list, @intCast(i), py_tuple) < 0) {
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+            }
+
+            return py_list;
+        }
+    };
+}
+
 fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_make_child_node_build(),
@@ -3408,6 +3487,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
         wrap_typegraph_get_type_subgraph(),
+        wrap_typegraph_get_type_instance_overview(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);

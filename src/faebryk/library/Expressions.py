@@ -42,6 +42,7 @@ OperandPointer = Collections.AbstractPointer(
         operand_identifier=identifier
     ),
     retrieval_function=lambda node: _retrieve_operands(node, None)[0],
+    typename="OperandPointer",
 )
 
 OperandSequence = Collections.AbstractSequence(
@@ -49,6 +50,7 @@ OperandSequence = Collections.AbstractSequence(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,
+    typename="OperandSequence",
 )
 
 OperandSet = Collections.AbstractSet(
@@ -56,6 +58,7 @@ OperandSet = Collections.AbstractSet(
         operand_identifier=identifier
     ),
     retrieval_function=_retrieve_operands,
+    typename="OperandSet",
 )
 
 
