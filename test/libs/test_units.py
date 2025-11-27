@@ -32,7 +32,14 @@ class BoundUnitsContext:
         return F.Units.Hour.bind_typegraph(tg=self.tg).create_instance(g=self.g)
 
 
-def assert_commensurability(items: Sequence[F.Units.IsUnit]) -> F.Units.IsUnit:
+@pytest.fixture
+def ctx() -> BoundUnitsContext:
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    return BoundUnitsContext(tg=tg, g=g)
+
+
+def assert_commensurability(items: Sequence[F.Units.is_unit]) -> F.Units.is_unit:
     if not items:
         raise ValueError("At least one item is required")
 
@@ -50,15 +57,7 @@ def assert_commensurability(items: Sequence[F.Units.IsUnit]) -> F.Units.IsUnit:
                 incommensurable_items=items,
             )
 
-    # TODO: consider returning simplest commensurable unit
     return first_unit
-
-
-@pytest.fixture
-def ctx() -> BoundUnitsContext:
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    return BoundUnitsContext(tg=tg, g=g)
 
 
 def test_assert_commensurability_empty_list():
@@ -69,12 +68,12 @@ def test_assert_commensurability_empty_list():
 
 def test_assert_commmensurability_single_item(ctx: BoundUnitsContext):
     """Test that single item list returns its unit"""
-    result = assert_commensurability([ctx.Meter.get_trait(F.Units.IsUnit)])
-    assert result == ctx.Meter.get_trait(F.Units.IsUnit)
+    result = assert_commensurability([ctx.Meter.get_trait(F.Units.is_unit)])
+    assert result == ctx.Meter.get_trait(F.Units.is_unit)
     parent, _ = result.get_parent_force()
     assert parent.isinstance(F.Units.Meter)
     assert not_none(
-        F.Units.IsUnit.bind_instance(result.instance)
+        F.Units.is_unit.bind_instance(result.instance)
         .symbol.get()
         .try_extract_constrained_literal()
     ).get_values() == ["m"]
@@ -125,8 +124,8 @@ def test_assert_commensurable_units_with_derived(ctx: BoundUnitsContext):
 
     assert_commensurability(
         [
-            meters_per_second.get_trait(F.Units.IsUnit),
-            kilometers_per_hour.get_trait(F.Units.IsUnit),
+            meters_per_second.get_trait(F.Units.is_unit),
+            kilometers_per_hour.get_trait(F.Units.is_unit),
         ]
     )
 
@@ -152,24 +151,17 @@ def test_assert_commensurability_with_incommensurable_derived(ctx: BoundUnitsCon
     meter_seconds = F.Units.resolve_unit_expression(
         tg=ctx.tg, g=ctx.g, expr=app.meter_seconds_expr.get().instance
     )
-    # TODO: pending Numbers impl
-    # with pytest.raises(F.Units.UnitsNotCommensurable):
-    assert_commensurability(
-        [
-            meters_per_second.get_trait(F.Units.IsUnit),
-            meter_seconds.get_trait(F.Units.IsUnit),
-        ]
-    )
-
-
-# TODO: more tests
-# - mutually incompatible: dimensionless, radian, steradian
-# - mutually compatible: dimensionless, ppm, percent
-# - expressions with affine units
+    with pytest.raises(F.Units.UnitsNotCommensurable):
+        assert_commensurability(
+            [
+                meters_per_second.get_trait(F.Units.is_unit),
+                meter_seconds.get_trait(F.Units.is_unit),
+            ]
+        )
 
 
 def test_isunit_setup(ctx):
-    is_unit = F.Units.IsUnit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+    is_unit = F.Units.is_unit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
     is_unit.setup(
         symbols=["m"],
         unit_vector=F.Units._BasisVectorArg(meter=1),
@@ -180,11 +172,16 @@ def test_isunit_setup(ctx):
         is_unit.symbol.get().try_extract_constrained_literal()
     ).get_values() == ["m"]
 
-    # FIXME: relies on working number literals
-    # assert F.Units._BasisVector.bind_instance(
-    #     is_unit.basis_vector.get().deref().instance
-    # ).extract_vector() == F.Units._BasisVectorArg(meter=1)
+    assert F.Units._BasisVector.bind_instance(
+        is_unit.basis_vector.get().deref().instance
+    ).extract_vector() == F.Units._BasisVectorArg(meter=1)
 
-    # TODO: pending Numbers impl
+    # TODO: pending NumericParameter impl
     # assert is_unit.multiplier.get().force_extract_literal().get_value() == 1.0
     assert is_unit.offset.get().force_extract_literal().get_value() == 0.0
+
+
+# TODO: more tests
+# - mutually incompatible: dimensionless, radian, steradian
+# - mutually compatible: dimensionless, ppm, percent
+# - expressions with affine units

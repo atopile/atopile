@@ -67,7 +67,7 @@ def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
         return unit_like
     if isinstance(unit_like, fabll.Node):
         try:
-            unit_trait = unit_like.get_trait(HasUnit).get_is_unit()
+            unit_trait = unit_like.get_trait(has_unit).get_is_unit()
             return type(unit_trait)
         except fabll.TraitNotFound:
             return Dimensionless
@@ -192,11 +192,11 @@ class _BasisVector(fabll.Node):
         )
 
 
-class IsBaseUnit(fabll.Node):
+class is_base_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
-class IsUnit(fabll.Node):
+class is_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     symbol = F.Parameters.StringParameter.MakeChild()
@@ -298,7 +298,7 @@ class IsUnit(fabll.Node):
     def is_affine(self) -> bool:
         return self._extract_offset() != 0.0
 
-    def is_commensurable_with(self, other: "IsUnit") -> bool:
+    def is_commensurable_with(self, other: "is_unit") -> bool:
         self_vector = self._extract_basis_vector()
         other_vector = other._extract_basis_vector()
         return self_vector == other_vector
@@ -306,7 +306,7 @@ class IsUnit(fabll.Node):
     def is_dimensionless(self) -> bool:
         return self._extract_basis_vector() == _BasisVector.ORIGIN
 
-    def to_base_units(self, g: graph.GraphView, tg: graph.TypeGraph) -> "IsUnit":
+    def to_base_units(self, g: graph.GraphView, tg: graph.TypeGraph) -> "is_unit":
         """
         Returns a new anonymous unit with the same basis vector, but with multiplier=1.0
         and offset=0.0.
@@ -331,7 +331,7 @@ class IsUnit(fabll.Node):
         vector: _BasisVectorArg,
         multiplier: float,
         offset: float,
-    ) -> "IsUnit":
+    ) -> "is_unit":
         # TODO: generate symbol
         unit = (
             _AnonymousUnit.bind_typegraph(tg=tg)
@@ -339,11 +339,11 @@ class IsUnit(fabll.Node):
             .setup(vector=vector, multiplier=multiplier, offset=offset)
         )
 
-        return unit.get_trait(IsUnit)
+        return unit.get_trait(is_unit)
 
     def op_multiply(
-        self, g: graph.GraphView, tg: graph.TypeGraph, other: "IsUnit"
-    ) -> "IsUnit":
+        self, g: graph.GraphView, tg: graph.TypeGraph, other: "is_unit"
+    ) -> "is_unit":
         v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
 
@@ -359,8 +359,8 @@ class IsUnit(fabll.Node):
         )
 
     def op_divide(
-        self, g: graph.GraphView, tg: graph.TypeGraph, other: "IsUnit"
-    ) -> "IsUnit":
+        self, g: graph.GraphView, tg: graph.TypeGraph, other: "is_unit"
+    ) -> "is_unit":
         v1, v2 = self._extract_basis_vector(), other._extract_basis_vector()
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
 
@@ -375,7 +375,7 @@ class IsUnit(fabll.Node):
             offset=0.0,  # TODO
         )
 
-    def op_invert(self, g: graph.GraphView, tg: graph.TypeGraph) -> "IsUnit":
+    def op_invert(self, g: graph.GraphView, tg: graph.TypeGraph) -> "is_unit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
         return self.new(
@@ -388,7 +388,7 @@ class IsUnit(fabll.Node):
 
     def op_power(
         self, g: graph.GraphView, tg: graph.TypeGraph, exponent: int
-    ) -> "IsUnit":
+    ) -> "is_unit":
         v = self._extract_basis_vector()
         m = self._extract_multiplier()
         return self.new(
@@ -399,7 +399,7 @@ class IsUnit(fabll.Node):
             offset=0.0,  # TODO
         )
 
-    def get_conversion_to(self, target: "IsUnit") -> tuple[float, float]:
+    def get_conversion_to(self, target: "is_unit") -> tuple[float, float]:
         if not self.is_commensurable_with(target):
             raise UnitsNotCommensurable(
                 f"Units {self} and {target} are not commensurable",
@@ -439,7 +439,7 @@ class IsUnit(fabll.Node):
         return result
 
 
-class HasUnit(fabll.Node):
+class has_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     unit = F.Collections.Pointer.MakeChild()
 
@@ -455,8 +455,8 @@ class HasUnit(fabll.Node):
         self.unit.get().point(unit)
         return self
 
-    def get_is_unit(self) -> IsUnit:
-        return self.unit.get().deref().get_trait(IsUnit)
+    def get_is_unit(self) -> is_unit:
+        return self.unit.get().deref().get_trait(is_unit)
 
 
 UnitVectorT = list[tuple[type[fabll.Node], int]]
@@ -558,7 +558,7 @@ def make_unit_expression_type(
 
 
 class _AnonymousUnit(fabll.Node):
-    _is_unit = fabll.Traits.MakeEdge(IsUnit.MakeChild_Empty())
+    _is_unit = fabll.Traits.MakeEdge(is_unit.MakeChild_Empty())
 
     def setup(  # type: ignore
         self, vector: _BasisVectorArg, multiplier: float = 1.0, offset: float = 0.0
@@ -581,13 +581,13 @@ class _UnitExpressionResolver:
         self.g = g
         self.tg = tg
 
-    def visit(self, node: fabll.Node) -> IsUnit:
-        if is_unit := node.try_get_trait(IsUnit):
-            if is_unit.is_affine:
+    def visit(self, node: fabll.Node) -> is_unit:
+        if unit := node.try_get_trait(is_unit):
+            if unit.is_affine:
                 raise UnitExpressionError(
                     "Cannot use affine unit in compound expression"
                 )
-            return is_unit
+            return unit
 
         if node.isinstance(F.Expressions.Multiply):
             return self.visit_multiply(node.cast(F.Expressions.Multiply))
@@ -608,7 +608,7 @@ class _UnitExpressionResolver:
             f"Unsupported expression type: {node.get_type_name()}"
         )
 
-    def visit_unit_expression(self, node: UnitExpression) -> IsUnit:
+    def visit_unit_expression(self, node: UnitExpression) -> is_unit:
         """Resolve a UnitExpression by traversing its expression tree."""
 
         multiplier = node.get_multiplier()
@@ -622,7 +622,7 @@ class _UnitExpressionResolver:
         inner_vector = inner_unit._extract_basis_vector()
         inner_multiplier = inner_unit._extract_multiplier()
 
-        return IsUnit.new(
+        return is_unit.new(
             g=self.g,
             tg=self.tg,
             vector=inner_vector,
@@ -630,24 +630,24 @@ class _UnitExpressionResolver:
             offset=0.0,
         )
 
-    def visit_multiply(self, node: F.Expressions.Multiply) -> IsUnit:
+    def visit_multiply(self, node: F.Expressions.Multiply) -> is_unit:
         operands = node.operands.get().as_list()
 
         if not operands:
-            return IsUnit.new(
+            return is_unit.new(
                 g=self.g,
                 tg=self.tg,
                 vector=_BasisVector.ORIGIN,
                 multiplier=1.0,
                 offset=0.0,
-            ).get_trait(IsUnit)
+            ).get_trait(is_unit)
 
         return reduce(
             lambda a, b: a.op_multiply(self.g, self.tg, b),
             (self.visit(op) for op in operands),
         )
 
-    def visit_divide(self, node: F.Expressions.Divide) -> IsUnit:
+    def visit_divide(self, node: F.Expressions.Divide) -> is_unit:
         return reduce(
             lambda a, b: a.op_divide(self.g, self.tg, b),
             (
@@ -659,7 +659,7 @@ class _UnitExpressionResolver:
             ),
         )
 
-    def visit_power(self, node: F.Expressions.Power) -> IsUnit:
+    def visit_power(self, node: F.Expressions.Power) -> is_unit:
         base = node.base.get().deref()
         exponent_node = node.exponent.get().deref()
 
@@ -695,7 +695,7 @@ def resolve_unit_expression(
 
 
 class _UnitRegistry(Enum):
-    # TODO: check all IsUnits in design for symbol conflicts
+    # TODO: check all `is_unit`s in design for symbol conflicts
 
     dimensionless = auto()
 
@@ -801,7 +801,7 @@ class Dimensionless(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVector.ORIGIN
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.dimensionless], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.dimensionless], unit_vector_arg)
     )
 
 
@@ -811,63 +811,63 @@ class Dimensionless(fabll.Node):
 class Ampere(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(ampere=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Ampere], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Ampere], unit_vector_arg)
     )
 
 
 class Meter(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(meter=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Meter], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Meter], unit_vector_arg)
     )
 
 
 class Kilogram(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kilogram=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Kilogram], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Kilogram], unit_vector_arg)
     )
 
 
 class Second(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(second=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Second], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Second], unit_vector_arg)
     )
 
 
 class Kelvin(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kelvin=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Kelvin], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Kelvin], unit_vector_arg)
     )
 
 
 class Mole(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(mole=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Mole], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Mole], unit_vector_arg)
     )
 
 
 class Candela(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(candela=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Candela], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Candela], unit_vector_arg)
     )
 
 
@@ -879,7 +879,7 @@ class Radian(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(radian=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Radian], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Radian], unit_vector_arg)
     )
 
 
@@ -887,7 +887,7 @@ class Steradian(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(steradian=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Steradian], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Steradian], unit_vector_arg)
     )
 
 
@@ -895,7 +895,7 @@ class Hertz(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(second=-1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Hertz], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Hertz], unit_vector_arg)
     )
 
 
@@ -905,7 +905,7 @@ class Newton(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Newton], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Newton], unit_vector_arg)
     )
 
 
@@ -915,7 +915,7 @@ class Pascal(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Pascal], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Pascal], unit_vector_arg)
     )
 
 
@@ -925,7 +925,7 @@ class Joule(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Joule], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Joule], unit_vector_arg)
     )
 
 
@@ -935,7 +935,7 @@ class Watt(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Watt], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Watt], unit_vector_arg)
     )
 
 
@@ -943,7 +943,7 @@ class Coulomb(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(ampere=1, second=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Coulomb], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Coulomb], unit_vector_arg)
     )
 
 
@@ -953,7 +953,7 @@ class Volt(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Volt], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Volt], unit_vector_arg)
     )
 
 
@@ -963,7 +963,7 @@ class Farad(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Farad], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Farad], unit_vector_arg)
     )
 
 
@@ -973,7 +973,7 @@ class Ohm(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Ohm], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Ohm], unit_vector_arg)
     )
 
 
@@ -983,7 +983,7 @@ class Siemens(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Siemens], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Siemens], unit_vector_arg)
     )
 
 
@@ -993,7 +993,7 @@ class Weber(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Weber], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Weber], unit_vector_arg)
     )
 
 
@@ -1003,7 +1003,7 @@ class Tesla(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Tesla], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Tesla], unit_vector_arg)
     )
 
 
@@ -1013,7 +1013,7 @@ class Henry(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Henry], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Henry], unit_vector_arg)
     )
 
 
@@ -1021,7 +1021,7 @@ class DegreeCelsius(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kelvin=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(
+        is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.DegreeCelsius],
             unit_vector_arg,
             multiplier=1.0,
@@ -1034,7 +1034,7 @@ class Farenheit(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(kelvin=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(
+        is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.Farenheit],
             unit_vector_arg,
             multiplier=5.0 / 9.0,
@@ -1047,7 +1047,7 @@ class Lumen(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(candela=1, steradian=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lumen], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lumen], unit_vector_arg)
     )
 
 
@@ -1057,7 +1057,7 @@ class Lux(fabll.Node):
     )
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lux], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Lux], unit_vector_arg)
     )
 
 
@@ -1066,7 +1066,7 @@ class Becquerel(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(second=-1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Becquerel], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Becquerel], unit_vector_arg)
     )
 
 
@@ -1074,7 +1074,7 @@ class Gray(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(meter=2, second=-2)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Gray], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Gray], unit_vector_arg)
     )
 
 
@@ -1082,7 +1082,7 @@ class Sievert(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(meter=2, second=-2)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Sievert], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Sievert], unit_vector_arg)
     )
 
 
@@ -1090,7 +1090,7 @@ class Katal(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(mole=1, second=-1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Katal], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Katal], unit_vector_arg)
     )
 
 
@@ -1100,9 +1100,9 @@ class Katal(fabll.Node):
 class Bit(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(bit=1)
 
-    _is_base_unit = fabll.Traits.MakeEdge(IsBaseUnit.MakeChild())
+    _is_base_unit = fabll.Traits.MakeEdge(is_base_unit.MakeChild())
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Bit], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Bit], unit_vector_arg)
     )
 
 
@@ -1113,7 +1113,7 @@ class Percent(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVector.ORIGIN
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(
+        is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.Percent], unit_vector_arg, multiplier=1e-2
         )
     )
@@ -1123,7 +1123,7 @@ class Ppm(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVector.ORIGIN
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(
+        is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.Ppm], unit_vector_arg, multiplier=1e-6
         )
     )
@@ -1136,7 +1136,7 @@ class Hour(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(second=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(
+        is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.Hour], unit_vector_arg, multiplier=3600.0
         )
     )
@@ -1145,7 +1145,7 @@ class Hour(fabll.Node):
 class Byte(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(bit=1)
 
-    _is_unit = IsUnit.MakeChild(
+    _is_unit = is_unit.MakeChild(
         _UNIT_SYMBOLS[_UnitRegistry.Byte], unit_vector_arg, multiplier=8.0
     )
 
@@ -1157,7 +1157,7 @@ class BitPerSecond(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(bit=1, second=-1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.BitPerSecond], unit_vector_arg)
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.BitPerSecond], unit_vector_arg)
     )
 
 
@@ -1165,7 +1165,7 @@ class AmpereHour(fabll.Node):
     unit_vector_arg: ClassVar[_BasisVectorArg] = _BasisVectorArg(ampere=1, second=1)
 
     _is_unit = fabll.Traits.MakeEdge(
-        IsUnit.MakeChild(
+        is_unit.MakeChild(
             _UNIT_SYMBOLS[_UnitRegistry.AmpereHour], unit_vector_arg, multiplier=3600.0
         )
     )
@@ -1176,7 +1176,6 @@ class AmpereHour(fabll.Node):
 
 
 # Unit expressions ---------------------------------------------------------------------
-
 # Covers compound unit expressions used elsewhere in the stdlib
 
 VoltsPerSecond = make_unit_expression_type([(Volt, 1), (Second, -1)])

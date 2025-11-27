@@ -845,7 +845,7 @@ class MutationMap:
         if lit is None:
             return _default()
         if (
-            (param_unit_t := po.try_get_sibling_trait(F.Units.HasUnit))
+            (param_unit_t := po.try_get_sibling_trait(F.Units.has_unit))
             and (lit_n := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers))
             and not lit_n.are_units_compatible(param_unit := param_unit_t.get_unit())
         ):
@@ -1057,7 +1057,7 @@ class Mutator:
     def mutate_parameter(
         self,
         param: F.Parameters.is_parameter,
-        units: F.Units.IsUnit | None = None,
+        units: F.Units.is_unit | None = None,
         domain: F.NumberDomain | None = None,
         soft_set: F.Literals.Numbers | None = None,
         within: F.Literals.Numbers | None = None,

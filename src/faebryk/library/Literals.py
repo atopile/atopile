@@ -193,7 +193,7 @@ class Numbers(fabll.Node):
         self,
         lower: float | None,
         upper: float | None,
-        unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None,
+        unit: "F.Units.is_unit | type[fabll.NodeT] | None" = None,
     ) -> Self:
         # TODO
         return self
@@ -201,7 +201,7 @@ class Numbers(fabll.Node):
     def setup_from_singleton(
         self,
         value: float,
-        unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None,
+        unit: "F.Units.is_unit | type[fabll.NodeT] | None" = None,
     ) -> Self:
         # TODO
         return self
@@ -309,7 +309,7 @@ class Numbers(fabll.Node):
     def to_dimensionless(self) -> "Numbers": ...
 
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
-    def are_units_compatible(self, unit: "F.Units.IsUnit") -> bool: ...
+    def are_units_compatible(self, unit: "F.Units.is_unit") -> bool: ...
 
     @staticmethod
     def make_lit(tg: graph.TypeGraph, value: float) -> "Numbers":
@@ -588,12 +588,12 @@ class BoundLiteralContext:
         return self.Strings.create_instance(g=self.g)
 
     def create_numbers_from_singleton(
-        self, value: float, unit: "F.Units.IsUnit | type[fabll.NodeT] | None" = None
+        self, value: float, unit: "F.Units.is_unit | type[fabll.NodeT] | None" = None
     ) -> "Numbers":
         return self.create_numbers().setup_from_singleton(value=value, unit=unit)
 
     def create_numbers_from_interval(
-        self, lower: float | None, upper: float | None, unit: "F.Units.IsUnit"
+        self, lower: float | None, upper: float | None, unit: "F.Units.is_unit"
     ) -> "Numbers":
         return self.create_numbers().setup_from_interval(
             lower=lower, upper=upper, unit=unit

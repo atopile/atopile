@@ -2458,7 +2458,7 @@ class QuantitySet(fabll.Node):
             identifier=cls._numeric_set_identifier,
         )
         out.add_dependant(
-            fabll.Traits.MakeEdge(F.Units.HasUnit.MakeChild(unit), [out]),
+            fabll.Traits.MakeEdge(F.Units.has_unit.MakeChild(unit), [out]),
             identifier=cls._has_unit_identifier,
         )
 
@@ -2480,7 +2480,7 @@ class QuantitySet(fabll.Node):
             child=numeric_set.instance.node(),
             child_identifier=self._numeric_set_identifier,
         )
-        has_unit_instance = F.Units.HasUnit.bind_typegraph(tg=tg).create_instance(g=g)
+        has_unit_instance = F.Units.has_unit.bind_typegraph(tg=tg).create_instance(g=g)
         has_unit_instance.setup(g=g, unit=unit)
 
         _ = fbrk.EdgeTrait.add_trait_instance(
@@ -2510,11 +2510,11 @@ class QuantitySet(fabll.Node):
         assert numeric_set is not None
         return NumericSet.bind_instance(numeric_set)
 
-    def get_is_unit(self) -> "F.Units.IsUnit":
-        return self.get_trait(F.Units.HasUnit).get_is_unit()
+    def get_is_unit(self) -> "F.Units.is_unit":
+        return self.get_trait(F.Units.has_unit).get_is_unit()
 
     def get_unit_node(self) -> fabll.Node:
-        return self.get_trait(F.Units.HasUnit).unit.get().deref()
+        return self.get_trait(F.Units.has_unit).unit.get().deref()
 
     # def get_unit(self) -> IsUnit:
     # unit = EdgePointer.get_pointed_node_by_identifier(
@@ -2544,14 +2544,14 @@ class QuantitySet(fabll.Node):
 
     def get_min_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
         min_value = self.get_min_value()
-        unit = self.get_trait(F.Units.HasUnit).unit.get().deref()
+        unit = self.get_trait(F.Units.has_unit).unit.get().deref()
         return QuantitySet.create_instance(g=g, tg=tg).setup_from_min_max(
             g=g, tg=tg, min=min_value, max=min_value, unit=unit
         )
 
     def get_max_quantity(self, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
         max_value = self.get_max_value()
-        unit = self.get_trait(F.Units.HasUnit).unit.get().deref()
+        unit = self.get_trait(F.Units.has_unit).unit.get().deref()
         return QuantitySet.create_instance(g=g, tg=tg).setup_from_min_max(
             g=g, tg=tg, min=max_value, max=max_value, unit=unit
         )

@@ -536,10 +536,10 @@ class NumericParameter(fabll.Node):
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "Units.IsUnit":
-        from faebryk.library.Units import HasUnit
+    def get_units(self) -> "Units.is_unit":
+        from faebryk.library.Units import has_unit
 
-        return self.get_trait(HasUnit).get_is_unit()
+        return self.get_trait(has_unit).get_is_unit()
 
     def get_domain(self) -> "NumberDomain":
         # TODO
@@ -567,7 +567,7 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        units: "Units.IsUnit | None" = None,
+        units: "Units.is_unit | None" = None,
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,
@@ -598,9 +598,9 @@ class NumericParameter(fabll.Node):
         #         edge=fbrk.EdgePointer.build(identifier="unit", order=None),
         #     )
         # )
-        from faebryk.library.Units import HasUnit
+        from faebryk.library.Units import has_unit
 
-        out.add_dependant(fabll.Traits.MakeEdge(HasUnit.MakeChild(unit), [out]))
+        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
         # out.add_dependant(
         #     *NumberDomain.MakeEdges(
         #         ref=[out, cls.domain],
@@ -782,7 +782,7 @@ class BoundParameterContext:
 
     def create_numeric_parameter(
         self,
-        units: "Units.IsUnit | None" = None,
+        units: "Units.is_unit | None" = None,
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,
         soft_set: "Literals.Numbers | None" = None,
