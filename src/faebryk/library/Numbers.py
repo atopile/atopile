@@ -3121,11 +3121,21 @@ def test_quantity_set_op_add_same_unit():
 
 
 def test_quantity_set_op_add_different_unit():
+    class DegreeFahrenheit(fabll.Node):
+        _is_unit = fabll.Traits.MakeEdge(
+            F.Units.is_unit.MakeChild(
+                ["°F"],
+                F.Units.BasisVector(kelvin=1),
+                multiplier=5 / 9,
+                offset=233.15 + 200 / 9,
+            )
+        )
+
     # returns result in the self unit
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     celsius = F.Units.DegreeCelsius.bind_typegraph(tg=tg).create_instance(g=g)
-    farenheit = F.Units.Farenheit.bind_typegraph(tg=tg).create_instance(g=g)
+    farenheit = DegreeFahrenheit.bind_typegraph(tg=tg).create_instance(g=g)
     quantity_celsius = QuantitySet.create_instance(g=g, tg=tg)
     quantity_celsius.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=celsius)
     quantity_farenheit = QuantitySet.create_instance(g=g, tg=tg)
@@ -3152,7 +3162,7 @@ def test_quantity_set_op_multiply_same_unit():
     assert result.get_numeric_set().get_min_value() == 6.0
     assert result.get_numeric_set().get_max_value() == 20.0
     result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
-    assert result_unit_basis_vector == F.Units._BasisVectorArg(meter=2)
+    assert result_unit_basis_vector == F.Units.BasisVector(meter=2)
 
 
 @dataclass(frozen=True)

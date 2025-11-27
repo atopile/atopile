@@ -15,7 +15,7 @@ class CAN(fabll.Node):
     # ----------------------------------------
     diff_pair = F.DifferentialPair.MakeChild()
 
-    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
     # TODO constrain CAN baudrate between 10kbps to 1Mbps
     # F.Expressions.Is.MakeChild_Constrain()
 

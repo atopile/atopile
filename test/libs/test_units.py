@@ -164,7 +164,7 @@ def test_isunit_setup(ctx):
         g=ctx.g,
         tg=ctx.tg,
         symbols=["m"],
-        unit_vector=F.Units._BasisVectorArg(meter=1),
+        unit_vector=F.Units.BasisVector(meter=1),
         multiplier=1.0,
         offset=0.0,
     )
@@ -172,7 +172,7 @@ def test_isunit_setup(ctx):
 
     assert F.Units._BasisVector.bind_instance(
         is_unit.basis_vector.get().deref().instance
-    ).extract_vector() == F.Units._BasisVectorArg(meter=1)
+    ).extract_vector() == F.Units.BasisVector(meter=1)
 
     assert is_unit._extract_multiplier() == 1.0
     assert is_unit._extract_offset() == 0.0

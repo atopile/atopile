@@ -12,7 +12,7 @@ class CAN_TTL(fabll.Node):
     rx = F.ElectricLogic.MakeChild()
     tx = F.ElectricLogic.MakeChild()
 
-    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
 
     # ----------------------------------------
     #                 traits
