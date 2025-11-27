@@ -166,7 +166,7 @@ class _BasisVector(fabll.Node):
             child = getattr(cls, f"{field_name}_exponent")
             exponent = getattr(vector, field_name)
             assert isinstance(exponent, int)
-            from faebryk.library.Numbers import Counts
+            from faebryk.library.Literals import Counts
 
             lit = Counts.MakeChild(exponent)
             is_expr = F.Expressions.Is.MakeChild_Constrain([[out, child], [lit]])

@@ -655,7 +655,7 @@ class CountParameter(fabll.Node):
         Try to extract the constrained Counts literal from this parameter.
         Returns None if the parameter is not constrained to a literal.
         """
-        from faebryk.library.Numbers import Counts
+        from faebryk.library.Literals import Counts
 
         return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
             lit_type=Counts
@@ -665,7 +665,7 @@ class CountParameter(fabll.Node):
         """
         Extract the constrained Counts literal, raising if not constrained.
         """
-        from faebryk.library.Numbers import Counts
+        from faebryk.library.Literals import Counts
 
         return self.get_trait(is_parameter_operatable).force_extract_literal(
             lit_type=Counts
@@ -689,7 +689,7 @@ class CountParameter(fabll.Node):
         Constrain this parameter to a set of integer values.
         """
         g = g or self.instance.g()
-        from faebryk.library.Numbers import Counts
+        from faebryk.library.Literals import Counts
 
         counts_lit = (
             Counts.bind_typegraph(tg=self.tg)
