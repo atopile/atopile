@@ -116,17 +116,16 @@ class _BasisVectorArg:
             }
         )
 
-    def multiply(self, other: "_BasisVectorArg") -> "_BasisVectorArg":
+    def add(self, other: "_BasisVectorArg") -> "_BasisVectorArg":
         return self._vector_op(other, lambda x, y: x + y)
 
-    def divide(self, other: "_BasisVectorArg") -> "_BasisVectorArg":
+    def subtract(self, other: "_BasisVectorArg") -> "_BasisVectorArg":
         return self._vector_op(other, lambda x, y: x - y)
 
     def scalar_multiply(self, scalar: int) -> "_BasisVectorArg":
         return self._scalar_op(lambda x: x * scalar)
 
 
-# TODO: iterate over _BasisVectorArg fields
 class _BasisVector(fabll.Node):
     ORIGIN: ClassVar[_BasisVectorArg] = _BasisVectorArg()
 
@@ -152,18 +151,9 @@ class _BasisVector(fabll.Node):
         """
         out = fabll._ChildField(cls)
 
-        for child, exponent in (
-            (cls.ampere_exponent, vector.ampere),
-            (cls.second_exponent, vector.second),
-            (cls.meter_exponent, vector.meter),
-            (cls.kilogram_exponent, vector.kilogram),
-            (cls.kelvin_exponent, vector.kelvin),
-            (cls.mole_exponent, vector.mole),
-            (cls.candela_exponent, vector.candela),
-            (cls.radian_exponent, vector.radian),
-            (cls.steradian_exponent, vector.steradian),
-            (cls.bit_exponent, vector.bit),
-        ):
+        for field_name in _BasisVectorArg.__dataclass_fields__.keys():
+            child = getattr(cls, f"{field_name}_exponent")
+            exponent = getattr(vector, field_name)
             assert isinstance(exponent, int)
             from faebryk.library.Numbers import Counts
 
@@ -176,34 +166,19 @@ class _BasisVector(fabll.Node):
 
     def setup(self, vector: _BasisVectorArg) -> Self:  # type: ignore
         g = self.instance.g()
-        for child, exponent in (
-            (self.ampere_exponent, vector.ampere),
-            (self.second_exponent, vector.second),
-            (self.meter_exponent, vector.meter),
-            (self.kilogram_exponent, vector.kilogram),
-            (self.kelvin_exponent, vector.kelvin),
-            (self.mole_exponent, vector.mole),
-            (self.candela_exponent, vector.candela),
-            (self.radian_exponent, vector.radian),
-            (self.steradian_exponent, vector.steradian),
-            (self.bit_exponent, vector.bit),
-        ):
+        for field_name in _BasisVectorArg.__dataclass_fields__.keys():
+            child = getattr(self, f"{field_name}_exponent")
+            exponent = getattr(vector, field_name)
             child.get().alias_to_literal(int(exponent), g=g)
 
         return self
 
     def extract_vector(self) -> _BasisVectorArg:
         return _BasisVectorArg(
-            ampere=self.ampere_exponent.get().extract_single(),
-            second=self.second_exponent.get().extract_single(),
-            meter=self.meter_exponent.get().extract_single(),
-            kilogram=self.kilogram_exponent.get().extract_single(),
-            kelvin=self.kelvin_exponent.get().extract_single(),
-            mole=self.mole_exponent.get().extract_single(),
-            candela=self.candela_exponent.get().extract_single(),
-            radian=self.radian_exponent.get().extract_single(),
-            steradian=self.steradian_exponent.get().extract_single(),
-            bit=self.bit_exponent.get().extract_single(),
+            **{
+                name: getattr(self, f"{name}_exponent").get().extract_single()
+                for name in _BasisVectorArg.__dataclass_fields__.keys()
+            }
         )
 
 
@@ -363,7 +338,7 @@ class IsUnit(fabll.Node):
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
 
         new_multiplier = m1 * m2
-        new_vector = v1.multiply(v2)
+        new_vector = v1.add(v2)
 
         return self.new(
             g=g,
@@ -380,7 +355,7 @@ class IsUnit(fabll.Node):
         m1, m2 = self._extract_multiplier(), other._extract_multiplier()
 
         new_multiplier = m1 / m2
-        new_vector = v1.divide(v2)
+        new_vector = v1.subtract(v2)
 
         return self.new(
             g=g,
