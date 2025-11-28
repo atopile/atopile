@@ -3604,6 +3604,34 @@ fn wrap_trait_add_trait_to() type {
     };
 }
 
+fn wrap_trait_add_trait_instance_to() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_trait_instance_to",
+            .doc = "Attach an existing trait instance to the target node",
+            .args_def = struct {
+                target: *graph.BoundNodeReference,
+                trait_instance: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .target = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .trait_instance = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const trait_instance = faebryk.trait.Trait.add_trait_instance_to(kwarg_obj.target.*, kwarg_obj.trait_instance.*) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "add_trait_instance_to failed");
+                return null;
+            };
+            return graph_py.makeBoundNodePyObject(trait_instance);
+        }
+    };
+}
+
 fn wrap_trait_mark_as_trait() type {
     return struct {
         pub const descr = method_descr{
@@ -3757,6 +3785,7 @@ fn wrap_trait_visit_implementers() type {
 fn wrap_trait(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_trait_add_trait_to(),
+        wrap_trait_add_trait_instance_to(),
         wrap_trait_mark_as_trait(),
         wrap_trait_try_get_trait(),
         wrap_trait_visit_implementers(),

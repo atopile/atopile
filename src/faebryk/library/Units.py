@@ -1,4 +1,4 @@
-from typing import Any, Sequence, Self
+from typing import Any, Self, Sequence
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -27,6 +27,7 @@ def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
         return _unit_or_dimensionless(unit_like.get_unit())
     return Dimensionless
 
+
 # TODO add all si units
 # TODO decide whether base units require unit trait
 
@@ -50,7 +51,7 @@ class IsBaseUnit(fabll.Node):
 
 # class UnitVectorComponent(fabll.Node):
 #     base_unit = F.Collections.Pointer.MakeChild()
-#     exponent = F.Parameters.NumericParameter.MakeChild(unit=Dimensionless, integer=True)
+#     exponent=F.Parameters.NumericParameter.MakeChild(unit=Dimensionless,integer=True)
 #
 #     @classmethod
 #     def MakeChild(
@@ -105,8 +106,7 @@ class IsUnit(fabll.Node):
                 raise UnitCompatibilityError(
                     "Operands have incompatible units:\n"
                     + "\n".join(
-                        f"`{items[i]}` ({units[i].__name__})"
-                        for i in range(len(items))
+                        f"`{items[i]}` ({units[i].__name__})" for i in range(len(items))
                     ),
                     incompatible_items=items,
                 )
@@ -120,6 +120,11 @@ class HasUnit(fabll.Node):
 
     def get_unit(self) -> IsUnit:
         return self.unit.get().deref().get_trait(IsUnit)
+
+    def setup(self, units: type[fabll.NodeT]) -> Self:
+        unit_node = units.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        self.unit.get().point(unit_node)
+        return self
 
     @classmethod
     def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Self, cast, override
+from typing import TYPE_CHECKING, Self, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -570,7 +570,7 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        units: "Units.IsUnit | None" = None,
+        units: "type[fabll.NodeT] | None" = None,
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,
@@ -580,7 +580,15 @@ class NumericParameter(fabll.Node):
         tolerance_guess: float | None = None,
         likely_constrained: bool = False,
     ) -> Self:
-        # TODO
+        from faebryk.library.Units import HasUnit
+
+        if units:
+            has_unit = (
+                HasUnit.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup(units=units)
+            )
+            fabll.Traits.add_instance_to(self, has_unit)
         return self
 
     @classmethod
@@ -738,7 +746,7 @@ def test_enum_param():
     # Enum Literal Type Node
     atype = TF.Literals.EnumsFactory(ExampleNode.MyEnum)
     cls_n = cast(type[fabll.NodeT], atype)
-    enum_type_node = cls_n.bind_typegraph(tg=tg).get_or_create_type()
+    _ = cls_n.bind_typegraph(tg=tg).get_or_create_type()
 
     # Enum Parameter from TG
     enum_param = example_node.enum_p_tg.get()

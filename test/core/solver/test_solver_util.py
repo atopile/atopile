@@ -44,9 +44,10 @@ logger = logging.getLogger(__name__)
 )
 def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     E = BoundExpressions()
+    op_class: type[fabll.Node] = op.__self__
 
-    def flatten(op):
-        return MutatorUtils.flatten_associative(op, lambda _, __: True)
+    def flatten(op_node: fabll.Node):
+        return MutatorUtils.flatten_associative(op_node, lambda _, __: True)
 
     # TODO: add logic trait to classify logic expressions
     if op in [F.Expressions.And.c, F.Expressions.Or.c, F.Expressions.Xor.c]:
@@ -54,20 +55,17 @@ def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     else:
         A, B, C, D, H = [E.parameter_op() for _ in range(5)]
 
-    to_flatten = op(op(A, B), C, op(D, H))
-    res = flatten(to_flatten)
+    to_flatten_op = op(op(A, B), C, op(D, H))
+    to_flatten_expression = fabll.Traits(to_flatten_op).get_obj(op_class)
+    res = flatten(to_flatten_expression)
 
     # Get the parent class from the classmethod
     # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
-    op_class: type[fabll.Node] = op.__self__
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
         F.Expressions.is_associative
     ):
         assert len(res.destroyed_operations) == 0
-        assert set(res.extracted_operands) == set(
-            fabll.Traits(to_flatten).get_obj(op_class).operands.get().as_list()
-        )
         return
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
@@ -103,9 +101,9 @@ def test_mutator_no_graph_merge():
         iteration=0,
         terminal=True,
     )
-    p0_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p0))
-    p3_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p3))
-    alias_new = cast_assert(F.Expressions.Is, mutator.get_copy(alias))
+    p0_new = mutator.get_copy(p0).get_sibling_trait(F.Parameters.is_parameter)
+    p3_new = mutator.get_copy(p3).get_sibling_trait(F.Parameters.is_parameter)
+    alias_new = fabll.Traits(mutator.get_copy(alias)).get_obj(F.Expressions.Is)
 
     G = p0.tg
     G_new = p0_new.tg

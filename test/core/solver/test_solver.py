@@ -55,15 +55,11 @@ class BoundExpressions:
         tolerance_guess: float | None = None,
         likely_constrained: bool = False,
     ) -> F.Parameters.can_be_operand:
-        if units:
-            is_unit = fabll.Node.bind_instance(
-                instance=units.bind_typegraph(tg=self.tg).get_or_create_type()
-            ).get_trait(F.Units.IsUnit)
         return (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
-                units=is_unit,
+                units=units,
                 within=within,
                 domain=domain,
                 soft_set=soft_set,
@@ -447,7 +443,7 @@ def test_simplify_logic_and():
     E = BoundExpressions()
 
     class App(fabll.Node):
-        p = [F.Parameters.is_parameter_operatable.MakeChild() for _ in range(4)]
+        p = [F.Parameters.NumericParameter.MakeChild(unit=E.U.dl) for _ in range(4)]
 
     app_type = App.bind_typegraph(tg=E.tg)
     app = app_type.create_instance(g=E.g)
