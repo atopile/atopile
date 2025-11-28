@@ -1825,16 +1825,6 @@ class Mutator:
         # for temporary nodes like literals
         self.G_transient: graph.GraphView = graph.GraphView.create()
         self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
-        self.tg_out = fbrk.TypeGraph.of(
-            node=self.G_out.bind(node=self.tg_in.get_self_node().node())
-        )
-        # TODO remove hack
-        # copies tg core nodes over
-        fabll.Node.bind_instance(
-            fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
-        ).copy_into(self.G_out)
-
-        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
 
         self.print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
@@ -1844,6 +1834,22 @@ class Mutator:
         )
 
         self.transformations = Transformations(input_print_context=self.print_context)
+
+    @property
+    @once
+    def tg_out(self) -> fbrk.TypeGraph:
+        tg_out = fbrk.TypeGraph.of(
+            node=self.G_out.bind(node=self.tg_in.get_self_node().node())
+        )
+
+        # TODO remove hack
+        # copies tg core nodes over
+        # fabll.Node.bind_instance(
+        #    fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
+        # ).copy_into(self.G_out)
+
+        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
+        return tg_out
 
     @property
     @once
