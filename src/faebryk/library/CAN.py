@@ -21,7 +21,7 @@ class CAN(fabll.Node):
 
     impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
     impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-        [impedance], 120.0
+        [impedance], min=120.0, max=120.0, unit=F.Units.Ohm
     )
 
     # ----------------------------------------

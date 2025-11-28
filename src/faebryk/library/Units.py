@@ -55,6 +55,7 @@ from typing import Any, ClassVar, Self
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core import graph
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import not_none
 
 
@@ -199,7 +200,7 @@ class is_base_unit(fabll.Node):
 class is_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    symbol = F.Parameters.StringParameter.MakeChild()
+    # symbol = F.Parameters.StringParameter.MakeChild()
     """
     Symbol or symbols representing the unit. Any member of the set is valid to indicate
     the unit in ato code. Must not conflict with symbols for other units
@@ -211,12 +212,14 @@ class is_unit(fabll.Node):
     of base units only.
     """
 
-    multiplier = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
+    _multiplier_identifier: ClassVar[str] = "multiplier"
+    _offset_identifier: ClassVar[str] = "offset"
+    _symbol_identifier: ClassVar[str] = "symbol"
+
     """
     Multiplier to apply when converting to SI base units.
     """
 
-    offset = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
     """
     Offset to apply when converting to SI base units.
     """
@@ -231,15 +234,53 @@ class is_unit(fabll.Node):
     ) -> fabll._ChildField[Any]:
         out = fabll._ChildField(cls)
 
-        for child, lit in (
-            (cls.symbol, F.Literals.Strings.MakeChild(*symbols)),
-            # TODO: unit?
-            (cls.multiplier, F.Literals.Numbers.MakeChild(value=multiplier)),
-            (cls.offset, F.Literals.Numbers.MakeChild(value=offset)),
-        ):
-            is_expr = F.Expressions.Is.MakeChild_Constrain([[out, child], [lit]])
-            is_expr.add_dependant(lit, identifier="lit", before=True)
-            out.add_dependant(is_expr)
+        from faebryk.library.Literals import NumericInterval, Strings
+
+        # for child, lit in (
+        #     (cls.symbol, Strings.MakeChild(*symbols)),
+        #     (
+        #         cls.multiplier,
+        #         NumericInterval.MakeChild(min=multiplier, max=multiplier),
+        #     ),
+        #     (
+        #         cls.offset,
+        #         NumericInterval.MakeChild(min=offset, max=offset),
+        #     ),
+        # ):
+        #     is_expr = F.Expressions.Is.MakeChild_Constrain([[out, child], [lit]])
+        #     is_expr.add_dependant(lit, identifier="lit", before=True)
+        #     out.add_dependant(is_expr)
+
+        symbol_field = Strings.MakeChild(*symbols)
+        out.add_dependant(symbol_field)
+
+        out.add_dependant(
+            fabll.MakeEdge(
+                [out],
+                [symbol_field],
+                edge=EdgeComposition.build(child_identifier=cls._symbol_identifier),
+            )
+        )
+
+        multiplier_field = NumericInterval.MakeChild(min=multiplier, max=multiplier)
+        out.add_dependant(multiplier_field)
+        out.add_dependant(
+            fabll.MakeEdge(
+                [out],
+                [multiplier_field],
+                edge=EdgeComposition.build(child_identifier=cls._multiplier_identifier),
+            )
+        )
+
+        offset_field = NumericInterval.MakeChild(min=offset, max=offset)
+        out.add_dependant(offset_field)
+        out.add_dependant(
+            fabll.MakeEdge(
+                [out],
+                [offset_field],
+                edge=EdgeComposition.build(child_identifier=cls._offset_identifier),
+            )
+        )
 
         unit_vector_field = _BasisVector.MakeChild(unit_vector)
         out.add_dependant(unit_vector_field)
@@ -253,46 +294,98 @@ class is_unit(fabll.Node):
     def MakeChild_Empty(cls) -> fabll._ChildField[Self]:  # type: ignore
         return fabll._ChildField(cls)
 
-    def setup(  # type: ignore
-        self,
-        symbols: list[str],
-        unit_vector: _BasisVectorArg,
-        multiplier: float = 1.0,
-        offset: float = 0.0,
-    ) -> Self:
-        g = self.instance.g()
-        BoundNumbers = F.Literals.Numbers.bind_typegraph(tg=self.tg)
+    def _extract_multiplier(self) -> float:
+        multiplier_numeric = EdgeComposition.get_child_by_identifier(
+            bound_node=self.instance, child_identifier=self._multiplier_identifier
+        )
+        assert multiplier_numeric is not None
+        from faebryk.library.Literals import NumericInterval
 
-        self.symbol.get().alias_to_literal(*symbols, g=g)
-        self.multiplier.get().alias_to_literal(
-            g=g,
-            value=BoundNumbers.create_instance(g=g).setup_from_singleton(
-                value=multiplier
-            ),
-        )
-        self.offset.get().alias_to_literal(
-            g=g,
-            value=BoundNumbers.create_instance(g=g).setup_from_singleton(value=offset),
-        )
-        basis_vector = (
-            _BasisVector.bind_typegraph(tg=self.tg)
-            .create_instance(g=g)
-            .setup(vector=unit_vector)
-        )
-        self.basis_vector.get().point(basis_vector)
+        return NumericInterval.bind_instance(multiplier_numeric).get_value()
 
-        return self
+    def _extract_offset(self) -> float:
+        offset_numeric = EdgeComposition.get_child_by_identifier(
+            bound_node=self.instance, child_identifier=self._offset_identifier
+        )
+        assert offset_numeric is not None
+        from faebryk.library.Literals import NumericInterval
+
+        return NumericInterval.bind_instance(offset_numeric).get_value()
+
+    def _extract_symbol(self) -> list[str]:
+        symbol_field = EdgeComposition.get_child_by_identifier(
+            bound_node=self.instance, child_identifier=self._symbol_identifier
+        )
+        assert symbol_field is not None
+        from faebryk.library.Literals import Strings
+
+        return Strings.bind_instance(symbol_field).get_values()
 
     def _extract_basis_vector(self) -> _BasisVectorArg:
         return _BasisVector.bind_instance(
             self.basis_vector.get().deref().instance
         ).extract_vector()
 
-    def _extract_multiplier(self) -> float:
-        return self.multiplier.get().force_extract_literal().get_value()
+    def setup(  # type: ignore
+        self,
+        g: graph.GraphView,
+        tg: graph.TypeGraph,
+        symbols: list[str],
+        unit_vector: _BasisVectorArg,
+        multiplier: float = 1.0,
+        offset: float = 0.0,
+    ) -> Self:
+        from faebryk.library.Literals import NumericInterval, Strings
 
-    def _extract_offset(self) -> float:
-        return self.offset.get().force_extract_literal().get_value()
+        symbol = (
+            Strings.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*symbols)
+        )
+        _ = EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=symbol.instance.node(),
+            child_identifier=self._symbol_identifier,
+        )
+        multiplier_numeric = (
+            NumericInterval.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_singleton(g=g, tg=tg, value=multiplier)
+        )
+        _ = EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=multiplier_numeric.instance.node(),
+            child_identifier=self._multiplier_identifier,
+        )
+        offset_numeric = (
+            NumericInterval.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_singleton(g=g, tg=tg, value=offset)
+        )
+        _ = EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=offset_numeric.instance.node(),
+            child_identifier=self._offset_identifier,
+        )
+        basis_vector_field = (
+            _BasisVector.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(vector=unit_vector)
+        )
+        self.basis_vector.get().point(basis_vector_field)
+
+        return self
+
+    def get_owner_node(self) -> fabll.Node:
+        """
+        Get the owner node that has this IsUnit trait.
+        Useful when creating new QuantitySets from unit operations.
+        """
+        import faebryk.core.faebrykpy as fbrk
+
+        owner = fbrk.EdgeTrait.get_owner_node_of(bound_node=self.instance)
+        assert owner is not None, "IsUnit trait must have an owner node"
+        return fabll.Node.bind_instance(instance=owner)
 
     @property
     def is_affine(self) -> bool:
@@ -305,6 +398,15 @@ class is_unit(fabll.Node):
 
     def is_dimensionless(self) -> bool:
         return self._extract_basis_vector() == _BasisVector.ORIGIN
+
+    def is_angular(self) -> bool:
+        """
+        Check if this unit is angular (radians).
+        Valid input for trigonometric functions.
+        Enforces explicit use of Radian unit rather than accepting dimensionless.
+        """
+        v = self._extract_basis_vector()
+        return v == _BasisVectorArg(radian=1)
 
     def to_base_units(self, g: graph.GraphView, tg: graph.TypeGraph) -> "is_unit":
         """
@@ -415,7 +517,7 @@ class is_unit(fabll.Node):
         return (scale, offset)
 
     def compact_repr(self) -> str:
-        if symbols := self.symbol.get().force_extract_literal().get_values():
+        if symbols := self._extract_symbol():
             return symbols[0]
 
         vector = self._extract_basis_vector()
@@ -512,7 +614,10 @@ def make_unit_expression_type(
                     )
                 )
                 out.add_dependant(exponent_field)
-                exponent_lit = F.Literals.Numbers.MakeChild(value=float(exponent))
+                # Exponent is a dimensionless integer value for unit exponentiation
+                exponent_lit = F.Literals.Numbers.MakeChild(
+                    min=exponent, max=exponent, unit=Dimensionless
+                )
                 exponent_is_expr = F.Expressions.Is.MakeChild_Constrain(
                     [[exponent_field], [exponent_lit]]
                 )
@@ -530,8 +635,11 @@ def make_unit_expression_type(
             out.add_dependant(
                 F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field])
             )
+            from faebryk.library.Literals import Numbers
 
-            multiplier_lit = F.Literals.Numbers.MakeChild(value=float(multiplier))
+            multiplier_lit = Numbers.MakeChild(
+                min=multiplier, max=multiplier, unit=Dimensionless
+            )
             multiplier_is_expr = F.Expressions.Is.MakeChild_Constrain(
                 [[out, cls.multiplier], [multiplier_lit]]
             )
@@ -540,7 +648,7 @@ def make_unit_expression_type(
             )
             out.add_dependant(multiplier_is_expr)
 
-            offset_lit = F.Literals.Numbers.MakeChild(value=float(offset))
+            offset_lit = Numbers.MakeChild(min=offset, max=offset, unit=Dimensionless)
             offset_is_expr = F.Expressions.Is.MakeChild_Constrain(
                 [[out, cls.offset], [offset_lit]]
             )
@@ -564,6 +672,8 @@ class _AnonymousUnit(fabll.Node):
         self, vector: _BasisVectorArg, multiplier: float = 1.0, offset: float = 0.0
     ) -> Self:
         self._is_unit.get().setup(
+            g=self.instance.g(),
+            tg=self.tg,
             symbols=[],
             unit_vector=vector,
             multiplier=multiplier,
