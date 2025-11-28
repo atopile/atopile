@@ -1466,10 +1466,9 @@ def test_jlcpcb_pick_led():
     print(led.get_trait(F.has_part_picked).get_part())
 
 
-@pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_simple():
     # TODO: add support for powered leds
-    pass
+    assert False
     # E = BoundExpressions()
     # led = F.PoweredLED
     # led.led.color.constrain_subset(fabll.EnumSet(F.LED.Color.EMERALD))
@@ -1488,10 +1487,9 @@ def test_jlcpcb_pick_powered_led_simple():
     # print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
 
 
-@pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_regression():
     # TODO: add support for powered leds
-    pass
+    assert False
     # E = BoundExpressions()
     # led = F.PoweredLED()
     # led.led.color.constrain_subset(F.LED.Color.RED)
