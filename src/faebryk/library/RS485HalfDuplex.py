@@ -14,7 +14,7 @@ class RS485HalfDuplex(fabll.Node):
 
     diff_pair = F.DifferentialPair.MakeChild()
 
-    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
 
     impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
     impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(

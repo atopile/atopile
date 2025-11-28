@@ -846,7 +846,7 @@ class MutationMap:
         if (
             (param_unit_t := po.try_get_sibling_trait(F.Units.has_unit))
             and (lit_n := fabll.Traits(lit).get_obj_raw().try_cast(F.Literals.Numbers))
-            and not lit_n.are_units_compatible(param_unit := param_unit_t.get_unit())
+            and not lit_n.are_units_compatible(param_unit := param_unit_t.get_is_unit())
         ):
             return lit_n.op_mul_intervals(
                 F.Literals.Numbers.bind_typegraph_from_instance(lit_n.instance)

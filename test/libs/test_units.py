@@ -48,7 +48,7 @@ def assert_commensurability(items: Sequence[F.Units.is_unit]) -> F.Units.is_unit
     for other_unit in other_units:
         if not first_unit.is_commensurable_with(other_unit):
             symbols = [unit._extract_symbol() for unit in items]
-            raise F.Units.UnitsNotCommensurable(
+            raise F.Units.UnitsNotCommensurableError(
                 "Operands have incommensurable units:\n"
                 + "\n".join(
                     f"`{item.__repr__()}` ({symbols[i]})"
@@ -91,7 +91,7 @@ def test_assert_commensurability(ctx: BoundUnitsContext):
 
 def test_assert_incommensurability(ctx: BoundUnitsContext):
     """Test that incompatible units raise UnitsNotCommensurable"""
-    with pytest.raises(F.Units.UnitsNotCommensurable):
+    with pytest.raises(F.Units.UnitsNotCommensurableError):
         assert_commensurability([ctx.Meter._is_unit.get(), ctx.Second._is_unit.get()])
 
 
@@ -149,7 +149,7 @@ def test_assert_commensurability_with_incommensurable_derived(ctx: BoundUnitsCon
     meter_seconds = F.Units.resolve_unit_expression(
         tg=ctx.tg, g=ctx.g, expr=app.meter_seconds_expr.get().instance
     )
-    with pytest.raises(F.Units.UnitsNotCommensurable):
+    with pytest.raises(F.Units.UnitsNotCommensurableError):
         assert_commensurability(
             [
                 meters_per_second.get_trait(F.Units.is_unit),
@@ -164,7 +164,7 @@ def test_isunit_setup(ctx):
         g=ctx.g,
         tg=ctx.tg,
         symbols=["m"],
-        unit_vector=F.Units._BasisVectorArg(meter=1),
+        unit_vector=F.Units.BasisVector(meter=1),
         multiplier=1.0,
         offset=0.0,
     )
@@ -172,10 +172,24 @@ def test_isunit_setup(ctx):
 
     assert F.Units._BasisVector.bind_instance(
         is_unit.basis_vector.get().deref().instance
-    ).extract_vector() == F.Units._BasisVectorArg(meter=1)
+    ).extract_vector() == F.Units.BasisVector(meter=1)
 
     assert is_unit._extract_multiplier() == 1.0
     assert is_unit._extract_offset() == 0.0
+
+
+def test_decode_symbol(ctx):
+    _ = ctx.Meter
+    decoded_meter = F.Units.decode_symbol(g=ctx.g, tg=ctx.tg, symbol="m")
+
+    assert decoded_meter._extract_basis_vector() == F.Units.BasisVector(meter=1)
+    assert decoded_meter._extract_multiplier() == 1.0
+    assert decoded_meter._extract_offset() == 0.0
+
+    kilometer = F.Units.decode_symbol(g=ctx.g, tg=ctx.tg, symbol="km")
+    assert kilometer._extract_basis_vector() == F.Units.BasisVector(meter=1)
+    assert kilometer._extract_multiplier() == 1000.0
+    assert kilometer._extract_offset() == 0.0
 
 
 # TODO: more tests

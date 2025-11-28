@@ -21,7 +21,7 @@ class Addressor(fabll.Node):
     )
 
     address_bits_ = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Bit, integer=True, negative=False
     )
     address_lines_ = F.Collections.PointerSet.MakeChild()
 
