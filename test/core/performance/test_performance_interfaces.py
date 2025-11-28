@@ -99,7 +99,7 @@ def test_performance_mifs_connect_hull(node_type):
 #     app = module_type()
 #     timings.add(name, "construct")
 
-#     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+#     F.is_bus_parameter.resolve_bus_parameters(app.tg)
 #     timings.add(name, "resolve")
 
 #     logger.info(f"\n{timings}")

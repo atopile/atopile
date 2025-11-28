@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Callable, Protocol, Self
+from typing import Callable, Protocol, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -61,11 +61,16 @@ class PointerProtocol(CollectionProtocol):
     def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
     @classmethod
     def MakeEdge(cls, pointer_ref: RefPath, elef_ref: RefPath) -> fabll._EdgeField: ...
+    @classmethod
+    def MakeEdgeForField(
+        cls, out: fabll._ChildField, pointer_ref: RefPath, field: fabll._ChildField
+    ) -> None: ...
 
 
 def AbstractPointer(
     edge_factory: PointerEdgeFactory,
     retrieval_function: Callable[[fabll.NodeT], fabll.NodeT],
+    typename: str | None = None,
 ) -> type[PointerProtocol]:
     class ConcretePointer(fabll.Node):
         _edge_factory = edge_factory
@@ -88,7 +93,14 @@ def AbstractPointer(
                 edge=cls._edge_factory(identifier=None),
             )
 
-    ConcretePointer.__name__ = f"ConcretePointer_{id(ConcretePointer):x}"
+        @classmethod
+        def MakeEdgeForField(
+            cls, out: fabll._ChildField, pointer_ref: RefPath, field: fabll._ChildField
+        ):
+            out.add_dependant(cls.MakeEdge(pointer_ref, [field]))
+            out.add_dependant(field, before=True)
+
+    ConcretePointer.__name__ = typename or f"ConcretePointer_{id(ConcretePointer):x}"
     return ConcretePointer  # type: ignore
 
 
@@ -116,6 +128,7 @@ class SequenceEdgeFactory(Protocol):
 def AbstractSequence(
     edge_factory: SequenceEdgeFactory,
     retrieval_function: Callable[[fabll.NodeT, str], list[fabll.NodeT]],
+    typename: str | None = None,
 ) -> type[SequenceProtocol]:
     class ConcreteSequence(fabll.Node):
         """
@@ -159,7 +172,7 @@ def AbstractSequence(
         ) -> "list[fabll._EdgeField]":
             return [cls.MakeEdge(seq_ref, elem, i) for i, elem in enumerate(elem_ref)]
 
-    ConcreteSequence.__name__ = f"ConcreteSequence_{id(ConcreteSequence):x}"
+    ConcreteSequence.__name__ = typename or f"ConcreteSequence_{id(ConcreteSequence):x}"
     return ConcreteSequence  # type: ignore
 
 
@@ -186,6 +199,7 @@ class SetEdgeFactory(Protocol):
 def AbstractSet(
     edge_factory: SetEdgeFactory,
     retrieval_function: Callable[[fabll.NodeT, str], list[fabll.NodeT]],
+    typename: str | None = None,
 ) -> type[SetProtocol]:
     class ConcreteSet(fabll.Node):
         _elem_identifier = "e"
@@ -243,7 +257,7 @@ def AbstractSet(
         def as_set(self) -> set[fabll.NodeT]:
             return set(self.as_list())
 
-    ConcreteSet.__name__ = f"ConcreteSet_{id(ConcreteSet):x}"
+    ConcreteSet.__name__ = typename or f"ConcreteSet_{id(ConcreteSet):x}"
     return ConcreteSet
 
 
@@ -257,6 +271,7 @@ Pointer = AbstractPointer(
         identifier=identifier, order=None
     ),
     retrieval_function=lambda node: _get_pointer_references(node, None)[0],
+    typename="Pointer",
 )
 
 PointerSequence = AbstractSequence(
@@ -264,6 +279,7 @@ PointerSequence = AbstractSequence(
         identifier=identifier, order=order
     ),
     retrieval_function=_get_pointer_references,
+    typename="PointerSequence",
 )
 
 PointerSet = AbstractSet(
@@ -271,6 +287,7 @@ PointerSet = AbstractSet(
         identifier=identifier, order=order
     ),
     retrieval_function=_get_pointer_references,
+    typename="PointerSet",
 )
 
 
@@ -395,3 +412,27 @@ def test_pointer_helpers():
         left_child.instance.node().get_uuid(),
         right_child.instance.node().get_uuid(),
     }
+
+
+def test_pointer_fabll():
+    class Pointee(fabll.Node):
+        pass
+
+    class Holder(fabll.Node):
+        pointer = Pointer.MakeChild()
+
+        @classmethod
+        def MakeChild(cls) -> fabll._ChildField[Self]:
+            out = fabll._ChildField(cls)
+            Pointer.MakeEdgeForField(out, [out, cls.pointer], Pointee.MakeChild())
+            return out
+
+    class App(fabll.Node):
+        holder = Holder.MakeChild()
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    app = App.bind_typegraph(tg).create_instance(g=g)
+
+    pointee = app.holder.get().pointer.get().deref().try_cast(Pointee)
+    assert pointee is not None

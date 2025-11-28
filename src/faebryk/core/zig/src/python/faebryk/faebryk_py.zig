@@ -3279,6 +3279,26 @@ fn wrap_typegraph_get_graph_view() type {
     };
 }
 
+fn wrap_typegraph_get_self_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_self_node",
+            .doc = "Return the underlying BoundNode representing this TypeGraph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const bnode = faebryk.typegraph.TypeGraph.get_self_node(wrapper.data);
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
 fn wrap_typegraph_get_type_by_name() type {
     return struct {
         pub const descr = method_descr{
@@ -3366,6 +3386,123 @@ fn wrap_typegraph_get_type_subgraph() type {
     };
 }
 
+fn wrap_typegraph_get_type_instance_overview() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_type_instance_overview",
+            .doc = "Return a list of tuples (type_name, instance_count) for all types in the TypeGraph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            if (!bind.check_no_positional_args(self, args)) return null;
+            _ = kwargs;
+
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+
+            const allocator = std.heap.c_allocator;
+
+            // Get the type instance overview from Zig
+            var overview = faebryk.typegraph.TypeGraph.get_type_instance_overview(wrapper.data, allocator);
+            defer overview.deinit();
+
+            // Create a Python list
+            const py_list = py.PyList_New(@intCast(overview.items.len)) orelse {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create list");
+                return null;
+            };
+
+            // Populate the list with tuples
+            for (overview.items, 0..) |item, i| {
+                // Create tuple (type_name, instance_count)
+                const py_tuple = py.PyTuple_New(2) orelse {
+                    py.Py_DECREF(py_list);
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create tuple");
+                    return null;
+                };
+
+                // Create Python string for type_name
+                const py_name = py.PyUnicode_FromStringAndSize(item.type_name.ptr, @intCast(item.type_name.len)) orelse {
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create string");
+                    return null;
+                };
+
+                // Create Python int for instance_count
+                const py_count = py.PyLong_FromSize_t(item.instance_count) orelse {
+                    py.Py_DECREF(py_name);
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create int");
+                    return null;
+                };
+
+                // Set tuple items (steals references)
+                if (py.PyTuple_SetItem(py_tuple, 0, py_name) < 0) {
+                    py.Py_DECREF(py_count);
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+                if (py.PyTuple_SetItem(py_tuple, 1, py_count) < 0) {
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+
+                // Set list item (steals reference)
+                if (py.PyList_SetItem(py_list, @intCast(i), py_tuple) < 0) {
+                    py.Py_DECREF(py_tuple);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+            }
+
+            return py_list;
+        }
+    };
+}
+
+fn wrap_typegraph_get_subgraph_of_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_subgraph_of_node",
+            .doc = "Return a subgraph containing the node and all its descendants (children, traits, pointers, etc.)",
+            .args_def = struct {
+                start_node: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .start_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            // Allocate memory for the result GraphView
+            const allocator = std.heap.c_allocator;
+            const result_ptr = allocator.create(graph.GraphView) catch {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate GraphView");
+                return null;
+            };
+
+            result_ptr.* = faebryk.typegraph.TypeGraph.get_subgraph_of_node(allocator, kwarg_obj.start_node.*);
+
+            const pyobj = bind.wrap_obj("GraphView", &graph_py.graph_view_type, graph_py.GraphViewWrapper, result_ptr);
+            if (pyobj == null) {
+                result_ptr.deinit();
+                allocator.destroy(result_ptr);
+            }
+
+            return pyobj;
+        }
+    };
+}
+
 fn wrap_typegraph_make_child_node(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_make_child_node_build(),
@@ -3395,6 +3532,7 @@ fn typegraph_dealloc(self: *py.PyObject) callconv(.C) void {
 fn wrap_typegraph(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_typegraph_init(),
+        wrap_typegraph_of(),
         wrap_typegraph_of_type(),
         wrap_typegraph_of_instance(),
         wrap_typegraph_add_type(),
@@ -3407,7 +3545,10 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_get_type_by_name(),
         wrap_typegraph_get_or_create_type(),
         wrap_typegraph_get_graph_view(),
+        wrap_typegraph_get_self_node(),
         wrap_typegraph_get_type_subgraph(),
+        wrap_typegraph_get_type_instance_overview(),
+        wrap_typegraph_get_subgraph_of_node(),
     };
     bind.wrap_namespace_struct(root, faebryk.typegraph.TypeGraph, extra_methods);
     wrap_typegraph_make_child_node(root);

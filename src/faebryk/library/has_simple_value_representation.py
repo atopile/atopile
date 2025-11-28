@@ -62,15 +62,8 @@ class has_simple_value_representation(fabll.Node):
             return "" if literal is None else literal.get_values()[0]
 
         def _get_value(self) -> str:
-            value = self.param.get_name()  # TODO: get the proper values here
-            if value is None:
-                if self.default is not None:
-                    return str(self.default)
-                raise ValueError(f"No value for {self.param.get_name()}")
-            else:
-                return value  # TODO: Where shoudl value actually come from?
-
-            # domain = self.param.domain
+            lit = self.param.get_trait(F.Parameters.is_parameter_operatable).try_get_aliased_literal()
+            return lit.pretty_str()
 
             # TODO this is probably not the only place we will ever need
             #  this big switch

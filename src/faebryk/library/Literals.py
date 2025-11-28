@@ -3,7 +3,7 @@ from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, Self, cast
+from typing import Any, ClassVar, Iterable, Self, cast
 
 import pytest
 from typing_extensions import deprecated
@@ -42,17 +42,26 @@ class is_literal(fabll.Node):
         # TODO
         pass
 
+    def in_container(self, other: Iterable["is_literal"]) -> bool:
+        return any(self.equals(other) for other in other)
+
     @staticmethod
     def intersect_all(*objs: "is_literal") -> "is_literal":
         # TODO
         pass
 
     def equals(self, other: "is_literal") -> bool:
-        return self.switch_cast().equals(other.switch_cast())
+        self_c = self.switch_cast()
+        other_c = other.switch_cast()
+        if type(self_c) is not type(other_c):
+            return False
+        return self_c.equals(other_c)
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        # TODO
-        pass
+        singleton = self.switch_cast().is_singleton()
+        if singleton is None:
+            return False
+        return singleton == singleton
 
     def is_single_element(self) -> bool:
         # TODO
@@ -92,6 +101,14 @@ class is_literal(fabll.Node):
         # TODO
         lit = self.switch_cast()
         return f"{lit.get_type_name()}({lit.get_values()})"
+
+    def pretty_str(self) -> str:
+        # TODO
+        lit = self.switch_cast()
+        return f"{lit.get_values()[0]}"
+
+    def is_not_correlatable(self) -> bool:
+        return not self.is_single_element() and not self.is_empty()
 
 
 # --------------------------------------------------------------------------------------
@@ -4666,6 +4683,9 @@ class TestCounts:
         counts = Counts.create_instance(g=g, tg=tg)
         assert repr(counts) == "Counts([])"
 
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
+
 
 @dataclass(frozen=True)
 class BooleansAttributes(fabll.NodeAttributes):
@@ -4809,33 +4829,45 @@ class Booleans(fabll.Node[BooleansAttributes]):
         """Check if two boolean sets have the same values."""
         return set(self.get_values()) == set(other.get_values())
 
+    def is_singleton(self) -> bool | None:
+        vals = self.get_values()
+        if len(vals) != 1:
+            return None
+        return vals[0]
+
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
+
 
 class EnumValue(fabll.Node):
-    from faebryk.library.Parameters import StringParameter
-
-    name_ = StringParameter.MakeChild()
-    value_ = StringParameter.MakeChild()
+    name_ = F.Collections.Pointer.MakeChild()
+    value_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
     def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
-        out.add_dependant(Strings.MakeChild_ConstrainToLiteral([out, cls.name_], name))
-        out.add_dependant(
-            Strings.MakeChild_ConstrainToLiteral([out, cls.value_], value)
+        F.Collections.Pointer.MakeEdgeForField(
+            out,
+            [out, cls.name_],
+            Strings.MakeChild(name),
+        )
+        F.Collections.Pointer.MakeEdgeForField(
+            out,
+            [out, cls.value_],
+            Strings.MakeChild(value),
         )
         return out
 
     @property
     def name(self) -> str:
-        return self.name_.get().force_extract_literal().get_values()[0]
+        return self.name_.get().deref().cast(Strings).get_value()
 
     @property
     def value(self) -> str:
-        return self.value_.get().force_extract_literal().get_values()[0]
+        return self.value_.get().deref().cast(Strings).get_value()
 
 
 class AbstractEnums(fabll.Node):
-    from faebryk.library.Literals import is_literal
     from faebryk.library.Parameters import can_be_operand
 
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
@@ -4866,6 +4898,13 @@ class AbstractEnums(fabll.Node):
             enum_values.append(enum_value.value)
 
         return enum_values
+
+    def get_values_typed[T: Enum](self, EnumType: type[T]) -> list[T]:
+        return [EnumType(value) for value in self.get_values()]
+
+    def get_single_value_typed[T: Enum](self, EnumType: type[T]) -> T | None:
+        values = self.get_values()
+        return None if len(values) == 0 else EnumType(values[0])
 
     def get_all_members(self) -> list[EnumValue]:
         if (
@@ -4914,6 +4953,9 @@ class AbstractEnums(fabll.Node):
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
+
 
 @once
 def EnumsFactory(enum_type: type[Enum]) -> type[AbstractEnums]:
@@ -4937,22 +4979,28 @@ LiteralNodes = Numbers | Booleans | Strings | AbstractEnums
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_lit(tg: TypeGraph, value: LiteralValues) -> LiteralNodes:
+def make_lit(
+    g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues
+) -> LiteralNodes:
     match value:
         case bool():
             return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(),
+                g=g,
                 attributes=BooleansAttributes(has_true=value, has_false=not value),
             )
         case float() | int():
             value = float(value)
-            return Numbers.make_lit(tg=tg, value=value)
+            return Numbers.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=LiteralsAttributes(value=value)
+            )
         case Enum():
             return AbstractEnums.bind_typegraph(tg=tg).create_instance(
-                g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
+                g=g, attributes=LiteralsAttributes(value=value)
             )
         case str():
-            return Strings.make_lit(tg=tg, value=value)
+            return Strings.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=LiteralsAttributes(value=value)
+            )
 
 
 # TODO
@@ -4985,19 +5033,31 @@ def MakeChild_Literal(
 
 
 class BoundLiteralContext:
-    def __init__(self, tg: TypeGraph, g: graph.GraphView):
+    """
+    Convenience context for binding types and creating instances within a graph.
+
+    Usage:
+        ctx = BoundLiteralContext(tg=tg, g=g)
+        my_number = ctx.Numbers.setup_from_singleton(value=1.0)
+    """
+
+    def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
+        self._bound: dict = {}
+
+    def _get_bound(self, cls: type):
+        if cls not in self._bound:
+            self._bound[cls] = cls.bind_typegraph(tg=self.tg)
+        return self._bound[cls]
 
     @property
-    @once
-    def Numbers(self):
-        return Numbers.bind_typegraph(tg=self.tg)
+    def Numbers(self) -> Numbers:
+        return self._get_bound(Numbers).create_instance(g=self.g)
 
     @property
-    @once
-    def Booleans(self):
-        return Booleans.bind_typegraph(tg=self.tg)
+    def Booleans(self) -> Booleans:
+        return self._get_bound(Booleans).create_instance(g=self.g)
 
     @property
     @once
@@ -5010,10 +5070,10 @@ class BoundLiteralContext:
         return Strings.bind_typegraph(tg=self.tg)
 
     def create_numbers(self) -> "Numbers":
-        return self.Numbers.create_instance(g=self.g)
+        return self.Numbers.create_instance(g=self.g, tg=self.tg)
 
-    def create_booleans(self) -> "Booleans":
-        return self.Booleans.create_instance(g=self.g)
+    def create_booleans(self, booleans: list[bool] | None = None) -> "Booleans":
+        return Booleans.create_instance(g=self.g, tg=self.tg, booleans=booleans)
 
     def create_enums(self) -> "AbstractEnums":
         return self.Enums.create_instance(g=self.g)
@@ -5067,9 +5127,14 @@ def test_bound_context():
     from faebryk.library.Units import Ohm
 
     ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
-    my_number = ctx.create_numbers_from_singleton(value=1.0, unit=ohm_instance)
+
+    my_number = ctx.Numbers.setup_from_singleton(
+        g=g, tg=tg, value=1.0, unit=ohm_instance
+    )
+    my_bool = ctx.create_booleans(booleans=[True, False])
 
     assert my_number.get_value() == 1.0
+    assert my_bool.get_values() == [True, False]
 
 
 class TestStringLiterals:
@@ -5196,3 +5261,92 @@ class TestBooleans:
         result = bools1.op_or(g=g, tg=tg, other=bools2)
         # False OR True = True
         assert result.get_values() == [True]
+
+
+def test_string_literal_on_type():
+    values = ["a", "b", "c"]
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+
+    class MyType(fabll.Node):
+        string_set = Strings.MakeChild(*values).put_on_type()
+
+    _ = MyType.bind_typegraph(tg=tg).get_or_create_type()
+
+    # TODO
+
+
+def test_string_literal_alias_to_literal():
+    from faebryk.library.Parameters import StringParameter, is_parameter_operatable
+
+    values = ["a", "b", "c"]
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+
+    class MyType(fabll.Node):
+        string_param = StringParameter.MakeChild()
+
+        @classmethod
+        def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:
+            out = fabll._ChildField(cls)
+            out.add_dependant(
+                Strings.MakeChild_ConstrainToLiteral([out, cls.string_param], *values)
+            )
+            return out
+
+    class MyTypeOuter(fabll.Node):
+        my_type = MyType.MakeChild(*values)
+
+    my_type_outer = MyTypeOuter.bind_typegraph(tg=tg).create_instance(g=g)
+
+    lit = is_parameter_operatable.try_get_constrained_literal(
+        my_type_outer.my_type.get()
+        .string_param.get()
+        .get_trait(is_parameter_operatable),
+        Strings,
+    )
+    assert lit
+    assert lit.get_values() == values
+
+
+def test_enums():
+    """
+    Tests carried over from enum_sets.py
+    """
+    from enum import Enum
+
+    from faebryk.core.node import _make_graph_and_typegraph
+
+    g, tg = _make_graph_and_typegraph()
+
+    class MyEnum(Enum):
+        A = "a"
+        B = "b"
+        C = "c"
+        D = "d"
+
+    EnumT = EnumsFactory(MyEnum)
+    enum_lit = (
+        EnumT.bind_typegraph(tg=tg).create_instance(g=g).setup(MyEnum.A, MyEnum.D)
+    )
+
+    elements = enum_lit.get_all_members()
+    assert len(elements) == 4
+    assert elements[0].name == "A"
+    assert elements[0].value == MyEnum.A.value
+    assert elements[1].name == "B"
+    assert elements[1].value == MyEnum.B.value
+    assert elements[2].name == "C"
+    assert elements[2].value == MyEnum.C.value
+    assert elements[3].name == "D"
+    assert elements[3].value == MyEnum.D.value
+
+    assert enum_lit.get_values() == ["a", "d"]
+
+
+# def test_make_lit():
+#     g = graph.GraphView.create()
+#     tg = graph.TypeGraph.create(g=g)
+#     assert make_lit(g, tg, value=True).get_values() == [True]
+#     assert make_lit(g, tg, value=3).get_values() == [3]
+#     assert make_lit(g, tg, value="test").get_values() == ["test"]

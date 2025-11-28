@@ -83,7 +83,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False)
+                    ge_e, mutator.make_lit(False).as_literal()
                 )
                 continue
             interval = boundary
@@ -100,7 +100,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False)
+                    ge_e, mutator.make_lit(False).as_literal()
                 )
                 continue
             interval = boundary
@@ -199,7 +199,7 @@ def remove_congruent_expressions(mutator: Mutator):
             if Expressions.is_assertable_node(representative):
                 representative.constrained = any(e.constrained for e in eq_class)
                 if any(mutator.is_predicate_terminated(e) for e in eq_class):
-                    mutator.predicate_terminate(representative)
+                    mutator.predicate_terminate(representative, new_graph=True)
 
         mutator._mutate(expr, repres[eq_id])
 
@@ -251,22 +251,25 @@ def resolve_alias_classes(mutator: Mutator):
         eq_class_params = [
             p_po
             for p in eq_class
-            if (p_po := p.try_get_trait(F.Parameters.is_parameter))
+            if (p_po := p.try_get_sibling_trait(F.Parameters.is_parameter))
         ]
         eq_class_exprs = {
             p_e
             for p in eq_class
-            if (p_e := p.try_get_trait(F.Expressions.is_expression))
+            if (p_e := p.try_get_sibling_trait(F.Expressions.is_expression))
         }
 
         if not eq_class_params:
             continue
 
         if len(eq_class_params) == 1:
+            print(
+                "Single param", eq_class_params[0].compact_repr(mutator.print_context)
+            )
             # check if all in eq_class already aliased
             # Then no need to to create new representative
             _repr = eq_class_params[0]
-            _repr_po = _repr.get_trait(F.Parameters.is_parameter_operatable)
+            _repr_po = _repr.as_parameter_operatable()
             iss = _repr_po.get_operations(F.Expressions.Is)
             iss_exprs = {
                 o
@@ -312,12 +315,14 @@ def resolve_alias_classes(mutator: Mutator):
 
     for eq_class in p_eq_classes:
         eq_class_params = [
-            p for p in eq_class if (p_po := p.try_get_trait(F.Parameters.is_parameter))
+            p
+            for p in eq_class
+            if (p_po := p.try_get_sibling_trait(F.Parameters.is_parameter))
         ]
         eq_class_exprs = {
             p_e
             for p in eq_class
-            if (p_e := p.try_get_trait(F.Expressions.is_expression))
+            if (p_e := p.try_get_sibling_trait(F.Expressions.is_expression))
         }
 
         if eq_class_params:
@@ -341,8 +346,9 @@ def resolve_alias_classes(mutator: Mutator):
             ).as_parameter_operatable()
 
         for e in eq_class_exprs:
-            mutator.soft_replace(e.as_parameter_operatable(), representative)
-            if mutator.utils.are_aliased(e.as_parameter_operatable(), *eq_class_params):
+            e_po = e.as_parameter_operatable()
+            mutator.soft_replace(e_po, representative)
+            if mutator.utils.are_aliased(e_po, *eq_class_params):
                 continue
             mutator.utils.alias_to(
                 e.as_operand(), representative.as_operand(), from_ops=list(eq_class)
@@ -436,7 +442,7 @@ def empty_set(mutator: Mutator):
             continue
         if any(lit.is_empty() for lit in lits.values()):
             mutator.utils.alias_is_literal_and_check_predicate_eval(
-                e_expr, mutator.make_lit(False)
+                e_expr, mutator.make_lit(False).as_literal()
             )
 
     # A ss {} -> False
@@ -805,7 +811,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
                 unfulfilled_only=True,
             ):
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    p, mutator.make_lit(True)
+                    p, mutator.make_lit(True).as_literal()
                 )
                 break
 

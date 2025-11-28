@@ -8,7 +8,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 # import faebryk.enum_sets as enum_sets
-from faebryk.libs.util import KeyErrorAmbiguous, not_none, once
+from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
     import faebryk.library.Expressions as Expressions
@@ -199,15 +199,18 @@ class is_parameter_operatable(fabll.Node):
             e_ctx.operations.add(is_expr.cast(e_ctx.t))
 
         e_ctx = E_Ctx()
+        # Use the can_be_operand trait's instance, since that's where operand edges
+        # are attached
+        operand_instance = e_ctx._self.as_operand().instance
         if types is fabll.Node:
             fbrk.EdgeOperand.visit_expression_edges(
-                bound_node=e_ctx._self.instance,
+                bound_node=operand_instance,
                 ctx=e_ctx,
                 f=visit,
             )
         else:
             fbrk.EdgeOperand.visit_expression_edges_of_type(
-                bound_node=e_ctx._self.instance,
+                bound_node=operand_instance,
                 expression_type=types.bind_typegraph(self.tg)
                 .get_or_create_type()
                 .node(),
@@ -217,7 +220,8 @@ class is_parameter_operatable(fabll.Node):
 
         out = e_ctx.operations
         if recursive:
-            for op in out:
+            # Create a copy to iterate, since we'll be modifying out
+            for op in list(out):
                 op_po = op.get_trait(is_parameter_operatable)
                 out.update(
                     op_po.get_operations(
@@ -637,168 +641,43 @@ class NumericParameter(fabll.Node):
         )
 
 
-class CountParameter(fabll.Node):
-    """
-    Parameter for integer count values.
-    Similar to NumericParameter but constrained to discrete integer counts.
-    Uses Numbers.Counts as its literal type.
-    """
-
-    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
-        is_parameter_operatable.MakeChild()
-    )
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
-
-    def try_extract_constrained_literal(self) -> "F.Numbers.Counts | None":
-        """
-        Try to extract the constrained Counts literal from this parameter.
-        Returns None if the parameter is not constrained to a literal.
-        """
-        from faebryk.library.Literals import Counts
-
-        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
-            lit_type=Counts
-        )
-
-    def force_extract_literal(self) -> "F.Numbers.Counts":
-        """
-        Extract the constrained Counts literal, raising if not constrained.
-        """
-        from faebryk.library.Literals import Counts
-
-        return self.get_trait(is_parameter_operatable).force_extract_literal(
-            lit_type=Counts
-        )
-
-    def extract_single(self) -> int:
-        """
-        Extract a single integer value from this parameter.
-        Raises if not constrained to a single value.
-        """
-        return self.force_extract_literal().get_single()
-
-    def alias_to_single(self, value: int, g: graph.GraphView | None = None) -> None:
-        """
-        Constrain this parameter to a single integer value.
-        """
-        self.alias_to_literal(value, g=g)
-
-    def alias_to_literal(self, *values: int, g: graph.GraphView | None = None) -> None:
-        """
-        Constrain this parameter to a set of integer values.
-        """
-        g = g or self.instance.g()
-        from faebryk.library.Literals import Counts
-
-        counts_lit = (
-            Counts.bind_typegraph(tg=self.tg)
-            .create_instance(g=g)
-            .setup_from_values(g=g, tg=self.tg, values=list(values))
-        )
-        # Counts has _can_be_operand trait, so it works with alias_to_literal
-        # Cast to satisfy type checker since LiteralNodes doesn't include Counts
-        self._is_parameter_operatable.get().alias_to_literal(
-            g=g,
-            value=cast("Literals.LiteralNodes", counts_lit),
-        )
-
-    def setup(
-        self,
-        *,
-        within: "F.Numbers.Counts | None" = None,
-        likely_constrained: bool = False,
-    ) -> Self:
-        """
-        Setup method for configuration (currently a placeholder for future constraints).
-        """
-        # TODO: Implement constraint logic if needed
-        return self
-
-    @classmethod
-    def MakeChild(cls) -> fabll._ChildField["Self"]:
-        """
-        Create a CountParameter as a child field.
-        """
-        out = fabll._ChildField(cls)
-        return out
-
-
 # Binding context ----------------------------------------------------------------------
 
 
 class BoundParameterContext:
+    """
+    Convenience context for binding parameter types and creating instances.
+
+    Usage:
+        ctx = BoundParameterContext(tg=tg, g=g)
+        my_param = ctx.NumericParameter.setup(units=F .Units.Ohm)
+    """
+
     def __init__(self, tg: graph.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
+        self._bound: dict = {}
+
+    def _get_bound(self, cls: type):
+        if cls not in self._bound:
+            self._bound[cls] = cls.bind_typegraph(tg=self.tg)
+        return self._bound[cls]
 
     @property
-    @once
-    def StringParameter(self):
-        return StringParameter.bind_typegraph(tg=self.tg)
+    def StringParameter(self) -> StringParameter:
+        return self._get_bound(StringParameter).create_instance(g=self.g)
 
     @property
-    @once
-    def BooleanParameter(self):
-        return BooleanParameter.bind_typegraph(tg=self.tg)
+    def BooleanParameter(self) -> BooleanParameter:
+        return self._get_bound(BooleanParameter).create_instance(g=self.g)
 
     @property
-    @once
-    def EnumParameter(self):
-        return EnumParameter.bind_typegraph(tg=self.tg)
+    def EnumParameter(self) -> EnumParameter:
+        return self._get_bound(EnumParameter).create_instance(g=self.g)
 
     @property
-    @once
-    def NumericParameter(self):
-        return NumericParameter.bind_typegraph(tg=self.tg)
-
-    @property
-    @once
-    def CountParameter(self):
-        return CountParameter.bind_typegraph(tg=self.tg)
-
-    def create_string_parameter(self, value: str) -> "StringParameter":
-        return self.StringParameter.create_instance(g=self.g).alias_to_single(
-            value=value, g=self.g
-        )
-
-    def create_boolean_parameter(self, value: bool) -> "BooleanParameter":
-        return self.BooleanParameter.create_instance(g=self.g).alias_to_single(
-            value=value, g=self.g
-        )
-
-    def create_enum_parameter(self, enum: type[Enum]) -> "EnumParameter":
-        return self.EnumParameter.create_instance(g=self.g).setup(enum=enum)
-
-    def create_count_parameter(self, *values: int) -> "CountParameter":
-        """
-        Create a CountParameter optionally constrained to the given values.
-        If no values provided, creates an unconstrained parameter.
-        """
-        param = self.CountParameter.create_instance(g=self.g)
-        if values:
-            param.alias_to_literal(*values, g=self.g)
-        return param
-
-    def create_numeric_parameter(
-        self,
-        units: "Units.is_unit | None" = None,
-        within: "Literals.Numbers | None" = None,
-        domain: "NumberDomain | None" = None,
-        soft_set: "Literals.Numbers | None" = None,
-        guess: "Literals.Numbers | None" = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool = False,
-    ) -> "NumericParameter":
-        return self.NumericParameter.create_instance(g=self.g).setup(
-            units=units,
-            within=within,
-            domain=domain,
-            soft_set=soft_set,
-            guess=guess,
-            tolerance_guess=tolerance_guess,
-            likely_constrained=likely_constrained,
-        )
+    def NumericParameter(self) -> NumericParameter:
+        return self._get_bound(NumericParameter).create_instance(g=self.g)
 
 
 # Tests --------------------------------------------------------------------------------
@@ -843,60 +722,224 @@ def test_try_get():
     ]
 
 
-def test_count_parameter():
-    """Test CountParameter creation and constraint extraction."""
+def test_enum_param():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from enum import Enum
+
+    import faebryk.library._F as TF
+
+    class ExampleNode(fabll.Node):
+        class MyEnum(Enum):
+            A = "a"
+            B = "b"
+            C = "c"
+            D = "d"
+
+        enum_p_tg = EnumParameter.MakeChild(enum_t=MyEnum)
+        constraint = TF.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+            [enum_p_tg], MyEnum.B, MyEnum.C
+        )
+
+        _has_usage_example = TF.has_usage_example.MakeChild(
+            example="",
+            language=TF.has_usage_example.Language.ato,
+        ).put_on_type()
+
+    example_node = ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Enum Literal Type Node
+    # atype = TF.Literals.EnumsFactory(ExampleNode.MyEnum)
+    # cls_n = cast(type[fabll.NodeT], atype)
+    # enum_type_node = cls_n.bind_typegraph(tg=tg).get_or_create_type()
+
+    # Enum Parameter from TG
+    enum_param = example_node.enum_p_tg.get()
+
+    abstract_enum_type_node = enum_param.get_enum_type()
+    # assert abstract_enum_type_node.is_same(enum_type_node)
+
+    assert [(m.name, m.value) for m in abstract_enum_type_node.get_all_members()] == [
+        (m.name, m.value) for m in ExampleNode.MyEnum
+    ]
+
+    assert abstract_enum_type_node.get_enum_as_dict() == {
+        m.name: m.value for m in ExampleNode.MyEnum
+    }
+
+    enum_lit = enum_param.force_extract_literal()
+    assert enum_lit.get_values() == ["b", "c"]
+
+    # Enum Parameter from instance graph
+    enum_p_ig = EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    enum_p_ig.alias_to_literal(ExampleNode.MyEnum.B, g=g)
+    assert enum_p_ig.force_extract_literal().get_values() == ["b"]
+
+
+def test_string_param():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    import faebryk.library._F as F
+
+    string_p = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    string_p.alias_to_literal("IG constrained")
+    assert string_p.force_extract_literal().get_value() == "IG constrained"
+
+    class ExampleStringParameter(fabll.Node):
+        string_p_tg = StringParameter.MakeChild()
+        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            [string_p_tg], "TG constrained"
+        )
+
+    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert esp.string_p_tg.get().force_extract_literal().get_value() == "TG constrained"
+
+
+def test_boolean_param():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    import faebryk.library._F as F
+
+    boolean_p = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    boolean_p.alias_to_single(value=True, g=g)
+    assert boolean_p.force_extract_literal().get_values()[0]
+
+    class ExampleBooleanParameter(fabll.Node):
+        boolean_p_tg = BooleanParameter.MakeChild()
+        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            [boolean_p_tg], True
+        )
+
+    ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0]
+
+
+def test_get_operations():
+    """Test the get_operations method on is_parameter_operatable."""
+    from faebryk.library.Expressions import Add, Is
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    # Test basic creation and aliasing
-    p1 = CountParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p1.alias_to_literal(1, 2, 3)
+    # Create parameters
+    p1 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p2 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p3 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
-    # Verify we can extract the constrained literal
-    lit = p1.try_extract_constrained_literal()
-    assert lit is not None
-    assert lit.get_values() == [1, 2, 3]
+    # Get is_parameter_operatable traits
+    p1_po = p1.get_trait(is_parameter_operatable)
+    p2_po = p2.get_trait(is_parameter_operatable)
+    p3_po = p3.get_trait(is_parameter_operatable)
+
+    # Initially, no operations
+    assert p1_po.get_operations() == set()
+    assert p2_po.get_operations() == set()
+
+    # Create an Add expression: p1 + p2
+    add_expr = (
+        Add.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            p1.get_trait(can_be_operand),
+            p2.get_trait(can_be_operand),
+        )
+    )
+
+    # Now p1 and p2 should have the Add in their operations
+    p1_ops = p1_po.get_operations()
+    p2_ops = p2_po.get_operations()
+    assert len(p1_ops) == 1
+    assert len(p2_ops) == 1
+    assert add_expr in p1_ops
+    assert add_expr in p2_ops
+
+    # p3 still has no operations
+    assert p3_po.get_operations() == set()
+
+    # Create an Is expression (predicate): Is(p1, p3)
+    is_expr = (
+        Is.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            p1.get_trait(can_be_operand),
+            p3.get_trait(can_be_operand),
+            assert_=True,  # This makes it a predicate
+        )
+    )
+
+    # p1 should now have both Add and Is in operations
+    p1_ops_all = p1_po.get_operations()
+    assert len(p1_ops_all) == 2
+    assert add_expr in p1_ops_all
+    assert is_expr in p1_ops_all
+
+    # p3 should have Is
+    p3_ops = p3_po.get_operations()
+    assert len(p3_ops) == 1
+    assert is_expr in p3_ops
+
+    # Test filtering by type - only Add expressions
+    p1_add_ops = p1_po.get_operations(types=Add)
+    assert len(p1_add_ops) == 1
+    assert add_expr in p1_add_ops
+    assert is_expr not in p1_add_ops
+
+    # Test filtering by type - only Is expressions
+    p1_is_ops = p1_po.get_operations(types=Is)
+    assert len(p1_is_ops) == 1
+    assert is_expr in p1_is_ops
+    assert add_expr not in p1_is_ops
+
+    # Test predicates_only filter - should only return asserted expressions
+    p1_predicates = p1_po.get_operations(predicates_only=True)
+    assert is_expr in p1_predicates
+    # Add is not a predicate (not asserted)
+    assert add_expr not in p1_predicates
+
+    # Test combined type + predicates_only
+    p1_is_predicates = p1_po.get_operations(types=Is, predicates_only=True)
+    assert is_expr in p1_is_predicates
 
 
-def test_count_parameter_single():
-    """Test CountParameter with single value extraction."""
+def test_get_operations_recursive():
+    """Test the recursive option of get_operations."""
+    from faebryk.library.Expressions import Add, Multiply
+
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    p1 = CountParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    p1.alias_to_single(42)
+    # Create parameters
+    p1 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p2 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p3 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
-    # Verify single value extraction
-    assert p1.extract_single() == 42
-    lit = p1.force_extract_literal()
-    assert lit.is_single_element()
-    assert lit.get_single() == 42
+    p1_po = p1.get_trait(is_parameter_operatable)
 
+    # Create nested expressions: (p1 + p2) * p3
+    add_expr = (
+        Add.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            p1.get_trait(can_be_operand),
+            p2.get_trait(can_be_operand),
+        )
+    )
 
-def test_count_parameter_make_child():
-    """Test CountParameter.MakeChild() class method."""
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+    mul_expr = (
+        Multiply.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            add_expr.get_trait(can_be_operand),
+            p3.get_trait(can_be_operand),
+        )
+    )
 
-    class App(fabll.Node):
-        count_param = CountParameter.MakeChild()
+    # Non-recursive: p1 only sees the Add directly
+    p1_ops_non_recursive = p1_po.get_operations(recursive=False)
+    assert add_expr in p1_ops_non_recursive
+    assert mul_expr not in p1_ops_non_recursive
 
-    app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    app.count_param.get().alias_to_literal(5, 10, 15)
-
-    lit = app.count_param.get().try_extract_constrained_literal()
-    assert lit is not None
-    assert lit.get_values() == [5, 10, 15]
-
-
-def test_bound_parameter_context_count():
-    """Test CountParameter through BoundParameterContext."""
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    ctx = BoundParameterContext(tg=tg, g=g)
-    param = ctx.create_count_parameter(100, 200)
-
-    lit = param.try_extract_constrained_literal()
-    assert lit is not None
-    assert lit.get_values() == [100, 200]
+    # Recursive: p1 sees both Add and Multiply (through the Add)
+    p1_ops_recursive = p1_po.get_operations(recursive=True)
+    assert add_expr in p1_ops_recursive
+    assert mul_expr in p1_ops_recursive

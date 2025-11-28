@@ -1,9 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import inspect
 import logging
-from typing import Callable, Iterable
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -39,7 +37,7 @@ class ERCFaultShortedInterfaces(ERCFaultShort):
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
-    def __init__(self, faulting_EP: F.ElectricPower, *args: object) -> None:
+    def __init__(self, faulting_EP: "F.ElectricPower", *args: object) -> None:
         msg = (
             f"ElectricPower with undefined or unsolved voltage: {faulting_EP}:"
             f" {faulting_EP.voltage}"
@@ -65,10 +63,6 @@ def simple_erc(tg: fbrk.TypeGraph):
     - Net name collision
 
     - [unmapped pins for footprints]
-
-    Args:
-
-    Returns:
     """
     logger.info("Checking graph for ERC violations")
 
@@ -105,9 +99,7 @@ def simple_erc(tg: fbrk.TypeGraph):
 
                         return True
 
-                    raise ERCFaultShortedInterfaces.from_path(
-                        path
-                    )
+                    raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
             for bus in buses:
@@ -188,32 +180,6 @@ def simple_erc(tg: fbrk.TypeGraph):
         # TODO check multiple pulls per logic
 
 
-def check_modules_for_erc(module: Iterable[fabll.Module]):
-    for m in module:
-        logger.info(f"Checking {m} {'-' * 20}")
-        simple_erc(m.get_graph())
-
-
-def check_classes_for_erc(classes: Iterable[Callable[[], fabll.Module]]):
-    modules = []
-    for c in classes:
-        try:
-            m = c()
-        except Exception as e:
-            logger.warning(
-                f"Could not instantiate {c.__name__}: {type(e).__name__}({e})"
-            )
-            continue
-        modules.append(m)
-    check_modules_for_erc(modules)
-
-
-def check_library_for_erc(lib):
-    members = inspect.getmembers(lib, inspect.isclass)
-    module_classes = [m[1] for m in members if issubclass(m[1], fabll.Module)]
-    check_classes_for_erc(module_classes)
-
-
 # TODO split this up
 class needs_erc_check(fabll.Node):
     _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
@@ -223,4 +189,4 @@ class needs_erc_check(fabll.Node):
     # TODO: Implement this
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
-        simple_erc(self.get_graph())
+        simple_erc(self.tg)

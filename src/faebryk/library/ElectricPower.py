@@ -1,9 +1,13 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
+from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
 
 
 class ElectricPower(fabll.Node):
@@ -62,3 +66,40 @@ class ElectricPower(fabll.Node):
 
     def make_sink(self):
         fabll.Traits.create_and_add_instance_to(node=self, trait=F.is_sink).setup()
+
+
+def test_power_source_short():
+    """
+    Test that a power source is shorted when connected to another power source
+    """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    power_out_1 = ElectricPower.bind_typegraph(tg).create_instance(g=g)
+    power_out_2 = ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+    power_out_1.get_trait(fabll.is_interface).connect_to(power_out_2)
+    power_out_2.get_trait(fabll.is_interface).connect_to(power_out_1)
+
+    power_out_1.make_source()
+    power_out_2.make_source()
+
+    with pytest.raises(ERCPowerSourcesShortedError):
+        simple_erc(tg)
+
+
+def test_power_source_no_short():
+    """
+    Test that a power source is not shorted when connected to another non-power source
+    """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    power_out_1 = ElectricPower.bind_typegraph(tg).create_instance(g=g)
+    power_out_2 = ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+    power_out_1.make_source()
+
+    power_out_1.get_trait(fabll.is_interface).connect_to(power_out_2)
+
+    simple_erc(tg)

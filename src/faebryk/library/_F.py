@@ -46,13 +46,13 @@ from faebryk.library.has_designator import has_designator
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_overriden_name import has_overriden_name
+from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
-from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.Electrical import Electrical
 import faebryk.library.Numbers as Numbers
@@ -154,13 +154,13 @@ __all__ = [
     "has_designator_prefix",
     "has_net_name",
     "has_overriden_name",
+    "has_package_requirements",
     "has_part_picked",
     "has_usage_example",
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
     "Units",
-    "has_package_requirements",
     "is_auto_generated",
     "Electrical",
     "Numbers",

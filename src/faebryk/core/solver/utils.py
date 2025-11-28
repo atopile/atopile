@@ -133,8 +133,8 @@ class MutatorUtils:
         self, lower: float, upper: float
     ) -> F.Literals.Numbers:
         return (
-            F.Literals.Numbers.bind_typegraph(self.mutator.tg)
-            .create_instance(self.mutator.G_in)
+            F.Literals.Numbers.bind_typegraph(self.mutator.tg_out)
+            .create_instance(self.mutator.G_transient)
             .setup_from_interval(lower=lower, upper=upper)
         )
 
@@ -230,8 +230,8 @@ class MutatorUtils:
     ) -> tuple[
         list[F.Parameters.can_be_operand], list[F.Parameters.is_parameter_operatable]
     ]:
-        out = []
-        any_lit = []
+        out = list[F.Parameters.can_be_operand]()
+        any_lit = list[F.Parameters.is_parameter_operatable]()
         for op in expr.get_operands():
             if self.is_literal(op):
                 out.append(op)
@@ -241,8 +241,8 @@ class MutatorUtils:
             if lit is None:
                 out.append(op)
                 continue
-            out.append(lit)
-            any_lit.append(op)
+            out.append(lit.as_operand())
+            any_lit.append(op_po)
         return out, any_lit
 
     def alias_is_literal(
@@ -273,9 +273,8 @@ class MutatorUtils:
             )
         # prevent (A is X) is X
         if po_is := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.Is):
-            if (
-                literal
-                in po_is.get_trait(F.Expressions.is_expression)
+            if literal.in_container(
+                po_is.get_trait(F.Expressions.is_expression)
                 .get_operand_literals()
                 .values()
             ):
@@ -442,7 +441,7 @@ class MutatorUtils:
         from_ops = [
             x_po
             for x in [po, to] + list(from_ops)
-            if (x_po := x.get_sibling_trait(F.Parameters.is_parameter_operatable))
+            if (x_po := x.try_get_sibling_trait(F.Parameters.is_parameter_operatable))
         ]
 
         if to_canon := to.try_get_sibling_trait(F.Expressions.is_canonical):
@@ -506,21 +505,22 @@ class MutatorUtils:
     def alias_is_literal_and_check_predicate_eval(
         self,
         expr: F.Expressions.is_expression,
-        value: F.Literals.Booleans,
+        value: F.Literals.is_literal,
     ):
         """
         Call this when 100% sure what the result of a predicate is.
         """
         self.alias_to(
             expr.as_operand(),
-            value.get_trait(F.Parameters.can_be_operand),
+            value.get_sibling_trait(F.Parameters.can_be_operand),
             terminate=True,
         )
         if not (expr_co := expr.try_get_sibling_trait(F.Expressions.is_predicate)):
             return
         expr_po = expr.as_parameter_operatable()
         # all predicates alias to True, so alias False will already throw
-        if value.is_false():
+        bool_lit = fabll.Traits(value).get_obj(F.Literals.Booleans)
+        if bool_lit.is_false():
             raise Contradiction(
                 "Predicate deduced to False",
                 involved=[expr_po],
@@ -540,7 +540,7 @@ class MutatorUtils:
             self.mutator.predicate_terminate(op.get_trait(F.Expressions.is_predicate))
 
     def is_replacable_by_literal(self, op: F.Parameters.can_be_operand):
-        if not (op_po := op.as_parameter_operatable()):
+        if not (op_po := op.is_parameter_operatable()):
             return None
 
         # special case for Is(True, True) due to alias_is_literal check
@@ -562,7 +562,7 @@ class MutatorUtils:
         *operands: F.Parameters.can_be_operand,
         allow_uncorrelated: bool = False,
     ) -> T | None:
-        non_lits = [op_po for op in operands if (op_po := op.as_parameter_operatable())]
+        non_lits = [op_po for op in operands if (op_po := op.is_parameter_operatable())]
         literal_expr = all(
             self.is_literal(op) or self.is_literal_expression(op) for op in operands
         )
@@ -813,14 +813,12 @@ class MutatorUtils:
             return None
         return po_ss
 
-    @staticmethod
     def no_other_predicates(
+        self,
         po: F.Parameters.is_parameter_operatable,
         *other: F.Expressions.is_assertable,
         unfulfilled_only: bool = False,
     ) -> bool:
-        from faebryk.core.solver.mutator import is_terminated
-
         no_other_predicates = (
             len(
                 [
@@ -828,7 +826,11 @@ class MutatorUtils:
                     for x in MutatorUtils.get_predicates_involved_in(po).difference(
                         other
                     )
-                    if not unfulfilled_only or not x.has_trait(is_terminated)
+                    if not unfulfilled_only
+                    or not (
+                        (pred := x.try_get_trait(F.Expressions.is_predicate))
+                        and self.mutator.is_predicate_terminated(pred)
+                    )
                 ]
             )
             == 0
@@ -1174,7 +1176,7 @@ class MutatorUtils:
             new = (
                 F.Parameters.EnumParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
-                .setup(enum=enum)
+                .setup(enum_type=enum)
             )
             return new.get_trait(F.Parameters.is_parameter)
         else:

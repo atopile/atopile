@@ -311,7 +311,7 @@ def test_pick_voltage_divider_complex():
             self.rdiv.max_current.constrain_subset(fabll.Range(1 * P.mA, 2 * P.mA))
 
     app = App()
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.tg)
     solver = DefaultSolver()
 
     solver.simplify_symbolically(app)

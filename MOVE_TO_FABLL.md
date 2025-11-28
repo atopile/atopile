@@ -91,3 +91,13 @@ Be careful with modifying G_in on first stage, modifying source graph
 BIG TODO: check everywhere for `==` in solver
 also `in`
 => had a first pass
+
+NOTE TO SELF WEDNESDAY:
+
+- copy_into works
+- back to checking why superbasic solver graphs expand so much
+
+  - somehow stuff got real slow when i copied over tg (120ms to 1.5s)
+
+- make_lit is bad, creates volatile nodes in graphs
+  - most of the time just to check bools anyway

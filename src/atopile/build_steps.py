@@ -223,7 +223,7 @@ def post_design_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     check_design(
-        app.get_graph(),
+        app.tg,
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -237,7 +237,7 @@ def load_pcb(
 ) -> None:
     pcb.setup()
     if config.build.keep_designators:
-        load_designators(pcb.get_graph(), attach=True)
+        load_designators(pcb.tg, attach=True)
 
 
 @muster.register("picker", description="Picking parts", dependencies=[load_pcb])
@@ -245,8 +245,8 @@ def pick_parts(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.g())
-        solver.simplify(app.g(), app.tg)
+        load_part_info_from_pcb(app.g)
+        solver.simplify(app.g, app.tg)
     try:
         pick_part_recursively(app, solver, progress=log_context)
     except* PickError as ex:
@@ -254,7 +254,7 @@ def pick_parts(
             "Failed to pick parts for some modules",
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
-    save_part_info_to_pcb(app.g())
+    save_part_info_to_pcb(app.g)
 
 
 @muster.register(
@@ -263,8 +263,8 @@ def pick_parts(
 def prepare_nets(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
-    attach_random_designators(app.get_graph())
-    nets = attach_nets(app.get_graph())
+    attach_random_designators(app.tg)
+    nets = attach_nets(app.tg)
     # We have to re-attach the footprints, and subsequently nets, because the first
     # attachment is typically done before the footprints have been created
     # and therefore many nets won't be re-attached properly. Also, we just created
@@ -273,11 +273,11 @@ def prepare_nets(
     pcb.transformer.attach()
 
     if config.build.keep_net_names:
-        loaded_nets = load_net_names(app.g())
+        loaded_nets = load_net_names(app.g)
         nets |= loaded_nets
 
     attach_net_names(nets)
-    check_net_names(app.g())
+    check_net_names(app.tg)
 
 
 @muster.register(
@@ -290,7 +290,7 @@ def post_solve_checks(
 ) -> None:
     logger.info("Running checks")
     check_design(
-        app.get_graph(),
+        app.tg,
         stage=F.implements_design_check.CheckStage.POST_SOLVE,
         exclude=tuple(set(config.build.exclude_checks)),
     )
@@ -438,7 +438,7 @@ def post_pcb_checks(
     _ = fabll.Traits.create_and_add_instance_to(pcb, F.PCB.requires_drc_check)
     try:
         check_design(
-            pcb.get_graph(),
+            pcb.tg,
             stage=F.implements_design_check.CheckStage.POST_PCB,
             exclude=tuple(set(config.build.exclude_checks)),
         )
@@ -479,9 +479,9 @@ def generate_netlist(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate a netlist for the project."""
-    attach_kicad_info(app.get_graph())
+    attach_kicad_info(app.tg)
 
-    fbrk_netlist = make_fbrk_netlist_from_graph(app.get_graph())
+    fbrk_netlist = make_fbrk_netlist_from_graph(app.g, app.tg)
     kicad_netlist = faebryk_netlist_to_kicad(fbrk_netlist)
 
     netlist_path = config.build.paths.netlist

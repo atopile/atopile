@@ -477,7 +477,7 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
     e = expr.get_trait(F.Expressions.is_expression)
     if any(lit.equals_singleton(True) for lit in e.get_operand_literals().values()):
         mutator.utils.alias_is_literal_and_check_predicate_eval(
-            e, mutator.make_lit(True)
+            e, mutator.make_lit(True).as_literal()
         )
         return
 
@@ -540,7 +540,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                 op_or_e = op_or.get_trait(F.Expressions.is_expression)
                 if not op_or_e.get_operands():
                     mutator.utils.alias_is_literal_and_check_predicate_eval(
-                        e, mutator.make_lit(True)
+                        e, mutator.make_lit(True).as_literal()
                     )
                 for inner_op in op_or_e.get_operands():
                     inner_op_e = inner_op.get_sibling_trait(F.Expressions.is_expression)
@@ -577,7 +577,8 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
 
     if expr.try_get_trait(F.Expressions.is_predicate):
         mutator.utils.alias_is_literal_and_check_predicate_eval(
-            op.get_sibling_trait(F.Expressions.is_expression), mutator.make_lit(False)
+            op.get_sibling_trait(F.Expressions.is_expression),
+            mutator.make_lit(False).as_literal(),
         )
 
 

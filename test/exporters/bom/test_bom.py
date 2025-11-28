@@ -17,15 +17,18 @@ g = graph.GraphView.create()
 tg = fbrk.TypeGraph.create(g=g)
 
 def _build(app: fabll.Node):
-    load_designators(app.get_graph(), attach=True)
+    load_designators(app.tg, attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
-    attach_random_designators(app.get_graph())
+    attach_random_designators(app.tg)
 
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
-    r = F.Resistor()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    r = F.Resistor.bind_typegraph(tg).create_instance(g=g)
     r.resistance.constrain_subset(fabll.Range.from_center_rel(10 * 1e3 * F.Units.Ohm, 0.01))
 
     _build(r)

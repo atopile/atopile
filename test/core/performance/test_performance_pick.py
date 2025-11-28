@@ -48,7 +48,7 @@ def test_performance_pick_real_module(module_type: Callable[[], fabll.Module]):
     app = module_type()
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.tg)
     timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)
@@ -91,7 +91,7 @@ def test_performance_pick_rc_formulas():
     app = App()
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.tg)
     timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)

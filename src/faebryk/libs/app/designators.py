@@ -25,17 +25,15 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     This ensures that everything which has a footprint must have a designator.
     """
 
-    nodes = fabll.Traits.get_implementors(F.has_footprint.bind_typegraph(tg))
-
-    in_use = {
-        n.get_trait(F.has_designator).get_designator()
-        for n in nodes
-        if n.has_trait(F.has_designator)
-    }
+    designators = fabll.Traits.get_implementors(F.has_designator.bind_typegraph(tg))
     pattern = re.compile(r"([A-Z]+)([0-9]+)")
 
     groups = groupby(
-        [(m.group(1), int(m.group(2))) for d in in_use if (m := pattern.match(d))],
+        [
+            (m.group(1), int(m.group(2)))
+            for d in designators
+            if (m := pattern.match(d.get_designator()))
+        ],
         key=lambda x: x[0],
     )
 
@@ -51,7 +49,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
                 return i + 1
         return len(used) + 1
 
-    nodes_sorted = natsorted(nodes, key=lambda x: x.get_full_name())
+    nodes_sorted = natsorted(designators, key=lambda x: x.get_designator())
 
     for n in nodes_sorted:
         if n.has_trait(F.has_designator):
@@ -68,10 +66,12 @@ def attach_random_designators(tg: fbrk.TypeGraph):
 
         assigned[prefix].append(next_num)
 
-    no_designator = {n for n in nodes if not n.has_trait(F.has_designator)}
+    no_designator = {n for n in designators if not n.has_trait(F.has_designator)}
     assert not no_designator
 
-    dupes = duplicates(nodes, lambda n: n.get_trait(F.has_designator).get_designator())
+    dupes = duplicates(
+        designators, lambda n: n.get_trait(F.has_designator).get_designator()
+    )
     assert not dupes, (
         f"Duplicate designators found in layout:\n{md_list(dupes, recursive=True)}"
     )

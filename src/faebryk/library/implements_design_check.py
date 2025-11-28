@@ -60,12 +60,12 @@ class implements_design_check(fabll.Node):
         return func
 
     def get_solver(self):
-        return F.has_solver.find_unique(self.get_graph()).solver
+        return F.has_solver.find_unique(self.tg).solver
 
     def get_pcb(self):
         from faebryk.library.PCB import PCB
 
-        matches = fabll.Node.bind_typegraph(self.get_graph()).nodes_of_type(PCB)
+        matches = fabll.Node.bind_typegraph(self.tg).nodes_of_type(PCB)
         assert len(matches) == 1
         return first(matches)
 
