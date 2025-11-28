@@ -1464,7 +1464,7 @@ class Ppm(fabll.Node):
 
 
 class Degree(fabll.Node):
-    unit_vector_arg: ClassVar[BasisVector] = BasisVector(kelvin=1)
+    unit_vector_arg: ClassVar[BasisVector] = BasisVector(radian=1)
 
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(
