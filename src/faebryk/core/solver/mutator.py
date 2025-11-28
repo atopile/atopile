@@ -1919,7 +1919,6 @@ class Mutator:
                 dirty=False,
             )
 
-        print("COPYING")
         self.check_no_illegal_mutations()
         self._copy_unmutated()
         stage = MutationStage(

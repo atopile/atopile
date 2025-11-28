@@ -113,31 +113,31 @@ class DefaultSolver(Solver):
         for phase_name, algo in enumerate(algos):
             timings.add("_")
 
-            def _tgoverview(tg: fbrk.TypeGraph) -> dict[str, int]:
-                out = tg.get_type_instance_overview()
-                out.append(("0TOTAL", sum(x[1] for x in out)))
-                return dict(sorted(out, key=lambda x: x[0]))
+            # def _tgoverview(tg: fbrk.TypeGraph) -> dict[str, int]:
+            #     out = tg.get_type_instance_overview()
+            #     out.append(("0TOTAL", sum(x[1] for x in out)))
+            #     return dict(sorted(out, key=lambda x: x[0]))
 
-            def _tgdiff(
-                overview1: dict[str, int], overview2: dict[str, int]
-            ) -> dict[str, int]:
-                return {
-                    k: d
-                    for k in overview1.keys() | overview2.keys()
-                    if (d := overview2.get(k, 0) - overview1.get(k, 0))
-                }
+            # def _tgdiff(
+            #     overview1: dict[str, int], overview2: dict[str, int]
+            # ) -> dict[str, int]:
+            #     return {
+            #         k: d
+            #         for k in overview1.keys() | overview2.keys()
+            #         if (d := overview2.get(k, 0) - overview1.get(k, 0))
+            #     }
 
-            G_in_count = data.mutation_map.G_out.get_node_count()
-            G_in_operands = set(
-                fabll.Traits.get_implementors(
-                    F.Parameters.is_parameter_operatable.bind_typegraph(
-                        data.mutation_map.tg_out
-                    ),
-                    data.mutation_map.G_out,
-                )
-            )
-            G_in_overview = _tgoverview(data.mutation_map.tg_out)
+            # G_in_operands = set(
+            #     fabll.Traits.get_implementors(
+            #         F.Parameters.is_parameter_operatable.bind_typegraph(
+            #             data.mutation_map.tg_out
+            #         ),
+            #         data.mutation_map.G_out,
+            #     )
+            # )
+            # G_in_overview = _tgoverview(data.mutation_map.tg_out)
             if PRINT_START:
+                G_in_count = data.mutation_map.G_out.get_node_count()
                 logger.debug(
                     f"START Iteration {iterno} Phase {phase_name}: {algo.name}"
                     f" G_in:{G_in_count}"
@@ -157,44 +157,44 @@ class DefaultSolver(Solver):
             timings.add("_")
             algo_result = mutator.close()
 
-            # TODO remove True
-            if True or algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
-                G_in_operands_after = set(
-                    fabll.Traits.get_implementors(
-                        F.Parameters.is_parameter_operatable.bind_typegraph(
-                            data.mutation_map.tg_out
-                        ),
-                        data.mutation_map.G_out,
-                    )
-                )
-                G_in_overview_after = dict(_tgoverview(data.mutation_map.tg_out))
-                G_out_operands = set(
-                    fabll.Traits.get_implementors(
-                        F.Parameters.is_parameter_operatable.bind_typegraph(
-                            algo_result.mutation_stage.tg_out
-                        ),
-                        algo_result.mutation_stage.G_out,
-                    )
-                )
-                G_out_overview = dict(_tgoverview(algo_result.mutation_stage.tg_out))
-                G_in_count_after = data.mutation_map.G_out.get_node_count()
-                G_out_count = algo_result.mutation_stage.G_out.get_node_count()
+            if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
+                # G_in_operands_after = set(
+                #    fabll.Traits.get_implementors(
+                #        F.Parameters.is_parameter_operatable.bind_typegraph(
+                #            data.mutation_map.tg_out
+                #        ),
+                #        data.mutation_map.G_out,
+                #    )
+                # )
+                # G_in_overview_after = dict(_tgoverview(data.mutation_map.tg_out))
+                # G_out_operands = set(
+                #    fabll.Traits.get_implementors(
+                #        F.Parameters.is_parameter_operatable.bind_typegraph(
+                #            algo_result.mutation_stage.tg_out
+                #        ),
+                #        algo_result.mutation_stage.G_out,
+                #    )
+                # )
+                # G_out_overview = dict(_tgoverview(algo_result.mutation_stage.tg_out))
+                # G_in_count_after = data.mutation_map.G_out.get_node_count()
+                # G_out_count = algo_result.mutation_stage.G_out.get_node_count()
+                # suffix = ""
+                # if len({G_in_count, G_in_count_after, G_out_count}) != 1:
+                #    suffix += f"\n (inconsistent counts: {G_in_count}, {G_in_count_after}, {G_out_count})"
+                #    suffix += f"\nG_in_diff {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
+                #    suffix += f"\nIn_Out_diff {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
+                # if (
+                #    len(
+                #        {
+                #            len(G_in_operands),
+                #            len(G_in_operands_after),
+                #            len(G_out_operands),
+                #        }
+                #    )
+                #    != 1
+                # ):
+                #    suffix += f"\n (inconsistent operand counts: {len(G_in_operands)}, {len(G_in_operands_after)}, {len(G_out_operands)})"
                 suffix = ""
-                if len({G_in_count, G_in_count_after, G_out_count}) != 1:
-                    suffix += f"\n (inconsistent counts: {G_in_count}, {G_in_count_after}, {G_out_count})"
-                    suffix += f"\nG_in_diff {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
-                    suffix += f"\nIn_Out_diff {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
-                if (
-                    len(
-                        {
-                            len(G_in_operands),
-                            len(G_in_operands_after),
-                            len(G_out_operands),
-                        }
-                    )
-                    != 1
-                ):
-                    suffix += f"\n (inconsistent operand counts: {len(G_in_operands)}, {len(G_in_operands_after)}, {len(G_out_operands)})"
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase {phase_name}: {algo.name}{suffix}"
                 )
@@ -657,6 +657,13 @@ def test_defaultsolver_basic():
 
     solver = DefaultSolver()
     res = solver.simplify_symbolically(tg, g, terminal=True)
+    C_lit = res.data.mutation_map.try_get_literal(
+        app.C.get().get_trait(FT.Parameters.is_parameter_operatable),
+        # TODO should not be needed
+        allow_subset=True,
+    )
+    assert C_lit
+    assert C_lit.equals_singleton(True)
     print(res)
 
 

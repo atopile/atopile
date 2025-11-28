@@ -14,8 +14,13 @@ class is_literal(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def is_subset_of(self, other: "is_literal") -> bool:
+        if obj := fabll.Traits(self).get_obj_raw().try_cast(Booleans):
+            return set(obj.get_values()).issubset(
+                set(fabll.Traits(other).get_obj(Booleans).get_values())
+            )
+
         # TODO
-        return False
+        return None
 
     def op_intersect_intervals(self, other: "LiteralNodes") -> "LiteralNodes":
         # TODO
