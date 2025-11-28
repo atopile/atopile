@@ -94,9 +94,8 @@ also `in`
 
 NOTE TO SELF THURSDAY:
 
-- somehow stuff got real slow when i copied over tg (120ms to 1.5s)
 - something wrong with bool subset vs alias in our test
-- stuff is very slow still
+- stuff is very slow still (but not due to tg anymore)
 - still a bunch of lit & param stuff not implemented
 - get_trait creates lots of runtime problems, switch to \_trait.get()
   - consider invariant field in traits to capture sibling relationship

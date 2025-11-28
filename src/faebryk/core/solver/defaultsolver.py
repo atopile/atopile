@@ -599,15 +599,15 @@ def test_defaultsolver_super_basic():
     import faebryk.library._F as FT
 
     # Fill typegraph
-    for E in (
-        list(vars(FT.Expressions).values())
-        + list(vars(FT.Parameters).values())
-        + list(vars(FT.Literals).values())
-        + [is_terminated]
-    ):
-        if not isinstance(E, type) or not issubclass(E, fabll.Node):
-            continue
-        E.bind_typegraph(tg=tg).get_or_create_type()
+    # for E in (
+    #    list(vars(FT.Expressions).values())
+    #    + list(vars(FT.Parameters).values())
+    #    + list(vars(FT.Literals).values())
+    #    + [is_terminated]
+    # ):
+    #    if not isinstance(E, type) or not issubclass(E, fabll.Node):
+    #        continue
+    #    E.bind_typegraph(tg=tg).get_or_create_type()
 
     P = FT.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     P.alias_to_single(True)
@@ -628,15 +628,15 @@ def test_defaultsolver_basic():
     import faebryk.library._F as FT
 
     # Fill typegraph
-    for E in (
-        list(vars(FT.Expressions).values())
-        + list(vars(FT.Parameters).values())
-        + list(vars(FT.Literals).values())
-        + [is_terminated]
-    ):
-        if not isinstance(E, type) or not issubclass(E, fabll.Node):
-            continue
-        E.bind_typegraph(tg=tg).get_or_create_type()
+    # for E in (
+    #    list(vars(FT.Expressions).values())
+    #    + list(vars(FT.Parameters).values())
+    #    + list(vars(FT.Literals).values())
+    #    + [is_terminated]
+    # ):
+    #    if not isinstance(E, type) or not issubclass(E, fabll.Node):
+    #        continue
+    #    E.bind_typegraph(tg=tg).get_or_create_type()
 
     class App(fabll.Node):
         A = FT.Parameters.BooleanParameter.MakeChild()
