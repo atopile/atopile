@@ -78,13 +78,27 @@ def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
     return Dimensionless
 
 
-class UnitsNotCommensurable(Exception):
+class UnitException(Exception): ...
+
+
+class UnitsNotCommensurableError(UnitException):
     def __init__(self, message: str, incommensurable_items: Sequence[fabll.NodeT]):
         self.message = message
         self.incommensurable_items = incommensurable_items
 
     def __str__(self) -> str:
         return self.message
+
+
+class UnitNotFoundError(UnitException):
+    def __init__(self, symbol: str):
+        self.symbol = symbol
+
+    def __str__(self) -> str:
+        return f"Unit not found: {self.symbol}"
+
+
+class UnitExpressionError(UnitException): ...
 
 
 @dataclass
@@ -506,7 +520,7 @@ class is_unit(fabll.Node):
 
     def get_conversion_to(self, target: "is_unit") -> tuple[float, float]:
         if not self.is_commensurable_with(target):
-            raise UnitsNotCommensurable(
+            raise UnitsNotCommensurableError(
                 f"Units {self} and {target} are not commensurable",
                 incommensurable_items=[self, target],
             )
@@ -688,9 +702,6 @@ class _AnonymousUnit(fabll.Node):
         )
 
         return self
-
-
-class UnitExpressionError(Exception): ...
 
 
 class _UnitExpressionResolver:
