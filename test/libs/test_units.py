@@ -178,6 +178,20 @@ def test_isunit_setup(ctx):
     assert is_unit._extract_offset() == 0.0
 
 
+def test_decode_symbol(ctx):
+    _ = ctx.Meter
+    decoded_meter = F.Units.decode_symbol(g=ctx.g, tg=ctx.tg, symbol="m")
+
+    assert decoded_meter._extract_basis_vector() == F.Units.BasisVector(meter=1)
+    assert decoded_meter._extract_multiplier() == 1.0
+    assert decoded_meter._extract_offset() == 0.0
+
+    kilometer = F.Units.decode_symbol(g=ctx.g, tg=ctx.tg, symbol="km")
+    assert kilometer._extract_basis_vector() == F.Units.BasisVector(meter=1)
+    assert kilometer._extract_multiplier() == 1000.0
+    assert kilometer._extract_offset() == 0.0
+
+
 # TODO: more tests
 # - mutually incompatible: dimensionless, radian, steradian
 # - mutually compatible: dimensionless, ppm, percent
