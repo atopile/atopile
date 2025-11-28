@@ -639,7 +639,7 @@ class is_si_prefixed_unit(fabll.Node):
 
 class is_binary_prefixed_unit(fabll.Node):
     BINARY_PREFIXES: ClassVar[dict[str, float]] = {
-        "Ki": 2**20,  # kibi
+        "Ki": 2**10,  # kibi
         "Mi": 2**20,  # mebi
         "Gi": 2**30,  # gibi
         "Ti": 2**40,  # tebi
@@ -1471,6 +1471,30 @@ class Degree(fabll.Node):
             _UNIT_SYMBOLS[_UnitRegistry.Degree],
             unit_vector_arg,
             multiplier=math.pi / 180.0,
+        )
+    )
+
+
+class ArcMinute(fabll.Node):
+    unit_vector_arg: ClassVar[BasisVector] = BasisVector(radian=1)
+
+    _is_unit = fabll.Traits.MakeEdge(
+        is_unit.MakeChild(
+            _UNIT_SYMBOLS[_UnitRegistry.ArcMinute],
+            unit_vector_arg,
+            multiplier=math.pi / 180.0 / 60.0,
+        )
+    )
+
+
+class ArcSecond(fabll.Node):
+    unit_vector_arg: ClassVar[BasisVector] = BasisVector(radian=1)
+
+    _is_unit = fabll.Traits.MakeEdge(
+        is_unit.MakeChild(
+            _UNIT_SYMBOLS[_UnitRegistry.ArcSecond],
+            unit_vector_arg,
+            multiplier=math.pi / 180.0 / 3600.0,
         )
     )
 
