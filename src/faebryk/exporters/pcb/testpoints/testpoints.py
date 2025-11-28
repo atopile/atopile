@@ -7,8 +7,16 @@ from collections import defaultdict
 from pathlib import Path
 
 import faebryk.library._F as F
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+from faebryk.exporters.pcb.kicad.transformer import (
+    PCB_Transformer,
+    Point2D,
+    abs_pos2d,
+)
+from faebryk.libs.app.designators import attach_random_designators
+from faebryk.libs.kicad.fileformats import kicad
+from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +70,95 @@ def export_testpoints(
         json.dump(obj=testpoint_data, fp=f, indent=4)
 
 
+class net_has_testpoint(Module.TraitT.decless()):
+    def __init__(self, testpoint: F.TestPoint):
+        super().__init__()
+        self._testpoint = testpoint
+
+    def get_testpoint(self) -> F.TestPoint:
+        return self._testpoint
+
+
+class GENERIC_TESTPOINT(F.TestPoint):
+    removed: F.has_part_removed
+    # TODO remove?
+    attachable: F.can_attach_to_footprint_symmetrically
+    is_atomic_part = L.f_field(F.is_atomic_part)(
+        manufacturer="Generic",
+        partnumber="TESTPOINT",
+        footprint="TestPoint_THTPad_D1.0mm_Drill0.5mm.kicad_mod",
+        symbol="CC0603KRX7R9BB562.kicad_sym",
+        path=Path(__file__).parent / "GENERIC_TESTPOINT",
+    )
+    hidden_designator: F.has_hidden_designator
+
+
+def decorate_nets_with_testpoints(app: Module):
+    tps = app.get_children(
+        direct_only=False,
+        types=F.TestPoint,
+        include_root=True,
+    )
+    logger.info(f"Found {len(tps)} pre-existing testpoints")
+    for tp in tps:
+        net = F.Net.find_named_net_for_mif(tp.contact)
+        if net:
+            net.add(net_has_testpoint(tp))
+
+    nets = GraphFunctions(app.get_graph()).nodes_of_type(F.Net)
+    logger.info(f"Found {len(nets)} nets")
+    for net in nets:
+        if net.has_trait(net_has_testpoint):
+            continue
+        netname = net.get_trait(F.has_overriden_name).get_name()
+        tp = GENERIC_TESTPOINT()
+        # wtf is going in here that i have to do this manually?
+        tp.get_trait(F.is_atomic_part).on_obj_set()
+        app.add(tp, name=f"TP_{netname}")
+        tp.contact.connect(net.part_of)
+        logger.info(f"Decorated net {netname} with testpoint {tp.get_full_name()}")
+        net.add(net_has_testpoint(tp))
+
+    # TODO remove, have to attach new designators because we just created the testpoints
+    attach_random_designators(app.get_graph())
+
+
+def position_testpoints(app: Module):
+    nets = GraphFunctions(app.get_graph()).nodes_of_type(F.Net)
+    for net in nets:
+        if not (tp_trait := net.try_get_trait(net_has_testpoint)):
+            continue
+        tp = tp_trait.get_testpoint()
+        if tp.has_trait(F.has_pcb_position) or tp.has_trait(
+            PCB_Transformer.has_linked_kicad_footprint
+        ):
+            continue
+        pos = set[Point2D]()
+        pads = net.get_connected_pads()
+        for pad in pads:
+            if not pad.has_trait(PCB_Transformer.has_linked_kicad_pad):
+                continue
+            kfp, kpads = pad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()  # type: ignore
+            for kpad in kpads:
+                abs_pad_pos = abs_pos2d(kfp.at, kpad.at)  # type: ignore
+                pos.add(abs_pad_pos)
+
+        # TODO try to find cluster instead
+        if not pos:
+            continue
+        tp_pos = next(iter(pos))
+        target_pos = (
+            tp_pos[0],
+            tp_pos[1],
+            0,
+            F.has_pcb_position.layer_type.BOTTOM_LAYER,
+        )
+        tp.add(F.has_pcb_position_defined(target_pos))
+
+
 def make_pogo_board(app: Module, pogo_board_file: Path):
     from atopile.config import BuildTargetPaths
-    from faebryk.libs.kicad.fileformats import Property, kicad
+    from faebryk.libs.kicad.fileformats import Property
 
     tps = app.get_children(
         direct_only=False,

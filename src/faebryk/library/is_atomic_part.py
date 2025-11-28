@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from pathlib import Path
+from typing import override
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
@@ -16,6 +17,7 @@ class is_atomic_part(Module.TraitT.decless()):
         footprint: str,
         symbol: str,
         model: str | None = None,
+        path: Path | None = None,
     ) -> None:
         super().__init__()
         self._manufacturer = manufacturer
@@ -23,12 +25,16 @@ class is_atomic_part(Module.TraitT.decless()):
         self._footprint = footprint
         self._symbol = symbol
         self._model = model
+        self._path = path
 
     lazy: F.is_lazy
 
     @property
     @once
     def path(self) -> Path:
+        if self._path is not None:
+            return self._path
+
         from atopile.front_end import from_dsl
 
         if (from_dsl_ := self.try_get_trait(from_dsl)) is None:
@@ -50,6 +56,7 @@ class is_atomic_part(Module.TraitT.decless()):
         """
         return self.path / self._footprint, self.path.name
 
+    @override
     def on_obj_set(self):
         super().on_obj_set()
 
