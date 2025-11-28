@@ -3364,7 +3364,7 @@ class Numbers(fabll.Node):
         Returns:
             A new Numbers instance with the deserialized values
         """
-        from faebryk.library.Units import _AnonymousUnit, _BasisVectorArg
+        from faebryk.library.Units import BasisVector, _AnonymousUnit
 
         # Reconstruct numeric intervals
         intervals_data = data["numeric_set"]["intervals"]
@@ -3381,7 +3381,7 @@ class Numbers(fabll.Node):
 
         # Reconstruct unit from basis vector, multiplier, and offset
         unit_data = data["unit"]
-        bv = _BasisVectorArg(**unit_data["basis_vector"])
+        bv = BasisVector(**unit_data["basis_vector"])
         # Create an anonymous unit with the given basis vector
         unit_node = (
             _AnonymousUnit.bind_typegraph(tg=tg)
@@ -3478,27 +3478,25 @@ class TestNumbers:
         # returns result in the self unit
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import DegreeCelsius, Farenheit
+        from faebryk.library.Units import DegreeCelsius, Kelvin
 
         celsius = DegreeCelsius.bind_typegraph(tg=tg).create_instance(g=g)
-        farenheit = Farenheit.bind_typegraph(tg=tg).create_instance(g=g)
+        kelvin = Kelvin.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_celsius = Numbers.create_instance(g=g, tg=tg)
         quantity_celsius.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=celsius)
-        quantity_farenheit = Numbers.create_instance(g=g, tg=tg)
-        quantity_farenheit.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=0.0, unit=farenheit
-        )
-        result = quantity_farenheit.op_add_intervals(g=g, tg=tg, other=quantity_celsius)
+        quantity_kelvin = Numbers.create_instance(g=g, tg=tg)
+        quantity_kelvin.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=kelvin)
+        result = quantity_kelvin.op_add_intervals(g=g, tg=tg, other=quantity_celsius)
         result_numeric_set_rounded = result.get_numeric_set().op_round(
             g=g, tg=tg, ndigits=2
         )
-        assert result_numeric_set_rounded.get_min_value() == 32
-        assert result.get_is_unit()._extract_symbol() == ["°F"]
+        assert result_numeric_set_rounded.get_min_value() == 273.15
+        assert result.get_is_unit()._extract_symbol() == ["K"]
 
     def test_op_multiply_same_unit(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, _BasisVectorArg
+        from faebryk.library.Units import BasisVector, Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
@@ -3513,7 +3511,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 20.0
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
-        assert result_unit_basis_vector == _BasisVectorArg(meter=2)
+        assert result_unit_basis_vector == BasisVector(meter=2)
 
     def test_op_negate(self):
         """Test negation of a quantity set."""
@@ -3559,7 +3557,7 @@ class TestNumbers:
         """Test inversion (1/x) of a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, _BasisVectorArg
+        from faebryk.library.Units import BasisVector, Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
@@ -3572,13 +3570,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 0.5
         # Unit should be inverted: m -> m^-1
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
-        assert result_unit_basis_vector == _BasisVectorArg(meter=-1)
+        assert result_unit_basis_vector == BasisVector(meter=-1)
 
     def test_op_divide_same_unit(self):
         """Test division of quantity sets with the same unit."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, _BasisVectorArg
+        from faebryk.library.Units import BasisVector, Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
@@ -3595,13 +3593,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 4.0
         # Unit should be m / m = dimensionless (m^0)
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
-        assert result_unit_basis_vector == _BasisVectorArg()
+        assert result_unit_basis_vector == BasisVector()
 
     def test_op_divide_different_units(self):
         """Test division of quantity sets with different units."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, Second, _BasisVectorArg
+        from faebryk.library.Units import BasisVector, Meter, Second
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
@@ -3619,13 +3617,13 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 10.0
         # Unit should be m / s = m * s^-1
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
-        assert result_unit_basis_vector == _BasisVectorArg(meter=1, second=-1)
+        assert result_unit_basis_vector == BasisVector(meter=1, second=-1)
 
     def test_op_pow(self):
         """Test raising a quantity set to a power."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless, Meter, _BasisVectorArg
+        from faebryk.library.Units import BasisVector, Dimensionless, Meter
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
@@ -3645,7 +3643,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 9.0
         # Unit should be m^2
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
-        assert result_unit_basis_vector == _BasisVectorArg(meter=2)
+        assert result_unit_basis_vector == BasisVector(meter=2)
 
     def test_op_round(self):
         """Test rounding a quantity set."""

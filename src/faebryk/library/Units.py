@@ -166,10 +166,9 @@ class _BasisVector(fabll.Node):
         """
         out = fabll._ChildField(cls)
 
-<<<<<<< HEAD
         from faebryk.library.Literals import Counts
 
-        for field_name in _BasisVectorArg.__dataclass_fields__.keys():
+        for field_name in BasisVector.__dataclass_fields__.keys():
             child = Counts.MakeChild(getattr(vector, field_name))
             # Add as dependant to ensure it's created as a sibling node
             out.add_dependant(child)
@@ -184,11 +183,11 @@ class _BasisVector(fabll.Node):
         return out
 
     def setup(
-        self, g: graph.GraphView, tg: graph.TypeGraph, vector: _BasisVectorArg
+        self, g: graph.GraphView, tg: graph.TypeGraph, vector: BasisVector
     ) -> Self:  # type: ignore
         from faebryk.library.Literals import Counts
 
-        for field_name in _BasisVectorArg.__dataclass_fields__.keys():
+        for field_name in BasisVector.__dataclass_fields__.keys():
             child = Counts.bind_typegraph(tg=tg).create_instance(g=g)
             child.setup_from_values(g=g, tg=tg, values=[getattr(vector, field_name)])
             _ = EdgeComposition.add_child(
@@ -199,7 +198,7 @@ class _BasisVector(fabll.Node):
 
         return self
 
-    def extract_vector(self) -> _BasisVectorArg:
+    def extract_vector(self) -> BasisVector:
         from faebryk.library.Literals import Counts
 
         children_by_name = {
@@ -207,45 +206,16 @@ class _BasisVector(fabll.Node):
             for name, child in self.get_direct_children()
             if name is not None
         }
-        return _BasisVectorArg(
-            **{
-                name: children_by_name[name].cast(Counts).get_values()[0]
-                for name in _BasisVectorArg.__dataclass_fields__.keys()
-=======
-        for field_name in BasisVector.__dataclass_fields__.keys():
-            child = getattr(cls, f"{field_name}_exponent")
-            exponent = getattr(vector, field_name)
-            assert isinstance(exponent, int)
-            from faebryk.library.Literals import Counts
-
-            lit = Counts.MakeChild(exponent)
-            is_expr = F.Expressions.Is.MakeChild_Constrain([[out, child], [lit]])
-            is_expr.add_dependant(lit, identifier="lit", before=True)
-            out.add_dependant(is_expr)
-
-        return out
-
-    def setup(self, vector: BasisVector) -> Self:  # type: ignore
-        g = self.instance.g()
-        for field_name in BasisVector.__dataclass_fields__.keys():
-            child = getattr(self, f"{field_name}_exponent")
-            exponent = getattr(vector, field_name)
-            child.get().alias_to_literal(int(exponent), g=g)
-
-        return self
-
-    def extract_vector(self) -> BasisVector:
         return BasisVector(
             **{
-                name: getattr(self, f"{name}_exponent").get().extract_single()
+                name: children_by_name[name].cast(Counts).get_values()[0]
                 for name in BasisVector.__dataclass_fields__.keys()
->>>>>>> origin/feature/quantities
             }
         )
 
 
 def test_basis_vector_store_and_retrieve():
-    """Test that _BasisVectorArg can be stored in and retrieved from _BasisVector."""
+    """Test that BasisVector can be stored in and retrieved from _BasisVector."""
     import faebryk.core.faebrykpy as fbrk
 
     # Setup graph and typegraph
@@ -253,7 +223,7 @@ def test_basis_vector_store_and_retrieve():
     tg = fbrk.TypeGraph.create(g=g)
 
     # Create a test vector with some non-zero exponents
-    original_vector = _BasisVectorArg(
+    original_vector = BasisVector(
         ampere=1,
         second=-2,
         meter=3,
