@@ -6,12 +6,10 @@ import logging
 import re
 from typing import Type
 
-import faebryk.core.parameter as fab_param
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-import faebryk.libs.library.L as L
 from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
-from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import md_list, not_none
@@ -19,25 +17,31 @@ from faebryk.libs.util import md_list, not_none
 log = logging.getLogger(__name__)
 
 
-shim_map: dict[address.AddrStr, tuple[Type[L.Node], str]] = {}
+shim_map: dict[address.AddrStr, tuple[Type[fabll.Node], str]] = {}
 
 
 def _register_shim(addr: str | address.AddrStr, preferred: str):
-    def _wrapper[T: Type[L.Node]](cls: T) -> T:
+    def _wrapper[T: Type[fabll.Node]](cls: T) -> T:
         shim_map[address.AddrStr(addr)] = cls, preferred
         return cls
 
     return _wrapper
 
 
-class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
+class _has_local_kicad_footprint_named_defined(fabll.Node):
     """
     This trait defers footprint creation until it's needed,
     which means we can construct the underlying pin map
     """
 
+    _is_trait = fabll.Traits.MakeEdge(
+        fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    )
+
+    # TODO: Forward this trait to parent
+    _has_footprint = fabll._ChildField(F.has_footprint)
+
     def __init__(self, lib_reference: str, pinmap: dict[str, F.Electrical]):
-        super().__init__()
         if ":" not in lib_reference:
             # TODO: default to a lib reference starting with "lib:"
             # for backwards compatibility with old footprints
@@ -49,34 +53,38 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         if fp := self.try_get_footprint():
             return fp
         else:
-            fp = F.KicadFootprint(
-                pin_names=list(self.pinmap.keys()),
+            fp = (
+                F.KicadFootprint.bind_typegraph_from_instance(instance=self.instance)
+                .create_instance(g=self.instance.g())
+                .setup(pin_names=list(self.pinmap.keys()))
             )
-            fp.add(F.KicadFootprint.has_kicad_identifier(self.lib_reference))
+            fabll.Traits.create_and_add_instance_to(
+                node=fp, trait=fp.has_kicad_identifier
+            ).setup(kicad_identifier=self.lib_reference)
             fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)  # type: ignore
             self.set_footprint(fp)
             return fp
 
-    def handle_duplicate(
-        self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
-    ) -> bool:
-        if old.try_get_footprint():
-            raise RuntimeError("Too late to set footprint")
+    # def handle_duplicate(
+    #     self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
+    # ) -> bool:
+    #     if old.try_get_footprint():
+    #         raise RuntimeError("Too late to set footprint")
 
-        # Update the existing trait...
-        old.lib_reference = self.lib_reference
-        # ... and we don't need to attach the new
-        assert old.pinmap is self.pinmap, "Pinmap reference mismatch"
-        return False
+    #     # Update the existing trait...
+    #     old.lib_reference = self.lib_reference
+    #     # ... and we don't need to attach the new
+    #     assert old.pinmap is self.pinmap, "Pinmap reference mismatch"
+    #     return False
 
 
-class _has_ato_cmp_attrs(L.Module.TraitT.decless()):
+class _has_ato_cmp_attrs(fabll.Node):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap: dict[str, F.Electrical | None] = {}
 
     def on_obj_set(self):
-        self.module = self.get_obj(L.Module)
+        self.module = self.get_obj(fabll.Module)
         self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
         self.module.add(F.has_designator_prefix(F.has_designator_prefix.Prefix.U))
 
@@ -86,14 +94,14 @@ class _has_ato_cmp_attrs(L.Module.TraitT.decless()):
         self.pinmap[pinname] = mif
         return mif
 
-    def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
-        # Don't replace the existing ato trait on addition
-        return False
+    # def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
+    #     # Don't replace the existing ato trait on addition
+    #     return False
 
 
 # FIXME: this would ideally be some kinda of mixin,
 # however, we can't have multiple bases for Nodes
-class GlobalAttributes(L.Module):
+class GlobalAttributes(fabll.Node):
     """
     These attributes are available to all modules and interfaces in a design.
     """
@@ -176,7 +184,9 @@ class GlobalAttributes(L.Module):
 
     @datasheet_url.setter
     def datasheet_url(self, value: str):
-        self.add(F.has_datasheet_defined(value))
+        fabll.Traits.create_and_add_instance_to(node=self, trait=F.has_datasheet).setup(
+            datasheet=value
+        )
 
     @property
     def designator_prefix(self):
@@ -187,7 +197,9 @@ class GlobalAttributes(L.Module):
 
     @designator_prefix.setter
     def designator_prefix(self, value: str):
-        self.add(F.has_designator_prefix(value))
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_designator_prefix
+        ).setup(designator_prefix=value)
 
     @property
     def package(self) -> str:
@@ -205,7 +217,7 @@ class GlobalAttributes(L.Module):
         GlobalAttributes._handle_package_size(self, value)
 
     @staticmethod
-    def _handle_package_size(module: L.Module, value: str):
+    def _handle_package_size(module: fabll.Module, value: str):
         match module:
             case F.Resistor():
                 value = re.sub(r"^R", "I", value)
@@ -292,7 +304,7 @@ class GlobalAttributes(L.Module):
     @property
     def required(self):
         """
-        Only for ModuleInterfaces.
+        Only for Interfaces.
         If set to `True`, require that interface is connected to something outside
         of the module it's defined in.
         """
@@ -307,7 +319,7 @@ class GlobalAttributes(L.Module):
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
-class Resistor(F.Resistor):
+class Resistor(fabll.Node):
     """
     This resistor is replaces `generics/resistors.ato:Resistor`
     every times it's referenced.
@@ -319,7 +331,7 @@ class Resistor(F.Resistor):
         return self.resistance
 
     @value.setter
-    def value(self, value: L.Range):
+    def value(self, value: fabll.Range):
         self.resistance.constrain_subset(value)
 
     @property
@@ -355,7 +367,6 @@ class Resistor(F.Resistor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @L.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -364,7 +375,7 @@ class Resistor(F.Resistor):
         return trait
 
 
-class CommonCapacitor(F.Capacitor):
+class CommonCapacitor(fabll.Node):
     """
     These attributes are common to both electrolytic and non-electrolytic capacitors.
     """
@@ -375,7 +386,7 @@ class CommonCapacitor(F.Capacitor):
         return self.capacitance
 
     @value.setter
-    def value(self, value: L.Range):
+    def value(self, value: fabll.Range):
         self.capacitance.constrain_subset(value)
 
     @property
@@ -413,13 +424,12 @@ class CommonCapacitor(F.Capacitor):
 
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class Capacitor(CommonCapacitor):
+class Capacitor(fabll.Node):
     """
     This capacitor is replaces `generics/capacitors.ato:Capacitor`
     every times it's referenced.
     """
 
-    @L.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -431,7 +441,7 @@ class Capacitor(CommonCapacitor):
 @_register_shim(
     "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
 )
-class CapacitorElectrolytic(CommonCapacitor):
+class CapacitorElectrolytic(fabll.Node):
     """Temporary shim to translate capacitors."""
 
     anode: F.Electrical
@@ -455,7 +465,7 @@ class CapacitorElectrolytic(CommonCapacitor):
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
-class Inductor(F.Inductor):
+class Inductor(fabll.Node):
     """
     This inductor is replaces `generics/inductors.ato:Inductor`
     every times it's referenced.
@@ -469,7 +479,6 @@ class Inductor(F.Inductor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @L.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -479,7 +488,7 @@ class Inductor(F.Inductor):
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")
-class LED(F.LED):
+class LED(fabll.Node):
     """Temporary shim to translate LEDs."""
 
     @property
@@ -492,7 +501,7 @@ class LED(F.LED):
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
-class Power(F.ElectricPower):
+class Power(fabll.Node):
     """Temporary shim to translate `value` to `power`."""
 
     @property
@@ -506,9 +515,9 @@ class Power(F.ElectricPower):
 
 
 @_register_shim("generics/interfaces.ato:I2C", "import I2C")
-class I2C(F.I2C):
+class I2C(fabll.Node):
     """Temporary shim to translate I2C interfaces."""
 
     @property
     def gnd(self):
-        return self.single_electric_reference.get_reference().gnd
+        return self.get_trait(F.has_single_electric_reference).get_reference().gnd

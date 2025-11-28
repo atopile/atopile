@@ -144,12 +144,12 @@ def fabll(ctx: typer.Context, root: Path):
                     f = f.replace(",)", ")")
 
                     # case 3: screw_holes = times(3, lambda: F.Mounting_Hole())
-                    f = re.sub(r"times\((\d+),", r"L.list_field(\1,", f)
+                    f = re.sub(r"times\((\d+),", r"fabll.list_field(\1,", f)
 
                     # case 5:  leds = times(\n self.pixels.value, \n ...,\n)
                     f = re.sub(
                         rf"\s*({pyname}) = (times\(.*\))",
-                        r"@L.rt_field\ndef \1(self):\n    return \2",
+                        r"@fabll.rt_field\ndef \1(self):\n    return \2",
                         f,
                     )
 
@@ -159,7 +159,7 @@ def fabll(ctx: typer.Context, root: Path):
 
                 # case 2: fan_power_switch = F.PowerSwitchMOSFET(lowside=True, ...)
                 f = re.sub(
-                    rf" = ({maybe_f}{pyname})\((.*)\)", r" = L.f_field(\1)(\2)", f
+                    rf" = ({maybe_f}{pyname})\((.*)\)", r" = fabll.f_field(\1)(\2)", f
                 )
 
                 # print(f)

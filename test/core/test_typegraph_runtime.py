@@ -3,25 +3,27 @@
 
 import pytest
 
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.trait import Trait
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
+import faebryk.library._F as F
+from faebryk.core.graph import InstanceGraphFunctions
 
 
 def test_moduleinterface_get_connected_requires_typegraph():
-    class Harness(Module):
-        left: ModuleInterface
-        right: ModuleInterface
+    class NodeWithInterface(fabll.Node):
+        _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+
+    class Harness(fabll.Node):
+        left: NodeWithInterface
+        right: NodeWithInterface
 
     app = Harness()
-    app.left.connect(app.right)
+    app.left._is_interface.get().connect(app.right)
 
     # Before TypeGraph: requires TypeGraph to be built
     with pytest.raises(RuntimeError, match="requires runtime graph access"):
-        app.left.get_connected()
-
-    from faebryk.core.graph import InstanceGraphFunctions
+        app.left._is_interface.get().get_connected()
 
     typegraph, _ = app.create_typegraph()
 
@@ -47,15 +49,13 @@ def test_trait_binding_has_composition_edge():
     class HasDemoTraitImpl(HasDemoTrait.impl()):
         pass
 
-    class Harness(Module):
+    class Harness(fabll.Node):
         trait: HasDemoTraitImpl
 
     app = Harness()
 
     with pytest.raises(RuntimeError):
         app.trait._ensure_instance_bound()
-
-    from faebryk.core.graph import InstanceGraphFunctions
 
     typegraph, _ = app.create_typegraph()
 

@@ -5,8 +5,8 @@ import logging
 
 import pytest
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.module import Module
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 def test_requires_external_usage():
-    class App(Module):
-        class Outer(Module):
-            class Inner(Module):
+    class App(fabll.Node):
+        class Outer(fabll.Node):
+            class Inner(fabll.Node):
                 b: F.Electrical
 
             a: F.Electrical
@@ -33,7 +33,7 @@ def test_requires_external_usage():
     # no connections
     with pytest.raises((ExceptionGroup, UserDesignCheckException)) as e:
         check_design(
-            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_DESIGN
+            app.tg, stage=F.implements_design_check.CheckStage.POST_DESIGN
         )
     if isinstance(e.value, ExceptionGroup):
         assert e.group_contains(
@@ -45,7 +45,7 @@ def test_requires_external_usage():
     app.outer1.a.connect(app.outer1.inner.b)
     with pytest.raises((ExceptionGroup, UserDesignCheckException)) as e:
         check_design(
-            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_DESIGN
+            app.tg, stage=F.implements_design_check.CheckStage.POST_DESIGN
         )
     if isinstance(e.value, ExceptionGroup):
         assert e.group_contains(
@@ -57,7 +57,7 @@ def test_requires_external_usage():
     app.outer1.inner.b.connect(app.outer2.a)
     with pytest.raises((ExceptionGroup, UserDesignCheckException)) as e:
         check_design(
-            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_DESIGN
+            app.tg, stage=F.implements_design_check.CheckStage.POST_DESIGN
         )
     if isinstance(e.value, ExceptionGroup):
         assert e.group_contains(
@@ -68,5 +68,5 @@ def test_requires_external_usage():
     # direct external connection
     app.outer1.a.connect(app.outer2.inner.b)
     check_design(
-        app.get_graph(), stage=F.implements_design_check.CheckStage.POST_DESIGN
+        app.tg, stage=F.implements_design_check.CheckStage.POST_DESIGN
     )

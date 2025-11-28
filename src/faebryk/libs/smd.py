@@ -7,33 +7,33 @@ from enum import Enum, auto
 class SMDSize(Enum):
     class UnableToConvert(Exception): ...
 
-    I01005 = auto()
-    I0201 = auto()
-    I0402 = auto()
-    I0603 = auto()
-    I0805 = auto()
-    I1206 = auto()
-    I1210 = auto()
-    I1808 = auto()
-    I1812 = auto()
-    I1825 = auto()
-    I2220 = auto()
-    I2225 = auto()
-    I3640 = auto()
+    I01005 = "I01005"
+    I0201 = "I0201"
+    I0402 = "I0402"
+    I0603 = "I0603"
+    I0805 = "I0805"
+    I1206 = "I1206"
+    I1210 = "I1210"
+    I1808 = "I1808"
+    I1812 = "I1812"
+    I1825 = "I1825"
+    I2220 = "I2220"
+    I2225 = "I2225"
+    I3640 = "I3640"
 
-    M0402 = auto()
-    M0603 = auto()
-    M1005 = auto()
-    M1608 = auto()
-    M2012 = auto()
-    M3216 = auto()
-    M3225 = auto()
-    M4520 = auto()
-    M4532 = auto()
-    M4564 = auto()
-    M5750 = auto()
-    M5664 = auto()
-    M9110 = auto()
+    M0402 = "M0402"
+    M0603 = "M0603"
+    M1005 = "M1005"
+    M1608 = "M1608"
+    M2012 = "M2012"
+    M3216 = "M3216"
+    M3225 = "M3225"
+    M4520 = "M4520"
+    M4532 = "M4532"
+    M4564 = "M4564"
+    M5750 = "M5750"
+    M5664 = "M5664"
+    M9110 = "M9110"
 
     SMD4x4mm = "SMD,4x4mm"
     SMD6x6mm = "SMD,6x6mm"

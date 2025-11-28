@@ -8,35 +8,32 @@ from typing import cast
 
 from natsort import natsorted
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
-from faebryk.libs.library import L
 from faebryk.libs.util import duplicates, groupby, md_list
 
 logger = logging.getLogger(__name__)
 
 
-def attach_random_designators(graph: Graph):
+def attach_random_designators(tg: fbrk.TypeGraph):
     """
     Sorts nodes by path and then sequentially attaches designators
 
     This ensures that everything which has a footprint must have a designator.
     """
 
-    nodes = {n for n, _ in GraphFunctions(graph).nodes_with_trait(F.has_footprint)}
-
-    in_use = {
-        n.get_trait(F.has_designator).get_designator()
-        for n in nodes
-        if n.has_trait(F.has_designator)
-    }
+    designators = fabll.Traits.get_implementors(F.has_designator.bind_typegraph(tg))
     pattern = re.compile(r"([A-Z]+)([0-9]+)")
 
     groups = groupby(
-        [(m.group(1), int(m.group(2))) for d in in_use if (m := pattern.match(d))],
+        [
+            (m.group(1), int(m.group(2)))
+            for d in designators
+            if (m := pattern.match(d.get_designator()))
+        ],
         key=lambda x: x[0],
     )
 
@@ -52,7 +49,7 @@ def attach_random_designators(graph: Graph):
                 return i + 1
         return len(used) + 1
 
-    nodes_sorted = natsorted(nodes, key=lambda x: x.get_full_name())
+    nodes_sorted = natsorted(designators, key=lambda x: x.get_designator())
 
     for n in nodes_sorted:
         if n.has_trait(F.has_designator):
@@ -65,20 +62,22 @@ def attach_random_designators(graph: Graph):
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        n.add(F.has_designator(designator))
+        fabll.Traits.create_and_add_instance_to(n, F.has_designator).setup(designator)
 
         assigned[prefix].append(next_num)
 
-    no_designator = {n for n in nodes if not n.has_trait(F.has_designator)}
+    no_designator = {n for n in designators if not n.has_trait(F.has_designator)}
     assert not no_designator
 
-    dupes = duplicates(nodes, lambda n: n.get_trait(F.has_designator).get_designator())
+    dupes = duplicates(
+        designators, lambda n: n.get_trait(F.has_designator).get_designator()
+    )
     assert not dupes, (
         f"Duplicate designators found in layout:\n{md_list(dupes, recursive=True)}"
     )
 
 
-def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
+def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Node, str]:
     """
     Load designators from attached footprints and attach them to the nodes.
     """
@@ -86,19 +85,20 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
     def _get_reference(fp: kicad.pcb.Footprint):
         return Property.try_get_property(fp.propertys, "Reference")
 
-    def _get_pcb_designator(fp_trait: PCB_Transformer.has_linked_kicad_footprint):
+    def _get_pcb_designator(fp_trait: F.PCBTransformer.has_linked_kicad_footprint):
         fp = fp_trait.get_fp()
         if not fp.name:
             return None
         return _get_reference(fp)
 
-    nodes = GraphFunctions(graph).nodes_with_trait(
-        PCB_Transformer.has_linked_kicad_footprint
+    traits = fabll.Traits.get_implementors(
+        F.PCBTransformer.has_linked_kicad_footprint.bind_typegraph(tg)
     )
+    nodes_traits = {trait.get_parent_force()[0]: trait for trait in traits}
 
     known_designators = {
         node: ref
-        for node, trait in nodes
+        for node, trait in nodes_traits.items()
         if (ref := _get_pcb_designator(trait)) is not None
         and not isinstance(node, F.Footprint)
     }
@@ -111,6 +111,8 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
                 f"{md_list(dups_fmt, recursive=True)}"
             )
         for node, designator in known_designators.items():
-            node.add(F.has_designator(designator))
+            fabll.Traits.create_and_add_instance_to(node, F.has_designator).setup(
+                designator
+            )
 
     return known_designators
