@@ -78,8 +78,8 @@ def test_power_source_short():
     power_out_1 = ElectricPower.bind_typegraph(tg).create_instance(g=g)
     power_out_2 = ElectricPower.bind_typegraph(tg).create_instance(g=g)
 
-    power_out_1.get_trait(fabll.is_interface).connect_to(power_out_2)
-    power_out_2.get_trait(fabll.is_interface).connect_to(power_out_1)
+    power_out_1._is_interface.get().connect_to(power_out_2)
+    power_out_2._is_interface.get().connect_to(power_out_1)
 
     power_out_1.make_source()
     power_out_2.make_source()
@@ -100,6 +100,6 @@ def test_power_source_no_short():
 
     power_out_1.make_source()
 
-    power_out_1.get_trait(fabll.is_interface).connect_to(power_out_2)
+    power_out_1._is_interface.get().connect_to(power_out_2)
 
     simple_erc(tg)

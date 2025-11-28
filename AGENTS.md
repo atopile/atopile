@@ -84,8 +84,8 @@ class Electrical(fabll.Node):
 ```python
 e1 = electrical_type.create_instance(g)
 e2 = electrical_type.create_instance(g)
-e1.get_trait(fabll.is_interface).connect_to(e2)
-bool connected = e1.get_trait(fabll.is_interface).is_connected_to(e2)
+e1._is_interface.get().connect_to(e2)
+bool connected = e1._is_interface.get().is_connected_to(e2)
 ```
 
 #### Checking for Traits: Instance Nodes vs Type Nodes

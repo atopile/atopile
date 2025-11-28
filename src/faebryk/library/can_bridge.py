@@ -14,8 +14,8 @@ class can_bridge(fabll.Node):
     out_ = F.Collections.Pointer.MakeChild()
 
     def bridge(self, _in: fabll.Node, _out: fabll.Node):
-        _in.get_trait(fabll.is_interface).connect_to(self.get_in())
-        _out.get_trait(fabll.is_interface).connect_to(self.get_out())
+        _in._is_interface.get().connect_to(self.get_in())
+        _out._is_interface.get().connect_to(self.get_out())
 
     def get_in(self) -> fabll.Node:
         in_ = self.in_.get().deref()

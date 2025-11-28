@@ -26,7 +26,7 @@ def add_or_get_nets(*interfaces: F.Electrical, tg: fbrk.TypeGraph) -> set[F.Net]
 
         if not nets_on_bus:
             net = F.Net.bind_typegraph(tg).create_instance(g=tg.get_graph_view())
-            net.part_of.get().get_trait(fabll.is_interface).connect_to(bus_repr)
+            net.part_of.get()._is_interface.get().connect_to(bus_repr)
             nets_on_bus = {net}
 
         if len(nets_on_bus) > 1:

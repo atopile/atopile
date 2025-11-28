@@ -52,7 +52,7 @@ class ElectricLogic(fabll.Node):
         Set the logic signal by directly connecting to the reference.
         """
         r = self.reference
-        self.line.get().get_trait(fabll.is_interface).connect_to(
+        self.line.get()._is_interface.get().connect_to(
             r.get().hv.get() if on else r.get().lv.get()
         )
 

@@ -42,7 +42,7 @@ class Net(fabll.Node):
     def get_connected_interfaces(self):  # -> dict[fabll.Node, fabll.Path]:
         # TODO: fix this, now it's getting every Electrical in the tg instead of just
         # the ones connected to the net
-        # return self.part_of.get().get_trait(fabll.is_interface).get_connected()
+        # return self.part_of.get()._is_interface.get().get_connected()
         return [e for e in F.Electrical.bind_typegraph(self.tg).get_instances()]
 
     def __repr__(self) -> str:
@@ -57,6 +57,6 @@ class Net(fabll.Node):
         """Return all nets that are connected to this mif"""
         return {
             net
-            for net_mif in mif.get_trait(fabll.is_interface).get_connected()
+            for net_mif in mif._is_interface.get().get_connected()
             if (net := mif.get_parent_of_type(Net)) is not None
         }

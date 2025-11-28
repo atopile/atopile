@@ -53,7 +53,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
         with timings.context("connect_interfaces"):
             interfaces = [r.get().unnamed[0].get() for r in app.resistors]
             for left, right in pairwise(interfaces):
-                left.get_trait(fabll.is_interface).connect_to(right)
+                left._is_interface.get().connect_to(right)
 
     with timings.context("get_all_nodes"):
         num_nodes = len(g.get_nodes())

@@ -19,11 +19,11 @@ def test_moduleinterface_get_connected_requires_typegraph():
         right: NodeWithInterface
 
     app = Harness()
-    app.left.get_trait(fabll.is_interface).connect(app.right)
+    app.left._is_interface.get().connect(app.right)
 
     # Before TypeGraph: requires TypeGraph to be built
     with pytest.raises(RuntimeError, match="requires runtime graph access"):
-        app.left.get_trait(fabll.is_interface).get_connected()
+        app.left._is_interface.get().get_connected()
 
     typegraph, _ = app.create_typegraph()
 

@@ -48,8 +48,7 @@ def test_self():
     g=graph.GraphView.create()
     tg=fbrk.TypeGraph.create(g=g)
     elec = F.Electrical.bind_typegraph(tg).create_instance(g=g)
-    assert elec.get_trait(fabll.is_interface).is_connected_to(elec)
-
+    assert elec._is_interface.get().is_connected_to(elec)
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
 def test_up_connect_simple_single():
@@ -578,8 +577,8 @@ def test_up_connect_simple_two_negative():
     high1 = highType.create_instance(g=g)
     high2 = highType.create_instance(g=g)
 
-    high1.lower1.get().get_trait(fabll.is_interface).connect_to(high2.lower1.get())
-    assert not high1.get_trait(fabll.is_interface).is_connected_to(high2)
+    high1.lower1.get()._is_interface.get().connect_to(high2.lower1.get())
+    assert not high1._is_interface.get().is_connected_to(high2)
 
 
 def test_up_connect_simple_multiple_negative():
@@ -605,9 +604,9 @@ def test_up_connect_simple_multiple_negative():
     high1 = highType.create_instance(g=g)
     high2 = highType.create_instance(g=g)
 
-    high1.lower1.get().get_trait(fabll.is_interface).connect_to(high2.lower1.get())
-    high1.lower2.get().get_trait(fabll.is_interface).connect_to(high2.lower2.get())
-    assert not high1.get_trait(fabll.is_interface).is_connected_to(high2)
+    high1.lower1.get()._is_interface.get().connect_to(high2.lower1.get())
+    high1.lower2.get()._is_interface.get().connect_to(high2.lower2.get())
+    assert not high1._is_interface.get().is_connected_to(high2)
 
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
@@ -661,11 +660,11 @@ def test_down_connect():
     electricPowerType = F.ElectricPower.bind_typegraph(tg)
     ep = [electricPowerType.create_instance(g=g) for _ in range(2)]
 
-    ep[0].get_trait(fabll.is_interface).connect_to(ep[1])
+    ep[0]._is_interface.get().connect_to(ep[1])
 
-    assert ep[0].get_trait(fabll.is_interface).is_connected_to(ep[1])
-    assert ep[0].hv.get().get_trait(fabll.is_interface).is_connected_to(ep[1].hv.get())
-    assert ep[0].lv.get().get_trait(fabll.is_interface).is_connected_to(ep[1].lv.get())
+    assert ep[0]._is_interface.get().is_connected_to(ep[1])
+    assert ep[0].hv.get()._is_interface.get().is_connected_to(ep[1].hv.get())
+    assert ep[0].lv.get()._is_interface.get().is_connected_to(ep[1].lv.get())
 
 
 def test_chains_direct():
@@ -680,9 +679,9 @@ def test_chains_direct():
     electricalType = F.Electrical.bind_typegraph(tg)
     electrics = [electricalType.create_instance(g=g) for _ in range(3)]
 
-    electrics[0].get_trait(fabll.is_interface).connect_to(electrics[1])
-    electrics[1].get_trait(fabll.is_interface).connect_to(electrics[2])
-    assert electrics[0].get_trait(fabll.is_interface).is_connected_to(electrics[2])
+    electrics[0]._is_interface.get().connect_to(electrics[1])
+    electrics[1]._is_interface.get().connect_to(electrics[2])
+    assert electrics[0]._is_interface.get().is_connected_to(electrics[2])
 
 
 def test_chains_double_shallow_flat():
@@ -698,9 +697,9 @@ def test_chains_double_shallow_flat():
     electricalType = F.Electrical.bind_typegraph(tg)
     electrics = [electricalType.create_instance(g=g) for _ in range(3)]
 
-    electrics[0].get_trait(fabll.is_interface).connect_shallow_to(electrics[1])
-    electrics[1].get_trait(fabll.is_interface).connect_shallow_to(electrics[2])
-    assert electrics[0].get_trait(fabll.is_interface).is_connected_to(electrics[2])
+    electrics[0]._is_interface.get().connect_shallow_to(electrics[1])
+    electrics[1]._is_interface.get().connect_shallow_to(electrics[2])
+    assert electrics[0]._is_interface.get().is_connected_to(electrics[2])
 
 
 def test_chains_mixed_shallow_flat():
@@ -716,9 +715,9 @@ def test_chains_mixed_shallow_flat():
     electricalType = F.Electrical.bind_typegraph(tg)
     electrics = [electricalType.create_instance(g=g) for _ in range(3)]
 
-    electrics[0].get_trait(fabll.is_interface).connect_shallow_to(electrics[1])
-    electrics[1].get_trait(fabll.is_interface).connect_to(electrics[2])
-    assert electrics[0].get_trait(fabll.is_interface).is_connected_to(electrics[2])
+    electrics[0]._is_interface.get().connect_shallow_to(electrics[1])
+    electrics[1]._is_interface.get().connect_to(electrics[2])
+    assert electrics[0]._is_interface.get().is_connected_to(electrics[2])
 
 
 def test_chains_mixed_shallow_nested():
@@ -738,13 +737,13 @@ def test_chains_mixed_shallow_nested():
     electricalLogicType = F.ElectricLogic.bind_typegraph(tg)
     el = [electricalLogicType.create_instance(g=g) for _ in range(3)]
 
-    el[0].get_trait(fabll.is_interface).connect_shallow_to(el[1])
-    el[1].get_trait(fabll.is_interface).connect_to(el[2])
+    el[0]._is_interface.get().connect_shallow_to(el[1])
+    el[1]._is_interface.get().connect_to(el[2])
 
-    assert el[0].get_trait(fabll.is_interface).is_connected_to(el[2])
+    assert el[0]._is_interface.get().is_connected_to(el[2])
 
     assert (
-        el[1].line.get().get_trait(fabll.is_interface).is_connected_to(el[2].line.get())
+        el[1].line.get()._is_interface.get().is_connected_to(el[2].line.get())
     )
     assert (
         el[1]
@@ -778,12 +777,12 @@ def test_chains_mixed_shallow_nested():
     )
 
     # Test duplicate resolution
-    el[0].line.get().get_trait(fabll.is_interface).connect_to(el[1].line.get())
-    el[0].reference.get().get_trait(fabll.is_interface).connect_to(
+    el[0].line.get()._is_interface.get().connect_to(el[1].line.get())
+    el[0].reference.get()._is_interface.get().connect_to(
         el[1].reference.get()
     )
-    assert el[0].get_trait(fabll.is_interface).is_connected_to(el[1])
-    assert el[0].get_trait(fabll.is_interface).is_connected_to(el[2])
+    assert el[0]._is_interface.get().is_connected_to(el[1])
+    assert el[0]._is_interface.get().is_connected_to(el[2])
 
 
 def test_loooooong_chain():
@@ -795,9 +794,9 @@ def test_loooooong_chain():
     ep = [electricPowerType.create_instance(g=g) for _ in range(2**10)]
 
     for left, right in pairwise(ep):
-        left.get_trait(fabll.is_interface).connect_to(right)
+        left._is_interface.get().connect_to(right)
 
-    assert ep[0].get_trait(fabll.is_interface).is_connected_to(ep[-1])
+    assert ep[0]._is_interface.get().is_connected_to(ep[-1])
 
 
 # FIXME: this should be WAYYY higher than 16
@@ -813,14 +812,14 @@ def test_alternating_long_chain(length):
 
     for i, (left, right) in enumerate(pairwise(ep)):
         if i % 2:
-            left.get_trait(fabll.is_interface).connect_to(right)
+            left._is_interface.get().connect_to(right)
         else:
-            left.lv.get().get_trait(fabll.is_interface).connect_to(right.lv.get())
-            left.hv.get().get_trait(fabll.is_interface).connect_to(right.hv.get())
+            left.lv.get()._is_interface.get().connect_to(right.lv.get())
+            left.hv.get()._is_interface.get().connect_to(right.hv.get())
 
-    assert ep[0].get_trait(fabll.is_interface).is_connected_to(ep[-1])
-    assert ep[0].lv.get().get_trait(fabll.is_interface).is_connected_to(ep[-1].lv.get())
-    assert ep[0].hv.get().get_trait(fabll.is_interface).is_connected_to(ep[-1].hv.get())
+    assert ep[0]._is_interface.get().is_connected_to(ep[-1])
+    assert ep[0].lv.get()._is_interface.get().is_connected_to(ep[-1].lv.get())
+    assert ep[0].hv.get()._is_interface.get().is_connected_to(ep[-1].hv.get())
 
 
 @pytest.mark.xfail(reason="Split-paths/up-connects not supported yet")
@@ -916,9 +915,9 @@ def test_single_electric_reference_connects_children():
     app.get_trait(F.has_single_electric_reference).connect_all_references()
     shared_ref = app.get_trait(F.has_single_electric_reference).get_reference()
 
-    assert shared_ref.get_trait(fabll.is_interface).is_connected_to(app.power_a.get())
-    assert shared_ref.get_trait(fabll.is_interface).is_connected_to(app.power_b.get())
-    assert app.power_a.get().get_trait(fabll.is_interface).is_connected_to(app.power_b.get())
+    assert shared_ref._is_interface.get().is_connected_to(app.power_a.get())
+    assert shared_ref._is_interface.get().is_connected_to(app.power_b.get())
+    assert app.power_a.get()._is_interface.get().is_connected_to(app.power_b.get())
 
 
 def test_shallow_bridge_full():
@@ -967,15 +966,15 @@ def test_shallow_bridge_full():
         zip(app.buf.get().ins, app.buf.get().ins_l),
         zip(app.buf.get().outs, app.buf.get().outs_l),
     ):
-        lo.get().line.get().get_trait(fabll.is_interface).connect_to(el.get())
+        lo.get().line.get()._is_interface.get().connect_to(el.get())
 
     for l1, l2 in zip(app.buf.get().ins_l, app.buf.get().outs_l):
-        l1.get().get_trait(fabll.is_interface).connect_shallow_to(l2.get())
+        l1.get()._is_interface.get().connect_shallow_to(l2.get())
 
-    app.bus_in.get().tx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().ins[0].get())
-    app.bus_in.get().rx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().ins[1].get())
-    app.bus_out.get().tx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().outs[0].get())
-    app.bus_out.get().rx.get().line.get().get_trait(fabll.is_interface).connect_to(app.buf.get().outs[1].get())
+    app.bus_in.get().tx.get().line.get()._is_interface.get().connect_to(app.buf.get().ins[0].get())
+    app.bus_in.get().rx.get().line.get()._is_interface.get().connect_to(app.buf.get().ins[1].get())
+    app.bus_out.get().tx.get().line.get()._is_interface.get().connect_to(app.buf.get().outs[0].get())
+    app.bus_out.get().rx.get().line.get()._is_interface.get().connect_to(app.buf.get().outs[1].get())
 
     for x in fabll.Traits.get_implementors(F.has_single_electric_reference.bind_typegraph(tg), g):
         x.connect_all_references()
@@ -987,35 +986,35 @@ def test_shallow_bridge_full():
     buf = app.buf.get()
 
     # Check that the two buffer sides are not connected electrically
-    assert not buf.ins[0].get().get_trait(fabll.is_interface).is_connected_to(buf.outs[0].get())
-    assert not buf.ins[1].get().get_trait(fabll.is_interface).is_connected_to(buf.outs[1].get())
-    assert not bus_i.rx.get().line.get().get_trait(fabll.is_interface).is_connected_to(bus_o.rx.get().line.get())
-    assert not bus_i.tx.get().line.get().get_trait(fabll.is_interface).is_connected_to(bus_o.tx.get().line.get())
+    assert not buf.ins[0].get()._is_interface.get().is_connected_to(buf.outs[0].get())
+    assert not buf.ins[1].get()._is_interface.get().is_connected_to(buf.outs[1].get())
+    assert not bus_i.rx.get().line.get()._is_interface.get().is_connected_to(bus_o.rx.get().line.get())
+    assert not bus_i.tx.get().line.get()._is_interface.get().is_connected_to(bus_o.tx.get().line.get())
 
     # direct connect
-    assert bus_i.tx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.ins[0].get())
-    assert bus_i.rx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.ins[1].get())
-    assert bus_o.tx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.outs[0].get())
-    assert bus_o.rx.get().line.get().get_trait(fabll.is_interface).is_connected_to(buf.outs[1].get())
+    assert bus_i.tx.get().line.get()._is_interface.get().is_connected_to(buf.ins[0].get())
+    assert bus_i.rx.get().line.get()._is_interface.get().is_connected_to(buf.ins[1].get())
+    assert bus_o.tx.get().line.get()._is_interface.get().is_connected_to(buf.outs[0].get())
+    assert bus_o.rx.get().line.get()._is_interface.get().is_connected_to(buf.outs[1].get())
 
     # connect through trait
-    assert buf.ins_l[0].get().reference.get().get_trait(fabll.is_interface).is_connected_to(buf.ins_l[0].get().reference.get())
-    assert buf.ins_l[0].get().reference.get().get_trait(fabll.is_interface).is_connected_to(buf.outs_l[0].get().reference.get())
-    assert buf.outs_l[1].get().reference.get().get_trait(fabll.is_interface).is_connected_to(buf.ins_l[0].get().reference.get())
-    assert bus_i.rx.get().reference.get().get_trait(fabll.is_interface).is_connected_to(bus_o.rx.get().reference.get())
+    assert buf.ins_l[0].get().reference.get()._is_interface.get().is_connected_to(buf.ins_l[0].get().reference.get())
+    assert buf.ins_l[0].get().reference.get()._is_interface.get().is_connected_to(buf.outs_l[0].get().reference.get())
+    assert buf.outs_l[1].get().reference.get()._is_interface.get().is_connected_to(buf.ins_l[0].get().reference.get())
+    assert bus_i.rx.get().reference.get()._is_interface.get().is_connected_to(bus_o.rx.get().reference.get())
 
     # connect shallow
-    assert buf.ins_l[0].get().get_trait(fabll.is_interface).is_connected_to(buf.outs_l[0].get())
+    assert buf.ins_l[0].get()._is_interface.get().is_connected_to(buf.outs_l[0].get())
 
 # TODO requires up connect
     # connect through up
-    # assert bus_i.tx.get().get_trait(fabll.is_interface).is_connected_to(buf.ins_l[0].get())
-    # assert bus_o.tx.get().get_trait(fabll.is_interface).is_connected_to(buf.outs_l[0].get())
+    # assert bus_i.tx.get()._is_interface.get().is_connected_to(buf.ins_l[0].get())
+    # assert bus_o.tx.get()._is_interface.get().is_connected_to(buf.outs_l[0].get())
 
     # Check that the two buffer sides are connected logically
-    # assert bus_i.tx.get().get_trait(fabll.is_interface).is_connected_to(bus_o.tx.get())
-    # assert bus_i.rx.get().get_trait(fabll.is_interface).is_connected_to(bus_o.rx.get())
-    # assert bus_i.get_trait(fabll.is_interface).is_connected_to(bus_o)
+    # assert bus_i.tx.get()._is_interface.get().is_connected_to(bus_o.tx.get())
+    # assert bus_i.rx.get()._is_interface.get().is_connected_to(bus_o.rx.get())
+    # assert bus_i._is_interface.get().is_connected_to(bus_o)
 
 
 class Specialized(fabll.Node): ...
@@ -1144,16 +1143,16 @@ def test_basic_i2c():
     i2c1 = I2CType.create_instance(g=g)
     i2c2 = I2CType.create_instance(g=g)
 
-    i2c1.get_trait(fabll.is_interface).connect_to(i2c2)
+    i2c1._is_interface.get().connect_to(i2c2)
 
     # I2C's connected
-    assert i2c1.get_trait(fabll.is_interface).is_connected_to(i2c2)
+    assert i2c1._is_interface.get().is_connected_to(i2c2)
 
     # Electric signals connected
-    assert i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.scl.get())
-    assert i2c1.sda.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+    assert i2c1.scl.get()._is_interface.get().is_connected_to(i2c2.scl.get())
+    assert i2c1.sda.get()._is_interface.get().is_connected_to(i2c2.sda.get())
 
-    assert ~i2c1.scl.get().get_trait(fabll.is_interface).is_connected_to(i2c2.sda.get())
+    assert ~i2c1.scl.get()._is_interface.get().is_connected_to(i2c2.sda.get())
 
     # Electricals connected
     assert (
@@ -1240,7 +1239,7 @@ def test_isolated_connect_erc():
     y2.make_source()
 
     with pytest.raises(ERCPowerSourcesShortedError):
-        y1.get_trait(fabll.is_interface).connect_to(y2)
+        y1._is_interface.get().connect_to(y2)
         simple_erc(tg)
 
     # TODO no more LDO in fabll
@@ -1255,13 +1254,13 @@ def test_isolated_connect_erc():
     a1 = i2cType.create_instance(g=g)
     b1 = i2cType.create_instance(g=g)
 
-    a1.get_trait(fabll.is_interface).connect_to(b1)
-    assert a1.get_trait(fabll.is_interface).is_connected_to(b1)
-    assert a1.scl.get().get_trait(fabll.is_interface).is_connected_to(b1.scl.get())
-    assert a1.sda.get().get_trait(fabll.is_interface).is_connected_to(b1.sda.get())
+    a1._is_interface.get().connect_to(b1)
+    assert a1._is_interface.get().is_connected_to(b1)
+    assert a1.scl.get()._is_interface.get().is_connected_to(b1.scl.get())
+    assert a1.sda.get()._is_interface.get().is_connected_to(b1.sda.get())
 
-    assert not a1.scl.get().get_trait(fabll.is_interface).is_connected_to(b1.sda.get())
-    assert not a1.sda.get().get_trait(fabll.is_interface).is_connected_to(b1.scl.get())
+    assert not a1.scl.get()._is_interface.get().is_connected_to(b1.sda.get())
+    assert not a1.sda.get()._is_interface.get().is_connected_to(b1.scl.get())
 
 
 def test_simple_erc_ElectricPower_short():
@@ -1272,12 +1271,12 @@ def test_simple_erc_ElectricPower_short():
     ep1 = electricPowerType.create_instance(g=g)
     ep2 = electricPowerType.create_instance(g=g)
 
-    ep1.get_trait(fabll.is_interface).connect_to(ep2)
+    ep1._is_interface.get().connect_to(ep2)
 
     # This is okay!
     simple_erc(tg)
 
-    ep1.lv.get().get_trait(fabll.is_interface).connect_to(ep2.hv.get())
+    ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
 
     # This is not okay!
     with pytest.raises(ERCFaultShortedInterfaces) as ex:
@@ -1354,10 +1353,10 @@ def test_direct_shallow_instance():
     electrical2 = electricalType.create_instance(g=g)
     electrical3 = electricalType.create_instance(g=g)
 
-    electrical1.get_trait(fabll.is_interface).connect_shallow_to(electrical2)
-    electrical1.get_trait(fabll.is_interface).connect_shallow_to(electrical3)
-    assert electrical1.get_trait(fabll.is_interface).is_connected_to(electrical2)
-    assert electrical1.get_trait(fabll.is_interface).is_connected_to(electrical3)
+    electrical1._is_interface.get().connect_shallow_to(electrical2)
+    electrical1._is_interface.get().connect_shallow_to(electrical3)
+    assert electrical1._is_interface.get().is_connected_to(electrical2)
+    assert electrical1._is_interface.get().is_connected_to(electrical3)
 
 
 def test_connect_incompatible():
@@ -1376,7 +1375,7 @@ def test_connect_incompatible():
     b = bType.create_instance(g=g)
 
     with pytest.raises(ValueError, match="Failed to connect"):
-        a.get_trait(fabll.is_interface).connect_to(b)
+        a._is_interface.get().connect_to(b)
 
 
 def test_connect_incompatible_hierarchical():
@@ -1395,7 +1394,7 @@ def test_connect_incompatible_hierarchical():
     x = aType.create_instance(g=g)
     y = bType.create_instance(g=g)
     with pytest.raises(ValueError, match="Failed to connect"):
-        x.get_trait(fabll.is_interface).connect_to(y)
+        x._is_interface.get().connect_to(y)
 
 
 def test_connect_incompatible_hierarchical_regression():
@@ -1408,4 +1407,4 @@ def test_connect_incompatible_hierarchical_regression():
     y = electricalType.create_instance(g=g)
 
     with pytest.raises(ValueError, match="Failed to connect"):
-        x.get_trait(fabll.is_interface).connect_to(y)
+        x._is_interface.get().connect_to(y)

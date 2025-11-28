@@ -638,7 +638,7 @@ class PCB_Transformer:
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
-            lambda pad_and_name: intf.get_trait(fabll.is_interface).is_connected_to(
+            lambda pad_and_name: intf._is_interface.get().is_connected_to(
                 pad_and_name[0].net.get()
             ),
         )[1]

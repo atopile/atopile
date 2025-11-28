@@ -63,12 +63,12 @@ def netlist_graph():
         name="GND", level=F.has_net_name.Level.SUGGESTED
     )
 
-    resistor1.unnamed[0].get().get_trait(fabll.is_interface).connect_to(power.hv.get())
-    resistor1.unnamed[1].get().get_trait(fabll.is_interface).connect_to(power.lv.get())
-    resistor2.unnamed[0].get().get_trait(fabll.is_interface).connect_to(
+    resistor1.unnamed[0].get()._is_interface.get().connect_to(power.hv.get())
+    resistor1.unnamed[1].get()._is_interface.get().connect_to(power.lv.get())
+    resistor2.unnamed[0].get()._is_interface.get().connect_to(
         resistor1.unnamed[0].get()
     )
-    resistor2.unnamed[1].get().get_trait(fabll.is_interface).connect_to(
+    resistor2.unnamed[1].get()._is_interface.get().connect_to(
         resistor1.unnamed[1].get()
     )
 

@@ -25,7 +25,7 @@ class has_single_electric_reference(fabll.Node):
         reference = self.reference_ptr_.get().deref()
         if reference is None:
             raise ValueError("has_single_electric_reference has no reference")
-        return reference  # type: ignore
+        return reference.cast(F.ElectricPower)
 
     def connect_all_references(
         self,
@@ -45,9 +45,9 @@ class has_single_electric_reference(fabll.Node):
         # if a child is a power, connect to shared reference
         for child in children_with_trait:
             if ground_only:
-                child.get_trait(self).get_reference().lv.get().get_trait(fabll.is_interface).connect_to(reference.lv.get())
+                child.get_trait(self).get_reference().lv.get()._is_interface.get().connect_to(reference.lv.get())
             else:
-                child.get_trait(self).get_reference().get_trait(fabll.is_interface).connect_to(reference)
+                child.get_trait(self).get_reference()._is_interface.get().connect_to(reference)
 
         children_that_are_power = parent_node.get_children(
             direct_only=True,
@@ -56,9 +56,9 @@ class has_single_electric_reference(fabll.Node):
 
         for power in children_that_are_power:
             if ground_only:
-                power.lv.get().get_trait(fabll.is_interface).connect_to(reference.lv.get())
+                power.lv.get()._is_interface.get().connect_to(reference.lv.get())
             else:
-                power.get_trait(fabll.is_interface).connect_to(reference)
+                power._is_interface.get().connect_to(reference)
 
     @property
     def ground_only(self) -> bool:

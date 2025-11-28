@@ -37,11 +37,11 @@ def test_performance_mifs_connect_check(node_type):
     timings.add(name, "construct")
 
     for inst1, inst2 in instances:
-        inst1.get_trait(fabll.is_interface).connect_to(inst2)
+        inst1._is_interface.get().connect_to(inst2)
         timings.add(name, "connect_to")
 
     for inst1, inst2 in instances:
-        assert inst1.get_trait(fabll.is_interface).is_connected_to(inst2)
+        assert inst1._is_interface.get().is_connected_to(inst2)
         timings.add(name, "is_connected_to")
 
     # TODO formatting of timings is broken rn
@@ -69,16 +69,16 @@ def test_performance_mifs_connect_hull(node_type):
     timings.add(name, "construct")
 
     for other in instances[1:]:
-        instances[0].get_trait(fabll.is_interface).connect_to(other)
+        instances[0]._is_interface.get().connect_to(other)
         timings.add(name, "connect_to")
 
-    assert instances[0].get_trait(fabll.is_interface).is_connected_to(instances[-1])
+    assert instances[0]._is_interface.get().is_connected_to(instances[-1])
     timings.add(name, "is_connected_to")
 
-    list(instances[0].get_trait(fabll.is_interface).get_connected())
+    list(instances[0]._is_interface.get().get_connected())
     timings.add(name, "get_connected")
 
-    assert instances[0].get_trait(fabll.is_interface).is_connected_to(instances[-1])
+    assert instances[0]._is_interface.get().is_connected_to(instances[-1])
     timings.add(name, "is_connected cached")
 
     # TODO formatting of timings is broken rn

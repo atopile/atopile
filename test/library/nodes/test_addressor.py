@@ -28,7 +28,7 @@ class ConfigurableI2CClient(fabll.Node):
         self.addressor.get().base.get().alias_to_literal(g, F.Literals.Numbers.bind_typegraph(tg).create_instance(g).setup_from_singleton(value=16))
 
         for a, b in zip(self.addressor.get().address_lines, self.config):
-            a.get_trait(fabll.is_interface).connect_to(b.get())
+            a._is_interface.get().connect_to(b.get())
 
 
 def test_addressor():
