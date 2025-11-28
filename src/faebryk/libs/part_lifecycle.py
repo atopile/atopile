@@ -428,18 +428,12 @@ class PartLifecycle:
             try:
                 lib = _find_footprint([fp_lib_path], lib_id)
             except* (LibNotInTable, FileNotFoundError):
-                from atopile.front_end import from_dsl  # TODO: F.is_from_dsl
-
                 if (
-                    (is_atomic_part_ := component.try_get_trait(F.is_atomic_part))
-                    is not None
-                    and (from_dsl_ := is_atomic_part_.try_get_trait(from_dsl))
-                    is not None
-                    and from_dsl_.src_file is not None
-                ):
+                    is_atomic_part_ := component.try_get_trait(F.is_atomic_part)
+                ) is not None:
                     # insert footprint on first use from dependency package
                     try:
-                        self._insert_fp_lib(lib_id, from_dsl_.src_file.parent)
+                        self._insert_fp_lib(lib_id, is_atomic_part_.path)
                     except FileNotFoundError:
                         raise
 
@@ -492,8 +486,9 @@ class PartLifecycle:
                 ).as_posix()
 
         def get_footprint_from_identifier(
-            self, identifier: str, component: Module
+            self, kfp: F.has_kicad_footprint, component: Module
         ) -> tuple[Path, kicad.footprint.FootprintFile]:
+            identifier = kfp.get_kicad_footprint()
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
             fp_path = part_path / f"{fp_name}.kicad_mod"
@@ -535,7 +530,8 @@ class PartLifecycle:
             f_fp = component.get_trait(F.has_footprint).get_footprint()
 
             # At this point, all footprints MUST have a KiCAD identifier
-            fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+            kfp = f_fp.get_trait(F.has_kicad_footprint)
+            fp_id = kfp.get_kicad_footprint()
 
             # This is the component which is being stuck on the board
             address = component.get_full_name()
@@ -554,7 +550,7 @@ class PartLifecycle:
                 # Copy the data structure so if we later mutate it we don't
                 # end up w/ those changes everywhere
                 _, lib_fp = lifecycle.library.get_footprint_from_identifier(
-                    fp_id, component
+                    kfp, component
                 )
 
                 logger.info(
@@ -579,7 +575,7 @@ class PartLifecycle:
                 # Copy the data structure so if we later mutate it we don't
                 # end up w/ those changes everywhere
                 _, lib_fp = lifecycle.library.get_footprint_from_identifier(
-                    fp_id, component
+                    kfp, component
                 )
                 # We need to manually override the name because the
                 # footprint's data could've ultimately come from anywhere
