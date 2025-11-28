@@ -184,18 +184,24 @@ class is_expression(fabll.Node):
     def get_operand_leaves_operatable(
         self,
     ) -> set["F.Parameters.is_parameter_operatable"]:
-        # TODO
-        pass
-        raise NotImplementedError("get_operand_leaves_operatable not implemented")
+        """
+        Recursively get all leaf operatables (parameters that are not expressions).
+        For expressions, descends into their operands until reaching parameters.
 
-    @staticmethod
-    def get_all_expressions_involved_in(node: fabll.NodeT) -> set[fabll.NodeT]:
-        # 1. Find all EdgeOperand edges
-        # 2. Get their source nodes
-        # 3. Get their parents
-        # TODO requires EdgeOperand to support multi expression edges
-        pass
-        raise NotImplementedError("get_all_expressions_involved_in not implemented")
+        Example:
+        ```
+        (A + B) * C -> {A, B, C}
+        ```
+        """
+        result: set[Parameters.is_parameter_operatable] = set()
+        for operand in self.get_operands():
+            if expr := operand.try_get_sibling_trait(is_expression):
+                # Operand is an expression - recurse into it
+                result.update(expr.get_operand_leaves_operatable())
+            elif operand_po := operand.is_parameter_operatable():
+                # Operand is a leaf (parameter or literal with is_parameter_operatable)
+                result.add(operand_po)
+        return result
 
     def compact_repr(
         self, context: "Parameters.ReprContext | None" = None, use_name: bool = False
@@ -285,12 +291,46 @@ class is_expression(fabll.Node):
         other_factory: "type[fabll.NodeT]",
         other_operands: Sequence["F.Parameters.can_be_operand"],
         allow_uncorrelated: bool = False,
-        # TODO
         check_constrained: bool = True,
     ) -> bool:
-        # TODO
-        raise NotImplementedError("is_congruent_to_factory not implemented")
-        pass
+        """
+        Check if this expression is congruent to an expression that would be
+        created from the given factory with the given operands.
+
+        This is useful for checking if creating a new expression would be
+        redundant because an equivalent one already exists.
+
+        Args:
+            other_factory: The expression type (e.g., Add, Multiply)
+            other_operands: The operands that would be used
+            allow_uncorrelated: If True, non-singleton literals can match
+            check_constrained: If True, also check constrained literals
+
+        Returns:
+            True if this expression is congruent to what the factory would create
+        """
+        # Get the underlying expression node
+        self_obj = fabll.Traits(self).get_obj_raw()
+
+        # Check if this expression is an instance of the factory type
+        if not self_obj.isinstance(other_factory):
+            return False
+
+        # Check if the factory type is commutative
+        type_node = self_obj.bind_typegraph_from_instance(self_obj.instance)
+        commutative = (
+            is_commutative.is_commutative_type(type_node) if type_node else False
+        )
+
+        # Check operand congruence
+        out = is_expression.are_pos_congruent(
+            self.get_operands(),
+            list(other_operands),
+            commutative=commutative,
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
+        )
+        return out
 
     @staticmethod
     def sort_by_depth[T: fabll.NodeT](exprs: Iterable[T], ascending: bool) -> list[T]:
@@ -322,9 +362,21 @@ class is_expression(fabll.Node):
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
     def get_uncorrelatable_literals(self) -> list[Literals.is_literal]:
-        # TODO
-        pass
-        raise NotImplementedError("get_uncorrelatable_literals not implemented")
+        """
+        Get all literals in this expression's operands that cannot be correlated.
+
+        Uncorrelatable literals are those that are neither singleton nor empty,
+        meaning they represent a range or set of values that cannot be uniquely
+        identified for congruence matching.
+
+        Returns:
+            List of uncorrelatable literal traits from this expression's operands
+        """
+        return [
+            lit
+            for lit in self.get_operand_literals().values()
+            if lit.is_not_correlatable()
+        ]
 
     def expr_isinstance(self, *expr_types: type[fabll.NodeT]) -> bool:
         return fabll.Traits(self).get_obj_raw().isinstance(*expr_types)
@@ -335,16 +387,83 @@ class is_expression(fabll.Node):
     def expr_cast[T: fabll.NodeT](self, t: type[T], check: bool = True) -> T:
         return fabll.Traits(self).get_obj_raw().cast(t, check=check)
 
+    def get_sorted_operands(self) -> list["F.Parameters.can_be_operand"]:
+        return is_expression._sorted_operands(self.get_operands())
+
+    @staticmethod
+    def _sorted_operands(
+        operands: Sequence["F.Parameters.can_be_operand"],
+    ) -> list["F.Parameters.can_be_operand"]:
+        # TODO not sure this still works the same way as back in the day
+        return sorted(operands, key=hash)
+
     def is_congruent_to(
         self,
-        other: "fabll.NodeT",
+        other: "is_expression",
         recursive: bool = False,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
     ) -> bool:
-        # TODO
-        pass
-        raise NotImplementedError("is_congruent_to not implemented")
+        """
+        Check if this expression is congruent to another expression.
+
+        Two expressions are congruent if:
+        - They are the same type
+        - They have congruent operands (same nodes or equal correlatable literals)
+
+        Args:
+            other: The other expression (or its is_expression trait)
+            recursive: If True, recursively check sub-expression congruence
+            allow_uncorrelated: If True, non-singleton literals can match
+            check_constrained: If True, also check constrained literals
+
+        Returns:
+            True if the expressions are congruent
+        """
+        if self.is_same(other):
+            return True
+
+        # TODO handle non-operands
+
+        self_obj = fabll.Traits(self).get_obj_raw()
+        other_obj = fabll.Traits(other).get_obj_raw()
+
+        # Must be same type
+        if not self_obj.has_same_type_as(other_obj):
+            return False
+
+        # if lit is non-single/empty set we can't correlate thus can't be congruent
+        #  in general
+        if not allow_uncorrelated and (
+            self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals()
+        ):
+            return False
+
+        if check_constrained and (
+            self_obj.has_trait(is_predicate) != other_obj.has_trait(is_predicate)
+        ):
+            return False
+
+        # Check if the expression is commutative
+        commutative = is_commutative.is_commutative_type(
+            not_none(self_obj.bind_typegraph_from_instance(self_obj.instance))
+        )
+        self_operands = self.get_operands()
+        other_operands = other.get_operands()
+
+        if self_operands == other_operands:
+            return True
+        if commutative and self.get_sorted_operands() == other.get_sorted_operands():
+            return True
+
+        # Check operand congruence
+        return recursive and is_expression.are_pos_congruent(
+            self_operands,
+            other_operands,
+            commutative=commutative,
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
+        )
 
     def in_operands(self, operand: "F.Parameters.can_be_operand") -> bool:
         return operand in self.get_operands()
@@ -357,9 +476,66 @@ class is_expression(fabll.Node):
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
     ) -> bool:
-        # TODO
-        pass
-        raise NotImplementedError("are_pos_congruent not implemented")
+        """
+        Check if two sequences of operands are positionally congruent.
+
+        Two operands are congruent if:
+        - They are the same node (by reference)
+        - They are both correlatable literals with equal values
+
+        Args:
+            left: First operand sequence
+            right: Second operand sequence
+            commutative: If True, order doesn't matter (for commutative operations)
+            allow_uncorrelated: If True, non-singleton/non-empty literals can match
+            check_constrained: If True, also check constrained literals
+
+        Returns:
+            True if the operand sequences are congruent
+        """
+        if commutative:
+            left = is_expression._sorted_operands(left)
+            right = is_expression._sorted_operands(right)
+
+        if len(left) != len(right):
+            return False
+
+        def operands_congruent(
+            op1: Parameters.can_be_operand, op2: Parameters.can_be_operand
+        ) -> bool:
+            # Same node - congruent
+            if op1.is_same(op2):
+                return True
+
+            op1_obj = fabll.Traits(op1).get_obj_raw()
+            op2_obj = fabll.Traits(op2).get_obj_raw()
+            if not op1_obj.has_same_type_as(op2_obj):
+                return False
+
+            if lit1 := op1_obj.try_get_trait(Literals.is_literal):
+                lit2 = op2_obj.get_trait(Literals.is_literal)
+                if not allow_uncorrelated and (
+                    lit1.is_not_correlatable() or lit2.is_not_correlatable()
+                ):
+                    return False
+                return lit1.equals(lit2)
+
+            if expr1 := op1_obj.try_get_trait(is_expression):
+                expr2 = op2_obj.get_trait(is_expression)
+                return expr1.is_congruent_to(
+                    expr2,
+                    recursive=True,
+                    allow_uncorrelated=allow_uncorrelated,
+                    check_constrained=check_constrained,
+                )
+
+            # params only congruent if same node i guess?
+
+            return False
+
+        return all(
+            operands_congruent(le, ri) for le, ri in zip(left, right, strict=True)
+        )
 
     def get_depth(self) -> int:
         """
@@ -2310,6 +2486,13 @@ def test_compact_repr():
     )
     or_repr = or_.get_sibling_trait(is_expression).compact_repr()
     assert or_repr == "A ∨! B"
+
+
+def test_congruence():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    p1 = Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 if __name__ == "__main__":

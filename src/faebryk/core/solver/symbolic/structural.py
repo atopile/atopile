@@ -83,7 +83,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False)
+                    ge_e, mutator.make_lit(False).as_literal()
                 )
                 continue
             interval = boundary
@@ -100,7 +100,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False)
+                    ge_e, mutator.make_lit(False).as_literal()
                 )
                 continue
             interval = boundary
@@ -442,7 +442,7 @@ def empty_set(mutator: Mutator):
             continue
         if any(lit.is_empty() for lit in lits.values()):
             mutator.utils.alias_is_literal_and_check_predicate_eval(
-                e_expr, mutator.make_lit(False)
+                e_expr, mutator.make_lit(False).as_literal()
             )
 
     # A ss {} -> False
@@ -811,7 +811,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
                 unfulfilled_only=True,
             ):
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    p, mutator.make_lit(True)
+                    p, mutator.make_lit(True).as_literal()
                 )
                 break
 

@@ -12,6 +12,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,12 @@ def _exec_pure_literal_expressions(
 ) -> F.Literals.is_literal | None:
     return _exec_pure_literal_operands(
         mutator,
-        fabll.Traits(expr).get_obj_raw().get_trait(fabll.ImplementsType),
+        not_none(
+            fabll.TypeNodeBoundTG.try_get_trait_of_type(
+                fabll.ImplementsType,
+                not_none(fabll.Traits(expr).get_obj_raw().get_type_node()),
+            )
+        ),
         # FIXME: there is no guarantee that this will return them in the correct order
         expr.get_operands(),
     )
@@ -110,5 +116,6 @@ def fold_pure_literal_expressions(mutator: Mutator):
         )
         if result is None:
             continue
-        # type ignore because function sig is not 100% correct
-        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)
+        mutator.utils.alias_is_literal_and_check_predicate_eval(
+            expr.get_trait(F.Expressions.is_expression), result
+        )

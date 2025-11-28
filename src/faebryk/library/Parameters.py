@@ -198,15 +198,18 @@ class is_parameter_operatable(fabll.Node):
             e_ctx.operations.add(is_expr.cast(e_ctx.t))
 
         e_ctx = E_Ctx()
+        # Use the can_be_operand trait's instance, since that's where operand edges
+        # are attached
+        operand_instance = e_ctx._self.as_operand().instance
         if types is fabll.Node:
             fbrk.EdgeOperand.visit_expression_edges(
-                bound_node=e_ctx._self.instance,
+                bound_node=operand_instance,
                 ctx=e_ctx,
                 f=visit,
             )
         else:
             fbrk.EdgeOperand.visit_expression_edges_of_type(
-                bound_node=e_ctx._self.instance,
+                bound_node=operand_instance,
                 expression_type=types.bind_typegraph(self.tg)
                 .get_or_create_type()
                 .node(),
@@ -216,7 +219,8 @@ class is_parameter_operatable(fabll.Node):
 
         out = e_ctx.operations
         if recursive:
-            for op in out:
+            # Create a copy to iterate, since we'll be modifying out
+            for op in list(out):
                 op_po = op.get_trait(is_parameter_operatable)
                 out.update(
                     op_po.get_operations(
@@ -785,7 +789,7 @@ def test_boolean_param():
 
     boolean_p = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True, g=g)
-    assert boolean_p.force_extract_literal().get_values()[0] == True
+    assert boolean_p.force_extract_literal().get_values()[0]
 
     class ExampleBooleanParameter(fabll.Node):
         boolean_p_tg = BooleanParameter.MakeChild()
@@ -794,4 +798,135 @@ def test_boolean_param():
         )
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
-    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0] == True
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0]
+
+
+def test_get_operations():
+    """Test the get_operations method on is_parameter_operatable."""
+    from faebryk.library.Expressions import Add, Is
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create parameters
+    p1 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p2 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p3 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Get is_parameter_operatable traits
+    p1_po = p1.get_trait(is_parameter_operatable)
+    p2_po = p2.get_trait(is_parameter_operatable)
+    p3_po = p3.get_trait(is_parameter_operatable)
+
+    # Initially, no operations
+    assert p1_po.get_operations() == set()
+    assert p2_po.get_operations() == set()
+
+    # Create an Add expression: p1 + p2
+    add_expr = (
+        Add.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            p1.get_trait(can_be_operand),
+            p2.get_trait(can_be_operand),
+        )
+    )
+
+    # Now p1 and p2 should have the Add in their operations
+    p1_ops = p1_po.get_operations()
+    p2_ops = p2_po.get_operations()
+    assert len(p1_ops) == 1
+    assert len(p2_ops) == 1
+    assert add_expr in p1_ops
+    assert add_expr in p2_ops
+
+    # p3 still has no operations
+    assert p3_po.get_operations() == set()
+
+    # Create an Is expression (predicate): Is(p1, p3)
+    is_expr = (
+        Is.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            p1.get_trait(can_be_operand),
+            p3.get_trait(can_be_operand),
+            assert_=True,  # This makes it a predicate
+        )
+    )
+
+    # p1 should now have both Add and Is in operations
+    p1_ops_all = p1_po.get_operations()
+    assert len(p1_ops_all) == 2
+    assert add_expr in p1_ops_all
+    assert is_expr in p1_ops_all
+
+    # p3 should have Is
+    p3_ops = p3_po.get_operations()
+    assert len(p3_ops) == 1
+    assert is_expr in p3_ops
+
+    # Test filtering by type - only Add expressions
+    p1_add_ops = p1_po.get_operations(types=Add)
+    assert len(p1_add_ops) == 1
+    assert add_expr in p1_add_ops
+    assert is_expr not in p1_add_ops
+
+    # Test filtering by type - only Is expressions
+    p1_is_ops = p1_po.get_operations(types=Is)
+    assert len(p1_is_ops) == 1
+    assert is_expr in p1_is_ops
+    assert add_expr not in p1_is_ops
+
+    # Test predicates_only filter - should only return asserted expressions
+    p1_predicates = p1_po.get_operations(predicates_only=True)
+    assert is_expr in p1_predicates
+    # Add is not a predicate (not asserted)
+    assert add_expr not in p1_predicates
+
+    # Test combined type + predicates_only
+    p1_is_predicates = p1_po.get_operations(types=Is, predicates_only=True)
+    assert is_expr in p1_is_predicates
+
+
+def test_get_operations_recursive():
+    """Test the recursive option of get_operations."""
+    from faebryk.library.Expressions import Add, Multiply
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create parameters
+    p1 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p2 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p3 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
+
+    p1_po = p1.get_trait(is_parameter_operatable)
+
+    # Create nested expressions: (p1 + p2) * p3
+    add_expr = (
+        Add.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            p1.get_trait(can_be_operand),
+            p2.get_trait(can_be_operand),
+        )
+    )
+
+    mul_expr = (
+        Multiply.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            add_expr.get_trait(can_be_operand),
+            p3.get_trait(can_be_operand),
+        )
+    )
+
+    # Non-recursive: p1 only sees the Add directly
+    p1_ops_non_recursive = p1_po.get_operations(recursive=False)
+    assert add_expr in p1_ops_non_recursive
+    assert mul_expr not in p1_ops_non_recursive
+
+    # Recursive: p1 sees both Add and Multiply (through the Add)
+    p1_ops_recursive = p1_po.get_operations(recursive=True)
+    assert add_expr in p1_ops_recursive
+    assert mul_expr in p1_ops_recursive

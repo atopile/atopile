@@ -100,6 +100,9 @@ class is_literal(fabll.Node):
         lit = self.switch_cast()
         return f"{lit.get_values()[0]}"
 
+    def is_not_correlatable(self) -> bool:
+        return not self.is_single_element() and not self.is_empty()
+
 
 # --------------------------------------------------------------------------------------
 LiteralValues = float | bool | Enum | str
@@ -194,6 +197,9 @@ class Strings(fabll.Node):
         if len(vals) != 1:
             return None
         return vals[0]
+
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
 
 
 class Numbers(fabll.Node):
@@ -328,6 +334,9 @@ class Numbers(fabll.Node):
     def has_compatible_units_with(self, other: "Numbers") -> bool: ...
     def are_units_compatible(self, unit: "F.Units.IsUnit") -> bool: ...
 
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
+
 
 @dataclass(frozen=True)
 class BooleansAttributes(fabll.NodeAttributes):
@@ -394,6 +403,9 @@ class Booleans(fabll.Node[BooleansAttributes]):
         if len(vals) != 1:
             return None
         return vals[0]
+
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
 
 
 class EnumValue(fabll.Node):
@@ -509,6 +521,9 @@ class AbstractEnums(fabll.Node):
         out = Is.MakeChild_Constrain([enum_parameter_ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
+
+    def as_literal(self) -> "is_literal":
+        return self._is_literal.get()
 
 
 @once

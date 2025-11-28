@@ -1459,9 +1459,7 @@ class Mutator:
         from_ops = [x for x in unique_ref(from_ops or [])]
         if _relay:
             if assert_ and expr_factory is IsSubset:
-                return self.utils.subset_to(
-                    operands[0], operands[1], from_ops=from_ops
-                ).get_trait(F.Expressions.is_expression)
+                return self.utils.subset_to(operands[0], operands[1], from_ops=from_ops)
             if assert_ and expr_factory is Is:
                 return self.utils.alias_to(operands[0], operands[1], from_ops=from_ops)
             res = _exec_pure_literal_operands(
