@@ -530,6 +530,7 @@ def generate_netlist(
 def generate_glb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    return
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -551,6 +552,7 @@ def generate_glb(
 def generate_step(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    return
     """Generate PCBA 3D model as STEP."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
@@ -586,6 +588,7 @@ def generate_3d_render(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 3D rendered image."""
+    return
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
             export_3d_board_render(
@@ -607,6 +610,7 @@ def generate_2d_render(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     """Generate PCBA 2D rendered image."""
+    return
     with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
             export_svg(
@@ -622,7 +626,7 @@ def generate_2d_render(
 @muster.register(
     "mfg-data",
     tags={Tags.REQUIRES_KICAD},
-    dependencies=[generate_3d_models, post_pcb_checks],
+    dependencies=[post_pcb_checks],
     produces_artifact=True,
 )
 def generate_manufacturing_data(
