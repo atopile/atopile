@@ -47,7 +47,7 @@ def assert_commensurability(items: Sequence[F.Units.is_unit]) -> F.Units.is_unit
 
     for other_unit in other_units:
         if not first_unit.is_commensurable_with(other_unit):
-            symbols = [unit.symbol.get() for unit in items]
+            symbols = [unit._extract_symbol() for unit in items]
             raise F.Units.UnitsNotCommensurable(
                 "Operands have incommensurable units:\n"
                 + "\n".join(
@@ -73,10 +73,8 @@ def test_assert_commmensurability_single_item(ctx: BoundUnitsContext):
     parent, _ = result.get_parent_force()
     assert parent.isinstance(F.Units.Meter)
     assert not_none(
-        F.Units.is_unit.bind_instance(result.instance)
-        .symbol.get()
-        .try_extract_constrained_literal()
-    ).get_values() == ["m"]
+        F.Units.is_unit.bind_instance(result.instance)._extract_symbol()
+    ) == ["m"]
 
 
 def test_assert_commensurability(ctx: BoundUnitsContext):
@@ -163,22 +161,21 @@ def test_assert_commensurability_with_incommensurable_derived(ctx: BoundUnitsCon
 def test_isunit_setup(ctx):
     is_unit = F.Units.is_unit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
     is_unit.setup(
+        g=ctx.g,
+        tg=ctx.tg,
         symbols=["m"],
         unit_vector=F.Units._BasisVectorArg(meter=1),
         multiplier=1.0,
         offset=0.0,
     )
-    assert not_none(
-        is_unit.symbol.get().try_extract_constrained_literal()
-    ).get_values() == ["m"]
+    assert not_none(is_unit._extract_symbol()) == ["m"]
 
     assert F.Units._BasisVector.bind_instance(
         is_unit.basis_vector.get().deref().instance
     ).extract_vector() == F.Units._BasisVectorArg(meter=1)
 
-    # TODO: pending NumericParameter impl
-    # assert is_unit.multiplier.get().force_extract_literal().get_value() == 1.0
-    assert is_unit.offset.get().force_extract_literal().get_value() == 0.0
+    assert is_unit._extract_multiplier() == 1.0
+    assert is_unit._extract_offset() == 0.0
 
 
 # TODO: more tests
