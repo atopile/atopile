@@ -100,3 +100,4 @@ NOTE TO SELF THURSDAY:
 - still a bunch of lit & param stuff not implemented
 - get_trait creates lots of runtime problems, switch to \_trait.get()
   - consider invariant field in traits to capture sibling relationship
+- pure literal seems a bit fucked (operand order)
