@@ -16,6 +16,11 @@ from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.libs.util import not_none, once
 
+REL_DIGITS = 7  # 99.99999% precision
+ABS_DIGITS = 15  # femto
+EPSILON_REL = 10 ** -(REL_DIGITS - 1)
+EPSILON_ABS = 10**-ABS_DIGITS
+
 
 class is_literal(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -238,6 +243,13 @@ class Numeric(fabll.Node[NumericAttributes]):
             raise ValueError("Numeric literal has no value")
         return float(value)
 
+    @staticmethod
+    def float_round(value: float, digits: int = 0) -> float:
+        if value in [math.inf, -math.inf]:
+            return value
+        out = round(value, digits)
+        return float(out)
+
 
 class TestNumeric:
     def test_make_child(self):
@@ -269,8 +281,8 @@ class NumericInterval(fabll.Node):
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
-        min_numeric = Numeric.MakeChild(min)
-        max_numeric = Numeric.MakeChild(max)
+        min_numeric = Numeric.MakeChild(Numeric.float_round(min, ABS_DIGITS))
+        max_numeric = Numeric.MakeChild(Numeric.float_round(max, ABS_DIGITS))
         out.add_dependant(min_numeric, identifier=cls._min_identifier)
         out.add_dependant(max_numeric, identifier=cls._max_identifier)
         out.add_dependant(
@@ -651,8 +663,8 @@ class NumericInterval(fabll.Node):
         numeric_interval.setup(
             g=g,
             tg=tg,
-            min=round(self.get_min_value(), ndigits),
-            max=round(self.get_max_value(), ndigits),
+            min=Numeric.float_round(self.get_min_value(), ndigits),
+            max=Numeric.float_round(self.get_max_value(), ndigits),
         )
         return numeric_interval
 
