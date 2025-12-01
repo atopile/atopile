@@ -8,6 +8,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.app.designators import attach_random_designators
 
+
 class has_designator(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     designator_ = F.Parameters.StringParameter.MakeChild()
@@ -51,7 +52,7 @@ class Test:
             resistor1.get_trait(F.has_designator).get_designator(),
             resistor2.get_trait(F.has_designator).get_designator()
         } == {"R1", "R2"}
-        
+
         assert capacitor1.get_trait(F.has_designator).get_designator() == "C1"
 
     def test_manual_designator_assignment(self):

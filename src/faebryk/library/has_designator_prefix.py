@@ -117,12 +117,6 @@ class has_designator_prefix(fabll.Node):
         K = "K"
         """Relay or contactor"""
 
-        LD = "LD"
-        """LED > often changed to "D" for diode"""
-
-        LED = "LED"
-        """LED > often changed to "D" for diode"""
-
         LS = "LS"
         """Loudspeaker or buzzer"""
 
