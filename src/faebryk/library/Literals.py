@@ -4698,14 +4698,15 @@ class TestCounts:
         counts = Counts.create_instance(g=g, tg=tg)
         assert repr(counts) == "Counts([])"
 
-    def as_literal(self) -> "is_literal":
-        return self._is_literal.get()
-
 
 @dataclass(frozen=True)
 class BooleansAttributes(fabll.NodeAttributes):
     has_true: bool
     has_false: bool
+
+    @classmethod
+    def from_values(cls, values: list[bool]) -> "BooleansAttributes":
+        return cls(has_true=True in values, has_false=False in values)
 
 
 class Booleans(fabll.Node[BooleansAttributes]):
@@ -4739,14 +4740,8 @@ class Booleans(fabll.Node[BooleansAttributes]):
         booleans: list[bool] | None = None,
     ) -> "Booleans":
         """Create a Booleans instance with the given values."""
-        if booleans is None:
-            booleans = []
         return cls.bind_typegraph(tg).create_instance(
-            g=g,
-            attributes=BooleansAttributes(
-                has_true=True in booleans,
-                has_false=False in booleans,
-            ),
+            g=g, attributes=BooleansAttributes.from_values(booleans or [])
         )
 
     @classmethod
@@ -4772,13 +4767,15 @@ class Booleans(fabll.Node[BooleansAttributes]):
 
     def get_values(self) -> list[bool]:
         """Get the list of boolean values in this set."""
-        attrs = self.attributes()
-        result = []
-        if attrs.has_true:
-            result.append(True)
-        if attrs.has_false:
-            result.append(False)
-        return result
+        match self.attributes():
+            case BooleansAttributes(has_true=True, has_false=True):
+                return [True, False]
+            case BooleansAttributes(has_true=True, has_false=False):
+                return [True]
+            case BooleansAttributes(has_true=False, has_false=True):
+                return [False]
+            case _:
+                return []
 
     def get_boolean_values(self) -> list[bool]:
         """Alias for get_values() for API compatibility."""
@@ -5239,7 +5236,7 @@ class TestStringLiterals:
             Strings,
         )
         assert lit
-        assert lit.get_values() == values
+        assert fabll.Traits(lit).get_obj(Strings).get_values() == values
 
 
 class TestBooleans:

@@ -3077,9 +3077,7 @@ def test_quantity_set_create_instance():
     quantity_set.setup_from_min_max(g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance)
     assert quantity_set.get_numeric_set().get_min_value() == 0.0
     assert quantity_set.get_numeric_set().get_max_value() == 1.0
-    assert not_none(
-        quantity_set.get_is_unit().symbol.get().try_extract_constrained_literal()
-    ).get_values() == ["m"]
+    assert quantity_set.get_is_unit().get_symbols() == ["m"]
 
 
 def test_quantity_set_get_min_quantity():
