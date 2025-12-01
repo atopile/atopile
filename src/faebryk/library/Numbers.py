@@ -42,7 +42,7 @@ class Numeric(fabll.Node[NumericAttributes]):
     Attributes = NumericAttributes
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField:
+    def MakeChild(cls, value: float) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls, attributes=NumericAttributes(value=value))
         return out
 
@@ -87,7 +87,7 @@ class NumericInterval(fabll.Node):
     _max_identifier: ClassVar[str] = "max"
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
@@ -147,7 +147,7 @@ class NumericInterval(fabll.Node):
             return False
         return True
 
-    def setup(
+    def setup(  # type: ignore
         self, g: graph.GraphView, tg: TypeGraph, min: float, max: float
     ) -> "NumericInterval":
         if not NumericInterval.validate_bounds(min, max):
@@ -1216,7 +1216,7 @@ class NumericSet(fabll.Node):
     intervals = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore
         cls, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
     ) -> fabll._ChildField:
         out = fabll._ChildField(cls)
@@ -2281,7 +2281,7 @@ class Boolean(fabll.Node[BooltAttributes]):
     Attributes = BooltAttributes
 
     @classmethod
-    def MakeChild(cls, value: bool) -> fabll._ChildField:
+    def MakeChild(cls, value: bool) -> fabll._ChildField:  # type: ignore
         return fabll._ChildField(cls, attributes=BooltAttributes(value=value))
 
     @classmethod
@@ -2314,7 +2314,7 @@ class BooleanSet(fabll.Node):
     booleans = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, booleans: list[bool]) -> fabll._ChildField:
+    def MakeChild(cls, booleans: list[bool]) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls)
         booleans_makechilds = [Boolean.MakeChild(value=boolean) for boolean in booleans]
         out.add_dependant(
@@ -2330,7 +2330,7 @@ class BooleanSet(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "BooleanSet":
         return BooleanSet.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def setup(
+    def setup(  # type: ignore
         self, g: graph.GraphView, tg: TypeGraph, booleans: list[bool]
     ) -> "BooleanSet":
         for boolean in booleans:
@@ -2438,7 +2438,7 @@ class QuantitySet(fabll.Node):
     _has_unit_identifier: ClassVar[str] = "has_unit"
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore
         cls,
         g: graph.GraphView,
         tg: TypeGraph,
@@ -2472,7 +2472,7 @@ class QuantitySet(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "QuantitySet":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def setup(
+    def setup(  # type: ignore
         self,
         g: graph.GraphView,
         tg: TypeGraph,

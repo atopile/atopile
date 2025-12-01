@@ -659,7 +659,7 @@ class BoundParameterContext:
         self.g = g
         self._bound: dict = {}
 
-    def _get_bound(self, cls: type):
+    def _get_bound(self, cls: type[fabll.NodeT]):
         if cls not in self._bound:
             self._bound[cls] = cls.bind_typegraph(tg=self.tg)
         return self._bound[cls]

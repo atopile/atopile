@@ -183,9 +183,9 @@ class _BasisVector(fabll.Node):
             )
         return out
 
-    def setup(
+    def setup(  # type: ignore
         self, g: graph.GraphView, tg: graph.TypeGraph, vector: BasisVector
-    ) -> Self:  # type: ignore
+    ) -> Self:
         from faebryk.library.Literals import Counts
 
         for field_name in BasisVector.__dataclass_fields__.keys():

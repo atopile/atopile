@@ -229,7 +229,7 @@ class Numeric(fabll.Node[NumericAttributes]):
     Attributes = NumericAttributes
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField:
+    def MakeChild(cls, value: float) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls, attributes=NumericAttributes(value=value))
         return out
 
@@ -281,7 +281,7 @@ class NumericInterval(fabll.Node):
     _max_identifier: ClassVar[str] = "max"
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
@@ -349,7 +349,7 @@ class NumericInterval(fabll.Node):
             return False
         return True
 
-    def setup(
+    def setup(  # type: ignore
         self, g: graph.GraphView, tg: TypeGraph, min: float, max: float
     ) -> "NumericInterval":
         if not NumericInterval.validate_bounds(min, max):
@@ -1376,7 +1376,7 @@ class NumericSet(fabll.Node):
     intervals = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls)
 
         _intervals = [NumericInterval.MakeChild(min=min, max=max)]
@@ -1511,7 +1511,7 @@ class NumericSet(fabll.Node):
             )
         return self
 
-    def setup(
+    def setup(  # type: ignore
         self,
         g: graph.GraphView,
         tg: TypeGraph,
@@ -1684,9 +1684,7 @@ class NumericSet(fabll.Node):
 
     def op_ge_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
-    ) -> "F.Literals.Booleans":
-        from faebryk.library.Literals import Booleans
-
+    ) -> "Booleans":
         if self.is_empty() or other.is_empty():
             return Booleans.create_instance(g=g, tg=tg, booleans=[])
         if self.get_min_value() >= other.get_max_value():
@@ -1697,9 +1695,7 @@ class NumericSet(fabll.Node):
 
     def op_gt_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
-    ) -> "F.Literals.Booleans":
-        from faebryk.library.Literals import Booleans
-
+    ) -> "Booleans":
         if self.is_empty() or other.is_empty():
             return Booleans.create_instance(g=g, tg=tg, booleans=[])
         if self.get_min_value() > other.get_max_value():
@@ -1710,9 +1706,7 @@ class NumericSet(fabll.Node):
 
     def op_le_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
-    ) -> "F.Literals.Booleans":
-        from faebryk.library.Literals import Booleans
-
+    ) -> "Booleans":
         if self.is_empty() or other.is_empty():
             return Booleans.create_instance(g=g, tg=tg, booleans=[])
         if self.get_max_value() <= other.get_min_value():
@@ -1723,9 +1717,7 @@ class NumericSet(fabll.Node):
 
     def op_lt_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
-    ) -> "F.Literals.Booleans":
-        from faebryk.library.Literals import Booleans
-
+    ) -> "Booleans":
         if self.is_empty() or other.is_empty():
             return Booleans.create_instance(g=g, tg=tg, booleans=[])
         if self.get_max_value() < other.get_min_value():
@@ -2366,7 +2358,7 @@ class Numbers(fabll.Node):
     _has_unit_identifier: ClassVar[str] = "has_unit"
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore
         cls,
         min: float,
         max: float,
@@ -2462,7 +2454,7 @@ class Numbers(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def setup(
+    def setup(  # type: ignore
         self,
         g: graph.GraphView,
         tg: TypeGraph,
@@ -3203,7 +3195,7 @@ class Numbers(fabll.Node):
 
     def op_greater_or_equal(
         self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
-    ) -> "F.Literals.Booleans":
+    ) -> "Booleans":
         """
         Check if self >= other (greater than or equal).
         Returns Booleans with possible values:
@@ -3221,7 +3213,7 @@ class Numbers(fabll.Node):
 
     def op_greater_than(
         self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
-    ) -> "F.Literals.Booleans":
+    ) -> "Booleans":
         """
         Check if self > other (greater than).
         Returns Booleans with possible values:
@@ -3237,9 +3229,7 @@ class Numbers(fabll.Node):
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
 
-    def op_le(
-        self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
-    ) -> "F.Literals.Booleans":
+    def op_le(self, g: graph.GraphView, tg: TypeGraph, other: "Numbers") -> "Booleans":
         """
         Check if self <= other (less than or equal).
         Returns Booleans with possible values:
@@ -4406,7 +4396,7 @@ class Count(fabll.Node[CountAttributes]):
     Attributes = CountAttributes
 
     @classmethod
-    def MakeChild(cls, value: int) -> fabll._ChildField:
+    def MakeChild(cls, value: int) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls, attributes=CountAttributes(value=value))
         return out
 
@@ -4869,7 +4859,7 @@ class EnumValue(fabll.Node):
     value_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:
+    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls)
         F.Collections.Pointer.MakeEdgeForField(
             out,
@@ -5072,17 +5062,17 @@ class BoundLiteralContext:
         self.g = g
         self._bound: dict = {}
 
-    def _get_bound(self, cls: type):
+    def _get_bound(self, cls: type[LiteralNodes]):
         if cls not in self._bound:
             self._bound[cls] = cls.bind_typegraph(tg=self.tg)
         return self._bound[cls]
 
     @property
-    def Numbers(self) -> Numbers:
+    def Numbers(self) -> "Numbers":
         return self._get_bound(Numbers).create_instance(g=self.g)
 
     @property
-    def Booleans(self) -> Booleans:
+    def Booleans(self) -> "Booleans":
         return self._get_bound(Booleans).create_instance(g=self.g)
 
     @property
@@ -5226,7 +5216,7 @@ class TestStringLiterals:
             string_param = StringParameter.MakeChild()
 
             @classmethod
-            def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:
+            def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
                 out = fabll._ChildField(cls)
                 out.add_dependant(
                     Strings.MakeChild_ConstrainToLiteral(
