@@ -12,10 +12,6 @@ class OpAmp(fabll.Node):
 
     bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
 
-    # FIXME: handle decibels
-    # common_mode_rejection_ratio = F.Parameters.NumericParameter.MakeChild(
-    #     unit=F.Units.Decibel
-    # )
     input_bias_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     input_offset_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
@@ -28,12 +24,11 @@ class OpAmp(fabll.Node):
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
             S(param=bandwidth, prefix="BW"),
-            # S(common_mode_rejection_ratio, prefix="CMRR"),
             S(input_bias_current, prefix="Ib"),
             S(input_offset_voltage, prefix="Vos"),
             S(gain_bandwidth_product, prefix="GBW"),
             S(output_current, prefix="Iout"),
-            # S(slew_rate, prefix="SR"),
+            S(slew_rate, prefix="SR"),
         )
     )
 

@@ -108,7 +108,7 @@ class requires_pulls(fabll.Node):
     def MakeChild(
         cls,
         *signals: fabll._ChildField[SignalLike],
-        required_resistance: F.Parameters.NumericParameter,
+        required_resistance: fabll._ChildField[F.Literals.Numbers],
         # pred: Callable[[SignalLike, set[fabll.Node]], bool] #TODO: what is this?
     ):
         out = fabll._ChildField(cls)
