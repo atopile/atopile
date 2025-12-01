@@ -61,6 +61,7 @@ from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import not_none
 
 
+# TODO: remove?
 # Simple helper to normalize various unit-like objects to a class, defaulting to
 # Dimensionless when no unit information is available.
 def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
@@ -657,6 +658,7 @@ def decode_symbol(g: graph.GraphView, tg: typegraph.TypeGraph, symbol: str) -> i
     # TODO: optimisation: pre-compute symbol map; build suffix trie
 
     all_units = fabll.Traits.get_implementors(is_unit.bind_typegraph(tg), g)
+    # TODO: more efficient filtering
     symbol_map = {s: unit for unit in all_units for s in unit.get_symbols()}
 
     # 1. Exact match
@@ -683,6 +685,7 @@ def decode_symbol(g: graph.GraphView, tg: typegraph.TypeGraph, symbol: str) -> i
             else:
                 continue
 
+            # TODO: provide symbol for caching
             return unit.scaled_copy(g=g, tg=tg, multiplier=scale_factor)
 
     raise UnitNotFoundError(symbol)
@@ -741,6 +744,7 @@ class UnitExpression(fabll.Node):
 def make_unit_expression_type(
     unit_vector: UnitVectorT, multiplier: float = 1.0, offset: float = 0.0
 ) -> type[fabll.Node]:
+    # FIXME: explain motivation for dynamic types
     from faebryk.library.Expressions import Multiply, Power
 
     class NewUnitExpression(fabll.Node):
@@ -1077,7 +1081,6 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
 # Dimensionless ------------------------------------------------------------------------
 
 
-# TODO: rename to One?
 class Dimensionless(fabll.Node):
     unit_vector_arg: ClassVar[BasisVector] = _BasisVector.ORIGIN
 

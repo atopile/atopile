@@ -212,6 +212,10 @@ def is_int(value: float) -> bool:
     return value == int(value)
 
 
+from operator import ge
+
+
+# FIXME
 def ge(a: float, b: float) -> bool:
     return a >= b
 
@@ -781,6 +785,7 @@ class NumericInterval(fabll.Node):
             return [numeric_interval]
         return [left, right]
 
+    # FIXME
     def __contains__(self, item: float) -> bool:
         """
         Set checks if a number is in a interval.
@@ -789,6 +794,7 @@ class NumericInterval(fabll.Node):
             return False
         return ge(self.get_max_value(), item) and ge(item, self.get_min_value())
 
+    # FIXME
     def __eq__(self, other: "NumericInterval") -> bool:
         return (
             self.get_min_value() == other.get_min_value()
@@ -1758,6 +1764,7 @@ class NumericSet(fabll.Node):
             intervals.append(interval.op_sine(g=g, tg=tg))
         return numeric_set.setup(g=g, tg=tg, intervals=intervals)
 
+    # FIXME
     def __contains__(self, item: float) -> bool:
         if not isinstance(item, float):
             return False
@@ -1766,6 +1773,7 @@ class NumericSet(fabll.Node):
                 return True
         return False
 
+    # FIXME
     def __eq__(self, value: "NumericSet") -> bool:
         if not isinstance(value, NumericSet):
             return False
@@ -2737,6 +2745,7 @@ class Numbers(fabll.Node):
         )
 
     def convert_to_dimensionless(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
+        # FIXME: docstring doesn't match
         """
         Convert between two units with the same basis vector but different multiplier
         and offset.
@@ -4244,6 +4253,8 @@ class TestNumbers:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         # Create serialized data manually
+
+        # FIXME: unit serialization to match ato v0.12
         data = {
             "numeric_set": {
                 "intervals": [
@@ -4390,6 +4401,7 @@ class CountAttributes(fabll.NodeAttributes):
     value: int
 
 
+# FIXME: required? make private?
 class Count(fabll.Node[CountAttributes]):
     Attributes = CountAttributes
 
@@ -4544,6 +4556,7 @@ class Counts(fabll.Node):
             raise ValueError("Cannot get max of empty Counts")
         return max(values)
 
+    # FIXME
     def __contains__(self, item: int) -> bool:
         return item in self.get_values()
 
@@ -4710,6 +4723,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
+    # FIXME: remove
     def setup(self, booleans: list[bool]) -> Self:
         """
         Setup is a no-op for Booleans since values are stored in attributes.
@@ -4724,6 +4738,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
             raise ValueError(f"Expected single boolean, got {len(values)}: {values}")
         return values[0]
 
+    # FIXME: remove
     @classmethod
     def create_instance(
         cls,
@@ -5014,6 +5029,7 @@ def make_lit(
 
 
 # TODO
+# FIXME: remove? no usages
 def MakeChild_Literal(
     value: LiteralValues, enum_type: type[Enum] | None = None
 ) -> (

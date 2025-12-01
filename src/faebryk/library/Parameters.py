@@ -615,6 +615,7 @@ class NumericParameter(fabll.Node):
         # )
         return out
 
+    # FIXME: remove; use literals directly
     @classmethod
     def MakeChild_UnresolvedUnits(
         cls, integer: bool = False, negative: bool = False, zero_allowed: bool = True

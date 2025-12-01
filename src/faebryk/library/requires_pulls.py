@@ -119,6 +119,7 @@ class requires_pulls(fabll.Node):
                     [signal],
                 )
             )
+        # FIXME: broken
         out.add_dependant(
             F.Parameters.NumericParameter.MakeEdge(
                 [out, cls.required_resistance],

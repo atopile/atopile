@@ -1,3 +1,5 @@
+# FIXME: remove — duplicates Literals
+
 import logging
 import math
 from bisect import bisect
@@ -584,6 +586,7 @@ class NumericInterval(fabll.Node):
             return False
         return ge(self.get_max_value(), item) and ge(item, self.get_min_value())
 
+    # FIXME
     def __eq__(self, other: "NumericInterval") -> bool:
         return (
             self.get_min_value() == other.get_min_value()
@@ -1596,6 +1599,7 @@ class NumericSet(fabll.Node):
                 return True
         return False
 
+    # FIXME
     def __eq__(self, value: "NumericSet") -> bool:
         if not isinstance(value, NumericSet):
             return False
