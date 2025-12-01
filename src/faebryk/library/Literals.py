@@ -7,7 +7,6 @@ from operator import ge
 from typing import ClassVar, Iterable, Self, cast
 
 import pytest
-from typing_extensions import deprecated
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -194,14 +193,6 @@ class Strings(fabll.Node):
         out.add_dependant(lit, before=True)
         return out
 
-    # TODO fix calling sites and remove this
-    @deprecated("Use get_values() instead")
-    def get_value(self) -> str:
-        values = self.get_values()
-        if len(values) != 1:
-            raise ValueError(f"Expected 1 value, got {len(values)}")
-        return values[0]
-
     @staticmethod
     def make_lit(tg: TypeGraph, value: str) -> "Strings":
         return Strings.bind_typegraph(tg=tg).create_instance(
@@ -222,7 +213,7 @@ class Numeric(fabll.Node[NumericAttributes]):
     Attributes = NumericAttributes
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField:
+    def MakeChild(cls, value: float) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls, attributes=NumericAttributes(value=value))
         return out
 
@@ -2761,12 +2752,10 @@ class Numbers(fabll.Node):
         )
 
     def convert_to_dimensionless(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
-        # FIXME: docstring doesn't match
         """
-        Convert between two units with the same basis vector but different multiplier
-        and offset.
-        eg Celsius to Kelvin.
-        Returns a new Numbers with the converted values in the units of self.
+        Convert to dimensionless units.
+        Returns a new Numbers with the converted values in dimensionless units.
+        Offset and scale are applied to the returned NumericSet.
         """
         from faebryk.library.Units import Dimensionless
 
@@ -4270,6 +4259,7 @@ class TestNumbers:
         # Create serialized data manually
 
         # FIXME: unit serialization to match ato v0.12
+        # Build something with 0.12 and look at the debug logs
         data = {
             "numeric_set": {
                 "intervals": [
@@ -4416,8 +4406,7 @@ class CountAttributes(fabll.NodeAttributes):
     value: int
 
 
-# FIXME: required? make private?
-class Count(fabll.Node[CountAttributes]):
+class _Count(fabll.Node[CountAttributes]):
     Attributes = CountAttributes
 
     @classmethod
@@ -4426,8 +4415,8 @@ class Count(fabll.Node[CountAttributes]):
         return out
 
     @classmethod
-    def create_instance(cls, g: graph.GraphView, tg: TypeGraph, value: int) -> "Count":
-        return Count.bind_typegraph(tg).create_instance(
+    def create_instance(cls, g: graph.GraphView, tg: TypeGraph, value: int) -> "_Count":
+        return _Count.bind_typegraph(tg).create_instance(
             g=g, attributes=CountAttributes(value=value)
         )
 
@@ -4445,7 +4434,7 @@ class TestCount:
         expected_value = 1
 
         class App(fabll.Node):
-            count = Count.MakeChild(value=expected_value)
+            count = _Count.MakeChild(value=expected_value)
 
         app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
@@ -4455,13 +4444,13 @@ class TestCount:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         expected_value = 42
-        count = Count.create_instance(g=g, tg=tg, value=expected_value)
+        count = _Count.create_instance(g=g, tg=tg, value=expected_value)
         assert count.get_value() == expected_value
 
     def test_get_value_returns_int(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        count = Count.create_instance(g=g, tg=tg, value=5)
+        count = _Count.create_instance(g=g, tg=tg, value=5)
         value = count.get_value()
         assert value == 5
         assert isinstance(value, int)
@@ -4471,9 +4460,9 @@ class TestCount:
         tg = TypeGraph.create(g=g)
 
         class App(fabll.Node):
-            count1 = Count.MakeChild(value=10)
-            count2 = Count.MakeChild(value=20)
-            count3 = Count.MakeChild(value=30)
+            count1 = _Count.MakeChild(value=10)
+            count2 = _Count.MakeChild(value=20)
+            count3 = _Count.MakeChild(value=30)
 
         app = App.bind_typegraph(tg=tg).create_instance(g=g)
 
@@ -4484,13 +4473,13 @@ class TestCount:
     def test_zero_value(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        count = Count.create_instance(g=g, tg=tg, value=0)
+        count = _Count.create_instance(g=g, tg=tg, value=0)
         assert count.get_value() == 0
 
     def test_negative_value(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        count = Count.create_instance(g=g, tg=tg, value=-5)
+        count = _Count.create_instance(g=g, tg=tg, value=-5)
         assert count.get_value() == -5
 
 
@@ -4514,7 +4503,7 @@ class Counts(fabll.Node):
         """
         out = fabll._ChildField(cls)
 
-        _counts = [Count.MakeChild(value=value) for value in values]
+        _counts = [_Count.MakeChild(value=value) for value in values]
         out.add_dependant(
             *F.Collections.PointerSet.MakeEdges(
                 [out, cls.counts], [[count] for count in _counts]
@@ -4532,11 +4521,11 @@ class Counts(fabll.Node):
         self, g: graph.GraphView, tg: TypeGraph, values: list[int]
     ) -> "Counts":
         for value in values:
-            self.counts.get().append(Count.create_instance(g=g, tg=tg, value=value))
+            self.counts.get().append(_Count.create_instance(g=g, tg=tg, value=value))
         return self
 
-    def get_counts(self) -> list[Count]:
-        return [count.cast(Count) for count in self.counts.get().as_list()]
+    def get_counts(self) -> list[_Count]:
+        return [count.cast(_Count) for count in self.counts.get().as_list()]
 
     def get_values(self) -> list[int]:
         return [count.get_value() for count in self.get_counts()]
@@ -4610,7 +4599,7 @@ class TestCounts:
         counts.setup_from_values(g=g, tg=tg, values=[1, 2])
         count_list = counts.get_counts()
         assert len(count_list) == 2
-        assert all(isinstance(c, Count) for c in count_list)
+        assert all(isinstance(c, _Count) for c in count_list)
 
     def test_is_empty_true(self):
         g = graph.GraphView.create()
@@ -5027,33 +5016,6 @@ def make_lit(
             return Strings.bind_typegraph(tg=tg).create_instance(
                 g=g, attributes=LiteralsAttributes(value=value)
             )
-
-
-# TODO
-# FIXME: remove? no usages
-def MakeChild_Literal(
-    value: LiteralValues, enum_type: type[Enum] | None = None
-) -> (
-    fabll._ChildField[Strings]
-    | fabll._ChildField[Booleans]
-    | fabll._ChildField[Numbers]
-    | fabll._ChildField[AbstractEnums]
-):
-    match value:
-        case bool():
-            return Booleans.MakeChild(value)
-        case float() | int():
-            value = float(value)
-            # Create singleton interval without unit (unit-agnostic)
-            from faebryk.library.Units import Dimensionless
-
-            return Numbers.MakeChild(min=value, max=value, unit=Dimensionless)
-        case Enum():
-            if enum_type is None:
-                raise ValueError("Enum must be provided when creating an enum literal")
-            return AbstractEnums.MakeChild(*enum_type)
-        case str():
-            return Strings.MakeChild(value)
 
 
 # Binding context ----------------------------------------------------------------------
