@@ -4,7 +4,6 @@
 import logging
 import re
 from collections import defaultdict
-from typing import cast
 
 from natsort import natsorted
 
@@ -13,7 +12,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.kicad.fileformats import Property, kicad
-from faebryk.libs.util import duplicates, groupby, md_list
+from faebryk.libs.util import duplicates, md_list
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     Components with has_designator_prefix get a has_designator trait if missing,
     then any component without a designator value gets one assigned.
     """
-    
+
     def _get_first_available_number(used: list[int]) -> int:
         """Find the first gap in the sequence, or the next number after the highest."""
         sorted_used = sorted(used)
@@ -50,7 +49,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     # Step 3: Parse existing designators to track which numbers are used per prefix
     pattern = re.compile(r"([A-Z]+)([0-9]+)")
     assigned: dict[str, list[int]] = defaultdict(list)
-    
+
     for component in components_with_designator:
         designator_trait = component.get_trait(F.has_designator)
         existing = designator_trait.get_designator()
@@ -68,7 +67,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
 
     for component in components_sorted:
         designator_trait = component.get_trait(F.has_designator)
-        
+
         # Skip if already has a designator
         if designator_trait.get_designator() is not None:
             continue
@@ -78,12 +77,14 @@ def attach_random_designators(tg: fbrk.TypeGraph):
             prefix = component.get_trait(F.has_designator_prefix).get_prefix()
         else:
             prefix = type(component).__name__
-            logger.warning(f"Component {component} has no designator prefix, using {prefix}")
+            logger.warning(
+                f"Component {component} has no designator prefix, using {prefix}"
+            )
 
         # Assign next available number for this prefix
         next_num = _get_first_available_number(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        
+
         logger.info(f"Setting designator {designator} for {component}")
         designator_trait.setup(designator)
         assigned[prefix].append(next_num)
@@ -93,7 +94,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
         component.get_trait(F.has_designator).get_designator()
         for component in components_with_designator
     ]
-    
+
     missing = [d for d in all_designators if d is None]
     assert not missing, f"Components without designators: {missing}"
 

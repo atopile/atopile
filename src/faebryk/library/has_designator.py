@@ -72,8 +72,5 @@ class Test:
 
         assert resistor1.get_trait(F.has_designator).get_designator() == "R1"
         assert resistor2.get_trait(F.has_designator).get_designator() == "R2"
- 
-        assert capacitor1.get_trait(F.has_designator).get_designator() == "C1"
 
-    def test_designator_loading(self):
-        
+        assert capacitor1.get_trait(F.has_designator).get_designator() == "C1"
