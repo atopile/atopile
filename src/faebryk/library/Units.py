@@ -301,7 +301,7 @@ class is_base_unit(fabll.Node):
 class is_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # symbol = F.Parameters.StringParameter.MakeChild()
+    _symbol_identifier: ClassVar[str] = "symbol"
     """
     Symbol or symbols representing the unit. Any member of the set is valid to indicate
     the unit in ato code. Must not conflict with symbols for other units
@@ -314,13 +314,11 @@ class is_unit(fabll.Node):
     """
 
     _multiplier_identifier: ClassVar[str] = "multiplier"
-    _offset_identifier: ClassVar[str] = "offset"
-    _symbol_identifier: ClassVar[str] = "symbol"
-
     """
     Multiplier to apply when converting to SI base units.
     """
 
+    _offset_identifier: ClassVar[str] = "offset"
     """
     Offset to apply when converting to SI base units.
     """
