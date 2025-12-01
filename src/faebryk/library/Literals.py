@@ -3292,7 +3292,7 @@ class Numbers(fabll.Node):
     def __repr__(self) -> str:
         try:
             numeric_set = self.get_numeric_set()
-            unit_symbol = self.get_is_unit()._extract_symbol()[0]
+            unit_symbol = self.get_is_unit()._extract_symbols()[0]
             return f"Numbers({numeric_set}, unit={unit_symbol})"
         except Exception:
             return "Numbers(<uninitialized>)"
@@ -3410,7 +3410,7 @@ class TestNumbers:
         )
         assert quantity_set.get_numeric_set().get_min_value() == 0.0
         assert quantity_set.get_numeric_set().get_max_value() == 1.0
-        assert not_none(quantity_set.get_is_unit()._extract_symbol() == ["m"])
+        assert not_none(quantity_set.get_is_unit()._extract_symbols() == ["m"])
 
     def test_get_min_quantity(self):
         g = graph.GraphView.create()
@@ -3424,7 +3424,7 @@ class TestNumbers:
         )
         min_quantity = quantity_set.min_elem(g=g, tg=tg)
         assert min_quantity.get_numeric_set().get_min_value() == 0.0
-        assert min_quantity.get_is_unit()._extract_symbol() == ["m"]
+        assert min_quantity.get_is_unit()._extract_symbols() == ["m"]
 
     def test_get_max_quantity(self):
         g = graph.GraphView.create()
@@ -3438,7 +3438,7 @@ class TestNumbers:
         )
         max_quantity = quantity_set.max_elem(g=g, tg=tg)
         assert max_quantity.get_numeric_set().get_max_value() == 1.0
-        assert max_quantity.get_is_unit()._extract_symbol() == ["m"]
+        assert max_quantity.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_add_same_unit(self):
         g = graph.GraphView.create()
@@ -3457,7 +3457,7 @@ class TestNumbers:
         result = quantity_set_1.op_add_intervals(g=g, tg=tg, other=quantity_set_2)
         assert result.get_numeric_set().get_min_value() == 0.0
         assert result.get_numeric_set().get_max_value() == 2.0
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_add_different_unit(self):
         # returns result in the self unit
@@ -3476,7 +3476,7 @@ class TestNumbers:
             g=g, tg=tg, ndigits=2
         )
         assert result_numeric_set_rounded.get_min_value() == 273.15
-        assert result.get_is_unit()._extract_symbol() == ["K"]
+        assert result.get_is_unit()._extract_symbols() == ["K"]
 
     def test_op_multiply_same_unit(self):
         g = graph.GraphView.create()
@@ -3514,7 +3514,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == -5.0
         assert result.get_numeric_set().get_max_value() == -2.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_subtract_same_unit(self):
         """Test subtraction of quantity sets with the same unit."""
@@ -3536,7 +3536,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 9.0
         # Unit should remain the same as self
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_invert(self):
         """Test inversion (1/x) of a quantity set."""
@@ -3645,7 +3645,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.3
         assert result.get_numeric_set().get_max_value() == 5.7
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_abs(self):
         """Test absolute value of a quantity set."""
@@ -3664,7 +3664,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_log(self):
         """Test natural log of a quantity set."""
@@ -3754,7 +3754,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 5.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_symmetric_difference(self):
         """Test symmetric difference of two quantity sets."""
@@ -3805,7 +3805,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_op_deviation_to_relative(self):
         """Test relative deviation calculation between two quantity sets."""
@@ -4039,7 +4039,7 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 3.0
         assert result.is_single_element()
         # Unit should be preserved
-        assert result.get_is_unit()._extract_symbol() == ["m"]
+        assert result.get_is_unit()._extract_symbols() == ["m"]
 
     def test_as_gapless(self):
         """Test converting to gapless interval."""

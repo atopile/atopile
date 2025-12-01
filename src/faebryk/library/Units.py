@@ -218,80 +218,40 @@ class _BasisVector(fabll.Node):
         )
 
 
-def test_basis_vector_store_and_retrieve():
-    """Test that BasisVector can be stored in and retrieved from _BasisVector."""
-    import faebryk.core.faebrykpy as fbrk
+class TestBasisVector:
+    def test_basis_vector_store_and_retrieve(self):
+        """Test that BasisVector can be stored in and retrieved from _BasisVector."""
+        import faebryk.core.faebrykpy as fbrk
 
-    # Setup graph and typegraph
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
+        # Setup graph and typegraph
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
 
-    # Create a test vector with some non-zero exponents
-    original_vector = BasisVector(
-        ampere=1,
-        second=-2,
-        meter=3,
-        kilogram=0,
-        kelvin=0,
-        mole=0,
-        candela=0,
-        radian=0,
-        steradian=0,
-        bit=0,
-    )
+        # Create a test vector with some non-zero exponents
+        original_vector = BasisVector(
+            ampere=1,
+            second=-2,
+            meter=3,
+            kilogram=0,
+            kelvin=0,
+            mole=0,
+            candela=0,
+            radian=0,
+            steradian=0,
+            bit=0,
+        )
 
-    # Create a _BasisVector instance and store the vector
-    basis_vector = _BasisVector.bind_typegraph(tg=tg).create_instance(g=g)
-    basis_vector.setup(g=g, tg=tg, vector=original_vector)
+        # Create a _BasisVector instance and store the vector
+        basis_vector = _BasisVector.bind_typegraph(tg=tg).create_instance(g=g)
+        basis_vector.setup(g=g, tg=tg, vector=original_vector)
 
-    # Retrieve the vector and verify it matches
-    retrieved_vector = basis_vector.extract_vector()
+        # Retrieve the vector and verify it matches
+        retrieved_vector = basis_vector.extract_vector()
 
-    assert retrieved_vector == original_vector, (
-        f"Retrieved vector {retrieved_vector} does not match original {original_vector}"
-    )
-
-
-def test_is_unit_serialize():
-    """Test that is_unit.serialize() returns the expected API format."""
-    import faebryk.core.faebrykpy as fbrk
-
-    # Setup graph and typegraph
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    # Create an Ohm unit instance and get its is_unit trait
-    ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
-    ohm_is_unit = ohm_instance.get_trait(is_unit)
-
-    # Serialize the unit
-    serialized = ohm_is_unit.serialize()
-
-    # Check structure
-    assert "symbols" in serialized
-    assert "basis_vector" in serialized
-    assert "multiplier" in serialized
-    assert "offset" in serialized
-
-    # Check symbols (Ohm has symbols ["Ω", "Ohm"])
-    assert serialized["symbols"] == ["Ω", "Ohm"]
-
-    # Check basis vector for Ohm: kg^1 * m^2 * s^-3 * A^-2
-    bv = serialized["basis_vector"]
-    assert bv["kilogram"] == 1
-    assert bv["meter"] == 2
-    assert bv["second"] == -3
-    assert bv["ampere"] == -2
-    assert bv["kelvin"] == 0
-    assert bv["mole"] == 0
-    assert bv["candela"] == 0
-    assert bv["radian"] == 0
-    assert bv["steradian"] == 0
-    assert bv["bit"] == 0
-
-    # Check multiplier and offset (base Ohm has multiplier 1.0, offset 0.0)
-    assert serialized["multiplier"] == 1.0
-    assert serialized["offset"] == 0.0
+        assert retrieved_vector == original_vector, (
+            f"Retrieved vector {retrieved_vector} does not match original"
+            f" {original_vector}"
+        )
 
 
 class is_base_unit(fabll.Node):
@@ -396,7 +356,7 @@ class is_unit(fabll.Node):
 
         return NumericInterval.bind_instance(offset_numeric).get_value()
 
-    def _extract_symbol(self) -> list[str]:
+    def _extract_symbols(self) -> list[str]:
         symbol_field = EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._symbol_identifier
         )
@@ -637,7 +597,7 @@ class is_unit(fabll.Node):
             return f"{value:g}"
 
         # use the first pre-defined symbol if available
-        if symbols := self._extract_symbol():
+        if symbols := self._extract_symbols():
             return symbols[0]
 
         # otherwise, render the basis vector
@@ -677,7 +637,7 @@ class is_unit(fabll.Node):
             "bit": basis_vector.bit,
         }
 
-    def serialize(self) -> dict:
+    def serialize(self) -> dict | str:
         """
         Serialize this unit to a dictionary.
 
@@ -700,8 +660,10 @@ class is_unit(fabll.Node):
             "offset": 0.0,
         }
         """
+        if symbols := self._extract_symbols():
+            return symbols[0]
+
         out = {}
-        symbols = self._extract_symbol()
         basis_vector = self._extract_basis_vector()
         multiplier = self._extract_multiplier()
         offset = self._extract_offset()
@@ -1845,7 +1807,7 @@ class TestIsUnit(_TestWithContext):
 
         for other_unit in other_units:
             if not first_unit.is_commensurable_with(other_unit):
-                symbols = [unit._extract_symbol() for unit in items]
+                symbols = [unit._extract_symbols() for unit in items]
                 raise UnitsNotCommensurableError(
                     "Operands have incommensurable units:\n"
                     + "\n".join(
@@ -2084,7 +2046,7 @@ class TestIsUnit(_TestWithContext):
             multiplier=1.0,
             offset=0.0,
         )
-        assert not_none(is_unit_._extract_symbol()) == ["m"]
+        assert not_none(is_unit_._extract_symbols()) == ["m"]
 
         assert _BasisVector.bind_instance(
             is_unit_.basis_vector.get().deref().instance
@@ -2201,6 +2163,44 @@ class TestIsUnit(_TestWithContext):
             offset=100.0,
         )
         assert scaled_offset_unit.compact_repr() == "(0.5×K+100)"
+
+    def test_is_unit_serialize_named_unit(self, ctx: BoundUnitsContext):
+        """Test that is_unit.serialize() returns the expected API format."""
+        serialized = ctx.Ohm._is_unit.get().serialize()
+        expected = "Ω"
+        assert serialized == expected
+
+    def test_is_unit_serialize_anonymous_unit(self, ctx: BoundUnitsContext):
+        """
+        Test that is_unit.serialize() returns the expected format for anonymous units.
+        """
+        anonymous_unit = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(meter=1),
+            multiplier=10.0,
+            offset=1.0,
+        )
+
+        expected = {
+            "symbols": [],
+            "basis_vector": {
+                "kilogram": 0,
+                "meter": 1,
+                "second": 0,
+                "ampere": 0,
+                "kelvin": 0,
+                "mole": 0,
+                "candela": 0,
+                "radian": 0,
+                "steradian": 0,
+                "bit": 0,
+            },
+            "multiplier": 10.0,
+            "offset": 1.0,
+        }
+
+        assert anonymous_unit.serialize() == expected
 
 
 class TestSymbols(_TestWithContext):
