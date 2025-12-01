@@ -800,7 +800,7 @@ class NumericInterval(fabll.Node):
     def any(self) -> float:
         return self.get_min_value()
 
-    def serialize_pset(self) -> dict:
+    def serialize(self) -> dict:
         return {
             "min": None
             if math.isinf(self.get_min_value())
@@ -1815,8 +1815,8 @@ class NumericSet(fabll.Node):
     def any(self) -> float:
         return self.get_min_value()
 
-    def serialize_pset(self) -> dict:
-        return {"intervals": [r.serialize_pset() for r in self.get_intervals()]}
+    def serialize(self) -> dict:
+        return {"intervals": [r.serialize() for r in self.get_intervals()]}
 
 
 class TestNumericSet:
@@ -3345,81 +3345,54 @@ class Numbers(fabll.Node):
         )
         return hash((hash(self.get_numeric_set()), bv_tuple))
 
-    def serialize_pset(self) -> dict:
+    def serialize(self) -> dict:
         """
-        Serialize this quantity set to a dictionary.
+        Serialize this quantity set to the API format.
 
-        Returns a dict with:
-        - numeric_set: The serialized numeric intervals
-        - unit: The unit information including basis vector, multiplier, and offset
-        """
-        bv = self.get_is_unit()._extract_basis_vector()
-        return {
-            "numeric_set": self.get_numeric_set().serialize_pset(),
-            "unit": {
-                "basis_vector": {
-                    "ampere": bv.ampere,
-                    "second": bv.second,
-                    "meter": bv.meter,
-                    "kilogram": bv.kilogram,
-                    "kelvin": bv.kelvin,
-                    "mole": bv.mole,
-                    "candela": bv.candela,
-                    "radian": bv.radian,
-                    "steradian": bv.steradian,
-                    "bit": bv.bit,
+        Returns a dict matching the component API format:
+        {
+            "type": "Quantity_Interval_Disjoint",
+            "data": {
+                "intervals": {
+                    "type": "Numeric_Interval_Disjoint",
+                    "data": {
+                        "intervals": [
+                            {"type": "Numeric_Interval", "data": {...}}
+                        ]
+                    }
                 },
-                "multiplier": self.get_is_unit()._extract_multiplier(),
-                "offset": self.get_is_unit()._extract_offset(),
-            },
+                "unit": "kiloohm"  # string unit name
+            }
         }
 
-    @classmethod
-    def deserialize_pset(
-        cls, g: graph.GraphView, tg: TypeGraph, data: dict
-    ) -> "Numbers":
+        Values are in base SI units (e.g., ohms for resistance).
+        Unit string indicates the display/original unit (e.g., "kiloohm").
         """
-        Deserialize a quantity set from a dictionary.
-
-        Args:
-            g: Graph view
-            tg: Type graph
-            data: Dictionary with 'numeric_set' and 'unit' keys
-
-        Returns:
-            A new Numbers instance with the deserialized values
-        """
-        from faebryk.library.Units import BasisVector, _AnonymousUnit
-
-        # Reconstruct numeric intervals
-        intervals_data = data["numeric_set"]["intervals"]
-        values = [
-            (
-                iv["min"] if iv["min"] is not None else -math.inf,
-                iv["max"] if iv["max"] is not None else math.inf,
+        # Build nested interval structure with type/data wrapping
+        intervals = []
+        for interval in self.get_numeric_set().get_intervals():
+            min_val = interval.get_min_value()
+            max_val = interval.get_max_value()
+            intervals.append(
+                {
+                    "type": "Numeric_Interval",
+                    "data": {
+                        "min": None if math.isinf(min_val) and min_val < 0 else min_val,
+                        "max": None if math.isinf(max_val) and max_val > 0 else max_val,
+                    },
+                }
             )
-            for iv in intervals_data
-        ]
-        numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            g=g, tg=tg, values=values
-        )
 
-        # Reconstruct unit from basis vector, multiplier, and offset
-        unit_data = data["unit"]
-        bv = BasisVector(**unit_data["basis_vector"])
-        # Create an anonymous unit with the given basis vector
-        unit_node = (
-            _AnonymousUnit.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .setup(
-                vector=bv,
-                multiplier=unit_data["multiplier"],
-                offset=unit_data["offset"],
-            )
-        )
-
-        qs = cls.create_instance(g=g, tg=tg)
-        return qs.setup(g=g, tg=tg, numeric_set=numeric_set, unit=unit_node)
+        return {
+            "type": "Quantity_Interval_Disjoint",
+            "data": {
+                "intervals": {
+                    "type": "Numeric_Interval_Disjoint",
+                    "data": {"intervals": intervals},
+                },
+                "unit": self.get_is_unit().serialize(),
+            },
+        }
 
 
 class TestNumbers:
@@ -4229,86 +4202,46 @@ class TestNumbers:
         # Equal sets should have same hash
         assert hash(qs1) == hash(qs2)
 
-    def test_serialize_pset(self):
-        """Test serialization of a quantity set."""
+    def test_serialize_api_format(self):
+        """Test serialization to API format (Quantity_Interval_Disjoint)."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Ohm
 
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        # Values are already in base units (ohms), so we use base Ohm unit
+        # 8000-12000 ohms = 8k-12k ohms, which represents "10kohm +/- 20%"
+        ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+
         qs = Numbers.create_instance(g=g, tg=tg)
-        qs.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
-        serialized = qs.serialize_pset()
-        # Check structure
-        assert "numeric_set" in serialized
-        assert "unit" in serialized
-        assert "intervals" in serialized["numeric_set"]
-        assert len(serialized["numeric_set"]["intervals"]) == 1
-        assert serialized["numeric_set"]["intervals"][0]["min"] == 2.0
-        assert serialized["numeric_set"]["intervals"][0]["max"] == 5.0
-        # Check unit basis vector (meter has meter=1)
-        assert serialized["unit"]["basis_vector"]["meter"] == 1
-        assert serialized["unit"]["basis_vector"]["second"] == 0
-        assert serialized["unit"]["multiplier"] == 1.0
-        assert serialized["unit"]["offset"] == 0.0
+        qs.setup_from_min_max(g=g, tg=tg, min=8000.0, max=12000.0, unit=ohm_instance)
+        serialized = qs.serialize()
 
-    def test_deserialize_pset(self):
-        """Test deserialization of a quantity set."""
-        g = graph.GraphView.create()
-        tg = TypeGraph.create(g=g)
-        # Create serialized data manually
-
-        # FIXME: unit serialization to match ato v0.12
-        # Build something with 0.12 and look at the debug logs
-        data = {
-            "numeric_set": {
-                "intervals": [
-                    {"min": 2.0, "max": 5.0},
-                ]
+        # Check structure matches API format
+        assert serialized["type"] == "Quantity_Interval_Disjoint"
+        assert "data" in serialized
+        assert serialized["data"]["intervals"]["type"] == "Numeric_Interval_Disjoint"
+        intervals = serialized["data"]["intervals"]["data"]["intervals"]
+        assert len(intervals) == 1
+        assert intervals[0]["type"] == "Numeric_Interval"
+        assert intervals[0]["data"]["min"] == 8000.0
+        assert intervals[0]["data"]["max"] == 12000.0
+        assert serialized["data"]["unit"] == {
+            "symbols": ["Ω", "Ohm"],
+            "basis_vector": {
+                "ampere": -2,
+                "second": -3,
+                "meter": 2,
+                "kilogram": 1,
+                "kelvin": 0,
+                "mole": 0,
+                "candela": 0,
+                "radian": 0,
+                "steradian": 0,
+                "bit": 0,
             },
-            "unit": {
-                "basis_vector": {
-                    "ampere": 0,
-                    "second": 0,
-                    "meter": 1,
-                    "kilogram": 0,
-                    "kelvin": 0,
-                    "mole": 0,
-                    "candela": 0,
-                    "radian": 0,
-                    "steradian": 0,
-                    "bit": 0,
-                },
-                "multiplier": 1.0,
-                "offset": 0.0,
-            },
+            "multiplier": 1.0,
+            "offset": 0.0,
         }
-        qs = Numbers.deserialize_pset(g=g, tg=tg, data=data)
-        assert qs.get_numeric_set().get_min_value() == 2.0
-        assert qs.get_numeric_set().get_max_value() == 5.0
-        # Check unit is meter-like (meter=1 in basis vector)
-        assert qs.get_is_unit()._extract_basis_vector().meter == 1
-
-    def test_serialize_deserialize_roundtrip(self):
-        """Test that serialize then deserialize returns equivalent quantity set."""
-        g = graph.GraphView.create()
-        tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
-
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        original = Numbers.create_instance(g=g, tg=tg)
-        original.setup_from_min_max(g=g, tg=tg, min=3.0, max=7.0, unit=meter_instance)
-        # Serialize and deserialize
-        serialized = original.serialize_pset()
-        restored = Numbers.deserialize_pset(g=g, tg=tg, data=serialized)
-        # Check values match
-        assert restored.get_numeric_set().get_min_value() == 3.0
-        assert restored.get_numeric_set().get_max_value() == 7.0
-        # Check units are equivalent (same basis vector)
-        assert (
-            original.get_is_unit()._extract_basis_vector()
-            == restored.get_is_unit()._extract_basis_vector()
-        )
 
     def test_op_ge_definitely_true(self):
         """Test >= comparison when definitely true."""
@@ -4875,11 +4808,11 @@ class EnumValue(fabll.Node):
 
     @property
     def name(self) -> str:
-        return self.name_.get().deref().cast(Strings).get_value()
+        return self.name_.get().deref().cast(Strings).get_values()[0]
 
     @property
     def value(self) -> str:
-        return self.value_.get().deref().cast(Strings).get_value()
+        return self.value_.get().deref().cast(Strings).get_values()[0]
 
 
 class AbstractEnums(fabll.Node):
@@ -5292,7 +5225,7 @@ def test_string_literal_alias_to_literal():
         string_param = StringParameter.MakeChild()
 
         @classmethod
-        def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:
+        def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
             out = fabll._ChildField(cls)
             out.add_dependant(
                 Strings.MakeChild_ConstrainToLiteral([out, cls.string_param], *values)

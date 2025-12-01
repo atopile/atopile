@@ -249,6 +249,48 @@ def test_basis_vector_store_and_retrieve():
     )
 
 
+def test_is_unit_serialize():
+    """Test that is_unit.serialize() returns the expected API format."""
+    import faebryk.core.faebrykpy as fbrk
+
+    # Setup graph and typegraph
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create an Ohm unit instance and get its is_unit trait
+    ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+    ohm_is_unit = ohm_instance.get_trait(is_unit)
+
+    # Serialize the unit
+    serialized = ohm_is_unit.serialize()
+
+    # Check structure
+    assert "symbols" in serialized
+    assert "basis_vector" in serialized
+    assert "multiplier" in serialized
+    assert "offset" in serialized
+
+    # Check symbols (Ohm has symbols ["Ω", "Ohm"])
+    assert serialized["symbols"] == ["Ω", "Ohm"]
+
+    # Check basis vector for Ohm: kg^1 * m^2 * s^-3 * A^-2
+    bv = serialized["basis_vector"]
+    assert bv["kilogram"] == 1
+    assert bv["meter"] == 2
+    assert bv["second"] == -3
+    assert bv["ampere"] == -2
+    assert bv["kelvin"] == 0
+    assert bv["mole"] == 0
+    assert bv["candela"] == 0
+    assert bv["radian"] == 0
+    assert bv["steradian"] == 0
+    assert bv["bit"] == 0
+
+    # Check multiplier and offset (base Ohm has multiplier 1.0, offset 0.0)
+    assert serialized["multiplier"] == 1.0
+    assert serialized["offset"] == 0.0
+
+
 class is_base_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -604,6 +646,57 @@ class is_unit(fabll.Node):
             result = f"({result}+{offset})"
 
         return result
+
+    def _basis_vector_to_dict(self, basis_vector: BasisVector) -> dict:
+        """Convert a BasisVector dataclass to a dictionary of field values."""
+        return {
+            "ampere": basis_vector.ampere,
+            "second": basis_vector.second,
+            "meter": basis_vector.meter,
+            "kilogram": basis_vector.kilogram,
+            "kelvin": basis_vector.kelvin,
+            "mole": basis_vector.mole,
+            "candela": basis_vector.candela,
+            "radian": basis_vector.radian,
+            "steradian": basis_vector.steradian,
+            "bit": basis_vector.bit,
+        }
+
+    def serialize(self) -> dict:
+        """
+        Serialize this unit to a dictionary.
+
+        Returns a dict matching the component API format:
+        {
+            "symbols": ["symbol1", "symbol2"],
+            "basis_vector": {"
+                "ampere": 0,
+                "second": 0,
+                "meter": 0,
+                "kilogram": 0,
+                "kelvin": 0,
+                "mole": 0,
+                "candela": 0,
+                "radian": 0,
+                "steradian": 0,
+                "bit": 0,
+            },
+            "multiplier": 1.0,
+            "offset": 0.0,
+        }
+        """
+        out = {}
+        symbols = self._extract_symbol()
+        basis_vector = self._extract_basis_vector()
+        multiplier = self._extract_multiplier()
+        offset = self._extract_offset()
+
+        out["symbols"] = symbols
+        out["basis_vector"] = self._basis_vector_to_dict(basis_vector)
+        out["multiplier"] = multiplier
+        out["offset"] = offset
+
+        return out
 
 
 class is_si_prefixed_unit(fabll.Node):
@@ -1622,6 +1715,7 @@ class AmpereHour(fabll.Node):
 
 
 VoltsPerSecond = make_unit_expression_type([(Volt, 1), (Second, -1)])
+
 
 # Logarithmic units --------------------------------------------------------------------
 # TODO: logarithmic units
