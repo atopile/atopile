@@ -1025,7 +1025,7 @@ class _UnitRegistry(Enum):
     Liter = auto()
 
     # angular frequency
-    RPM = auto()
+    Rpm = auto()
 
 
 _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
@@ -1074,7 +1074,7 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
     _UnitRegistry.Month: ["month"],
     _UnitRegistry.Year: ["year"],
     _UnitRegistry.Liter: ["liter"],
-    _UnitRegistry.RPM: ["rpm", "RPM"],
+    _UnitRegistry.Rpm: ["rpm", "RPM"],
 }
 
 
@@ -1584,7 +1584,7 @@ class RPM(fabll.Node):
 
     _is_unit = fabll.Traits.MakeEdge(
         is_unit.MakeChild(
-            _UNIT_SYMBOLS[_UnitRegistry.RPM],
+            _UNIT_SYMBOLS[_UnitRegistry.Rpm],
             unit_vector_arg,
             multiplier=(2 * math.pi) / 60.0,
         )

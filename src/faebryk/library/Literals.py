@@ -2793,8 +2793,10 @@ class Numbers(fabll.Node):
     def op_mul_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
     ) -> "Numbers":
-        """Arithmetically multiply two quantity sets.
-        Result unit is self.unit * other.unit."""
+        """
+        Arithmetically multiply two quantity sets.
+        Result unit is self.unit * other.unit.
+        """
         other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_multiply(
             g=g, tg=tg, other=other_converted.get_numeric_set()
