@@ -3,7 +3,8 @@ from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, Iterable, Self, cast
+from operator import ge
+from typing import ClassVar, Iterable, Self, cast
 
 import pytest
 from typing_extensions import deprecated
@@ -212,14 +213,6 @@ def is_int(value: float) -> bool:
     return value == int(value)
 
 
-from operator import ge
-
-
-# FIXME
-def ge(a: float, b: float) -> bool:
-    return a >= b
-
-
 @dataclass(frozen=True)
 class NumericAttributes(fabll.NodeAttributes):
     value: float
@@ -229,7 +222,7 @@ class Numeric(fabll.Node[NumericAttributes]):
     Attributes = NumericAttributes
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField:  # type: ignore
+    def MakeChild(cls, value: float) -> fabll._ChildField:
         out = fabll._ChildField(cls, attributes=NumericAttributes(value=value))
         return out
 
@@ -281,7 +274,7 @@ class NumericInterval(fabll.Node):
     _max_identifier: ClassVar[str] = "max"
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
@@ -774,7 +767,7 @@ class NumericInterval(fabll.Node):
         is_left = self.get_min_value() <= other.get_min_value()
         left = self if is_left else other
         right = other if is_left else self
-        if right.get_min_value() in self:
+        if self.contains(right.get_min_value()):
             numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
             numeric_interval.setup(
                 g=g,
@@ -785,8 +778,7 @@ class NumericInterval(fabll.Node):
             return [numeric_interval]
         return [left, right]
 
-    # FIXME
-    def __contains__(self, item: float) -> bool:
+    def contains(self, item: float) -> bool:
         """
         Set checks if a number is in a interval.
         """
@@ -794,8 +786,7 @@ class NumericInterval(fabll.Node):
             return False
         return ge(self.get_max_value(), item) and ge(item, self.get_min_value())
 
-    # FIXME
-    def __eq__(self, other: "NumericInterval") -> bool:
+    def equals(self, other: "NumericInterval") -> bool:
         return (
             self.get_min_value() == other.get_min_value()
             and self.get_max_value() == other.get_max_value()
@@ -1369,7 +1360,7 @@ class TestNumericInterval:
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
-        assert numeric_set_1 == numeric_set_2
+        assert numeric_set_1.equals(numeric_set_2)
 
 
 class NumericSet(fabll.Node):
@@ -1462,7 +1453,7 @@ class NumericSet(fabll.Node):
             raise ValueError("empty interval cannot have closest element")
         index = bisect(self.get_intervals(), target, key=lambda r: r.get_min_value())
         left = self.get_intervals()[index - 1] if index > 0 else None
-        if left is not None and target in left:
+        if left is not None and left.contains(target):
             return target
         left_bound = left.get_max_value() if left is not None else None
         right_bound = (
@@ -1535,7 +1526,7 @@ class NumericSet(fabll.Node):
     def is_superset_of(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> bool:
-        return other == other.op_intersect_intervals(g=g, tg=tg, other=self)
+        return other.equals(other.op_intersect_intervals(g=g, tg=tg, other=self))
 
     def is_subset_of(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
@@ -1686,45 +1677,77 @@ class NumericSet(fabll.Node):
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "Booleans":
         if self.is_empty() or other.is_empty():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[])
+            )
         if self.get_min_value() >= other.get_max_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[True])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            )
         if self.get_max_value() < other.get_min_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[False])
-        return Booleans.create_instance(g=g, tg=tg, booleans=[True, False])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            )
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        )
 
     def op_gt_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "Booleans":
         if self.is_empty() or other.is_empty():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[])
+            )
         if self.get_min_value() > other.get_max_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[True])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            )
         if self.get_max_value() <= other.get_min_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[False])
-        return Booleans.create_instance(g=g, tg=tg, booleans=[True, False])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            )
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        )
 
     def op_le_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "Booleans":
         if self.is_empty() or other.is_empty():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[])
+            )
         if self.get_max_value() <= other.get_min_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[True])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            )
         if self.get_min_value() > other.get_max_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[False])
-        return Booleans.create_instance(g=g, tg=tg, booleans=[True, False])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            )
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        )
 
     def op_lt_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "Booleans":
         if self.is_empty() or other.is_empty():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[])
+            )
         if self.get_max_value() < other.get_min_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[True])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            )
         if self.get_min_value() >= other.get_max_value():
-            return Booleans.create_instance(g=g, tg=tg, booleans=[False])
-        return Booleans.create_instance(g=g, tg=tg, booleans=[True, False])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            )
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        )
 
     def op_round(
         self, g: graph.GraphView, tg: TypeGraph, ndigits: int = 0
@@ -1756,25 +1779,26 @@ class NumericSet(fabll.Node):
             intervals.append(interval.op_sine(g=g, tg=tg))
         return numeric_set.setup(g=g, tg=tg, intervals=intervals)
 
-    # FIXME
-    def __contains__(self, item: float) -> bool:
+    def contains(self, item: float) -> bool:
         if not isinstance(item, float):
             return False
         for interval in self.get_intervals():
-            if item in interval:
+            if interval.contains(item):
                 return True
         return False
 
-    # FIXME
-    def __eq__(self, value: "NumericSet") -> bool:
+    def equals(self, value: "NumericSet") -> bool:
+        """Check if all intervals in this set are equal
+        to the intervals in the other set."""
         if not isinstance(value, NumericSet):
             return False
         self_intervals = self.get_intervals()
         value_intervals = value.get_intervals()
+        print(self_intervals, value_intervals)
         if len(self_intervals) != len(value_intervals):
             return False
         for r1, r2 in zip(self_intervals, value_intervals):
-            if r1 != r2:
+            if not r1.equals(r2):
                 return False
         return True
 
@@ -2292,12 +2316,12 @@ class TestNumericSet:
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
-        assert 0.5 in numeric_set
-        assert 0.0 in numeric_set
-        assert 1.0 in numeric_set
-        assert 2.0 in numeric_set
-        assert 3.0 in numeric_set
-        assert 4.0 not in numeric_set
+        assert numeric_set.contains(0.5)
+        assert numeric_set.contains(0.0)
+        assert numeric_set.contains(1.0)
+        assert numeric_set.contains(2.0)
+        assert numeric_set.contains(3.0)
+        assert not numeric_set.contains(4.0)
 
     def test_eq(self):
         g = graph.GraphView.create()
@@ -2306,10 +2330,10 @@ class TestNumericSet:
         numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
-        assert numeric_set_1 == numeric_set_2
+        assert numeric_set_1.equals(numeric_set_2)
         numeric_set_3 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_3.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 4.0)])
-        assert numeric_set_1 != numeric_set_3
+        assert not numeric_set_1.equals(numeric_set_3)
 
     def test_repr(self):
         g = graph.GraphView.create()
@@ -2707,7 +2731,7 @@ class Numbers(fabll.Node):
         Convert between two units with the same basis vector but different multiplier
         and offset.
         eg Celsius to Kelvin.
-        Returns a new Numbers with the converted values in the units of self.
+        Returns a new Numbers from other with the converted values in the units of self.
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
@@ -3158,7 +3182,7 @@ class Numbers(fabll.Node):
         Check if a numeric value is contained in this quantity set.
         The value should already be in the same units as this set.
         """
-        return value in self.get_numeric_set()
+        return self.get_numeric_set().contains(value)
 
     def any(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         """Return any element from this set as a single-value Numbers."""
@@ -3247,9 +3271,7 @@ class Numbers(fabll.Node):
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
 
-    def op_lt(
-        self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
-    ) -> "F.Literals.Booleans":
+    def op_lt(self, g: graph.GraphView, tg: TypeGraph, other: "Numbers") -> "Booleans":
         """
         Check if self < other (less than).
         Returns Booleans with possible values:
@@ -3270,23 +3292,26 @@ class Numbers(fabll.Node):
         g: graph.GraphView,
         tg: TypeGraph,
         bit_position: "Numbers",
-    ) -> "F.Literals.Booleans":
+    ) -> "Booleans":
         """
         Check if a specific bit is set in the value.
         Both self and bit_position must be single integer values.
         If either is not a single element, returns Booleans(False, True)
         indicating uncertainty.
         """
-        from faebryk.library.Literals import Booleans
 
         if not self.is_single_element() or not bit_position.is_single_element():
             # Uncertain result when either is a range
-            return Booleans.create_instance(g=g, tg=tg, booleans=[False, True])
+            return Booleans.bind_typegraph(tg=tg).create_instance(
+                g=g, attributes=BooleansAttributes.from_values(values=[False, True])
+            )
         # TODO: this doesnt seem ideal
         value = int(self.get_numeric_set().get_min_value())
         bit = int(bit_position.get_numeric_set().get_min_value())
         is_set = ((value >> bit) & 1) == 1
-        return Booleans.create_instance(g=g, tg=tg, booleans=[is_set])
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[is_set])
+        )
 
     def __repr__(self) -> str:
         try:
@@ -3299,21 +3324,19 @@ class Numbers(fabll.Node):
     def __str__(self) -> str:
         return self.__repr__()
 
-    def __eq__(self, other: Any) -> bool:
+    def equals(self, g: graph.GraphView, tg: TypeGraph, other: "Numbers") -> bool:
         """
         Check equality with another Numbers.
         Two quantity sets are equal if they have commensurable units and
         the same numeric intervals (after unit conversion).
         """
-        if other is None:
-            return False
-        if not isinstance(other, Numbers):
-            return False
-        # Check if units are commensurable
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            return False
-        # Use NumericSet's __eq__ for interval comparison
-        return self.get_numeric_set() == other.get_numeric_set()
+        # Convert to same units and check commensurability
+        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        return self.get_numeric_set().equals(other_converted.get_numeric_set())
+
+    def contains(self, g: graph.GraphView, tg: TypeGraph, other: "Numbers") -> bool:
+        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        return self.get_numeric_set().contains(other_converted.get_value())
 
     def __hash__(self) -> int:
         """Hash based on numeric intervals and unit basis vector."""
@@ -4047,8 +4070,8 @@ class TestNumbers:
         quantity_set.setup_from_min_max(
             g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
         )
-        assert quantity_set.contains_value(3.0) is True
-        assert quantity_set.contains_value(10.0) is False
+        assert quantity_set.contains_value(3.0)
+        assert not quantity_set.contains_value(10.0)
 
     def test_any(self):
         """Test getting any element from set as a Numbers."""
@@ -4174,7 +4197,7 @@ class TestNumbers:
         qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
-        assert qs1 == qs2
+        assert qs1.equals(g=g, tg=tg, other=qs2)
 
     def test_eq_different_values(self):
         """Test inequality when values differ."""
@@ -4187,7 +4210,7 @@ class TestNumbers:
         qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(g=g, tg=tg, min=3.0, max=6.0, unit=meter_instance)
-        assert qs1 != qs2
+        assert not qs1.equals(g=g, tg=tg, other=qs2)
 
     def test_eq_incompatible_units(self):
         """Test inequality when units are incompatible."""
@@ -4201,7 +4224,7 @@ class TestNumbers:
         qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=second_instance)
-        assert qs1 != qs2
+        pytest.raises(ValueError, qs1.equals, g=g, tg=tg, other=qs2)
 
     def test_hash(self):
         """Test that hash works and equal sets have same hash."""
@@ -4548,8 +4571,7 @@ class Counts(fabll.Node):
             raise ValueError("Cannot get max of empty Counts")
         return max(values)
 
-    # FIXME
-    def __contains__(self, item: int) -> bool:
+    def contains(self, item: int) -> bool:
         return item in self.get_values()
 
     def __repr__(self) -> str:
@@ -4672,18 +4694,18 @@ class TestCounts:
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
         counts.setup_from_values(g=g, tg=tg, values=[1, 5, 10])
-        assert 5 in counts
-        assert 1 in counts
-        assert 10 in counts
+        assert counts.contains(5)
+        assert counts.contains(1)
+        assert counts.contains(10)
 
     def test_contains_false(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
         counts.setup_from_values(g=g, tg=tg, values=[1, 5, 10])
-        assert 2 not in counts
-        assert 0 not in counts
-        assert 100 not in counts
+        assert not counts.contains(2)
+        assert not counts.contains(0)
+        assert not counts.contains(100)
 
     def test_repr(self):
         g = graph.GraphView.create()
@@ -4716,14 +4738,6 @@ class Booleans(fabll.Node[BooleansAttributes]):
     _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
-    # FIXME: remove
-    def setup(self, booleans: list[bool]) -> Self:
-        """
-        Setup is a no-op for Booleans since values are stored in attributes.
-        This method exists for API compatibility.
-        """
-        return self
-
     def get_single(self) -> bool:
         """Get the single boolean value. Raises if not exactly one value."""
         values = self.get_values()
@@ -4731,21 +4745,8 @@ class Booleans(fabll.Node[BooleansAttributes]):
             raise ValueError(f"Expected single boolean, got {len(values)}: {values}")
         return values[0]
 
-    # FIXME: remove
     @classmethod
-    def create_instance(
-        cls,
-        g: "graph.GraphView",
-        tg: "TypeGraph",
-        booleans: list[bool] | None = None,
-    ) -> "Booleans":
-        """Create a Booleans instance with the given values."""
-        return cls.bind_typegraph(tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(booleans or [])
-        )
-
-    @classmethod
-    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore
         return fabll._ChildField(
             cls,
             attributes=BooleansAttributes(
@@ -4789,7 +4790,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
     def op_not(self, g: "graph.GraphView", tg: "TypeGraph") -> "Booleans":
         """Logical NOT of all values in this set."""
         values = self.get_values()
-        return Booleans.create_instance(g=g, tg=tg, booleans=[not v for v in values])
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g,
+            attributes=BooleansAttributes.from_values(values=[not v for v in values]),
+        )
 
     def op_and(
         self, g: "graph.GraphView", tg: "TypeGraph", other: "Booleans"
@@ -4799,7 +4803,9 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add(v1 and v2)
-        return Booleans.create_instance(g=g, tg=tg, booleans=list(result))
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        )
 
     def op_or(
         self, g: "graph.GraphView", tg: "TypeGraph", other: "Booleans"
@@ -4809,7 +4815,9 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add(v1 or v2)
-        return Booleans.create_instance(g=g, tg=tg, booleans=list(result))
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        )
 
     def op_xor(
         self, g: "graph.GraphView", tg: "TypeGraph", other: "Booleans"
@@ -4819,7 +4827,9 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add(v1 != v2)
-        return Booleans.create_instance(g=g, tg=tg, booleans=list(result))
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        )
 
     def op_implies(
         self, g: "graph.GraphView", tg: "TypeGraph", other: "Booleans"
@@ -4829,7 +4839,9 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add((not v1) or v2)
-        return Booleans.create_instance(g=g, tg=tg, booleans=list(result))
+        return Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        )
 
     def is_true(self) -> bool:
         """Check if this set contains only True."""
@@ -5088,7 +5100,9 @@ class BoundLiteralContext:
         return self.Numbers.create_instance(g=self.g, tg=self.tg)
 
     def create_booleans(self, booleans: list[bool] | None = None) -> "Booleans":
-        return Booleans.create_instance(g=self.g, tg=self.tg, booleans=booleans)
+        return Booleans.bind_typegraph(tg=self.tg).create_instance(
+            g=self.g, attributes=BooleansAttributes.from_values(values=booleans or [])
+        )
 
     def create_enums(self) -> "AbstractEnums":
         return self.Enums.create_instance(g=self.g)
@@ -5236,34 +5250,44 @@ class TestStringLiterals:
             Strings,
         )
         assert lit
-        assert fabll.Traits(lit).get_obj(Strings).get_values() == values
+        assert lit.get_values() == values
 
 
 class TestBooleans:
     def test_create_instance(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        bools = Booleans.create_instance(g=g, tg=tg, booleans=[True, False])
+        bools = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        )
         assert set(bools.get_values()) == {True, False}
 
     def test_get_single(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        bools = Booleans.create_instance(g=g, tg=tg, booleans=[True])
+        bools = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        )
         assert bools.get_single() is True
 
     def test_op_not(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        bools = Booleans.create_instance(g=g, tg=tg, booleans=[True])
+        bools = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        )
         result = bools.op_not(g=g, tg=tg)
         assert result.get_values() == [False]
 
     def test_op_and(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        bools1 = Booleans.create_instance(g=g, tg=tg, booleans=[True, False])
-        bools2 = Booleans.create_instance(g=g, tg=tg, booleans=[True])
+        bools1 = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        )
+        bools2 = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        )
         result = bools1.op_and(g=g, tg=tg, other=bools2)
         # True AND True = True, False AND True = False
         assert set(result.get_values()) == {True, False}
@@ -5271,8 +5295,12 @@ class TestBooleans:
     def test_op_or(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        bools1 = Booleans.create_instance(g=g, tg=tg, booleans=[False])
-        bools2 = Booleans.create_instance(g=g, tg=tg, booleans=[True])
+        bools1 = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[False])
+        )
+        bools2 = Booleans.bind_typegraph(tg=tg).create_instance(
+            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        )
         result = bools1.op_or(g=g, tg=tg, other=bools2)
         # False OR True = True
         assert result.get_values() == [True]
