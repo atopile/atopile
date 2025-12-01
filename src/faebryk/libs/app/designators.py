@@ -20,61 +20,85 @@ logger = logging.getLogger(__name__)
 
 def attach_random_designators(tg: fbrk.TypeGraph):
     """
-    Sorts nodes by path and then sequentially attaches designators
+    Assigns sequential designators (R1, R2, C1, etc.) to components.
 
-    This ensures that everything which has a footprint must have a designator.
+    Components with has_designator_prefix get a has_designator trait if missing,
+    then any component without a designator value gets one assigned.
     """
-
-    designators = fabll.Traits.get_implementors(F.has_designator.bind_typegraph(tg))
-    pattern = re.compile(r"([A-Z]+)([0-9]+)")
-
-    groups = groupby(
-        [
-            (m.group(1), int(m.group(2)))
-            for d in designators
-            if (m := pattern.match(d.get_designator()))
-        ],
-        key=lambda x: x[0],
-    )
-
-    assigned = defaultdict(
-        list,
-        {k: cast(list[int], [num for _, num in v]) for k, v in groups.items()},
-    )
-
-    def _get_first_hole(used: list[int]):
-        s_used = sorted(used)
-        for i in range(len(used)):
-            if i + 1 != s_used[i]:
+    
+    def _get_first_available_number(used: list[int]) -> int:
+        """Find the first gap in the sequence, or the next number after the highest."""
+        sorted_used = sorted(used)
+        for i, num in enumerate(sorted_used):
+            if i + 1 != num:
                 return i + 1
         return len(used) + 1
 
-    nodes_sorted = natsorted(designators, key=lambda x: x.get_designator())
+    # Step 1: Ensure all components with a prefix also have a has_designator trait
+    components_with_prefix = fabll.Traits.get_implementor_objects(
+        F.has_designator_prefix.bind_typegraph(tg)
+    )
+    for component in components_with_prefix:
+        if not component.has_trait(F.has_designator):
+            fabll.Traits.create_and_add_instance_to(component, F.has_designator)
 
-    for n in nodes_sorted:
-        if n.has_trait(F.has_designator):
+    # Step 2: Get all components that have has_designator trait
+    components_with_designator = fabll.Traits.get_implementor_objects(
+        F.has_designator.bind_typegraph(tg)
+    )
+
+    # Step 3: Parse existing designators to track which numbers are used per prefix
+    pattern = re.compile(r"([A-Z]+)([0-9]+)")
+    assigned: dict[str, list[int]] = defaultdict(list)
+    
+    for component in components_with_designator:
+        designator_trait = component.get_trait(F.has_designator)
+        existing = designator_trait.get_designator()
+        if existing and (match := pattern.match(existing)):
+            prefix = match.group(1)
+            number = int(match.group(2))
+            assigned[prefix].append(number)
+
+    # Step 4: Assign designators to components that don't have one yet
+    # Sort by name for deterministic ordering
+    components_sorted = natsorted(
+        components_with_designator,
+        key=lambda c: c.get_full_name() or ""
+    )
+
+    for component in components_sorted:
+        designator_trait = component.get_trait(F.has_designator)
+        
+        # Skip if already has a designator
+        if designator_trait.get_designator() is not None:
             continue
-        if not n.has_trait(F.has_designator_prefix):
-            prefix = type(n).__name__
-            logger.warning(f"Node {prefix} has no designator prefix")
+
+        # Get prefix from has_designator_prefix trait, or use class name as fallback
+        if component.has_trait(F.has_designator_prefix):
+            prefix = component.get_trait(F.has_designator_prefix).get_prefix()
         else:
-            prefix = n.get_trait(F.has_designator_prefix).get_prefix()
+            prefix = type(component).__name__
+            logger.warning(f"Component {component} has no designator prefix, using {prefix}")
 
-        next_num = _get_first_hole(assigned[prefix])
+        # Assign next available number for this prefix
+        next_num = _get_first_available_number(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        fabll.Traits.create_and_add_instance_to(n, F.has_designator).setup(designator)
-
+        
+        logger.info(f"Setting designator {designator} for {component}")
+        designator_trait.setup(designator)
         assigned[prefix].append(next_num)
 
-    no_designator = {n for n in designators if not n.has_trait(F.has_designator)}
-    assert not no_designator
+    # Step 5: Verify all designators are set and unique
+    all_designators = [
+        component.get_trait(F.has_designator).get_designator()
+        for component in components_with_designator
+    ]
+    
+    missing = [d for d in all_designators if d is None]
+    assert not missing, f"Components without designators: {missing}"
 
-    dupes = duplicates(
-        designators, lambda n: n.get_trait(F.has_designator).get_designator()
-    )
-    assert not dupes, (
-        f"Duplicate designators found in layout:\n{md_list(dupes, recursive=True)}"
-    )
+    dupes = duplicates(all_designators, lambda d: d)
+    assert not dupes, f"Duplicate designators: {md_list(dupes, recursive=True)}"
 
 
 def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Node, str]:
@@ -94,7 +118,7 @@ def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Nod
     traits = fabll.Traits.get_implementors(
         F.PCBTransformer.has_linked_kicad_footprint.bind_typegraph(tg)
     )
-    nodes_traits = {trait.get_parent_force()[0]: trait for trait in traits}
+    nodes_traits = {fabll.Traits(trait).get_obj_raw(): trait for trait in traits}
 
     known_designators = {
         node: ref
