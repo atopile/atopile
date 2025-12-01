@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from operator import ge
 from typing import TYPE_CHECKING, ClassVar, Iterable, Self, cast
+from warnings import deprecated
 
 import pytest
 
@@ -196,11 +197,13 @@ class Strings(fabll.Node):
         out.add_dependant(lit, before=True)
         return out
 
-    @staticmethod
-    def make_lit(tg: TypeGraph, value: str) -> "Strings":
-        return Strings.bind_typegraph(tg=tg).create_instance(
-            g=tg.get_graph_view(), attributes=LiteralsAttributes(value=value)
-        )
+    # TODO fix calling sites and remove this
+    @deprecated("Use get_values() instead")
+    def get_value(self) -> str:
+        values = self.get_values()
+        if len(values) != 1:
+            raise ValueError(f"Expected 1 value, got {len(values)}")
+        return values[0]
 
 
 def is_int(value: float) -> bool:
@@ -1474,12 +1477,6 @@ class NumericSet(fabll.Node):
         self, g: graph.GraphView, tg: TypeGraph, value: float
     ) -> "NumericSet":
         return self.setup_from_values(g=g, tg=tg, values=[(value, value)])
-
-    @staticmethod
-    def make_lit(g: graph.GraphView, tg: TypeGraph, value: float) -> "NumericSet":
-        """Create a literal numeric set with the given value."""
-        numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        return numeric_set.setup_from_singleton(g=g, tg=tg, value=value)
 
     def setup_from_values(
         self, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
