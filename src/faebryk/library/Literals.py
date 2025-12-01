@@ -4,7 +4,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from enum import Enum
 from operator import ge
-from typing import ClassVar, Iterable, Self, cast
+from typing import TYPE_CHECKING, ClassVar, Iterable, Self, cast
 
 import pytest
 
@@ -15,6 +15,9 @@ import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.libs.util import not_none, once
+
+if TYPE_CHECKING:
+    from faebryk.library.Units import is_unit
 
 REL_DIGITS = 7  # 99.99999% precision
 ABS_DIGITS = 15  # femto
@@ -2474,15 +2477,8 @@ class Numbers(fabll.Node):
         g: graph.GraphView,
         tg: TypeGraph,
         numeric_set: NumericSet,
-        unit: fabll.Node,
+        unit: "is_unit",
     ) -> "Numbers":
-        from faebryk.library.Units import is_unit
-
-        try:
-            _ = unit.get_trait(is_unit)
-        except fabll.TraitNotFound:
-            raise ValueError(f"Unit {unit} is not a valid unit")
-
         _ = EdgeComposition.add_child(
             bound_node=self.instance,
             child=numeric_set.instance.node(),
@@ -2507,7 +2503,7 @@ class Numbers(fabll.Node):
         tg: TypeGraph,
         min: float,
         max: float,
-        unit: fabll.Node,
+        unit: "is_unit",
     ) -> "Numbers":
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
             g=g, tg=tg, values=[(min, max)]
@@ -2515,9 +2511,7 @@ class Numbers(fabll.Node):
         return self.setup(g=g, tg=tg, numeric_set=numeric_set, unit=unit)
 
     @classmethod
-    def unbounded(
-        cls, g: graph.GraphView, tg: TypeGraph, unit: fabll.Node
-    ) -> "Numbers":
+    def unbounded(cls, g: graph.GraphView, tg: TypeGraph, unit: "is_unit") -> "Numbers":
         """Create an unbounded quantity set (-∞, +∞) with the given unit."""
         quantity_set = cls.create_instance(g=g, tg=tg)
         return quantity_set.setup_from_min_max(
@@ -2525,11 +2519,7 @@ class Numbers(fabll.Node):
         )
 
     def setup_from_singleton(
-        self,
-        g: graph.GraphView,
-        tg: TypeGraph,
-        value: float,
-        unit: fabll.Node,
+        self, g: graph.GraphView, tg: TypeGraph, value: float, unit: "is_unit"
     ) -> "Numbers":
         return self.setup_from_min_max(g=g, tg=tg, min=value, max=value, unit=unit)
 
@@ -2540,7 +2530,7 @@ class Numbers(fabll.Node):
         assert numeric_set is not None
         return NumericSet.bind_instance(numeric_set)
 
-    def get_is_unit(self) -> "F.Units.is_unit":
+    def get_is_unit(self) -> "is_unit":
         from faebryk.library.Units import has_unit
 
         return self.get_trait(has_unit).get_is_unit()

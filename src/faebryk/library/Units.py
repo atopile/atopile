@@ -627,26 +627,40 @@ class is_unit(fabll.Node):
         return (scale, offset)
 
     def compact_repr(self) -> str:
+        def to_superscript(n: int) -> str:
+            """Convert an integer to Unicode superscript characters."""
+            superscript_map = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
+            return str(n).translate(superscript_map)
+
+        def format_number(value: float) -> str:
+            """Format a number without unnecessary trailing zeros."""
+            if value == int(value):
+                return str(int(value))
+            return f"{value:g}"
+
+        # use the first pre-defined symbol if available
         if symbols := self._extract_symbol():
             return symbols[0]
 
+        # otherwise, render the basis vector
         vector = self._extract_basis_vector()
         multiplier = self._extract_multiplier()
         offset = self._extract_offset()
 
-        parts = []
-        for dim_name, symbol in BasisVector.iter_fields_and_symbols():
-            exp = getattr(vector, dim_name)
-            if exp != 0:
-                parts.append(f"{symbol}^{exp}" if exp != 1 else symbol)
-
-        result = "·".join(parts) if parts else "1"
+        result = "·".join(
+            [
+                f"{symbol}{to_superscript(exp)}" if exp != 1 else symbol
+                for dim_name, symbol in BasisVector.iter_fields_and_symbols()
+                if (exp := getattr(vector, dim_name)) != 0
+            ]
+        )
 
         if multiplier != 1.0:
-            result = f"{multiplier}×{result}"
+            mult_str = format_number(multiplier)
+            result = f"{mult_str}×{result}" if result else mult_str
 
         if offset != 0.0:
-            result = f"({result}+{offset})"
+            result = f"({result}+{format_number(offset)})"
 
         return result
 
@@ -727,6 +741,7 @@ class has_unit(fabll.Node):
 
 
 class is_si_prefixed_unit(fabll.Node):
+    # FIXME: short and long forms, plus trait to select for display
     SI_PREFIXES: ClassVar[dict[str, float]] = {
         "Q": 10**30,  # quetta
         "R": 10**27,  # ronna
@@ -1125,6 +1140,7 @@ class _UnitRegistry(Enum):
 
 
 _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
+    # prefereed unit for display comes first (must be valid with prefixes)
     _UnitRegistry.Dimensionless: ["dimensionless"],  # TODO: allow None?
     _UnitRegistry.Percent: ["%"],
     _UnitRegistry.Ppm: ["ppm"],
@@ -1157,8 +1173,8 @@ _UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
     _UnitRegistry.Gray: ["Gy"],
     _UnitRegistry.Sievert: ["Sv"],
     _UnitRegistry.Katal: ["kat"],
-    _UnitRegistry.Bit: ["bit"],
-    _UnitRegistry.Byte: ["byte"],
+    _UnitRegistry.Bit: ["b", "bit"],
+    _UnitRegistry.Byte: ["B", "byte"],
     _UnitRegistry.Gram: ["g"],
     _UnitRegistry.Degree: ["°", "deg"],
     _UnitRegistry.ArcMinute: ["arcmin"],
@@ -1728,6 +1744,14 @@ class BoundUnitsContext:
     def __init__(self, tg: fbrk.TypeGraph, g: graph.GraphView):
         self.tg = tg
         self.g = g
+        self.literals = F.Literals.BoundLiteralContext(tg=tg, g=g)
+
+    @property
+    @once
+    def NumericParameter(self) -> F.Parameters.NumericParameter:
+        return F.Parameters.NumericParameter.bind_typegraph(tg=self.tg).create_instance(
+            g=self.g
+        )
 
     @property
     @once
@@ -1798,6 +1822,11 @@ class BoundUnitsContext:
     @once
     def Degree(self) -> Degree:
         return Degree.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+
+    @property
+    @once
+    def Bit(self) -> Bit:
+        return Bit.bind_typegraph(tg=self.tg).create_instance(g=self.g)
 
 
 class _TestWithContext:
@@ -2066,20 +2095,134 @@ class TestIsUnit(_TestWithContext):
         assert is_unit_._extract_multiplier() == 1.0
         assert is_unit_._extract_offset() == 0.0
 
+    def test_to_base_units_prefixed(self, ctx: BoundUnitsContext):
+        """Prefixed unit normalizes to base unit with multiplier=1."""
+        _ = ctx.Meter
+        kilometer = decode_symbol(g=ctx.g, tg=ctx.tg, symbol="km")
+        base = kilometer.to_base_units(g=ctx.g, tg=ctx.tg)
+
+        assert base._extract_basis_vector() == BasisVector(meter=1)
+        assert base._extract_multiplier() == 1.0
+        assert base._extract_offset() == 0.0
+
+    def test_to_base_units_affine(self, ctx: BoundUnitsContext):
+        """Affine unit normalizes to base unit with offset=0."""
+        celsius = ctx.DegreeCelsius._is_unit.get()
+        base = celsius.to_base_units(g=ctx.g, tg=ctx.tg)
+
+        assert base._extract_basis_vector() == BasisVector(kelvin=1)
+        assert base._extract_multiplier() == 1.0
+        assert base._extract_offset() == 0.0
+
+    def test_to_base_units_derived(self, ctx: BoundUnitsContext):
+        """Derived unit normalizes to base SI dimensions."""
+        newton = (
+            Newton.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).get_trait(is_unit)
+        )
+        base = newton.to_base_units(g=ctx.g, tg=ctx.tg)
+
+        assert base._extract_basis_vector() == BasisVector(
+            kilogram=1, meter=1, second=-2
+        )
+        assert base._extract_multiplier() == 1.0
+        assert base._extract_offset() == 0.0
+
+    def test_compact_repr_with_symbol(self, ctx: BoundUnitsContext):
+        """Unit with symbol returns that symbol."""
+        meter = ctx.Meter._is_unit.get()
+        assert meter.compact_repr() == "m"
+
+    def test_compact_repr_first_symbol(self, ctx: BoundUnitsContext):
+        """Unit with multiple symbols returns the first one."""
+        ohm = ctx.Ohm._is_unit.get()
+        assert ohm.compact_repr() == "Ω"
+
+    def test_compact_repr_anonymous_unit(self, ctx: BoundUnitsContext):
+        """Anonymous unit renders basis vector with superscript exponents."""
+        # Order follows BasisVector field order: A, s, m, kg, K, mol, cd, rad, sr, bit
+        velocity_unit = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(meter=1, second=-1),
+            multiplier=1.0,
+            offset=0.0,
+        )
+        assert velocity_unit.compact_repr() == "s⁻¹·m"
+
+    def test_compact_repr_dimensionless(self, ctx: BoundUnitsContext):
+        """Dimensionless anonymous unit renders as empty string."""
+        dimensionless_anon = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(),
+            multiplier=1.0,
+            offset=0.0,
+        )
+        assert dimensionless_anon.compact_repr() == ""
+
+    def test_compact_repr_dimensionless_with_multiplier(self, ctx: BoundUnitsContext):
+        """Dimensionless with multiplier renders multiplier only (no trailing ×)."""
+        scaled_dimensionless = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(),
+            multiplier=1000.0,
+            offset=0.0,
+        )
+        assert scaled_dimensionless.compact_repr() == "1000"
+
+    def test_compact_repr_with_multiplier(self, ctx: BoundUnitsContext):
+        """Multiplier is prefixed without trailing zeros."""
+        scaled_unit = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(meter=1),
+            multiplier=1000.0,
+            offset=0.0,
+        )
+        assert scaled_unit.compact_repr() == "1000×m"
+
+    def test_compact_repr_with_offset(self, ctx: BoundUnitsContext):
+        """Offset wraps in parentheses without trailing zeros."""
+        offset_unit = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(kelvin=1),
+            multiplier=1.0,
+            offset=273.15,
+        )
+        assert offset_unit.compact_repr() == "(K+273.15)"
+
+    def test_compact_repr_with_multiplier_and_offset(self, ctx: BoundUnitsContext):
+        """Both multiplier and offset render correctly."""
+        scaled_offset_unit = is_unit.new(
+            g=ctx.g,
+            tg=ctx.tg,
+            vector=BasisVector(kelvin=1),
+            multiplier=0.5,
+            offset=100.0,
+        )
+        assert scaled_offset_unit.compact_repr() == "(0.5×K+100)"
+
 
 class TestSymbols(_TestWithContext):
-    def test_decode_symbol(self, ctx: BoundUnitsContext):
+    def test_decode_symbol_base_unit(self, ctx: BoundUnitsContext):
+        """Decode a base unit symbol."""
         _ = ctx.Meter
-        decoded_meter = decode_symbol(g=ctx.g, tg=ctx.tg, symbol="m")
+        decoded = decode_symbol(g=ctx.g, tg=ctx.tg, symbol="m")
 
-        assert decoded_meter._extract_basis_vector() == BasisVector(meter=1)
-        assert decoded_meter._extract_multiplier() == 1.0
-        assert decoded_meter._extract_offset() == 0.0
+        assert decoded._extract_basis_vector() == BasisVector(meter=1)
+        assert decoded._extract_multiplier() == 1.0
+        assert decoded._extract_offset() == 0.0
 
-        kilometer = decode_symbol(g=ctx.g, tg=ctx.tg, symbol="km")
-        assert kilometer._extract_basis_vector() == BasisVector(meter=1)
-        assert kilometer._extract_multiplier() == 1000.0
-        assert kilometer._extract_offset() == 0.0
+    def test_decode_symbol_prefixed_unit(self, ctx: BoundUnitsContext):
+        """Decode a prefixed unit symbol."""
+        _ = ctx.Meter
+        decoded = decode_symbol(g=ctx.g, tg=ctx.tg, symbol="km")
+
+        assert decoded._extract_basis_vector() == BasisVector(meter=1)
+        assert decoded._extract_multiplier() == 1000.0
+        assert decoded._extract_offset() == 0.0
 
     def test_decode_symbol_not_found(self, ctx: BoundUnitsContext):
         with pytest.raises(UnitNotFoundError):
@@ -2116,6 +2259,70 @@ class TestSymbols(_TestWithContext):
         assert decoded._extract_basis_vector() == BasisVector(meter=1)
         assert decoded._extract_multiplier() == pytest.approx(expected_multiplier)
 
+    @pytest.mark.parametrize(
+        "symbol,expected_multiplier",
+        [
+            ("Kibit", 2**10),
+            ("Mibit", 2**20),
+            ("Gibit", 2**30),
+            ("Tibit", 2**40),
+        ],
+    )
+    def test_decode_symbol_binary_prefixes(
+        self, ctx: BoundUnitsContext, symbol: str, expected_multiplier: float
+    ):
+        """Test decoding symbols with binary prefixes for units that support them."""
+        _ = Bit.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        decoded = decode_symbol(g=ctx.g, tg=ctx.tg, symbol=symbol)
+
+        assert decoded._extract_basis_vector() == BasisVector(bit=1)
+        assert decoded._extract_multiplier() == pytest.approx(expected_multiplier)
+
+    @pytest.mark.parametrize(
+        "symbol,expected_multiplier",
+        [
+            ("KiB", 8 * 2**10),
+            ("MiB", 8 * 2**20),
+            ("GiB", 8 * 2**30),
+            ("TiB", 8 * 2**40),
+        ],
+    )
+    def test_decode_symbol_binary_prefixes_dervied(
+        self, ctx: BoundUnitsContext, symbol: str, expected_multiplier: float
+    ):
+        """
+        Test decoding symbols with binary prefixes for derived units that support them.
+        """
+        _ = Byte.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        decoded = decode_symbol(g=ctx.g, tg=ctx.tg, symbol=symbol)
+
+        assert decoded._extract_basis_vector() == BasisVector(bit=1)
+        assert decoded.get_conversion_to(ctx.Bit._is_unit.get()) == (
+            expected_multiplier,
+            0.0,
+        )
+        assert decoded._extract_multiplier() == pytest.approx(expected_multiplier)
+
+    def test_decode_symbol_invalid_binary_prefix_for_si_only(
+        self, ctx: BoundUnitsContext
+    ):
+        """Test that SI-only units reject binary prefixes."""
+        _ = ctx.Meter
+        # Meter supports SI prefixes but not binary prefixes
+        with pytest.raises(UnitNotFoundError):
+            decode_symbol(g=ctx.g, tg=ctx.tg, symbol="Kim")
+
+    def test_decode_symbol_invalid_prefix_for_non_prefixed_unit(
+        self, ctx: BoundUnitsContext
+    ):
+        """Test that units without prefix traits reject all prefixes."""
+        _ = ctx.Degree
+        # Degree does not have SI or binary prefix traits
+        with pytest.raises(UnitNotFoundError):
+            decode_symbol(g=ctx.g, tg=ctx.tg, symbol="kdeg")
+        with pytest.raises(UnitNotFoundError):
+            decode_symbol(g=ctx.g, tg=ctx.tg, symbol="mdeg")
+
 
 class TestUnitExpressions(_TestWithContext):
     def test_affine_unit_in_expression_raises(self, ctx: BoundUnitsContext):
@@ -2136,3 +2343,172 @@ class TestUnitExpressions(_TestWithContext):
             resolve_unit_expression(
                 tg=ctx.tg, g=ctx.g, expr=app.celsius_expr.get().instance
             )
+
+    def test_resolve_basic_unit(self, ctx: BoundUnitsContext):
+        """Test that a simple unit expression (Meter^1) resolves correctly."""
+        MeterExpr = make_unit_expression_type([(Meter, 1)])
+
+        class App(fabll.Node):
+            meter_expr = MeterExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        resolved = resolve_unit_expression(
+            tg=ctx.tg, g=ctx.g, expr=app.meter_expr.get().instance
+        )
+
+        unit = resolved.get_trait(is_unit)
+        assert unit._extract_basis_vector() == BasisVector(meter=1)
+        assert unit._extract_multiplier() == 1.0
+
+    def test_resolve_derived_unit(self, ctx: BoundUnitsContext):
+        """Test that derived units (Meter * Second^-1) resolve correctly."""
+        VelocityExpr = make_unit_expression_type([(Meter, 1), (Second, -1)])
+
+        class App(fabll.Node):
+            velocity_expr = VelocityExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        resolved = resolve_unit_expression(
+            tg=ctx.tg, g=ctx.g, expr=app.velocity_expr.get().instance
+        )
+
+        unit = resolved.get_trait(is_unit)
+        assert unit._extract_basis_vector() == BasisVector(meter=1, second=-1)
+        assert unit._extract_multiplier() == 1.0
+
+    def test_resolve_scaled_unit(self, ctx: BoundUnitsContext):
+        """Test that expressions with scaled units resolve with correct multiplier."""
+        KilometerExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000.0)
+
+        class App(fabll.Node):
+            km_expr = KilometerExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        resolved = resolve_unit_expression(
+            tg=ctx.tg, g=ctx.g, expr=app.km_expr.get().instance
+        )
+
+        unit = resolved.get_trait(is_unit)
+        assert unit._extract_basis_vector() == BasisVector(meter=1)
+        assert unit._extract_multiplier() == 1000.0
+
+    def test_resolve_compound_prefixed_unit(self, ctx: BoundUnitsContext):
+        """Test expressions mixing prefixed and base units (km/h)."""
+        KilometerExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000.0)
+        KilometersPerHourExpr = make_unit_expression_type(
+            [(KilometerExpr, 1), (Hour, -1)]
+        )
+
+        class App(fabll.Node):
+            kmh_expr = KilometersPerHourExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        resolved = resolve_unit_expression(
+            tg=ctx.tg, g=ctx.g, expr=app.kmh_expr.get().instance
+        )
+
+        unit = resolved.get_trait(is_unit)
+        assert unit._extract_basis_vector() == BasisVector(meter=1, second=-1)
+        # km/h = 1000m / 3600s
+        assert unit._extract_multiplier() == pytest.approx(1000.0 / 3600.0)
+
+    def test_resolve_manual_divide(self, ctx: BoundUnitsContext):
+        """Test that manually constructed Divide expressions resolve correctly."""
+        divide = (
+            F.Expressions.Divide.bind_typegraph(tg=ctx.tg)
+            .create_instance(g=ctx.g)
+            .setup(ctx.Meter, ctx.Second)  # type: ignore
+        )
+
+        result = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg).visit_divide(divide)
+        assert result._extract_basis_vector() == BasisVector(meter=1, second=-1)
+        assert result._extract_multiplier() == 1.0
+
+    def test_resolve_manual_power(self, ctx: BoundUnitsContext):
+        """Test that manually constructed Power expressions resolve correctly."""
+        exponent_param = ctx.NumericParameter.setup(
+            units=ctx.Dimensionless._is_unit.get()
+        )
+
+        exponent_param.alias_to_literal(
+            g=ctx.g,
+            value=ctx.literals.Numbers.setup_from_singleton(
+                g=ctx.g, tg=ctx.tg, value=2.0, unit=ctx.Dimensionless._is_unit.get()
+            ),
+        )
+
+        power = (
+            F.Expressions.Power.bind_typegraph(tg=ctx.tg)
+            .create_instance(g=ctx.g)
+            .setup(ctx.Meter, exponent_param)  # type: ignore
+        )
+
+        result = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg).visit_power(power)
+        assert result._extract_basis_vector() == BasisVector(meter=2)
+        assert result._extract_multiplier() == 1.0
+
+    def test_unit_expression_multiplier(self, ctx: BoundUnitsContext):
+        """Test that multiplier on UnitExpression is correctly applied."""
+        ScaledMeterExpr = make_unit_expression_type([(Meter, 1)], multiplier=1000.0)
+
+        class App(fabll.Node):
+            scaled_expr = ScaledMeterExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        resolved = resolve_unit_expression(
+            tg=ctx.tg, g=ctx.g, expr=app.scaled_expr.get().instance
+        )
+
+        assert resolved.get_trait(is_unit)._extract_multiplier() == 1000.0
+
+    def test_resolve_unit_expression_with_offset_raises(self, ctx: BoundUnitsContext):
+        """Test that UnitExpression with non-zero offset raises error."""
+        OffsetExpr = make_unit_expression_type([(Meter, 1)], offset=10.0)
+
+        class App(fabll.Node):
+            offset_expr = OffsetExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+
+        with pytest.raises(UnitExpressionError):
+            resolve_unit_expression(
+                tg=ctx.tg, g=ctx.g, expr=app.offset_expr.get().instance
+            )
+
+    def test_resolve_non_integer_exponent_raises(self, ctx: BoundUnitsContext):
+        """Test that non-integer exponents raise UnitExpressionError."""
+        exponent_param = ctx.NumericParameter.setup(
+            units=ctx.Dimensionless._is_unit.get()
+        )
+        exponent_param.alias_to_literal(
+            g=ctx.g,
+            value=ctx.literals.Numbers.setup_from_singleton(
+                g=ctx.g, tg=ctx.tg, value=1.5, unit=ctx.Dimensionless._is_unit.get()
+            ),
+        )
+
+        power = (
+            F.Expressions.Power.bind_typegraph(tg=ctx.tg)
+            .create_instance(g=ctx.g)
+            .setup(base=ctx.Meter, exponent=exponent_param)  # type: ignore
+        )
+
+        resolver = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg)
+        with pytest.raises(UnitExpressionError):
+            resolver.visit_power(power)
+
+    def test_resolve_dimensionless_expression(self, ctx: BoundUnitsContext):
+        """Test that dimensionless results (e.g., Meter / Meter) are handled."""
+        MeterOverMeterExpr = make_unit_expression_type([(Meter, 1), (Meter, -1)])
+
+        class App(fabll.Node):
+            dimensionless_expr = MeterOverMeterExpr.MakeChild()
+
+        app = App.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g)
+        resolved = resolve_unit_expression(
+            tg=ctx.tg, g=ctx.g, expr=app.dimensionless_expr.get().instance
+        )
+
+        unit = resolved.get_trait(is_unit)
+        assert unit._extract_basis_vector() == _BasisVector.ORIGIN
+        assert unit.is_dimensionless()
