@@ -1493,6 +1493,9 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.t._create_type(self)
         return typenode
 
+    def as_type_node(self) -> "NodeT":
+        return self.t.bind_instance(instance=self.get_or_create_type())
+
     def create_instance(self, g: graph.GraphView, attributes: A | None = None) -> N:
         """
         Create a node instance for the given type node
