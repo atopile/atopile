@@ -106,13 +106,17 @@ def convert_to_canonical_literals(mutator: Mutator):
                 units=F.Units.Dimensionless.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
                 .get_trait(F.Units.is_unit),
-                soft_set=soft_set.to_dimensionless()
+                soft_set=soft_set.convert_to_dimensionless(
+                    g=mutator.G_out, tg=mutator.tg_out
+                )
                 if (soft_set := np.get_soft_set()) is not None
                 else None,
-                within=within.to_dimensionless()
+                within=within.convert_to_dimensionless(
+                    g=mutator.G_out, tg=mutator.tg_out
+                )
                 if (within := np.get_within()) is not None
                 else None,
-                guess=guess.to_dimensionless()
+                guess=guess.convert_to_dimensionless(g=mutator.G_out, tg=mutator.tg_out)
                 if (guess := np.get_guess()) is not None
                 else None,
                 override_within=True,

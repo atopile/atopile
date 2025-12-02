@@ -849,9 +849,13 @@ class MutationMap:
             and not lit_n.are_units_compatible(param_unit := param_unit_t.get_is_unit())
         ):
             return lit_n.op_mul_intervals(
-                F.Literals.Numbers.bind_typegraph_from_instance(lit_n.instance)
-                .create_instance(lit_n.instance.g())
-                .setup_from_singleton(1, unit=param_unit)
+                g=lit_n.g,
+                tg=lit_n.tg,
+                other=F.Literals.Numbers.bind_typegraph_from_instance(
+                    instance=lit_n.instance
+                )
+                .create_instance(g=lit_n.g)
+                .setup_from_singleton(g=lit_n.g, tg=lit_n.tg, value=1, unit=param_unit),
             ).get_trait(F.Literals.is_literal)
         return lit
 
@@ -1090,7 +1094,7 @@ class Mutator:
                 old_g_unit_node = fabll.Node.bind_instance(
                     not_none(fabll.Traits(old_g_is_unit).get_obj_raw().instance)
                 )
-                units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.IsUnit)
+                units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.is_unit)
 
             if domain is None:
                 domain = p.get_domain().copy_into(self.G_out)

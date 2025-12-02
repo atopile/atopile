@@ -158,7 +158,7 @@ class requires_pulls(fabll.Node):
             if signal.pull_resistance is not None
             and not self.required_resistance.get()
             .force_extract_literal()
-            .is_superset_of(signal.pull_resistance)
+            .is_superset_of(g=signal.g, tg=signal.tg, other=signal.pull_resistance)
         }
 
         if unfulfilled:
