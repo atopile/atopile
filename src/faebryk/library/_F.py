@@ -54,7 +54,6 @@ from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.Electrical import Electrical
-import faebryk.library.Numbers as Numbers
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
@@ -162,7 +161,6 @@ __all__ = [
     "Units",
     "is_auto_generated",
     "Electrical",
-    "Numbers",
     "has_simple_value_representation",
     "ElectricPower",
     "Filter",
