@@ -855,7 +855,7 @@ class MutationMap:
                     instance=lit_n.instance
                 )
                 .create_instance(g=lit_n.g)
-                .setup_from_singleton(g=lit_n.g, tg=lit_n.tg, value=1, unit=param_unit),
+                .setup_from_singleton(value=1, unit=param_unit),
             ).get_trait(F.Literals.is_literal)
         return lit
 
