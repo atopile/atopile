@@ -42,8 +42,13 @@ class AtoCodeGen:
         name: str
         path: Path | None = None
 
-    # FIXME
-    Experiment = None  # front_end._FeatureFlags.Feature
+    @dataclass(frozen=True, eq=True)
+    class Experiment:
+        """Represents an ato language experiment/feature flag."""
+        value: str
+
+        # Common experiment flags
+        TRAITS = None  # Will be set after class definition
 
     @dataclass(kw_only=True)
     class Statement:
@@ -189,3 +194,6 @@ class AtoCodeGen:
                 self.add_stmt(AtoCodeGen.Spacer())
             for stmt in stmts:
                 self.add_stmt(stmt)
+
+    # Initialize experiment constants
+    Experiment.TRAITS = Experiment("TRAITS")

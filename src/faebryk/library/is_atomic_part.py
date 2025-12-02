@@ -22,24 +22,24 @@ class is_atomic_part(fabll.Node):
 
     @property
     def manufacturer(self) -> str:
-        return str(self.manufacturer_.get().force_extract_literal())
+        return self.manufacturer_.get().force_extract_literal().get_values()[0]
 
     @property
     def partnumber(self) -> str:
-        return str(self.partnumber_.get().force_extract_literal())
+        return self.partnumber_.get().force_extract_literal().get_values()[0]
 
     @property
     def footprint(self) -> str:
-        return str(self.footprint_.get().force_extract_literal())
+        return self.footprint_.get().force_extract_literal().get_values()[0]
 
     @property
     def symbol(self) -> str:
-        return str(self.symbol_.get().force_extract_literal())
+        return self.symbol_.get().force_extract_literal().get_values()[0]
 
     @property
     def model(self) -> str | None:
         literal = self.model_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+        return None if literal is None else literal.get_values()[0]
 
     @property
     @once
