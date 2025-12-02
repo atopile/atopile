@@ -813,12 +813,15 @@ class NumericInterval(fabll.Node):
 
     def serialize(self) -> dict:
         return {
-            "min": None
-            if math.isinf(self.get_min_value())
-            else float(self.get_min_value()),
-            "max": None
-            if math.isinf(self.get_max_value())
-            else float(self.get_max_value()),
+            "type": "Numeric_Interval",
+            "data": {
+                "min": None
+                if math.isinf(self.get_min_value())
+                else float(self.get_min_value()),
+                "max": None
+                if math.isinf(self.get_max_value())
+                else float(self.get_max_value()),
+            },
         }
 
 
@@ -1818,7 +1821,11 @@ class NumericSet(fabll.Node):
         return self.get_min_value()
 
     def serialize(self) -> dict:
-        return {"intervals": [r.serialize() for r in self.get_intervals()]}
+        return {
+            # legacy name for backwards compatibility
+            "type": "Numeric_Interval_Disjoint",
+            "data": {"intervals": [r.serialize() for r in self.get_intervals()]},
+        }
 
 
 class TestNumericSet:
@@ -2598,7 +2605,7 @@ class Numbers(fabll.Node):
             raise ValueError("incompatible units")
         if not target.get_numeric_set().is_single_element():
             raise ValueError("target must be a single value, not a range")
-        target_converted = self.convert_to_other_unit(g=g, tg=tg, other=target)
+        target_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=target)
         target_value = target_converted.get_numeric_set().get_min_value()
         closest = self.get_numeric_set().closest_elem(target_value)
         result = Numbers.create_instance(g=g, tg=tg)
@@ -2621,7 +2628,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             return False
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().is_superset_of(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2633,7 +2640,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             return False
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().is_subset_of(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2647,7 +2654,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_intersect_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2668,7 +2675,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_union(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2690,7 +2697,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_difference_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2702,18 +2709,14 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def convert_to_other_unit(
-        self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
-    ) -> "Numbers":
+    def convert_to_unit(self, g: graph.GraphView, tg: TypeGraph, unit: "is_unit"):
         """
-        Convert between two units with the same basis vector but different multiplier
-        and offset.
-        eg Celsius to Kelvin.
-        Returns a new Numbers from other with the converted values in the units of self.
+        Convert to specified unit.
         """
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
+        if not self.get_is_unit().is_commensurable_with(unit):
             raise ValueError("incompatible units")
-        scale, offset = other.get_is_unit().get_conversion_to(self.get_is_unit())
+
+        scale, offset = self.get_is_unit().get_conversion_to(unit)
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
@@ -2727,7 +2730,7 @@ class Numbers(fabll.Node):
 
         # Multiply the other numeric set by the scale
         out_numeric_set = scale_numeric_set.op_multiply(
-            g=g, tg=tg, other=other.get_numeric_set()
+            g=g, tg=tg, other=self.get_numeric_set()
         )
 
         # Add the offset to the scaled numeric set
@@ -2737,6 +2740,17 @@ class Numbers(fabll.Node):
         return Numbers.create_instance(g=g, tg=tg).setup(
             g=g, tg=tg, numeric_set=out_numeric_set, unit=self.get_is_unit()
         )
+
+    def _convert_other_to_self_unit(
+        self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
+    ) -> "Numbers":
+        """
+        Convert between two units with the same basis vector but different multiplier
+        and offset.
+        eg Celsius to Kelvin.
+        Returns a new Numbers from other with the converted values in the units of self.
+        """
+        return other.convert_to_unit(g=g, tg=tg, unit=self.get_is_unit())
 
     def convert_to_dimensionless(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         """
@@ -2779,7 +2793,7 @@ class Numbers(fabll.Node):
         self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
     ) -> "Numbers":
         """Arithmetically add two quantity sets. Units must be commensurable."""
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_add(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2798,7 +2812,7 @@ class Numbers(fabll.Node):
         Arithmetically multiply two quantity sets.
         Result unit is self.unit * other.unit.
         """
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_multiply(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -2836,7 +2850,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_subtract(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -3059,7 +3073,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_symmetric_difference_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -3098,7 +3112,7 @@ class Numbers(fabll.Node):
         if relative:
             # Get max absolute values from both sets
             self_abs = self.op_abs(g=g, tg=tg)
-            other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+            other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
             other_abs = other_converted.op_abs(g=g, tg=tg)
 
             self_max = self_abs.get_numeric_set().get_max_value()
@@ -3208,7 +3222,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_ge_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -3226,7 +3240,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_gt_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -3242,7 +3256,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_le_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -3258,7 +3272,7 @@ class Numbers(fabll.Node):
         """
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_lt_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
@@ -3307,11 +3321,11 @@ class Numbers(fabll.Node):
         the same numeric intervals (after unit conversion).
         """
         # Convert to same units and check commensurability
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().equals(other_converted.get_numeric_set())
 
     def contains(self, g: graph.GraphView, tg: TypeGraph, other: "Numbers") -> bool:
-        other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
+        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().contains(other_converted.get_value())
 
     def serialize(self) -> dict:
@@ -3337,28 +3351,17 @@ class Numbers(fabll.Node):
         Values are in base SI units (e.g., ohms for resistance).
         Unit string indicates the display/original unit (e.g., "kiloohm").
         """
-        # Build nested interval structure with type/data wrapping
-        intervals = []
-        for interval in self.get_numeric_set().get_intervals():
-            min_val = interval.get_min_value()
-            max_val = interval.get_max_value()
-            intervals.append(
-                {
-                    "type": "Numeric_Interval",
-                    "data": {
-                        "min": None if math.isinf(min_val) and min_val < 0 else min_val,
-                        "max": None if math.isinf(max_val) and max_val > 0 else max_val,
-                    },
-                }
-            )
-
+        as_base_units = self.convert_to_unit(
+            g=self.g,
+            tg=self.tg,
+            unit=self.get_is_unit().to_base_units(g=self.g, tg=self.tg),
+        )
         return {
+            # legacy name for backwards compatibility
             "type": "Quantity_Interval_Disjoint",
             "data": {
-                "intervals": {
-                    "type": "Numeric_Interval_Disjoint",
-                    "data": {"intervals": intervals},
-                },
+                # note base unit for values only
+                "intervals": as_base_units.get_numeric_set().serialize(),
                 "unit": self.get_is_unit().serialize(),
             },
         }
@@ -4229,16 +4232,23 @@ class TestNumbers:
         )
         serialized = qs.serialize()
 
-        # Check structure matches API format
-        assert serialized["type"] == "Quantity_Interval_Disjoint"
-        assert "data" in serialized
-        assert serialized["data"]["intervals"]["type"] == "Numeric_Interval_Disjoint"
-        intervals = serialized["data"]["intervals"]["data"]["intervals"]
-        assert len(intervals) == 1
-        assert intervals[0]["type"] == "Numeric_Interval"
-        assert intervals[0]["data"]["min"] == 8000.0
-        assert intervals[0]["data"]["max"] == 12000.0
-        assert serialized["data"]["unit"] == "Ω"
+        assert serialized == {
+            "type": "Quantity_Interval_Disjoint",
+            "data": {
+                "intervals": {
+                    "type": "Numeric_Interval_Disjoint",
+                    "data": {
+                        "intervals": [
+                            {
+                                "type": "Numeric_Interval",
+                                "data": {"min": 8000.0, "max": 12000.0},
+                            }
+                        ]
+                    },
+                },
+                "unit": "Ω",
+            },
+        }
 
     def test_op_ge_definitely_true(self):
         """Test >= comparison when definitely true."""
