@@ -5,6 +5,7 @@ import json
 import logging
 from enum import StrEnum
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -118,37 +119,50 @@ def load_part_info_from_pcb(G: graph.GraphView):
             param.alias_is(param_value)
 
 
-def save_part_info_to_pcb(G: graph.GraphView):
+def save_part_info_to_pcb(g: graph.GraphView, tg: fbrk.TypeGraph):
     """
     Save parameters to footprints (by copying them to descriptive properties).
     """
 
-    nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_part_picked)
+    nodes = fabll.Traits.get_implementor_objects(F.has_part_picked.bind_typegraph(tg))
 
-    for node, _ in nodes:
-        if t := node.try_get_trait(F.has_part_picked):
-            part = t.try_get_part()
-            if part is None:
-                continue
-            if isinstance(part, PickedPartLCSC):
-                # TODO: Change this from Traits.create... to Node.create_instance
-                fabll.Traits.create_and_add_instance_to(
-                    node=node, trait=F.SerializableMetadata
-                ).setup(key=Properties.lcsc, value=part.lcsc_id)
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.SerializableMetadata
-            ).setup(key=Properties.manufacturer, value=part.manufacturer)
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.SerializableMetadata
-            ).setup(key=Properties.partno, value=part.partno)
+    for node in nodes:
+        part = node.get_trait(F.has_part_picked).try_get_part()
 
-        for p in node.get_children(direct_only=True, types=Parameter):
+        if part is None:
+            continue
+
+        if isinstance(part, PickedPartLCSC):
+            fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(key=Properties.lcsc, value=part.lcsc_id)
+
+        fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(key=Properties.manufacturer, value=part.manufacturer)
+        fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(key=Properties.partno, value=part.partno)
+
+        for p in node.get_children(direct_only=True, types=F.Parameters.is_parameter):
             lit = p.try_get_literal()
             if lit is None:
                 continue
             lit = F.Literals.Numbers.setup_from_singleton(value=lit)
-            key = f"{Properties.param_prefix}{p.get_name()}"
-            value = json.dumps(lit.serialize())
-            fabll.Traits.create_and_add_instance_to(
-                node=node, trait=F.SerializableMetadata
-            ).setup(key=key, value=value)
+            fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(
+                key=f"{Properties.param_prefix}{p.get_name()}",
+                value=json.dumps(lit.serialize())
+            )
+
+def test_save_part_info_to_pcb():
+    print("")
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    res = F.Resistor.bind_typegraph(tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(res, F.has_part_picked).setup(PickedPartLCSC(supplier_partno="C123456", manufacturer="blaze-it-inc", partno="69420"))
+
+    save_part_info_to_pcb(g, tg)
+
+    traits = fabll.Traits.get_implementors(F.SerializableMetadata.bind_typegraph(tg))
+
+    # Convert traits to dictionary for easier checking
+    trait_dict = {trait.key: trait.value for trait in traits}
+
+    # Assert expected key:value pairs
+    assert trait_dict.get(Properties.manufacturer.value) == "blaze-it-inc"
+    assert trait_dict.get(Properties.partno.value) == "69420"
