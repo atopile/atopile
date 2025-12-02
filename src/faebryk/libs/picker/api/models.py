@@ -11,7 +11,6 @@ from dataclasses_json import dataclass_json
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
@@ -26,7 +25,7 @@ class Interval:
     max: float | None
 
 
-ApiParamT = F.Literals.is_literal[Any] | None
+ApiParamT = F.Literals.is_literal | None
 
 
 def SerializableField():
@@ -187,7 +186,7 @@ class Component:
         return unit_price * qty + handling_fee
 
     @functools.cached_property
-    def attribute_literals(self) -> dict[str, F.Literals.is_literal[Any] | None]:
+    def attribute_literals(self) -> dict[str, F.Literals.is_literal | None]:
         def deserialize(k, v):
             if v is None:
                 return None

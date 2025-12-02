@@ -20,41 +20,33 @@ from hypothesis.strategies._internal.lazy import LazyStrategy
 from rich.console import Console
 from rich.table import Table
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.core import Namespace
-from faebryk.core.parameter import (
-    Abs,
-    Add,
-    Arithmetic,
-    Ceil,
-    Cos,
-    Divide,
-    Floor,
-    Functional,
-    Log,
-    Max,
-    Min,
-    Multiply,
-    Numbers,
-    Parameter,
-    Power,
-    Round,
-    Sin,
-    Sqrt,
-    Subtract,
-)
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.utils import Contradiction, get_graphs
-from faebryk.libs.sets.numeric_sets import float_round
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
-    Quantity_Interval_Disjoint,
-)
+from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import Quantity
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt, groupby, once
 
 logger = logging.getLogger(__name__)
+
+Add = F.Expressions.Add
+Subtract = F.Expressions.Subtract
+Multiply = F.Expressions.Multiply
+Divide = F.Expressions.Divide
+Sqrt = F.Expressions.Sqrt
+Power = F.Expressions.Power
+Round = F.Expressions.Round
+Abs = F.Expressions.Abs
+Sin = F.Expressions.Sin
+Log = F.Expressions.Log
+Cos = F.Expressions.Cos
+Floor = F.Expressions.Floor
+Ceil = F.Expressions.Ceil
+Min = F.Expressions.Min
+Max = F.Expressions.Max
 
 # Workaround: for large repr generation of hypothesis strategies,
 LazyStrategy.__repr__ = lambda self: str(id(self))
@@ -74,14 +66,14 @@ ALLOW_ROUNDING_ERROR = True
 ALLOW_EVAL_ERROR = True
 
 
-operator_map: dict[type[Arithmetic], Callable] = {
+operator_map: dict[type[fabll.NodeT], Callable] = {
     Add: add,
     Subtract: sub,
     Multiply: mul,
     Divide: truediv,
     Sqrt: lambda x: x.op_sqrt(),
     Power: pow,
-    Round: float_round,
+    Round: lambda x: x.op_round(),
     Abs: abs,
     Sin: lambda x: x.op_sin(),
     Log: lambda x: x.op_log(),
@@ -92,25 +84,66 @@ operator_map: dict[type[Arithmetic], Callable] = {
     Max: max,
 }
 
+# TODO remove
+g: graph.GraphView = graph.GraphView.create()
+tg: fbrk.TypeGraph = fbrk.TypeGraph.create(g=g)
 
-def lit(val) -> Quantity_Interval_Disjoint:
-    return Quantity_Interval_Disjoint.from_value(val)
+
+def lit(val: float) -> F.Literals.Numbers:
+    dimless = F.Units.Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).setup()
+    return (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_singleton(value=val, unit=dimless)
+    )
+
+
+def lit_op_single(val: float) -> F.Parameters.can_be_operand:
+    return lit(val).get_trait(F.Parameters.can_be_operand)
+
+
+def lit_op_range(lower: float, upper: float) -> F.Parameters.can_be_operand:
+    return (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_interval(lower=lower, upper=upper)
+    ).get_trait(F.Parameters.can_be_operand)
+
+
+def op(x: fabll.NodeT) -> F.Parameters.can_be_operand:
+    return x.get_trait(F.Parameters.can_be_operand)
 
 
 def p(val):
-    return Builders.build_parameter(lit(val))
+    return Builders.build_parameter(op(lit(val)))
 
 
 class Builders(Namespace):
     @staticmethod
-    def build_parameter(quantity) -> Parameter:
-        p = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
-        p.alias_is(quantity)
-        return p
+    def build_parameter(
+        literal: F.Parameters.can_be_operand,
+    ) -> F.Parameters.is_parameter:
+        p = (
+            F.Parameters.NumericParameter.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(
+                domain=F.NumberDomain.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup(negative=True, zero_allowed=True, integer=False)
+            )
+        )
+
+        F.Expressions.Is.from_operands(
+            p.get_trait(F.Parameters.can_be_operand),
+            literal,
+        )
+        return p.get_trait(F.Parameters.is_parameter)
 
     @staticmethod
-    def operator(op: type[Arithmetic]) -> Callable[[Iterable[Any] | Any], Arithmetic]:
-        def f(operands: Iterable[Any] | Any) -> Arithmetic:
+    def operator(
+        op: type[F.Expressions.is_arithmetic],
+    ) -> Callable[[Iterable[Any] | Any], F.Expressions.is_arithmetic]:
+        def f(operands: Iterable[Any] | Any) -> F.Expressions.is_arithmetic:
             return op(*operands) if isinstance(operands, Iterable) else op(operands)
 
         # required for good falsifying examples from hypothesis
@@ -119,7 +152,7 @@ class Builders(Namespace):
         return f
 
 
-ValueT = Quantity_Interval_Disjoint | Parameter | Arithmetic
+ValueT = F.Literals.Numbers | F.Parameters.is_parameter | F.Expressions.is_arithmetic
 
 
 class Filters(Namespace):
@@ -146,14 +179,14 @@ class Filters(Namespace):
         pass
 
     @staticmethod
-    def _unwrap_param(value: ValueT) -> Quantity_Interval_Disjoint:
+    def _unwrap_param(value: ValueT) -> F.Literals.Numbers:
         # TODO where is this coming from?
         if isinstance(value, fabll.Range):
             return lit(value)
         assert isinstance(value, ValueT)
-        if isinstance(value, Parameter):
+        if isinstance(value, F.Parameters.is_parameter):
             return value.get_literal()
-        elif isinstance(value, Arithmetic):
+        elif isinstance(value, F.Expressions.is_arithmetic):
             try:
                 return evaluate_expr(value)
             except Exception as e:
@@ -352,7 +385,7 @@ class Extension(Namespace):
 
 @dataclass
 class ExprType:
-    op: type[Arithmetic]
+    op: type[fabll.NodeT]
     _strategy: st.SearchStrategy[Any]
     _extension_strategy: Callable[[st.SearchStrategy[Any]], st.SearchStrategy[Any]]
     check_overflow: bool = True
@@ -360,7 +393,7 @@ class ExprType:
 
     @property
     @once
-    def builder(self) -> Callable[[Any], Arithmetic]:
+    def builder(self) -> Callable[[Any], F.Expressions.is_arithmetic]:
         return Builders.operator(self.op)
 
     @property
@@ -413,7 +446,7 @@ def test_no_forgotten_expr_types():
         v
         for k, v in vars(P).items()
         if isinstance(v, type)
-        and issubclass(v, Arithmetic)
+        and issubclass(v, F.Expressions.is_arithmetic)
         and not issubclass(v, Functional)
         and getattr(v, "__is_abstract__", False) is not v
     }
@@ -446,8 +479,8 @@ class st_exprs(Namespace):
 
 
 def evaluate_expr(
-    expr: Arithmetic | Quantity,
-) -> Quantity_Interval_Disjoint:
+    expr: F.Expressions.is_arithmetic | F.Literals.Numbers,
+) -> F.Literals.Numbers:
     match expr:
         # monoids
         case Add() | Multiply() | Min() | Max():
@@ -471,7 +504,7 @@ def evaluate_expr(
             return lit(expr)
         case Quantity_Interval_Disjoint():
             return expr
-        case Parameter():
+        case F.Parameters.is_parameter():
             return expr.get_literal()
         case _:
             raise ValueError(f"Unknown expression type: {type(expr)}")
@@ -479,7 +512,7 @@ def evaluate_expr(
 
 @given(st_exprs.trees)
 @settings(deadline=timedelta(milliseconds=1000))
-def test_can_evaluate_literals(expr: Arithmetic):
+def test_can_evaluate_literals(expr: F.Expressions.is_arithmetic):
     result = evaluate_expr(expr)
     assert isinstance(result, Quantity_Interval_Disjoint)
 
@@ -516,7 +549,7 @@ def _track():
     ],
     print_blob=True,
 )
-def test_discover_literal_folding(expr: Arithmetic):
+def test_discover_literal_folding(expr: F.Expressions.is_arithmetic):
     """
     Disble xfail and
     run with:
@@ -532,7 +565,9 @@ def test_discover_literal_folding(expr: Arithmetic):
     _track()
     solver = DefaultSolver()
 
-    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root = F.Parameters.is_parameter(
+        domain=Numbers(negative=True, zero_allowed=True, integer=False)
+    )
     root.alias_is(expr)
 
     try:
@@ -584,7 +619,7 @@ def test_discover_literal_folding(expr: Arithmetic):
     ],
     print_blob=False,
 )
-def debug_fix_literal_folding(expr: Arithmetic):
+def debug_fix_literal_folding(expr: F.Expressions.is_arithmetic):
     """
     Run with:
     ```bash
@@ -598,7 +633,9 @@ def debug_fix_literal_folding(expr: Arithmetic):
     """
     solver = DefaultSolver()
 
-    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root = F.Parameters.is_parameter(
+        domain=Numbers(negative=True, zero_allowed=True, integer=False)
+    )
     root.alias_is(expr)
 
     logger.info(f"expr: {expr.compact_repr()}")
@@ -620,145 +657,179 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
-@example(Log(Sin(Add(lit(0), lit(1)))))
 @example(
-    Add(
-        Add(lit(0), lit(0)),
-        Sqrt(Cos(lit(0))),
-    ),
-)
-@example(
-    Divide(
-        Divide(
-            Add(Sqrt(lit(2.0)), Subtract(lit(0), lit(0))),
-            lit(891895568.0),
-        ),
-        lit(2.0),
-    ),
-)
-@example(
-    Divide(
-        Divide(
-            Sqrt(Add(lit(2))),
-            lit(2),
-        ),
-        lit(710038921),
+    Log.c(
+        Sin.c(
+            Add.c(
+                lit_op_single(0),
+                lit_op_single(1),
+            )
+        )
     )
 )
 @example(
-    Sin(
-        Sin(
-            Subtract(
-                lit(1),
-                p(fabll.Range(-inf, inf)),
+    Add.c(
+        Add.c(lit_op_single(0), lit_op_single(0)),
+        Sqrt.c(Cos.c(lit_op_single(0))),
+    ),
+)
+@example(
+    Divide.c(
+        Divide.c(
+            Add.c(
+                Sqrt.c(lit_op_single(2.0)),
+                Subtract.c(lit_op_single(0), lit_op_single(0)),
+            ),
+            lit_op_single(891895568.0),
+        ),
+        lit_op_single(2.0),
+    ),
+)
+@example(
+    Divide.c(
+        Divide.c(
+            Sqrt.c(Add.c(lit_op_single(2))),
+            lit_op_single(2),
+        ),
+        lit_op_single(710038921),
+    )
+)
+@example(
+    Sin.c(
+        Sin.c(
+            Subtract.c(
+                lit_op_single(1),
+                lit_op_range(-inf, inf),
             ),
         ),
     ),
 )
 @example(
-    Divide(
-        Add(
-            Subtract(lit(0), lit(1)),
-            Abs(lit(fabll.Range(-inf, inf))),
+    Divide.c(
+        Add.c(
+            Subtract.c(lit_op_single(0), lit_op_single(1)),
+            Abs.c(lit_op_range(-inf, inf)),
         ),
-        lit(1),
+        lit_op_single(1),
     ),
 )
 @example(
-    Add(
-        lit(1),
-        Abs(
-            Add(p(fabll.Range(-inf, inf)), p(fabll.Range(-inf, inf))),
-        ),
-    ),
-)
-@example(
-    Add(
-        Sqrt(lit(1)),
-        Abs(lit(fabll.Range(-inf, inf))),
-    ),
-)
-@example(
-    expr=Add(
-        Add(lit(-999_999_950_000)),
-        Subtract(lit(50000), lit(-999_997_650_001)),
-    ),
-)
-@example(
-    expr=Subtract(
-        Add(
-            Add(lit(0)),
-            Subtract(
-                Add(lit(0)),
-                Add(lit(1)),
+    Add.c(
+        lit_op_single(1),
+        Abs.c(
+            Add.c(
+                lit_op_range(-inf, inf),
+                lit_op_range(-inf, inf),
             ),
         ),
-        Add(lit(1)),
-    )
-)
-@example(
-    expr=Subtract(
-        Subtract(
-            lit(1),
-            lit(fabll.Range(-inf, inf)),
-        ),
-        Add(lit(0)),
     ),
 )
 @example(
-    Subtract(
-        Abs(p(fabll.Range(-inf, inf))),
-        Abs(p(fabll.Range(-inf, inf))),
-    )
-)
-@example(Subtract(Abs(p(fabll.Range(5, 6))), Abs(p(fabll.Range(5, 6)))))
-@example(
-    expr=Multiply(
-        Sqrt(Sqrt(lit(2))),
-        Sqrt(Sqrt(lit(2))),
-    )
-)
-@example(
-    expr=Subtract(
-        Round(lit(fabll.Range(2, 10))),
-        Round(lit(fabll.Range(2, 10))),
+    Add.c(
+        Sqrt.c(lit_op_single(1)),
+        Abs.c(lit_op_range(-inf, inf)),
     ),
 )
 @example(
-    expr=Subtract(
-        Round(
-            Subtract(
-                lit(0),
-                lit(fabll.Range(-999_999_999_905, -0.3333333333333333)),
+    expr=Add.c(
+        Add.c(lit_op_single(-999_999_950_000)),
+        Subtract.c(lit_op_single(50000), lit_op_single(-999_997_650_001)),
+    ),
+)
+@example(
+    expr=Subtract.c(
+        Add.c(
+            Add.c(lit_op_single(0)),
+            Subtract.c(
+                Add.c(lit_op_single(0)),
+                Add.c(lit_op_single(1)),
             ),
         ),
-        Subtract(
-            lit(-999_999_983_213),
-            p(fabll.Range(-17297878, 999_999_992_070)),
-        ),
-    ),
-)
-@example(Abs(Round(lit(fabll.Range(-inf, inf)))))
-@example(
-    expr=Divide(
-        Divide(
-            lit(0),
-            lit(fabll.Range(-1, -2.2250738585072014e-308)),
-        ),
-        lit(fabll.Range(-1, -2.2250738585072014e-308)),
-    ),
-)
-@example(Multiply(Add(lit(0)), Abs(lit(fabll.Range(-inf, inf)))))
-@example(Add(Add(lit(0)), Abs(p(-1))))
-@example(Abs(p(-1)))
-@example(expr=Round(Add(Abs(lit(0)), Round(lit(-1)))))
-@example(
-    expr=Add(
-        Add(lit(0)),
-        Multiply(Add(lit(0)), Add(lit(0))),
+        Add.c(lit_op_single(1)),
     )
 )
-@example(expr=Subtract(lit(1), lit(0))).via("discovered failure")
+@example(
+    expr=Subtract.c(
+        Subtract.c(
+            lit_op_single(1),
+            lit_op_range(-inf, inf),
+        ),
+        Add.c(lit_op_single(0)),
+    ),
+)
+@example(
+    Subtract.c(
+        Abs.c(lit_op_range(-inf, inf)),
+        Abs.c(lit_op_range(-inf, inf)),
+    )
+)
+@example(
+    Subtract.c(
+        Abs.c(lit_op_range(5, 6)),
+        Abs.c(lit_op_range(5, 6)),
+    )
+)
+@example(
+    expr=Multiply.c(
+        Sqrt.c(Sqrt.c(lit_op_single(2))),
+        Sqrt.c(Sqrt.c(lit_op_single(2))),
+    )
+)
+@example(
+    expr=Subtract.c(
+        Round.c(lit_op_range(2, 10)),
+        Round.c(lit_op_range(2, 10)),
+    ),
+)
+@example(
+    expr=Subtract.c(
+        Round.c(
+            Subtract.c(
+                lit_op_single(0),
+                lit_op_range(-999_999_999_905, -0.3333333333333333),
+            ),
+        ),
+        Subtract.c(
+            lit_op_single(-999_999_983_213),
+            lit_op_range(-17297878, 999_999_992_070),
+        ),
+    ),
+)
+@example(Abs.c(Round.c(lit_op_range(-inf, inf))))
+@example(
+    expr=Divide.c(
+        Divide.c(
+            lit_op_single(0),
+            lit_op_range(-1, -2.2250738585072014e-308),
+        ),
+        lit_op_range(-1, -2.2250738585072014e-308),
+    ),
+)
+@example(
+    Multiply.c(
+        Add.c(lit_op_single(0)),
+        Abs.c(lit_op_range(-inf, inf)),
+    )
+)
+@example(Add.c(Add.c(lit_op_single(0)), Abs.c(lit_op_single(-1))))
+@example(Abs.c(lit_op_single(-1)))
+@example(
+    expr=Round.c(
+        Add.c(
+            Abs.c(lit_op_single(0)),
+            Round.c(lit_op_single(-1)),
+        )
+    )
+)
+@example(
+    expr=Add.c(
+        Add.c(lit_op_single(0)),
+        Multiply.c(Add.c(lit_op_single(0)), Add.c(lit_op_single(0))),
+    )
+)
+@example(expr=F.Expressions.Subtract.c(lit_op_single(1), lit_op_single(0))).via(
+    "discovered failure"
+)
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -780,10 +851,12 @@ def debug_fix_literal_folding(expr: Arithmetic):
     ],
     print_blob=False,
 )
-def test_regression_literal_folding(expr: Arithmetic):
+def test_regression_literal_folding(expr: F.Expressions.is_arithmetic):
     solver = DefaultSolver()
 
-    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root = F.Parameters.is_parameter(
+        domain=Numbers(negative=True, zero_allowed=True, integer=False)
+    )
     root.alias_is(expr)
 
     evaluated_expr = evaluate_expr(expr)
@@ -805,8 +878,8 @@ class Stats:
         return Stats.singleton
 
     def __init__(self):
-        self.exprs: dict[Arithmetic, set[str]] = defaultdict(set)
-        self.events: dict[str, set[Arithmetic]] = defaultdict(set)
+        self.exprs: dict[F.Expressions.is_arithmetic, set[str]] = defaultdict(set)
+        self.events: dict[str, set[F.Expressions.is_arithmetic]] = defaultdict(set)
         self.times = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
         self._total = self.times.context("total")
         self._total.__enter__()
@@ -829,8 +902,12 @@ class Stats:
         table.add_column("Type", justify="left")
         table.add_column("count", justify="right")
 
-        all_exprs = fabll.Node.bind_typegraph(*get_graphs(self.exprs)).nodes_of_type(
-            Arithmetic
+        # TODO is this correct to get tg like this?
+        if not total:
+            return
+        tg = next(iter(self.exprs.keys())).tg
+        all_exprs = fabll.Node.bind_typegraph(tg).nodes_of_type(
+            F.Expressions.is_arithmetic
         )
         expr_types = groupby(all_exprs, type)
         for expr_type, exprs_for_type in expr_types.items():
@@ -849,7 +926,7 @@ class Stats:
     def event(
         self,
         name: str,
-        expr: Arithmetic,
+        expr: F.Expressions.is_arithmetic,
         terminal: bool = True,
         exc: Exception | None = None,
     ):
@@ -890,7 +967,7 @@ def cleanup_stats():
         HealthCheck.large_base_example,
     ],
 )
-def test_folding_statistics(expr: Arithmetic):
+def test_folding_statistics(expr: F.Expressions.is_arithmetic):
     """
     Run with:
     ```bash
@@ -904,7 +981,9 @@ def test_folding_statistics(expr: Arithmetic):
     stats = Stats.get()
     stats.event("generate", expr, terminal=False)
     solver = DefaultSolver()
-    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root = F.Parameters.is_parameter(
+        domain=Numbers(negative=True, zero_allowed=True, integer=False)
+    )
     root.alias_is(expr)
 
     try:

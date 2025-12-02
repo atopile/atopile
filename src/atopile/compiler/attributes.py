@@ -7,11 +7,9 @@ import re
 from typing import Type
 
 import faebryk.core.node as fabll
-import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
-from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import md_list, not_none
@@ -67,17 +65,17 @@ class _has_local_kicad_footprint_named_defined(fabll.Node):
             self.set_footprint(fp)
             return fp
 
-    def handle_duplicate(
-        self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
-    ) -> bool:
-        if old.try_get_footprint():
-            raise RuntimeError("Too late to set footprint")
+    # def handle_duplicate(
+    #     self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
+    # ) -> bool:
+    #     if old.try_get_footprint():
+    #         raise RuntimeError("Too late to set footprint")
 
-        # Update the existing trait...
-        old.lib_reference = self.lib_reference
-        # ... and we don't need to attach the new
-        assert old.pinmap is self.pinmap, "Pinmap reference mismatch"
-        return False
+    #     # Update the existing trait...
+    #     old.lib_reference = self.lib_reference
+    #     # ... and we don't need to attach the new
+    #     assert old.pinmap is self.pinmap, "Pinmap reference mismatch"
+    #     return False
 
 
 class _has_ato_cmp_attrs(fabll.Node):
@@ -96,9 +94,9 @@ class _has_ato_cmp_attrs(fabll.Node):
         self.pinmap[pinname] = mif
         return mif
 
-    def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
-        # Don't replace the existing ato trait on addition
-        return False
+    # def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
+    #     # Don't replace the existing ato trait on addition
+    #     return False
 
 
 # FIXME: this would ideally be some kinda of mixin,
@@ -321,7 +319,7 @@ class GlobalAttributes(fabll.Node):
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
-class Resistor(F.Resistor):
+class Resistor(fabll.Node):
     """
     This resistor is replaces `generics/resistors.ato:Resistor`
     every times it's referenced.
@@ -369,7 +367,6 @@ class Resistor(F.Resistor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -378,7 +375,7 @@ class Resistor(F.Resistor):
         return trait
 
 
-class CommonCapacitor(F.Capacitor):
+class CommonCapacitor(fabll.Node):
     """
     These attributes are common to both electrolytic and non-electrolytic capacitors.
     """
@@ -427,13 +424,12 @@ class CommonCapacitor(F.Capacitor):
 
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class Capacitor(CommonCapacitor):
+class Capacitor(fabll.Node):
     """
     This capacitor is replaces `generics/capacitors.ato:Capacitor`
     every times it's referenced.
     """
 
-    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -445,7 +441,7 @@ class Capacitor(CommonCapacitor):
 @_register_shim(
     "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
 )
-class CapacitorElectrolytic(CommonCapacitor):
+class CapacitorElectrolytic(fabll.Node):
     """Temporary shim to translate capacitors."""
 
     anode: F.Electrical
@@ -469,7 +465,7 @@ class CapacitorElectrolytic(CommonCapacitor):
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
-class Inductor(F.Inductor):
+class Inductor(fabll.Node):
     """
     This inductor is replaces `generics/inductors.ato:Inductor`
     every times it's referenced.
@@ -483,7 +479,6 @@ class Inductor(F.Inductor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @fabll.rt_field
     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
         """Ignore this field."""
         trait = _has_ato_cmp_attrs()
@@ -493,7 +488,7 @@ class Inductor(F.Inductor):
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")
-class LED(F.LED):
+class LED(fabll.Node):
     """Temporary shim to translate LEDs."""
 
     @property
@@ -506,7 +501,7 @@ class LED(F.LED):
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
-class Power(F.ElectricPower):
+class Power(fabll.Node):
     """Temporary shim to translate `value` to `power`."""
 
     @property
@@ -520,7 +515,7 @@ class Power(F.ElectricPower):
 
 
 @_register_shim("generics/interfaces.ato:I2C", "import I2C")
-class I2C(F.I2C):
+class I2C(fabll.Node):
     """Temporary shim to translate I2C interfaces."""
 
     @property

@@ -9,14 +9,6 @@ from typing import Callable, Iterable
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import (
-    And,
-    Is,
-    Or,
-    Parameter,
-    ParameterOperatable,
-    Predicate,
-)
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.picker.picker import PickedPart, PickError
@@ -28,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class PickerOption:
     part: PickedPart
-    params: dict[str, ParameterOperatable.SetLiteral] | None = None
+    params: dict[str, F.Parameters.is_parameter_operatable] | None = None
     """
     Parameters that need to be matched for this option to be valid.
 
@@ -71,7 +63,7 @@ def pick_module_by_params(
 
     params = {
         not_none(p.get_parent())[1]: p
-        for p in module.get_children(direct_only=True, types=Parameter)
+        for p in module.get_children(direct_only=True, types=F.Parameters)
     }
 
     filtered_options = [o for o in options if not o.filter or o.filter(module)]

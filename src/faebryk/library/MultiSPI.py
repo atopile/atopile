@@ -11,7 +11,7 @@ class MultiSPI(fabll.Node):
     # ----------------------------------------
     clock = F.ElectricLogic.MakeChild()
     chip_select = F.ElectricLogic.MakeChild()
-    data_lanes = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    data_ = F.Collections.PointerSet.MakeChild()
 
     # ----------------------------------------
     #                 traits
@@ -22,24 +22,35 @@ class MultiSPI(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    # self.clock.line.add(
-    #     F.has_net_name("clock", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # self.chip_select.line.add(
-    #     F.has_net_name("chip_select", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # for i, line in enumerate(self.data):
-    #     line.add(F.has_net_name(f"data_{i}", level=F.has_net_name.Level.SUGGESTED))
+    @property
+    def data(self) -> list[F.ElectricLogic]:
+        return [
+            F.ElectricLogic.bind_instance(line.instance)
+            for line in self.data_.get().as_list()
+        ]
 
     @classmethod
     def MakeChild(cls, data_lane_count: int):
         out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-                [out, cls.data_lanes], data_lane_count
+        for i in range(data_lane_count):
+            data_line = F.ElectricLogic.MakeChild()
+            out.add_dependant(data_line)
+            out.add_dependant(
+                F.Collections.PointerSet.MakeEdge([out, cls.data_], [data_line])
             )
-        )
         return out
+
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.clock.get(), trait=F.has_net_name
+        ).setup(name="CLOCK", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.chip_select.get(), trait=F.has_net_name
+        ).setup(name="CHIP_SELECT", level=F.has_net_name.Level.SUGGESTED)
+        for i, line in enumerate(self.data_.get().as_list()):
+            fabll.Traits.create_and_add_instance_to(
+                node=line, trait=F.has_net_name
+            ).setup(name=f"DATA_{i}", level=F.has_net_name.Level.SUGGESTED)
 
     # ----------------------------------------
     #              usage example

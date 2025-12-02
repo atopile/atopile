@@ -215,6 +215,7 @@ pub const GS_SENTINEL = PyGetSetDef{
 pub extern fn PyLong_FromLong(value: c_long) ?*PyObject;
 pub extern fn PyLong_FromLongLong(value: c_longlong) ?*PyObject;
 pub extern fn PyLong_FromUnsignedLongLong(value: c_ulonglong) ?*PyObject;
+pub extern fn PyLong_FromSize_t(value: usize) ?*PyObject;
 pub extern fn PyLong_AsLong(obj: ?*PyObject) c_long;
 pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
 pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;
@@ -234,17 +235,16 @@ pub fn Py_None() *PyObject {
     return &_Py_NoneStruct;
 }
 
-// Reference counting - these are macros in Python, so we implement them inline
+// Reference counting
+pub extern fn Py_IncRef(o: *PyObject) void;
+pub extern fn Py_DecRef(o: *PyObject) void;
+
 pub inline fn Py_INCREF(obj: *PyObject) void {
-    // In CPython, Py_INCREF is a macro that increments ob_refcnt
-    // Since PyObject is opaque, we can't directly access ob_refcnt
-    // Instead, just don't increment for now - Python manages the refcount
-    _ = obj;
+    Py_IncRef(obj);
 }
 
 pub inline fn Py_DECREF(obj: *PyObject) void {
-    // Similarly for DECREF
-    _ = obj;
+    Py_DecRef(obj);
 }
 
 // List type for inheritance

@@ -21,12 +21,7 @@ from faebryk.libs.picker.picker import (
     pick_topologically,
 )
 from faebryk.libs.test.times import Times
-from faebryk.libs.units import P
 from faebryk.libs.util import ConfigFlagInt, indented_container
-from test.common.resources.fabll_modules.RP2040 import RP2040
-from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
-    RP2040_ReferenceDesign,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +34,11 @@ def _setup():
     NO_PROGRESS_BAR.set(True)
 
 
-class _RP2040_Basic(fabll.Node):
-    rp2040: RP2040
-    ldo: F.LDO
-    led: F.LED
-
-
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.parametrize(
     "module_type",
     [
-        _RP2040_Basic,
-        RP2040_ReferenceDesign,
         lambda: F.MultiCapacitor(10),
     ],
 )
@@ -61,7 +48,7 @@ def test_performance_pick_real_module(module_type: Callable[[], fabll.Module]):
     app = module_type()
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.tg)
     timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)
@@ -84,8 +71,8 @@ def test_performance_pick_rc_formulas():
     TOLERANCE = 20 * P.percent
 
     class App(fabll.Node):
-        alias_res = fabll.list_field(_GROUPS, F.Resistor)
-        res = fabll.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
+        alias_res = [F.Resistor.MakeChild() for _ in range(_GROUPS)]
+        res = [F.Resistor.MakeChild() for _ in range(_GROUPS * _GROUP_SIZE)]
 
         def __preinit__(self):
             increase = fabll.Range.from_center_rel(INCREASE, TOLERANCE) + fabll.Single(
@@ -104,7 +91,7 @@ def test_performance_pick_rc_formulas():
     app = App()
     timings.add("construct")
 
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.tg)
     timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)

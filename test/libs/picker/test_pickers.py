@@ -19,9 +19,7 @@ from faebryk.libs.picker.api.picker_lib import (
 )
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, groupby
 
 sys.path.append(str(Path(__file__).parent))
@@ -29,10 +27,7 @@ sys.path.append(str(Path(__file__).parent))
 if TYPE_CHECKING:
     from components import ComponentTestCase
 
-try:
-    from components import components_to_test
-except ImportError:
-    components_to_test = []
+from components import components_to_test
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +311,7 @@ def test_pick_voltage_divider_complex():
             self.rdiv.max_current.constrain_subset(fabll.Range(1 * P.mA, 2 * P.mA))
 
     app = App()
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.tg)
     solver = DefaultSolver()
 
     solver.simplify_symbolically(app)

@@ -97,12 +97,8 @@ class has_part_picked(fabll.Node):
                 raise ValueError(f"Unknown supplier: {supplier_id}")
 
     def setup(self, picked_part: "PickedPart") -> Self:
-        self.manufacturer_.get().constrain_to_single(value=picked_part.manufacturer)
-        self.partno_.get().constrain_to_single(value=picked_part.partno)
-        self.supplier_partno_.get().constrain_to_single(
-            value=picked_part.supplier_partno
-        )
-        self.supplier_id_.get().constrain_to_single(
-            value=picked_part.supplier.supplier_id
-        )
+        self.manufacturer_.get().alias_to_single(value=picked_part.manufacturer)
+        self.partno_.get().alias_to_single(value=picked_part.partno)
+        self.supplier_partno_.get().alias_to_single(value=picked_part.supplier_partno)
+        self.supplier_id_.get().alias_to_single(value=picked_part.supplier.supplier_id)
         return self

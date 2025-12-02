@@ -12,7 +12,7 @@ class UART_Base(fabll.Node):
     rx = F.ElectricLogic.MakeChild()
     tx = F.ElectricLogic.MakeChild()
 
-    baud = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    baud = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
 
     # ----------------------------------------
     #                 traits
@@ -23,5 +23,10 @@ class UART_Base(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    # self.rx.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
-    # self.tx.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rx.get(), trait=F.has_net_name
+        ).setup(name="RX", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tx.get(), trait=F.has_net_name
+        ).setup(name="TX", level=F.has_net_name.Level.SUGGESTED)

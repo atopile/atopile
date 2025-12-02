@@ -6,9 +6,6 @@ import faebryk.library._F as F
 
 
 class USB_C(fabll.Node):
-    # ----------------------------------------
-    #     modules, interfaces, parameters
-    # ----------------------------------------
     usb3 = F.USB3.MakeChild()
     cc1 = F.Electrical.MakeChild()
     cc2 = F.Electrical.MakeChild()
@@ -17,14 +14,27 @@ class USB_C(fabll.Node):
     rx = F.DifferentialPair.MakeChild()
     tx = F.DifferentialPair.MakeChild()
 
-    # self.cc1.add(F.has_net_name("CC1", level=F.has_net_name.Level.SUGGESTED))
-    # self.cc2.add(F.has_net_name("CC2", level=F.has_net_name.Level.SUGGESTED))
-    # self.sbu1.add(F.has_net_name("SBU1", level=F.has_net_name.Level.SUGGESTED))
-    # self.sbu2.add(F.has_net_name("SBU2", level=F.has_net_name.Level.SUGGESTED))
-    # self.rx.p.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
-    # self.rx.n.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
-    # self.tx.p.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
-    # self.tx.n.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.cc1.get(), trait=F.has_net_name
+        ).setup(name="CC1", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.cc2.get(), trait=F.has_net_name
+        ).setup(name="CC2", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.sbu1.get(), trait=F.has_net_name
+        ).setup(name="SBU1", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.sbu2.get(), trait=F.has_net_name
+        ).setup(name="SBU2", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rx.get(), trait=F.has_net_name
+        ).setup(name="RX", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.tx.get(), trait=F.has_net_name
+        ).setup(name="TX", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

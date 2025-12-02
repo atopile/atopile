@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from pint.util import create_class_with_registry
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
 

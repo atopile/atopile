@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum, auto
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -18,10 +18,10 @@ class ElectricLogic(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    class PushPull(Enum):
-        PUSH_PULL = auto()
-        OPEN_DRAIN = auto()
-        OPEN_SOURCE = auto()
+    class PushPull(StrEnum):
+        PUSH_PULL = "PUSH_PULL"
+        OPEN_DRAIN = "OPEN_DRAIN"
+        OPEN_SOURCE = "OPEN_SOURCE"
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -52,7 +52,7 @@ class ElectricLogic(fabll.Node):
         Set the logic signal by directly connecting to the reference.
         """
         r = self.reference
-        self.line.get().get_trait(fabll.is_interface).connect_to(
+        self.line.get()._is_interface.get().connect_to(
             r.get().hv.get() if on else r.get().lv.get()
         )
 

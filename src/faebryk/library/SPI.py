@@ -22,9 +22,16 @@ class SPI(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    # self.sclk.line.add(F.has_net_name("SCLK", level=F.has_net_name.Level.SUGGESTED))
-    # self.miso.line.add(F.has_net_name("MISO", level=F.has_net_name.Level.SUGGESTED))
-    # self.mosi.line.add(F.has_net_name("MOSI", level=F.has_net_name.Level.SUGGESTED))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.sclk.get(), trait=F.has_net_name
+        ).setup(name="SCLK", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.miso.get(), trait=F.has_net_name
+        ).setup(name="MISO", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.mosi.get(), trait=F.has_net_name
+        ).setup(name="MOSI", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

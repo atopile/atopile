@@ -175,7 +175,7 @@ class has_explicit_part(fabll.Node):
                     )
                 )
                 # Pin Str
-                lit = F.Literals.Strings.MakeChild(value=pin_str)
+                lit = F.Literals.Strings.MakeChild(pin_str)
                 out.add_dependant(lit)
                 out.add_dependant(
                     F.Collections.PointerTuple.AppendLiteral(
@@ -193,7 +193,7 @@ class has_explicit_part(fabll.Node):
         # Override footprint
         if override_footprint is not None:
             # Footprint Str
-            lit = F.Literals.Strings.MakeChild(value=override_footprint[1])
+            lit = F.Literals.Strings.MakeChild(override_footprint[1])
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(

@@ -12,9 +12,8 @@ class has_overriden_name(fabll.Node):
 
     name_ = fabll._ChildField(F.Parameters.StringParameter)
 
-    def get_name(self) -> str | None:
-        literal = self.name_.get().try_extract_constrained_literal()
-        return None if literal is None else str(literal)
+    def get_name(self) -> str:
+        return self.name_.get().force_extract_literal().get_values()[0]
 
     @classmethod
     def MakeChild(cls, name: str) -> fabll._ChildField:
@@ -25,5 +24,5 @@ class has_overriden_name(fabll.Node):
         return out
 
     def setup(self, name: str) -> Self:
-        self.name_.get().constrain_to_single(value=name)
+        self.name_.get().alias_to_single(value=name)
         return self

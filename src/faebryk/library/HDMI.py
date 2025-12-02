@@ -43,13 +43,12 @@ class HDMI(fabll.Node):
     def __preinit__(self) -> None:
         pass
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        for i in range(3):
+    def on_obj_set(self):
+        for i, data in enumerate(self.data):
             net_name = f"HDMI_D{i}"
-            self.data[i].p.line.add(
-                F.has_net_name(net_name, level=F.has_net_name.Level.SUGGESTED)
-            )
-            self.data[i].n.line.add(
-                F.has_net_name(net_name, level=F.has_net_name.Level.SUGGESTED)
-            )
+            fabll.Traits.create_and_add_instance_to(
+                node=data.get().p.get(), trait=F.has_net_name
+            ).setup(name=net_name, level=F.has_net_name.Level.SUGGESTED)
+            fabll.Traits.create_and_add_instance_to(
+                node=data.get().n.get(), trait=F.has_net_name
+            ).setup(name=net_name, level=F.has_net_name.Level.SUGGESTED)

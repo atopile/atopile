@@ -18,9 +18,9 @@ class Ethernet(fabll.Node):
     # ----------------------------------------
 
     # Ethernet pairs
-    pairs = [F.ElectricSignal.MakeChild() for _ in range(4)]
+    pairs = [F.DifferentialPair.MakeChild() for _ in range(4)]
 
-    # Status LEDs
+    # Status LEDs #TODO: should be removed, not part of the interface
     led_speed = F.ElectricLogic.MakeChild()  # Speed LED
     led_link = F.ElectricLogic.MakeChild()  # Link LED
 
@@ -37,21 +37,23 @@ class Ethernet(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.led_speed.line.add(
-            F.has_net_name("ETH_LED_SPEED", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.led_link.line.add(
-            F.has_net_name("ETH_LED_LINK", level=F.has_net_name.Level.SUGGESTED)
-        )
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.led_speed.get(), trait=F.has_net_name
+        ).setup(name="ETH_LED_SPEED", level=F.has_net_name.Level.SUGGESTED)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=self.led_link.get(), trait=F.has_net_name
+        ).setup(name="ETH_LED_LINK", level=F.has_net_name.Level.SUGGESTED)
+
         for i, pair in enumerate(self.pairs):
-            pair.p.line.add(
-                F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
-            )
-            pair.n.line.add(
-                F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
-            )
+            fabll.Traits.create_and_add_instance_to(
+                node=pair.get().p.get(), trait=F.has_net_name
+            ).setup(name=f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+
+            fabll.Traits.create_and_add_instance_to(
+                node=pair.get().n.get(), trait=F.has_net_name
+            ).setup(name=f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

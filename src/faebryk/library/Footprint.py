@@ -6,16 +6,9 @@ import faebryk.core.node as fabll
 
 
 class Footprint(fabll.Node):
-    # ----------------------------------------
-    #                 traits
-    # ----------------------------------------
-    _is_module = fabll.Traits.MakeEdge(
-        fabll.is_module.MakeChild()
-    )
+    """Genreic footprint"""
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     @staticmethod
     def get_footprint_of_parent(

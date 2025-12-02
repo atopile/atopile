@@ -52,11 +52,11 @@ class Resistor(fabll.Node):
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(
-            """
+            example="""
                 import Resistor
                 resistor = new Resistor
                 resistor.resistance = 10kohm +/- 5%
             """,
-            F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
         ).put_on_type()
     )

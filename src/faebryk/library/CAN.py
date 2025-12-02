@@ -15,13 +15,13 @@ class CAN(fabll.Node):
     # ----------------------------------------
     diff_pair = F.DifferentialPair.MakeChild()
 
-    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitPerSecond)
+    baudrate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.BitsPerSecond)
     # TODO constrain CAN baudrate between 10kbps to 1Mbps
     # F.Expressions.Is.MakeChild_Constrain()
 
     impedance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ohm)
     impedance_constraint = F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-        [impedance], 120.0
+        [impedance], min=120.0, max=120.0, unit=F.Units.Ohm
     )
 
     # ----------------------------------------
@@ -29,12 +29,14 @@ class CAN(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # self.diff_pair.p.line.add(
-    #     F.has_net_name("CAN_H", level=F.has_net_name.Level.SUGGESTED)
-    # )
-    # self.diff_pair.n.line.add(
-    #     F.has_net_name("CAN_L", level=F.has_net_name.Level.SUGGESTED)
-    # )
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.diff_pair.get().p.get(), trait=F.has_net_name
+        ).setup(name="CAN_H", level=F.has_net_name.Level.SUGGESTED)
+
+        fabll.Traits.create_and_add_instance_to(
+            node=self.diff_pair.get().n.get(), trait=F.has_net_name
+        ).setup(name="CAN_L", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

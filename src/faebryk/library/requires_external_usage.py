@@ -13,8 +13,13 @@ logger = logging.getLogger(__name__)
 class requires_external_usage(fabll.Node):
     @property
     def fulfilled(self) -> bool:
-        obj = self.get_parent_force()[0]
-        connected_to = set(obj.get_trait(fabll.is_interface).get_connected())
+        obj = fabll.Traits(self).get_obj_raw()
+        iface = obj.get_trait(fabll.is_interface)
+        connected_to = {
+            node
+            for node, path in iface.get_connected().items()
+            if path.length == 1
+        }
         parent = obj.get_parent()
         # no shared parent possible
         if parent is None:
@@ -54,5 +59,5 @@ class requires_external_usage(fabll.Node):
     def __check_post_design__(self):
         if not self.fulfilled:
             raise requires_external_usage.RequiresExternalUsageNotFulfilled(
-                nodes=[self.get_parent_force()[0]],
+                nodes=[fabll.Traits(self).get_obj_raw()],
             )

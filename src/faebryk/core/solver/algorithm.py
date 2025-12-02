@@ -18,6 +18,7 @@ class SolverAlgorithm:
     func: SolverAlgorithmFunc
     single: bool
     terminal: bool
+    force_copy: bool
 
     def __call__(self, *args: Any, **kwargs: Any):
         return self.func(*args, **kwargs)
@@ -30,6 +31,7 @@ def algorithm(
     name: str,
     single: bool = False,
     terminal: bool = True,
+    force_copy: bool = False,
 ) -> Callable[[SolverAlgorithmFunc], SolverAlgorithm]:
     """
     Decorator to wrap an algorithm function
@@ -53,6 +55,7 @@ def algorithm(
             func=wrapped,
             single=single,
             terminal=terminal,
+            force_copy=force_copy,
         )
         algorithm._registered_algorithms.append(out)
 

@@ -8,8 +8,6 @@ from enum import StrEnum
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import Property
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
@@ -34,7 +32,7 @@ def load_part_info_from_pcb(G: graph.GraphView):
     Load descriptive properties from footprints and saved parameters.
     """
     nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(
-        PCB_Transformer.has_linked_kicad_footprint
+        F.PCBTransformer.has_linked_kicad_footprint
     )
 
     for node, trait in nodes:

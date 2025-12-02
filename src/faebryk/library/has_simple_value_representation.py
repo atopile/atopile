@@ -3,10 +3,13 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from enum import Enum
+from typing import Optional
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
 from faebryk.libs.util import join_if_non_empty
 
 logger = logging.getLogger(__name__)
@@ -21,17 +24,6 @@ class has_simple_value_representation(fabll.Node):
         prefix: str = ""
         suffix: str = ""
         default: Optional[str] = None
-
-    # @staticmethod
-    # def of(spec_node: "SpecNode") -> Spec:
-    #     return Spec(
-    #         param=spec_node.param,
-    #         unit=spec_node.unit,
-    #         tolerance=spec_node.tolerance,
-    #         prefix=spec_node.prefix,
-    #         suffix=spec_node.suffix,
-    #         default=spec_node.default,
-    #     )
 
     class SpecNode(fabll.Node):
         # TODO: Is the pointer set necessary? Can it be the spec node itself?
@@ -49,80 +41,73 @@ class has_simple_value_representation(fabll.Node):
             return self.param_ptr_.get().deref()
 
         @property
-        def prefix(self) -> fabll.LiteralT | None:
+        def prefix(self) -> str:
             literal = F.Parameters.StringParameter.bind_instance(
                 self.prefix_.get().instance
             ).try_extract_constrained_literal()
-            return "" if literal is None else str(literal)
+            return "" if literal is None else literal.get_values()[0]
 
         @property
-        def suffix(self) -> fabll.LiteralT | None:
+        def suffix(self) -> str:
             literal = F.Parameters.StringParameter.bind_instance(
                 self.suffix_.get().instance
             ).try_extract_constrained_literal()
-            return "" if literal is None else str(literal)
+            return "" if literal is None else literal.get_values()[0]
 
         @property
-        def default(self) -> fabll.LiteralT | None:
+        def default(self) -> str:
             literal = F.Parameters.StringParameter.bind_instance(
                 self.default_.get().instance
             ).try_extract_constrained_literal()
-            return "" if literal is None else str(literal)
+            return "" if literal is None else literal.get_values()[0]
 
         def _get_value(self) -> str:
-            value = self.param.get_name()
-            if value is None:
-                if self.default is not None:
-                    return str(self.default)
-                raise
-            else:
-                return value  # TODO: Where shoudl value actually come from?
-
-            domain = self.param.domain
+            lit = self.param.get_trait(F.Parameters.is_parameter_operatable).try_get_aliased_literal()
+            return lit.pretty_str()
 
             # TODO this is probably not the only place we will ever need
             #  this big switch
             # consider moving it somewhere else
-            if isinstance(domain, EnumDomain):
-                if self.tolerance:
-                    raise ValueError("tolerance not supported for enum")
-                # TODO handle units
-                enum = EnumSet.from_value(value)
-                if not enum.is_single_element():
-                    raise NotImplementedError()
-                val = next(iter(enum.elements))
-                # TODO not sure I like this
-                if isinstance(val.value, str):
-                    return val.value
-                return val.name
+            # if isinstance(domain, EnumDomain):
+            #     if self.tolerance:
+            #         raise ValueError("tolerance not supported for enum")
+            #     # TODO handle units
+            #     enum = EnumSet.from_value(value)
+            #     if not enum.is_single_element():
+            #         raise NotImplementedError()
+            #     val = next(iter(enum.elements))
+            #     # TODO not sure I like this
+            #     if isinstance(val.value, str):
+            #         return val.value
+            #     return val.name
 
-            if isinstance(domain, Boolean):
-                if self.tolerance:
-                    raise ValueError("tolerance not supported for boolean")
-                bool_val = BoolSet.from_value(value)
-                if not bool_val.is_single_element():
-                    raise NotImplementedError()
-                return str(next(iter(bool_val.elements))).lower()
+            # if isinstance(domain, Boolean):
+            #     if self.tolerance:
+            #         raise ValueError("tolerance not supported for boolean")
+            #     bool_val = BoolSet.from_value(value)
+            #     if not bool_val.is_single_element():
+            #         raise NotImplementedError()
+            #     return str(next(iter(bool_val.elements))).lower()
 
-            if isinstance(domain, Numbers):
-                unit = self.unit if self.unit is not None else self.param.units
-                # TODO If tolerance, maybe hint that it's weird there isn't any
-                value_lit = Quantity_Interval_Disjoint.from_value(value)
-                if value_lit.is_single_element():
-                    return to_si_str(value_lit.min_elem, unit, 2)
-                if len(value_lit._intervals.intervals) > 1:
-                    raise NotImplementedError()
-                center, tolerance = value_lit.as_gapless().as_center_tuple(
-                    relative=True
-                )
-                center_str = to_si_str(center, unit, 2)
-                assert isinstance(tolerance, Quantity)
-                if self.tolerance and tolerance > 0:
-                    tolerance_str = f" ±{to_si_str(tolerance, '%', 0)}"
-                    return f"{center_str}{tolerance_str}"
-                return center_str
+            # if isinstance(domain, Numbers):
+            #     unit = self.unit if self.unit is not None else self.param.units
+            #     # TODO If tolerance, maybe hint that it's weird there isn't any
+            #     value_lit = Quantity_Interval_Disjoint.from_value(value)
+            #     if value_lit.is_single_element():
+            #         return to_si_str(value_lit.min_elem, unit, 2)
+            #     if len(value_lit._intervals.intervals) > 1:
+            #         raise NotImplementedError()
+            #     center, tolerance = value_lit.as_gapless().as_center_tuple(
+            #         relative=True
+            #     )
+            #     center_str = to_si_str(center, unit, 2)
+            #     assert isinstance(tolerance, Quantity)
+            #     if self.tolerance and tolerance > 0:
+            #         tolerance_str = f" ±{to_si_str(tolerance, '%', 0)}"
+            #         return f"{center_str}{tolerance_str}"
+            #     return center_str
 
-            raise NotImplementedError(f"No support for {domain}")
+            # raise NotImplementedError(f"No support for {domain}")
 
         def get_value(self) -> str:
             try:
@@ -249,12 +234,6 @@ class has_simple_value_representation(fabll.Node):
             )
         return out
 
-    # def __init__(self, *specs: Spec, prefix: str = "", suffix: str = "") -> None:
-    #     super().__init__()
-    #     self.specs = specs
-    #     self.prefix = prefix
-    #     self.suffix = suffix
-
     def get_value(self) -> str:
         return join_if_non_empty(
             " ",
@@ -262,3 +241,121 @@ class has_simple_value_representation(fabll.Node):
             *[s.get_value() for s in self.specs],
             self.suffix,
         )
+
+
+def test_repr_chain_basic():
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+
+        S = has_simple_value_representation.Spec
+        _simple_repr = fabll.Traits.MakeEdge(
+            has_simple_value_representation.MakeChild(
+                S(param=param1, prefix="TM", tolerance=True),
+                S(param=param2, suffix="P2"),
+                S(param=param3, tolerance=True, suffix="P3"),
+            )
+        )
+
+    m = TestModule.bind_typegraph(tg).create_instance(g=g)
+    m.param1.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_interval(
+            lower=10.0,
+            upper=20,
+            unit=F.Units.Volt,
+        ),
+    )
+    m.param2.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(value=5.0, unit=F.Units.Ampere),
+    )
+    m.param3.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(value=10.0, unit=F.Units.Volt),
+    )
+
+    val = m.get_trait(has_simple_value_representation).get_value()
+    assert val == "TM 15V ±33% 5A P2 10V P3"
+
+
+def test_repr_chain_non_number():
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestEnum(Enum):
+        A = "AS"
+        B = "BS"
+
+    class TestModule(fabll.Node):
+        param1 = F.Parameters.EnumParameter.MakeChild(TestEnum)
+        param2 = F.Parameters.BooleanParameter.MakeChild()
+
+        S = has_simple_value_representation.Spec
+        _simple_repr = fabll.Traits.MakeEdge(
+            has_simple_value_representation.MakeChild(
+                S(param=param1),
+                S(param=param2, prefix="P2:"),
+            )
+        )
+
+    m = TestModule.bind_typegraph(tg).create_instance(g=g)
+    m.param1.get().get_trait(F.Parameters.is_parameter_operatable).alias_to_literal(
+        g=g, value=TestEnum.A
+    )
+    m.param2.get().alias_to_single(value=True)
+
+    val = m.get_trait(has_simple_value_representation).get_value()
+    assert val == "AS P2: true"
+
+
+def test_repr_chain_no_literal():
+    import faebryk.library._F as F
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        param1 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+        param2 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+        param3 = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+
+        S = has_simple_value_representation.Spec
+        _simple_repr = fabll.Traits.MakeEdge(
+            has_simple_value_representation.MakeChild(
+                S(param=param1, default=None),
+                S(param=param2),
+                S(param=param3, default="P3: MISSING"),
+            )
+        )
+
+    m = TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    val = m.get_trait(has_simple_value_representation).get_value()
+    assert val == "P3: MISSING"
+
+    m.param1.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g=g)
+        .setup_from_singleton(
+            value=10.0,
+            unit=F.Units.Volt,
+        ),
+    )
+    val = m.get_trait(has_simple_value_representation).get_value()
+    assert val == "10V P3: MISSING"

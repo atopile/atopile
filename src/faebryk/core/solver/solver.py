@@ -4,6 +4,7 @@
 import logging
 from typing import Any, Protocol
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -17,8 +18,8 @@ LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 class NotDeducibleException(Exception):
     def __init__(
         self,
-        predicate: F.Expressions.IsConstrainable,
-        not_deduced: list[F.Expressions.IsConstrained],
+        predicate: F.Expressions.is_assertable,
+        not_deduced: list[F.Expressions.is_predicate],
     ):
         self.predicate = predicate
         self.not_deduced = not_deduced
@@ -32,7 +33,7 @@ class Solver(Protocol):
         self,
         operatable: F.Parameters.is_parameter,
         lock: bool,
-        suppose_constraint: F.Expressions.IsConstrained | None = None,
+        suppose_predicate: F.Expressions.is_predicate | None = None,
         minimize: F.Expressions.is_expression | None = None,
     ) -> Any:
         """
@@ -40,7 +41,7 @@ class Solver(Protocol):
 
         Args:
             operatable: The expression or parameter to solve.
-            suppose_constraint: An optional constraint that can be added to make solving
+            suppose_predicate: An optional predicate that can be added to make solving
                                 easier. It is only in effect for the duration of the
                                 solve call.
             minimize: An optional expression to minimize while solving.
@@ -54,7 +55,7 @@ class Solver(Protocol):
 
     def try_fulfill(
         self,
-        predicate: F.Expressions.IsConstrainable,
+        predicate: F.Expressions.is_assertable,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool:
@@ -81,4 +82,4 @@ class Solver(Protocol):
 
     def update_superset_cache(self, *nodes: fabll.Node): ...
 
-    def simplify(self, *gs: graph.GraphView | fabll.Node): ...
+    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph): ...

@@ -5,8 +5,8 @@ from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.graph.graph import GraphView, Node
 
 
-def test_is_connected_to_returns_path_length_sequence():
-    """Ensure the Python binding exposes Zig path results as Python lists."""
+def test_is_connected_to_returns_bfs_path():
+    """Ensure the Python binding exposes Zig BFSPath objects."""
     g = GraphView.create()
 
     n1 = g.insert_node(node=Node.create())
@@ -16,8 +16,9 @@ def test_is_connected_to_returns_path_length_sequence():
     EdgeInterfaceConnection.connect(bn1=n1, bn2=n2)
     EdgeInterfaceConnection.connect(bn1=n2, bn2=n3)
 
-    lengths = EdgeInterfaceConnection.is_connected_to(source=n1, target=n3)
-    assert lengths == [2]
+    path = EdgeInterfaceConnection.is_connected_to(source=n1, target=n3)
+    assert path.get_length() == 2
+    assert path.get_end_node().node().is_same(other=n3.node())
 
 
 def test_get_other_connected_node():
@@ -103,7 +104,9 @@ def test_multiple_connections_same_pair():
 
     assert EdgeInterfaceConnection.is_instance(edge=first.edge())
     assert EdgeInterfaceConnection.is_instance(edge=second.edge())
-    assert EdgeInterfaceConnection.is_connected_to(source=n1, target=n2)
+    path = EdgeInterfaceConnection.is_connected_to(source=n1, target=n2)
+    assert path.get_length() == 1
+    assert path.get_end_node().node().is_same(other=n2.node())
 
 
 def test_get_connected_returns_path_objects():

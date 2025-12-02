@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 
 class KicadFootprint(fabll.Node):
+    """KiCad footprint"""
+
     class has_file(fabll.Node):
         """
         Direct reference to a KiCAD footprint file
@@ -29,7 +31,7 @@ class KicadFootprint(fabll.Node):
             return Path(str(self.file_.get().force_extract_literal()))
 
         def setup(self, file: PathLike) -> Self:
-            self.file_.get().constrain_to_single(value=str(file))
+            self.file_.get().alias_to_single(value=str(file))
             return self
 
     class has_kicad_identifier(fabll.Node):
@@ -44,7 +46,7 @@ class KicadFootprint(fabll.Node):
             return str(self.kicad_identifier_.get().force_extract_literal())
 
         def setup(self, kicad_identifier: str) -> Self:
-            self.kicad_identifier_.get().constrain_to_single(value=kicad_identifier)
+            self.kicad_identifier_.get().alias_to_single(value=kicad_identifier)
             return self
 
         def on_obj_set(self):
@@ -63,6 +65,9 @@ class KicadFootprint(fabll.Node):
 
     pin_names_ = F.Collections.PointerSet.MakeChild()
     pins_ = F.Collections.PointerSet.MakeChild()
+    footprint = F.Footprint.MakeChild()
+
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     @property
     def pin_names(self) -> list[str]:
@@ -110,7 +115,7 @@ class KicadFootprint(fabll.Node):
             pin_parameter = F.Parameters.StringParameter.bind_typegraph_from_instance(
                 instance=self.instance
             ).create_instance(g=self.instance.g())
-            pin_parameter.constrain_to_single(value=pin_name)
+            pin_parameter.alias_to_single(value=pin_name)
             self.pin_names_.get().append(pin_parameter)
 
             # Pads

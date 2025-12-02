@@ -11,6 +11,117 @@ Primary goals:
 - more powerful graph
 - serializable graph
 
+### Virtual Environment
+- This project uses a uv-managed virtual environment. From the repo root, activate it with `source .venv/bin/activate` (avoid `uv run` here; it can hit permission issues on cached sdists).
+- If uv needs to materialize the env, run `UV_CACHE_DIR=.uv-cache uv sync` first, then `source .venv/bin/activate`.
+
+## Graph and Fabll Re-Design
+
+### Graph View and Type Graph Setup
+
+(Implementation: `src/faebryk/core/graph.zig` wrapped in `src/faebryk/core/graph.py`, TypeGraph in `src/faebryk/core/faebrykpy.py`)
+
+To work with the graph, you need a `GraphView` (holds the entire graph state including types and instances) and a `TypeGraph` (manages type definitions).
+
+### Example setting up graph, typegraph, defining type nodes, and instantiating instance nodes
+```python
+# Setup graph and typegraph
+g = fabll.graph.GraphView.create()
+tg = fbrk.TypeGraph.create(g=g)
+
+# Parameter Example
+parameter_type = F.Parameters.is_parameter.bind_typegraph(tg)
+parameter_instance = parameter_type.create_instance(g)
+
+# Electrical Example
+# src/faebryk/library/Electrical.py
+electrical_type = F.Electrical.bind_typegraph(tg)
+electrical_instance = electrical_type.create_instance(g)
+```
+### Type Definition and Composition
+Most entities in the system (Modules, Interfaces, Parameters, etc.) are defined by subclassing `fabll.Node`.
+
+Composition is handled via the `MakeChild()` method, which creates "composition edges". When a class attribute is assigned the result of `SomeType.MakeChild()`, it declares that instances of this new type will contain an instance of `SomeType` as a child. This builds the structural hierarchy of the graph.
+
+Traits, on the other hand, use "trait edges". This is why the syntax differs: traits are attached using `MakeEdge()` (often wrapping `MakeChild()` if creating a new trait instance), whereas structural children use `MakeChild()` directly.
+
+#### MakeChild Example
+Using `ElectricPower` (from `src/faebryk/library/ElectricPower.py`) as a baseline:
+
+```python
+class ElectricPower(fabll.Node):
+    """
+    Defines a new type 'ElectricPower' which is a fabll.Node.
+    """
+    
+    # Composition: ElectricPower contains two Electrical interfaces (hv and lv)
+    # MakeChild() creates a definition that these children exist on this type.
+    # When ElectricPower is instantiated, hv and lv will also be instantiated as children.
+    hv = F.Electrical.MakeChild()
+    lv = F.Electrical.MakeChild()
+
+    # Parameters are also children defined via MakeChild, often with arguments
+    voltage = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Volt,
+    )
+
+    # Traits are attached using MakeEdge combined with MakeChild or specific trait constructors
+    # This defines that ElectricPower has the 'is_interface' trait
+    _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+```
+
+### Traits
+- Traits are the primary way nodes interact with eachother and functions are executed on nodes
+- One or many traits can be applied to type nodes or instance nodes
+
+is_interface trait example making and checking two node connections (assume setup from above)
+#### Definition Example
+```python
+class Electrical(fabll.Node):
+	_is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
+```
+#### Usage Example
+```python
+e1 = electrical_type.create_instance(g)
+e2 = electrical_type.create_instance(g)
+e1._is_interface.get().connect_to(e2)
+bool connected = e1._is_interface.get().is_connected_to(e2)
+```
+
+#### Checking for Traits: Instance Nodes vs Type Nodes
+
+**Instance Nodes** (runtime objects created from types):
+```python
+instance = some_type.create_instance(g)
+instance.has_trait(F.some_trait)
+instance.get_trait(F.some_trait)
+instance.try_get_trait(F.some_trait)
+```
+
+**Type Nodes** (type definitions in the typegraph):
+```python
+type_bound = SomeType.bind_typegraph(tg)
+type_bound.try_get_type_trait(F.some_trait)
+type_bound.get_type_trait(F.some_trait)
+```
+
+**Key Difference:**
+- Instance nodes: `.has_trait()`, `.try_get_trait()`, `.get_trait()`
+- Type nodes: `.try_get_type_trait()`, `.get_type_trait()` on `TypeNodeBoundTG`
+- `instance.get_type_node()` returns `BoundNodeReference` which has no trait methods - bind the type class instead
+
+### Expressions
+Expressions are nodes that represent operations.
+
+`src/faebryk/library/Expressions.py`
+
+```python
+anded = F.Expressions.And.bind_typegraph(tg).create_instance(g).setup(
+	operand1, operand2
+)
+```
+
+
 ## Zig-Python Architecture
 
 ### Overview
@@ -36,15 +147,11 @@ Python call → Python wrapper (Zig) parses args → Core Zig function → Wrapp
 3. Add wrapper to appropriate `extra_methods` array
 4. Update type stub in `manual/*.pyi` file
 
-### Making Objects Hashable
-To use Zig objects as Python dictionary keys:
-1. Implement `tp_hash` - hash function (use UUID or unique identifier)
-2. Implement `tp_richcompare` - equality comparison (use existing `is_same()` methods for consistency)
-3. Register both in type object's `wrap_*` function
-
 ### Error Handling
 Zig wrappers use "crash on error" philosophy - simplifies error handling by using `defer` for cleanup and letting Python GC handle successfully created objects.
 
-### Building & Testing
-- Build: `cd src/faebryk/core/zig && zig build python-ext -Dpython-include=/path/to/python/include`
-- Test: `pytest test/core/zig/` (tests use pytest framework)
+## Testing
+### Overall
+Run `pytest` in root folder
+### Zig Core
+`zig build test` 

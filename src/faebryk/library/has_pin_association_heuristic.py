@@ -65,7 +65,7 @@ class has_pin_association_heuristic(fabll.Node):
         )
         nc_makechilds = []
         for nc_literal in nc_in:
-            nc_lit = F.Literals.Strings.MakeChild(value=nc_literal)
+            nc_lit = F.Literals.Strings.MakeChild(nc_literal)
             out.add_dependant(nc_lit)
             nc_makechilds.append([nc_lit])
         nc_set_fields = F.Collections.PointerSet.MakeEdges([out, cls.nc], nc_makechilds)
@@ -82,7 +82,7 @@ class has_pin_association_heuristic(fabll.Node):
                 )
             )
             for param_literal in param_names:
-                param_lit = F.Literals.Strings.MakeChild(value=param_literal)
+                param_lit = F.Literals.Strings.MakeChild(param_literal)
                 out.add_dependant(param_lit)
                 out.add_dependant(
                     F.Collections.PointerTuple.AppendLiteral(

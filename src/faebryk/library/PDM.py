@@ -27,17 +27,15 @@ class PDM(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # ----------------------------------------
-    #                WIP
-    # ----------------------------------------
     _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.data.line.add(F.has_net_name("DATA", level=F.has_net_name.Level.SUGGESTED))
-        self.clock.line.add(
-            F.has_net_name("CLOCK", level=F.has_net_name.Level.SUGGESTED)
-        )
-        self.select.line.add(
-            F.has_net_name("SELECT", level=F.has_net_name.Level.SUGGESTED)
-        )
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.data.get(), trait=F.has_net_name
+        ).setup(name="DATA", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.clock.get(), trait=F.has_net_name
+        ).setup(name="CLOCK", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.select.get(), trait=F.has_net_name
+        ).setup(name="SELECT", level=F.has_net_name.Level.SUGGESTED)

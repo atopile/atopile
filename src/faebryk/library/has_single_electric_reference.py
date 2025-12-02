@@ -25,39 +25,40 @@ class has_single_electric_reference(fabll.Node):
         reference = self.reference_ptr_.get().deref()
         if reference is None:
             raise ValueError("has_single_electric_reference has no reference")
-        return reference  # type: ignore
+        return reference.cast(F.ElectricPower)
 
     def connect_all_references(
         self,
         ground_only: bool = False,
-        exclude: list[fabll.Node] = [],
     ):
         parent_node = self.get_parent_force()[0]
-
-        reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(
-            g=self.tg.get_graph_view()
-        )
+        reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(g=self.g)
         self.reference_ptr_.get().point(reference)
 
-        nodes = parent_node.get_children(
+        # if a child has the single electric reference trait, connect its shared reference to shared reference``
+        children_with_trait = parent_node.get_children(
             direct_only=True,
-            types=(fabll.Node),
-            required_trait=fabll.is_interface,
-        ).difference(set(exclude))
+            types=fabll.Node,
+            required_trait=self,
+        )
 
-        refs = {
-            x.get_trait(self.__class__).get_reference()
-            for x in nodes
-            if x.has_trait(self.__class__)
-        } | {x for x in nodes if isinstance(x, F.ElectricPower)}
-        assert refs
+        # if a child is a power, connect to shared reference
+        for child in children_with_trait:
+            if ground_only:
+                child.get_trait(self).get_reference().lv.get()._is_interface.get().connect_to(reference.lv.get())
+            else:
+                child.get_trait(self).get_reference()._is_interface.get().connect_to(reference)
 
-        if ground_only:
-            reference.lv.get().get_trait(fabll.is_interface).connect_to(
-                *{r.lv.get() for r in refs}
-            )
-        else:
-            reference.get_trait(fabll.is_interface).connect_to(*refs)
+        children_that_are_power = parent_node.get_children(
+            direct_only=True,
+            types=F.ElectricPower,
+        )
+
+        for power in children_that_are_power:
+            if ground_only:
+                power.lv.get()._is_interface.get().connect_to(reference.lv.get())
+            else:
+                power._is_interface.get().connect_to(reference)
 
     @property
     def ground_only(self) -> bool:
@@ -68,15 +69,6 @@ class has_single_electric_reference(fabll.Node):
     def exclude(self) -> list[fabll.Node]:
         ref_list = self.exclude_.get().as_list()
         return [ref.get() for ref in ref_list]
-
-    def on_obj_set(self):
-        if not isinstance(self.instance, fabll.Node):
-            raise TypeError(
-                f"has_single_electric_reference can only be used on "
-                f"modules or module interfaces, got {self.instance}"
-            )
-
-        self.connect_all_references(ground_only=self.ground_only, exclude=self.exclude)
 
     @classmethod
     def MakeChild(

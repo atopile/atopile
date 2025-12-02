@@ -2,254 +2,531 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Callable
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P, quantity
 
 logger = logging.getLogger(__name__)
+
+# Graph and TypeGraph setup
+_g = graph.GraphView.create()
+_tg = fbrk.TypeGraph.create(g=_g)
+_literals = F.Literals.BoundLiteralContext(_tg, _g)
 
 
 @dataclass
 class ComponentTestCase:
-    module: fabll.Module
-    packages: list[SMDSize]
+    module: fabll.Node
+    packages: list[SMDSize] = field(default_factory=list)
     lcsc_id: str | None = None
     mfr_mpn: tuple[str, str] | None = None
     override_test_name: str | None = None
+    setup_fn: Callable[[fabll.Node], None] | None = None
 
     def __post_init__(self):
+        if self.setup_fn:
+            self.setup_fn(self.module)
         if self.lcsc_id:
-            self.module.add(F.has_explicit_part.by_supplier(self.lcsc_id))
+            fabll.Traits.create_and_add_instance_to(self.module, F.has_explicit_part)
         elif self.mfr_mpn:
-            self.module.add(F.has_explicit_part.by_mfr(*self.mfr_mpn))
+            fabll.Traits.create_and_add_instance_to(self.module, F.has_explicit_part)
 
 
 mfr_parts = [
     ComponentTestCase(
-        F.OpAmp().builder(
-            lambda r: (
-                r.bandwidth.constrain_le(1 * P.Mhertz),
-                r.common_mode_rejection_ratio.constrain_ge(quantity(50, P.dB)),
-                r.input_bias_current.constrain_le(1 * P.nA),
-                r.input_offset_voltage.constrain_le(1 * P.mV),
-                r.gain_bandwidth_product.constrain_le(1 * P.Mhertz),
-                r.output_current.constrain_le(1 * P.mA),
-                r.slew_rate.constrain_le(1 * P.MV / P.us),
-            )
-        ),
-        packages=[],  # FIXME: re-add package requirement"SOT-23-5"
+        F.OpAmp.bind_typegraph(tg=_tg).create_instance(g=_g),
+        packages=[],  # FIXME: re-add package requirement "SOT-23-5"
         mfr_mpn=("Texas Instruments", "LMV321IDBVR"),
         override_test_name="MFR_TI_LMV321IDBVR",
+        setup_fn=lambda r: (
+            # bandwidth <= 1MHz
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.bandwidth.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # CMRR >= 50dB
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.common_mode_rejection_ratio.get()
+                .get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(50, F.Units.Decibel)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # input_bias_current <= 1nA
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.input_bias_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e-9, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # input_offset_voltage <= 1mV
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.input_offset_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # gain_bandwidth_product <= 1MHz
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.gain_bandwidth_product.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # output_current <= 1mA
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.output_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # slew_rate <= 1MV/s
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.slew_rate.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.VoltsPerSecond)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     )
 ]
 
 lcsc_id_parts = [
     ComponentTestCase(
-        F.OpAmp().builder(
-            lambda r: (
-                r.bandwidth.constrain_le(1 * P.Mhertz),
-                r.common_mode_rejection_ratio.constrain_ge(quantity(50, P.dB)),
-                r.input_bias_current.constrain_le(1 * P.nA),
-                r.input_offset_voltage.constrain_le(1 * P.mV),
-                r.gain_bandwidth_product.constrain_le(1 * P.Mhertz),
-                r.output_current.constrain_le(1 * P.mA),
-                r.slew_rate.constrain_le(1 * P.MV / P.us),
-            )
-        ),
-        packages=[],  # FIXME: re-add package requirement"SOT-23-5"
+        F.OpAmp.bind_typegraph(tg=_tg).create_instance(g=_g),
+        packages=[],  # FIXME: re-add package requirement "SOT-23-5"
         lcsc_id="C7972",
         override_test_name="LCSC_ID_C7972",
+        setup_fn=lambda r: (
+            # bandwidth <= 1MHz
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.bandwidth.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # CMRR >= 50dB
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.common_mode_rejection_ratio.get()
+                .get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(50, F.Units.Decibel)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # input_bias_current <= 1nA
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.input_bias_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e-9, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # input_offset_voltage <= 1mV
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.input_offset_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # gain_bandwidth_product <= 1MHz
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.gain_bandwidth_product.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.Hertz)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # output_current <= 1mA
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.output_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e-3, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # slew_rate <= 1MV/s
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.slew_rate.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1e6, F.Units.VoltsPerSecond)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     )
 ]
 
 resistors = [
     ComponentTestCase(
-        F.Resistor().builder(
-            lambda r: (
-                r.resistance.constrain_subset(
-                    fabll.Range.from_center(10 * P.kohm, 1 * P.kohm)
-                ),
-                r.max_power.constrain_ge(0.05 * P.W),
-                r.max_voltage.constrain_ge(25 * P.V),
-            )
-        ),
+        F.Resistor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0402],
+        setup_fn=lambda r: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.resistance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(9e3, 11e3, F.Units.Ohm)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.max_power.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(0.05, F.Units.Watt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(25, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
     ComponentTestCase(
-        F.Resistor().builder(
-            lambda r: (
-                r.resistance.constrain_subset(
-                    fabll.Range.from_center(69 * P.kohm, 2 * P.kohm)
-                ),
-                r.max_power.constrain_ge(0.1 * P.W),
-                r.max_voltage.constrain_ge(50 * P.V),
-            )
-        ),
+        F.Resistor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0603],
+        setup_fn=lambda r: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.resistance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(67e3, 71e3, F.Units.Ohm)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.max_power.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(0.1, F.Units.Watt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(50, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
     ComponentTestCase(
-        F.Resistor().builder(
-            lambda r: (
-                r.resistance.constrain_subset(
-                    fabll.Range.from_center_rel(3 * P.mohm, 0.01)
-                ),
-            )
-        ),
+        F.Resistor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0805],
+        setup_fn=lambda r: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                r.resistance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(
+                    3e-3 * 0.99, 3e-3 * 1.01, F.Units.Ohm
+                ).get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
 ]
 
 capacitors = [
     ComponentTestCase(
-        F.Capacitor().builder(
-            lambda c: (
-                c.capacitance.constrain_subset(
-                    fabll.Range.from_center(100 * P.nF, 10 * P.nF)
-                ),
-                c.max_voltage.constrain_ge(25 * P.V),
-                c.temperature_coefficient.constrain_subset(
-                    F.Capacitor.TemperatureCoefficient.X7R
-                ),
-            )
-        ),
+        F.Capacitor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0603],
+        setup_fn=lambda c: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                c.capacitance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(90e-9, 110e-9, F.Units.Farad)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                c.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(25, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # TODO: temperature_coefficient constraint when EnumParameter works
+        ),
     ),
     ComponentTestCase(
-        F.Capacitor().builder(
-            lambda c: (
-                c.capacitance.constrain_subset(
-                    fabll.Range.from_center(47 * P.pF, 4.7 * P.pF)
-                ),
-                c.max_voltage.constrain_ge(50 * P.V),
-                c.temperature_coefficient.constrain_subset(
-                    F.Capacitor.TemperatureCoefficient.C0G
-                ),
-            )
-        ),
+        F.Capacitor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0402],
+        setup_fn=lambda c: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                c.capacitance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(
+                    42.3e-12, 51.7e-12, F.Units.Farad
+                ).get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                c.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(50, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # TODO: temperature_coefficient constraint when EnumParameter works
+        ),
     ),
 ]
 
 inductors = [
     ComponentTestCase(
-        F.Inductor().builder(
-            lambda i: (
-                i.inductance.constrain_subset(
-                    fabll.Range.from_center(10 * P.uH, 2 * P.uH)
-                ),
-                i.max_current.constrain_ge(0.05 * P.A),
-                i.dc_resistance.constrain_le(1.17 * P.ohm),
-                i.self_resonant_frequency.constrain_ge(30 * P.Mhertz),
-            )
-        ),
+        F.Inductor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0603],
+        setup_fn=lambda i: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.inductance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(8e-6, 12e-6, F.Units.Henry)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # max_current >= 0.05A
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.max_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(0.05, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # dc_resistance <= 1.17Ω
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.dc_resistance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1.17, F.Units.Ohm)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # self_resonant_frequency >= 30MHz
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.self_resonant_frequency.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(30e6, F.Units.Hertz)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
     ComponentTestCase(
-        F.Inductor().builder(
-            lambda i: (
-                i.inductance.constrain_subset(
-                    fabll.Range.from_center(27 * P.uH, 2.7 * P.uH)
-                ),
-                i.max_current.constrain_ge(0.06 * P.A),
-                i.dc_resistance.constrain_le(10.7 * P.ohm),
-                i.self_resonant_frequency.constrain_ge(17 * P.Mhertz),
-            )
-        ),
+        F.Inductor.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[SMDSize.I0805],
+        setup_fn=lambda i: (
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.inductance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(24.3e-6, 29.7e-6, F.Units.Henry)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # max_current >= 0.06A
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.max_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(0.06, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # dc_resistance <= 10.7Ω
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.dc_resistance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(10.7, F.Units.Ohm)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # self_resonant_frequency >= 17MHz
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                i.self_resonant_frequency.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(17e6, F.Units.Hertz)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
 ]
 
 mosfets = [
     ComponentTestCase(
-        F.MOSFET().builder(
-            lambda m: (
-                m.channel_type.constrain_subset(F.MOSFET.ChannelType.N_CHANNEL),
-                m.saturation_type.constrain_subset(F.MOSFET.SaturationType.ENHANCEMENT),
-                m.gate_source_threshold_voltage.constrain_subset(
-                    fabll.Range.from_center(0.4 * P.V, 3 * P.V)
-                ),
-                m.max_drain_source_voltage.constrain_ge(20 * P.V),
-                m.max_continuous_drain_current.constrain_ge(2 * P.A),
-                m.on_resistance.constrain_le(0.1 * P.ohm),
-            )
-        ),
+        F.MOSFET.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[],  # FIXME: re-add package requirement "SOT-23"
+        setup_fn=lambda m: (
+            # TODO: EnumParameter constraints for channel_type, saturation_type
+            F.Expressions.IsSubset.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                m.gate_source_threshold_voltage.get()
+                .get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_interval(-2.6, 3.4, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # max_drain_source_voltage >= 20V
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                m.max_drain_source_voltage.get()
+                .get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(20, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # max_continuous_drain_current >= 2A
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                m.max_continuous_drain_current.get()
+                .get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(2, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # on_resistance <= 0.1Ω
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                m.on_resistance.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(0.1, F.Units.Ohm)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
 ]
 
 diodes = [
     ComponentTestCase(
-        F.Diode().builder(
-            lambda d: (
-                d.current.constrain_ge(1 * P.A),
-                d.forward_voltage.constrain_le(1.7 * P.V),
-                d.reverse_working_voltage.constrain_ge(20 * P.V),
-                d.reverse_leakage_current.constrain_le(100 * P.uA),
-                d.max_current.constrain_ge(1 * P.A),
-            )
-        ),
+        F.Diode.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[],  # FIXME: re-add package requirement "SOD-123FL", "SMB"
+        setup_fn=lambda d: (
+            # current >= 1A
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                d.current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # forward_voltage <= 1.7V
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                d.forward_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1.7, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # reverse_working_voltage >= 20V
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                d.reverse_working_voltage.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(20, F.Units.Volt)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # reverse_leakage_current <= 100µA
+            F.Expressions.LessOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                d.reverse_leakage_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(100e-6, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            # max_current >= 1A
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                d.max_current.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(1, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+        ),
     ),
 ]
 
 leds = [
     ComponentTestCase(
-        F.LED().builder(
-            lambda led: (
-                led.color.constrain_subset(F.LED.Color.RED),
-                led.brightness.constrain_ge(
-                    TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
-                ),
-                # led.reverse_leakage_current.constrain_le(100 * P.uA),
-                # led.reverse_working_voltage.constrain_ge(20 * P.V),
-                led.max_brightness.constrain_ge(100 * P.millicandela),
-                # led.forward_voltage.constrain_le(2.5 * P.V),
-                led.max_current.constrain_ge(20 * P.mA),
-            )
-        ),
+        F.LED.bind_typegraph(tg=_tg).create_instance(g=_g),
         packages=[],
-    ),
-]
-
-tvs = [
-    ComponentTestCase(
-        F.TVS().builder(
-            lambda t: (
-                # t.current.constrain_ge(10 * P.A),
-                # t.forward_voltage.constrain_le(1.7 * P.V),
-                t.reverse_working_voltage.constrain_ge(5 * P.V),
-                # t.reverse_leakage_current.constrain_le(100 * P.uA),
-                t.max_current.constrain_ge(10 * P.A),
-                t.reverse_breakdown_voltage.constrain_le(8 * P.V),
-            )
+        setup_fn=lambda led: (
+            # TODO: EnumParameter constraints for color
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                led.max_brightness.get().get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(100e-3, F.Units.Candela)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
+            F.Expressions.GreaterOrEqual.bind_typegraph(tg=_tg)
+            .create_instance(g=_g)
+            .setup(
+                led.diode.get()
+                .max_current.get()
+                .get_trait(F.Parameters.can_be_operand),
+                _literals.Numbers.setup_from_singleton(20e-3, F.Units.Ampere)
+                .get_trait(F.Parameters.can_be_operand),
+                assert_=True,
+            ),
         ),
-        # FIXME: re-add package requirement
-        # "SOD-123", "SOD-123FL", "SOT-23-6", "SMA", "SMB", "SMC"
-        packages=[],
-    ),
-]
-
-ldos = [
-    ComponentTestCase(
-        F.LDO().builder(
-            lambda u: (
-                u.output_voltage.constrain_superset(fabll.Single(2.8 * P.V)),
-                u.output_current.constrain_ge(0.1 * P.A),
-                u.power_in.voltage.constrain_ge(5 * P.V),
-                u.dropout_voltage.constrain_le(1 * P.V),
-                u.output_polarity.constrain_subset(F.LDO.OutputPolarity.POSITIVE),
-                u.output_type.constrain_subset(F.LDO.OutputType.FIXED),
-                # u.ripple_rejection_ratio,
-                # u.quiescent_current,
-            )
-        ),
-        # FIXME: re-add package requirement
-        # "SOT-23", "SOT-23-5", "SOT23", "SOT-23-3", "SOT-23-3L"
-        packages=[],
     ),
 ]
 
@@ -259,9 +536,7 @@ components_to_test = (
     *resistors,
     *capacitors,
     *inductors,
-    # *mosfets,
-    # *diodes,
-    # *leds,
-    # *tvs,
-    # *ldos,
+    *mosfets,
+    *diodes,
+    *leds,
 )

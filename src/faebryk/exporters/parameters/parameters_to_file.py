@@ -4,51 +4,59 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Callable, Iterable
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from atopile.errors import UserBadParameterError
-from faebryk.core.parameter import Expression, Is, Parameter, Predicate
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 
 logger = logging.getLogger(__name__)
 
 
-def parameter_alias_classes(G: graph.GraphView) -> list[set[Parameter]]:
-    full_eq = EquivalenceClasses[Parameter](
-        fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+def parameter_alias_classes(tg: fbrk.TypeGraph) -> list[set[F.Parameters.is_parameter]]:
+    full_eq = EquivalenceClasses[F.Parameters.is_parameter](
+        F.Parameters.is_parameter.bind_typegraph(tg).get_instances()
     )
 
     is_exprs = [
-        e for e in fabll.Node.bind_typegraph(G).nodes_of_type(Is) if e.constrained
+        e
+        for e in F.Expressions.Is.bind_typegraph(tg).get_instances()
+        if e.has_trait(F.Expressions.is_predicate)
     ]
 
     for is_expr in is_exprs:
-        params_ops = [op for op in is_expr.operands if isinstance(op, Parameter)]
+        params_ops = [
+            op.get_trait(F.Parameters.is_parameter)
+            for op in is_expr.get_trait(F.Expressions.is_expression).get_operands()
+            if op.has_trait(F.Parameters.is_parameter)
+        ]
         full_eq.add_eq(*params_ops)
 
     return full_eq.get()
 
 
-def get_params_for_expr(expr: Expression) -> set[Parameter]:
-    param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
-    expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
+def get_params_for_expr(
+    expr: F.Expressions.is_expression,
+) -> set[F.Parameters.is_parameter]:
+    param_ops = {op for op in expr.get_operands_with_trait(F.Parameters.is_parameter)}
+    expr_ops = {op for op in expr.get_operands_with_trait(F.Expressions.is_expression)}
 
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def parameter_dependency_classes(G: graph.GraphView) -> list[set[Parameter]]:
-    related = EquivalenceClasses[Parameter](
-        fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
+def parameter_dependency_classes(
+    tg: fbrk.TypeGraph,
+) -> list[set[F.Parameters.is_parameter]]:
+    related = EquivalenceClasses[F.Parameters.is_parameter](
+        F.Parameters.is_parameter.bind_typegraph(tg).get_instances()
     )
 
     eq_exprs = [
-        e
-        for e in fabll.Node.bind_typegraph(G).nodes_of_type(Predicate)
-        if e.constrained
+        e.as_expression()
+        for e in F.Expressions.is_assertable.bind_typegraph(tg).get_instances()
+        if e.has_trait(F.Expressions.is_predicate)
     ]
 
     for eq_expr in eq_exprs:
@@ -58,23 +66,26 @@ def parameter_dependency_classes(G: graph.GraphView) -> list[set[Parameter]]:
     return related.get()
 
 
-def parameter_report(G: graph.GraphView, path: Path):
-    params = fabll.Node.bind_typegraph(G).nodes_of_type(Parameter)
-    exprs = fabll.Node.bind_typegraph(G).nodes_of_type(Expression)
-    predicates = {e for e in exprs if isinstance(e, Predicate)}
-    exprs.difference_update(predicates)
-    alias_classes = parameter_alias_classes(G)
-    eq_classes = parameter_dependency_classes(G)
+def parameter_report(tg: fbrk.TypeGraph, path: Path):
+    params = F.Parameters.is_parameter.bind_typegraph(tg).get_instances()
+    exprs = F.Expressions.is_expression.bind_typegraph(tg).get_instances()
+    predicates = {e for e in exprs if e.has_trait(F.Expressions.is_assertable)}
+    set(exprs).difference_update(predicates)
+    alias_classes = parameter_alias_classes(tg)
+    eq_classes = parameter_dependency_classes(tg)
     unused = [
         p
         for p in params
-        if not any(isinstance(e.node, Expression) for e in p.operated_on.edges)
+        if not any(
+            e.has_trait(F.Expressions.is_expression)
+            for e in p.get_trait(F.Expressions.is_expression).get_operands()
+        )
     ]
 
-    def non_empty(classes: list[set[Parameter]]):
+    def non_empty(classes: list[set[F.Parameters.is_parameter]]):
         return [c for c in classes if len(c) > 1]
 
-    def bound(classes: list[set[Parameter]]):
+    def bound(classes: list[set[F.Parameters.is_parameter]]):
         return sum(len(c) for c in non_empty(classes))
 
     infostr = (
@@ -109,7 +120,7 @@ def parameter_report(G: graph.GraphView, path: Path):
         out += f"{header}{'-' * 80}\n{ind(out_str)}\n"
 
     block(
-        "Parameters",
+        "F.Parameters.is_parameters",
         lines=sorted([p.get_full_name(types=True) for p in params]),
     )
 
@@ -118,7 +129,7 @@ def parameter_report(G: graph.GraphView, path: Path):
         lines=sorted([p.get_full_name(types=True) for p in unused]),
     )
 
-    def Eq(classes: list[set[Parameter]]):
+    def Eq(classes: list[set[F.Parameters.is_parameter]]):
         stream = ""
         for eq_class in classes:
             if len(eq_class) <= 1:
@@ -158,7 +169,7 @@ def parameter_report(G: graph.GraphView, path: Path):
 
 
 def _generate_json_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]],
 ) -> str:
     json_parameters = {
         module_name: {
@@ -173,10 +184,10 @@ def _generate_json_parameters(
 
 
 def _generate_md_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]],
 ) -> str:
-    out = "# Module Parameters\n"
-    out += "| Module | Parameter | Value |\n"
+    out = "# Module F.Parameters.is_parameters\n"
+    out += "| Module | F.Parameters.is_parameter | Value |\n"
     out += "| --- | --- | --- |\n"
     for module_name, paras in sorted(parameters.items()):
         if paras:
@@ -203,7 +214,7 @@ def _generate_md_parameters(
 
 
 def _generate_txt_parameters(
-    parameters: dict[str, dict[str, F.Literals.is_literal[Any]]]
+    parameters: dict[str, dict[str, F.Literals.is_literal]],
 ) -> str:
     out = ""
     for module_name, paras in sorted(parameters.items()):
@@ -224,7 +235,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 
-    parameters = dict[str, dict[str, F.Literals.is_literal[Any]]]()
+    parameters = dict[str, dict[str, F.Literals.is_literal]]()
 
     for m in module.get_children(
         direct_only=False,
@@ -234,11 +245,17 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
     ):
         module_name = m.get_full_name(types=True)
         module_params = m.get_children(
-            direct_only=True, include_root=True, types=Parameter
+            direct_only=True,
+            types=fabll.Node,
+            include_root=True,
+            required_trait=F.Parameters.is_parameter,
         )
         param_names = [param.get_full_name().split(".")[-1] for param in module_params]
         param_values = [
-            solver.inspect_get_known_supersets(param) for param in module_params
+            solver.inspect_get_known_supersets(
+                param.get_trait(F.Parameters.is_parameter)
+            )
+            for param in module_params
         ]
         parameters[module_name] = {
             name: value for name, value in zip(param_names, param_values)
@@ -254,7 +271,7 @@ def export_parameters_to_file(module: fabll.Node, solver: Solver, path: Path):
         case ".json":
             out = _generate_json_parameters(parameters)
         case _:
-            raise UserBadParameterError(
+            raise ValueError(
                 f"Export to file extension [{path.suffix}] not supported in {path}"
             )
 

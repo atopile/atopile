@@ -6,28 +6,24 @@ import faebryk.library._F as F
 
 
 class OpAmp(fabll.Node):
-    # ----------------------------------------
-    #     modules, interfaces, parameters
-    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     input = F.DifferentialPair.MakeChild()
     output = F.Electrical.MakeChild()
 
     bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
-    common_mode_rejection_ratio = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Decibel
-    )
+
     input_bias_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     input_offset_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
     output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
 
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
-            S(bandwidth, prefix="BW"),
-            S(common_mode_rejection_ratio, prefix="CMRR"),
+            S(param=bandwidth, prefix="BW"),
             S(input_bias_current, prefix="Ib"),
             S(input_offset_voltage, prefix="Vos"),
             S(gain_bandwidth_product, prefix="GBW"),

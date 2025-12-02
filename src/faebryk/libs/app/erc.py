@@ -1,11 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import inspect
 import logging
-from typing import Callable, Iterable
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
@@ -35,11 +33,11 @@ class ERCFaultShortedInterfaces(ERCFaultShort):
         Given two shorted Interfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        return cls(f"`{' ~ '.join(mif.get_full_name() for mif in path)}`", path)
+        return cls(f"`{path!r}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
-    def __init__(self, faulting_EP: F.ElectricPower, *args: object) -> None:
+    def __init__(self, faulting_EP: "F.ElectricPower", *args: object) -> None:
         msg = (
             f"ElectricPower with undefined or unsolved voltage: {faulting_EP}:"
             f" {faulting_EP.voltage}"
@@ -53,7 +51,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
+def simple_erc(tg: fbrk.TypeGraph):
     """Simple ERC check.
 
     This function will check for the following ERC violations:
@@ -65,19 +63,17 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
     - Net name collision
 
     - [unmapped pins for footprints]
-
-    Args:
-
-    Returns:
     """
     logger.info("Checking graph for ERC violations")
 
     with accumulate(ERCFault) as accumulator:
         # shorted power
-        electricpower = fabll.Node.bind_typegraph(G).nodes_of_type(F.ElectricPower)
+        electricpower = F.ElectricPower.bind_typegraph(tg).get_instances(
+            g=tg.get_graph_view()
+        )
         logger.info(f"Checking {len(electricpower)} Power")
 
-        buses_grouped = fabll.is_interface.group_into_buses(electricpower)
+        buses_grouped = fabll.is_interface.group_into_buses(set(electricpower))
         buses = list(buses_grouped.values())
 
         # We do collection both inside and outside the loop because we don't
@@ -85,7 +81,7 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
         with accumulator.collect():
             logger.info("Checking for hv/lv shorts")
             for ep in electricpower:
-                if mif_path := fabll.Path.from_connection(ep.lv, ep.hv):
+                if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
 
                     def _keep_head(x: fabll.Node) -> bool:
                         if parent := x.get_parent():
@@ -103,16 +99,12 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
 
                         return True
 
-                    raise ERCFaultShortedInterfaces.from_path(
-                        mif_path.snip_head(_keep_head).snip_tail(_keep_tail)
-                    )
+                    raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
             for bus in buses:
                 with accumulator.collect():
-                    sources = {
-                        ep for ep in bus if ep.has_trait(F.Power.is_power_source)
-                    }
+                    sources = {ep for ep in bus if ep.has_trait(F.is_source)}
                     if len(sources) <= 1:
                         continue
 
@@ -122,11 +114,11 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
                     )
 
         # shorted nets
-        nets = fabll.Node.bind_typegraph(G).nodes_of_type(F.Net)
+        nets = F.Net.bind_typegraph(tg).get_instances(g=tg.get_graph_view())
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
-                nets_on_bus = F.Net.find_nets_for_mif(net.part_of)
+                nets_on_bus = F.Net.find_nets_for_mif(net.part_of.get())
 
                 named_collisions = {
                     neighbor_net
@@ -158,7 +150,7 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
         #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
         #            raise ERCFault([mif], "shorted symmetric footprint")
 
-        comps = fabll.Node.bind_typegraph(G).nodes_of_types(
+        comps = fabll.Node.bind_typegraph(tg).nodes_of_types(
             (F.Resistor, F.Capacitor, F.Fuse)
         )
         logger.info(f"Checking {len(comps)} passives")
@@ -172,7 +164,9 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
                 ):
                     continue
 
-                if path := fabll.Path.from_connection(comp.unnamed[0], comp.unnamed[1]):
+                if path := fabll.Path.from_connection(
+                    comp.unnamed[0].get(), comp.unnamed[1].get()
+                ):
                     raise ERCFaultShortedInterfaces.from_path(path)
 
         ## unmapped Electricals
@@ -186,32 +180,6 @@ def simple_erc(G: graph.GraphView, voltage_limit=1e5 * F.Units.Volt):
         # TODO check multiple pulls per logic
 
 
-def check_modules_for_erc(module: Iterable[fabll.Module]):
-    for m in module:
-        logger.info(f"Checking {m} {'-' * 20}")
-        simple_erc(m.get_graph())
-
-
-def check_classes_for_erc(classes: Iterable[Callable[[], fabll.Module]]):
-    modules = []
-    for c in classes:
-        try:
-            m = c()
-        except Exception as e:
-            logger.warning(
-                f"Could not instantiate {c.__name__}: {type(e).__name__}({e})"
-            )
-            continue
-        modules.append(m)
-    check_modules_for_erc(modules)
-
-
-def check_library_for_erc(lib):
-    members = inspect.getmembers(lib, inspect.isclass)
-    module_classes = [m[1] for m in members if issubclass(m[1], fabll.Module)]
-    check_classes_for_erc(module_classes)
-
-
 # TODO split this up
 class needs_erc_check(fabll.Node):
     _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
@@ -221,4 +189,4 @@ class needs_erc_check(fabll.Node):
     # TODO: Implement this
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
-        simple_erc(self.get_graph())
+        simple_erc(self.tg)

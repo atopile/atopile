@@ -25,8 +25,6 @@ from atopile.compiler.parse_utils import get_src_info_from_token
 from atopile.compiler.parser import AtoParser as ap
 from atopile.config import find_project_dir
 from atopile.errors import UserException
-from faebryk.core.parameter import Parameter
-from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 from faebryk.libs.util import debounce, not_none, once
 

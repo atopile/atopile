@@ -32,11 +32,16 @@ class I2S(fabll.Node):
     #                WIP
     # ----------------------------------------
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.sd.line.add(F.has_net_name("SD", level=F.has_net_name.Level.SUGGESTED))
-        self.ws.line.add(F.has_net_name("WS", level=F.has_net_name.Level.SUGGESTED))
-        self.sck.line.add(F.has_net_name("SCK", level=F.has_net_name.Level.SUGGESTED))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.sd.get(), trait=F.has_net_name
+        ).setup(name="SD", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.ws.get(), trait=F.has_net_name
+        ).setup(name="WS", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.sck.get(), trait=F.has_net_name
+        ).setup(name="SCK", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

@@ -14,14 +14,8 @@ import faebryk.library._F as F
 # TODO(zig-migration): `Graph` is currently an alias via Python.
 # Consider migrating call sites to Zig GraphView/TypeGraph directly.
 from faebryk.core.node import Graph
-from faebryk.core.parameter import (
-    ConstrainableExpression,
-    Is,
-    Parameter,
-    ParameterOperatable,
-)
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get_graphs
+from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Advancable,
@@ -113,8 +107,8 @@ class NotCompatibleException(Exception):
         self,
         module: fabll.Node,
         component: "Component",
-        param: Parameter | None = None,
-        c_range: F.Literals.is_literal[Any] | None = None,
+        param: F.Parameters.is_parameter | None = None,
+        c_range: F.Literals.is_literal | None = None,
     ):
         self.module = module
         self.component = component
@@ -245,8 +239,8 @@ def find_independent_groups(
         or (state := solver.reusable_state) is None
     ):
         # Find params aliased to lits
-        aliased = EquivalenceClasses[ParameterOperatable]()
-        lits = dict[ParameterOperatable, ParameterOperatable.Literal]()
+        aliased = EquivalenceClasses[F.Parameters.is_parameter_operatable]()
+        lits = dict[F.Parameters.is_parameter_operatable, F.Literals.is_literal]()
         for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(Is):
             if not e.constrained:
                 continue
@@ -268,7 +262,7 @@ def find_independent_groups(
         # find params related to each other
         param_eqs = EquivalenceClasses[Parameter]()
         for e in fabll.Node.bind_typegraph(*get_graphs(modules)).nodes_of_type(
-            ConstrainableExpression
+            F.Expressions.is_assertable
         ):
             if not e.constrained:
                 continue

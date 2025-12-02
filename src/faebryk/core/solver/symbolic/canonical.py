@@ -3,47 +3,42 @@
 
 import logging
 from cmath import pi
-from typing import cast
+from typing import Callable
 
 import faebryk.core.node as fabll
-import faebryk.library.Expressions as Expressions
+import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import (
-    SolverAllExtended,
-    make_lit,
-)
-from faebryk.library.Expressions import (
-    Add,
-    And,
-    Cardinality,
-    Ceil,
-    Cos,
-    Difference,
-    Divide,
-    Floor,
-    GreaterOrEqual,
-    GreaterThan,
-    Implies,
-    Intersection,
-    IsConstrainable,
-    IsSubset,
-    IsSuperset,
-    LessOrEqual,
-    LessThan,
-    Multiply,
-    Not,
-    Or,
-    Power,
-    Round,
-    Sin,
-    Sqrt,
-    Subtract,
-    SymmetricDifference,
-    Union,
-    Xor,
-)
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import not_none
+
+Add = F.Expressions.Add
+And = F.Expressions.And
+Cardinality = F.Expressions.Cardinality
+Ceil = F.Expressions.Ceil
+Cos = F.Expressions.Cos
+Difference = F.Expressions.Difference
+Divide = F.Expressions.Divide
+Floor = F.Expressions.Floor
+GreaterOrEqual = F.Expressions.GreaterOrEqual
+GreaterThan = F.Expressions.GreaterThan
+Implies = F.Expressions.Implies
+Intersection = F.Expressions.Intersection
+is_predicate = F.Expressions.is_predicate
+IsSubset = F.Expressions.IsSubset
+IsSuperset = F.Expressions.IsSuperset
+LessOrEqual = F.Expressions.LessOrEqual
+LessThan = F.Expressions.LessThan
+Multiply = F.Expressions.Multiply
+Not = F.Expressions.Not
+Or = F.Expressions.Or
+Power = F.Expressions.Power
+Round = F.Expressions.Round
+Sin = F.Expressions.Sin
+Sqrt = F.Expressions.Sqrt
+Subtract = F.Expressions.Subtract
+SymmetricDifference = F.Expressions.SymmetricDifference
+Union = F.Expressions.Union
+Xor = F.Expressions.Xor
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +48,27 @@ logger = logging.getLogger(__name__)
 @algorithm("Constrain within and domain", single=True, terminal=False)
 def constrain_within_domain(mutator: Mutator):
     """
-    Translate domain and within constraints to parameter constraints.
+    Translate domain and within predicates to parameter predicates.
     """
 
-    for param in mutator.get_parameters():
-        new_param = mutator.mutate_parameter(param, override_within=True, within=None)
-        if param.within is not None:
-            mutator.utils.subset_to(new_param, param.within, from_ops=[param])
+    for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
+        p = param.get_trait(F.Parameters.is_parameter)
+        po = p.as_parameter_operatable()
+        new_param = mutator.mutate_parameter(
+            p,
+            override_within=True,
+            within=None,
+        )
+        if (within := param.get_within()) is not None:
+            mutator.utils.subset_to(
+                new_param.as_operand(),
+                within.get_trait(F.Parameters.can_be_operand),
+                from_ops=[po],
+            )
         mutator.utils.subset_to(
-            new_param,
-            param.domain_set(),
-            from_ops=[param],
+            new_param.as_operand(),
+            param.get_domain().as_operand(),
+            from_ops=[po],
         )
 
 
@@ -73,14 +78,12 @@ def alias_predicates_to_true(mutator: Mutator):
     Alias predicates to True since we need to assume they are true.
     """
 
-    for predicate in mutator.get_expressions(required_traits=(IsConstrainable,)):
-        if predicate.constrained:
-            new_predicate = cast_assert(
-                ConstrainableExpression, mutator.mutate_expression(predicate)
-            )
-            mutator.utils.alias_to(new_predicate, as_lit(True))
-            # reset solver flag
-            mutator.predicate_reset_termination(new_predicate)
+    for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
+        new_predicate = mutator.mutate_expression(predicate)
+        mutator.utils.alias_to(
+            new_predicate.get_sibling_trait(F.Parameters.can_be_operand),
+            mutator.make_lit(True).get_trait(F.Parameters.can_be_operand),
+        )
 
 
 @algorithm("Canonical literal form", single=True, terminal=False)
@@ -92,40 +95,47 @@ def convert_to_canonical_literals(mutator: Mutator):
     - Enum -> P_Set[Enum]
     """
 
-    param_ops = mutator.get_parameter_operatables(sort_by_depth=True)
-
-    for po in param_ops:
-        # Parameter
-        if Expressions.isinstance_node(po, fabll.Parameter):
+    for param in mutator.get_parameters():
+        if (
+            np := fabll.Traits(param)
+            .get_obj_raw()
+            .try_cast(F.Parameters.NumericParameter)
+        ):
             mutator.mutate_parameter(
-                po,
-                units=dimensionless,
-                soft_set=make_lit(po.soft_set).to_dimensionless()
-                if po.soft_set is not None
+                param,
+                units=F.Units.Dimensionless.bind_typegraph(mutator.tg_out)
+                .create_instance(mutator.G_out)
+                .get_trait(F.Units.is_unit),
+                soft_set=soft_set.convert_to_dimensionless(
+                    g=mutator.G_out, tg=mutator.tg_out
+                )
+                if (soft_set := np.get_soft_set()) is not None
                 else None,
-                within=make_lit(po.within).to_dimensionless()
-                if po.within is not None
+                within=within.convert_to_dimensionless(
+                    g=mutator.G_out, tg=mutator.tg_out
+                )
+                if (within := np.get_within()) is not None
                 else None,
-                guess=quantity(po.guess, dimensionless)
-                if po.guess is not None
+                guess=guess.convert_to_dimensionless(g=mutator.G_out, tg=mutator.tg_out)
+                if (guess := np.get_guess()) is not None
                 else None,
                 override_within=True,
             )
+        else:
+            mutator.mutate_parameter(param)
 
-        # Expression
-        elif Expressions.is_expression_node(po):
+    for expr in mutator.get_expressions(sort_by_depth=True):
 
-            def mutate(i: int, operand: SolverAllExtended) -> SolverAllExtended:
-                if not ParameterOperatable.is_literal(operand):
-                    return operand
-                lit = make_lit(operand)
-                if isinstance(lit, Quantity_Interval_Disjoint):
-                    return lit.to_dimensionless()
-                return lit
+        def mutate(
+            _: int, operand: F.Parameters.can_be_operand
+        ) -> F.Parameters.can_be_operand:
+            if np := fabll.Traits(operand).get_obj_raw().try_cast(F.Literals.Numbers):
+                return np.to_dimensionless().get_trait(F.Parameters.can_be_operand)
+            return operand
 
-            # need to ignore existing because non-canonical literals
-            # are congruent to canonical
-            mutator.mutate_expression_with_op_map(po, mutate, ignore_existing=True)
+        # need to ignore existing because non-canonical literals
+        # are congruent to canonical
+        mutator.mutate_expression_with_op_map(expr, mutate, ignore_existing=True)
 
 
 @algorithm("Canonical expression form", single=True, terminal=False)
@@ -147,26 +157,36 @@ def convert_to_canonical_operations(mutator: Mutator):
     ```
     """
 
-    UnsupportedOperations: dict[type[Expression], type[Expression] | None] = {
+    UnsupportedOperations: dict[type[fabll.NodeT], type[fabll.NodeT] | None] = {
         GreaterThan: GreaterOrEqual,
         LessThan: LessOrEqual,
         Cardinality: None,
     }
+    _UnsupportedOperations = {
+        k.bind_typegraph(mutator.tg_in).get_or_create_type().node(): v
+        for k, v in UnsupportedOperations.items()
+    }
 
-    def c[T: CanonicalExpression](op: type[T], *operands) -> T:
-        return mutator.create_expression(
-            op, *operands, from_ops=getattr(c, "from_ops", None)
-        )
+    def c[T: fabll.NodeT](op: type[T], *operands: F.Parameters.can_be_operand) -> T:
+        return fabll.Traits(
+            mutator.create_expression(
+                op,
+                *operands,
+                from_ops=getattr(c, "from_ops", None),
+            )
+        ).get_obj(op)
 
-    def curry(e_type: type[CanonicalExpression]) -> type[Expression]:
-        def _(*operands):
-            operands = [
-                make_lit(o) if not fabll.isparameteroperable(o) else o for o in operands
+    def curry(e_type: type[fabll.NodeT]):
+        def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
+            _operands = [
+                mutator.make_lit(o).get_trait(F.Parameters.can_be_operand)
+                if not isinstance(o, fabll.Node)
+                else o
+                for o in operands
             ]
-            return c(e_type, *operands)
+            return c(e_type, *_operands).get_trait(F.Parameters.can_be_operand)
 
-        # hack
-        return cast(type[Expression], _)
+        return _
 
     # CanonicalNumeric
     Add_ = curry(Add)
@@ -192,16 +212,24 @@ def convert_to_canonical_operations(mutator: Mutator):
     # Is_ = curry(Is)
     # GreaterThan_ = curry(GreaterThan)
 
-    MirroredExpressions = [
+    MirroredExpressions: list[
+        tuple[
+            type[fabll.NodeT],
+            type[fabll.NodeT],
+            Callable[
+                [list[F.Parameters.can_be_operand]], list[F.Parameters.can_be_operand]
+            ],
+        ]
+    ] = [
         (
             Add,
             Subtract,
-            lambda operands: [operands[0]] + [Multiply_(o, -1) for o in operands[1:]],
+            lambda operands: [operands[0], *(Multiply_(o, -1) for o in operands[1:])],
         ),
         (
             Multiply,
             Divide,
-            lambda operands: [operands[0]] + [Power_(o, -1) for o in operands[1:]],
+            lambda operands: [operands[0], *(Power_(o, -1) for o in operands[1:])],
         ),
         (
             Not,
@@ -238,7 +266,10 @@ def convert_to_canonical_operations(mutator: Mutator):
         (
             Power,
             Sqrt,
-            lambda operands: [*operands, make_lit(0.5)],
+            lambda operands: [
+                *operands,
+                mutator.make_lit(0.5).get_trait(F.Parameters.can_be_operand),
+            ],
         ),
         (
             GreaterOrEqual,
@@ -276,53 +307,82 @@ def convert_to_canonical_operations(mutator: Mutator):
     ]
 
     lookup = {
-        Convertible: (Target, Converter)
+        Convertible.bind_typegraph(mutator.tg_in).get_or_create_type().node(): (
+            Target,
+            Converter,
+        )
         for Target, Convertible, Converter in MirroredExpressions
     }
 
-    exprs = mutator.get_expressions(sort_by_depth=True)
+    exprs = mutator.get_typed_expressions(sort_by_depth=True)
     for e in exprs:
-        if type(e) in UnsupportedOperations:
-            replacement = UnsupportedOperations[type(e)]
+        e_expr = e.get_trait(F.Expressions.is_expression)
+        e_type = not_none(e.get_type_node()).node()
+        if e_type in _UnsupportedOperations:
+            replacement = _UnsupportedOperations[e_type]
+            rep = e_expr.compact_repr(mutator.print_context)
             if replacement is None:
-                logger.warning(
-                    f"{type(e)}({e.compact_repr(mutator.print_context)}) not supported "
-                    f"by solver, skipping"
-                )
-                mutator.remove(e)
+                logger.warning(f"{type(e)}({rep}) not supported by solver, skipping")
+                mutator.remove(e.get_trait(F.Parameters.is_parameter_operatable))
                 continue
 
             logger.warning(
-                f"{type(e)}({e.compact_repr(mutator.print_context)}) not supported "
-                f"by solver, converting to {replacement}"
+                f"{type(e)}({rep}) not supported by solver, converting to {replacement}"
             )
 
-        from_ops = [e]
+        from_ops = [e.get_trait(F.Parameters.is_parameter_operatable)]
         # TODO move up, by implementing Parameter Target
         # Min, Max
-        if Expressions.isinstance_any(e, Expressions.Min, Expressions.Max):
-            p = Parameter(units=e.units)
-            mutator.register_created_parameter(p, from_ops=from_ops)
-            union = Union(*[mutator.get_copy(o) for o in e.operands])
-            mutator.create_expression(
-                IsSubset, p, union, from_ops=from_ops, constrain=True
+        if e.isinstance(F.Expressions.Min, F.Expressions.Max):
+            p = (
+                F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
+                .create_instance(mutator.G_out)
+                .setup(units=e.get_trait(F.Units.has_unit).get_is_unit())
             )
-            if Expressions.isinstance_node(e, Expressions.Min):
-                mutator.create_expression(GreaterOrEqual, union, p, from_ops=from_ops)
+            mutator.register_created_parameter(
+                p.get_trait(F.Parameters.is_parameter), from_ops=from_ops
+            )
+            union = (
+                Union.bind_typegraph(mutator.tg_out)
+                .create_instance(mutator.G_out)
+                .setup(*[mutator.get_copy(o) for o in e_expr.get_operands()])
+            )
+            mutator.create_expression(
+                IsSubset,
+                p.get_trait(F.Parameters.can_be_operand),
+                union.get_trait(F.Parameters.can_be_operand),
+                from_ops=from_ops,
+                assert_=True,
+            )
+            if e.isinstance(F.Expressions.Min):
+                mutator.create_expression(
+                    GreaterOrEqual,
+                    union.get_trait(F.Parameters.can_be_operand),
+                    p.get_trait(F.Parameters.can_be_operand),
+                    from_ops=from_ops,
+                )
             else:
-                mutator.create_expression(GreaterOrEqual, p, union, from_ops=from_ops)
-            mutator._mutate(e, p)
+                mutator.create_expression(
+                    GreaterOrEqual,
+                    p.get_trait(F.Parameters.can_be_operand),
+                    union.get_trait(F.Parameters.can_be_operand),
+                    from_ops=from_ops,
+                )
+            mutator._mutate(
+                e.get_trait(F.Parameters.is_parameter_operatable),
+                p.get_trait(F.Parameters.is_parameter_operatable),
+            )
             continue
 
-        if type(e) not in lookup:
+        if e_type not in lookup:
             continue
 
         # Rest
-        Target, Converter = lookup[type(e)]
+        Target, Converter = lookup[e_type]
 
         setattr(c, "from_ops", from_ops)
         mutator.mutate_expression(
-            e,
-            Converter(e.operands),
+            e_expr,
+            Converter(e_expr.get_operands()),
             expression_factory=Target,
         )

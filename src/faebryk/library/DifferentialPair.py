@@ -26,35 +26,34 @@ class DifferentialPair(fabll.Node):
 
     def terminated(self) -> "DifferentialPair":
         terminated_bus = DifferentialPair.bind_typegraph(self.tg).create_instance(
-            g=self.tg.get_graph_view()
+            g=self.g
         )
         rs = [
             F.Resistor.bind_typegraph(self.tg).create_instance(
-                g=self.tg.get_graph_view()
+                g=self.g
             )
             for _ in range(2)
         ]
 
         for r in rs:
-            r.resistance.get().constrain_to_literal(
-                g=self.tg.get_graph_view(),
+            r.resistance.get().alias_to_literal(
+                g=self.g,
                 value=self.impedance.get().force_extract_literal(),
             )
 
         rs[0].get_trait(F.can_bridge).bridge(terminated_bus.p.get(), self.p.get())
         rs[1].get_trait(F.can_bridge).bridge(terminated_bus.n.get(), self.n.get())
-        self.get_trait(fabll.is_interface).connect_shallow_to(terminated_bus)
+        self._is_interface.get().connect_shallow_to(terminated_bus)
 
         return terminated_bus
 
-        # """Attach required net name suffixes for KiCad differential pair detection.
-
-        # Ensures nets associated with the positive and negative lines end with
-        # `_p` and `_n` respectively. The naming algorithm will append these
-        # required affixes while still deconflicting names globally.
-        # """
-        # self.p.line.add(F.has_net_name_affix.setup(suffix="_P"))
-        # self.n.line.add(F.has_net_name_affix.setup(suffix="_N"))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.p.get(), trait=F.has_net_name_affix
+        ).setup(suffix="_P")
+        fabll.Traits.create_and_add_instance_to(
+            node=self.n.get(), trait=F.has_net_name_affix
+        ).setup(suffix="_N")
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

@@ -6,8 +6,10 @@ import logging
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.exporters.netlist.graph import attach_nets
+from faebryk.exporters.netlist.graph import attach_net_names, attach_nets
 from faebryk.exporters.netlist.kicad.netlist_kicad import (
     attach_kicad_info,
     faebryk_netlist_to_kicad,
@@ -17,48 +19,83 @@ from faebryk.libs.app.designators import (
     attach_random_designators,
 )
 from faebryk.libs.kicad.fileformats import kicad
-from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P
+
+# from faebryk.libs.smd import SMDSize
 
 logger = logging.getLogger(__name__)
+
+
+def make_instance[T: fabll.NodeT](
+    tg: fbrk.TypeGraph, g: fabll.graph.GraphView, cls: type[T]
+) -> T:
+    return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 # Netlists --------------------------------------------------------------------
 @pytest.fixture
 def netlist_graph():
-    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * P.ohm))
-    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * P.ohm))
-    power = F.ElectricPower()
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    resistor = F.Resistor.bind_typegraph(tg=tg)
 
-    # net labels
-    vcc = F.Net.MakeChild("+3V3")
-    gnd = F.Net.MakeChild("GND")
-    power.hv.connect(vcc.part_of)
-    power.lv.connect(gnd.part_of)
+    resistor1 = resistor.create_instance(g=g)
+    resistor2 = resistor.create_instance(g=g)
+    power = F.ElectricPower.bind_typegraph(tg=tg).create_instance(g=g)
 
-    # connect
-    resistor1.unnamed[0].connect(power.hv)
-    resistor1.unnamed[1].connect(power.lv)
-    resistor2.unnamed[0].connect(resistor1.unnamed[0])
-    resistor2.unnamed[1].connect(resistor1.unnamed[1])
+    r100 = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g)
+        .setup_from_singleton(value=100, unit=F.Units.Ohm)
+    )
+    r200 = (
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g)
+        .setup_from_singleton(value=200, unit=F.Units.Ohm)
+    )
+
+    resistor1.resistance.get().alias_to_literal(g, r100)
+    resistor2.resistance.get().alias_to_literal(g, r200)
+
+    fabll.Traits.create_and_add_instance_to(power.hv.get(), F.has_net_name).setup(
+        name="+3V3", level=F.has_net_name.Level.EXPECTED
+    )
+    fabll.Traits.create_and_add_instance_to(power.lv.get(), F.has_net_name).setup(
+        name="GND", level=F.has_net_name.Level.SUGGESTED
+    )
+
+    resistor1.unnamed[0].get()._is_interface.get().connect_to(power.hv.get())
+    resistor1.unnamed[1].get()._is_interface.get().connect_to(power.lv.get())
+    resistor2.unnamed[0].get()._is_interface.get().connect_to(
+        resistor1.unnamed[0].get()
+    )
+    resistor2.unnamed[1].get()._is_interface.get().connect_to(
+        resistor1.unnamed[1].get()
+    )
 
     # attach footprint & designator
     for i, r in enumerate([resistor1, resistor2]):
-        r.get_trait(F.can_attach_to_footprint).attach(
-            F.SMDTwoPin(SMDSize.I0805, F.SMDTwoPin.Type.Resistor)
-        )
-        r.add(
-            F.has_designator(
-                resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
-            )
+        designator = r.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
+        fabll.Traits.create_and_add_instance_to(r, F.has_designator).setup(designator)
+        fabll.Traits.create_and_add_instance_to(
+            r, F.can_attach_to_footprint_symmetrically
+        ).attach(F.Footprint.bind_typegraph(tg).create_instance(g=g))
+
+        fabll.Traits.create_and_add_instance_to(r, F.has_kicad_footprint).setup(
+            kicad_identifier="Resistor_SMD:R_0805_2012Metric",  # TODO: get from SMDSize
+            pinmap={
+                F.Pad.bind_typegraph(tg).create_instance(g=g).setup(): "1",
+                F.Pad.bind_typegraph(tg).create_instance(g=g).setup(): "2",
+            },
         )
 
+    assert power.hv.get().get_trait(F.has_net_name).name == "+3V3"
+    assert power.lv.get().get_trait(F.has_net_name).name == "GND"
+
     # make netlist
-    G = resistor1.get_graph
-    attach_random_designators(G())
-    attach_nets(G())
-    attach_kicad_info(G())
-    return make_fbrk_netlist_from_graph(G())
+    attach_random_designators(tg)
+    attach_net_names(attach_nets(tg))
+    attach_kicad_info(tg)
+    return make_fbrk_netlist_from_graph(g, tg)
 
 
 @pytest.fixture

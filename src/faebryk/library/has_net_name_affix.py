@@ -32,9 +32,9 @@ class has_net_name_affix(fabll.Node):
 
     def setup(self, prefix: str | None = None, suffix: str | None = None) -> Self:
         if prefix is not None:
-            self.required_prefix_.get().constrain_to_single(value=prefix)
+            self.required_prefix_.get().alias_to_single(value=prefix)
         if suffix is not None:
-            self.required_suffix_.get().constrain_to_single(value=suffix)
+            self.required_suffix_.get().alias_to_single(value=suffix)
         return self
 
     # TODO: Implement this

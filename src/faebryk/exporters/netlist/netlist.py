@@ -4,7 +4,7 @@
 import logging
 from dataclasses import dataclass
 
-import faebryk.core.graph as graph
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -36,12 +36,17 @@ class FBRKNetlist:
     comps: list[Component]
 
 
-def make_fbrk_netlist_from_graph(G: graph.GraphView) -> FBRKNetlist:
-    from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
+def make_fbrk_netlist_from_graph(
+    g: fabll.graph.GraphView, tg: fbrk.TypeGraph
+) -> FBRKNetlist:
+    nets = F.Net.bind_typegraph(tg).get_instances()
 
-    nets = fabll.Node.bind_typegraph(G).nodes_of_type(F.Net)
-    # all buses have at least one net with name at this point
     named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
+
+    named_nets_with_connected_pads = {
+        n: n.get_connected_pads() if n.get_parent_of_type(F.Net) else None
+        for n in named_nets
+    }
 
     fbrk_nets = [
         FBRKNetlist.Net(
@@ -52,18 +57,19 @@ def make_fbrk_netlist_from_graph(G: graph.GraphView) -> FBRKNetlist:
                         component=t.get_kicad_obj(),
                         pin=t.get_pin_name(mif),
                     )
-                    for mif, fp in net.get_connected_pads().items()
-                    if (t := fp.get_trait(can_represent_kicad_footprint)) is not None
+                    for mif, fp in (pads.items() if pads is not None else [])
+                    if (t := fp.get_trait(F.can_represent_kicad_footprint))
                 ],
                 key=lambda v: (v.component.name, v.pin),
             ),
         )
-        for net in named_nets
+        for net, pads in named_nets_with_connected_pads.items()
     ]
 
     comps = {
-        t.get_footprint().get_trait(can_represent_kicad_footprint).get_kicad_obj()
-        for _, t in fabll.Node.bind_typegraph(G).nodes_with_trait(F.has_footprint)
+        t.get_trait(F.can_represent_kicad_footprint).get_kicad_obj()
+        for t in F.Footprint.bind_typegraph(tg).get_instances(g)
+        if t.has_trait(F.has_footprint)
     }
 
     not_found = [

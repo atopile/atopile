@@ -3,17 +3,22 @@
 
 from typing import Self
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
 class has_kicad_footprint(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
-    def get_kicad_footprint(self) -> str | None:
-        literal = self.kicad_identifier_.get().try_extract_constrained_literal()
-        return None if literal is None else literal.get_value()
+    def get_kicad_footprint_identifier(self) -> str:
+        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+
+    def get_kicad_footprint_name(self) -> str:
+        return self.get_kicad_footprint_identifier().split(":")[1]
 
     def get_pin_names(self) -> dict[F.Pad, str]:
         pin_names = {}
@@ -46,7 +51,7 @@ class has_kicad_footprint(fabll.Node):
                 )
             )
             # Pad Str
-            lit = F.Literals.Strings.MakeChild(value=pad_str)
+            lit = F.Literals.Strings.MakeChild(pad_str)
             out.add_dependant(lit)
             out.add_dependant(
                 F.Collections.PointerTuple.AppendLiteral(
@@ -64,7 +69,7 @@ class has_kicad_footprint(fabll.Node):
         return out
 
     def setup(self, kicad_identifier: str, pinmap: dict[F.Pad, str]) -> Self:
-        self.kicad_identifier_.get().constrain_to_single(
+        self.kicad_identifier_.get().alias_to_single(
             g=self.instance.g(), value=kicad_identifier
         )
         for pad, pad_str in pinmap.items():
@@ -76,3 +81,28 @@ class has_kicad_footprint(fabll.Node):
             pin_tuple.append_literal(pad_str)
             self.pinmap_.get().append(pin_tuple)
         return self
+
+
+def test_has_kicad_footprint():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
+    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+
+    kicad_footprint = (
+        has_kicad_footprint.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(
+            kicad_identifier="Resistor:libR_0402_1005Metric2",
+            pinmap={pad1: "P1", pad2: "P2"},
+        )
+    )
+
+    assert (
+        kicad_footprint.get_kicad_footprint_identifier()
+        == "Resistor:libR_0402_1005Metric2"
+    )
+    assert kicad_footprint.get_kicad_footprint_name() == "libR_0402_1005Metric2"
+    assert kicad_footprint.get_pin_names() == {pad1: "P1", pad2: "P2"}

@@ -3,6 +3,7 @@
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -12,6 +13,8 @@ try:
     from faebryk.library import _F as F
 except ImportError:
     F = None
+
+IGNORE_MODULES = ["NumberDomain"]
 
 
 def test_load_library():
@@ -39,6 +42,13 @@ def test_symbol_types(name: str, module: fabll.Node):
     )
 
 
+_discovery_tg = fbrk.TypeGraph.create(g=graph.GraphView.create())
+
+
+def _is_trait(node_type_bound: fabll.TypeNodeBoundTG) -> bool:
+    return node_type_bound.try_get_type_trait(fabll.ImplementsTrait) is not None
+
+
 @pytest.mark.skipif(F is None, reason="Library not loaded")
 @pytest.mark.parametrize(
     "name, module",
@@ -50,7 +60,8 @@ def test_symbol_types(name: str, module: fabll.Node):
             not name.startswith("_")
             and isinstance(module, type)
             and issubclass(module, fabll.Node)
-            and not issubclass(module, fabll.ImplementsTrait)
+            and not _is_trait(module.bind_typegraph(tg=_discovery_tg))
+            and name not in IGNORE_MODULES
         )
     ],
 )
@@ -62,8 +73,17 @@ def test_instantiate_library_modules(name: str, module: type[fabll.Node]):
     - Do not have a MakeChild or setup method (and thus don't require
       arguments for instantiation)
     """
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
     try:
-        _ = module.MakeChild()
+        instance = module.bind_typegraph(tg=tg).create_instance(g=g)
+        assert not _is_trait(module.bind_typegraph(tg=tg)), (
+            f"Module {module.__name__} is a trait"
+        )
+        assert instance.try_get_trait(fabll.is_module) or instance.try_get_trait(
+            fabll.is_interface
+        ), f"Module {module.__name__} is not a module or interface"
+
     except TypeError:
         pytest.xfail(f"{module.__name__} needs arguments to be instantiated")
     except Exception as e:

@@ -22,15 +22,27 @@ class UART(fabll.Node):
     # ----------------------------------------
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
-    # TODO: this creates too many connections in some projects
-    # _single_electric_reference = fabll.ChildField(F.has_single_electric_reference)
+    _single_electric_reference = fabll._ChildField(F.has_single_electric_reference)
 
-    # self.rts.line.add(F.has_net_name("RTS", level=F.has_net_name.Level.SUGGESTED))
-    # self.cts.line.add(F.has_net_name("CTS", level=F.has_net_name.Level.SUGGESTED))
-    # self.dtr.line.add(F.has_net_name("DTR", level=F.has_net_name.Level.SUGGESTED))
-    # self.dsr.line.add(F.has_net_name("DSR", level=F.has_net_name.Level.SUGGESTED))
-    # self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
-    # self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))
+    def on_obj_set(self):
+        fabll.Traits.create_and_add_instance_to(
+            node=self.rts.get(), trait=F.has_net_name
+        ).setup(name="RTS", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.cts.get(), trait=F.has_net_name
+        ).setup(name="CTS", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dtr.get(), trait=F.has_net_name
+        ).setup(name="DTR", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dsr.get(), trait=F.has_net_name
+        ).setup(name="DSR", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.dcd.get(), trait=F.has_net_name
+        ).setup(name="DCD", level=F.has_net_name.Level.SUGGESTED)
+        fabll.Traits.create_and_add_instance_to(
+            node=self.ri.get(), trait=F.has_net_name
+        ).setup(name="RI", level=F.has_net_name.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

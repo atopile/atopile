@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum, auto
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -11,13 +11,13 @@ class MOSFET(fabll.Node):
     # ----------------------------------------
     #                 enums
     # ----------------------------------------
-    class ChannelType(Enum):
-        N_CHANNEL = auto()
-        P_CHANNEL = auto()
+    class ChannelType(StrEnum):
+        N_CHANNEL = "N_CHANNEL"
+        P_CHANNEL = "P_CHANNEL"
 
-    class SaturationType(Enum):
-        ENHANCEMENT = auto()
-        DEPLETION = auto()
+    class SaturationType(StrEnum):
+        ENHANCEMENT = "ENHANCEMENT"
+        DEPLETION = "DEPLETION"
 
     # ----------------------------------------
     #     modules, interfaces, parameters

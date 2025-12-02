@@ -1,13 +1,15 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import re
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Protocol, Self, TypeGuard, cast, override
+from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -345,20 +347,11 @@ class TypeChildBoundInstance[T: NodeT]:
         return bound
 
 
-RefPath = list[str | _ChildField[Any]]
-
-
-SELF_OWNER_PLACEHOLDER: RefPath = [""]
-"""
-When creating trait, default reference path to self is [""].
-"""
-
-
 class _EdgeField(Field):
     def __init__(
         self,
-        lhs: RefPath,
-        rhs: RefPath,
+        lhs: "RefPath",
+        rhs: "RefPath",
         *,
         edge: fbrk.EdgeCreationAttributes,
         identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
@@ -366,7 +359,9 @@ class _EdgeField(Field):
         super().__init__(identifier=identifier)
         for arg in [lhs, rhs]:
             for r in arg:
-                if not isinstance(r, (_ChildField, str)):
+                if not (isinstance(r, (_ChildField, str))) and not (
+                    isinstance(r, type) and issubclass(r, Node)
+                ):
                     raise FabLLException(
                         f"Only ChildFields and strings are allowed, got {type(r)}"
                     )
@@ -375,53 +370,75 @@ class _EdgeField(Field):
         self.edge = edge
 
     @staticmethod
-    def _resolve_path(path: RefPath) -> list[str]:
+    def _resolve_path(path: "RefPath") -> list[str]:
         # TODO dont think we can assert here, raise FabLLException
-        return [
-            not_none(field.get_identifier())
-            if isinstance(field, _ChildField)
-            else field
-            for field in path
-        ]
+        resolved_path = []
+        for field in path:
+            if isinstance(field, _ChildField):
+                resolved_path.append(not_none(field.get_identifier()))
+            elif isinstance(field, type) and issubclass(field, Node):
+                resolved_path.append(f"<<{field._type_identifier()}")
+            else:
+                resolved_path.append(field)
+        return resolved_path
 
     @staticmethod
     def _resolve_path_from_node(
-        path: list[str] | RefPath, instance: graph.BoundNode
+        path: "list[str] | RefPath", instance: graph.BoundNode, tg: fbrk.TypeGraph
     ) -> graph.BoundNode:
         target = instance
+        # TODO: consolidate resolution logic between type_fields and instance_fields
 
         for segment in path:
-            if not isinstance(segment, str):
+            if isinstance(segment, _ChildField):
                 segment = segment.get_identifier()
-
-            if segment == SELF_OWNER_PLACEHOLDER[0]:
+            elif isinstance(segment, type) and issubclass(segment, Node):
+                segment = f"<<{segment._type_identifier()}"
+            elif segment == SELF_OWNER_PLACEHOLDER[0]:
                 # keep target unchanged (self-reference)
                 continue
+            else:
+                segment = str(segment)
 
-            child = fbrk.EdgeComposition.get_child_by_identifier(
-                bound_node=target, child_identifier=segment
-            )
-            if child is None:
-                raise PathNotResolvable(
-                    node=Node.bind_instance(instance),
-                    path=path,
-                    error_node=Node.bind_instance(target),
-                    error_identifier=segment,
+            if segment.startswith("<<"):
+                segment = segment[2:]
+                target = tg.get_type_by_name(type_identifier=segment)
+                if target is None:
+                    raise PathNotResolvable(
+                        node=Node.bind_instance(instance),
+                        path=path,
+                        error_node=Node.bind_instance(instance),
+                        error_identifier=segment,
+                    )
+            else:
+                child = fbrk.EdgeComposition.get_child_by_identifier(
+                    bound_node=target, child_identifier=segment
                 )
-            target = child
+                if child is None:
+                    raise PathNotResolvable(
+                        node=Node.bind_instance(instance),
+                        path=path,
+                        error_node=Node.bind_instance(target),
+                        error_identifier=segment,
+                    )
+                target = child
         return target
 
     def lhs_resolved(self) -> list[str]:
         return self._resolve_path(self.lhs)
 
-    def lhs_resolved_on_node(self, instance: graph.BoundNode) -> graph.BoundNode:
-        return self._resolve_path_from_node(self.lhs_resolved(), instance)
+    def lhs_resolved_on_node(
+        self, instance: graph.BoundNode, tg: fbrk.TypeGraph
+    ) -> graph.BoundNode:
+        return self._resolve_path_from_node(self.lhs_resolved(), instance, tg)
 
     def rhs_resolved(self) -> list[str]:
         return self._resolve_path(self.rhs)
 
-    def rhs_resolved_on_node(self, instance: graph.BoundNode) -> graph.BoundNode:
-        return self._resolve_path_from_node(self.rhs_resolved(), instance)
+    def rhs_resolved_on_node(
+        self, instance: graph.BoundNode, tg: fbrk.TypeGraph
+    ) -> graph.BoundNode:
+        return self._resolve_path_from_node(self.rhs_resolved(), instance, tg)
 
     def __repr__(self) -> str:
         return (
@@ -432,8 +449,8 @@ class _EdgeField(Field):
 
 
 def MakeEdge(
-    lhs: RefPath,
-    rhs: RefPath,
+    lhs: "RefPath",
+    rhs: "RefPath",
     *,
     edge: fbrk.EdgeCreationAttributes,
     identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
@@ -568,29 +585,65 @@ class Path:
     def get_end_node(self) -> "Node[Any]":
         return Node[Any].bind_instance(instance=self.end_node)
 
-    def from_connection(self, a: "Node[Any]", b: "Node[Any]") -> "Path | None":
-        if paths := a.get_trait(is_interface).is_connected_to(b):
-            # this was a node on the previous implementation
-            # basically we can do this more efficiently
+    def _get_nodes_in_order(self) -> list["Node[Any]"]:
+        nodes = [self.get_start_node()]
+        current_bound = nodes[0].instance
 
-            # FIXME: Notes: from the master of graphs:
-            #  - iterate through all paths
-            #  - make a helper function
-            #    Path.get_subpaths(path: Path, search: SubpathSearch)
-            #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
-            #  - choose out of subpaths
-            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
-            #      is derived, save it as candidate and only yield it if no other found)
-            #    - choose first shortest
-            return Path(paths[0])
+        for bound_edge in self.edges:
+            edge = bound_edge.edge()
+            graph_view = bound_edge.g()
+            current_node = current_bound.node()
+
+            if current_node.is_same(other=edge.source()):
+                next_node = edge.target()
+            elif current_node.is_same(other=edge.target()):
+                next_node = edge.source()
+            else:
+                break
+
+            current_bound = graph_view.bind(node=next_node)
+            nodes.append(Node[Any].bind_instance(instance=current_bound))
+
+        end_node = self.get_end_node()
+        if not nodes[-1].is_same(end_node):
+            nodes.append(end_node)
+
+        return nodes
+
+    def __iter__(self) -> Iterator["Node[Any]"]:
+        return iter(self._get_nodes_in_order())
+
+    @staticmethod
+    def from_connection(a: "Node[Any]", b: "Node[Any]") -> "Path | None":
+        bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
+            source=a.instance, target=b.instance
+        )
+        path = Path(bfs_path)
+
+        # this was a node on the previous implementation
+        # basically we can do this more efficiently
+
+        # FIXME: Notes: from the master of graphs:
+        #  - iterate through all paths
+        #  - make a helper function
+        #    Path.get_subpaths(path: Path, search: SubpathSearch)
+        #    e.g SubpathSearch = tuple[Callable[[fabll.ModuleInterface], bool], ...]
+        #  - choose out of subpaths
+        #    - be careful with LinkDirectDerived edges (if there is a faulting edge
+        #      is derived, save it as candidate and only yield it if no other found)
+        #    - choose first shortest
+
+        end_node = path.end_node.node()
+        if end_node.is_same(other=b.instance.node()):
+            # TODO: support implied paths yielding multiple results again
+            return path
         return None
 
     def __repr__(self) -> str:
-        start = self.start_node
-        end = self.end_node
-        start_str = f"graph.BoundNode({start.node().get_uuid()})"
-        end_str = f"graph.BoundNode({end.node().get_uuid()})"
-        return f"Path(start={start_str}, end={end_str}, length={self.length})"
+        node_names = [
+            node.get_full_name(types=True) for node in self._get_nodes_in_order()
+        ]
+        return f"Path({', '.join(node_names)})"
 
 
 # --------------------------------------------------------------------------------------
@@ -680,7 +733,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
         # be subclassed further.
-        if len(cls.__mro__) > len(Node.__mro__) + 1:
+        if len(cls.__mro__) > len(Node.__mro__) + 1 and not getattr(
+            cls, "__COPY_TYPE__", False
+        ):
             # mro(): [Leaf, NodeType, object] is allowed (len==3),
             # deeper (len>3) is forbidden
             raise FabLLException(
@@ -695,8 +750,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         # class Resistor(Node):
         #     resistance = InstanceChildField(Parameter)
         # ```
-        for name, child in vars(cls).items():
+        attrs = dict(vars(cls))
+        if "__COPY_TYPE__" in attrs:
+            # python classes dont inherit the dict from their base classes
+            # in the copy case we need to add the attrs from above
+            attrs = dict(vars(cls.__mro__[1])) | attrs
+        for name, child in attrs.items():
             cls._handle_cls_attr(name, child)
+
+    @staticmethod
+    def _copy_type[U: "type[NodeT]"](to_copy: U) -> U:
+        class _Copy(to_copy):
+            __COPY_TYPE__ = True
+            pass
+
+        return cast(U, _Copy)
 
     @classmethod
     def _exec_field(
@@ -734,8 +802,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if type_field:
                 type_node = t.get_or_create_type()
                 edge_instance = field.edge.create_edge(
-                    source=field.lhs_resolved_on_node(instance=type_node).node(),
-                    target=field.rhs_resolved_on_node(instance=type_node).node(),
+                    source=field.lhs_resolved_on_node(
+                        instance=type_node, tg=t.tg
+                    ).node(),
+                    target=field.rhs_resolved_on_node(
+                        instance=type_node, tg=t.tg
+                    ).node(),
                 )
                 type_node.g().insert_edge(edge=edge_instance)
             else:
@@ -1049,23 +1121,28 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
         result: list[C] = []
 
-        def check(node: "NodeT") -> TypeGuard[C]:
-            if not node.isinstance(*type_tuple):
-                return False
-            candidate = cast(C, node)
+        def check(node: "NodeT") -> C | None:
+            if len(type_tuple) == 1:
+                candidate = node.try_cast(type_tuple[0])
+                if candidate is None:
+                    return None
+            else:
+                if not node.isinstance(*type_tuple):
+                    return None
+                candidate = cast(C, node)
             if trait_tuple and not any(node.has_trait(trait) for trait in trait_tuple):
-                return False
+                return None
             if f_filter and not f_filter(candidate):
-                return False
-            return True
+                return None
+            return candidate
 
-        if include_root and check(self):
-            result.append(self)
+        if include_root and (ok := check(self)):
+            result.append(ok)
 
         def _visit(node: "NodeT") -> None:
             for _name, child in node.get_direct_children():
-                if check(child):
-                    result.append(child)
+                if ok := check(child):
+                    result.append(ok)
                 if not direct_only:
                     _visit(child)
 
@@ -1136,11 +1213,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             )
         return tg
 
+    @property
+    def g(self) -> graph.GraphView:
+        return self.instance.g()
+
     def bind_typegraph_from_self(self) -> "TypeNodeBoundTG[Self, Any]":
         return self.bind_typegraph(tg=self.tg)
-
-    def get_graph(self) -> fbrk.TypeGraph:
-        return self.tg
 
     def get_type_node(self) -> graph.BoundNode | None:
         type_edge = fbrk.EdgeType.get_type_edge(bound_node=self.instance)
@@ -1149,6 +1227,15 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return type_edge.g().bind(
             node=fbrk.EdgeType.get_type_node(edge=type_edge.edge())
         )
+
+    def has_same_type_as(self, other: "NodeT") -> bool:
+        this_type = self.get_type_node()
+        if this_type is None:
+            return False
+        other_type = other.get_type_node()
+        if other_type is None:
+            return False
+        return this_type.node().is_same(other=other_type.node())
 
     def get_type_name(self) -> str | None:
         type_node = self.get_type_node()
@@ -1188,6 +1275,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         hierarchy.reverse()
         return hierarchy
 
+    def copy_into(self, g: graph.GraphView) -> Self:
+        """
+        Copy all nodes in hierarchy and edges between them and their types
+        """
+        g_sub = fbrk.TypeGraph.get_subgraph_of_node(start_node=self.instance)
+        g.insert_subgraph(subgraph=g_sub)
+        return self.bind_instance(instance=g.bind(node=self.instance.node()))
+
     def get_full_name(self, types: bool = False) -> str:
         parts: list[str] = []
         if (parent := self.get_parent()) is not None:
@@ -1195,11 +1290,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             if not parent_node.no_include_parents_in_full_name:
                 if (parent_full := parent_node.get_full_name(types=False)) is not None:
                     parts.append(parent_full)
-            parts.append(name)
+            parts.append(name or self.get_root_id())
         elif not self.no_include_parents_in_full_name:
             parts.append(self.get_root_id())
 
-        base = ".".join(filter(None, parts))
+        base = ".".join(parts)
         if types:
             type_name = self.get_type_name() or "<NOTYPE>"
             return f"{base}|{type_name}" if base else type_name
@@ -1274,14 +1369,22 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         return t.bind_instance(self.instance)
 
     def __repr__(self) -> str:
-        return self.get_full_name()
+        cls_name = type(self).__name__
+        if type(self) is Node:
+            cls_id = f"{cls_name}[{self.get_type_name()}]"
+        else:
+            cls_id = cls_name
+        suffix = ""
+        if traits := Traits.is_trait(self):
+            suffix = traits.trait_repr()
+        return f"<{cls_id} '{self.get_full_name()})'{suffix}>"
 
-    def __rich_repr__(self):
-        yield self.get_full_name()
+    # def __rich_repr__(self):
+    #    yield self.get_full_name()
 
-    __rich_repr__.angular = True
+    # __rich_repr__.angular = True
 
-    def __eq__(self, other: object) -> bool:
+    def is_same(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
         match other:
             case Node():
                 other_node = other.instance.node()
@@ -1290,9 +1393,16 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             case graph.BoundNode():
                 other_node = other.node()
             case _:
-                return False
+                raise TypeError(f"Invalid type: {type(other)}")
 
         return self.instance.node().is_same(other=other_node)
+
+    def __eq__(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
+        """
+        DO NOT USE THIS! Use is_same instead!
+        ONLY HERE FOR set AND dict behavior!
+        """
+        return self.is_same(other)
 
     def __hash__(self) -> int:
         return self.instance.node().get_uuid()
@@ -1323,6 +1433,12 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
 
 type NodeT = Node[Any]
+RefPath = list[str | _ChildField[Any] | type[NodeT]]
+
+SELF_OWNER_PLACEHOLDER: RefPath = [""]
+"""
+When creating trait, default reference path to self is [""].
+"""
 
 
 class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
@@ -1330,6 +1446,10 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
     (type[Node], fbrk.TypeGraph)
     Becomes available during stage 1 (typegraph creation)
     """
+
+    # TODO REMOVE THIS HACK
+    # currently needed for solver to make factories from expression instances
+    __TYPE_NODE_MAP__: dict[graph.BoundNode, "TypeNodeBoundTG[Any, Any]"] = {}
 
     def __init__(self, tg: fbrk.TypeGraph, t: type[N]) -> None:
         self.tg = tg
@@ -1345,6 +1465,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         if typenode is not None:
             return typenode
         typenode = tg.add_type(identifier=self.t._type_identifier())
+        TypeNodeBoundTG.__TYPE_NODE_MAP__[typenode] = self
         self.t._create_type(self)
         return typenode
 
@@ -1447,6 +1568,41 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
                 return True
         return False
 
+    @staticmethod
+    def try_get_trait_of_type[T: NodeT](
+        trait: type[T], type_node: graph.BoundNode
+    ) -> "T | None":
+        tg = fbrk.TypeGraph.of_type(type_node=type_node)
+        assert tg
+        trait_type = trait.bind_typegraph(tg=tg)
+        out = fbrk.Trait.try_get_trait(
+            target=type_node,
+            trait_type=trait_type.get_or_create_type(),
+        )
+        if not out:
+            return None
+        return trait.bind_instance(instance=out)
+
+    def try_get_type_trait[T: NodeT](self, trait: type[T]) -> T | None:
+        return self.try_get_trait_of_type(
+            trait=trait, type_node=self.get_or_create_type()
+        )
+
+    def try_get_trait[TR: NodeT](self, trait: type[TR]) -> TR | None:
+        impl = fbrk.Trait.try_get_trait(
+            target=self.get_or_create_type(),
+            trait_type=trait.bind_typegraph(self.tg).get_or_create_type(),
+        )
+        if impl is None:
+            return None
+        return trait.bind_instance(instance=impl)
+
+    def get_trait[TR: Node](self, trait: type[TR]) -> TR:
+        impl = self.try_get_trait(trait)
+        if impl is None:
+            raise TraitNotFound(f"No trait {trait} found")
+        return impl
+
 
 # ------------------------------------------------------------
 
@@ -1490,17 +1646,23 @@ class Traits:
         return self.get_obj_raw().cast(t)
 
     @staticmethod
-    def add_to(node: NodeT, trait: NodeT) -> None:
-        fbrk.Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+    def add_to(node: NodeT, trait: NodeT) -> graph.BoundNode:
+        return fbrk.Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
+
+    @staticmethod
+    def add_instance_to(node: NodeT, trait_instance: NodeT) -> graph.BoundNode:
+        return fbrk.Trait.add_trait_instance_to(
+            target=node.instance, trait_instance=trait_instance.instance
+        )
 
     @staticmethod
     def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
         trait_bound = trait.bind_typegraph_from_instance(
             node.instance
         ).get_or_create_type()
-        trait_node = Node.bind_instance(instance=trait_bound)
-        Traits.add_to(node=node, trait=trait_node)
-        return node  # type: ignore
+        trait_type_node = Node.bind_instance(instance=trait_bound)
+        trait_instance_node = Traits.add_to(node=node, trait=trait_type_node)
+        return trait.bind_instance(instance=trait_instance_node)
 
     @staticmethod
     def MakeEdge[T: _ChildField](
@@ -1524,6 +1686,14 @@ class Traits:
         return trait.get_instances(g=g)
 
     @staticmethod
+    def get_implementor_siblings[T: NodeT](
+        trait: TypeNodeBoundTG[Any, Any],
+        sibling_trait: type[T],
+        g: graph.GraphView | None = None,
+    ) -> list[T]:
+        return [n.get_sibling_trait(sibling_trait) for n in trait.get_instances(g=g)]
+
+    @staticmethod
     def get_implementor_objects(
         trait: TypeNodeBoundTG[Any, Any], g: graph.GraphView | None = None
     ) -> list[NodeT]:
@@ -1536,6 +1706,18 @@ class Traits:
 
     def try_get_trait_of_obj[T: NodeT](self, t: type[T]) -> T | None:
         return self.get_obj_raw().try_get_trait(t)
+
+    @staticmethod
+    def is_trait(node: NodeT) -> "Traits | None":
+        type_node = node.get_type_node()
+        if type_node is None:
+            return None
+        if TypeNodeBoundTG.try_get_trait_of_type(ImplementsTrait, type_node):
+            return Traits.bind(node)
+        return None
+
+    def trait_repr(self):
+        return f" on {self.get_obj_raw()!r}"
 
 
 class ImplementsTrait(Node):
@@ -1585,7 +1767,6 @@ class is_module(Node):
         return Traits.get_obj_raw(Traits.bind(self))
 
 
-# wraps the raw fbrk.EdgeInterfaceConnection functions into fabll nodes
 class is_interface(Node):
     _is_trait = ImplementsTrait.MakeChild().put_on_type()
 
@@ -1594,7 +1775,10 @@ class is_interface(Node):
 
     def connect_to(self, *others: "NodeT") -> None:
         self_node = self.get_obj()
+
         for other in others:
+            if isinstance(other, is_interface):
+                raise ValueError("Don't call on the interface, just pass the node thx")
             fbrk.EdgeInterfaceConnection.connect(
                 bn1=self_node.instance, bn2=other.instance
             )
@@ -1609,8 +1793,8 @@ class is_interface(Node):
     """
     group_into_buses() clusters the supplied electrical
     interfaces by their shared bus (electrical connectivity) so the exporter can treat
-    every bus once; the result is a dict whose keys are the representative bus interfaces
-    and whose values are the other Interfaces that belong to the same bus.
+    every bus once; the result is a dict whose keys are the representative bus
+    interfaces and whose values are the other Interfaces that belong to the same bus.
     """
 
     @staticmethod
@@ -1634,11 +1818,11 @@ class is_interface(Node):
 
     def is_connected_to(self, other: "NodeT") -> bool:
         self_node = self.get_obj()
-        path = fbrk.EdgeInterfaceConnection.is_connected_to(
+        bfs_path = fbrk.EdgeInterfaceConnection.is_connected_to(
             source=self_node.instance, target=other.instance
         )
 
-        return path[0] > 0 if path else False
+        return bfs_path.get_end_node().node().is_same(other=other.instance.node())
 
     def get_connected(self, include_self: bool = False) -> dict["Node[Any]", Path]:
         self_node = self.get_obj()
@@ -1690,11 +1874,6 @@ def _make_graph_and_typegraph():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
     return g, tg
-
-
-def isparameteroperable(candidate: object) -> bool:
-    """Temporary compatibility shim until ParameterOperatable migrates to Zig."""
-    return isinstance(candidate, Node)
 
 
 def test_fabll_basic():
@@ -1807,10 +1986,10 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        _is_trait = ImplementsTrait.MakeChild().put_on_type()
+        _is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
 
     class ExampleNode(Node):
-        example_trait = ExampleTrait.MakeChild()
+        example_trait = Traits.MakeEdge(ExampleTrait.MakeChild())
 
     node = ExampleNode.bind_typegraph(tg).create_instance(g=g)
     assert node.try_get_trait(ExampleTrait) is not None
@@ -1968,217 +2147,69 @@ def test_resistor_instantiation():
     tg = fbrk.TypeGraph.create(g=g)
 
     Resistor = F.Resistor.bind_typegraph(tg=tg)
-    resistor_instance = Resistor.create_instance(g=g)
-    assert resistor_instance
-    assert resistor_instance._type_identifier() == "Resistor"
-
-    # Electrical make child
-    p1_child_field = fbrk.EdgeComposition.get_child_by_identifier(
-        bound_node=resistor_instance.instance, child_identifier="unnamed[0]"
+    res_inst = Resistor.create_instance(g=g)
+    assert Resistor.get_trait(F.has_usage_example)
+    assert res_inst
+    assert res_inst._type_identifier() == "Resistor"
+    assert res_inst.unnamed[0].get().get_name() == "unnamed[0]"
+    assert res_inst.resistance.get().get_name() == "resistance"
+    assert res_inst.resistance.get().get_units().get_type_name() == "Ohm"
+    assert res_inst.get_trait(fabll.is_module)
+    electricals = (
+        res_inst.get_trait(F.can_attach_to_footprint_symmetrically)
+        .electricals_.get()
+        .as_list()
     )
-    assert p1_child_field is not None
-    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
-    assert resistor_instance.resistance.get().get_name() == "resistance"
-    print(resistor_instance.resistance.get().get_units())
-
-    print(
-        "resistance is type Parameter:",
-        fbrk.EdgeType.is_node_instance_of(
-            bound_node=resistance,
-            node_type=F.Parameters.NumericParameter.bind_typegraph(tg=tg)
-            .get_or_create_type()
-            .node(),
-        ),
+    assert electricals[0].get_name() == "unnamed[0]"
+    assert electricals[1].get_name() == "unnamed[1]"
+    assert (
+        res_inst._is_pickable.get().get_param("resistance").get_name() == "resistance"
     )
-
-    # Constrained parameter type child
-    designator_prefix = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=resistor_instance.instance,
-            child_identifier="designator_prefix",
-        )
+    assert (
+        res_inst.get_trait(F.has_designator_prefix).get_prefix()
+        == F.has_designator_prefix.Prefix.R
     )
-    prefix_param = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=designator_prefix,
-            child_identifier="prefix_param",
-        )
-    )
-    constraint_edge = not_none(
-        fbrk.EdgeOperand.get_expression_edge(bound_node=prefix_param)
-    )
-    expression_node = not_none(
-        fbrk.EdgeOperand.get_expression_node(edge=constraint_edge.edge())
-    )
-    expression_bnode = g.bind(node=expression_node)
-
-    operands: list[graph.BoundNode] = []
-    fbrk.EdgeOperand.visit_operand_edges(
-        bound_node=expression_bnode,
-        ctx=operands,
-        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
-    )
-    for operand in operands:
-        attrs = fbrk.EdgeType.get_type_node(
-            edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=operand)).edge()
-        ).get_dynamic_attrs()
-        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
-
-    expression_bnode = g.bind(node=expression_node)
-    operands2: list[graph.BoundNode] = []
-    fbrk.EdgeOperand.visit_operand_edges(
-        bound_node=expression_bnode,
-        ctx=operands2,
-        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
-    )
-    for operand in operands2:
-        attrs = fbrk.EdgeType.get_type_node(
-            edge=not_none(fbrk.EdgeType.get_type_edge(bound_node=operand)).edge()
-        ).get_dynamic_attrs()
-        print(f"{attrs} {operand.node().get_dynamic_attrs()}")
-
-    # Is pickable by type
-    ipbt = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=resistor_instance.instance,
-            child_identifier="_is_pickable",
-        )
-    )
-    ipbt_params = not_none(
-        fbrk.EdgeComposition.get_child_by_identifier(
-            bound_node=ipbt,
-            child_identifier="params_",
-        )
-    )
-    variables: list[graph.BoundNode] = []
-    ipbt_params.visit_edges_of_type(
-        edge_type=fbrk.EdgePointer.get_tid(),
-        ctx=variables,
-        f=lambda ctx, edge: ctx.append(edge.g().bind(node=edge.edge().target())),
-    )
-    print(
-        "ipbt_params:",
-        [
-            fbrk.EdgeComposition.get_name(
-                edge=not_none(
-                    fbrk.EdgeComposition.get_parent_edge(bound_node=variable)
-                ).edge()
-            )
-            for variable in variables
-        ],
-    )
-
-
-def test_lightweight():
-    g, tg = _make_graph_and_typegraph()
-    import faebryk.library._F as F
-
-    resistor_type_bnode = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
-    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
-
-    # Test list fields
-    assert resistor_instance.unnamed[0].get().get_name() == "unnamed[0]"
-    assert resistor_instance.unnamed[1].get().get_name() == "unnamed[1]"
-
-    # Test is pickable by type
-    ipbt = resistor_instance.get_trait(F.is_pickable_by_type)
-    sorted_params = sorted(param.get_name() for param in ipbt.params)
-    print(ipbt)
-    assert sorted_params == ["max_power", "max_voltage", "resistance"]
-    assert ipbt.get_param("resistance").get_name() == "resistance"
-
-    # TODO: test endpoint extraction from endpoint property
-    # assert endpoint == "resistors"
-
-    _ = F.Resistor.bind_typegraph(tg=tg).get_or_create_type()
-    _ = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
-    # pat = not_none(
-    #     fbrk.EdgePointer.get_pointed_node_by_identifier(
-    #         bound_node=bjt_instance.emitter.get().instance,
-    #         identifier="pin_association_table_set",
-    #     )
-    # )
-    # for lit in Set.bind_instance(instance=pat).as_list():
-    #     lit = LiteralNode.bind_instance(instance=lit.instance)
-    #     print(lit.get_value())
-
-    # print(pah.get_nc_literals())
-    resistor_instance = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
-    bjt_instance = F.BJT.bind_typegraph(tg=tg).create_instance(g=g)
-    pah = bjt_instance.get_trait(F.has_pin_association_heuristic)
-    #
-    # print(nc_set)
-    # print(pah.nc.get())
-    # print(pah.nc.get().as_list())
-    # print(pah.get_nc_literals())
-    print(pah.get_mapping_as_dict())
-    print(pah.get_pins(pins=[("1", "E"), ("2", "Collector"), ("3", "B")]))
-
-    # bjt_type_node = F.BJT.bind_typegraph(tg=tg).get_or_create_type()
-    # print(Node.bind_instance(bjt_type_node).get_trait(F.is_pickable_by_type))
-
-    # TODO: Fix this to pull traits from the type node
-    # print(resistor_instance.get_trait(F.is_pickable_by_type).endpoint)
-    # print(resistor_instance.get_trait(F.has_usage_example).language)
-
-    simple_repr = resistor_instance.get_trait(F.has_simple_value_representation)
-    print(simple_repr.get_specs())
-    specs_set = simple_repr.specs_set_.get()
-    assert isinstance(specs_set, F.Collections.PointerSet)
-    print(simple_repr.get_params())
-    print(simple_repr.get_value())
-
-    _ = F.Battery.bind_typegraph(tg=tg).get_or_create_type()
-    battery_instance = F.Battery.bind_typegraph(tg=tg).create_instance(g=g)
-    # ref = battery_instance.get_trait(F.has_single_electric_reference).get_reference()
-    # print(ref)
-    # assert (
-    #     battery_instance.power.get().hv.get().get_trait(F.has_net_name).level
-    #     == None  # F.has_net_name.Level.SUGGESTED
-    # )
-    # print(battery_instance.power.get().hv.get().get_trait(F.has_net_name).name)
-    # assert (
-    #     battery_instance.power.get().hv.get().get_trait(F.has_net_name).name
-    #     == "BAT_VCC"
-    # )
-
-    _ = F.OpAmp.bind_typegraph(tg=tg).get_or_create_type()
-    op_amp_instance = F.OpAmp.bind_typegraph(tg=tg).create_instance(g=g)
-    print(
-        op_amp_instance.get_trait(F.has_pin_association_heuristic).get_mapping_as_dict()
-    )
-
-    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
-    footprint_instance = F.Footprint.bind_typegraph(tg=tg).create_instance(g=g)
-
-    # print(resistor_instance.get_trait(F.has_footprint))
-    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
-    metadata = resistor_instance.get_children(
-        direct_only=True, types=F.SerializableMetadata
-    )
-    print(
-        f"SerializableMetadata:"
-        f" {F.SerializableMetadata.get_properties(node=resistor_instance)}"
-    )
-    # print(F.SerializableMetadata.get_properties(node=resistor_instance))
-
-    # print(resistor_instance.get_trait(F.can_attach_to_footprint_via_pinmap).pinmap)
-
-    _ = F.Footprint.bind_typegraph(tg=tg).get_or_create_type()
-    sym = resistor_instance.get_trait(F.can_attach_to_footprint_symmetrically)
-    print(sym.electricals_.get().as_list())
 
 
 def test_string_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
 
-    string_param = F.Parameters.StringParameter.bind_typegraph(tg=tg).create_instance(
-        g=g
+    ctx = F.Parameters.BoundParameterContext(tg=tg, g=g)
+
+    string_p = ctx.StringParameter
+    string_p.alias_to_single(value="IG constrained")
+    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
+
+    class ExampleStringParameter(fabll.Node):
+        string_p_tg = F.Parameters.StringParameter.MakeChild()
+        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+            [string_p_tg], "TG constrained"
+        )
+
+    esp = ExampleStringParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert (
+        esp.string_p_tg.get().force_extract_literal().get_values()[0]
+        == "TG constrained"
     )
-    string_param.constrain_to_single(value="TEST")
-    print(not_none(string_param.try_extract_constrained_literal()).get_value())
-    print(string_param.get_full_name(types=True))
+
+
+def test_boolean_param():
+    g, tg = _make_graph_and_typegraph()
+    import faebryk.library._F as F
+
+    boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    boolean_p.alias_to_single(value=True)
+    assert boolean_p.force_extract_literal().get_values()
+
+    class ExampleBooleanParameter(fabll.Node):
+        boolean_p_tg = F.Parameters.BooleanParameter.MakeChild()
+        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+            [boolean_p_tg], True
+        )
+
+    ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    assert ebp.boolean_p_tg.get().force_extract_literal().get_values()
 
 
 def test_kicad_footprint():
@@ -2199,28 +2230,273 @@ def test_kicad_footprint():
     )
     print(
         f"kicad_footprint.get_kicad_footprint():"
-        f" {kicad_footprint.get_kicad_footprint()}"
+        f" {kicad_footprint.get_kicad_footprint_identifier()}"
     )
     print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
 
 
-def test2():
-    import faebryk.library._F as F
+def test_node_equality():
+    g, tg = _make_graph_and_typegraph()
+
+    NT1 = Node.bind_typegraph(tg=tg)
+    n1 = NT1.create_instance(g=g)
+    n2 = NT1.create_instance(g=g)
+
+    assert n1 != n2
+    assert n1 == n1
+    assert n1 is n1
+    n1_1 = Node.bind_instance(n1.instance)
+    assert n1_1 == n1
+    assert n1_1 is not n1
+
+    # equal with different type
+    class NewType(fabll.Node):
+        pass
+
+    NT2 = NewType.bind_typegraph(tg=tg)
+    n2 = NT2.create_instance(g=g)
+    n2_1 = NewType.bind_instance(n2.instance)
+    assert n2_1 == n2
+
+    n2_2 = Node.bind_instance(n2.instance)
+    assert n2_2 == n2_1
+
+    # dict behavior
+    node_set = {n1}
+    assert n1 in node_set
+    assert n2 not in node_set
+    assert n1_1 in node_set
+
+    node_set.add(n2)
+    assert n2 in node_set
+    assert n2_1 in node_set
+    assert n2_2 in node_set
+
+    node_set.add(n2_1)
+    assert len(node_set) == 2
+
+
+def test_chain_names():
+    import re
 
     g, tg = _make_graph_and_typegraph()
-    strings = F.Literals.Strings.bind_typegraph(tg=tg).create_instance(
-        g=g, attributes=F.Literals.Strings.Attributes(value="test")
-    )
-    print(strings.get_value())
 
-    number = F.Literals.Numbers.bind_typegraph(tg=tg).create_instance(
-        g=g, attributes=F.Literals.LiteralsAttributes(value=3)
-    )
-    print(number.get_value())
+    class N(Node):
+        pass
 
-    assert F.Literals.make_lit(tg, value=True).get_value()
-    assert F.Literals.make_lit(tg, value=3).get_value() == 3
-    assert F.Literals.make_lit(tg, value="test").get_value() == "test"
+    root = N.bind_typegraph(tg).create_instance(g=g)
+    x = root
+    for i in range(10):
+        y = N.bind_typegraph(tg).create_instance(g=g)
+        # Add y as child of x with name "i{i}"
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=y.instance.node(),
+            child_identifier=f"i{i}",
+        )
+        x = y
+
+    assert re.search(
+        r"0x[0-9A-F]+\.i0\.i1\.i2\.i3\.i4\.i5\.i6\.i7\.i8\.i9", x.get_full_name()
+    )
+
+
+def test_chain_tree():
+    g, tg = _make_graph_and_typegraph()
+
+    class N(Node):
+        pass
+
+    root = N.bind_typegraph(tg).create_instance(g=g)
+    x = root
+    for i in range(10):
+        y = N.bind_typegraph(tg).create_instance(g=g)
+        z = N.bind_typegraph(tg).create_instance(g=g)
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=y.instance.node(),
+            child_identifier=f"i{i}",
+        )
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=z.instance.node(),
+            child_identifier=f"j{i}",
+        )
+        x = y
+
+    assert re.search(
+        r"0x[0-9A-F]+\.i0\.i1\.i2\.i3\.i4\.i5\.i6\.i7\.i8\.i9", x.get_full_name()
+    )
+
+
+def test_chain_tree_with_root():
+    g, tg = _make_graph_and_typegraph()
+
+    class N(Node):
+        pass
+
+    root = N.bind_typegraph(tg).create_instance(g=g)
+    root.no_include_parents_in_full_name = True
+    x = root
+    for i in range(10):
+        y = N.bind_typegraph(tg).create_instance(g=g)
+        z = N.bind_typegraph(tg).create_instance(g=g)
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=y.instance.node(),
+            child_identifier=f"i{i}",
+        )
+        fbrk.EdgeComposition.add_child(
+            bound_node=x.instance,
+            child=z.instance.node(),
+            child_identifier=f"j{i}",
+        )
+        x = y
+
+    assert re.search(
+        r"0x[0-9A-F]+\.i0\.i1\.i2\.i3\.i4\.i5\.i6\.i7\.i8\.i9", x.get_full_name()
+    )
+
+
+def test_get_children_modules_simple():
+    g, tg = _make_graph_and_typegraph()
+
+    class M(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    class App(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+        m = M.MakeChild()
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
+    m = app.m.get()
+
+    mods = app.get_children(direct_only=False, types=Node, required_trait=is_module)
+    assert mods == {m}
+
+
+def test_get_children_modules_tree():
+    g, tg = _make_graph_and_typegraph()
+
+    class Capacitor(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+
+    class CapacitorContainer(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+        cap1 = Capacitor.MakeChild()
+        cap2 = Capacitor.MakeChild()
+
+    class App(Node):
+        _is_module = Traits.MakeEdge(is_module.MakeChild())
+        container1 = CapacitorContainer.MakeChild()
+        container2 = CapacitorContainer.MakeChild()
+
+    app = App.bind_typegraph(tg).create_instance(g=g)
+    container1 = app.container1.get()
+    container2 = app.container2.get()
+
+    cap1 = container1.cap1.get()
+    cap2 = container1.cap2.get()
+    cap3 = container2.cap1.get()
+    cap4 = container2.cap2.get()
+
+    mods = container1.get_children(
+        direct_only=False,
+        types=Capacitor,
+        required_trait=is_module,
+    )
+    assert mods == {cap1, cap2}
+
+    mods = app.get_children(
+        direct_only=False,
+        types=Capacitor,
+        required_trait=is_module,
+    )
+    assert mods == {cap1, cap2, cap3, cap4}
+
+
+def test_copy_into_basic():
+    g, tg = _make_graph_and_typegraph()
+    g_new = graph.GraphView.create()
+
+    class Inner(Node):
+        pass
+
+    class N(Node):
+        inner = Inner.MakeChild()
+
+    class Outer(Node):
+        n = N.MakeChild()
+        m = N.MakeChild()
+        o = N.MakeChild()
+
+    outer = Outer.bind_typegraph(tg).create_instance(g=g)
+    m = outer.m.get()
+    n = outer.n.get()
+    o = outer.o.get()
+    m.connect(to=n, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+    n.connect(to=o, edge_attrs=fbrk.EdgePointer.build(identifier=None, order=None))
+
+    assert fbrk.EdgePointer.get_referenced_node_from_node(node=n.instance) == o.instance
+    assert fbrk.EdgePointer.get_referenced_node_from_node(node=m.instance) == n.instance
+
+    n2 = n.copy_into(g=g_new)
+
+    tg_new = fbrk.TypeGraph.of_instance(instance_node=n2.instance)
+    assert tg_new is not None
+    print(
+        "tg:",
+        indented_container(
+            dict(sorted(tg.get_type_instance_overview(), key=lambda x: x[0]))
+        ),
+    )
+    print(
+        "tg_new:",
+        indented_container(
+            dict(sorted(tg_new.get_type_instance_overview(), key=lambda x: x[0]))
+        ),
+    )
+
+    def _get_name(n: graph.BoundNode) -> str:
+        f = fabll.Node.bind_instance(instance=n)
+        return repr(f)
+
+    def _container(ns: Iterable[fabll.Node]) -> str:
+        return indented_container(
+            sorted(ns, key=lambda x: repr(x)), compress_large=1000
+        )
+
+    g_nodes = {fabll.Node.bind_instance(instance=n) for n in g.get_nodes()}
+    g_new_nodes = {fabll.Node.bind_instance(instance=n) for n in g_new.get_nodes()}
+    g_diff_new = g_new_nodes - g_nodes
+    # tg.self & g_new.self
+    assert len(g_diff_new) == 2, f"g_diff_new: {_container(g_diff_new)}"
+
+    print("g", _container(g_nodes))
+    print("g_new", _container(g_new_nodes))
+    print("g_diff", _container(g_nodes - g_new_nodes))
+    print("g_diff_new", _container(g_diff_new))
+
+    assert n2.is_same(n)
+    assert n2 is not n
+    assert n2.g != n.g
+
+    # check o is in the new graph (because we pointed to it)
+    assert (
+        not_none(fbrk.EdgePointer.get_referenced_node_from_node(node=n2.instance))
+        .node()
+        .is_same(other=o.instance.node())
+    )
+
+    # check m is not in the new graph
+    g_new_nodes = g_new.get_nodes()
+    assert not any(m.instance.node().is_same(other=node.node()) for node in g_new_nodes)
+
+    inner2 = n2.inner.get()
+    assert inner2.is_same(n.inner.get())
+
+    assert n2.isinstance(N)
+    assert inner2.isinstance(Inner)
 
 
 if __name__ == "__main__":
@@ -2231,4 +2507,4 @@ if __name__ == "__main__":
     # test_manual_resistor_def()
 
     # typer.run(test_resistor_instantiation)
-    typer.run(test_string_param)
+    typer.run(test_copy_into_basic)
