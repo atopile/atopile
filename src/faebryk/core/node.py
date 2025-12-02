@@ -1095,8 +1095,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         )
         return children
 
-    # TODO: convert to visitor pattern
-    # TODO: implement in zig
     def get_children[C: Node](
         self,
         direct_only: bool,
@@ -1105,8 +1103,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         f_filter: Callable[[C], bool] | None = None,
         sort: bool = True,
         required_trait: "type[NodeT] | tuple[type[NodeT], ...] | None" = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> OrderedSet[C]:
-        # copied from old fabll
         type_tuple = types if isinstance(types, tuple) else (types,)
         trait_tuple: tuple[type[NodeT], ...] | None
         if required_trait is None:
@@ -1116,34 +1114,54 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         else:
             trait_tuple = (required_trait,)
 
-        result: list[C] = []
+        tg = tg or self.tg
 
-        def check(node: "NodeT") -> C | None:
+        # Convert Python types to Zig type nodes
+        # Use Node as wildcard - if Node is in types, don't filter by type
+        if Node in type_tuple:
+            zig_types: list[graph.Node] | None = None
+        else:
+            zig_types = [
+                t.bind_typegraph(tg).get_or_create_type().node() for t in type_tuple
+            ]
+
+        # Convert Python trait types to Zig trait type nodes
+        zig_traits: list[graph.Node] | None = None
+        if trait_tuple:
+            zig_traits = [
+                t.bind_typegraph_from_instance(self.instance)
+                .get_or_create_type()
+                .node()
+                for t in trait_tuple
+            ]
+
+        # Call Zig get_children_query
+        bound_nodes = fbrk.EdgeComposition.get_children_query(
+            bound_node=self.instance,
+            direct_only=direct_only,
+            types=zig_types,
+            include_root=include_root,
+            sort=False,  # We'll sort in Python since Zig doesn't implement it yet
+            required_traits=zig_traits,
+        )
+
+        # Convert BoundNode results back to Python Node objects
+        result: list[C] = []
+        for bound_node in bound_nodes:
+            node = Node(instance=bound_node)
+            # Cast to the correct type
             if len(type_tuple) == 1:
                 candidate = node.try_cast(type_tuple[0])
                 if candidate is None:
-                    return None
+                    continue
             else:
-                if not node.isinstance(*type_tuple):
-                    return None
                 candidate = cast(C, node)
-            if trait_tuple and not any(node.has_trait(trait) for trait in trait_tuple):
-                return None
+
+            # Apply f_filter if provided (Zig doesn't support this)
             if f_filter and not f_filter(candidate):
-                return None
-            return candidate
+                continue
 
-        if include_root and (ok := check(self)):
-            result.append(ok)
-
-        def _visit(node: "NodeT") -> None:
-            for _name, child in node.get_direct_children():
-                if ok := check(child):
-                    result.append(ok)
-                if not direct_only:
-                    _visit(child)
-
-        _visit(self)
+            result.append(candidate)
 
         if sort:
             result.sort(key=lambda n: n.get_name(accept_no_parent=True))
@@ -1568,7 +1586,7 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
 
     def check_if_instance_of_type_has_trait(self, trait: type[NodeT]) -> bool:
         children = Node.bind_instance(instance=self.get_or_create_type()).get_children(
-            direct_only=True, types=MakeChild
+            direct_only=True, types=MakeChild, tg=self.tg
         )
         bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
         for child in children:
