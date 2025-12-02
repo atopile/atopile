@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING, Self, cast
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-
-# import faebryk.enum_sets as enum_sets
 import faebryk.library._F as F
 from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
@@ -20,7 +18,7 @@ if TYPE_CHECKING:
 class is_parameter_operatable(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    def try_get_constrained_literal[T: "fabll.NodeT" = "F.Literals.is_literal"](
+    def try_get_constrained_literal[T: "fabll.NodeT" = "Literals.is_literal"](
         self,
         lit_type: type[T] | None = None,
         pred_type: type[fabll.NodeT] | None = None,
@@ -29,6 +27,7 @@ class is_parameter_operatable(fabll.Node):
         # 2. for each of those check if they have a literal operand of the correct type
         from faebryk.library.Expressions import Is as Is
         from faebryk.library.Expressions import IsSubset, is_predicate
+        from faebryk.library.Literals import is_literal
 
         if pred_type is None:
             pred_type = Is
@@ -47,13 +46,13 @@ class is_parameter_operatable(fabll.Node):
         Expr = pred_type.bind_typegraph(tg=self.tg)
 
         class E_Ctx:
-            lit: F.Literals.is_literal | None = None
+            lit: is_literal | None = None
             node = self.as_operand()
             predT = pred_type
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
             class Ctx:
-                lit: F.Literals.is_literal | None = None
+                lit: is_literal | None = None
 
             # check if Is is constrained
             expr_node = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
@@ -66,7 +65,7 @@ class is_parameter_operatable(fabll.Node):
                 can_be_operand = fabll.Node.bind_instance(
                     edge.g().bind(node=edge.edge().target())
                 )
-                if lit := can_be_operand.try_get_sibling_trait(F.Literals.is_literal):
+                if lit := can_be_operand.try_get_sibling_trait(is_literal):
                     ctx.lit = lit
 
             ctx = Ctx()
@@ -93,7 +92,7 @@ class is_parameter_operatable(fabll.Node):
 
         return cast("T|None", e_ctx.lit)
 
-    def force_extract_literal[T: "fabll.NodeT" = "F.Literals.is_literal"](
+    def force_extract_literal[T: "fabll.NodeT" = "Literals.is_literal"](
         self, lit_type: type[T] | None = None
     ) -> T:
         lit = self.try_get_constrained_literal(lit_type=lit_type)
@@ -132,10 +131,10 @@ class is_parameter_operatable(fabll.Node):
             return expr.get_depth()
         return 0
 
-    def try_get_aliased_literal(self) -> "F.Literals.is_literal | None":
+    def try_get_aliased_literal(self) -> "Literals.is_literal | None":
         return self.try_get_constrained_literal()
 
-    def try_get_subset_or_alias_literal(self) -> "F.Literals.is_literal | None":
+    def try_get_subset_or_alias_literal(self) -> "Literals.is_literal | None":
         from faebryk.library.Expressions import Is, IsSubset
 
         is_lit = self.try_get_constrained_literal(pred_type=Is)
@@ -151,7 +150,7 @@ class is_parameter_operatable(fabll.Node):
 
     def try_extract_literal(
         self, allow_subset: bool = False
-    ) -> "F.Literals.is_literal | None":
+    ) -> "Literals.is_literal | None":
         if allow_subset:
             return self.try_get_subset_or_alias_literal()
         return self.try_get_aliased_literal()
@@ -540,13 +539,10 @@ class NumericParameter(fabll.Node):
 
     # domain = fabll.ChildField(NumberDomain)
 
-    def get_units(self) -> "Units.IsUnit | None":
-        from faebryk.library.Units import HasUnit
+    def get_units(self) -> "Units.is_unit":
+        from faebryk.library.Units import has_unit
 
-        has_unit = self.try_get_trait(HasUnit)
-        if has_unit is None:
-            return None
-        return has_unit.get_unit()
+        return self.get_trait(has_unit).get_is_unit()
 
     def get_domain(self) -> "NumberDomain":
         return F.NumberDomain.bind_instance(
@@ -575,7 +571,7 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        is_unit: "F.Units.IsUnit | None" = None,
+        units: "Units.is_unit | None" = None,
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,
@@ -586,13 +582,13 @@ class NumericParameter(fabll.Node):
         likely_constrained: bool = False,
     ) -> Self:
         from faebryk.library.NumberDomain import NumberDomain
-        from faebryk.library.Units import HasUnit
+        from faebryk.library.Units import has_unit
 
-        if is_unit:
+        if units:
             has_unit = (
-                HasUnit.bind_typegraph(tg=self.tg)
+                has_unit.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .setup(is_unit=is_unit)
+                .setup(unit=units)
             )
             fabll.Traits.add_instance_to(self, has_unit)
         if domain is None:  # Default domain is unbounded
@@ -627,10 +623,10 @@ class NumericParameter(fabll.Node):
         #         edge=fbrk.EdgePointer.build(identifier="unit", order=None),
         #     )
         # )
-        from faebryk.library.Units import HasUnit
+        from faebryk.library.Units import has_unit
 
         if unit:
-            out.add_dependant(fabll.Traits.MakeEdge(HasUnit.MakeChild(unit), [out]))
+            out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
 
         domain = NumberDomain.MakeChild(
             negative=negative, zero_allowed=zero_allowed, integer=integer
@@ -687,7 +683,7 @@ class BoundParameterContext:
         self.g = g
         self._bound: dict = {}
 
-    def _get_bound(self, cls: type):
+    def _get_bound(self, cls: type[fabll.NodeT]):
         if cls not in self._bound:
             self._bound[cls] = cls.bind_typegraph(tg=self.tg)
         return self._bound[cls]
@@ -714,6 +710,7 @@ class BoundParameterContext:
 
 def test_try_get():
     from faebryk.library.Expressions import IsSubset
+    from faebryk.library.Literals import Strings
 
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -724,7 +721,7 @@ def test_try_get():
     assert not_none(p1.try_extract_constrained_literal()).get_values() == ["a", "b"]
 
     ss_lit = (
-        F.Literals.Strings.bind_typegraph(tg=tg)
+        Strings.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup_from_values("a", "b", "c")
     )
@@ -736,7 +733,7 @@ def test_try_get():
 
     ss_lit_get = p1_po.try_get_constrained_literal(pred_type=IsSubset)
     assert ss_lit_get is not None
-    assert fabll.Traits(ss_lit_get).get_obj(F.Literals.Strings).get_values() == [
+    assert fabll.Traits(ss_lit_get).get_obj(Strings).get_values() == [
         "a",
         "b",
         "c",
@@ -744,7 +741,7 @@ def test_try_get():
 
     ss_is_lit = p1_po.try_get_subset_or_alias_literal()
     assert ss_is_lit is not None
-    assert fabll.Traits(ss_is_lit).get_obj(F.Literals.Strings).get_values() == [
+    assert fabll.Traits(ss_is_lit).get_obj(Strings).get_values() == [
         "a",
         "b",
     ]

@@ -48,13 +48,13 @@ dependencies = [
     "numpy>=2.2.0",
     "ordered-set==4.1.0",
     "pathvalidate>=3.2.1",
-    "pint>=0.24.4",
     "platformdirs>=4.3.6",
     "posthog==6.0.3",                 # exact version
     "prompt-toolkit==3.0.51",         # pinned to avoid questionary compatibility issues
     "psutil>=6.0.0",
     "pydantic-settings>=2.7.1",
     "pygls>=1.3.0",
+    "pytest>=7.1.3,<9.0.0",           # needed for imports
     "questionary>=2.0.1",
     "rich>=13.7.1",
     "ruamel.yaml>=0.18.5",
@@ -91,7 +91,6 @@ dev = [
     "pytest-datafiles>=3.0.0",
     "pytest-html>=4.1.1",
     "pytest-xdist~=3.6.1",
-    "pytest>=7.1.3,<9.0.0",
     "viztracer>=1.0.0,<2.0.0",
     "pytest-benchmark>=5.1.0,<6.0.0",
     "pytest-timeout>=2.3.1",

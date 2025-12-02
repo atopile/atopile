@@ -10,11 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 class Addressor(fabll.Node):
-    address = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
-    offset = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
-    base = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    address = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    offset = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    base = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
 
-    address_bits_ = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Natural)
+    address_bits_ = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Bit, integer=True, negative=False
+    )
     address_lines_ = F.Collections.PointerSet.MakeChild()
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
@@ -34,7 +42,7 @@ class Addressor(fabll.Node):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-                [out, cls.address_bits_], address_bits
+                [out, cls.address_bits_], min=address_bits, unit=F.Units.Dimensionless
             )
         )
         for i in range(address_bits):
@@ -55,10 +63,14 @@ class Addressor(fabll.Node):
             ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
 
         # constrain parameters
-        for x in (self.address, self.offset, self.base):
-            x.get().force_extract_literal().op_greater_or_equal(
-                F.Literals.Numbers.MakeChild(value=0).get()
-            )
+        # for x in (self.address, self.offset, self.base):
+        #     x.get().force_extract_literal().op_greater_or_equal(
+        #         F.Literals.Numbers.MakeChild(
+        #             min=0, max=0, unit=F.Units.Dimensionless
+        #         ).get(),
+        #         g=x.instance.g(),
+        #         tg=x.instance.tg(),
+        #     )
 
         # TODO: ops not implemented yet
         # self.offset.get().force_extract_literal().op_less_or_equal(

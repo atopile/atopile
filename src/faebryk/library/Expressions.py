@@ -608,8 +608,6 @@ def _op(expr: fabll.NodeT) -> "F.Parameters.can_be_operand":
 class is_arithmetic(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    # _unit = F.Units.HasUnit.MakeChild()
-
 
 class is_additive(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -807,6 +805,18 @@ class Multiply(fabll.Node):
 
     operands = OperandSet.MakeChild()
 
+    @classmethod
+    def MakeChild_FromOperands(
+        cls, *operand_fields: fabll._ChildField
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+
+        for operand_field in operand_fields:
+            # TODO: to can_be_operand?
+            out.add_dependant(OperandSet.MakeEdge([out, cls.operands], [operand_field]))
+
+        return out
+
     def setup(self, *operands: "Parameters.can_be_operand") -> Self:
         self.operands.get().append(*operands)
         return self
@@ -940,6 +950,15 @@ class Power(fabll.Node):
 
     base = OperandPointer.MakeChild()
     exponent = OperandPointer.MakeChild()
+
+    @classmethod
+    def MakeChild_FromOperands(
+        cls, base: fabll._ChildField, exponent: fabll._ChildField
+    ) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.base], [base]))
+        out.add_dependant(OperandPointer.MakeEdge([out, cls.exponent], [exponent]))
+        return out
 
     def setup(
         self,

@@ -60,7 +60,7 @@ class BoundExpressions:
             is_unit_node = (
                 units.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .get_trait(F.Units.IsUnit)
+                .get_trait(F.Units.is_unit)
             )
         return (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)

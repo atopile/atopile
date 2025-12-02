@@ -108,7 +108,7 @@ class requires_pulls(fabll.Node):
     def MakeChild(
         cls,
         *signals: fabll._ChildField[SignalLike],
-        required_resistance: F.Parameters.NumericParameter,
+        required_resistance: fabll._ChildField[F.Literals.Numbers],
         # pred: Callable[[SignalLike, set[fabll.Node]], bool] #TODO: what is this?
     ):
         out = fabll._ChildField(cls)
@@ -119,6 +119,7 @@ class requires_pulls(fabll.Node):
                     [signal],
                 )
             )
+        # FIXME: broken
         out.add_dependant(
             F.Parameters.NumericParameter.MakeEdge(
                 [out, cls.required_resistance],
@@ -157,7 +158,7 @@ class requires_pulls(fabll.Node):
             if signal.pull_resistance is not None
             and not self.required_resistance.get()
             .force_extract_literal()
-            .is_superset_of(signal.pull_resistance)
+            .is_superset_of(g=signal.g, tg=signal.tg, other=signal.pull_resistance)
         }
 
         if unfulfilled:

@@ -37,10 +37,10 @@ from faebryk.library.implements_design_check import implements_design_check
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.requires_external_usage import requires_external_usage
+import faebryk.library.Expressions as Expressions
 from faebryk.library.PCB import PCB
 import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.SerializableMetadata import SerializableMetadata
-import faebryk.library.Units as Units
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
@@ -51,10 +51,10 @@ from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
-import faebryk.library.Expressions as Expressions
-from faebryk.library.has_simple_value_representation import has_simple_value_representation
-from faebryk.library.Electrical import Electrical
+import faebryk.library.Units as Units
 from faebryk.library.is_auto_generated import is_auto_generated
+from faebryk.library.Electrical import Electrical
+from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad
@@ -144,10 +144,10 @@ __all__ = [
     "Parameters",
     "can_bridge_by_name",
     "requires_external_usage",
+    "Expressions",
     "PCB",
     "PCBTransformer",
     "SerializableMetadata",
-    "Units",
     "has_datasheet",
     "has_designator_prefix",
     "has_net_name",
@@ -158,10 +158,10 @@ __all__ = [
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
-    "Expressions",
-    "has_simple_value_representation",
-    "Electrical",
+    "Units",
     "is_auto_generated",
+    "Electrical",
+    "has_simple_value_representation",
     "ElectricPower",
     "Filter",
     "Pad",

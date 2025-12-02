@@ -24,9 +24,6 @@ class Comparator(fabll.Node):
     non_inverting_input = F.Electrical.MakeChild()
     output = F.Electrical.MakeChild()
 
-    common_mode_rejection_ratio = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Decibel,
-    )
     input_bias_current = F.Parameters.NumericParameter.MakeChild(
         unit=F.Units.Ampere,
     )
@@ -51,7 +48,6 @@ class Comparator(fabll.Node):
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(
-            S(common_mode_rejection_ratio, prefix="CMRR"),
             S(input_bias_current, prefix="Ib"),
             S(input_hysteresis_voltage, prefix="Vhys"),
             S(input_offset_voltage, prefix="Vos"),
@@ -69,7 +65,6 @@ class Comparator(fabll.Node):
         import Comparator, Resistor, ElectricPower, Electrical
 
         comparator = new Comparator
-        comparator.common_mode_rejection_ratio = 80dB +/- 10%
         comparator.input_bias_current = 1nA +/- 50%
         comparator.input_hysteresis_voltage = 5mV +/- 20%
         comparator.input_offset_voltage = 1mV +/- 30%
