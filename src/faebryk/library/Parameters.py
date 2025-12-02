@@ -615,18 +615,6 @@ class NumericParameter(fabll.Node):
         # )
         return out
 
-    # FIXME: remove; use literals directly
-    @classmethod
-    def MakeChild_UnresolvedUnits(
-        cls, integer: bool = False, negative: bool = False, zero_allowed: bool = True
-    ) -> fabll._ChildField[Self]:
-        """
-        Used for bootstrapping units — consider using Dimensionless instead
-        """
-        out = fabll._ChildField(cls)
-        # TODO
-        return out
-
     def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 

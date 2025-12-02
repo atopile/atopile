@@ -828,6 +828,136 @@ def decode_symbol(g: graph.GraphView, tg: typegraph.TypeGraph, symbol: str) -> i
     raise UnitNotFoundError(symbol)
 
 
+class _UnitRegistry(Enum):
+    # TODO: check all `is_unit`s in design for symbol conflicts
+
+    Dimensionless = auto()
+
+    # Scalar multiples
+    Percent = auto()
+    Ppm = auto()
+
+    # SI base units
+    Ampere = auto()
+    Second = auto()
+    Meter = auto()
+    Kilogram = auto()
+    Kelvin = auto()
+    Mole = auto()
+    Candela = auto()
+
+    # SI derived units
+    Radian = auto()
+    Steradian = auto()
+    Hertz = auto()
+    Newton = auto()
+    Pascal = auto()
+    Joule = auto()
+    Watt = auto()
+    Coulomb = auto()
+    Volt = auto()
+    Farad = auto()
+    Ohm = auto()
+    Siemens = auto()
+    Weber = auto()
+    Tesla = auto()
+    Henry = auto()
+    DegreeCelsius = auto()
+    Lumen = auto()
+    Lux = auto()
+    Becquerel = auto()
+    Gray = auto()
+    Sievert = auto()
+    Katal = auto()
+
+    # SI patches
+    Gram = auto()
+
+    # non-SI units
+    Bit = auto()
+    Byte = auto()
+
+    # non-SI multiples
+
+    # angles
+    Degree = auto()
+    ArcMinute = auto()
+    ArcSecond = auto()
+
+    # time
+    Minute = auto()
+    Hour = auto()
+    Day = auto()
+    Week = auto()
+    Month = auto()
+    Year = auto()
+
+    # volume
+    Liter = auto()
+
+    # angular frequency
+    Rpm = auto()
+
+
+_UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
+    # prefereed unit for display comes first (must be valid with prefixes)
+    _UnitRegistry.Dimensionless: ["dimensionless"],  # TODO: allow None?
+    _UnitRegistry.Percent: ["%"],
+    _UnitRegistry.Ppm: ["ppm"],
+    _UnitRegistry.Ampere: ["A"],
+    _UnitRegistry.Second: ["s"],
+    _UnitRegistry.Meter: ["m"],
+    _UnitRegistry.Kilogram: ["kg"],
+    _UnitRegistry.Kelvin: ["K"],
+    _UnitRegistry.Mole: ["mol"],
+    _UnitRegistry.Candela: ["cd"],
+    _UnitRegistry.Radian: ["rad"],
+    _UnitRegistry.Steradian: ["sr"],
+    _UnitRegistry.Hertz: ["Hz"],
+    _UnitRegistry.Newton: ["N"],
+    _UnitRegistry.Pascal: ["Pa"],
+    _UnitRegistry.Joule: ["J"],
+    _UnitRegistry.Watt: ["W"],
+    _UnitRegistry.Coulomb: ["C"],
+    _UnitRegistry.Volt: ["V"],
+    _UnitRegistry.Farad: ["F"],
+    _UnitRegistry.Ohm: ["Ω", "Ohm"],
+    _UnitRegistry.Siemens: ["S"],
+    _UnitRegistry.Weber: ["Wb"],
+    _UnitRegistry.Tesla: ["T"],
+    _UnitRegistry.Henry: ["H"],
+    _UnitRegistry.DegreeCelsius: ["°C"],
+    _UnitRegistry.Lumen: ["lm"],
+    _UnitRegistry.Lux: ["lx"],
+    _UnitRegistry.Becquerel: ["Bq"],
+    _UnitRegistry.Gray: ["Gy"],
+    _UnitRegistry.Sievert: ["Sv"],
+    _UnitRegistry.Katal: ["kat"],
+    _UnitRegistry.Bit: ["b", "bit"],
+    _UnitRegistry.Byte: ["B", "byte"],
+    _UnitRegistry.Gram: ["g"],
+    _UnitRegistry.Degree: ["°", "deg"],
+    _UnitRegistry.ArcMinute: ["arcmin"],
+    _UnitRegistry.ArcSecond: ["arcsec"],
+    _UnitRegistry.Minute: ["min"],
+    _UnitRegistry.Day: ["day"],
+    _UnitRegistry.Hour: ["hour"],
+    _UnitRegistry.Week: ["week"],
+    _UnitRegistry.Month: ["month"],
+    _UnitRegistry.Year: ["year"],
+    _UnitRegistry.Liter: ["liter"],
+    _UnitRegistry.Rpm: ["rpm", "RPM"],
+}
+
+
+class Dimensionless(fabll.Node):
+    unit_vector_arg: ClassVar[BasisVector] = _BasisVector.ORIGIN
+
+    _is_unit = fabll.Traits.MakeEdge(
+        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Dimensionless], unit_vector_arg)
+    )
+
+
 UnitVectorT = list[tuple[type[fabll.Node], int]]
 
 
@@ -839,8 +969,12 @@ class UnitExpression(fabll.Node):
     # TODO: tie to NewUnitExpression fields
     _is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
     expr = F.Collections.Pointer.MakeChild()
-    multiplier = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
-    offset = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
+    multiplier = F.Parameters.NumericParameter.MakeChild(
+        unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+    )
+    offset = F.Parameters.NumericParameter.MakeChild(
+        unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+    )
 
     def get_expr(self) -> fabll.Node:
         return self.expr.get().deref()
@@ -864,8 +998,12 @@ def make_unit_expression_type(
         _is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
 
         expr = F.Collections.Pointer.MakeChild()
-        multiplier = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
-        offset = F.Parameters.NumericParameter.MakeChild_UnresolvedUnits()
+        multiplier = F.Parameters.NumericParameter.MakeChild(
+            unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+        )
+        offset = F.Parameters.NumericParameter.MakeChild(
+            unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+        )
 
         @classmethod
         def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore
@@ -876,12 +1014,11 @@ def make_unit_expression_type(
                 unit_field = unit.MakeChild()
                 out.add_dependant(unit_field)
 
-                exponent_field = (
-                    F.Parameters.NumericParameter.MakeChild_UnresolvedUnits(
-                        integer=True
-                    )
+                exponent_field = F.Parameters.NumericParameter.MakeChild(
+                    unit=Dimensionless, integer=True, negative=True, zero_allowed=True
                 )
                 out.add_dependant(exponent_field)
+
                 # Exponent is a dimensionless integer value for unit exponentiation
                 exponent_lit = F.Literals.Numbers.MakeChild(
                     min=exponent, max=exponent, unit=Dimensionless
@@ -1068,139 +1205,6 @@ def resolve_unit_expression(
     result_unit = resolver.visit(node)
     parent, _ = result_unit.get_parent_force()
     return parent
-
-
-class _UnitRegistry(Enum):
-    # TODO: check all `is_unit`s in design for symbol conflicts
-
-    Dimensionless = auto()
-
-    # Scalar multiples
-    Percent = auto()
-    Ppm = auto()
-
-    # SI base units
-    Ampere = auto()
-    Second = auto()
-    Meter = auto()
-    Kilogram = auto()
-    Kelvin = auto()
-    Mole = auto()
-    Candela = auto()
-
-    # SI derived units
-    Radian = auto()
-    Steradian = auto()
-    Hertz = auto()
-    Newton = auto()
-    Pascal = auto()
-    Joule = auto()
-    Watt = auto()
-    Coulomb = auto()
-    Volt = auto()
-    Farad = auto()
-    Ohm = auto()
-    Siemens = auto()
-    Weber = auto()
-    Tesla = auto()
-    Henry = auto()
-    DegreeCelsius = auto()
-    Lumen = auto()
-    Lux = auto()
-    Becquerel = auto()
-    Gray = auto()
-    Sievert = auto()
-    Katal = auto()
-
-    # SI patches
-    Gram = auto()
-
-    # non-SI units
-    Bit = auto()
-    Byte = auto()
-
-    # non-SI multiples
-
-    # angles
-    Degree = auto()
-    ArcMinute = auto()
-    ArcSecond = auto()
-
-    # time
-    Minute = auto()
-    Hour = auto()
-    Day = auto()
-    Week = auto()
-    Month = auto()
-    Year = auto()
-
-    # volume
-    Liter = auto()
-
-    # angular frequency
-    Rpm = auto()
-
-
-_UNIT_SYMBOLS: dict[_UnitRegistry, list[str]] = {
-    # prefereed unit for display comes first (must be valid with prefixes)
-    _UnitRegistry.Dimensionless: ["dimensionless"],  # TODO: allow None?
-    _UnitRegistry.Percent: ["%"],
-    _UnitRegistry.Ppm: ["ppm"],
-    _UnitRegistry.Ampere: ["A"],
-    _UnitRegistry.Second: ["s"],
-    _UnitRegistry.Meter: ["m"],
-    _UnitRegistry.Kilogram: ["kg"],
-    _UnitRegistry.Kelvin: ["K"],
-    _UnitRegistry.Mole: ["mol"],
-    _UnitRegistry.Candela: ["cd"],
-    _UnitRegistry.Radian: ["rad"],
-    _UnitRegistry.Steradian: ["sr"],
-    _UnitRegistry.Hertz: ["Hz"],
-    _UnitRegistry.Newton: ["N"],
-    _UnitRegistry.Pascal: ["Pa"],
-    _UnitRegistry.Joule: ["J"],
-    _UnitRegistry.Watt: ["W"],
-    _UnitRegistry.Coulomb: ["C"],
-    _UnitRegistry.Volt: ["V"],
-    _UnitRegistry.Farad: ["F"],
-    _UnitRegistry.Ohm: ["Ω", "Ohm"],
-    _UnitRegistry.Siemens: ["S"],
-    _UnitRegistry.Weber: ["Wb"],
-    _UnitRegistry.Tesla: ["T"],
-    _UnitRegistry.Henry: ["H"],
-    _UnitRegistry.DegreeCelsius: ["°C"],
-    _UnitRegistry.Lumen: ["lm"],
-    _UnitRegistry.Lux: ["lx"],
-    _UnitRegistry.Becquerel: ["Bq"],
-    _UnitRegistry.Gray: ["Gy"],
-    _UnitRegistry.Sievert: ["Sv"],
-    _UnitRegistry.Katal: ["kat"],
-    _UnitRegistry.Bit: ["b", "bit"],
-    _UnitRegistry.Byte: ["B", "byte"],
-    _UnitRegistry.Gram: ["g"],
-    _UnitRegistry.Degree: ["°", "deg"],
-    _UnitRegistry.ArcMinute: ["arcmin"],
-    _UnitRegistry.ArcSecond: ["arcsec"],
-    _UnitRegistry.Minute: ["min"],
-    _UnitRegistry.Day: ["day"],
-    _UnitRegistry.Hour: ["hour"],
-    _UnitRegistry.Week: ["week"],
-    _UnitRegistry.Month: ["month"],
-    _UnitRegistry.Year: ["year"],
-    _UnitRegistry.Liter: ["liter"],
-    _UnitRegistry.Rpm: ["rpm", "RPM"],
-}
-
-
-# Dimensionless ------------------------------------------------------------------------
-
-
-class Dimensionless(fabll.Node):
-    unit_vector_arg: ClassVar[BasisVector] = _BasisVector.ORIGIN
-
-    _is_unit = fabll.Traits.MakeEdge(
-        is_unit.MakeChild(_UNIT_SYMBOLS[_UnitRegistry.Dimensionless], unit_vector_arg)
-    )
 
 
 # SI base units ------------------------------------------------------------------------
