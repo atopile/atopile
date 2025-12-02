@@ -72,7 +72,7 @@ def _exec_pure_literal_operands(
     expr_type_node = fabll.Traits(expr_type).get_obj_raw().get_type_node()
     if expr_type_node not in _map:
         return None
-    if not all(o.has_trait(F.Literals.is_literal) for o in operands):
+    if not all(mutator.utils.is_literal(o) for o in operands):
         return None
     try:
         return _map[expr_type_node].run(mutator, *operands)

@@ -7,7 +7,6 @@ from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
 
-import faebryk
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
@@ -72,8 +71,8 @@ class PathNotResolvable(NodeException):
         super().__init__(
             node,
             f"Path {path} not resolvable from '{node}'.\n"
-            f" No child found at '{error_node}' with identifier '{error_identifier}'.\n",
-            # f"Available children: {indented_container(children_str)}",
+            f" No child found at '{error_node}' with identifier '{error_identifier}'.\n"
+            f"Available children: {indented_container(children_str)}",
         )
 
 
@@ -1587,6 +1586,12 @@ class Traits:
         return fbrk.Trait.add_trait_to(target=node.instance, trait_type=trait.instance)
 
     @staticmethod
+    def add_instance_to(node: NodeT, trait_instance: NodeT) -> graph.BoundNode:
+        return fbrk.Trait.add_trait_instance_to(
+            target=node.instance, trait_instance=trait_instance.instance
+        )
+
+    @staticmethod
     def create_and_add_instance_to[T: Node[Any]](node: Node[Any], trait: type[T]) -> T:
         trait_bound = trait.bind_typegraph_from_instance(
             node.instance
@@ -2109,6 +2114,7 @@ def test_resistor_instantiation():
 def test_string_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
+
     ctx = F.Parameters.BoundParameterContext(tg=tg, g=g)
 
     string_p = ctx.StringParameter
@@ -2131,7 +2137,6 @@ def test_string_param():
 def test_boolean_param():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
-
 
     boolean_p = F.Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True)

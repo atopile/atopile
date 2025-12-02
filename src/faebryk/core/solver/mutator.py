@@ -558,7 +558,7 @@ class MutationStage:
             )
 
         copied = self.transformations.copied
-        printed = set()
+        printed = set[F.Parameters.is_parameter_operatable]()
 
         for s, d in self.transformations.mutated.items():
             if not VERBOSE_TABLE:
@@ -1068,10 +1068,14 @@ class Mutator:
         likely_constrained: bool | None = None,
         override_within: bool = False,
     ) -> F.Parameters.is_parameter:
-        if param in self.transformations.mutated:
+        if param.as_parameter_operatable() in self.transformations.mutated:
             out = self.get_mutated(param.as_parameter_operatable())
             p = out.as_parameter()
-            if np := p.try_get_sibling_trait(F.Parameters.NumericParameter):
+            if (
+                np := fabll.Traits(p)
+                .get_obj_raw()
+                .try_cast(F.Parameters.NumericParameter)
+            ):
                 assert np.get_units() == units
                 assert np.get_domain() == domain
                 assert np.get_soft_set() == soft_set
@@ -1082,11 +1086,20 @@ class Mutator:
 
         param_obj = fabll.Traits(param).get_obj_raw()
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
+            if units is None and (old_g_is_unit := p.get_units()):
+                old_g_unit_node = fabll.Node.bind_instance(
+                    not_none(fabll.Traits(old_g_is_unit).get_obj_raw().instance)
+                )
+                units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.IsUnit)
+
+            if domain is None:
+                domain = p.get_domain().copy_into(self.G_out)
+
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(
-                    units=units if units is not None else p.get_units(),
+                    is_unit=units,
                     within=within if override_within else p.get_within(),
                     domain=domain if domain is not None else p.get_domain(),
                     soft_set=soft_set if soft_set is not None else p.get_soft_set(),
@@ -1825,16 +1838,6 @@ class Mutator:
         # for temporary nodes like literals
         self.G_transient: graph.GraphView = graph.GraphView.create()
         self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
-        self.tg_out = fbrk.TypeGraph.of(
-            node=self.G_out.bind(node=self.tg_in.get_self_node().node())
-        )
-        # TODO remove hack
-        # copies tg core nodes over
-        fabll.Node.bind_instance(
-            fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
-        ).copy_into(self.G_out)
-
-        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
 
         self.print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
@@ -1844,6 +1847,22 @@ class Mutator:
         )
 
         self.transformations = Transformations(input_print_context=self.print_context)
+
+    @property
+    @once
+    def tg_out(self) -> fbrk.TypeGraph:
+        tg_out = fbrk.TypeGraph.of(
+            node=self.G_out.bind(node=self.tg_in.get_self_node().node())
+        )
+
+        # TODO remove hack
+        # copies tg core nodes over
+        # fabll.Node.bind_instance(
+        #    fabll.ImplementsType.bind_typegraph(self.tg_in).get_or_create_type()
+        # ).copy_into(self.G_out)
+
+        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
+        return tg_out
 
     @property
     @once
@@ -1919,7 +1938,6 @@ class Mutator:
                 dirty=False,
             )
 
-        print("COPYING")
         self.check_no_illegal_mutations()
         self._copy_unmutated()
         stage = MutationStage(

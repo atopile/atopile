@@ -56,6 +56,10 @@ class LED(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.D)
+    )
+
     # ----------------------------------------
     #                WIP
     # ----------------------------------------

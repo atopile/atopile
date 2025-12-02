@@ -62,8 +62,8 @@ class Capacitor(fabll.Node):
         # S(temperature_coefficient),
     )
 
-    designator_prefix = F.has_designator_prefix.MakeChild(
-        F.has_designator_prefix.Prefix.C
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.C)
     )
 
     usage_example = F.has_usage_example.MakeChild(

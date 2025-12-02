@@ -7,6 +7,10 @@ class Trait:
     @staticmethod
     def add_trait_to(*, target: BoundNode, trait_type: BoundNode) -> BoundNode: ...
     @staticmethod
+    def add_trait_instance_to(
+        *, target: BoundNode, trait_instance: BoundNode
+    ) -> BoundNode: ...
+    @staticmethod
     def mark_as_trait(*, trait_type: BoundNode) -> None: ...
     @staticmethod
     def try_get_trait(

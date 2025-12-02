@@ -263,9 +263,6 @@ def resolve_alias_classes(mutator: Mutator):
             continue
 
         if len(eq_class_params) == 1:
-            print(
-                "Single param", eq_class_params[0].compact_repr(mutator.print_context)
-            )
             # check if all in eq_class already aliased
             # Then no need to to create new representative
             _repr = eq_class_params[0]
@@ -403,8 +400,8 @@ def merge_intersect_subsets(mutator: Mutator):
         old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
 
         # already exists
-        if intersected in ss_lits:
-            target = ss_lits[intersected][0]
+        if contained := intersected.equals(*ss_lits):
+            _, target = contained
         else:
             target = mutator.utils.subset_to(
                 param.as_operand(),

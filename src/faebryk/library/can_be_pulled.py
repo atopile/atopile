@@ -97,7 +97,7 @@ class can_be_pulled(fabll.Node):
         """Calculate the effective pull resistance by finding parallel resistors
         connected between the line and the reference power rail."""
         if (
-            connected_to := self.line.get_trait(fabll.is_interface).get_connected()
+            connected_to := self.line._is_interface.get().get_connected()
         ) is None:
             return None
 
@@ -115,7 +115,7 @@ class can_be_pulled(fabll.Node):
 
             if (
                 self.reference.hv
-                not in other_side[0].get().get_trait(fabll.is_interface).get_connected()
+                not in other_side[0].get()._is_interface.get().get_connected()
             ):
                 # cannot trivially determine effective resistance
                 return None

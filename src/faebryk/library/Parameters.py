@@ -323,7 +323,7 @@ class is_parameter(fabll.Node):
 
         return out
 
-    def domain_set(self) -> "Literals.is_literal":
+    def domain_set(self) -> "F.NumberDomain":
         # TODO
         pass
 
@@ -537,6 +537,7 @@ class NumericParameter(fabll.Node):
         is_parameter_operatable.MakeChild()
     )
     _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    _number_domain = F.Collections.Pointer.MakeChild()
 
     # domain = fabll.ChildField(NumberDomain)
 
@@ -546,8 +547,9 @@ class NumericParameter(fabll.Node):
         return self.get_trait(has_unit).get_is_unit()
 
     def get_domain(self) -> "NumberDomain":
-        # TODO
-        pass
+        return F.NumberDomain.bind_instance(
+            instance=self._number_domain.get().deref().instance
+        )
 
     def get_within(self) -> "Literals.Numbers | None":
         # TODO
@@ -581,17 +583,38 @@ class NumericParameter(fabll.Node):
         tolerance_guess: float | None = None,
         likely_constrained: bool = False,
     ) -> Self:
-        # TODO
+        from faebryk.library.NumberDomain import NumberDomain
+        from faebryk.library.Units import has_unit
+
+        if units:
+            has_unit = (
+                has_unit.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup(unit=units)
+            )
+            fabll.Traits.add_instance_to(self, has_unit)
+        if domain is None:  # Default domain is unbounded
+            domain = (
+                NumberDomain.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup(negative=True, zero_allowed=True, integer=False)
+            )
+
+        self._number_domain.get().point(
+            fabll.Node.bind_instance(instance=domain.instance)
+        )
         return self
 
     @classmethod
     def MakeChild(
         cls,
-        unit: type[fabll.NodeT],
+        unit: type[fabll.NodeT] | None = None,
         integer: bool = False,
         negative: bool = False,
         zero_allowed: bool = True,
     ):
+        from faebryk.library.NumberDomain import NumberDomain
+
         out = fabll._ChildField(cls)
         # unit_instance = fabll._ChildField(unit, identifier=None)
         # out.add_dependant(unit_instance)
@@ -604,7 +627,22 @@ class NumericParameter(fabll.Node):
         # )
         from faebryk.library.Units import has_unit
 
-        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
+        if unit:
+            out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
+
+        domain = NumberDomain.MakeChild(
+            negative=negative, zero_allowed=zero_allowed, integer=integer
+        )
+        out.add_dependant(domain)
+
+        out.add_dependant(
+            fabll.MakeEdge(
+                [out, cls._number_domain],
+                [domain],
+                edge=fbrk.EdgePointer.build(identifier="number_domain", order=None),
+            )
+        )
+
         # out.add_dependant(
         #     *NumberDomain.MakeEdges(
         #         ref=[out, cls.domain],
@@ -738,9 +776,9 @@ def test_enum_param():
     example_node = ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Enum Literal Type Node
-    # atype = TF.Literals.EnumsFactory(ExampleNode.MyEnum)
-    # cls_n = cast(type[fabll.NodeT], atype)
-    # enum_type_node = cls_n.bind_typegraph(tg=tg).get_or_create_type()
+    atype = TF.Literals.EnumsFactory(ExampleNode.MyEnum)
+    cls_n = cast(type[fabll.NodeT], atype)
+    _ = cls_n.bind_typegraph(tg=tg).get_or_create_type()
 
     # Enum Parameter from TG
     enum_param = example_node.enum_p_tg.get()

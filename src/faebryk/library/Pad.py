@@ -25,7 +25,7 @@ class Pad(fabll.Node):
     _is_interface = fabll.Traits.MakeEdge(fabll.is_interface.MakeChild())
 
     def attach(self, intf: F.Electrical):
-        self.net.get().get_trait(fabll.is_interface).connect_to(intf)
+        self.net.get()._is_interface.get().connect_to(intf)
         fabll.Traits.create_and_add_instance_to(node=intf, trait=has_linked_pad).setup(
             pad=self
         )
@@ -57,7 +57,7 @@ class Pad(fabll.Node):
                 types=Pad,
                 required_trait=fabll.is_interface,
             )
-            if pad.net.get().get_trait(fabll.is_interface).is_connected_to(intf)
+            if pad.net.get()._is_interface.get().is_connected_to(intf)
         ]
         return pads
 

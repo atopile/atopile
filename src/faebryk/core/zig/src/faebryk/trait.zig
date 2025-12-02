@@ -24,6 +24,11 @@ pub const Trait = struct {
         return trait_instance;
     }
 
+    pub fn add_trait_instance_to(target: BoundNodeReference, trait_instance: BoundNodeReference) !BoundNodeReference {
+        _ = EdgeTrait.add_trait_instance(target, trait_instance.node);
+        return trait_instance;
+    }
+
     pub fn mark_as_trait(trait_type: BoundNodeReference) !void {
         var tg = TypeGraph.of_type(trait_type) orelse return error.TypeGraphNotFound;
         const impl_trait = try tg.instantiate_node(tg.get_ImplementsTrait());
@@ -230,6 +235,7 @@ test "basic" {
     var tg = TypeGraph.init(&g);
 
     const trait_type = try tg.add_type("ExampleTrait");
+    const trait_type2 = try tg.add_type("ExampleTrait2");
     const bn1 = g.create_and_insert_node();
 
     const implements_type_node = tg.get_ImplementsType();
@@ -237,10 +243,15 @@ test "basic" {
     try std.testing.expect(EdgeType.is_node_instance_of(implements_type_instance, implements_type_node.node));
 
     _ = try Trait.add_trait_to(bn1, trait_type);
+    const trait_instance_recall_1 = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type.node);
+    try std.testing.expect(Node.is_same(EdgeTrait.get_owner_node_of(trait_instance_recall_1.?).?.node, bn1.node));
+
+    const trait_instance2 = try tg.instantiate_node(trait_type2);
+    _ = try Trait.add_trait_instance_to(bn1, trait_instance2);
+    const trait_instance_recall_2 = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type2.node);
+    try std.testing.expect(Node.is_same(EdgeTrait.get_owner_node_of(trait_instance_recall_2.?).?.node, bn1.node));
+    try std.testing.expect(Node.is_same(trait_instance_recall_2.?.node, trait_instance2.node));
 
     // has to be deleted firstb
     defer g.deinit();
-
-    const trait_instance = EdgeTrait.try_get_trait_instance_of_type(bn1, trait_type.node);
-    try std.testing.expect(Node.is_same(EdgeTrait.get_owner_node_of(trait_instance.?).?.node, bn1.node));
 }

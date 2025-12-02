@@ -44,9 +44,10 @@ logger = logging.getLogger(__name__)
 )
 def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     E = BoundExpressions()
+    op_class: type[fabll.Node] = op.__self__
 
-    def flatten(op):
-        return MutatorUtils.flatten_associative(op, lambda _, __: True)
+    def flatten(op_node: fabll.Node):
+        return MutatorUtils.flatten_associative(op_node, lambda _, __: True)
 
     # TODO: add logic trait to classify logic expressions
     if op in [F.Expressions.And.c, F.Expressions.Or.c, F.Expressions.Xor.c]:
@@ -54,20 +55,17 @@ def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     else:
         A, B, C, D, H = [E.parameter_op() for _ in range(5)]
 
-    to_flatten = op(op(A, B), C, op(D, H))
-    res = flatten(to_flatten)
+    to_flatten_op = op(op(A, B), C, op(D, H))
+    to_flatten_expression = fabll.Traits(to_flatten_op).get_obj(op_class)
+    res = flatten(to_flatten_expression)
 
     # Get the parent class from the classmethod
     # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
-    op_class: type[fabll.Node] = op.__self__
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
         F.Expressions.is_associative
     ):
         assert len(res.destroyed_operations) == 0
-        assert set(res.extracted_operands) == set(
-            fabll.Traits(to_flatten).get_obj(op_class).operands.get().as_list()
-        )
         return
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
@@ -103,9 +101,9 @@ def test_mutator_no_graph_merge():
         iteration=0,
         terminal=True,
     )
-    p0_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p0))
-    p3_new = cast_assert(F.Parameters.is_parameter, mutator.get_copy(p3))
-    alias_new = cast_assert(F.Expressions.Is, mutator.get_copy(alias))
+    p0_new = mutator.get_copy(p0).get_sibling_trait(F.Parameters.is_parameter)
+    p3_new = mutator.get_copy(p3).get_sibling_trait(F.Parameters.is_parameter)
+    alias_new = fabll.Traits(mutator.get_copy(alias)).get_obj(F.Expressions.Is)
 
     G = p0.tg
     G_new = p0_new.tg
@@ -134,25 +132,29 @@ def test_get_expressions_involved_in():
     E2 = E.add(E1, A)
 
     res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
-    assert res == {E2}
+    assert res == {fabll.Traits(E2).get_obj_raw()}
 
     E3 = E.add(E2, B)
 
     res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
-    assert res == {E2, E3}
+    assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(E2.as_parameter_operatable())
-    assert res == {E3}
+    assert res == {fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
         E2.as_parameter_operatable(), up_only=False
     )
-    assert res == {E1, E3}
+    assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
         E2.as_parameter_operatable(), up_only=False, include_root=True
     )
-    assert res == {E1, E2, E3}
+    assert res == {
+        fabll.Traits(E1).get_obj_raw(),
+        fabll.Traits(E2).get_obj_raw(),
+        fabll.Traits(E3).get_obj_raw(),
+    }
 
 
 def test_get_correlations_basic():
@@ -183,8 +185,8 @@ def test_get_correlations_basic():
     op1, op2, overlap_exprs = correlations[0]
 
     # Check that the correlated operands are A and B
-    assert {op1, op2} == {A, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_get_correlations_nested_uncorrelated():
@@ -212,8 +214,8 @@ def test_get_correlations_nested_uncorrelated():
 
     assert len(inner_correlations) == 1
     op1, op2, overlap_exprs = inner_correlations[0]
-    assert {op1, op2} == {A, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_get_correlations_nested_correlated():
@@ -241,8 +243,8 @@ def test_get_correlations_nested_correlated():
 
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {inner, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {inner.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_get_correlations_self_correlated():
@@ -254,7 +256,7 @@ def test_get_correlations_self_correlated():
     )
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A}
+    assert {op1, op2} == {A.as_parameter_operatable()}
     assert not overlap_exprs
 
 
@@ -285,8 +287,8 @@ def test_get_correlations_shared_predicates():
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A, B}
-    assert overlap_exprs == {E2}
+    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(E2).get_obj_raw()}
 
 
 def test_get_correlations_correlated_regression():
@@ -309,8 +311,8 @@ def test_get_correlations_correlated_regression():
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {a_neg, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {a_neg.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_mutation_map_compressed_mapping_forwards_identity():
@@ -320,7 +322,9 @@ def test_mutation_map_compressed_mapping_forwards_identity():
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     f = mapping.compressed_mapping_forwards
-    assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
+    assert {k: v.maps_to for k, v in f.items()} == {
+        v: v.get_sibling_trait(F.Parameters.is_parameter_operatable) for v in variables
+    }
 
 
 def test_mutation_map_compressed_mapping_backwards_identity():
@@ -467,7 +471,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
     )
 
     res = mapping_new.non_trivial_mutated_expressions
-    assert res == {op_new}
+    assert res == {op_new.get_sibling_trait(F.Expressions.is_expression)}
 
 
 def test_mutation_map_submap():

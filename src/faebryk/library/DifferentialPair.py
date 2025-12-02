@@ -43,7 +43,7 @@ class DifferentialPair(fabll.Node):
 
         rs[0].get_trait(F.can_bridge).bridge(terminated_bus.p.get(), self.p.get())
         rs[1].get_trait(F.can_bridge).bridge(terminated_bus.n.get(), self.n.get())
-        self.get_trait(fabll.is_interface).connect_shallow_to(terminated_bus)
+        self._is_interface.get().connect_shallow_to(terminated_bus)
 
         return terminated_bus
 

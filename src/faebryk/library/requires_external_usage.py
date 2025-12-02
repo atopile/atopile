@@ -14,7 +14,7 @@ class requires_external_usage(fabll.Node):
     @property
     def fulfilled(self) -> bool:
         obj = self.get_parent_force()[0]
-        connected_to = set(obj.get_trait(fabll.is_interface).get_connected())
+        connected_to = set(obj._is_interface.get().get_connected())
         parent = obj.get_parent()
         # no shared parent possible
         if parent is None:

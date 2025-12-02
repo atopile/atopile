@@ -673,7 +673,7 @@ class has_unit(fabll.Node):
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field]))
         return out
 
-    def setup(self, g: graph.GraphView, unit: fabll.Node) -> Self:  # type: ignore
+    def setup(self, unit: is_unit) -> Self:  # type: ignore
         unit_node = fabll.Traits(unit).get_obj_raw()
         self.unit.get().point(unit_node)
         return self

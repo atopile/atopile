@@ -25,13 +25,20 @@ ABS_DIGITS = 15  # femto
 EPSILON_REL = 10 ** -(REL_DIGITS - 1)
 EPSILON_ABS = 10**-ABS_DIGITS
 
+# TODO all creating functions need g as param
+
 
 class is_literal(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def is_subset_of(self, other: "is_literal") -> bool:
+        if obj := fabll.Traits(self).get_obj_raw().try_cast(Booleans):
+            return set(obj.get_values()).issubset(
+                set(fabll.Traits(other).get_obj(Booleans).get_values())
+            )
+
         # TODO
-        return False
+        return None
 
     def op_intersect_intervals(self, other: "LiteralNodes") -> "LiteralNodes":
         # TODO
@@ -59,12 +66,15 @@ class is_literal(fabll.Node):
         # TODO
         pass
 
-    def equals(self, other: "is_literal") -> bool:
+    def equals(self, *others: "is_literal") -> tuple[int, "is_literal"] | None:
         self_c = self.switch_cast()
-        other_c = other.switch_cast()
-        if type(self_c) is not type(other_c):
-            return False
-        return self_c.equals(other_c)
+        for i, other in enumerate(others):
+            other_c = other.switch_cast()
+            if type(self_c) is not type(other_c):
+                continue
+            if self_c.equals(other_c):
+                return i, other_c
+        return None
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
         singleton = self.switch_cast().is_singleton()
@@ -2485,8 +2495,9 @@ class Numbers(fabll.Node):
 
         from faebryk.library.Units import has_unit
 
-        has_unit_instance = has_unit.bind_typegraph(tg=tg).create_instance(g=g)
-        has_unit_instance.setup(g=g, unit=unit)
+        has_unit_instance = (
+            has_unit.bind_typegraph(tg=tg).create_instance(g=g).setup(unit=unit)
+        )
 
         _ = fbrk.EdgeTrait.add_trait_instance(
             bound_node=self.instance,

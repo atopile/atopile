@@ -255,7 +255,11 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
         ]
 
         # 0 * A -> 0
-        if 0 in new_operands:
+        if any(
+            x_lit.equals_singleton(0)
+            for x in new_operands
+            if (x_lit := mutator.utils.is_literal(x))
+        ):
             new_operands = [mutator.make_lit(0).get_trait(F.Parameters.can_be_operand)]
             # convert_operable_aliased_to_single_into_literal takes care of rest
 

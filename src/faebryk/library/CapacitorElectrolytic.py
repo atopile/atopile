@@ -59,6 +59,10 @@ class CapacitorElectrolytic(fabll.Node):
         )
     )
 
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.C)
+    )
+
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
