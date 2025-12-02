@@ -42,7 +42,6 @@ import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.SerializableMetadata import SerializableMetadata
 import faebryk.library.Units as Units
 from faebryk.library.has_datasheet import has_datasheet
-from faebryk.library.has_designator import has_designator
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_overriden_name import has_overriden_name
@@ -84,7 +83,6 @@ from faebryk.library.Inductor import Inductor
 from faebryk.library.Resistor import Resistor
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
 from faebryk.library.KicadFootprint import KicadFootprint
-from faebryk.library.can_represent_kicad_footprint import can_represent_kicad_footprint
 from faebryk.library.LED import LED
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
@@ -102,6 +100,7 @@ from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.has_designator import has_designator
 from faebryk.library.has_pulls import has_pulls
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
@@ -112,6 +111,7 @@ from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
+from faebryk.library.can_represent_kicad_footprint import can_represent_kicad_footprint
 from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
@@ -149,7 +149,6 @@ __all__ = [
     "SerializableMetadata",
     "Units",
     "has_datasheet",
-    "has_designator",
     "has_designator_prefix",
     "has_net_name",
     "has_overriden_name",
@@ -191,7 +190,6 @@ __all__ = [
     "Resistor",
     "can_attach_to_footprint_via_pinmap",
     "KicadFootprint",
-    "can_represent_kicad_footprint",
     "LED",
     "Addressor",
     "CAN_TTL",
@@ -209,6 +207,7 @@ __all__ = [
     "DifferentialPair",
     "FilterElectricalRC",
     "ResistorArray",
+    "has_designator",
     "has_pulls",
     "has_explicit_part",
     "is_atomic_part",
@@ -219,6 +218,7 @@ __all__ = [
     "OpAmp",
     "RS485HalfDuplex",
     "USB2_0_IF",
+    "can_represent_kicad_footprint",
     "can_be_pulled",
     "USB2_0",
     "USB3_IF",

@@ -958,13 +958,16 @@ class MutatorUtils:
         dependants = p.get_operations(recursive=True)
         if e := p.try_get_sibling_trait(F.Expressions.is_expression):
             if include_root:
-                dependants.add(p)
+                dependants.add(fabll.Traits(e).get_obj_raw())
 
             if not up_only:
                 dependants.update(
-                    e.get_operands_with_trait(
-                        F.Expressions.is_expression, recursive=True
-                    )
+                    [
+                        fabll.Traits(op).get_obj_raw()
+                        for op in e.get_operands_with_trait(
+                            F.Expressions.is_expression, recursive=True
+                        )
+                    ]
                 )
 
         res = {

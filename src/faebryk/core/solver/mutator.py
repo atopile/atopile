@@ -1071,7 +1071,11 @@ class Mutator:
         if param.as_parameter_operatable() in self.transformations.mutated:
             out = self.get_mutated(param.as_parameter_operatable())
             p = out.as_parameter()
-            if np := p.try_get_sibling_trait(F.Parameters.NumericParameter):
+            if (
+                np := fabll.Traits(p)
+                .get_obj_raw()
+                .try_cast(F.Parameters.NumericParameter)
+            ):
                 assert np.get_units() == units
                 assert np.get_domain() == domain
                 assert np.get_soft_set() == soft_set
@@ -1082,11 +1086,20 @@ class Mutator:
 
         param_obj = fabll.Traits(param).get_obj_raw()
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
+            if units is None and (old_g_is_unit := p.get_units()):
+                old_g_unit_node = fabll.Node.bind_instance(
+                    not_none(fabll.Traits(old_g_is_unit).get_obj_raw().instance)
+                )
+                units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.IsUnit)
+
+            if domain is None:
+                domain = p.get_domain().copy_into(self.G_out)
+
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(
-                    units=units if units is not None else p.get_units(),
+                    is_unit=units,
                     within=within if override_within else p.get_within(),
                     domain=domain if domain is not None else p.get_domain(),
                     soft_set=soft_set if soft_set is not None else p.get_soft_set(),
@@ -1971,7 +1984,7 @@ def test_mutator_basic_bootstrap():
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
         # TODO
-        # param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        # param_num=F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)

@@ -132,25 +132,29 @@ def test_get_expressions_involved_in():
     E2 = E.add(E1, A)
 
     res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
-    assert res == {E2}
+    assert res == {fabll.Traits(E2).get_obj_raw()}
 
     E3 = E.add(E2, B)
 
     res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
-    assert res == {E2, E3}
+    assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(E2.as_parameter_operatable())
-    assert res == {E3}
+    assert res == {fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
         E2.as_parameter_operatable(), up_only=False
     )
-    assert res == {E1, E3}
+    assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
         E2.as_parameter_operatable(), up_only=False, include_root=True
     )
-    assert res == {E1, E2, E3}
+    assert res == {
+        fabll.Traits(E1).get_obj_raw(),
+        fabll.Traits(E2).get_obj_raw(),
+        fabll.Traits(E3).get_obj_raw(),
+    }
 
 
 def test_get_correlations_basic():
@@ -181,8 +185,8 @@ def test_get_correlations_basic():
     op1, op2, overlap_exprs = correlations[0]
 
     # Check that the correlated operands are A and B
-    assert {op1, op2} == {A, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_get_correlations_nested_uncorrelated():
@@ -210,8 +214,8 @@ def test_get_correlations_nested_uncorrelated():
 
     assert len(inner_correlations) == 1
     op1, op2, overlap_exprs = inner_correlations[0]
-    assert {op1, op2} == {A, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_get_correlations_nested_correlated():
@@ -239,8 +243,8 @@ def test_get_correlations_nested_correlated():
 
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {inner, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {inner.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_get_correlations_self_correlated():
@@ -252,7 +256,7 @@ def test_get_correlations_self_correlated():
     )
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A}
+    assert {op1, op2} == {A.as_parameter_operatable()}
     assert not overlap_exprs
 
 
@@ -283,8 +287,8 @@ def test_get_correlations_shared_predicates():
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A, B}
-    assert overlap_exprs == {E2}
+    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(E2).get_obj_raw()}
 
 
 def test_get_correlations_correlated_regression():
@@ -307,8 +311,8 @@ def test_get_correlations_correlated_regression():
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {a_neg, B}
-    assert overlap_exprs == {o}
+    assert {op1, op2} == {a_neg.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
 def test_mutation_map_compressed_mapping_forwards_identity():
@@ -318,7 +322,9 @@ def test_mutation_map_compressed_mapping_forwards_identity():
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     f = mapping.compressed_mapping_forwards
-    assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
+    assert {k: v.maps_to for k, v in f.items()} == {
+        v: v.get_sibling_trait(F.Parameters.is_parameter_operatable) for v in variables
+    }
 
 
 def test_mutation_map_compressed_mapping_backwards_identity():
@@ -465,7 +471,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
     )
 
     res = mapping_new.non_trivial_mutated_expressions
-    assert res == {op_new}
+    assert res == {op_new.get_sibling_trait(F.Expressions.is_expression)}
 
 
 def test_mutation_map_submap():

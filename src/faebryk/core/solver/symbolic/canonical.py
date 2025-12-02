@@ -67,7 +67,7 @@ def constrain_within_domain(mutator: Mutator):
             )
         mutator.utils.subset_to(
             new_param.as_operand(),
-            p.domain_set().as_operand(),
+            param.get_domain().as_operand(),
             from_ops=[po],
         )
 
@@ -333,7 +333,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             p = (
                 F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
-                .setup(units=e.get_trait(F.Units.HasUnit).get_unit())
+                .setup(is_unit=e.get_trait(F.Units.HasUnit).get_unit())
             )
             mutator.register_created_parameter(
                 p.get_trait(F.Parameters.is_parameter), from_ops=from_ops

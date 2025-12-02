@@ -33,8 +33,8 @@ class has_designator(fabll.Node):
         self.designator_.get().alias_to_single(value=designator)
         return self
 
-class Test:
 
+class Test:
     def test_designator_generation(self):
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -42,18 +42,18 @@ class Test:
         resistor2 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
         capacitor1 = F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g)
 
-        assert resistor1.has_trait(F.has_designator) is False
-        assert resistor2.has_trait(F.has_designator) is False
-        assert capacitor1.has_trait(F.has_designator) is False
+        assert resistor1.has_trait(has_designator) is False
+        assert resistor2.has_trait(has_designator) is False
+        assert capacitor1.has_trait(has_designator) is False
 
         attach_random_designators(tg)
 
         assert {
-            resistor1.get_trait(F.has_designator).get_designator(),
-            resistor2.get_trait(F.has_designator).get_designator()
+            resistor1.get_trait(has_designator).get_designator(),
+            resistor2.get_trait(has_designator).get_designator(),
         } == {"R1", "R2"}
 
-        assert capacitor1.get_trait(F.has_designator).get_designator() == "C1"
+        assert capacitor1.get_trait(has_designator).get_designator() == "C1"
 
     def test_manual_designator_assignment(self):
         g = fabll.graph.GraphView.create()
@@ -62,16 +62,16 @@ class Test:
         resistor2 = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
         capacitor1 = F.Capacitor.bind_typegraph(tg=tg).create_instance(g=g)
 
-        assert resistor1.has_trait(F.has_designator) is False
+        assert resistor1.has_trait(has_designator) is False
 
-        fabll.Traits.create_and_add_instance_to(resistor1, F.has_designator)
-        resistor1.get_trait(F.has_designator).setup("R1")
+        fabll.Traits.create_and_add_instance_to(resistor1, has_designator)
+        resistor1.get_trait(has_designator).setup("R1")
 
-        assert resistor1.get_trait(F.has_designator).get_designator() == "R1"
+        assert resistor1.get_trait(has_designator).get_designator() == "R1"
 
         attach_random_designators(tg)
 
-        assert resistor1.get_trait(F.has_designator).get_designator() == "R1"
-        assert resistor2.get_trait(F.has_designator).get_designator() == "R2"
+        assert resistor1.get_trait(has_designator).get_designator() == "R1"
+        assert resistor2.get_trait(has_designator).get_designator() == "R2"
 
-        assert capacitor1.get_trait(F.has_designator).get_designator() == "C1"
+        assert capacitor1.get_trait(has_designator).get_designator() == "C1"

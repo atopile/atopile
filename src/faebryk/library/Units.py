@@ -116,14 +116,13 @@ class IsUnit(fabll.Node):
 
 class HasUnit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-    unit = F.Collections.Pointer.MakeChild()
+    is_unit = F.Collections.Pointer.MakeChild()
 
     def get_unit(self) -> IsUnit:
-        return self.unit.get().deref().get_trait(IsUnit)
+        return IsUnit.bind_instance(self.is_unit.get().deref().instance)
 
-    def setup(self, units: type[fabll.NodeT]) -> Self:
-        unit_node = units.bind_typegraph(tg=self.tg).create_instance(g=self.g)
-        self.unit.get().point(unit_node)
+    def setup(self, is_unit: "F.Units.IsUnit") -> Self:
+        self.is_unit.get().point(is_unit)
         return self
 
     @classmethod
@@ -131,7 +130,9 @@ class HasUnit(fabll.Node):
         out = fabll._ChildField(cls)
         unit_field = fabll._ChildField(unit)
         out.add_dependant(unit_field)
-        out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field]))
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.is_unit], [unit_field, "_is_unit"])
+        )
         return out
 
 
@@ -238,8 +239,8 @@ class Natural(fabll.Node):
 
 
 class AmpereHour(fabll.Node):
-    _is_unit = IsUnit.MakeChild(
-        "Ah", [(Ampere, 1), (Second, 3600)]
+    _is_unit = fabll.Traits.MakeEdge(
+        IsUnit.MakeChild("Ah", [(Ampere, 1), (Second, 3600)])
     )  # TODO: This exponent should be 1, we need some represenation of multiplying
 
 
@@ -252,8 +253,8 @@ class BitPerSecond(fabll.Node):
 
 
 class Byte(fabll.Node):
-    _is_unit = IsUnit.MakeChild(
-        "B", [(Dimensionless, 8)]
+    _is_unit = fabll.Traits.MakeEdge(
+        IsUnit.MakeChild("B", [(Dimensionless, 8)])
     )  # TODO: exponent should be 1, we need some represenation of multiplying
 
 
