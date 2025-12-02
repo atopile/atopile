@@ -54,6 +54,7 @@ from functools import reduce
 from typing import Any, ClassVar, Self
 
 import pytest
+from dataclasses_json import DataClassJsonMixin
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -88,7 +89,7 @@ class UnitExpressionError(UnitException): ...
 
 
 @dataclass
-class BasisVector:
+class BasisVector(DataClassJsonMixin):
     ampere: int = field(default=0, metadata={"display_symbol": "A"})
     second: int = field(default=0, metadata={"display_symbol": "s"})
     meter: int = field(default=0, metadata={"display_symbol": "m"})
@@ -603,21 +604,6 @@ class is_unit(fabll.Node):
 
         return result
 
-    def _basis_vector_to_dict(self, basis_vector: BasisVector) -> dict:
-        """Convert a BasisVector dataclass to a dictionary of field values."""
-        return {
-            "ampere": basis_vector.ampere,
-            "second": basis_vector.second,
-            "meter": basis_vector.meter,
-            "kilogram": basis_vector.kilogram,
-            "kelvin": basis_vector.kelvin,
-            "mole": basis_vector.mole,
-            "candela": basis_vector.candela,
-            "radian": basis_vector.radian,
-            "steradian": basis_vector.steradian,
-            "bit": basis_vector.bit,
-        }
-
     def serialize(self) -> dict | str:
         """
         Serialize this unit to a dictionary.
@@ -650,7 +636,7 @@ class is_unit(fabll.Node):
         offset = self._extract_offset()
 
         out["symbols"] = symbols
-        out["basis_vector"] = self._basis_vector_to_dict(basis_vector)
+        out["basis_vector"] = basis_vector.to_dict()
         out["multiplier"] = multiplier
         out["offset"] = offset
 
