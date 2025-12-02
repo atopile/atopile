@@ -564,6 +564,7 @@ pub const GraphView = struct {
     neighbors: NodeRefMap.T(std.ArrayList(EdgeReference)),
     // fast (Node, LinkType) -> Edge (TODO: consider neighbor in here too)
     neighbor_by_type: NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))),
+    neighbor_by_type_and_name: NodeRefMap.T(EdgeTypeMap.T(std.StringHashMap(EdgeReference))),
     // fast cluster->Nodes lookup
     //clusters: std.ArrayList(std.ArrayList(NodeReference)),
     // fast Node->Cluster lookup
@@ -582,6 +583,7 @@ pub const GraphView = struct {
             .edges = EdgeRefMap.T(void).init(allocator),
             .neighbors = NodeRefMap.T(std.ArrayList(EdgeReference)).init(allocator),
             .neighbor_by_type = NodeRefMap.T(EdgeTypeMap.T(std.ArrayList(EdgeReference))).init(allocator),
+            .neighbor_by_type_and_name = NodeRefMap.T(EdgeTypeMap.T(std.StringHashMap(EdgeReference))).init(allocator),
             .self_node = Node.init(allocator),
         };
         _ = out.insert_node(out.self_node);
@@ -611,6 +613,20 @@ pub const GraphView = struct {
         // delete hash map (not contents)
         g.neighbor_by_type.deinit();
 
+        var neighbor_by_type_and_name_it = g.neighbor_by_type_and_name.iterator();
+        while (neighbor_by_type_and_name_it.next()) |entry| {
+            var type_name_map = entry.value_ptr;
+            var type_name_it = type_name_map.iterator();
+            while (type_name_it.next()) |type_name_entry| {
+                // delete string hash map (not contents)
+                type_name_entry.value_ptr.deinit();
+            }
+            // delete edge type map (not contents)
+            type_name_map.deinit();
+        }
+        // delete hash map (not contents)
+        g.neighbor_by_type_and_name.deinit();
+
         var edge_it = g.edges.keyIterator();
         while (edge_it.next()) |edge| {
             edge.*._ref_count.dec(g);
@@ -638,6 +654,9 @@ pub const GraphView = struct {
         };
         g.neighbor_by_type.put(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator)) catch {
             @panic("Failed to allocate EdgeTypeMap");
+        };
+        g.neighbor_by_type_and_name.put(node, EdgeTypeMap.T(std.StringHashMap(EdgeReference)).init(g.allocator)) catch {
+            @panic("Failed to allocate EdgeTypeNameMap");
         };
 
         return g.bind(node);
@@ -697,6 +716,17 @@ pub const GraphView = struct {
         }
         g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM appending reverse neighbor edge");
         to_neighbors.getPtr(edge.attributes.edge_type).?.append(edge) catch @panic("OOM appending reverse neighbor type edge");
+
+        if (edge.attributes.directional != null and edge.attributes.name != null) {
+            const dir = edge.attributes.directional.?;
+            const name = edge.attributes.name.?;
+            const src = if (dir) edge.source else edge.target;
+            const neighbor_name_map = g.neighbor_by_type_and_name.getPtr(src).?;
+            if (!neighbor_name_map.contains(edge.attributes.edge_type)) {
+                neighbor_name_map.put(edge.attributes.edge_type, std.StringHashMap(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type name");
+            }
+            neighbor_name_map.getPtr(edge.attributes.edge_type).?.put(name, edge) catch @panic("OOM inserting neighbor type name edge");
+        }
 
         return BoundEdgeReference{
             .edge = edge,
@@ -773,6 +803,13 @@ pub const GraphView = struct {
         return Result{ .EXHAUSTED = {} };
     }
 
+    pub fn get_edge_with_type_and_identifier(g: *@This(), node: NodeReference, edge_type: Edge.EdgeType, identifier: str) ?EdgeReference {
+        const type_name_map = g.neighbor_by_type_and_name.getPtr(node) orelse return null;
+        const identifier_map = type_name_map.getPtr(edge_type) orelse return null;
+        const out = identifier_map.get(identifier) orelse return null;
+        return out;
+    }
+
     pub fn get_subgraph_from_nodes(g: *@This(), nodes: std.ArrayList(NodeReference)) GraphView {
         // create new graph view
         // that contains only the nodes in the list and the edges between them
@@ -811,6 +848,7 @@ pub const GraphView = struct {
         g.nodes.ensureUnusedCapacity(added_nodes_len) catch @panic("OOM");
         g.neighbors.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
         g.neighbor_by_type.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
+        g.neighbor_by_type_and_name.ensureUnusedCapacity(@intCast(added_nodes_len)) catch @panic("OOM");
 
         for (subgraph.nodes.items) |node| {
             if (g.contains_node(node)) {
@@ -823,6 +861,7 @@ pub const GraphView = struct {
 
             g.neighbors.putAssumeCapacity(node, std.ArrayList(EdgeReference).init(g.allocator));
             g.neighbor_by_type.putAssumeCapacity(node, EdgeTypeMap.T(std.ArrayList(EdgeReference)).init(g.allocator));
+            g.neighbor_by_type_and_name.putAssumeCapacity(node, EdgeTypeMap.T(std.StringHashMap(EdgeReference)).init(g.allocator));
         }
 
         // Pre-allocate for edges
@@ -860,6 +899,18 @@ pub const GraphView = struct {
                 }
                 res_to.value_ptr.append(edge) catch @panic("OOM");
                 g.neighbors.getPtr(edge.target).?.append(edge) catch @panic("OOM");
+            }
+
+            if (edge.attributes.directional != null and edge.attributes.name != null) {
+                const dir = edge.attributes.directional.?;
+                const name = edge.attributes.name.?;
+                const src = if (dir) edge.source else edge.target;
+                const neighbor_type_name_map = g.neighbor_by_type_and_name.getPtr(src).?;
+                if (!neighbor_type_name_map.contains(edge.attributes.edge_type)) {
+                    neighbor_type_name_map.put(edge.attributes.edge_type, std.StringHashMap(EdgeReference).init(g.allocator)) catch @panic("OOM inserting neighbor type name");
+                }
+                const neighbor_name_map = neighbor_type_name_map.getPtr(edge.attributes.edge_type).?;
+                neighbor_name_map.put(name, edge) catch @panic("OOM inserting neighbor type name edge");
             }
         }
     }
@@ -1159,4 +1210,36 @@ test "insert_subgraph performance" {
     const duration = timer.read();
 
     std.debug.print("\ninsert_subgraph with {d} nodes took {d}ns\n", .{ num_nodes, duration });
+}
+
+test "get_edge_with_type_and_identifier" {
+    const a = std.testing.allocator;
+    var g = GraphView.init(a);
+    defer g.deinit();
+
+    const n1 = Node.init(a);
+    const n2 = Node.init(a);
+    _ = g.insert_node(n1);
+    _ = g.insert_node(n2);
+
+    const TestEdgeType = 0xFBAF_0003;
+    Edge.register_type(TestEdgeType) catch |err| switch (err) {
+        error.DuplicateType => {},
+        else => return err,
+    };
+
+    const e12 = Edge.init(a, n1, n2, TestEdgeType);
+    e12.attributes.directional = true;
+    e12.attributes.name = "e12";
+    _ = g.insert_edge(e12);
+
+    const out = g.get_edge_with_type_and_identifier(n1, TestEdgeType, "e12");
+    try std.testing.expect(out != null);
+    try std.testing.expect(out.?.attributes.uuid == e12.attributes.uuid);
+
+    const out2 = g.get_edge_with_type_and_identifier(n2, TestEdgeType, "e12");
+    try std.testing.expect(out2 == null);
+
+    const out3 = g.get_edge_with_type_and_identifier(n1, TestEdgeType, "e13");
+    try std.testing.expect(out3 == null);
 }

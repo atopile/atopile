@@ -569,42 +569,7 @@ pub const TypeGraph = struct {
 
     pub fn get_type_by_name(self: *const @This(), type_identifier: str) ?BoundNodeReference {
         // TODO make trait.zig
-        const FindTypeByName = struct {
-            self: *const TypeGraph,
-            type_identifier: str,
-
-            pub fn visitTypeEdge(ctx_ptr: *anyopaque, type_edge: graph.BoundEdgeReference) visitor.VisitResult(NodeReference) {
-                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
-                const edge = type_edge.edge;
-
-                const implements_type_instance = ctx.self.get_g().bind(EdgeType.get_instance_node(edge).?);
-                const owner_type_edge = EdgeTrait.get_owner_edge(implements_type_instance);
-                const owner_type_node = EdgeTrait.get_owner_node(owner_type_edge.?.edge);
-                const type_node_name = TypeNodeAttributes.of(owner_type_node).get_type_name();
-                if (std.mem.eql(u8, type_node_name, ctx.type_identifier)) {
-                    return visitor.VisitResult(NodeReference){ .OK = owner_type_node };
-                }
-                return visitor.VisitResult(NodeReference){ .CONTINUE = {} };
-            }
-        };
-
-        var finder = FindTypeByName{ .self = self, .type_identifier = type_identifier };
-        const result = self.get_ImplementsType().visit_edges_of_type(
-            EdgeType.tid,
-            NodeReference,
-            &finder,
-            FindTypeByName.visitTypeEdge,
-            null,
-        );
-        switch (result) {
-            .OK => |parent_type_node| {
-                return self.get_g().bind(parent_type_node);
-            },
-            .ERROR => unreachable,
-            .CONTINUE => unreachable,
-            .STOP => unreachable,
-            .EXHAUSTED => return null,
-        }
+        return EdgeComposition.get_child_by_identifier(self.self_node, type_identifier);
     }
 
     pub fn instantiate(self: *@This(), type_identifier: str) !BoundNodeReference {

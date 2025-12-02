@@ -163,6 +163,7 @@ pub const EdgeTrait = struct {
         return bound_edge;
     }
 
+    // TODO this is wayyyyy to slow for how often we use it
     pub fn visit_trait_instances_of_type(
         owner: graph.BoundNodeReference,
         trait_type: graph.NodeReference,

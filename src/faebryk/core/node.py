@@ -17,6 +17,7 @@ from faebryk.libs.util import (
     dataclass_as_kwargs,
     indented_container,
     not_none,
+    once,
     zip_dicts_by_key,
 )
 
@@ -298,6 +299,13 @@ class InstanceChildBoundInstance[T: Node](ChildAccessor[T]):
         )
         bound = self.nodetype(instance=child_instance)
         return bound
+
+    def __repr__(self) -> str:
+        return (
+            f"InstanceChildBoundInstance(nodetype={self.nodetype.__qualname__},"
+            f" identifier={self.identifier},"
+            f" instance={self.instance})"
+        )
 
 
 class TypeChildBoundInstance[T: NodeT]:
@@ -680,9 +688,35 @@ class NodeAttributes:
         return fbrk.NodeCreationAttributes.init(dynamic=attrs)
 
 
+class _LazyProxy:
+    def __init__(self, f: Callable[[], None], parent: Any, name: str) -> None:
+        self.___f = f
+        self.___parent = parent
+        self.___name = name
+
+    def ___get_and_set(self):
+        self.___f()
+        return getattr(self.___parent, self.___name)
+
+    @override
+    def __getattribute__(self, name: str, /) -> Any:
+        if "___" in name:
+            return super().__getattribute__(name)
+        return getattr(self.___get_and_set(), name)
+
+    @override
+    def __setattr__(self, name: str, value: Any, /) -> None:
+        if "___" in name:
+            return super().__setattr__(name, value)
+        setattr(self.___get_and_set(), name, value)
+
+    def __repr__(self) -> str:
+        return f"_LazyProxy({self.___f}, {self.___parent})"
+
+
 class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     Attributes = NodeAttributes
-    __fields: list[Field] = []
+    __fields: dict[str, Field] = {}
     # TODO do we need this?
     # _fields_bound_tg: dict[fbrk.TypeGraph, list[InstanceChildBoundType]] = {}
 
@@ -690,18 +724,26 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         self.instance = instance
 
         # setup instance accessors
+        # perfomance optimization: only load fields when needed
+        # self._load_fields()
+        fs = type(self).__fields
+        for name in fs:
+            p = _LazyProxy(self._load_fields, self, name)
+            super().__setattr__(name, p)
+
+    @once
+    def _load_fields(self) -> None:
+        instance = self.instance
         # overrides fields in instance
-        for field in type(self).__fields:
-            if field.locator is None:
-                continue
+        for locator, field in type(self).__fields.items():
             if isinstance(field, _ChildField):
                 child = InstanceChildBoundInstance(
                     nodetype=field.nodetype,
                     identifier=field.get_identifier(),
                     instance=instance,
                 )
-                setattr(self, field.get_locator(), child)
-            if isinstance(field, ListField):
+                setattr(self, locator, child)
+            elif isinstance(field, ListField):
                 list_attr = list[InstanceChildBoundInstance[Any]]()
                 for nested_field in field.get_fields():
                     if isinstance(nested_field, _ChildField):
@@ -711,13 +753,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                             instance=instance,
                         )
                         list_attr.append(child)
-                setattr(self, field.get_locator(), list_attr)
-            if isinstance(field, EdgeFactoryField):
+                setattr(self, locator, list_attr)
+            elif isinstance(field, EdgeFactoryField):
                 edge_factory_field = InstanceBoundEdgeFactory(
                     instance=self,
                     edge_factory_field=field,
                 )
-                setattr(self, field.get_locator(), edge_factory_field)
+                setattr(self, locator, edge_factory_field)
 
     def __init_subclass__(cls) -> None:
         # Ensure single-level inheritance: NodeType subclasses should not themselves
@@ -732,7 +774,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 f"more than one level deep (found: {cls.__mro__})"
             )
         super().__init_subclass__()
-        cls.__fields = []
+        cls.__fields = {}
 
         # Scan through class fields and add handle ChildFields
         # e.g ```python
@@ -810,7 +852,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _create_type(cls, t: "TypeNodeBoundTG[Self, T]") -> None:
         # read out fields
         # construct typegraph
-        for field in cls.__fields:
+        for field in cls.__fields.values():
             cls._exec_field(t=t, field=field)
         # TODO
         # call stage1
@@ -847,8 +889,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     @classmethod
     def _add_field(cls, locator: str, field: Field):
         # TODO check if identifier is already in use
+        assert locator not in cls.__fields, f"Field {locator} already exists"
         field._set_locator(locator=locator)
-        cls.__fields.append(field)
+        cls.__fields[locator] = field
 
     @classmethod
     def _add_instance_child(
@@ -923,12 +966,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             edge_attrs=fbrk.EdgeComposition.build(child_identifier=f"{id(node)}"),
         )
 
-    def __setattr__(self, name: str, value: Any, /) -> None:
-        if isinstance(value, Node) and not name.startswith("_"):
-            self.connect(
-                to=value, edge_attrs=fbrk.EdgeComposition.build(child_identifier=name)
-            )
-        return super().__setattr__(name, value)
+    # TODO this is soooo slow
+    # def __setattr__(self, name: str, value: Any, /) -> None:
+    #    if not name.startswith("_") and isinstance(value, Node):
+    #        self.connect(
+    #            to=value, edge_attrs=fbrk.EdgeComposition.build(child_identifier=name)
+    #        )
+    #    return super().__setattr__(name, value)
 
     def attributes(self) -> T:
         Attributes = cast(type[T], type(self).Attributes)
@@ -1337,14 +1381,23 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
 
     # __rich_repr__.angular = True
 
-    def is_same(self, other: "NodeT | graph.Node | graph.BoundNode") -> bool:
+    def is_same(
+        self,
+        other: "NodeT | graph.Node | graph.BoundNode",
+        # FIXME: default to False (breaks solver atm)
+        allow_different_graph: bool = True,
+    ) -> bool:
         match other:
             case Node():
                 other_node = other.instance.node()
+                if not allow_different_graph and other.g != self.g:
+                    return False
             case graph.Node():
                 other_node = other
             case graph.BoundNode():
                 other_node = other.node()
+                if not allow_different_graph and other.g() != self.g:
+                    return False
             case _:
                 raise TypeError(f"Invalid type: {type(other)}")
 
