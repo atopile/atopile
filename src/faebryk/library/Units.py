@@ -64,25 +64,6 @@ from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import not_none, once
 
 
-# TODO: remove?
-# Simple helper to normalize various unit-like objects to a class, defaulting to
-# Dimensionless when no unit information is available.
-def _unit_or_dimensionless(unit_like: Any) -> type[fabll.Node]:
-    if isinstance(unit_like, fabll.TypeNodeBoundTG):
-        return unit_like.t
-    if isinstance(unit_like, type) and issubclass(unit_like, fabll.Node):
-        return unit_like
-    if isinstance(unit_like, fabll.Node):
-        try:
-            unit_trait = unit_like.get_trait(has_unit).get_is_unit()
-            return type(unit_trait)
-        except fabll.TraitNotFound:
-            return Dimensionless
-    if hasattr(unit_like, "get_unit"):
-        return _unit_or_dimensionless(unit_like.get_unit())
-    return Dimensionless
-
-
 class UnitException(Exception): ...
 
 
