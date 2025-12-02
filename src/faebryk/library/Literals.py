@@ -2436,7 +2436,7 @@ class Numbers(fabll.Node):
         Works at type definition time (no g/tg needed).
 
         Args:
-            ref: Reference path to the parameter to constrain
+            param_ref: Reference path to the parameter to constrain
             min: Minimum value of the interval (or the singleton value if max is None)
             max: Maximum value of the interval (if None, uses min for singleton)
             unit: Unit type for the quantity (if None, no has_unit trait is added)
@@ -2463,7 +2463,7 @@ class Numbers(fabll.Node):
         Works at type definition time (no g/tg needed).
 
         Args:
-            ref: Reference path to the parameter to constrain
+            param_ref: Reference path to the parameter to constrain
             value: Single value for the quantity
             unit: Unit type for the quantity (if None, no has_unit trait is added)
 
@@ -2474,7 +2474,6 @@ class Numbers(fabll.Node):
             param_ref=param_ref, min=value, max=value, unit=unit
         )
 
-    # FIXME
     @classmethod
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)

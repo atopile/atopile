@@ -6,8 +6,6 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-
-# import faebryk.enum_sets as enum_sets
 from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
