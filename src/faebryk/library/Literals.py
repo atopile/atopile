@@ -2417,7 +2417,7 @@ class Numbers(fabll.Node):
     @classmethod
     def MakeChild_ConstrainToLiteral(
         cls,
-        ref: fabll.RefPath,
+        param_ref: fabll.RefPath,
         min: float,
         max: float,
         unit: type[fabll.NodeT],
@@ -2438,14 +2438,14 @@ class Numbers(fabll.Node):
         from faebryk.library.Expressions import Is
 
         lit = cls.MakeChild(min=min, max=max, unit=unit)
-        out = Is.MakeChild_Constrain([ref, [lit]])
+        out = Is.MakeChild_Constrain([param_ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
 
     @classmethod
     def MakeChild_ConstrainToSingleton(
         cls,
-        ref: fabll.RefPath,
+        param_ref: fabll.RefPath,
         value: float,
         unit: type[fabll.NodeT],
     ) -> fabll._ChildField["F.Expressions.Is"]:
@@ -2462,9 +2462,10 @@ class Numbers(fabll.Node):
             A _ChildField representing the Is constraint expression
         """
         return cls.MakeChild_ConstrainToLiteral(
-            ref=ref, min=value, max=value, unit=unit
+            param_ref=param_ref, min=value, max=value, unit=unit
         )
 
+    # FIXME
     @classmethod
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)

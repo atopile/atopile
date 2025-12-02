@@ -966,43 +966,53 @@ class is_unit_expression(fabll.Node):
 
 
 class UnitExpression(fabll.Node):
+    """
+    Accessor utility class for dynamic UnitExpressions.
+
+    UnitExpressions are dynamically-constructed unit-like types representing
+    higher-order derivations of static unit types. They are resolved to a standard unit
+    instance at runtime.
+    """
+
     # TODO: tie to NewUnitExpression fields
     _is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
     expr = F.Collections.Pointer.MakeChild()
-    multiplier = F.Parameters.NumericParameter.MakeChild(
-        unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+
+    # values are placeholders
+    multiplier = F.Literals.Numbers.MakeChild(
+        min=float("-inf"), max=float("inf"), unit=Dimensionless
     )
-    offset = F.Parameters.NumericParameter.MakeChild(
-        unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+    offset = F.Literals.Numbers.MakeChild(
+        min=float("-inf"), max=float("inf"), unit=Dimensionless
     )
 
     def get_expr(self) -> fabll.Node:
         return self.expr.get().deref()
 
     def get_multiplier(self) -> float:
-        multiplier_lit = self.multiplier.get().try_extract_aliased_literal()
-        return not_none(multiplier_lit).get_value()
+        return self.multiplier.get().get_value()
 
     def get_offset(self) -> float:
-        offset_lit = self.offset.get().try_extract_aliased_literal()
-        return not_none(offset_lit).get_value()
+        return self.offset.get().get_value()
 
 
 def make_unit_expression_type(
     unit_vector: UnitVectorT, multiplier: float = 1.0, offset: float = 0.0
 ) -> type[fabll.Node]:
-    # FIXME: explain motivation for dynamic types
     from faebryk.library.Expressions import Multiply, Power
+
+    multiplier_ = multiplier
+    offset_ = offset
 
     class NewUnitExpression(fabll.Node):
         _is_unit_expression = fabll.Traits.MakeEdge(is_unit_expression.MakeChild())
 
         expr = F.Collections.Pointer.MakeChild()
-        multiplier = F.Parameters.NumericParameter.MakeChild(
-            unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+        multiplier = F.Literals.Numbers.MakeChild(
+            min=multiplier_, max=multiplier_, unit=Dimensionless
         )
-        offset = F.Parameters.NumericParameter.MakeChild(
-            unit=Dimensionless, integer=False, negative=True, zero_allowed=True
+        offset = F.Literals.Numbers.MakeChild(
+            min=offset_, max=offset_, unit=Dimensionless
         )
 
         @classmethod
@@ -1040,25 +1050,6 @@ def make_unit_expression_type(
             out.add_dependant(
                 F.Collections.Pointer.MakeEdge([out, cls.expr], [expr_field])
             )
-            from faebryk.library.Literals import Numbers
-
-            multiplier_lit = Numbers.MakeChild(
-                min=multiplier, max=multiplier, unit=Dimensionless
-            )
-            multiplier_is_expr = F.Expressions.Is.MakeChild_Constrain(
-                [[out, cls.multiplier], [multiplier_lit]]
-            )
-            multiplier_is_expr.add_dependant(
-                multiplier_lit, identifier="lit", before=True
-            )
-            out.add_dependant(multiplier_is_expr)
-
-            offset_lit = Numbers.MakeChild(min=offset, max=offset, unit=Dimensionless)
-            offset_is_expr = F.Expressions.Is.MakeChild_Constrain(
-                [[out, cls.offset], [offset_lit]]
-            )
-            offset_is_expr.add_dependant(offset_lit, identifier="lit", before=True)
-            out.add_dependant(offset_is_expr)
 
             return out
 
