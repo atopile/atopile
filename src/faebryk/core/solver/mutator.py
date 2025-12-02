@@ -1072,8 +1072,8 @@ class Mutator:
         likely_constrained: bool | None = None,
         override_within: bool = False,
     ) -> F.Parameters.is_parameter:
-        if param.as_parameter_operatable() in self.transformations.mutated:
-            out = self.get_mutated(param.as_parameter_operatable())
+        if param.as_parameter_operatable.get() in self.transformations.mutated:
+            out = self.get_mutated(param.as_parameter_operatable.get())
             p = out.as_parameter()
             if (
                 np := fabll.Traits(p)
@@ -1104,7 +1104,7 @@ class Mutator:
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(
-                    is_unit=units,
+                    units=units,
                     within=within if override_within else p.get_within(),
                     domain=domain if domain is not None else p.get_domain(),
                     soft_set=soft_set if soft_set is not None else p.get_soft_set(),
@@ -1139,7 +1139,7 @@ class Mutator:
             assert False, "Unknown parameter type"
 
         return self._mutate(
-            param.as_parameter_operatable(),
+            param.as_parameter_operatable.get(),
             new_param.get_trait(F.Parameters.is_parameter_operatable),
         ).as_parameter()
 
@@ -1453,7 +1453,7 @@ class Mutator:
                 F.Parameters.is_parameter_operatable
             )
         elif p := obj_po.is_parameter():
-            return self.mutate_parameter(p).as_parameter_operatable()
+            return self.mutate_parameter(p).as_parameter_operatable.get()
 
         assert False
 
@@ -1536,7 +1536,7 @@ class Mutator:
         param: F.Parameters.is_parameter,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
     ) -> F.Parameters.is_parameter:
-        self.transformations.created[param.as_parameter_operatable()] = list(
+        self.transformations.created[param.as_parameter_operatable.get()] = list(
             from_ops or []
         )
         return param

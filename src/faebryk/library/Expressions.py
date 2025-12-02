@@ -63,7 +63,7 @@ OperandSet = Collections.AbstractSet(
 
 
 class is_expression(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     repr_placement = F.Collections.Pointer.MakeChild()
     repr_symbol = F.Collections.Pointer.MakeChild()
 
@@ -558,11 +558,11 @@ class is_expression(fabll.Node):
 
 # TODO
 class has_implicit_constraints(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_assertable(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     # TODO: solver_terminated flag, has to be attr
 
     def assert_(self):
@@ -574,7 +574,7 @@ class is_assertable(fabll.Node):
 
 
 class is_predicate(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def unassert(self):
         # TODO
@@ -606,42 +606,42 @@ def _op(expr: fabll.NodeT) -> "F.Parameters.can_be_operand":
 
 
 class is_arithmetic(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_additive(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_functional(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_logic(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_setic(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_numeric_predicate(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_setic_predicate(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class has_side_effects(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 # solver specific
 
 
 class is_canonical(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def as_expression(self) -> "is_expression":
         return fabll.Traits(self).get_trait_of_obj(is_expression)
@@ -656,19 +656,19 @@ class is_canonical(fabll.Node):
 
 
 class is_reflexive(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_idempotent(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class has_idempotent_operands(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_commutative(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @classmethod
     def is_commutative_type(cls, node_type: fabll.TypeNodeBoundTG[Any, Any]) -> bool:
@@ -676,30 +676,30 @@ class is_commutative(fabll.Node):
 
 
 class has_unary_identity(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_fully_associative(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_associative(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_involutory(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 # --------------------------------------------------------------------------------------
 
 
 class Add(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="+",
@@ -707,11 +707,11 @@ class Add(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    _has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    _is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    _is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -738,11 +738,11 @@ class Add(fabll.Node):
 
 
 class Subtract(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="-",
@@ -785,8 +785,8 @@ class Subtract(fabll.Node):
 
 
 class Multiply(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
     _is_expression = fabll.Traits.MakeEdge(
@@ -797,11 +797,11 @@ class Multiply(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    _has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    _is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    _is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -840,11 +840,11 @@ class Multiply(fabll.Node):
 
 
 class Divide(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="/",
@@ -853,7 +853,7 @@ class Divide(fabll.Node):
         )
     )
     # denominator not zero
-    _has_implicit_constraints = fabll.Traits.MakeEdge(
+    has_implicit_constraints = fabll.Traits.MakeEdge(
         has_implicit_constraints.MakeChild()
     )
 
@@ -892,8 +892,8 @@ class Divide(fabll.Node):
 
 
 class Sqrt(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
     _is_expression = fabll.Traits.MakeEdge(
@@ -905,7 +905,7 @@ class Sqrt(fabll.Node):
         )
     )
     # non-negative
-    _has_implicit_constraints = fabll.Traits.MakeEdge(
+    has_implicit_constraints = fabll.Traits.MakeEdge(
         has_implicit_constraints.MakeChild()
     )
 
@@ -934,11 +934,11 @@ class Sqrt(fabll.Node):
 
 
 class Power(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="^",
@@ -946,7 +946,7 @@ class Power(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     base = OperandPointer.MakeChild()
     exponent = OperandPointer.MakeChild()
@@ -990,11 +990,11 @@ class Power(fabll.Node):
 
 
 class Log(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="log",
@@ -1002,10 +1002,10 @@ class Log(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     # non-negative
-    _has_implicit_constraints = fabll.Traits.MakeEdge(
+    has_implicit_constraints = fabll.Traits.MakeEdge(
         has_implicit_constraints.MakeChild()
     )
 
@@ -1044,11 +1044,11 @@ class Log(fabll.Node):
 
 
 class Sin(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="sin",
@@ -1056,7 +1056,7 @@ class Sin(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     operand = OperandPointer.MakeChild()
 
@@ -1083,8 +1083,8 @@ class Sin(fabll.Node):
 
 
 class Cos(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
     _is_expression = fabll.Traits.MakeEdge(
@@ -1120,11 +1120,11 @@ class Cos(fabll.Node):
 
 
 class Abs(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="|",
@@ -1132,8 +1132,8 @@ class Abs(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_idempotent = fabll.Traits.MakeEdge(is_idempotent.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_idempotent = fabll.Traits.MakeEdge(is_idempotent.MakeChild())
 
     operand = OperandPointer.MakeChild()
 
@@ -1160,11 +1160,11 @@ class Abs(fabll.Node):
 
 
 class Round(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="round",
@@ -1172,8 +1172,8 @@ class Round(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_idempotent = fabll.Traits.MakeEdge(is_idempotent.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_idempotent = fabll.Traits.MakeEdge(is_idempotent.MakeChild())
 
     operand = OperandPointer.MakeChild()
 
@@ -1200,11 +1200,11 @@ class Round(fabll.Node):
 
 
 class Floor(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="⌊",
@@ -1238,11 +1238,11 @@ class Floor(fabll.Node):
 
 
 class Ceil(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = is_expression.MakeChild(
+    is_expression = is_expression.MakeChild(
         repr_style=is_expression.ReprStyle(
             symbol="⌈",
             placement=is_expression.ReprStyle.Placement.PREFIX,
@@ -1274,11 +1274,11 @@ class Ceil(fabll.Node):
 
 
 class Min(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="min",
@@ -1312,11 +1312,11 @@ class Min(fabll.Node):
 
 
 class Max(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="max",
@@ -1350,11 +1350,11 @@ class Max(fabll.Node):
 
 
 class Integrate(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="∫",
@@ -1396,8 +1396,8 @@ class Integrate(fabll.Node):
 
 
 class Differentiate(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
     _is_expression = fabll.Traits.MakeEdge(
@@ -1442,12 +1442,12 @@ class Differentiate(fabll.Node):
 
 
 class And(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="∧",
@@ -1465,7 +1465,7 @@ class And(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1489,12 +1489,12 @@ class And(fabll.Node):
 
 
 class Or(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="∨",
@@ -1502,14 +1502,12 @@ class Or(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _has_idempotent_operands = fabll.Traits.MakeEdge(
-        has_idempotent_operands.MakeChild()
-    )
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    _has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    _is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    _is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1520,7 +1518,7 @@ class Or(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1544,12 +1542,12 @@ class Or(fabll.Node):
 
 
 class Not(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="¬",
@@ -1557,8 +1555,8 @@ class Not(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_involutory = fabll.Traits.MakeEdge(is_involutory.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_involutory = fabll.Traits.MakeEdge(is_involutory.MakeChild())
 
     operand = OperandPointer.MakeChild()
 
@@ -1567,7 +1565,7 @@ class Not(fabll.Node):
     ) -> Self:
         self.operand.get().point(operand)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1591,12 +1589,12 @@ class Not(fabll.Node):
 
 
 class Xor(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="⊕",
@@ -1614,7 +1612,7 @@ class Xor(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1638,8 +1636,8 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="⇒",
@@ -1660,7 +1658,7 @@ class Implies(fabll.Node):
         self.antecedent.get().point(antecedent)
         self.consequent.get().point(consequent)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1688,8 +1686,8 @@ class Implies(fabll.Node):
 
 
 class IfThenElse(fabll.Node):
-    _has_side_effects = fabll.Traits.MakeEdge(has_side_effects.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    has_side_effects = fabll.Traits.MakeEdge(has_side_effects.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="?:",
@@ -1742,11 +1740,11 @@ class IfThenElse(fabll.Node):
 
 
 class Union(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="∪",
@@ -1754,14 +1752,12 @@ class Union(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _has_idempotent_operands = fabll.Traits.MakeEdge(
-        has_idempotent_operands.MakeChild()
-    )
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    _has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    _is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    _is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1788,11 +1784,11 @@ class Union(fabll.Node):
 
 
 class Intersection(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="∩",
@@ -1800,14 +1796,12 @@ class Intersection(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _has_idempotent_operands = fabll.Traits.MakeEdge(
-        has_idempotent_operands.MakeChild()
-    )
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
-    _has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    _is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    _is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1834,11 +1828,11 @@ class Intersection(fabll.Node):
 
 
 class Difference(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="−",
@@ -1879,11 +1873,11 @@ class Difference(fabll.Node):
 
 
 class SymmetricDifference(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_expression = fabll.Traits.MakeEdge(
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="△",
@@ -1891,8 +1885,8 @@ class SymmetricDifference(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
@@ -1927,12 +1921,12 @@ class SymmetricDifference(fabll.Node):
 
 
 class LessThan(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="<",
@@ -1953,7 +1947,7 @@ class LessThan(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -1979,12 +1973,12 @@ class LessThan(fabll.Node):
 
 
 class GreaterThan(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol=">",
@@ -1992,7 +1986,7 @@ class GreaterThan(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
@@ -2006,7 +2000,7 @@ class GreaterThan(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2032,12 +2026,12 @@ class GreaterThan(fabll.Node):
 
 
 class LessOrEqual(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="≤",
@@ -2058,7 +2052,7 @@ class LessOrEqual(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2084,12 +2078,12 @@ class LessOrEqual(fabll.Node):
 
 
 class GreaterOrEqual(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="≥",
@@ -2097,8 +2091,8 @@ class GreaterOrEqual(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
 
     left = OperandPointer.MakeChild()
     right = OperandPointer.MakeChild()
@@ -2112,7 +2106,7 @@ class GreaterOrEqual(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2138,12 +2132,12 @@ class GreaterOrEqual(fabll.Node):
 
 
 class NotEqual(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="≠",
@@ -2164,7 +2158,7 @@ class NotEqual(fabll.Node):
         self.left.get().point(left)
         self.right.get().point(right)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2190,12 +2184,12 @@ class NotEqual(fabll.Node):
 
 
 class IsBitSet(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="b[]",
@@ -2203,7 +2197,7 @@ class IsBitSet(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
 
     value = OperandPointer.MakeChild()
     bit_index = OperandPointer.MakeChild()
@@ -2217,7 +2211,7 @@ class IsBitSet(fabll.Node):
         self.value.get().point(value)
         self.bit_index.get().point(bit_index)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2243,12 +2237,12 @@ class IsBitSet(fabll.Node):
 
 
 class IsSubset(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="⊆",
@@ -2256,8 +2250,8 @@ class IsSubset(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
 
     subset = OperandPointer.MakeChild()
     superset = OperandPointer.MakeChild()
@@ -2271,7 +2265,7 @@ class IsSubset(fabll.Node):
         self.subset.get().point(subset)
         self.superset.get().point(superset)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2297,12 +2291,12 @@ class IsSubset(fabll.Node):
 
 
 class IsSuperset(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="⊇",
@@ -2323,7 +2317,7 @@ class IsSuperset(fabll.Node):
         self.superset.get().point(superset)
         self.subset.get().point(subset)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2349,12 +2343,12 @@ class IsSuperset(fabll.Node):
 
 
 class Cardinality(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="||",
@@ -2375,7 +2369,7 @@ class Cardinality(fabll.Node):
         self.set.get().point(set)
         self.cardinality.get().point(cardinality)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2401,13 +2395,13 @@ class Cardinality(fabll.Node):
 
 
 class Is(fabll.Node):
-    _can_be_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
         Parameters.is_parameter_operatable.MakeChild()
     )
-    _is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
-    _is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
-    _is_expression = fabll.Traits.MakeEdge(
+    is_reflexive = fabll.Traits.MakeEdge(is_reflexive.MakeChild())
+    is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
+    is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(
             repr_style=is_expression.ReprStyle(
                 symbol="is",
@@ -2415,8 +2409,8 @@ class Is(fabll.Node):
             )
         )
     )
-    _is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
-    _is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
+    is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
+    is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -2427,7 +2421,7 @@ class Is(fabll.Node):
     ) -> Self:
         self.operands.get().append(*operands)
         if assert_:
-            self._is_assertable.get().assert_()
+            self.is_assertable.get().assert_()
         return self
 
     @classmethod
@@ -2442,7 +2436,7 @@ class Is(fabll.Node):
         for operand in operands:
             # TODO: relying on a string identifier to connect to the correct
             # trait is nasty
-            operand.append("_can_be_operand")
+            operand.append("as_operand")
             out.add_dependant(
                 OperandSet.MakeEdge([out, cls.operands], operand),
                 identifier="connect_operands",
@@ -2505,13 +2499,6 @@ def test_compact_repr():
     )
     or_repr = or_.get_sibling_trait(is_expression).compact_repr()
     assert or_repr == "A ∨! B"
-
-
-def test_congruence():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    p1 = Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 if __name__ == "__main__":

@@ -744,6 +744,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 )
                 setattr(self, locator, child)
             elif isinstance(field, ListField):
+                setattr(self, field.get_locator(), child)
+            if isinstance(field, Traits.ImpliedTrait):
+                bound_implied_trait = field.bind(node=self)
+                setattr(self, field.get_locator(), bound_implied_trait)
+            if isinstance(field, ListField):
                 list_attr = list[InstanceChildBoundInstance[Any]]()
                 for nested_field in field.get_fields():
                     if isinstance(nested_field, _ChildField):
@@ -1728,6 +1733,31 @@ class Traits:
 
     def trait_repr(self):
         return f" on {self.get_obj_raw()!r}"
+
+    class _BoundImpliedTrait[T: NodeT](ChildAccessor[T]):
+        def __init__(self, sibling_type: type[T], node: NodeT):
+            self._sibling_type = sibling_type
+            self._node = node
+
+        def get(self) -> T:
+            return self._node.get_sibling_trait(self._sibling_type)
+
+    class ImpliedTrait[T: NodeT](Field, ChildAccessor[T]):
+        def __init__(
+            self,
+            sibling_type: type[T],
+            *,
+            identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+        ):
+            super().__init__(identifier=identifier)
+            self._sibling_type = sibling_type
+
+        def get(self) -> T:
+            raise ValueError("SiblingField is not bound to a node")
+
+        # TODO call this during Node.__init__
+        def bind(self, node: NodeT) -> "Traits._BoundImpliedTrait[T]":
+            return Traits._BoundImpliedTrait(sibling_type=self._sibling_type, node=node)
 
 
 class ImplementsTrait(Node):

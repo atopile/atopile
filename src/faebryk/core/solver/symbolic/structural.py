@@ -307,7 +307,8 @@ def resolve_alias_classes(mutator: Mutator):
 
         for p in eq_class_params:
             mutator._mutate(
-                p.as_parameter_operatable(), representative.as_parameter_operatable()
+                p.as_parameter_operatable.get(),
+                representative.as_parameter_operatable.get(),
             )
 
     for eq_class in p_eq_classes:
@@ -340,7 +341,7 @@ def resolve_alias_classes(mutator: Mutator):
                 .create_instance(g=mutator.G_out)
                 .get_trait(F.Parameters.is_parameter),
                 from_ops=list(eq_class),
-            ).as_parameter_operatable()
+            ).as_parameter_operatable.get()
 
         for e in eq_class_exprs:
             e_po = e.as_parameter_operatable()

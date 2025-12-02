@@ -27,7 +27,7 @@ EPSILON_ABS = 10**-ABS_DIGITS
 
 
 class is_literal(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def is_subset_of(self, other: "is_literal") -> bool:
         if obj := fabll.Traits(self).get_obj_raw().try_cast(Booleans):
@@ -159,8 +159,8 @@ class StringLiteralSingleton(fabll.Node[StringLiteralSingletonAttributes]):
 class Strings(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
 
-    _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     values = F.Collections.PointerSet.MakeChild()
 
@@ -223,7 +223,7 @@ class Numeric(fabll.Node[NumericAttributes]):
     Attributes = NumericAttributes
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField:  # type: ignore
+    def MakeChild(cls, value: float) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls, attributes=NumericAttributes(value=value))
         return out
 
@@ -275,7 +275,7 @@ class NumericInterval(fabll.Node):
     _max_identifier: ClassVar[str] = "max"
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField[Self]:
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
@@ -2333,8 +2333,8 @@ class TestNumericSet:
 class Numbers(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
 
-    _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     _numeric_set_identifier: ClassVar[str] = "numeric_set"
     _has_unit_identifier: ClassVar[str] = "has_unit"
 
@@ -2556,6 +2556,11 @@ class Numbers(fabll.Node):
             )
         return numeric_set.get_min_value()
 
+    def get_values(self) -> list[float]:
+        # TODO: Implement this as needed
+        numeric_set = self.get_numeric_set()
+        return [numeric_set.get_min_value(), numeric_set.get_max_value()]
+
     def get_min_value(self) -> float:
         if self.is_empty():
             raise ValueError("empty interval cannot have min element")
@@ -2581,6 +2586,9 @@ class Numbers(fabll.Node):
         return Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
             min=max_value, max=max_value, unit=self.get_is_unit()
         )
+
+    def is_singleton(self) -> bool:
+        return self.get_numeric_set().is_single_element()
 
     def closest_elem(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, target: "Numbers"
@@ -4320,7 +4328,7 @@ class _Count(fabll.Node[CountAttributes]):
     Attributes = CountAttributes
 
     @classmethod
-    def MakeChild(cls, value: int) -> fabll._ChildField:  # type: ignore
+    def MakeChild(cls, value: int) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls, attributes=CountAttributes(value=value))
         return out
 
@@ -4403,12 +4411,12 @@ class Counts(fabll.Node):
 
     from faebryk.library.Parameters import can_be_operand
 
-    _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     counts = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, *values: int) -> fabll._ChildField:
+    def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:
         """
         Create a Counts literal as a child field at type definition time.
         Does not require g or tg - works at type level.
@@ -4636,8 +4644,8 @@ class Booleans(fabll.Node[BooleansAttributes]):
     from faebryk.library.Parameters import can_be_operand
 
     Attributes = BooleansAttributes
-    _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def get_single(self) -> bool:
         """Get the single boolean value. Raises if not exactly one value."""
@@ -4647,7 +4655,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         return values[0]
 
     @classmethod
-    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:
         return fabll._ChildField(
             cls,
             attributes=BooleansAttributes(
@@ -4763,7 +4771,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         return vals[0]
 
     def as_literal(self) -> "is_literal":
-        return self._is_literal.get()
+        return self.is_literal.get()
 
 
 class EnumValue(fabll.Node):
@@ -4771,7 +4779,7 @@ class EnumValue(fabll.Node):
     value_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         F.Collections.Pointer.MakeEdgeForField(
             out,
@@ -4797,9 +4805,9 @@ class EnumValue(fabll.Node):
 class AbstractEnums(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
 
-    _is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
-    _values = F.Collections.PointerSet.MakeChild()
+    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    values = F.Collections.PointerSet.MakeChild()
 
     @staticmethod
     def get_enum_value(s: fabll.TypeNodeBoundTG, enum_member: Enum) -> EnumValue:
@@ -4815,14 +4823,14 @@ class AbstractEnums(fabll.Node):
         atype = EnumsFactory(type(enum_values[0]))
         atype_n = atype.bind_typegraph(tg=self.tg)
         for enum_value in enum_values:
-            self._values.get().append(
+            self.values.get().append(
                 AbstractEnums.get_enum_value(s=atype_n, enum_member=enum_value)
             )
         return self
 
     def get_values(self) -> list[str]:
         enum_values = list[str]()
-        values = self._values.get().as_list()
+        values = self.values.get().as_list()
         for value in values:
             enum_value = EnumValue.bind_instance(instance=value.instance)
             enum_values.append(enum_value.value)
@@ -4856,7 +4864,7 @@ class AbstractEnums(fabll.Node):
         return None if len(values) == 0 else values[0]
 
     @classmethod
-    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField:
+    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField[Self]:
         atype = EnumsFactory(type(enum_members[0]))
         cls_n = cast(type[fabll.NodeT], atype)
         out = fabll._ChildField(cls)
@@ -4864,7 +4872,7 @@ class AbstractEnums(fabll.Node):
         for value in enum_members:
             out.add_dependant(
                 F.Collections.PointerSet.MakeEdge(
-                    [out, cls._values],
+                    [out, cls.values],
                     [cls_n, value.name],
                 )
             )
@@ -4884,7 +4892,7 @@ class AbstractEnums(fabll.Node):
         return out
 
     def as_literal(self) -> "is_literal":
-        return self._is_literal.get()
+        return self.is_literal.get()
 
 
 @once

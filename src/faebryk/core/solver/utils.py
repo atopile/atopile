@@ -334,7 +334,7 @@ class MutatorUtils:
 
             # no point in adding more general subset
             if ex_lit.is_subset_of(literal):
-                return ex_op.get_trait(F.Expressions.is_expression)
+                return ex_op.is_expression.get()
             # other cases handled by intersect subsets algo
 
         return cast(
