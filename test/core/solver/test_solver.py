@@ -116,13 +116,13 @@ class BoundExpressions:
         # Dimensionless / scalar
         dl = F.Units.Dimensionless
         ppm = F.Units.Ppm
-        nat = F.Units.Natural
-        dB = F.Units.Decibel
+        nat = F.Units.Dimensionless
+        # dB = F.Units.Decibel
 
         # Data units
         bit = F.Units.Bit
         B = F.Units.Byte
-        bps = F.Units.BitPerSecond
+        bps = F.Units.BitsPerSecond
 
         # Compound units
         Ah = F.Units.AmpereHour

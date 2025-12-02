@@ -11,17 +11,17 @@ logger = logging.getLogger(__name__)
 
 class Addressor(fabll.Node):
     address = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Bit, integer=True, negative=False
     )
     offset = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Bit, integer=True, negative=False
     )
     base = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Bit, integer=True, negative=False
     )
 
     address_bits_ = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit, integer=True, negative=False
+        unit=F.Units.Dimensionless, integer=True, negative=False
     )
     address_lines_ = F.Collections.PointerSet.MakeChild()
 
@@ -38,13 +38,17 @@ class Addressor(fabll.Node):
         ]
 
     @classmethod
-    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls)
+        # Store address bits as a dimensionless literal
         out.add_dependant(
-            F.Literals.Numbers.MakeChild_ConstrainToLiteral(
-                [out, cls.address_bits_], min=address_bits, unit=F.Units.Dimensionless
+            F.Literals.Numbers.MakeChild_ConstrainToSingleton(
+                [out, cls.address_bits_],
+                value=address_bits,
+                unit=F.Units.Dimensionless,
             )
         )
+        # Make a pointer to each address line
         for i in range(address_bits):
             address_line = F.ElectricLogic.MakeChild()
             out.add_dependant(address_line)
@@ -57,26 +61,62 @@ class Addressor(fabll.Node):
 
     def on_obj_set(self):
         # set net names for address lines
-        for i, line in enumerate(self.address_lines):
-            fabll.Traits.create_and_add_instance_to(
-                node=line, trait=F.has_net_name
-            ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
+        # for i, line in enumerate(self.address_lines):
+        #     fabll.Traits.create_and_add_instance_to(
+        #         node=line, trait=F.has_net_name
+        #     ).setup(name=f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
 
-        # constrain parameters
-        # for x in (self.address, self.offset, self.base):
-        #     x.get().force_extract_literal().op_greater_or_equal(
-        #         F.Literals.Numbers.MakeChild(
-        #             min=0, max=0, unit=F.Units.Dimensionless
-        #         ).get(),
-        #         g=x.instance.g(),
-        #         tg=x.instance.tg(),
+        # Constrain offset to be less than 2^address_bits
+
+        # Calculate max offset value
+        max_offset_value = 1 << int(
+            self.address_bits_.get().force_extract_literal().get_value()
+        )
+        # Create dimensionless unit
+        dimensionles_unit = (
+            F.Units.Dimensionless.bind_typegraph(self.offset.get().tg)
+            .create_instance(self.offset.get().instance.g())
+            .get_trait(F.Units.is_unit)
+        )
+        # Create max offset literal
+        max_offset = (
+            F.Literals.Numbers.bind_typegraph(self.offset.get().tg)
+            .create_instance(self.offset.get().instance.g())
+            .setup_from_singleton(
+                value=max_offset_value,
+                unit=dimensionles_unit,
+            )
+        )
+        # Create greater than or equal expression
+        greater_or_equal_expression = F.Expressions.GreaterOrEqual.bind_typegraph(
+            self.offset.get().tg
+        ).create_instance(self.offset.get().instance.g())
+        # Setup greater than or equal expression
+        greater_or_equal_expression.setup(
+            left=self.offset.get().get_trait(F.Parameters.can_be_operand),
+            right=max_offset.get_trait(F.Parameters.can_be_operand),
+            assert_=True,
+        )
+
+        # # Constrain offset, base and address to be greater than or equal to 0
+        # for x in (self.offset, self.base, self.address):
+        # zero = (
+        #     F.Literals.Numbers.bind_typegraph(self.offset.get().tg)
+        #     .create_instance(g=self.offset.get().instance.g())
+        #     .setup_from_singleton(
+        #         g=self.offset.get().instance.g(),
+        #         tg=self.offset.get().tg,
+        #         value=0,
+        #         unit=dimensionles_unit,
         #     )
-
-        # TODO: ops not implemented yet
-        # self.offset.get().force_extract_literal().op_less_or_equal(
-        #     F.Literals.Numbers.MakeChild(
-        #        value=1 << self.address_bits_.get().force_extract_literal().get_value()
-        #     ).get()
+        # )
+        # greater_or_equal = F.Expressions.GreaterOrEqual.bind_typegraph(
+        #     self.offset.get().tg
+        # ).create_instance(self.offset.get().instance.g())
+        # greater_or_equal.setup(
+        #     left=self.offset.get().get_trait(F.Parameters.can_be_operand),
+        #     right=zero.get_trait(F.Parameters.can_be_operand),
+        #     assert_=True,
         # )
 
         # self.address.get().force_extract_literal().alias_is(self.base + self.offset)

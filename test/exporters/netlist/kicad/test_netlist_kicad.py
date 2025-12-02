@@ -45,12 +45,22 @@ def netlist_graph():
     r100 = (
         F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g)
-        .setup_from_singleton(value=100, unit=F.Units.Ohm)
+        .setup_from_singleton(
+            value=100,
+            unit=F.Units.Ohm.bind_typegraph(tg)
+            .create_instance(g)
+            .get_trait(F.Units.is_unit),
+        )
     )
     r200 = (
         F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g)
-        .setup_from_singleton(value=200, unit=F.Units.Ohm)
+        .setup_from_singleton(
+            value=200,
+            unit=F.Units.Ohm.bind_typegraph(tg)
+            .create_instance(g)
+            .get_trait(F.Units.is_unit),
+        )
     )
 
     resistor1.resistance.get().alias_to_literal(g, r100)

@@ -169,13 +169,16 @@ class _BasisVector(fabll.Node):
         return out
 
     def setup(  # type: ignore
-        self, g: graph.GraphView, tg: graph.TypeGraph, vector: BasisVector
+        self, vector: BasisVector
     ) -> Self:
         from faebryk.library.Literals import Counts
 
+        g = self.g
+        tg = self.tg
+
         for field_name in BasisVector.__dataclass_fields__.keys():
             child = Counts.bind_typegraph(tg=tg).create_instance(g=g)
-            child.setup_from_values(g=g, tg=tg, values=[getattr(vector, field_name)])
+            child.setup_from_values(values=[getattr(vector, field_name)])
             _ = EdgeComposition.add_child(
                 bound_node=self.instance,
                 child=child.instance.node(),
@@ -225,7 +228,7 @@ class TestBasisVector:
 
         # Create a _BasisVector instance and store the vector
         basis_vector = _BasisVector.bind_typegraph(tg=tg).create_instance(g=g)
-        basis_vector.setup(g=g, tg=tg, vector=original_vector)
+        basis_vector.setup(vector=original_vector)
 
         # Retrieve the vector and verify it matches
         retrieved_vector = basis_vector.extract_vector()
@@ -376,7 +379,7 @@ class is_unit(fabll.Node):
         multiplier_numeric = (
             NumericInterval.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_singleton(g=g, tg=tg, value=multiplier)
+            .setup_from_singleton(value=multiplier)
         )
         _ = EdgeComposition.add_child(
             bound_node=self.instance,
@@ -386,7 +389,7 @@ class is_unit(fabll.Node):
         offset_numeric = (
             NumericInterval.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_singleton(g=g, tg=tg, value=offset)
+            .setup_from_singleton(value=offset)
         )
         _ = EdgeComposition.add_child(
             bound_node=self.instance,
@@ -396,7 +399,7 @@ class is_unit(fabll.Node):
         basis_vector_field = (
             _BasisVector.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup(g=g, tg=tg, vector=unit_vector)
+            .setup(vector=unit_vector)
         )
         self.basis_vector.get().point(basis_vector_field)
 
@@ -2394,7 +2397,7 @@ class TestUnitExpressions(_TestWithContext):
         exponent_param.alias_to_literal(
             g=ctx.g,
             value=ctx.literals.Numbers.setup_from_singleton(
-                g=ctx.g, tg=ctx.tg, value=2.0, unit=ctx.Dimensionless._is_unit.get()
+                value=2.0, unit=ctx.Dimensionless._is_unit.get()
             ),
         )
 
@@ -2444,7 +2447,7 @@ class TestUnitExpressions(_TestWithContext):
         exponent_param.alias_to_literal(
             g=ctx.g,
             value=ctx.literals.Numbers.setup_from_singleton(
-                g=ctx.g, tg=ctx.tg, value=1.5, unit=ctx.Dimensionless._is_unit.get()
+                value=1.5, unit=ctx.Dimensionless._is_unit.get()
             ),
         )
 

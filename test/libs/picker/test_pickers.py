@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core import graph
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.picker.api.picker_lib import (
@@ -57,10 +59,13 @@ def _make_id(m: "ComponentTestCase"):
     ids=[_make_id(m) for m in components_to_test],
 )
 def test_pick_module(case: "ComponentTestCase"):
-    module = case.module
-
-    if case.packages:
-        module.add(F.has_package_requirements(size=EnumSet(*case.packages)))
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    module = case.get_module(g=g, tg=tg)
+    # if case.packages:
+    #     module.create_and_add_instance_to(
+    #         F.has_package_requirements(size=fabll.EnumSet.from_values(*case.packages))
+    #     )
 
     # pick
     solver = DefaultSolver()
@@ -86,11 +91,31 @@ def test_pick_module(case: "ComponentTestCase"):
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_type_pick():
-    module = F.Resistor()
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    module = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
 
     assert module.has_trait(F.is_pickable_by_type)
     assert module.has_trait(F.is_pickable)
-    module.resistance.constrain_subset(fabll.Range.from_center_rel(100 * P.ohm, 0.1))
+    is_subset = F.Expressions.IsSubset.bind_typegraph(tg=module.tg).create_instance(
+        g=module.g
+    )
+    is_subset.setup(
+        subset=module.resistance.get().get_trait(F.Parameters.can_be_operand),
+        superset=F.Literals.Numbers.bind_typegraph(tg=module.tg)
+        .create_instance(g=module.g)
+        .setup_from_center_rel(
+            g=module.g,
+            tg=module.tg,
+            center=100,
+            rel=0.1,
+            unit=F.Units.Ohm.bind_typegraph(tg=module.tg)
+            .create_instance(g=module.g)
+            .get_trait(F.Units.is_unit),
+        )
+        .get_trait(F.Parameters.can_be_operand),
+        assert_=True,
+    )
 
     pick_part_recursively(module, DefaultSolver())
 

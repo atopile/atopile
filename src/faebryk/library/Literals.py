@@ -346,11 +346,12 @@ class NumericInterval(fabll.Node):
         return True
 
     def setup(  # type: ignore
-        self, g: graph.GraphView, tg: TypeGraph, min: float, max: float
+        self, min: float, max: float
     ) -> "NumericInterval":
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
-
+        g = self.g
+        tg = self.tg
         #  Add numeric literals to the node min and max fields
         min_numeric = Numeric.create_instance(g=g, tg=tg, value=min)
         max_numeric = Numeric.create_instance(g=g, tg=tg, value=max)
@@ -366,10 +367,8 @@ class NumericInterval(fabll.Node):
         )
         return self
 
-    def setup_from_singleton(
-        self, g: graph.GraphView, tg: TypeGraph, value: float
-    ) -> "NumericInterval":
-        return self.setup(g=g, tg=tg, min=value, max=value)
+    def setup_from_singleton(self, value: float) -> "NumericInterval":
+        return self.setup(min=value, max=value)
 
     def is_empty(self) -> bool:
         return False
@@ -415,10 +414,8 @@ class NumericInterval(fabll.Node):
         """
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
-            g,
-            tg,
-            self.get_min_value() + other.get_min_value(),
-            self.get_max_value() + other.get_max_value(),
+            min=self.get_min_value() + other.get_min_value(),
+            max=self.get_max_value() + other.get_max_value(),
         )
         return numeric_interval
 
@@ -428,10 +425,8 @@ class NumericInterval(fabll.Node):
         """
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
-            g,
-            tg,
-            -self.get_max_value(),
-            -self.get_min_value(),
+            min=-self.get_max_value(),
+            max=-self.get_min_value(),
         )
         return numeric_interval
 
@@ -481,10 +476,8 @@ class NumericInterval(fabll.Node):
         _max = max(values)
 
         numeric_interval.setup(
-            g,
-            tg,
-            _min,
-            _max,
+            min=_min,
+            max=_max,
         )
         return numeric_interval
 
@@ -503,23 +496,17 @@ class NumericInterval(fabll.Node):
         # Case 2
         if _min < 0 < _max:
             return numeric_set.setup_from_values(
-                g=g, tg=tg, values=[(-math.inf, 1 / _min), (1 / _max, math.inf)]
+                values=[(-math.inf, 1 / _min), (1 / _max, math.inf)]
             )
         # Case 3
         elif _min < 0 == _max:
-            return numeric_set.setup_from_values(
-                g=g, tg=tg, values=[(-math.inf, 1 / _min)]
-            )
+            return numeric_set.setup_from_values(values=[(-math.inf, 1 / _min)])
         # Case 4
         elif _min == 0 < _max:
-            return numeric_set.setup_from_values(
-                g=g, tg=tg, values=[(1 / _max, math.inf)]
-            )
+            return numeric_set.setup_from_values(values=[(1 / _max, math.inf)])
         # Case 5
         else:
-            return numeric_set.setup_from_values(
-                g=g, tg=tg, values=[(1 / _max, 1 / _min)]
-            )
+            return numeric_set.setup_from_values(values=[(1 / _max, 1 / _min)])
 
     def op_pow(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
@@ -572,7 +559,7 @@ class NumericInterval(fabll.Node):
                     values.append(_pow(a, k))
 
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(min(values), max(values))])
+        numeric_set.setup_from_values(values=[(min(values), max(values))])
         return numeric_set
 
     def op_divide(
@@ -584,14 +571,13 @@ class NumericInterval(fabll.Node):
         """
         Arithmetically divides a interval by another interval.
         """
-
         other_intervals = other.op_invert(g=g, tg=tg).get_intervals()
         products = []
         for other_interval in other_intervals:
             products.append(self.op_multiply(g=g, tg=tg, other=other_interval))
 
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup(g=g, tg=tg, intervals=products)
+        numeric_set.setup(intervals=products)
 
         return numeric_set
 
@@ -605,9 +591,9 @@ class NumericInterval(fabll.Node):
         min_ = max(self.get_min_value(), other.get_min_value())
         max_ = min(self.get_max_value(), other.get_max_value())
         if min_ <= max_:
-            return numeric_set.setup_from_values(g=g, tg=tg, values=[(min_, max_)])
+            return numeric_set.setup_from_values(values=[(min_, max_)])
         if min_ == max_:
-            return numeric_set.setup_from_values(g=g, tg=tg, values=[(min_, min_)])
+            return numeric_set.setup_from_values(values=[(min_, min_)])
         return numeric_set
 
     def op_difference(
@@ -616,7 +602,6 @@ class NumericInterval(fabll.Node):
         """
         Set difference of two intervals.
         """
-
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
 
         # no overlap
@@ -624,7 +609,7 @@ class NumericInterval(fabll.Node):
             self.get_max_value() < other.get_min_value()
             or self.get_min_value() > other.get_max_value()
         ):
-            return numeric_set.setup(g=g, tg=tg, intervals=[self])
+            return numeric_set.setup(intervals=[self])
         # fully covered
         if (
             other.get_min_value() <= self.get_min_value()
@@ -637,8 +622,6 @@ class NumericInterval(fabll.Node):
             and self.get_max_value() > other.get_max_value()
         ):
             return numeric_set.setup_from_values(
-                g=g,
-                tg=tg,
                 values=[
                     (self.get_min_value(), other.get_min_value()),
                     (other.get_max_value(), self.get_max_value()),
@@ -647,14 +630,10 @@ class NumericInterval(fabll.Node):
         # right overlap
         if self.get_min_value() < other.get_min_value():
             return numeric_set.setup_from_values(
-                g=g,
-                tg=tg,
                 values=[(self.get_min_value(), other.get_min_value())],
             )
         # left overlap
         return numeric_set.setup_from_values(
-            g=g,
-            tg=tg,
             values=[(other.get_max_value(), self.get_max_value())],
         )
 
@@ -663,8 +642,6 @@ class NumericInterval(fabll.Node):
     ) -> "NumericInterval":
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
-            g=g,
-            tg=tg,
             min=Numeric.float_round(self.get_min_value(), ndigits),
             max=Numeric.float_round(self.get_max_value(), ndigits),
         )
@@ -675,8 +652,6 @@ class NumericInterval(fabll.Node):
         # case 1: crosses zero
         if self.get_min_value() < 0 < self.get_max_value():
             numeric_interval.setup(
-                g=g,
-                tg=tg,
                 min=0,
                 max=self.get_max_value(),
             )
@@ -684,8 +659,6 @@ class NumericInterval(fabll.Node):
         # case 2: negative only
         if self.get_min_value() < 0 and self.get_max_value() < 0:
             numeric_interval.setup(
-                g=g,
-                tg=tg,
                 min=-self.get_max_value(),
                 max=-self.get_min_value(),
             )
@@ -693,8 +666,6 @@ class NumericInterval(fabll.Node):
         # case 3: max = 0 and min < 0
         if self.get_min_value() < 0 and self.get_max_value() == 0:
             numeric_interval.setup(
-                g=g,
-                tg=tg,
                 min=0,
                 max=-self.get_min_value(),
             )
@@ -708,8 +679,6 @@ class NumericInterval(fabll.Node):
             raise ValueError(f"invalid log of {self}")
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
-            g=g,
-            tg=tg,
             min=math.log(self.get_min_value()),
             max=math.log(self.get_max_value()),
         )
@@ -751,7 +720,7 @@ class NumericInterval(fabll.Node):
         min, max = NumericInterval.sine_on_interval(
             (float(self.get_min_value()), float(self.get_max_value()))
         )
-        numeric_interval.setup(g=g, tg=tg, min=min, max=max)
+        numeric_interval.setup(min=min, max=max)
         return numeric_interval
 
     def maybe_merge_interval(
@@ -775,8 +744,6 @@ class NumericInterval(fabll.Node):
         if self.contains(right.get_min_value()):
             numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
             numeric_interval.setup(
-                g=g,
-                tg=tg,
                 min=left.get_min_value(),
                 max=max(left.get_max_value(), right.get_max_value()),
             )
@@ -849,7 +816,7 @@ class TestNumericInterval:
         expected_max = 2.0
 
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-        numeric_interval.setup(g=g, tg=tg, min=expected_min, max=expected_max)
+        numeric_interval.setup(min=expected_min, max=expected_max)
         assert numeric_interval.get_min().get_value() == expected_min
         assert numeric_interval.get_max().get_value() == expected_max
 
@@ -865,7 +832,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -math.inf
         max_value = math.inf
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert numeric_interval.is_unbounded()
 
     def test_is_unbounded_false(self):
@@ -874,7 +841,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert not numeric_interval.is_unbounded()
 
     def test_is_finite_true(self):
@@ -883,7 +850,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert numeric_interval.is_finite()
 
     def test_is_finite_false(self):
@@ -892,7 +859,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -math.inf
         max_value = math.inf
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert not numeric_interval.is_finite()
 
     def test_is_single_element_true(self):
@@ -901,7 +868,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 0.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert numeric_interval.is_single_element()
 
     def test_is_single_element_false(self):
@@ -910,7 +877,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert not numeric_interval.is_single_element()
 
     def test_is_integer_true(self):
@@ -919,7 +886,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 2.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert numeric_interval.is_integer()
 
     def test_is_integer_false(self):
@@ -928,7 +895,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 1.5
         max_value = 1.5
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert not numeric_interval.is_integer()
 
     def test_as_center_rel(self):
@@ -937,7 +904,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         assert numeric_interval.as_center_rel() == (0.5, 1.0)
 
     def test_is_subset_of_true(self):
@@ -946,11 +913,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = -0.5
         other_max_value = 1.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         assert numeric_interval.is_subset_of(other=other)
 
     def test_is_subset_of_false(self):
@@ -959,11 +926,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 1.5
         other_max_value = 2.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         assert not numeric_interval.is_subset_of(other=other)
 
     def test_op_add(self):
@@ -972,11 +939,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 0.5
         other_max_value = 1.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         result = numeric_interval.op_add(g=g, tg=tg, other=other)
         assert result.get_min_value() == 0.5
         assert result.get_max_value() == 2.5
@@ -987,7 +954,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_negate(g=g, tg=tg)
         assert result.get_min_value() == -1.0
         assert result.get_max_value() == -0.0
@@ -998,11 +965,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 0.5
         other_max_value = 1.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         result = numeric_interval.op_subtract(g=g, tg=tg, other=other)
         assert result.get_min_value() == -1.5
         assert result.get_max_value() == 0.5
@@ -1013,11 +980,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 3.0
         max_value = 4.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 0.5
         other_max_value = 1.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         result = numeric_interval.op_multiply(g=g, tg=tg, other=other)
         assert result.get_min_value() == 1.5
         assert result.get_max_value() == 6.0
@@ -1028,11 +995,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -3.0
         max_value = -2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 0.5
         other_max_value = 3.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         result = numeric_interval.op_multiply(g=g, tg=tg, other=other)
         assert result.get_min_value() == -10.5
         assert result.get_max_value() == -1.0
@@ -1043,11 +1010,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 1.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 0.0
         other_max_value = 0.0
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         result = numeric_interval.op_multiply(g=g, tg=tg, other=other)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == 0.0
@@ -1058,7 +1025,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 0.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_invert(g=g, tg=tg)
         assert result.is_empty()
 
@@ -1068,7 +1035,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_invert(g=g, tg=tg)
         result_intervals = result.get_intervals()
         assert len(result_intervals) == 2
@@ -1083,7 +1050,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 0.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_invert(g=g, tg=tg)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == -math.inf
@@ -1095,7 +1062,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 1.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_invert(g=g, tg=tg)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == 1.0
@@ -1107,7 +1074,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 2.0
         max_value = 4.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_invert(g=g, tg=tg)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == 0.25
@@ -1119,11 +1086,11 @@ class TestNumericInterval:
         base = NumericInterval.create_instance(g=g, tg=tg)
         base_min_value = 2.0
         base_max_value = 4.0
-        base.setup(g=g, tg=tg, min=base_min_value, max=base_max_value)
+        base.setup(min=base_min_value, max=base_max_value)
         exp = NumericInterval.create_instance(g=g, tg=tg)
         exp_min_value = 1.0
         exp_max_value = 2.0
-        exp.setup(g=g, tg=tg, min=exp_min_value, max=exp_max_value)
+        exp.setup(min=exp_min_value, max=exp_max_value)
         result = base.op_pow(g=g, tg=tg, other=exp)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == 2.0
@@ -1135,11 +1102,11 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 1.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         other = NumericInterval.create_instance(g=g, tg=tg)
         other_min_value = 0.5
         other_max_value = 1.5
-        other.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other.setup(min=other_min_value, max=other_max_value)
         result = numeric_interval.op_divide(g=g, tg=tg, other=other)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == 1.0 / 1.5
@@ -1151,11 +1118,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 2.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 3.0
         other_max_value = 4.0
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_intersect(g=g, tg=tg, other=other_interval)
         assert result.is_empty()
 
@@ -1165,11 +1132,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 2.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 1.5
         other_max_value = 2.5
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_intersect(g=g, tg=tg, other=other_interval)
         result_intervals = result.get_intervals()
         assert len(result_intervals) == 1
@@ -1182,11 +1149,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 2.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 3.0
         other_max_value = 4.0
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
         result_intervals = result.get_intervals()
         assert len(result_intervals) == 1
@@ -1199,11 +1166,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 5.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 1.0
         other_max_value = 5.0
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
         assert result.is_empty()
 
@@ -1213,11 +1180,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 10.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 2.5
         other_max_value = 6.5
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
         result_intervals = result.get_intervals()
         assert len(result_intervals) == 2
@@ -1232,11 +1199,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 10.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 6.5
         other_max_value = 10.0
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
         result_intervals = result.get_intervals()
         assert len(result_intervals) == 1
@@ -1249,11 +1216,11 @@ class TestNumericInterval:
         self_min_value = 1.0
         self_max_value = 10.0
         self_interval = NumericInterval.create_instance(g=g, tg=tg)
-        self_interval.setup(g=g, tg=tg, min=self_min_value, max=self_max_value)
+        self_interval.setup(min=self_min_value, max=self_max_value)
         other_min_value = 1.0
         other_max_value = 6.5
         other_interval = NumericInterval.create_instance(g=g, tg=tg)
-        other_interval.setup(g=g, tg=tg, min=other_min_value, max=other_max_value)
+        other_interval.setup(min=other_min_value, max=other_max_value)
         result = self_interval.op_difference(g=g, tg=tg, other=other_interval)
         result_intervals = result.get_intervals()
         assert len(result_intervals) == 1
@@ -1266,7 +1233,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 1.9524377865952437
         max_value = 2.4983529411764706
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_round(g=g, tg=tg, ndigits=3)
         assert result.get_min_value() == 1.952
         assert result.get_max_value() == 2.498
@@ -1277,7 +1244,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_abs(g=g, tg=tg)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == 2.0
@@ -1288,7 +1255,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_abs(g=g, tg=tg)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == 2.0
@@ -1299,7 +1266,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 0.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_abs(g=g, tg=tg)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == 1.0
@@ -1310,7 +1277,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 0.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_abs(g=g, tg=tg)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == 1.0
@@ -1321,7 +1288,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 1.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_log(g=g, tg=tg)
         assert result.get_min_value() == math.log(1.0)
         assert result.get_max_value() == math.log(2.0)
@@ -1332,7 +1299,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = -1.0
         max_value = 2.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         with pytest.raises(ValueError):
             numeric_interval.op_log(g=g, tg=tg)
 
@@ -1342,7 +1309,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 0.5
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_sine(g=g, tg=tg)
         assert result.get_min_value() == 0.0
         assert result.get_max_value() == math.sin(0.5)
@@ -1353,7 +1320,7 @@ class TestNumericInterval:
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min_value = 0.0
         max_value = 10.0
-        numeric_interval.setup(g=g, tg=tg, min=min_value, max=max_value)
+        numeric_interval.setup(min=min_value, max=max_value)
         result = numeric_interval.op_sine(g=g, tg=tg)
         assert result.get_min_value() == -1.0
         assert result.get_max_value() == 1.0
@@ -1363,8 +1330,8 @@ class TestNumericInterval:
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.equals(numeric_set_2)
 
 
@@ -1432,7 +1399,7 @@ class NumericSet(fabll.Node):
         for value in values:
             intervals.append(
                 NumericInterval.create_instance(g=g, tg=tg).setup(
-                    g=g, tg=tg, min=value[0], max=value[1]
+                    min=value[0], max=value[1]
                 )
             )
         return_values = []
@@ -1476,38 +1443,34 @@ class NumericSet(fabll.Node):
             return right_bound
         assert False  # unreachable
 
-    def setup_from_interval(
-        self, g: graph.GraphView, tg: TypeGraph, interval: tuple[float, float]
-    ) -> "NumericSet":
-        return self.setup_from_values(g=g, tg=tg, values=[interval])
+    def setup_from_interval(self, interval: tuple[float, float]) -> "NumericSet":
+        return self.setup_from_values(values=[interval])
 
-    def setup_from_singleton(
-        self, g: graph.GraphView, tg: TypeGraph, value: float
-    ) -> "NumericSet":
-        return self.setup_from_values(g=g, tg=tg, values=[(value, value)])
+    def setup_from_singleton(self, value: float) -> "NumericSet":
+        return self.setup_from_values(values=[(value, value)])
 
-    def setup_from_values(
-        self, g: graph.GraphView, tg: TypeGraph, values: list[tuple[float, float]]
-    ) -> "NumericSet":
+    def setup_from_values(self, values: list[tuple[float, float]]) -> "NumericSet":
         assert self.is_empty()
+        g = self.g
+        tg = self.tg
         sorted_and_merged_values = NumericSet.sort_merge_values(
             g=g, tg=tg, values=values
         )
         for value in sorted_and_merged_values:
             self.intervals.get().append(
                 NumericInterval.create_instance(g=g, tg=tg).setup(
-                    g=g, tg=tg, min=value[0], max=value[1]
+                    min=value[0], max=value[1]
                 )
             )
         return self
 
     def setup(  # type: ignore
         self,
-        g: graph.GraphView,
-        tg: TypeGraph,
         intervals: list["NumericInterval | NumericSet"],
     ) -> "NumericSet":
         assert self.is_empty()
+        g = self.g
+        tg = self.tg
         sorted_and_merged_intervals = NumericSet.sort_merge_intervals(
             g=g, tg=tg, intervals=intervals
         )
@@ -1539,7 +1502,7 @@ class NumericSet(fabll.Node):
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_intersect(g=g, tg=tg, other=other))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_intersect_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
@@ -1574,14 +1537,14 @@ class NumericSet(fabll.Node):
                 s += 1
                 o += 1
 
-        return numeric_set.setup(g=g, tg=tg, intervals=result)
+        return numeric_set.setup(intervals=result)
 
     def op_union(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
     ) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = self.get_intervals() + other.get_intervals()
-        return numeric_set.setup(g=g, tg=tg, intervals=list(intervals))
+        return numeric_set.setup(intervals=list(intervals))
 
     def op_difference_interval(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericInterval"
@@ -1590,7 +1553,7 @@ class NumericSet(fabll.Node):
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_difference(g=g, tg=tg, other=other))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_difference_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
@@ -1621,7 +1584,7 @@ class NumericSet(fabll.Node):
             for other_interval in other_intervals:
                 out.append(self_interval.op_pow(g=g, tg=tg, other=other_interval))
 
-        return numeric_set.setup(g=g, tg=tg, intervals=out)
+        return numeric_set.setup(intervals=out)
 
     def op_add(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
@@ -1631,14 +1594,14 @@ class NumericSet(fabll.Node):
         for self_interval in self.get_intervals():
             for other_interval in other.get_intervals():
                 intervals.append(self_interval.op_add(g=g, tg=tg, other=other_interval))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_negate(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_negate(g=g, tg=tg))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_subtract(
         self, g: graph.GraphView, tg: TypeGraph, other: "NumericSet"
@@ -1655,14 +1618,14 @@ class NumericSet(fabll.Node):
                 intervals.append(
                     self_interval.op_multiply(g=g, tg=tg, other=other_interval)
                 )
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_invert(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_invert(g=g, tg=tg))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_div_intervals(
         self: "NumericSet",
@@ -1755,28 +1718,28 @@ class NumericSet(fabll.Node):
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_round(g=g, tg=tg, ndigits=ndigits))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_abs(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_abs(g=g, tg=tg))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_log(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_log(g=g, tg=tg))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def op_sin(self, g: graph.GraphView, tg: TypeGraph) -> "NumericSet":
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_sine(g=g, tg=tg))
-        return numeric_set.setup(g=g, tg=tg, intervals=intervals)
+        return numeric_set.setup(intervals=intervals)
 
     def contains(self, item: float) -> bool:
         if not isinstance(item, float):
@@ -1833,16 +1796,14 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_interval_1 = NumericInterval.create_instance(g=g, tg=tg)
-        numeric_interval_1.setup(g=g, tg=tg, min=1.8, max=2.2)
+        numeric_interval_1.setup(min=1.8, max=2.2)
         numeric_interval_2 = NumericInterval.create_instance(g=g, tg=tg)
-        numeric_interval_2.setup(g=g, tg=tg, min=1.5, max=1.6)
+        numeric_interval_2.setup(min=1.5, max=1.6)
         numeric_interval_3 = NumericInterval.create_instance(g=g, tg=tg)
-        numeric_interval_3.setup(g=g, tg=tg, min=2.0, max=3.0)
+        numeric_interval_3.setup(min=2.0, max=3.0)
 
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup(
-            g=g,
-            tg=tg,
             intervals=[numeric_interval_1, numeric_interval_2, numeric_interval_3],
         )
         intervals = numeric_set.get_intervals()
@@ -1880,8 +1841,6 @@ class TestNumericSet:
         interval_2_max = 2.0
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup_from_values(
-            g=g,
-            tg=tg,
             values=[(interval_1_min, interval_1_max), (interval_2_min, interval_2_max)],
         )
         assert numeric_set.get_intervals()[0].get_min_value() == interval_1_min
@@ -1893,11 +1852,11 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         interval_1 = NumericInterval.create_instance(g=g, tg=tg)
-        interval_1.setup(g=g, tg=tg, min=0.0, max=1.0)
+        interval_1.setup(min=0.0, max=1.0)
         interval_2 = NumericInterval.create_instance(g=g, tg=tg)
-        interval_2.setup(g=g, tg=tg, min=1.0, max=2.0)
+        interval_2.setup(min=1.0, max=2.0)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup(g=g, tg=tg, intervals=[interval_1, interval_2])
+        numeric_set.setup(intervals=[interval_1, interval_2])
         intervals = numeric_set.get_intervals()
         assert len(intervals) == 1
         assert intervals[0].get_min_value() == 0.0
@@ -1907,7 +1866,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_singleton(g=g, tg=tg, value=1.0)
+        numeric_set.setup_from_singleton(value=1.0)
         assert numeric_set.get_intervals()[0].get_min_value() == 1.0
         assert numeric_set.get_intervals()[0].get_max_value() == 1.0
 
@@ -1915,7 +1874,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_interval(g=g, tg=tg, interval=(0.0, 1.0))
+        numeric_set.setup_from_interval(interval=(0.0, 1.0))
         assert numeric_set.get_intervals()[0].get_min_value() == 0.0
         assert numeric_set.get_intervals()[0].get_max_value() == 1.0
 
@@ -1924,52 +1883,52 @@ class TestNumericSet:
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         assert numeric_set.is_empty()
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
         assert not numeric_set.is_empty()
 
     def test_is_superset_of_true(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.is_superset_of(g=g, tg=tg, other=numeric_set_2)
 
     def test_is_superset_of_false(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.5), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.5), (2.0, 3.0)])
         assert not numeric_set_1.is_superset_of(g=g, tg=tg, other=numeric_set_2)
 
     def test_is_subset_of_true(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.is_subset_of(g=g, tg=tg, other=numeric_set_2)
 
     def test_is_subset_of_false(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.5), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.5), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert not numeric_set_1.is_subset_of(g=g, tg=tg, other=numeric_set_2)
 
     def test_op_intersect_intervals_partially_covered(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_intersect_intervals(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -1982,9 +1941,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_union(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -1997,9 +1956,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
-        numeric_interval.setup(g=g, tg=tg, min=0.5, max=2.5)
+        numeric_interval.setup(min=0.5, max=2.5)
         result = numeric_set.op_difference_interval(g=g, tg=tg, other=numeric_interval)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -2012,9 +1971,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_symmetric_difference_intervals(
             g=g, tg=tg, other=numeric_set_2
         )
@@ -2033,9 +1992,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (1.0, 2.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
         result = numeric_set_1.op_pow(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 1
@@ -2046,9 +2005,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_add(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 1
@@ -2059,7 +2018,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         result = numeric_set.op_negate(g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -2072,9 +2031,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_subtract(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 1
@@ -2085,9 +2044,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_multiply(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 1
@@ -2098,7 +2057,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         result = numeric_set.op_invert(g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -2111,9 +2070,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.5, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.5, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.5, 1.5), (1.7, 3.6)])
+        numeric_set_2.setup_from_values(values=[(0.5, 1.5), (1.7, 3.6)])
         result = numeric_set_1.op_div_intervals(g=g, tg=tg, other=numeric_set_2)
         intervals = result.get_intervals()
         assert len(intervals) == 1
@@ -2132,9 +2091,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_1.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.op_ge_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [True]
@@ -2143,9 +2102,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_1.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(1.5, 2.5), (3.0, 3.5)])
+        numeric_set_2.setup_from_values(values=[(1.5, 2.5), (3.0, 3.5)])
         assert numeric_set_1.op_ge_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [True]
@@ -2154,9 +2113,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_2.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         assert numeric_set_1.op_ge_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [False]
@@ -2172,9 +2131,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_1.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.op_gt_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [True]
@@ -2183,9 +2142,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_2.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         assert numeric_set_1.op_gt_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [False]
@@ -2194,9 +2153,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(1.5, 2.5), (3.0, 3.5)])
+        numeric_set_1.setup_from_values(values=[(1.5, 2.5), (3.0, 3.5)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(1.5, 2.5), (3.0, 3.5)])
+        numeric_set_2.setup_from_values(values=[(1.5, 2.5), (3.0, 3.5)])
         assert numeric_set_1.op_gt_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [True, False]
@@ -2212,9 +2171,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_2.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         assert numeric_set_1.op_le_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [True]
@@ -2223,9 +2182,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_1.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.op_le_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [False]
@@ -2241,9 +2200,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_2.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         assert numeric_set_1.op_lt_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [True]
@@ -2252,9 +2211,9 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(3.5, 4.5), (5.0, 6.0)])
+        numeric_set_1.setup_from_values(values=[(3.5, 4.5), (5.0, 6.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.op_lt_intervals(
             g=g, tg=tg, other=numeric_set_2
         ).get_boolean_values() == [False]
@@ -2264,7 +2223,7 @@ class TestNumericSet:
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup_from_values(
-            g=g, tg=tg, values=[(0.0001, 1.0123456789), (2.4532450, 3.432520)]
+            values=[(0.0001, 1.0123456789), (2.4532450, 3.432520)]
         )
         result = numeric_set.op_round(g=g, tg=tg, ndigits=3)
         intervals = result.get_intervals()
@@ -2278,7 +2237,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(-10.0, -5.0), (1.0, 3.0)])
+        numeric_set.setup_from_values(values=[(-10.0, -5.0), (1.0, 3.0)])
         result = numeric_set.op_abs(g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -2291,7 +2250,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.1, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.1, 1.0), (2.0, 3.0)])
         result = numeric_set.op_log(g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 2
@@ -2304,7 +2263,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         result = numeric_set.op_sin(g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 1
@@ -2315,7 +2274,7 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set.contains(0.5)
         assert numeric_set.contains(0.0)
         assert numeric_set.contains(1.0)
@@ -2327,26 +2286,26 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_1 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_1.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_1.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_2.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set_2.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set_1.equals(numeric_set_2)
         numeric_set_3 = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_3.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 4.0)])
+        numeric_set_3.setup_from_values(values=[(0.0, 1.0), (2.0, 4.0)])
         assert not numeric_set_1.equals(numeric_set_3)
 
     def test_repr(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert repr(numeric_set) == "_N_intervals([0.0, 1.0], [2.0, 3.0])"
 
     def test_iter(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
 
         for interval in numeric_set:
             assert interval.get_min_value() >= 0.0
@@ -2356,20 +2315,18 @@ class TestNumericSet:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set_single_element = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_single_element.setup_from_values(g=g, tg=tg, values=[(1.0, 1.0)])
+        numeric_set_single_element.setup_from_values(values=[(1.0, 1.0)])
         assert numeric_set_single_element.is_single_element()
 
         numeric_set_multiple_elements = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set_multiple_elements.setup_from_values(
-            g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)]
-        )
+        numeric_set_multiple_elements.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert not numeric_set_multiple_elements.is_single_element()
 
     def test_any(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
-        numeric_set.setup_from_values(g=g, tg=tg, values=[(0.0, 1.0), (2.0, 3.0)])
+        numeric_set.setup_from_values(values=[(0.0, 1.0), (2.0, 3.0)])
         assert numeric_set.any() == 0.0
 
 
@@ -2424,6 +2381,14 @@ class Numbers(fabll.Node):
         return out
 
     @classmethod
+    def MakeChild_SingleValue(
+        cls,
+        value: float,
+        unit: type[fabll.NodeT],
+    ) -> fabll._ChildField:
+        return cls.MakeChild(min=value, max=value, unit=unit)
+
+    @classmethod
     def MakeChild_ConstrainToLiteral(
         cls,
         param_ref: fabll.RefPath,
@@ -2450,6 +2415,17 @@ class Numbers(fabll.Node):
         out = Is.MakeChild_Constrain([param_ref, [lit]])
         out.add_dependant(lit, identifier="lit", before=True)
         return out
+
+    @classmethod
+    def MakeChild_FromCenterRel(
+        cls,
+        center: float,
+        rel: float,
+        unit: type[fabll.NodeT],
+    ) -> fabll._ChildField["F.Literals.Numbers"]:
+        return cls.MakeChild(
+            min=center - rel * center, max=center + rel * center, unit=unit
+        )
 
     @classmethod
     def MakeChild_ConstrainToSingleton(
@@ -2480,11 +2456,11 @@ class Numbers(fabll.Node):
 
     def setup(  # type: ignore
         self,
-        g: graph.GraphView,
-        tg: TypeGraph,
         numeric_set: NumericSet,
         unit: "is_unit",
     ) -> "Numbers":
+        g = self.g
+        tg = self.tg
         _ = EdgeComposition.add_child(
             bound_node=self.instance,
             child=numeric_set.instance.node(),
@@ -2504,31 +2480,43 @@ class Numbers(fabll.Node):
 
         return self
 
+    def setup_from_center_rel(
+        self,
+        center: float,
+        rel: float,
+        unit: "is_unit",
+    ) -> "Numbers":
+        """
+        Create a Numbers literal from a center and relative tolerance.
+        """
+        g = self.g
+        tg = self.tg
+        numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+            values=[(center - rel * center, center + rel * center)]
+        )
+        return self.setup(numeric_set=numeric_set, unit=unit)
+
     def setup_from_min_max(
         self,
-        g: graph.GraphView,
-        tg: TypeGraph,
         min: float,
         max: float,
         unit: "is_unit",
     ) -> "Numbers":
+        g = self.g
+        tg = self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            g=g, tg=tg, values=[(min, max)]
+            values=[(min, max)]
         )
-        return self.setup(g=g, tg=tg, numeric_set=numeric_set, unit=unit)
+        return self.setup(numeric_set=numeric_set, unit=unit)
 
     @classmethod
     def unbounded(cls, g: graph.GraphView, tg: TypeGraph, unit: "is_unit") -> "Numbers":
         """Create an unbounded quantity set (-∞, +∞) with the given unit."""
         quantity_set = cls.create_instance(g=g, tg=tg)
-        return quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=-math.inf, max=math.inf, unit=unit
-        )
+        return quantity_set.setup_from_min_max(min=-math.inf, max=math.inf, unit=unit)
 
-    def setup_from_singleton(
-        self, g: graph.GraphView, tg: TypeGraph, value: float, unit: "is_unit"
-    ) -> "Numbers":
-        return self.setup_from_min_max(g=g, tg=tg, min=value, max=value, unit=unit)
+    def setup_from_singleton(self, value: float, unit: "is_unit") -> "Numbers":
+        return self.setup_from_min_max(min=value, max=value, unit=unit)
 
     def get_numeric_set(self) -> NumericSet:
         numeric_set = EdgeComposition.get_child_by_identifier(
@@ -2581,7 +2569,7 @@ class Numbers(fabll.Node):
 
         min_value = self.get_min_value()
         return Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
-            g=g, tg=tg, min=min_value, max=min_value, unit=self.get_is_unit()
+            min=min_value, max=min_value, unit=self.get_is_unit()
         )
 
     def max_elem(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2589,7 +2577,7 @@ class Numbers(fabll.Node):
 
         max_value = self.get_max_value()
         return Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
-            g=g, tg=tg, min=max_value, max=max_value, unit=self.get_is_unit()
+            min=max_value, max=max_value, unit=self.get_is_unit()
         )
 
     def closest_elem(
@@ -2609,7 +2597,7 @@ class Numbers(fabll.Node):
         closest = self.get_numeric_set().closest_elem(target_value)
         result = Numbers.create_instance(g=g, tg=tg)
         return result.setup_from_min_max(
-            g=g, tg=tg, min=closest, max=closest, unit=self.get_is_unit()
+            min=closest, max=closest, unit=self.get_is_unit()
         )
 
     def has_compatible_units_with(self, other: "Numbers") -> bool:
@@ -2659,8 +2647,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2680,8 +2666,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2702,8 +2686,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2719,12 +2701,12 @@ class Numbers(fabll.Node):
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            g=g, tg=tg, values=[(scale, scale)]
+            values=[(scale, scale)]
         )
 
         # Generate a numeric set for the offset
         offset_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            g=g, tg=tg, values=[(offset, offset)]
+            values=[(offset, offset)]
         )
 
         # Multiply the other numeric set by the scale
@@ -2737,7 +2719,7 @@ class Numbers(fabll.Node):
 
         # Return the new quantity set
         return Numbers.create_instance(g=g, tg=tg).setup(
-            g=g, tg=tg, numeric_set=out_numeric_set, unit=self.get_is_unit()
+            numeric_set=out_numeric_set, unit=self.get_is_unit()
         )
 
     def _convert_other_to_self_unit(
@@ -2764,12 +2746,12 @@ class Numbers(fabll.Node):
 
         # Generate a numeric set for the scale
         scale_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            g=g, tg=tg, values=[(scale, scale)]
+            values=[(scale, scale)]
         )
 
         # Generate a numeric set for the offset
         offset_numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
-            g=g, tg=tg, values=[(offset, offset)]
+            values=[(offset, offset)]
         )
 
         # Multiply the other numeric set by the scale
@@ -2785,7 +2767,7 @@ class Numbers(fabll.Node):
 
         # Return the new quantity set
         return Numbers.create_instance(g=g, tg=tg).setup(
-            g=g, tg=tg, numeric_set=out_numeric_set, unit=dimensionless_is_unit
+            numeric_set=out_numeric_set, unit=dimensionless_is_unit
         )
 
     def op_add_intervals(
@@ -2798,8 +2780,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2820,8 +2800,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=result_unit,
         )
@@ -2834,8 +2812,6 @@ class Numbers(fabll.Node):
         out_numeric_set = self.get_numeric_set().op_negate(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2855,8 +2831,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2870,8 +2844,6 @@ class Numbers(fabll.Node):
         inverted_unit = self.get_is_unit().op_invert(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=inverted_unit,
         )
@@ -2892,8 +2864,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=divided_unit,
         )
@@ -2920,11 +2890,9 @@ class Numbers(fabll.Node):
         exp_value = int(exp_numeric.get_min_value())
         result_unit = self.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
 
-        out_numeric_set = self.get_numeric_set().op_pow(g=g, tg=tg, other=exp_numeric)
+        out_numeric_set = self.get_numeric_set().op_pow(g, tg, other=exp_numeric)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=result_unit,
         )
@@ -2939,8 +2907,6 @@ class Numbers(fabll.Node):
         out_numeric_set = self.get_numeric_set().op_round(g=g, tg=tg, ndigits=ndigits)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2953,8 +2919,6 @@ class Numbers(fabll.Node):
         out_numeric_set = self.get_numeric_set().op_abs(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2967,8 +2931,6 @@ class Numbers(fabll.Node):
         out_numeric_set = self.get_numeric_set().op_log(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -2984,7 +2946,7 @@ class Numbers(fabll.Node):
         dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         half = Numbers.create_instance(g=g, tg=tg)
         half.setup_from_min_max(
-            g=g, tg=tg, min=0.5, max=0.5, unit=dimensionless_unit.get_trait(is_unit)
+            min=0.5, max=0.5, unit=dimensionless_unit.get_trait(is_unit)
         )
         return self.op_pow_intervals(g=g, tg=tg, exponent=half)
 
@@ -3003,8 +2965,6 @@ class Numbers(fabll.Node):
         dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=dimensionless_unit.get_trait(is_unit),
         )
@@ -3021,7 +2981,7 @@ class Numbers(fabll.Node):
         # Create pi/2 offset in radians
         pi_half = Numbers.create_instance(g=g, tg=tg)
         pi_half.setup_from_min_max(
-            g=g, tg=tg, min=math.pi / 2, max=math.pi / 2, unit=self.get_is_unit()
+            min=math.pi / 2, max=math.pi / 2, unit=self.get_is_unit()
         )
         shifted = self.op_add_intervals(g=g, tg=tg, other=pi_half)
         return shifted.op_sin(g=g, tg=tg)
@@ -3032,7 +2992,7 @@ class Numbers(fabll.Node):
         Computed as round(x - 0.5).
         """
         half = Numbers.create_instance(g=g, tg=tg)
-        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=self.get_is_unit())
+        half.setup_from_min_max(min=0.5, max=0.5, unit=self.get_is_unit())
         shifted = self.op_subtract_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
@@ -3042,7 +3002,7 @@ class Numbers(fabll.Node):
         Computed as round(x + 0.5).
         """
         half = Numbers.create_instance(g=g, tg=tg)
-        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=self.get_is_unit())
+        half.setup_from_min_max(min=0.5, max=0.5, unit=self.get_is_unit())
         shifted = self.op_add_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
@@ -3058,9 +3018,7 @@ class Numbers(fabll.Node):
             for interval in intervals
         )
         result = Numbers.create_instance(g=g, tg=tg)
-        return result.setup_from_min_max(
-            g=g, tg=tg, min=total, max=total, unit=self.get_is_unit()
-        )
+        return result.setup_from_min_max(min=total, max=total, unit=self.get_is_unit())
 
     def op_symmetric_difference_intervals(
         self, g: graph.GraphView, tg: TypeGraph, other: "Numbers"
@@ -3078,8 +3036,6 @@ class Numbers(fabll.Node):
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            g=g,
-            tg=tg,
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
@@ -3128,13 +3084,13 @@ class Numbers(fabll.Node):
                 result = Numbers.create_instance(g=g, tg=tg)
                 dimensionless_is_unit = dimensionless_unit.get_trait(is_unit)
                 return result.setup_from_min_max(
-                    g=g, tg=tg, min=0.0, max=0.0, unit=dimensionless_is_unit
+                    min=0.0, max=0.0, unit=dimensionless_is_unit
                 )
 
             # Create divisor quantity set
             divisor = Numbers.create_instance(g=g, tg=tg)
             divisor.setup_from_min_max(
-                g=g, tg=tg, min=max_val, max=max_val, unit=self.get_is_unit()
+                min=max_val, max=max_val, unit=self.get_is_unit()
             )
             return deviation.op_div_intervals(g=g, tg=tg, other=divisor)
 
@@ -3186,8 +3142,6 @@ class Numbers(fabll.Node):
             raise ValueError("empty interval cannot be made gapless")
         result = Numbers.create_instance(g=g, tg=tg)
         return result.setup_from_min_max(
-            g=g,
-            tg=tg,
             min=self.get_numeric_set().get_min_value(),
             max=self.get_numeric_set().get_max_value(),
             unit=self.get_is_unit(),
@@ -3382,6 +3336,21 @@ class TestNumbers:
         assert numeric_set.get_max_value() == 1.0
         assert app.quantity_set.get().get_is_unit().get_symbols() == ["m"]
 
+    def test_make_child_single_value(self):
+        g = graph.GraphView.create()
+        tg = TypeGraph.create(g=g)
+
+        class App(fabll.Node):
+            from faebryk.library.Units import Meter
+
+            quantity_set = Numbers.MakeChild_SingleValue(value=1.0, unit=Meter)
+
+        app = App.bind_typegraph(tg=tg).create_instance(g=g)
+        numeric_set = app.quantity_set.get().get_numeric_set()
+        assert numeric_set.get_min_value() == 1.0
+        assert numeric_set.get_max_value() == 1.0
+        assert app.quantity_set.get().get_is_unit().get_symbols() == ["m"]
+
     def test_create_instance(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
@@ -3390,11 +3359,23 @@ class TestNumbers:
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         assert quantity_set.get_numeric_set().get_min_value() == 0.0
         assert quantity_set.get_numeric_set().get_max_value() == 1.0
         assert not_none(quantity_set.get_is_unit().get_symbols() == ["m"])
+
+    def test_setup_from_singleton(self):
+        g = graph.GraphView.create()
+        tg = TypeGraph.create(g=g)
+        quantity_set = Numbers.create_instance(g=g, tg=tg)
+        from faebryk.library.Units import Meter, is_unit
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        quantity_set.setup_from_singleton(
+            value=1.0, unit=meter_instance.get_trait(is_unit)
+        )
+        assert quantity_set.get_numeric_set().get_min_value() == 1.0
 
     def test_get_min_quantity(self):
         g = graph.GraphView.create()
@@ -3404,7 +3385,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         min_quantity = quantity_set.min_elem(g=g, tg=tg)
         assert min_quantity.get_numeric_set().get_min_value() == 0.0
@@ -3418,7 +3399,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         max_quantity = quantity_set.max_elem(g=g, tg=tg)
         assert max_quantity.get_numeric_set().get_max_value() == 1.0
@@ -3432,11 +3413,11 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_add_intervals(g=g, tg=tg, other=quantity_set_2)
         assert result.get_numeric_set().get_min_value() == 0.0
@@ -3453,11 +3434,11 @@ class TestNumbers:
         kelvin = Kelvin.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_celsius = Numbers.create_instance(g=g, tg=tg)
         quantity_celsius.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=0.0, unit=celsius.get_trait(is_unit)
+            min=0.0, max=0.0, unit=celsius.get_trait(is_unit)
         )
         quantity_kelvin = Numbers.create_instance(g=g, tg=tg)
         quantity_kelvin.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=0.0, unit=kelvin.get_trait(is_unit)
+            min=0.0, max=0.0, unit=kelvin.get_trait(is_unit)
         )
         result = quantity_kelvin.op_add_intervals(g=g, tg=tg, other=quantity_celsius)
         result_numeric_set_rounded = result.get_numeric_set().op_round(
@@ -3474,11 +3455,11 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_mul_intervals(g=g, tg=tg, other=quantity_set_2)
         assert result.get_numeric_set().get_min_value() == 6.0
@@ -3495,7 +3476,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_negate(g=g, tg=tg)
         # Negation flips the interval: [2, 5] -> [-5, -2]
@@ -3513,11 +3494,11 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=1.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+            min=1.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_subtract_intervals(g=g, tg=tg, other=quantity_set_2)
         # [5, 10] - [1, 3] = [5-3, 10-1] = [2, 9]
@@ -3535,7 +3516,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_invert(g=g, tg=tg)
         # 1/[2, 4] = [1/4, 1/2] = [0.25, 0.5]
@@ -3554,11 +3535,11 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=4.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=4.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_div_intervals(g=g, tg=tg, other=quantity_set_2)
         # [4, 8] / [2, 4] = [4/4, 8/2] = [1, 4]
@@ -3578,11 +3559,11 @@ class TestNumbers:
         second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_distance = Numbers.create_instance(g=g, tg=tg)
         quantity_distance.setup_from_min_max(
-            g=g, tg=tg, min=10.0, max=20.0, unit=meter_instance.get_trait(is_unit)
+            min=10.0, max=20.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_time = Numbers.create_instance(g=g, tg=tg)
         quantity_time.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
         )
         result = quantity_distance.op_div_intervals(g=g, tg=tg, other=quantity_time)
         # [10, 20] m / [2, 5] s = [10/5, 20/2] = [2, 10] m/s
@@ -3604,11 +3585,11 @@ class TestNumbers:
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         exponent = Numbers.create_instance(g=g, tg=tg)
         exponent.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=2.0, unit=dimensionless_instance.get_trait(is_unit)
+            min=2.0, max=2.0, unit=dimensionless_instance.get_trait(is_unit)
         )
         result = quantity_set.op_pow_intervals(g=g, tg=tg, exponent=exponent)
         # [2, 3]^2 = [4, 9]
@@ -3627,7 +3608,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.345, max=5.678, unit=meter_instance.get_trait(is_unit)
+            min=2.345, max=5.678, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_round(g=g, tg=tg, ndigits=1)
         assert result.get_numeric_set().get_min_value() == 2.3
@@ -3645,7 +3626,7 @@ class TestNumbers:
         # Test with all-negative interval
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=-5.0, max=-2.0, unit=meter_instance.get_trait(is_unit)
+            min=-5.0, max=-2.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_abs(g=g, tg=tg)
         # abs([-5, -2]) = [2, 5]
@@ -3665,11 +3646,7 @@ class TestNumbers:
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g,
-            tg=tg,
-            min=1.0,
-            max=math.e,
-            unit=dimensionless_instance.get_trait(is_unit),
+            min=1.0, max=math.e, unit=dimensionless_instance.get_trait(is_unit)
         )
         result = quantity_set.op_log(g=g, tg=tg)
         # log([1, e]) = [0, 1]
@@ -3685,11 +3662,7 @@ class TestNumbers:
         radian_instance = Radian.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g,
-            tg=tg,
-            min=0.0,
-            max=math.pi / 2,
-            unit=radian_instance.get_trait(is_unit),
+            min=0.0, max=math.pi / 2, unit=radian_instance.get_trait(is_unit)
         )
         result = quantity_set.op_sin(g=g, tg=tg)
         # sin([0, pi/2] rad) = [0, 1]
@@ -3709,11 +3682,7 @@ class TestNumbers:
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g,
-            tg=tg,
-            min=0.0,
-            max=math.pi / 2,
-            unit=dimensionless_instance.get_trait(is_unit),
+            min=0.0, max=math.pi / 2, unit=dimensionless_instance.get_trait(is_unit)
         )
         with pytest.raises(
             ValueError, match="sin only defined for quantities in radians"
@@ -3729,11 +3698,7 @@ class TestNumbers:
         radian_instance = Radian.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g,
-            tg=tg,
-            min=0.0,
-            max=0.0,
-            unit=radian_instance.get_trait(is_unit),
+            min=0.0, max=0.0, unit=radian_instance.get_trait(is_unit)
         )
         result = quantity_set.op_cos(g=g, tg=tg)
         # cos(0 rad) = 1
@@ -3751,7 +3716,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=7.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=7.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_total_span(g=g, tg=tg)
         # span of [2, 7] = 5
@@ -3770,12 +3735,12 @@ class TestNumbers:
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_symmetric_difference_intervals(
             g=g, tg=tg, other=quantity_set_2
@@ -3797,12 +3762,12 @@ class TestNumbers:
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_deviation_to(g=g, tg=tg, other=quantity_set_2)
         # Deviation is the total span of symmetric difference = 6
@@ -3821,12 +3786,12 @@ class TestNumbers:
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_deviation_to(
             g=g, tg=tg, other=quantity_set_2, relative=True
@@ -3847,12 +3812,12 @@ class TestNumbers:
         # Set: [0, 3]
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         # Target: 5.0 (single value)
         target = Numbers.create_instance(g=g, tg=tg)
         target.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.closest_elem(g=g, tg=tg, target=target)
         # Closest to 5 in [0, 3] is 3
@@ -3868,12 +3833,12 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         # Target is a range, not a single value
         target = Numbers.create_instance(g=g, tg=tg)
         target.setup_from_min_max(
-            g=g, tg=tg, min=4.0, max=6.0, unit=meter_instance.get_trait(is_unit)
+            min=4.0, max=6.0, unit=meter_instance.get_trait(is_unit)
         )
         with pytest.raises(ValueError, match="target must be a single value"):
             quantity_set.closest_elem(g=g, tg=tg, target=target)
@@ -3888,12 +3853,12 @@ class TestNumbers:
         # Set 1: [0, 10] - larger
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [2, 5] - smaller
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
 
         assert quantity_set_1.is_superset_of(g=g, tg=tg, other=quantity_set_2) is True
@@ -3909,12 +3874,12 @@ class TestNumbers:
         # Set 1: [0, 10] - larger
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [2, 5] - smaller
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
 
         assert quantity_set_2.is_subset_of(g=g, tg=tg, other=quantity_set_1) is True
@@ -3930,12 +3895,12 @@ class TestNumbers:
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_intersect_intervals(g=g, tg=tg, other=quantity_set_2)
         # Intersection of [0, 5] and [3, 8] is [3, 5]
@@ -3952,12 +3917,12 @@ class TestNumbers:
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_union_intervals(g=g, tg=tg, other=quantity_set_2)
         # Union of [0, 5] and [3, 8] is [0, 8]
@@ -3974,12 +3939,12 @@ class TestNumbers:
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_difference_intervals(
             g=g, tg=tg, other=quantity_set_2
@@ -3998,13 +3963,13 @@ class TestNumbers:
         # Single element
         single = Numbers.create_instance(g=g, tg=tg)
         single.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         assert single.is_single_element() is True
         # Range
         range_set = Numbers.create_instance(g=g, tg=tg)
         range_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         assert range_set.is_single_element() is False
 
@@ -4017,7 +3982,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         finite = Numbers.create_instance(g=g, tg=tg)
         finite.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         assert finite.is_finite() is True
         assert finite.is_unbounded() is False
@@ -4031,7 +3996,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         assert quantity_set.contains_value(3.0)
         assert not quantity_set.contains_value(10.0)
@@ -4045,7 +4010,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=7.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=7.0, unit=meter_instance.get_trait(is_unit)
         )
         # any() returns the minimum as a single-value Numbers
         result = quantity_set.any(g=g, tg=tg)
@@ -4064,7 +4029,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.as_gapless(g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 2.0
@@ -4079,7 +4044,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.convert_to_dimensionless(g=g, tg=tg)
         # Numeric values should be preserved
@@ -4098,17 +4063,15 @@ class TestNumbers:
         # Set 1: [0, 10]
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs2.setup_from_min_max(min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit))
         # Set 3: [5, 12]
         qs3 = Numbers.create_instance(g=g, tg=tg)
         qs3.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
         )
         # Intersection: [5, 8]
         result = Numbers.intersect_all(g, tg, qs1, qs2, qs3)
@@ -4125,27 +4088,21 @@ class TestNumbers:
         # Value 5 = 0b101 (bits 0 and 2 are set)
         value = Numbers.create_instance(g=g, tg=tg)
         value.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=5.0, unit=dimensionless.get_trait(is_unit)
+            min=5.0, max=5.0, unit=dimensionless.get_trait(is_unit)
         )
         # Check bit 0
         bit0 = Numbers.create_instance(g=g, tg=tg)
-        bit0.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=0.0, unit=dimensionless.get_trait(is_unit)
-        )
+        bit0.setup_from_min_max(min=0.0, max=0.0, unit=dimensionless.get_trait(is_unit))
         result0 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit0)
         assert True in result0.get_boolean_values()  # bit 0 is set
         # Check bit 1
         bit1 = Numbers.create_instance(g=g, tg=tg)
-        bit1.setup_from_min_max(
-            g=g, tg=tg, min=1.0, max=1.0, unit=dimensionless.get_trait(is_unit)
-        )
+        bit1.setup_from_min_max(min=1.0, max=1.0, unit=dimensionless.get_trait(is_unit))
         result1 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit1)
         assert False in result1.get_boolean_values()  # bit 1 is not set
         # Check bit 2
         bit2 = Numbers.create_instance(g=g, tg=tg)
-        bit2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=2.0, unit=dimensionless.get_trait(is_unit)
-        )
+        bit2.setup_from_min_max(min=2.0, max=2.0, unit=dimensionless.get_trait(is_unit))
         result2 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit2)
         assert True in result2.get_boolean_values()  # bit 2 is set
 
@@ -4158,7 +4115,7 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         repr_str = repr(quantity_set)
         assert "Numbers" in repr_str
@@ -4171,13 +4128,9 @@ class TestNumbers:
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs2.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit))
         assert qs1.equals(g=g, tg=tg, other=qs2)
 
     def test_eq_different_values(self):
@@ -4188,13 +4141,9 @@ class TestNumbers:
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=6.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs2.setup_from_min_max(min=3.0, max=6.0, unit=meter_instance.get_trait(is_unit))
         assert not qs1.equals(g=g, tg=tg, other=qs2)
 
     def test_eq_incompatible_units(self):
@@ -4206,12 +4155,10 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
+            min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
         )
         pytest.raises(ValueError, qs1.equals, g=g, tg=tg, other=qs2)
 
@@ -4227,7 +4174,7 @@ class TestNumbers:
 
         qs = Numbers.create_instance(g=g, tg=tg)
         qs.setup_from_min_max(
-            g=g, tg=tg, min=8000.0, max=12000.0, unit=ohm_instance.get_trait(is_unit)
+            min=8000.0, max=12000.0, unit=ohm_instance.get_trait(is_unit)
         )
         serialized = qs.serialize()
 
@@ -4259,12 +4206,10 @@ class TestNumbers:
         # [5, 10] >= [0, 3] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs2.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit))
         result = qs1.op_greater_or_equal(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
 
@@ -4277,12 +4222,10 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 3] >= [5, 10] is definitely False
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         result = qs1.op_greater_or_equal(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [False]
@@ -4296,12 +4239,10 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 5] >= [3, 10] is uncertain
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=3.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         result = qs1.op_greater_or_equal(g=g, tg=tg, other=qs2)
         assert set(result.get_boolean_values()) == {True, False}
@@ -4316,12 +4257,10 @@ class TestNumbers:
         # [5, 10] > [0, 3] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
         qs1.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs2.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit))
         result = qs1.op_greater_than(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
 
@@ -4334,12 +4273,10 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 3] <= [5, 10] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         result = qs1.op_le(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
@@ -4353,12 +4290,10 @@ class TestNumbers:
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 3] < [5, 10] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
-        )
+        qs1.setup_from_min_max(min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit))
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+            min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         result = qs1.op_lt(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
@@ -4480,9 +4415,9 @@ class Counts(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: TypeGraph) -> "Counts":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def setup_from_values(
-        self, g: graph.GraphView, tg: TypeGraph, values: list[int]
-    ) -> "Counts":
+    def setup_from_values(self, values: list[int]) -> "Counts":
+        g = self.g
+        tg = self.tg
         for value in values:
             self.counts.get().append(_Count.create_instance(g=g, tg=tg, value=value))
         return self
@@ -4552,14 +4487,14 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[5, 10, 15])
+        counts.setup_from_values(values=[5, 10, 15])
         assert counts.get_values() == [5, 10, 15]
 
     def test_get_counts(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1, 2])
+        counts.setup_from_values(values=[1, 2])
         count_list = counts.get_counts()
         assert len(count_list) == 2
         assert all(isinstance(c, _Count) for c in count_list)
@@ -4574,35 +4509,35 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1])
+        counts.setup_from_values(values=[1])
         assert counts.is_empty() is False
 
     def test_is_single_element_true(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[42])
+        counts.setup_from_values(values=[42])
         assert counts.is_single_element() is True
 
     def test_is_single_element_false(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1, 2])
+        counts.setup_from_values(values=[1, 2])
         assert counts.is_single_element() is False
 
     def test_get_single(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[42])
+        counts.setup_from_values(values=[42])
         assert counts.get_single() == 42
 
     def test_get_single_raises_for_multiple(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1, 2])
+        counts.setup_from_values(values=[1, 2])
         with pytest.raises(ValueError, match="Expected single value"):
             counts.get_single()
 
@@ -4617,7 +4552,7 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[5, 2, 8, 1])
+        counts.setup_from_values(values=[5, 2, 8, 1])
         assert counts.get_min() == 1
 
     def test_get_min_raises_for_empty(self):
@@ -4631,7 +4566,7 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[5, 2, 8, 1])
+        counts.setup_from_values(values=[5, 2, 8, 1])
         assert counts.get_max() == 8
 
     def test_get_max_raises_for_empty(self):
@@ -4645,7 +4580,7 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1, 5, 10])
+        counts.setup_from_values(values=[1, 5, 10])
         assert counts.contains(5)
         assert counts.contains(1)
         assert counts.contains(10)
@@ -4654,7 +4589,7 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1, 5, 10])
+        counts.setup_from_values(values=[1, 5, 10])
         assert not counts.contains(2)
         assert not counts.contains(0)
         assert not counts.contains(100)
@@ -4663,7 +4598,7 @@ class TestCounts:
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        counts.setup_from_values(g=g, tg=tg, values=[1, 2, 3])
+        counts.setup_from_values(values=[1, 2, 3])
         assert repr(counts) == "Counts([1, 2, 3])"
 
     def test_repr_empty(self):
@@ -5048,9 +4983,7 @@ class BoundLiteralContext:
             unit: Unit node. If None, no has_unit trait is added.
         """
 
-        return self.create_numbers().setup_from_singleton(
-            g=self.g, tg=self.tg, value=value, unit=unit
-        )
+        return self.create_numbers().setup_from_singleton(value=value, unit=unit)
 
     def create_numbers_from_interval(
         self,
@@ -5067,9 +5000,7 @@ class BoundLiteralContext:
             unit: Unit node. If None, no has_unit trait is added.
         """
 
-        return self.create_numbers().setup_from_min_max(
-            g=self.g, tg=self.tg, min=min, max=max, unit=unit
-        )
+        return self.create_numbers().setup_from_min_max(min=min, max=max, unit=unit)
 
     # TODO add other literal constructors
 
@@ -5083,7 +5014,7 @@ def test_bound_context():
     ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
 
     my_number = ctx.Numbers.setup_from_singleton(
-        g=g, tg=tg, value=1.0, unit=ohm_instance.get_trait(is_unit)
+        value=1.0, unit=ohm_instance.get_trait(is_unit)
     )
     my_bool = ctx.create_booleans(booleans=[True, False])
 
