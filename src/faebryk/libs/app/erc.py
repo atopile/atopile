@@ -85,23 +85,6 @@ def simple_erc(tg: fbrk.TypeGraph):
             logger.info("Checking for hv/lv shorts")
             for ep in electricpower:
                 if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
-
-                    def _keep_head(x: fabll.Node) -> bool:
-                        if parent := x.get_parent():
-                            parent_node, _ = parent
-                            if isinstance(parent_node, F.ElectricPower):
-                                return parent_node.hv is not x
-
-                        return True
-
-                    def _keep_tail(x: fabll.Node) -> bool:
-                        if parent := x.get_parent():
-                            parent_node, _ = parent
-                            if isinstance(parent_node, F.ElectricPower):
-                                return parent_node.lv is not x
-
-                        return True
-
                     raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
