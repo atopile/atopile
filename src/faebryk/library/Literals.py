@@ -216,10 +216,6 @@ class Strings(fabll.Node):
         return values[0]
 
 
-def is_int(value: float) -> bool:
-    return value == int(value)
-
-
 @dataclass(frozen=True)
 class NumericAttributes(fabll.NodeAttributes):
     value: float
@@ -388,7 +384,9 @@ class NumericInterval(fabll.Node):
         return self.get_min_value() == self.get_max_value()
 
     def is_integer(self) -> bool:
-        return self.is_single_element() and is_int(self.get_min().get_value())
+        min_value = self.get_min_value()
+
+        return self.is_single_element() and min_value == int(min_value)
 
     def as_center_rel(self) -> tuple[float, float]:
         if self.get_min_value() == self.get_max_value():
