@@ -403,13 +403,13 @@ class is_unit(fabll.Node):
 
     def get_owner_node(self) -> fabll.Node:
         """
-        Get the owner node that has this IsUnit trait.
+        Get the owner node that has this is_unit trait.
         Useful when creating new QuantitySets from unit operations.
         """
         import faebryk.core.faebrykpy as fbrk
 
         owner = fbrk.EdgeTrait.get_owner_node_of(bound_node=self.instance)
-        assert owner is not None, "IsUnit trait must have an owner node"
+        assert owner is not None, "is_unit trait must have an owner node"
         return fabll.Node.bind_instance(instance=owner)
 
     def get_symbols(self) -> list[str]:
