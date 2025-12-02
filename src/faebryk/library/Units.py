@@ -549,7 +549,7 @@ class is_unit(fabll.Node):
             g=g,
             tg=tg,
             vector=self._extract_basis_vector(),
-            multiplier=multiplier,
+            multiplier=multiplier * self._extract_multiplier(),
             offset=self._extract_offset(),
         )
 
