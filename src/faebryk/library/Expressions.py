@@ -2507,11 +2507,11 @@ def test_compact_repr():
     assert or_repr == "A ∨! B"
 
 
-# def test_congruence():
-#     g = graph.GraphView.create()
-#     tg = fbrk.TypeGraph.create(g=g)
+def test_congruence():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
 
-#     p1 = ctx().create_booleans(booleans=[True, False])
+    p1 = Parameters.BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
 
 if __name__ == "__main__":
