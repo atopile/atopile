@@ -1089,6 +1089,7 @@ class Mutator:
             return p
 
         param_obj = fabll.Traits(param).get_obj_raw()
+
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
             if units is None and (old_g_is_unit := p.get_units()):
                 old_g_unit_node = fabll.Node.bind_instance(
@@ -1116,6 +1117,8 @@ class Mutator:
                     else param.get_likely_constrained(),
                 )
             )
+        # else:
+        #    new_param = param_obj.copy_into(self.G_out)
         elif p := param_obj.try_cast(F.Parameters.BooleanParameter):
             new_param = (
                 F.Parameters.BooleanParameter.bind_typegraph(self.tg_out)
@@ -1436,9 +1439,8 @@ class Mutator:
         # TODO: not sure if ok
         # if obj is new, no need to copy
         # TODO add guard to _mutate to not let new stuff be mutated
-        if (
-            obj_po in self.transformations.created
-            or obj_po in self.transformations.mutated.values()
+        if obj_po in self.transformations.created or obj_po in set(
+            self.transformations.mutated.values()
         ):
             return obj_po
 
