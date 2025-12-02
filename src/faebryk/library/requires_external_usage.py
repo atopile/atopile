@@ -16,9 +16,7 @@ class requires_external_usage(fabll.Node):
         obj = fabll.Traits(self).get_obj_raw()
         iface = obj.get_trait(fabll.is_interface)
         connected_to = {
-            node
-            for node, path in iface.get_connected().items()
-            if path.length == 1
+            node for node, path in iface.get_connected().items() if path.length == 1
         }
         parent = obj.get_parent()
         # no shared parent possible
@@ -81,7 +79,7 @@ class Test:
             a = F.Electrical.MakeChild()
             inner = Inner.MakeChild()
             _requires_external_usage = fabll.Traits.MakeEdge(
-                F.requires_external_usage.MakeChild(),
+                requires_external_usage.MakeChild(),
                 owner=[a],
             )
 
