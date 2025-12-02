@@ -797,9 +797,6 @@ class NumericInterval(fabll.Node):
             and self.get_max_value() == other.get_max_value()
         )
 
-    def __hash__(self) -> int:
-        return hash((self.get_min_value(), self.get_max_value()))
-
     def __repr__(self) -> str:
         return f"_interval({self.get_min_value()}, {self.get_max_value()})"
 
@@ -1800,9 +1797,6 @@ class NumericSet(fabll.Node):
             if not r1.equals(r2):
                 return False
         return True
-
-    def __hash__(self) -> int:
-        return hash(tuple(hash(r) for r in self.get_intervals()))
 
     def __repr__(self) -> str:
         return f"_N_intervals({
@@ -3320,24 +3314,6 @@ class Numbers(fabll.Node):
         other_converted = self.convert_to_other_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().contains(other_converted.get_value())
 
-    def __hash__(self) -> int:
-        """Hash based on numeric intervals and unit basis vector."""
-        # Use NumericSet's __hash__ combined with unit basis vector tuple
-        bv = self.get_is_unit()._extract_basis_vector()
-        bv_tuple = (
-            bv.ampere,
-            bv.second,
-            bv.meter,
-            bv.kilogram,
-            bv.kelvin,
-            bv.mole,
-            bv.candela,
-            bv.radian,
-            bv.steradian,
-            bv.bit,
-        )
-        return hash((hash(self.get_numeric_set()), bv_tuple))
-
     def serialize(self) -> dict:
         """
         Serialize this quantity set to the API format.
@@ -4236,24 +4212,6 @@ class TestNumbers:
             g=g, tg=tg, min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
         )
         pytest.raises(ValueError, qs1.equals, g=g, tg=tg, other=qs2)
-
-    def test_hash(self):
-        """Test that hash works and equal sets have same hash."""
-        g = graph.GraphView.create()
-        tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, is_unit
-
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
-        qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
-        )
-        # Equal sets should have same hash
-        assert hash(qs1) == hash(qs2)
 
     def test_serialize_api_format(self):
         """Test serialization to API format (Quantity_Interval_Disjoint)."""
