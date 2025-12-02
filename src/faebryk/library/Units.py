@@ -254,6 +254,48 @@ class TestBasisVector:
         )
 
 
+def test_is_unit_serialize():
+    """Test that is_unit.serialize() returns the expected API format."""
+    import faebryk.core.faebrykpy as fbrk
+
+    # Setup graph and typegraph
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Create an Ohm unit instance and get its is_unit trait
+    ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
+    ohm_is_unit = ohm_instance.get_trait(is_unit)
+
+    # Serialize the unit
+    serialized = ohm_is_unit.serialize()
+
+    # Check structure
+    assert "symbols" in serialized
+    assert "basis_vector" in serialized
+    assert "multiplier" in serialized
+    assert "offset" in serialized
+
+    # Check symbols (Ohm has symbols ["Ω", "Ohm"])
+    assert serialized["symbols"] == ["Ω", "Ohm"]
+
+    # Check basis vector for Ohm: kg^1 * m^2 * s^-3 * A^-2
+    bv = serialized["basis_vector"]
+    assert bv["kilogram"] == 1
+    assert bv["meter"] == 2
+    assert bv["second"] == -3
+    assert bv["ampere"] == -2
+    assert bv["kelvin"] == 0
+    assert bv["mole"] == 0
+    assert bv["candela"] == 0
+    assert bv["radian"] == 0
+    assert bv["steradian"] == 0
+    assert bv["bit"] == 0
+
+    # Check multiplier and offset (base Ohm has multiplier 1.0, offset 0.0)
+    assert serialized["multiplier"] == 1.0
+    assert serialized["offset"] == 0.0
+
+
 class is_base_unit(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 

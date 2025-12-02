@@ -2568,22 +2568,18 @@ class Numbers(fabll.Node):
 
     def min_elem(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         """Return the minimum element as a single-value Numbers."""
-        from faebryk.library.Units import has_unit
 
         min_value = self.get_min_value()
-        unit = self.get_trait(has_unit).unit.get().deref()
         return Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
-            g=g, tg=tg, min=min_value, max=min_value, unit=unit
+            g=g, tg=tg, min=min_value, max=min_value, unit=self.get_is_unit()
         )
 
     def max_elem(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
         """Return the maximum element as a single-value Numbers."""
-        from faebryk.library.Units import has_unit
 
         max_value = self.get_max_value()
-        unit = self.get_trait(has_unit).unit.get().deref()
         return Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
-            g=g, tg=tg, min=max_value, max=max_value, unit=unit
+            g=g, tg=tg, min=max_value, max=max_value, unit=self.get_is_unit()
         )
 
     def closest_elem(
@@ -2603,7 +2599,7 @@ class Numbers(fabll.Node):
         closest = self.get_numeric_set().closest_elem(target_value)
         result = Numbers.create_instance(g=g, tg=tg)
         return result.setup_from_min_max(
-            g=g, tg=tg, min=closest, max=closest, unit=self.get_unit_node()
+            g=g, tg=tg, min=closest, max=closest, unit=self.get_is_unit()
         )
 
     def has_compatible_units_with(self, other: "Numbers") -> bool:
@@ -2656,7 +2652,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_union_intervals(
@@ -2677,7 +2673,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_difference_intervals(
@@ -2699,7 +2695,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def convert_to_other_unit(
@@ -2735,7 +2731,7 @@ class Numbers(fabll.Node):
 
         # Return the new quantity set
         return Numbers.create_instance(g=g, tg=tg).setup(
-            g=g, tg=tg, numeric_set=out_numeric_set, unit=self.get_unit_node()
+            g=g, tg=tg, numeric_set=out_numeric_set, unit=self.get_is_unit()
         )
 
     def convert_to_dimensionless(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2744,7 +2740,7 @@ class Numbers(fabll.Node):
         Returns a new Numbers with the converted values in dimensionless units.
         Offset and scale are applied to the returned NumericSet.
         """
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, is_unit
 
         scale = self.get_is_unit()._extract_multiplier()
         offset = self.get_is_unit()._extract_offset()
@@ -2768,10 +2764,11 @@ class Numbers(fabll.Node):
         out_numeric_set = out_numeric_set.op_add(g=g, tg=tg, other=offset_numeric_set)
 
         dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
+        dimensionless_is_unit = dimensionless_unit.get_trait(is_unit)
 
         # Return the new quantity set
         return Numbers.create_instance(g=g, tg=tg).setup(
-            g=g, tg=tg, numeric_set=out_numeric_set, unit=dimensionless_unit
+            g=g, tg=tg, numeric_set=out_numeric_set, unit=dimensionless_is_unit
         )
 
     def op_add_intervals(
@@ -2787,7 +2784,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_mul_intervals(
@@ -2801,10 +2798,8 @@ class Numbers(fabll.Node):
         out_numeric_set = self.get_numeric_set().op_multiply(
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
-        result_unit = (
-            self.get_is_unit()
-            .op_multiply(g=g, tg=tg, other=other_converted.get_is_unit())
-            .get_owner_node()
+        result_unit = self.get_is_unit().op_multiply(
+            g=g, tg=tg, other=other_converted.get_is_unit()
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -2825,7 +2820,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_subtract_intervals(
@@ -2846,7 +2841,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_invert(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2861,7 +2856,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=inverted_unit.get_owner_node(),
+            unit=inverted_unit,
         )
 
     def op_div_intervals(
@@ -2883,7 +2878,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=divided_unit.get_owner_node(),
+            unit=divided_unit,
         )
 
     def op_pow_intervals(
@@ -2906,9 +2901,7 @@ class Numbers(fabll.Node):
 
         # Get the exponent value for unit calculation (use min value)
         exp_value = int(exp_numeric.get_min_value())
-        result_unit = (
-            self.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value).get_owner_node()
-        )
+        result_unit = self.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
 
         out_numeric_set = self.get_numeric_set().op_pow(g=g, tg=tg, other=exp_numeric)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
@@ -2932,7 +2925,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_abs(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2946,7 +2939,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_log(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2960,7 +2953,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_sqrt(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2969,11 +2962,13 @@ class Numbers(fabll.Node):
         Equivalent to raising to the power of 0.5.
         """
         # Create a dimensionless quantity set with value 0.5
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, is_unit
 
         dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         half = Numbers.create_instance(g=g, tg=tg)
-        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=dimensionless_unit)
+        half.setup_from_min_max(
+            g=g, tg=tg, min=0.5, max=0.5, unit=dimensionless_unit.get_trait(is_unit)
+        )
         return self.op_pow_intervals(g=g, tg=tg, exponent=half)
 
     def op_sin(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -2986,7 +2981,7 @@ class Numbers(fabll.Node):
             raise ValueError("sin only defined for quantities in radians")
         out_numeric_set = self.get_numeric_set().op_sin(g=g, tg=tg)
         # Result is dimensionless
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, is_unit
 
         dimensionless_unit = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
@@ -2994,7 +2989,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=dimensionless_unit,
+            unit=dimensionless_unit.get_trait(is_unit),
         )
 
     def op_cos(self, g: graph.GraphView, tg: TypeGraph) -> "Numbers":
@@ -3009,7 +3004,7 @@ class Numbers(fabll.Node):
         # Create pi/2 offset in radians
         pi_half = Numbers.create_instance(g=g, tg=tg)
         pi_half.setup_from_min_max(
-            g=g, tg=tg, min=math.pi / 2, max=math.pi / 2, unit=self.get_unit_node()
+            g=g, tg=tg, min=math.pi / 2, max=math.pi / 2, unit=self.get_is_unit()
         )
         shifted = self.op_add_intervals(g=g, tg=tg, other=pi_half)
         return shifted.op_sin(g=g, tg=tg)
@@ -3020,7 +3015,7 @@ class Numbers(fabll.Node):
         Computed as round(x - 0.5).
         """
         half = Numbers.create_instance(g=g, tg=tg)
-        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=self.get_unit_node())
+        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=self.get_is_unit())
         shifted = self.op_subtract_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
@@ -3030,7 +3025,7 @@ class Numbers(fabll.Node):
         Computed as round(x + 0.5).
         """
         half = Numbers.create_instance(g=g, tg=tg)
-        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=self.get_unit_node())
+        half.setup_from_min_max(g=g, tg=tg, min=0.5, max=0.5, unit=self.get_is_unit())
         shifted = self.op_add_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
@@ -3047,7 +3042,7 @@ class Numbers(fabll.Node):
         )
         result = Numbers.create_instance(g=g, tg=tg)
         return result.setup_from_min_max(
-            g=g, tg=tg, min=total, max=total, unit=self.get_unit_node()
+            g=g, tg=tg, min=total, max=total, unit=self.get_is_unit()
         )
 
     def op_symmetric_difference_intervals(
@@ -3069,7 +3064,7 @@ class Numbers(fabll.Node):
             g=g,
             tg=tg,
             numeric_set=out_numeric_set,
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     def op_deviation_to(
@@ -3114,14 +3109,15 @@ class Numbers(fabll.Node):
                     tg=tg
                 ).create_instance(g=g)
                 result = Numbers.create_instance(g=g, tg=tg)
+                dimensionless_is_unit = dimensionless_unit.get_trait(is_unit)
                 return result.setup_from_min_max(
-                    g=g, tg=tg, min=0.0, max=0.0, unit=dimensionless_unit
+                    g=g, tg=tg, min=0.0, max=0.0, unit=dimensionless_is_unit
                 )
 
             # Create divisor quantity set
             divisor = Numbers.create_instance(g=g, tg=tg)
             divisor.setup_from_min_max(
-                g=g, tg=tg, min=max_val, max=max_val, unit=self.get_unit_node()
+                g=g, tg=tg, min=max_val, max=max_val, unit=self.get_is_unit()
             )
             return deviation.op_div_intervals(g=g, tg=tg, other=divisor)
 
@@ -3177,7 +3173,7 @@ class Numbers(fabll.Node):
             tg=tg,
             min=self.get_numeric_set().get_min_value(),
             max=self.get_numeric_set().get_max_value(),
-            unit=self.get_unit_node(),
+            unit=self.get_is_unit(),
         )
 
     @staticmethod
@@ -3292,7 +3288,7 @@ class Numbers(fabll.Node):
     def __repr__(self) -> str:
         try:
             numeric_set = self.get_numeric_set()
-            unit_symbol = self.get_is_unit()._extract_symbols()[0]
+            unit_symbol = self.get_is_unit().get_symbols()[0]
             return f"Numbers({numeric_set}, unit={unit_symbol})"
         except Exception:
             return "Numbers(<uninitialized>)"
@@ -3396,101 +3392,105 @@ class TestNumbers:
         numeric_set = app.quantity_set.get().get_numeric_set()
         assert numeric_set.get_min_value() == 0.0
         assert numeric_set.get_max_value() == 1.0
-        assert app.quantity_set.get().get_is_unit()._extract_symbol() == ["m"]
+        assert app.quantity_set.get().get_is_unit().get_symbols() == ["m"]
 
     def test_create_instance(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         assert quantity_set.get_numeric_set().get_min_value() == 0.0
         assert quantity_set.get_numeric_set().get_max_value() == 1.0
-        assert not_none(quantity_set.get_is_unit()._extract_symbols() == ["m"])
+        assert not_none(quantity_set.get_is_unit().get_symbols() == ["m"])
 
     def test_get_min_quantity(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         min_quantity = quantity_set.min_elem(g=g, tg=tg)
         assert min_quantity.get_numeric_set().get_min_value() == 0.0
-        assert min_quantity.get_is_unit()._extract_symbols() == ["m"]
+        assert min_quantity.get_is_unit().get_symbols() == ["m"]
 
     def test_get_max_quantity(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         max_quantity = quantity_set.max_elem(g=g, tg=tg)
         assert max_quantity.get_numeric_set().get_max_value() == 1.0
-        assert max_quantity.get_is_unit()._extract_symbols() == ["m"]
+        assert max_quantity.get_is_unit().get_symbols() == ["m"]
 
     def test_op_add_same_unit(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=1.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_add_intervals(g=g, tg=tg, other=quantity_set_2)
         assert result.get_numeric_set().get_min_value() == 0.0
         assert result.get_numeric_set().get_max_value() == 2.0
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_add_different_unit(self):
         # returns result in the self unit
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import DegreeCelsius, Kelvin
+        from faebryk.library.Units import DegreeCelsius, Kelvin, is_unit
 
         celsius = DegreeCelsius.bind_typegraph(tg=tg).create_instance(g=g)
         kelvin = Kelvin.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_celsius = Numbers.create_instance(g=g, tg=tg)
-        quantity_celsius.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=celsius)
+        quantity_celsius.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=0.0, unit=celsius.get_trait(is_unit)
+        )
         quantity_kelvin = Numbers.create_instance(g=g, tg=tg)
-        quantity_kelvin.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=kelvin)
+        quantity_kelvin.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=0.0, unit=kelvin.get_trait(is_unit)
+        )
         result = quantity_kelvin.op_add_intervals(g=g, tg=tg, other=quantity_celsius)
         result_numeric_set_rounded = result.get_numeric_set().op_round(
             g=g, tg=tg, ndigits=2
         )
         assert result_numeric_set_rounded.get_min_value() == 273.15
-        assert result.get_is_unit()._extract_symbols() == ["K"]
+        assert result.get_is_unit().get_symbols() == ["K"]
 
     def test_op_multiply_same_unit(self):
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Meter
+        from faebryk.library.Units import BasisVector, Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_mul_intervals(g=g, tg=tg, other=quantity_set_2)
         assert result.get_numeric_set().get_min_value() == 6.0
@@ -3502,52 +3502,52 @@ class TestNumbers:
         """Test negation of a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_negate(g=g, tg=tg)
         # Negation flips the interval: [2, 5] -> [-5, -2]
         assert result.get_numeric_set().get_min_value() == -5.0
         assert result.get_numeric_set().get_max_value() == -2.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_subtract_same_unit(self):
         """Test subtraction of quantity sets with the same unit."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance
+            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=1.0, max=3.0, unit=meter_instance
+            g=g, tg=tg, min=1.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_subtract_intervals(g=g, tg=tg, other=quantity_set_2)
         # [5, 10] - [1, 3] = [5-3, 10-1] = [2, 9]
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 9.0
         # Unit should remain the same as self
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_invert(self):
         """Test inversion (1/x) of a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Meter
+        from faebryk.library.Units import BasisVector, Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_invert(g=g, tg=tg)
         # 1/[2, 4] = [1/4, 1/2] = [0.25, 0.5]
@@ -3561,16 +3561,16 @@ class TestNumbers:
         """Test division of quantity sets with the same unit."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Meter
+        from faebryk.library.Units import BasisVector, Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=4.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=4.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=4.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_div_intervals(g=g, tg=tg, other=quantity_set_2)
         # [4, 8] / [2, 4] = [4/4, 8/2] = [1, 4]
@@ -3584,17 +3584,17 @@ class TestNumbers:
         """Test division of quantity sets with different units."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Meter, Second
+        from faebryk.library.Units import BasisVector, Meter, Second, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_distance = Numbers.create_instance(g=g, tg=tg)
         quantity_distance.setup_from_min_max(
-            g=g, tg=tg, min=10.0, max=20.0, unit=meter_instance
+            g=g, tg=tg, min=10.0, max=20.0, unit=meter_instance.get_trait(is_unit)
         )
         quantity_time = Numbers.create_instance(g=g, tg=tg)
         quantity_time.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=second_instance
+            g=g, tg=tg, min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
         )
         result = quantity_distance.op_div_intervals(g=g, tg=tg, other=quantity_time)
         # [10, 20] m / [2, 5] s = [10/5, 20/2] = [2, 10] m/s
@@ -3608,7 +3608,7 @@ class TestNumbers:
         """Test raising a quantity set to a power."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import BasisVector, Dimensionless, Meter
+        from faebryk.library.Units import BasisVector, Dimensionless, Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
@@ -3616,11 +3616,11 @@ class TestNumbers:
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=3.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         exponent = Numbers.create_instance(g=g, tg=tg)
         exponent.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=2.0, unit=dimensionless_instance
+            g=g, tg=tg, min=2.0, max=2.0, unit=dimensionless_instance.get_trait(is_unit)
         )
         result = quantity_set.op_pow_intervals(g=g, tg=tg, exponent=exponent)
         # [2, 3]^2 = [4, 9]
@@ -3634,50 +3634,54 @@ class TestNumbers:
         """Test rounding a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.345, max=5.678, unit=meter_instance
+            g=g, tg=tg, min=2.345, max=5.678, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_round(g=g, tg=tg, ndigits=1)
         assert result.get_numeric_set().get_min_value() == 2.3
         assert result.get_numeric_set().get_max_value() == 5.7
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_abs(self):
         """Test absolute value of a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Test with all-negative interval
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=-5.0, max=-2.0, unit=meter_instance
+            g=g, tg=tg, min=-5.0, max=-2.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_abs(g=g, tg=tg)
         # abs([-5, -2]) = [2, 5]
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_log(self):
         """Test natural log of a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, is_unit
 
         dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
             g=g
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=1.0, max=math.e, unit=dimensionless_instance
+            g=g,
+            tg=tg,
+            min=1.0,
+            max=math.e,
+            unit=dimensionless_instance.get_trait(is_unit),
         )
         result = quantity_set.op_log(g=g, tg=tg)
         # log([1, e]) = [0, 1]
@@ -3688,12 +3692,16 @@ class TestNumbers:
         """Test sine of a quantity set in radians."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Radian
+        from faebryk.library.Units import Radian, is_unit
 
         radian_instance = Radian.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=math.pi / 2, unit=radian_instance
+            g=g,
+            tg=tg,
+            min=0.0,
+            max=math.pi / 2,
+            unit=radian_instance.get_trait(is_unit),
         )
         result = quantity_set.op_sin(g=g, tg=tg)
         # sin([0, pi/2] rad) = [0, 1]
@@ -3706,14 +3714,18 @@ class TestNumbers:
         """Test that sine rejects dimensionless input (must use radians)."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, is_unit
 
         dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
             g=g
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=math.pi / 2, unit=dimensionless_instance
+            g=g,
+            tg=tg,
+            min=0.0,
+            max=math.pi / 2,
+            unit=dimensionless_instance.get_trait(is_unit),
         )
         with pytest.raises(
             ValueError, match="sin only defined for quantities in radians"
@@ -3724,12 +3736,16 @@ class TestNumbers:
         """Test cosine of a quantity set in radians."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Radian
+        from faebryk.library.Units import Radian, is_unit
 
         radian_instance = Radian.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=0.0, unit=radian_instance
+            g=g,
+            tg=tg,
+            min=0.0,
+            max=0.0,
+            unit=radian_instance.get_trait(is_unit),
         )
         result = quantity_set.op_cos(g=g, tg=tg)
         # cos(0 rad) = 1
@@ -3742,36 +3758,36 @@ class TestNumbers:
         """Test total span calculation of a quantity set."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=7.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=7.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.op_total_span(g=g, tg=tg)
         # span of [2, 7] = 5
         assert result.get_numeric_set().get_min_value() == 5.0
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_symmetric_difference(self):
         """Test symmetric difference of two quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_symmetric_difference_intervals(
             g=g, tg=tg, other=quantity_set_2
@@ -3787,42 +3803,42 @@ class TestNumbers:
         """Test deviation calculation between two quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_deviation_to(g=g, tg=tg, other=quantity_set_2)
         # Deviation is the total span of symmetric difference = 6
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 6.0
         # Unit should remain the same
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_op_deviation_to_relative(self):
         """Test relative deviation calculation between two quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_deviation_to(
             g=g, tg=tg, other=quantity_set_2, relative=True
@@ -3837,17 +3853,19 @@ class TestNumbers:
         """Test finding the closest element to a target."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set: [0, 3]
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         # Target: 5.0 (single value)
         target = Numbers.create_instance(g=g, tg=tg)
-        target.setup_from_min_max(g=g, tg=tg, min=5.0, max=5.0, unit=meter_instance)
+        target.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = quantity_set.closest_elem(g=g, tg=tg, target=target)
         # Closest to 5 in [0, 3] is 3
         assert result.get_numeric_set().get_min_value() == 3.0
@@ -3857,16 +3875,18 @@ class TestNumbers:
         """Test that closest_elem rejects range targets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
         )
         # Target is a range, not a single value
         target = Numbers.create_instance(g=g, tg=tg)
-        target.setup_from_min_max(g=g, tg=tg, min=4.0, max=6.0, unit=meter_instance)
+        target.setup_from_min_max(
+            g=g, tg=tg, min=4.0, max=6.0, unit=meter_instance.get_trait(is_unit)
+        )
         with pytest.raises(ValueError, match="target must be a single value"):
             quantity_set.closest_elem(g=g, tg=tg, target=target)
 
@@ -3874,18 +3894,18 @@ class TestNumbers:
         """Test superset check."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 10] - larger
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [2, 5] - smaller
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
 
         assert quantity_set_1.is_superset_of(g=g, tg=tg, other=quantity_set_2) is True
@@ -3895,18 +3915,18 @@ class TestNumbers:
         """Test subset check."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 10] - larger
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [2, 5] - smaller
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
 
         assert quantity_set_2.is_subset_of(g=g, tg=tg, other=quantity_set_1) is True
@@ -3916,18 +3936,18 @@ class TestNumbers:
         """Test intersection of two quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_intersect_intervals(g=g, tg=tg, other=quantity_set_2)
         # Intersection of [0, 5] and [3, 8] is [3, 5]
@@ -3938,18 +3958,18 @@ class TestNumbers:
         """Test union of two quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_union_intervals(g=g, tg=tg, other=quantity_set_2)
         # Union of [0, 5] and [3, 8] is [0, 8]
@@ -3960,18 +3980,18 @@ class TestNumbers:
         """Test difference of two quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 5]
         quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_1.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         # Set 2: [3, 8]
         quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
         quantity_set_2.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set_1.op_difference_intervals(
             g=g, tg=tg, other=quantity_set_2
@@ -3984,27 +4004,33 @@ class TestNumbers:
         """Test single element check."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Single element
         single = Numbers.create_instance(g=g, tg=tg)
-        single.setup_from_min_max(g=g, tg=tg, min=5.0, max=5.0, unit=meter_instance)
+        single.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         assert single.is_single_element() is True
         # Range
         range_set = Numbers.create_instance(g=g, tg=tg)
-        range_set.setup_from_min_max(g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance)
+        range_set.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         assert range_set.is_single_element() is False
 
     def test_is_finite(self):
         """Test finite bounds check."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         finite = Numbers.create_instance(g=g, tg=tg)
-        finite.setup_from_min_max(g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance)
+        finite.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         assert finite.is_finite() is True
         assert finite.is_unbounded() is False
 
@@ -4012,12 +4038,12 @@ class TestNumbers:
         """Test value containment check."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         assert quantity_set.contains_value(3.0)
         assert not quantity_set.contains_value(10.0)
@@ -4026,12 +4052,12 @@ class TestNumbers:
         """Test getting any element from set as a Numbers."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=3.0, max=7.0, unit=meter_instance
+            g=g, tg=tg, min=3.0, max=7.0, unit=meter_instance.get_trait(is_unit)
         )
         # any() returns the minimum as a single-value Numbers
         result = quantity_set.any(g=g, tg=tg)
@@ -4039,18 +4065,18 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 3.0
         assert result.is_single_element()
         # Unit should be preserved
-        assert result.get_is_unit()._extract_symbols() == ["m"]
+        assert result.get_is_unit().get_symbols() == ["m"]
 
     def test_as_gapless(self):
         """Test converting to gapless interval."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=8.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.as_gapless(g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 2.0
@@ -4060,12 +4086,12 @@ class TestNumbers:
         """Test converting to dimensionless units."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         result = quantity_set.convert_to_dimensionless(g=g, tg=tg)
         # Numeric values should be preserved
@@ -4078,18 +4104,24 @@ class TestNumbers:
         """Test intersection of multiple quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # Set 1: [0, 10]
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         # Set 2: [3, 8]
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+        )
         # Set 3: [5, 12]
         qs3 = Numbers.create_instance(g=g, tg=tg)
-        qs3.setup_from_min_max(g=g, tg=tg, min=5.0, max=12.0, unit=meter_instance)
+        qs3.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
+        )
         # Intersection: [5, 8]
         result = Numbers.intersect_all(g, tg, qs1, qs2, qs3)
         assert result.get_numeric_set().get_min_value() == 5.0
@@ -4099,25 +4131,33 @@ class TestNumbers:
         """Test bit set operation."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
+        from faebryk.library.Units import Dimensionless, is_unit
 
         dimensionless = Dimensionless.bind_typegraph(tg=tg).create_instance(g=g)
         # Value 5 = 0b101 (bits 0 and 2 are set)
         value = Numbers.create_instance(g=g, tg=tg)
-        value.setup_from_min_max(g=g, tg=tg, min=5.0, max=5.0, unit=dimensionless)
+        value.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=5.0, unit=dimensionless.get_trait(is_unit)
+        )
         # Check bit 0
         bit0 = Numbers.create_instance(g=g, tg=tg)
-        bit0.setup_from_min_max(g=g, tg=tg, min=0.0, max=0.0, unit=dimensionless)
+        bit0.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=0.0, unit=dimensionless.get_trait(is_unit)
+        )
         result0 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit0)
         assert True in result0.get_boolean_values()  # bit 0 is set
         # Check bit 1
         bit1 = Numbers.create_instance(g=g, tg=tg)
-        bit1.setup_from_min_max(g=g, tg=tg, min=1.0, max=1.0, unit=dimensionless)
+        bit1.setup_from_min_max(
+            g=g, tg=tg, min=1.0, max=1.0, unit=dimensionless.get_trait(is_unit)
+        )
         result1 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit1)
         assert False in result1.get_boolean_values()  # bit 1 is not set
         # Check bit 2
         bit2 = Numbers.create_instance(g=g, tg=tg)
-        bit2.setup_from_min_max(g=g, tg=tg, min=2.0, max=2.0, unit=dimensionless)
+        bit2.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=2.0, unit=dimensionless.get_trait(is_unit)
+        )
         result2 = value.op_is_bit_set(g=g, tg=tg, bit_position=bit2)
         assert True in result2.get_boolean_values()  # bit 2 is set
 
@@ -4125,12 +4165,12 @@ class TestNumbers:
         """Test string representation."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         quantity_set.setup_from_min_max(
-            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
         )
         repr_str = repr(quantity_set)
         assert "Numbers" in repr_str
@@ -4139,53 +4179,69 @@ class TestNumbers:
         """Test equality of identical quantity sets."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         assert qs1.equals(g=g, tg=tg, other=qs2)
 
     def test_eq_different_values(self):
         """Test inequality when values differ."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=3.0, max=6.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=3.0, max=6.0, unit=meter_instance.get_trait(is_unit)
+        )
         assert not qs1.equals(g=g, tg=tg, other=qs2)
 
     def test_eq_incompatible_units(self):
         """Test inequality when units are incompatible."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, Second
+        from faebryk.library.Units import Meter, Second, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         second_instance = Second.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=second_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=second_instance.get_trait(is_unit)
+        )
         pytest.raises(ValueError, qs1.equals, g=g, tg=tg, other=qs2)
 
     def test_hash(self):
         """Test that hash works and equal sets have same hash."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=2.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         # Equal sets should have same hash
         assert hash(qs1) == hash(qs2)
 
@@ -4193,14 +4249,16 @@ class TestNumbers:
         """Test serialization to API format (Quantity_Interval_Disjoint)."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Ohm
+        from faebryk.library.Units import Ohm, is_unit
 
         # Values are already in base units (ohms), so we use base Ohm unit
         # 8000-12000 ohms = 8k-12k ohms, which represents "10kohm +/- 20%"
         ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
 
         qs = Numbers.create_instance(g=g, tg=tg)
-        qs.setup_from_min_max(g=g, tg=tg, min=8000.0, max=12000.0, unit=ohm_instance)
+        qs.setup_from_min_max(
+            g=g, tg=tg, min=8000.0, max=12000.0, unit=ohm_instance.get_trait(is_unit)
+        )
         serialized = qs.serialize()
 
         # Check structure matches API format
@@ -4234,14 +4292,18 @@ class TestNumbers:
         """Test >= comparison when definitely true."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [5, 10] >= [0, 3] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = qs1.op_greater_or_equal(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
 
@@ -4249,14 +4311,18 @@ class TestNumbers:
         """Test >= comparison when definitely false."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 3] >= [5, 10] is definitely False
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = qs1.op_greater_or_equal(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [False]
 
@@ -4264,14 +4330,18 @@ class TestNumbers:
         """Test >= comparison when uncertain (ranges overlap)."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 5] >= [3, 10] is uncertain
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=3.0, max=10.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=3.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = qs1.op_greater_or_equal(g=g, tg=tg, other=qs2)
         assert set(result.get_boolean_values()) == {True, False}
 
@@ -4279,14 +4349,18 @@ class TestNumbers:
         """Test > comparison."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [5, 10] > [0, 3] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = qs1.op_greater_than(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
 
@@ -4294,14 +4368,18 @@ class TestNumbers:
         """Test <= comparison."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 3] <= [5, 10] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = qs1.op_le(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
 
@@ -4309,14 +4387,18 @@ class TestNumbers:
         """Test < comparison."""
         g = graph.GraphView.create()
         tg = TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter
+        from faebryk.library.Units import Meter, is_unit
 
         meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
         # [0, 3] < [5, 10] is definitely True
         qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance)
+        qs1.setup_from_min_max(
+            g=g, tg=tg, min=0.0, max=3.0, unit=meter_instance.get_trait(is_unit)
+        )
         qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance)
+        qs2.setup_from_min_max(
+            g=g, tg=tg, min=5.0, max=10.0, unit=meter_instance.get_trait(is_unit)
+        )
         result = qs1.op_lt(g=g, tg=tg, other=qs2)
         assert result.get_boolean_values() == [True]
 
@@ -4995,7 +5077,7 @@ class BoundLiteralContext:
     def create_numbers_from_singleton(
         self,
         value: float,
-        unit: fabll.Node,
+        unit: "is_unit",
     ) -> "Numbers":
         """
         Create a Numbers literal with a single value.
@@ -5013,7 +5095,7 @@ class BoundLiteralContext:
         self,
         min: float,
         max: float,
-        unit: type[fabll.NodeT],
+        unit: "is_unit",
     ) -> "Numbers":
         """
         Create a Numbers literal with an interval [min, max].
@@ -5035,12 +5117,12 @@ def test_bound_context():
     g = graph.GraphView.create()
     tg = TypeGraph.create(g=g)
     ctx = BoundLiteralContext(tg=tg, g=g)
-    from faebryk.library.Units import Ohm
+    from faebryk.library.Units import Ohm, is_unit
 
     ohm_instance = Ohm.bind_typegraph(tg=tg).create_instance(g=g)
 
     my_number = ctx.Numbers.setup_from_singleton(
-        g=g, tg=tg, value=1.0, unit=ohm_instance
+        g=g, tg=tg, value=1.0, unit=ohm_instance.get_trait(is_unit)
     )
     my_bool = ctx.create_booleans(booleans=[True, False])
 
