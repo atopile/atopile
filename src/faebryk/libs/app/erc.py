@@ -13,8 +13,6 @@ from faebryk.libs.exceptions import accumulate
 
 logger = logging.getLogger(__name__)
 
-
-
 class ERCFault(errors.UserException):
     """Base class for ERC faults."""
 
@@ -238,3 +236,39 @@ class Test:
         # TODO figure out a nice way to format paths for this
         print(ex.value.path)
         # assert set(ex.value.path) == {ep1.lv, ep2.hv}
+
+    def test_erc_power_source_short():
+        """
+        Test that a power source is shorted when connected to another power source
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        power_out_1._is_interface.get().connect_to(power_out_2)
+        power_out_2._is_interface.get().connect_to(power_out_1)
+
+        power_out_1.make_source()
+        power_out_2.make_source()
+
+        with pytest.raises(ERCPowerSourcesShortedError):
+            simple_erc(tg)
+
+
+    def test_erc_power_source_no_short():
+        """
+        Test that a power source is not shorted when connected to another non-power source
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        power_out_1.make_source()
+
+        power_out_1._is_interface.get().connect_to(power_out_2)
+
+        simple_erc(tg)
