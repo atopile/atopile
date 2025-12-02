@@ -3,6 +3,8 @@
 
 import logging
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -10,6 +12,7 @@ from atopile import errors
 from faebryk.libs.exceptions import accumulate
 
 logger = logging.getLogger(__name__)
+
 
 
 class ERCFault(errors.UserException):
@@ -190,3 +193,65 @@ class needs_erc_check(fabll.Node):
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
         simple_erc(self.tg)
+
+class Test:
+
+    def test_erc_isolated_connect(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+
+        y1 = electricPowerType.create_instance(g=g)
+        y2 = electricPowerType.create_instance(g=g)
+
+        y1.make_source()
+        y2.make_source()
+
+        with pytest.raises(ERCPowerSourcesShortedError):
+            y1._is_interface.get().connect_to(y2)
+            simple_erc(tg)
+
+        # TODO no more LDO in fabll
+        # ldo1 = F.LDO()
+        # ldo2 = F.LDO()
+
+        # with pytest.raises(ERCPowerSourcesShortedError):
+        #     ldo1.power_out.connect(ldo2.power_out)
+        #     simple_erc(ldo1.get_graph())
+
+        i2cType = F.I2C.bind_typegraph(tg)
+        a1 = i2cType.create_instance(g=g)
+        b1 = i2cType.create_instance(g=g)
+
+        a1._is_interface.get().connect_to(b1)
+        assert a1._is_interface.get().is_connected_to(b1)
+        assert a1.scl.get()._is_interface.get().is_connected_to(b1.scl.get())
+        assert a1.sda.get()._is_interface.get().is_connected_to(b1.sda.get())
+
+        assert not a1.scl.get()._is_interface.get().is_connected_to(b1.sda.get())
+        assert not a1.sda.get()._is_interface.get().is_connected_to(b1.scl.get())
+
+
+    def test_erc_electric_power_short(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+        ep1 = electricPowerType.create_instance(g=g)
+        ep2 = electricPowerType.create_instance(g=g)
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        # This is okay!
+        simple_erc(tg)
+
+        ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
+
+        # This is not okay!
+        with pytest.raises(ERCFaultShortedInterfaces) as ex:
+            simple_erc(tg)
+
+        # TODO figure out a nice way to format paths for this
+        print(ex.value.path)
+        # assert set(ex.value.path) == {ep1.lv, ep2.hv}
