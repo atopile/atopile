@@ -9,6 +9,8 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none, once
 
+# TODO all creating functions need g as param
+
 
 class is_literal(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
@@ -48,12 +50,15 @@ class is_literal(fabll.Node):
         # TODO
         pass
 
-    def equals(self, other: "is_literal") -> bool:
+    def equals(self, *others: "is_literal") -> tuple[int, "is_literal"] | None:
         self_c = self.switch_cast()
-        other_c = other.switch_cast()
-        if type(self_c) is not type(other_c):
-            return False
-        return self_c.equals(other_c)
+        for i, other in enumerate(others):
+            other_c = other.switch_cast()
+            if type(self_c) is not type(other_c):
+                continue
+            if self_c.equals(other_c):
+                return i, other_c
+        return None
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
         singleton = self.switch_cast().is_singleton()

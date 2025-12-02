@@ -558,7 +558,7 @@ class MutationStage:
             )
 
         copied = self.transformations.copied
-        printed = set()
+        printed = set[F.Parameters.is_parameter_operatable]()
 
         for s, d in self.transformations.mutated.items():
             if not VERBOSE_TABLE:
@@ -1068,7 +1068,7 @@ class Mutator:
         likely_constrained: bool | None = None,
         override_within: bool = False,
     ) -> F.Parameters.is_parameter:
-        if param in self.transformations.mutated:
+        if param.as_parameter_operatable() in self.transformations.mutated:
             out = self.get_mutated(param.as_parameter_operatable())
             p = out.as_parameter()
             if np := p.try_get_sibling_trait(F.Parameters.NumericParameter):

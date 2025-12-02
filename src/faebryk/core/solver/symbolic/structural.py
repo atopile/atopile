@@ -400,8 +400,8 @@ def merge_intersect_subsets(mutator: Mutator):
         old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
 
         # already exists
-        if intersected in ss_lits:
-            target = ss_lits[intersected][0]
+        if contained := intersected.equals(*ss_lits):
+            _, target = contained
         else:
             target = mutator.utils.subset_to(
                 param.as_operand(),

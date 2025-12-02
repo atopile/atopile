@@ -36,7 +36,7 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import indented_container, not_none, times_out
+from faebryk.libs.util import not_none, times_out
 
 logger = logging.getLogger(__name__)
 
