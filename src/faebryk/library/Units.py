@@ -674,7 +674,8 @@ class has_unit(fabll.Node):
         return out
 
     def setup(self, g: graph.GraphView, unit: fabll.Node) -> Self:  # type: ignore
-        self.unit.get().point(unit)
+        unit_node = fabll.Traits(unit).get_obj_raw()
+        self.unit.get().point(unit_node)
         return self
 
     def get_is_unit(self) -> is_unit:

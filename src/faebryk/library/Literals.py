@@ -4271,23 +4271,7 @@ class TestNumbers:
         assert intervals[0]["type"] == "Numeric_Interval"
         assert intervals[0]["data"]["min"] == 8000.0
         assert intervals[0]["data"]["max"] == 12000.0
-        assert serialized["data"]["unit"] == {
-            "symbols": ["Ω", "Ohm"],
-            "basis_vector": {
-                "ampere": -2,
-                "second": -3,
-                "meter": 2,
-                "kilogram": 1,
-                "kelvin": 0,
-                "mole": 0,
-                "candela": 0,
-                "radian": 0,
-                "steradian": 0,
-                "bit": 0,
-            },
-            "multiplier": 1.0,
-            "offset": 0.0,
-        }
+        assert serialized["data"]["unit"] == "Ω"
 
     def test_op_ge_definitely_true(self):
         """Test >= comparison when definitely true."""
