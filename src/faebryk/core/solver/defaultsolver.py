@@ -180,9 +180,12 @@ class DefaultSolver(Solver):
                 # G_out_count = algo_result.mutation_stage.G_out.get_node_count()
                 # suffix = ""
                 # if len({G_in_count, G_in_count_after, G_out_count}) != 1:
-                #    suffix += f"\n (inconsistent counts: {G_in_count}, {G_in_count_after}, {G_out_count})"
-                #    suffix += f"\nG_in_diff {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
-                #    suffix += f"\nIn_Out_diff {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
+                #  suffix += f"\n (inconsistent counts:
+                # {G_in_count}, {G_in_count_after}, {G_out_count})"
+                #    suffix += f"\nG_in_diff
+                # {indented_container(_tgdiff(G_in_overview, G_in_overview_after))}"
+                #    suffix += f"\nIn_Out_diff
+                # {indented_container(_tgdiff(G_in_overview_after, G_out_overview))}"
                 # if (
                 #    len(
                 #        {
@@ -193,7 +196,9 @@ class DefaultSolver(Solver):
                 #    )
                 #    != 1
                 # ):
-                #    suffix += f"\n (inconsistent operand counts: {len(G_in_operands)}, {len(G_in_operands_after)}, {len(G_out_operands)})"
+                #    suffix += f"\n (inconsistent operand counts:
+                # {len(G_in_operands)},
+                # {len(G_in_operands_after)}, {len(G_out_operands)})"
                 suffix = ""
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase {phase_name}: {algo.name}{suffix}"
@@ -582,8 +587,8 @@ class DefaultSolver(Solver):
         singleton_lit = F.Literals.make_lit(lit.g, lit.tg, out)
         if lock:
             F.Expressions.Is.from_operands(
-                operatable.as_operand(),
-                singleton_lit.get_trait(F.Parameters.can_be_operand),
+                operatable.as_operand.get(),
+                singleton_lit.as_operand.get(),
                 assert_=True,
             )
         return out
@@ -613,9 +618,7 @@ def test_defaultsolver_super_basic():
     P.alias_to_single(True)
     solver = DefaultSolver()
     res = solver.simplify_symbolically(tg, g, terminal=True)
-    lit = res.data.mutation_map.try_get_literal(
-        P.get_trait(F.Parameters.is_parameter_operatable)
-    )
+    lit = res.data.mutation_map.try_get_literal(P.is_parameter_operatable.get())
     assert lit
     print(lit.pretty_repr())
     assert lit.equals_singleton(True)
@@ -647,11 +650,11 @@ def test_defaultsolver_basic():
     app.A.get().alias_to_single(True)
     FT.Expressions.Is.c(
         FT.Expressions.Or.c(
-            app.A.get().get_trait(FT.Parameters.can_be_operand),
-            app.B.get().get_trait(FT.Parameters.can_be_operand),
+            app.A.get().as_operand.get(),
+            app.B.get().as_operand.get(),
             assert_=False,
         ),
-        app.C.get().get_trait(FT.Parameters.can_be_operand),
+        app.C.get().as_operand.get(),
         assert_=True,
     )
 

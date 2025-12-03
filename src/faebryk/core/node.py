@@ -710,6 +710,15 @@ class _LazyProxy:
             return super().__setattr__(name, value)
         setattr(self.___get_and_set(), name, value)
 
+    def __contains__(self, value: Any) -> bool:
+        return value in self.___get_and_set()
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self.___get_and_set())
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.___get_and_set()[key]
+
     def __repr__(self) -> str:
         return f"_LazyProxy({self.___f}, {self.___parent})"
 
@@ -743,12 +752,10 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                     instance=instance,
                 )
                 setattr(self, locator, child)
-            elif isinstance(field, ListField):
-                setattr(self, field.get_locator(), child)
-            if isinstance(field, Traits.ImpliedTrait):
+            elif isinstance(field, Traits.ImpliedTrait):
                 bound_implied_trait = field.bind(node=self)
                 setattr(self, field.get_locator(), bound_implied_trait)
-            if isinstance(field, ListField):
+            elif isinstance(field, ListField):
                 list_attr = list[InstanceChildBoundInstance[Any]]()
                 for nested_field in field.get_fields():
                     if isinstance(nested_field, _ChildField):

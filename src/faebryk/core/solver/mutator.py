@@ -856,7 +856,7 @@ class MutationMap:
                 )
                 .create_instance(g=lit_n.g)
                 .setup_from_singleton(value=1, unit=param_unit),
-            ).get_trait(F.Literals.is_literal)
+            ).is_literal.get()
         return lit
 
     def __repr__(self) -> str:
@@ -1131,6 +1131,7 @@ class Mutator:
                 .create_instance(self.G_out)
                 .setup()
             )
+
         elif p := param_obj.try_cast(F.Parameters.EnumParameter):
             new_param = F.Parameters.EnumParameter.bind_typegraph(
                 self.tg_out
@@ -1139,8 +1140,7 @@ class Mutator:
             assert False, "Unknown parameter type"
 
         return self._mutate(
-            param.as_parameter_operatable.get(),
-            new_param.get_trait(F.Parameters.is_parameter_operatable),
+            param.as_parameter_operatable.get(), new_param.is_parameter_operatable.get()
         ).as_parameter()
 
     def _create_expression[T: fabll.NodeT](
