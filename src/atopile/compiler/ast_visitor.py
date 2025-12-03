@@ -690,23 +690,11 @@ class ASTVisitor:
         (type_name,) = type_name_lit.get_values()
         symbol = self._scope_stack.resolve_symbol(type_name)
 
-        if (
-            count_lit := (
-                node.new_count.get().value.get().try_extract_aliased_literal()
-            )
-        ) is not None:
-            count = count_lit.get_value()
-            assert count is not None
-            assert count.is_integer()
-            count = int(count)
-        else:
-            count = None
-
         return NewChildSpec(
             symbol=symbol,
             type_identifier=symbol.name,
             type_node=symbol.type_node,
-            count=count,
+            count=node.new_count.get().get_value(),
         )
 
         # TODO: handle template args
@@ -741,24 +729,13 @@ class ASTVisitor:
     def _select_elements(
         iterable_field: AST.IterableFieldRef, sequence_elements: list[FieldPath]
     ) -> list[FieldPath]:
-        def _extract_slice_value(attr: fabll._ChildField[AST.Number]) -> int | None:
-            if (
-                value := not_none(
-                    attr.get().value.get().try_extract_aliased_literal()
-                ).get_value()
-            ) is None:
-                return None
-
-            assert value.is_integer()
-            return int(value)
-
         if (slice_node := iterable_field.slice.get()) is None:
             return sequence_elements
 
         start_idx, stop_idx, step_idx = (
-            _extract_slice_value(slice_node.start),
-            _extract_slice_value(slice_node.stop),
-            _extract_slice_value(slice_node.step),
+            slice_node.get_start(),
+            slice_node.get_stop(),
+            slice_node.get_step(),
         )
 
         if step_idx == 0:

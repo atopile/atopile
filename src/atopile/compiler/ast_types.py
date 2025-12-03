@@ -61,27 +61,31 @@ class SourceInfo:
 
 
 class FileLocation(fabll.Node):
-    start_line = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
-    )
-    start_col = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
-    )
-    end_line = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
-    )
-    end_col = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
-    )
+    start_line = F.Literals.Counts.MakeChild()
+    start_col = F.Literals.Counts.MakeChild()
+    end_line = F.Literals.Counts.MakeChild()
+    end_col = F.Literals.Counts.MakeChild()
 
     def setup(  # type: ignore
         self, start_line: int, start_col: int, end_line: int, end_col: int
     ) -> Self:
-        self.start_line.get().alias_to_literal(g=self.g, value=float(start_line))
-        self.start_col.get().alias_to_literal(g=self.g, value=float(start_col))
-        self.end_line.get().alias_to_literal(g=self.g, value=float(end_line))
-        self.end_col.get().alias_to_literal(g=self.g, value=float(end_col))
+        self.start_line.get().setup_from_values(values=[start_line])
+        self.start_col.get().setup_from_values(values=[start_col])
+        self.end_line.get().setup_from_values(values=[end_line])
+        self.end_col.get().setup_from_values(values=[end_col])
         return self
+
+    def get_start_line(self) -> int:
+        return self.start_line.get().get_single()
+
+    def get_start_col(self) -> int:
+        return self.start_col.get().get_single()
+
+    def get_end_line(self) -> int:
+        return self.end_line.get().get_single()
+
+    def get_end_col(self) -> int:
+        return self.end_col.get().get_single()
 
 
 class SourceChunk(fabll.Node):
@@ -166,7 +170,7 @@ class FieldRef(fabll.Node):
         return self
 
 
-class Number(fabll.Node):
+class Decimal(fabll.Node):
     source = SourceChunk.MakeChild()
     # TODO: should this be a Numbers literal?
     value = F.Parameters.NumericParameter.MakeChild(
@@ -177,6 +181,19 @@ class Number(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.value.get().alias_to_literal(g=self.g, value=float(value))
         return self
+
+
+class Integer(fabll.Node):
+    source = SourceChunk.MakeChild()
+    value = F.Literals.Counts.MakeChild()
+
+    def setup(self, source_info: SourceInfo, value: int) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.value.get().setup_from_values(values=[value])
+        return self
+
+    def get_value(self) -> int:
+        return self.value.get().get_single()
 
 
 class Boolean(fabll.Node):
@@ -207,7 +224,7 @@ class Quantity(fabll.Node):
     _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
 
     source = SourceChunk.MakeChild()
-    number = Number.MakeChild()
+    number = Decimal.MakeChild()
     unit = Unit.MakeChild()
 
     def setup(  # type: ignore
@@ -502,9 +519,9 @@ class SliceConfig:
 
 class Slice(fabll.Node):
     source = SourceChunk.MakeChild()
-    start = Number.MakeChild()
-    stop = Number.MakeChild()
-    step = Number.MakeChild()
+    start = Integer.MakeChild()
+    stop = Integer.MakeChild()
+    step = Integer.MakeChild()
 
     def setup(  # type: ignore
         self,
@@ -528,6 +545,15 @@ class Slice(fabll.Node):
             self.step.get().setup(source_info=step_source_info, value=step_value)
 
         return self
+
+    def get_start(self) -> int:
+        return self.start.get().get_value()
+
+    def get_stop(self) -> int:
+        return self.stop.get().get_value()
+
+    def get_step(self) -> int:
+        return self.step.get().get_value()
 
 
 class IterableFieldRef(fabll.Node):
@@ -690,7 +716,7 @@ class NewExpression(fabll.Node):
     source = SourceChunk.MakeChild()
     type_ref = TypeRef.MakeChild()
     template = Template.MakeChild()
-    new_count = Number.MakeChild()
+    new_count = Integer.MakeChild()
 
     def setup(  # type: ignore
         self,
