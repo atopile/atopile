@@ -42,7 +42,7 @@ def export_testpoints(
         designator = not_none(testpoint.get_trait(F.has_designator).get_designator())
         full_name = testpoint.get_full_name()
         fp = testpoint.get_trait(F.has_footprint).get_footprint()
-        footprint = PCB_Transformer.get_fp(fp)  # get KiCad footprint
+        footprint = PCB_Transformer.get_kicad_pcb_fp(fp)  # get KiCad footprint
         position = footprint.at
         layer = footprint.layer
         library_name = footprint.name

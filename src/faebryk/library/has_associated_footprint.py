@@ -22,10 +22,6 @@ class has_associated_footprint(fabll.Node):
         """Return the footprint associated with this node"""
         return self.footprint_ptr_.get().deref()
 
-    def set_footprint(self, footprint: fabll.Node):
-        # TODO
-        pass
-
     @classmethod
     def MakeChild(
         cls, footprint: fabll._ChildField[fabll.Node]
@@ -39,6 +35,10 @@ class has_associated_footprint(fabll.Node):
             )
         )
         return out
+
+    def setup(self, footprint: fabll.Node) -> Self:
+        self.footprint_ptr_.get().point(footprint)
+        return self
 
 
 def test_has_associated_footprint():
