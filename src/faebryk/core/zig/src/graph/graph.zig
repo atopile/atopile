@@ -638,6 +638,10 @@ pub const GraphView = struct {
         g.nodes.deinit();
     }
 
+    pub fn get_self_node(g: *@This()) BoundNodeReference {
+        return g.bind(g.self_node);
+    }
+
     pub fn insert_node(g: *@This(), node: NodeReference) BoundNodeReference {
         if (g.contains_node(node)) {
             return g.bind(node);
