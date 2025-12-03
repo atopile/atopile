@@ -16,6 +16,7 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 import faebryk.library.Collections as Collections
+from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Footprint import Footprint
@@ -26,7 +27,6 @@ from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_solver import has_solver
 from faebryk.library.can_attach_to_any_pad import can_attach_to_any_pad
-from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.is_footprint import is_footprint
 from faebryk.library.is_kicad_footprint import is_kicad_footprint
 from faebryk.library.has_part_removed import has_part_removed
@@ -70,33 +70,20 @@ from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad
 from faebryk.library.Symbol import Symbol
-from faebryk.library.TestPoint import TestPoint
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.requires_external_usage import requires_external_usage
-from faebryk.library.Comparator import Comparator
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.BJT import BJT
-from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
-from faebryk.library.Diode import Diode
-from faebryk.library.MOSFET import MOSFET
-from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.has_associated_net import has_associated_net
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.Crystal import Crystal
-from faebryk.library.Fuse import Fuse
-from faebryk.library.Inductor import Inductor
-from faebryk.library.Resistor import Resistor
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
 from faebryk.library.KicadFootprint import KicadFootprint
-from faebryk.library.LED import LED
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
@@ -108,7 +95,25 @@ from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
 from faebryk.library.is_lead import is_lead
+from faebryk.library.has_explicit_part import has_explicit_part
+from faebryk.library.is_atomic_part import is_atomic_part
+from faebryk.library.SPIFlash import SPIFlash
+from faebryk.library.UART import UART
+from faebryk.library.BJT import BJT
+from faebryk.library.Battery import Battery
+from faebryk.library.Capacitor import Capacitor
+from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
+from faebryk.library.Comparator import Comparator
+from faebryk.library.Crystal import Crystal
+from faebryk.library.Diode import Diode
+from faebryk.library.Fuse import Fuse
+from faebryk.library.Inductor import Inductor
+from faebryk.library.MOSFET import MOSFET
+from faebryk.library.Resistor import Resistor
+from faebryk.library.TestPoint import TestPoint
+from faebryk.library.has_associated_pad import has_associated_pad
 from faebryk.library.MultiCapacitor import MultiCapacitor
+from faebryk.library.LED import LED
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.DifferentialPair import DifferentialPair
@@ -117,11 +122,6 @@ from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_pulls import has_pulls
-from faebryk.library.has_explicit_part import has_explicit_part
-from faebryk.library.is_atomic_part import is_atomic_part
-from faebryk.library.SPIFlash import SPIFlash
-from faebryk.library.UART import UART
-from faebryk.library.has_associated_pad import has_associated_pad
 from faebryk.library.CAN import CAN
 from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
@@ -139,6 +139,7 @@ from faebryk.library.HDMI import HDMI
 
 __all__ = [
     "Collections",
+    "can_attach_to_footprint",
     "is_sink",
     "is_source",
     "Footprint",
@@ -149,7 +150,6 @@ __all__ = [
     "is_app_root",
     "has_solver",
     "can_attach_to_any_pad",
-    "can_attach_to_footprint",
     "is_footprint",
     "is_kicad_footprint",
     "has_part_removed",
@@ -193,33 +193,20 @@ __all__ = [
     "Filter",
     "Pad",
     "Symbol",
-    "TestPoint",
     "XtalIF",
     "has_net_name_affix",
     "has_pin_association_heuristic",
     "requires_external_usage",
-    "Comparator",
     "has_single_electric_reference",
     "Net",
     "can_attach_to_footprint_symmetrically",
     "can_attach_via_pinmap",
     "has_kicad_footprint",
-    "BJT",
-    "CapacitorElectrolytic",
-    "Diode",
-    "MOSFET",
-    "Battery",
     "ElectricLogic",
     "ElectricSignal",
     "has_associated_net",
-    "Capacitor",
-    "Crystal",
-    "Fuse",
-    "Inductor",
-    "Resistor",
     "can_attach_to_footprint_via_pinmap",
     "KicadFootprint",
-    "LED",
     "Addressor",
     "CAN_TTL",
     "I2S",
@@ -231,7 +218,25 @@ __all__ = [
     "SWD",
     "UART_Base",
     "is_lead",
+    "has_explicit_part",
+    "is_atomic_part",
+    "SPIFlash",
+    "UART",
+    "BJT",
+    "Battery",
+    "Capacitor",
+    "CapacitorElectrolytic",
+    "Comparator",
+    "Crystal",
+    "Diode",
+    "Fuse",
+    "Inductor",
+    "MOSFET",
+    "Resistor",
+    "TestPoint",
+    "has_associated_pad",
     "MultiCapacitor",
+    "LED",
     "FilterElectricalLC",
     "Crystal_Oscillator",
     "DifferentialPair",
@@ -240,11 +245,6 @@ __all__ = [
     "ResistorVoltageDivider",
     "has_designator",
     "has_pulls",
-    "has_explicit_part",
-    "is_atomic_part",
-    "SPIFlash",
-    "UART",
-    "has_associated_pad",
     "CAN",
     "Ethernet",
     "OpAmp",

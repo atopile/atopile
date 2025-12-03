@@ -26,6 +26,7 @@ class Fuse(fabll.Node):
     #     modules, interfaces, parameters
     # ----------------------------------------
     unnamed = [F.Electrical.MakeChild() for _ in range(2)]
+
     fuse_type = F.Parameters.EnumParameter.MakeChild(enum_t=FuseType)
     response_type = F.Parameters.EnumParameter.MakeChild(enum_t=ResponseType)
     trip_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
@@ -35,9 +36,12 @@ class Fuse(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_attach = fabll.Traits.MakeEdge(
-        F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint.MakeChild()
     )
+
+    for e in unnamed:
+        e.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [e]))
 
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])

@@ -45,9 +45,13 @@ class Crystal(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_attach = fabll.Traits.MakeEdge(
-        F.can_attach_to_footprint_symmetrically.MakeChild()
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint.MakeChild()
     )
+
+    gnd.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [gnd]))
+    for e in unnamed:
+        e.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [e]))
 
     designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.XTAL)

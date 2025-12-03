@@ -27,17 +27,24 @@ class CapacitorElectrolytic(fabll.Node):
     anode = F.Electrical.MakeChild()
     cathode = F.Electrical.MakeChild()
 
-    # ----------------------------------------
-    #                 traits
-    # ----------------------------------------
-    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
-
     capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
     max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
         enum_t=TemperatureCoefficient
     )
+
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.can_attach_to_footprint.MakeChild()
+    )
+
+    anode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [anode]))
+    cathode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [cathode]))
+
+    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(

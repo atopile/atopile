@@ -11,7 +11,7 @@ class is_lead(fabll.Node):
     A lead is the connection from a component package to the footprint pad
     """
 
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild())
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 def test_is_lead():

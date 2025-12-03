@@ -174,6 +174,23 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
         identifier: str | None = None,
         before: bool = False,
     ):
+        """
+        Attach additional fields (children or edges) to this field that will be
+        created when this field is instantiated.
+
+        ### Args
+        - dependant: One or more _ChildField or _EdgeField to create alongside
+                this field.
+        - identifier: Optional identifier prefix for the dependant's locator.
+        - before: If True, prepend to dependants list (created first).
+
+        ### Example
+            - Add a trait to a child electrical
+
+            unnamed[0].add_dependant(
+                fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [unnamed[0]])
+            )
+        """
         for d in dependant:
             if identifier is not None:
                 d._set_locator(f"{identifier}_{id(d):04x}")

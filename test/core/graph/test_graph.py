@@ -20,16 +20,16 @@ def test_count_instance(capsys):
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    instance = F.Resistor.bind_typegraph(tg).create_instance(g)
+    instance = F.OpAmp.bind_typegraph(tg).create_instance(g)
 
     with capsys.disabled():
         print("=== Instance Graph ===")
         output = graph.InstanceGraphFunctions.render(
             instance.instance,
             show_traits=True,
-            filter_names=[
-                '_can_attach',
-                '_is_module',
+            filter_types=[
+                # 'is_lead',
+                # 'Electrical',
             ]
         )
         print(output)
@@ -48,7 +48,7 @@ def _get_component_node_count_params():
         F.ElectricLogic: 374,
         F.ElectricSignal: 365,
         F.ElectricPower: 327,
-        F.Resistor: 883,
+        F.Resistor: 885,  # +2 for is_lead traits on each electrical
         F.Capacitor: 627,
         F.I2C: 1264,
     }
