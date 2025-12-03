@@ -41,21 +41,41 @@ class is_literal(fabll.Node):
         self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> bool:
         if objs := self._cmp(other):
-            return objs[0].is_subset_of(objs[1], g=g, tg=tg)
+            return objs[0].is_subset_of(
+                objs[1],  # type: ignore # stupid pylance
+                g=g,
+                tg=tg,
+            )
         raise ValueError("incompatible types")
 
     def op_intersect_intervals(
         self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "is_literal":
         if objs := self._cmp(other):
-            return objs[0].op_intersect_intervals(objs[1], g=g, tg=tg).is_literal.get()
+            return (
+                objs[0]
+                .op_intersect_intervals(
+                    objs[1],  # type: ignore # stupid pylance
+                    g=g,
+                    tg=tg,
+                )
+                .is_literal.get()
+            )
         raise ValueError("incompatible types")
 
     def op_union_intervals(
         self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "is_literal":
         if objs := self._cmp(other):
-            return objs[0].op_union_intervals(objs[1], g=g, tg=tg).is_literal.get()
+            return (
+                objs[0]
+                .op_union_intervals(
+                    objs[1],  # type: ignore # stupid pylance
+                    g=g,
+                    tg=tg,
+                )
+                .is_literal.get()
+            )
         raise ValueError("incompatible types")
 
     def op_symmetric_difference_intervals(
@@ -64,7 +84,11 @@ class is_literal(fabll.Node):
         if objs := self._cmp(other):
             return (
                 objs[0]
-                .op_symmetric_difference_intervals(objs[1], g=g, tg=tg)
+                .op_symmetric_difference_intervals(
+                    objs[1],  # type: ignore # stupid pylance
+                    g=g,
+                    tg=tg,
+                )
                 .is_literal.get()
             )
         raise ValueError("incompatible types")
@@ -99,7 +123,11 @@ class is_literal(fabll.Node):
             other_c = other.switch_cast()
             if type(self_c) is not type(other_c):
                 continue
-            if self_c.equals(other_c, g=g, tg=tg):
+            if self_c.equals(
+                other_c,  # type: ignore # stupid pylance
+                g=g,
+                tg=tg,
+            ):
                 return i, other_c.is_literal.get()
         return None
 
@@ -5096,17 +5124,26 @@ class AbstractEnums(fabll.Node):
         values = self.get_values()
         return None if len(values) == 0 else EnumType(values[0])
 
+    @staticmethod
+    def get_all_members_of_type(
+        node: fabll.NodeT, tg: fbrk.TypeGraph
+    ) -> list[EnumValue]:
+        return list(node.get_children(direct_only=True, types=EnumValue, tg=tg))
+
     def get_all_members(self) -> list[EnumValue]:
-        if (
-            self.get_type_node() is None
-        ):  # TODO better to do if self.try_get_trait(fabll.ImplementsType) is not None
-            return list(self.get_children(direct_only=True, types=EnumValue))
-        else:
-            return list(
-                fabll.Node.bind_instance(
-                    instance=not_none(self.get_type_node())
-                ).get_children(direct_only=True, types=EnumValue, tg=self.tg)
-            )
+        return AbstractEnums.get_all_members_of_type(
+            node=fabll.Node.bind_instance(instance=not_none(self.get_type_node())),
+            tg=self.tg,
+        )
+
+    @staticmethod
+    def get_enum_as_dict_for_type(
+        node: fabll.NodeT, tg: fbrk.TypeGraph
+    ) -> dict[str, str]:
+        return {
+            member.name: member.value
+            for member in AbstractEnums.get_all_members_of_type(node=node, tg=tg)
+        }
 
     def get_enum_as_dict(self) -> dict[str, str]:
         return {member.name: member.value for member in self.get_all_members()}

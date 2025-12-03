@@ -15,6 +15,15 @@ if TYPE_CHECKING:
     from faebryk.library.NumberDomain import NumberDomain
 
 
+class ContradictingLiterals(Exception):
+    def __init__(self, literals: list["Literals.is_literal"], *args: object) -> None:
+        super().__init__(*args)
+        self.literals = literals
+
+    def __str__(self) -> str:
+        return f"ContradictingLiterals: {', '.join(lit.pretty_repr() for lit in self.literals)}"
+
+
 class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -143,8 +152,8 @@ class is_parameter_operatable(fabll.Node):
             return None
         if len(lits) == 1:
             return next(iter(lits))
-        if not not_none(ss_lit).is_subset_of(not_none(is_lit)):
-            raise KeyErrorAmbiguous(lits)
+        if not not_none(is_lit).is_subset_of(not_none(ss_lit), g=self.g, tg=self.tg):
+            raise ContradictingLiterals(lits)
         return is_lit
 
     def try_extract_literal(
@@ -451,8 +460,8 @@ class EnumParameter(fabll.Node):
     as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     enum_domain_pointer = F.Collections.Pointer.MakeChild()
 
-    def get_enum_type(self) -> "F.Literals.AbstractEnums":
-        return F.Literals.AbstractEnums.bind_instance(
+    def get_enum_type(self) -> "fabll.NodeT":
+        return fabll.Node.bind_instance(
             instance=self.enum_domain_pointer.get().deref().instance
         )
 
@@ -770,13 +779,16 @@ def test_enum_param():
     abstract_enum_type_node = enum_param.get_enum_type()
     # assert abstract_enum_type_node.is_same(enum_type_node)
 
-    assert [(m.name, m.value) for m in abstract_enum_type_node.get_all_members()] == [
-        (m.name, m.value) for m in ExampleNode.MyEnum
-    ]
+    assert [
+        (m.name, m.value)
+        for m in F.Literals.AbstractEnums.get_all_members_of_type(
+            node=abstract_enum_type_node, tg=tg
+        )
+    ] == [(m.name, m.value) for m in ExampleNode.MyEnum]
 
-    assert abstract_enum_type_node.get_enum_as_dict() == {
-        m.name: m.value for m in ExampleNode.MyEnum
-    }
+    assert F.Literals.AbstractEnums.get_enum_as_dict_for_type(
+        node=abstract_enum_type_node, tg=tg
+    ) == {m.name: m.value for m in ExampleNode.MyEnum}
 
     enum_lit = enum_param.force_extract_literal()
     assert enum_lit.get_values() == ["b", "c"]
@@ -948,8 +960,7 @@ def test_get_operations_recursive():
     assert fabll.Traits(mul_expr).get_obj(Multiply) in p1_ops_recursive
 
 
-def test_():
-    g = graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    a = is_parameter.bind_typegraph(tg=tg).create_instance(g=g)
-    a.as_operand.get()
+if __name__ == "__main__":
+    import typer
+
+    typer.run(test_enum_param)
