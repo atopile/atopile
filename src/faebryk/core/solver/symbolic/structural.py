@@ -266,7 +266,7 @@ def resolve_alias_classes(mutator: Mutator):
             # check if all in eq_class already aliased
             # Then no need to to create new representative
             _repr = eq_class_params[0]
-            _repr_po = _repr.as_parameter_operatable()
+            _repr_po = _repr.as_parameter_operatable.get()
             iss = _repr_po.get_operations(F.Expressions.Is)
             iss_exprs = {
                 o

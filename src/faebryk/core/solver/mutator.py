@@ -1167,7 +1167,11 @@ class Mutator:
 
         for op in new_operands:
             if op.has_trait(F.Parameters.is_parameter_operatable):
-                assert op.g == new_expr.g, f"Graph mismatch: {op.g} != {new_expr.g}"
+                assert (
+                    op.g.get_self_node()
+                    .node()
+                    .is_same(other=new_expr.g.get_self_node().node())
+                ), f"Graph mismatch: {op.g} != {new_expr.g}"
 
         return new_expr
 
@@ -1414,7 +1418,11 @@ class Mutator:
         self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
     ) -> F.Parameters.can_be_operand:
         # TODO is this ok?
-        if obj.g == self.G_out:
+        if (
+            obj.g.get_self_node()
+            .node()
+            .is_same(other=self.G_out.get_self_node().node())
+        ):
             return obj
         if obj_po := obj.is_parameter_operatable():
             return self.get_copy_po(obj_po, accept_soft).as_operand()

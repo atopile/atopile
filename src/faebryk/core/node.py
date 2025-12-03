@@ -1414,19 +1414,29 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def is_same(
         self,
         other: "NodeT | graph.Node | graph.BoundNode",
-        # FIXME: default to False (breaks solver atm)
-        allow_different_graph: bool = True,
+        allow_different_graph: bool = False,
     ) -> bool:
         match other:
             case Node():
                 other_node = other.instance.node()
-                if not allow_different_graph and other.g != self.g:
+                if (
+                    not allow_different_graph
+                    and not other.g.get_self_node()
+                    .node()
+                    .is_same(other=self.g.get_self_node().node())
+                ):
                     return False
             case graph.Node():
                 other_node = other
             case graph.BoundNode():
                 other_node = other.node()
-                if not allow_different_graph and other.g() != self.g:
+                if (
+                    not allow_different_graph
+                    and not other.g()
+                    .get_self_node()
+                    .node()
+                    .is_same(other=self.g.get_self_node().node())
+                ):
                     return False
             case _:
                 raise TypeError(f"Invalid type: {type(other)}")
