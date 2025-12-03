@@ -555,7 +555,7 @@ class NumericParameter(fabll.Node):
         pass
 
     def alias_to_literal(
-        self, g: graph.GraphView, value: "float | Literals.Numbers"
+        self, g: graph.GraphView, value: "float | F.Literals.Numbers"
     ) -> None:
         match value:
             case float():
@@ -564,21 +564,19 @@ class NumericParameter(fabll.Node):
                 lit = (
                     Numbers.bind_typegraph(tg=self.tg)
                     .create_instance(g=g)
-                    .setup_from_singleton(
-                        g=g, tg=self.tg, value=value, unit=self.get_units()
-                    )
+                    .setup_from_singleton(value=value, unit=self.get_units())
                 )
-            case Literals.Numbers():
+            case F.Literals.Numbers():
                 lit = value
             case _:
                 raise ValueError(f"Invalid value type: {type(value)}")
 
         self.get_trait(is_parameter_operatable).alias_to_literal(g=g, value=lit)
 
-    def setup(
+    def setup(  # type: ignore
         self,
+        units: "F.Units.is_unit",
         *,
-        units: "Units.is_unit | None" = None,
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,
@@ -591,13 +589,13 @@ class NumericParameter(fabll.Node):
         from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import has_unit
 
-        if units:
-            has_unit = (
-                has_unit.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .setup(unit=units)
-            )
-            fabll.Traits.add_instance_to(self, has_unit)
+        fabll.Traits.add_instance_to(
+            self,
+            has_unit.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup(unit=units),
+        )
+
         if domain is None:  # Default domain is unbounded
             domain = (
                 NumberDomain.bind_typegraph(tg=self.tg)
@@ -611,9 +609,9 @@ class NumericParameter(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore
         cls,
-        unit: type[fabll.NodeT] | None = None,
+        unit: type[fabll.NodeT],
         integer: bool = False,
         negative: bool = False,
         zero_allowed: bool = True,
@@ -632,8 +630,7 @@ class NumericParameter(fabll.Node):
         # )
         from faebryk.library.Units import has_unit
 
-        if unit:
-            out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
+        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
 
         domain = NumberDomain.MakeChild(
             negative=negative, zero_allowed=zero_allowed, integer=integer
