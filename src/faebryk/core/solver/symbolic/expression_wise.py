@@ -510,7 +510,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     # ¬!(¬A) -> !A implicit
 
     e = expr.get_trait(F.Expressions.is_expression)
-    expr_po = e.get_trait(F.Parameters.is_parameter_operatable)
+    expr_po = e.get_sibling_trait(F.Parameters.is_parameter_operatable)
     assert len(e.get_operands()) == 1
     op = e.get_operands()[0]
     op_po = op.is_parameter_operatable()

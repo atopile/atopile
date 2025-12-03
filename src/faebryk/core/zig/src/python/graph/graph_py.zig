@@ -1144,6 +1144,23 @@ fn wrap_graphview_get_nodes() type {
     };
 }
 
+fn wrap_graphview_get_self_node() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_self_node",
+            .doc = "Get the self-referential node of the graph",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+            const bound = wrapper.data.get_self_node();
+            return makeBoundNodePyObject(bound);
+        }
+    };
+}
+
 fn wrap_graphview(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_graphview_create(),
@@ -1152,6 +1169,7 @@ fn wrap_graphview(root: *py.PyObject) void {
         wrap_graphview_bind(),
         wrap_graphview_get_node_count(),
         wrap_graphview_get_nodes(),
+        wrap_graphview_get_self_node(),
         wrap_graphview_get_subgraph_from_nodes(),
         wrap_graphview_insert_subgraph(),
     };

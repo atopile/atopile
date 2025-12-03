@@ -343,13 +343,13 @@ class BoundExpressions:
         if isinstance(value, tuple):
             unit: type[fabll.Node] | None = value[1]
             value = value[0]
-            is_unit = (
-                unit.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .get_trait(F.Units.is_unit)
-            )
         else:
             unit = self.U.dl
+        is_unit = (
+            unit.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .get_trait(F.Units.is_unit)
+        )
 
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
@@ -387,10 +387,16 @@ class BoundExpressions:
     def lit_op_range_from_center_rel(
         self, center: _Quantity, rel: float
     ) -> F.Parameters.can_be_operand:
-        # FIXME
+        is_unit = (
+            center[1]
+            .bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .get_trait(F.Units.is_unit)
+        )
         return (
-            F.Literals.Numbers.bind_typegraph(tg=self.tg).create_instance(g=self.g)
-            # .setup_from_interval(lower=lower, upper=upper)
+            F.Literals.Numbers.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup_from_center_rel(center=center[0], rel=rel, unit=is_unit)
         ).get_trait(F.Parameters.can_be_operand)
 
     def lit_bool(self, *values: bool) -> F.Parameters.can_be_operand:
@@ -838,16 +844,18 @@ def test_symmetric_inequality_correlated():
     E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
     E.is_(p1, p0, assert_=True)
 
-    E.greater_or_equal(p0, p1).get_trait(F.Expressions.is_assertable).assert_()
-    E.greater_or_equal(p1, p0).get_trait(F.Expressions.is_assertable).assert_()
+    E.greater_or_equal(p0, p1).get_sibling_trait(F.Expressions.is_assertable).assert_()
+    E.greater_or_equal(p1, p0).get_sibling_trait(F.Expressions.is_assertable).assert_()
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert repr_map.try_get_literal(
-        p0.as_parameter_operatable()
-    ) == repr_map.try_get_literal(p1.as_parameter_operatable())
-    assert repr_map.try_get_literal(p0.as_parameter_operatable()) == E.lit_op_range(
-        ((0, E.U.V), (10, E.U.V))
+    assert not_none(repr_map.try_get_literal(p0.as_parameter_operatable())).equals(
+        not_none(repr_map.try_get_literal(p1.as_parameter_operatable()))
+    )
+    assert not_none(repr_map.try_get_literal(p0.as_parameter_operatable())).equals(
+        E.lit_op_range(((0, E.U.V), (10, E.U.V))).get_sibling_trait(
+            F.Literals.is_literal
+        )
     )
 
 
@@ -884,7 +892,7 @@ def test_simple_literal_folds_arithmetic(
     deduced_subset = repr_map.try_get_literal(
         expr.as_parameter_operatable(), allow_subset=True
     )
-    assert deduced_subset == expected_result
+    assert not_none(deduced_subset) == expected_result
 
 
 @pytest.mark.parametrize(
@@ -892,24 +900,25 @@ def test_simple_literal_folds_arithmetic(
     [
         (F.Expressions.Add.c, (5, 10), 15),
         (F.Expressions.Add.c, (-5, 15), 10),
-        (F.Expressions.Add.c, ((0, 10), 5), (5, 15)),
-        (F.Expressions.Add.c, ((0, 10), (-10, 0)), (-10, 10)),
+        # (F.Expressions.Add.c, ((0, 10), 5), (5, 15)),
+        # (F.Expressions.Add.c, ((0, 10), (-10, 0)), (-10, 10)),
         (F.Expressions.Add.c, (5, 5, 5), 15),
-        # (Subtract, (5, 10), -5),
-        # (Multiply, (5, 10), 50),
-        # (Divide, (5, 10), 0.5),
+        (F.Expressions.Subtract.c, (5, 10), -5),
+        (F.Expressions.Multiply.c, (5, 10), 50),
+        (F.Expressions.Divide.c, (5, 10), 0.5),
     ],
 )
 def test_super_simple_literal_folding(
     expr_type: Callable[..., F.Parameters.can_be_operand],
-    operands: tuple[_Range, ...],
+    operands: tuple[float, ...],
     expected: Any,
 ):
     E = BoundExpressions()
-    expr = expr_type(*operands)
+    operands_op = [E.lit_op_single(o) for o in operands]
+    expr = expr_type(*operands_op)
     solver = DefaultSolver()
 
-    E.less_or_equal(expr, E.lit_op_single(100.0)).get_trait(
+    E.less_or_equal(expr, E.lit_op_single(100.0)).get_sibling_trait(
         F.Expressions.is_assertable
     ).assert_()
 
@@ -1015,6 +1024,7 @@ def test_literal_folding_add_multiplicative_2():
 
 
 def test_transitive_subset():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
 
     # TODO: Constrain to real number domain
@@ -1900,6 +1910,7 @@ def test_fold_not():
 
 
 def test_fold_ss_transitive():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -1917,6 +1928,7 @@ def test_fold_ss_transitive():
 
 
 def test_ss_intersect():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()

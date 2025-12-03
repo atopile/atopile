@@ -75,10 +75,10 @@ class is_literal(fabll.Node):
         return None
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        singleton = self.switch_cast().is_singleton()
-        if singleton is None:
+        is_singleton = self.switch_cast().is_singleton()
+        if is_singleton is None:
             return False
-        return singleton == singleton
+        return singleton == is_singleton
 
     def is_single_element(self) -> bool:
         # TODO
@@ -112,7 +112,7 @@ class is_literal(fabll.Node):
         for t in types:
             if obj.isinstance(t):
                 return obj.cast(t)
-        raise ValueError(f"Cannot cast literal {self} to any of {types}")
+        raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
     def pretty_repr(self) -> str:
         # TODO
@@ -180,6 +180,12 @@ class Strings(fabll.Node):
             lit.cast(StringLiteralSingleton).get_value()
             for lit in self.values.get().as_list()
         ]
+
+    def is_singleton(self) -> str | None:
+        vals = self.get_values()
+        if len(vals) != 1:
+            return None
+        return vals[0]
 
     @classmethod
     def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:
@@ -4842,6 +4848,12 @@ class AbstractEnums(fabll.Node):
             enum_values.append(enum_value.value)
 
         return enum_values
+
+    def is_singleton(self) -> str | None:
+        vals = self.get_values()
+        if len(vals) != 1:
+            return None
+        return vals[0]
 
     def get_values_typed[T: Enum](self, EnumType: type[T]) -> list[T]:
         return [EnumType(value) for value in self.get_values()]
