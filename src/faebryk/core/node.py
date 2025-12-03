@@ -1381,7 +1381,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_trait[TR: Node](self, trait: type[TR]) -> TR:
         impl = self.try_get_trait(trait)
         if impl is None:
-            raise TraitNotFound(f"No trait {trait} found")
+            raise TraitNotFound(f"No trait {trait} found on {self}")
         return impl
 
     def has_trait(self, trait: type["NodeT"]) -> bool:

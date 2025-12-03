@@ -607,6 +607,8 @@ class MutatorUtils:
                 and F.Expressions.is_expression.are_pos_congruent(
                     op.get_trait(F.Expressions.is_expression).get_operands(),
                     operands,
+                    g=self.mutator.G_transient,
+                    tg=self.mutator.tg_in,
                     allow_uncorrelated=allow_uncorrelated,
                 )
             }
@@ -669,7 +671,7 @@ class MutatorUtils:
         for collect_op in set(factors.keys()):
             if not collect_op.get_obj().isinstance(collect_type):
                 continue
-            expr = collect_op.get_trait(F.Expressions.is_expression)
+            expr = collect_op.get_sibling_trait(F.Expressions.is_expression)
             # Skip if operation doesn't have exactly two operands
             # TODO unnecessary strict
             if len(expr.get_operands()) != 2:
@@ -724,7 +726,7 @@ class MutatorUtils:
             mul_lits = [
                 next(
                     o_lit
-                    for o_lit in mul.get_trait(
+                    for o_lit in mul.get_sibling_trait(
                         F.Expressions.is_expression
                     ).get_operand_literals()
                 )

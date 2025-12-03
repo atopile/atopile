@@ -98,7 +98,9 @@ def test_expression_congruence():
         .setup(p1, p2)
         .get_trait(F.Expressions.is_expression)
         .is_congruent_to(
-            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2)
+            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2),
+            g=g,
+            tg=tg,
         )
     )
     assert (
@@ -107,7 +109,9 @@ def test_expression_congruence():
         .setup(p1, p2)
         .get_trait(F.Expressions.is_expression)
         .is_congruent_to(
-            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p2, p1)
+            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p2, p1),
+            g=g,
+            tg=tg,
         )
     )
 

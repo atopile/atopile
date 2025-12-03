@@ -184,7 +184,9 @@ def remove_congruent_expressions(mutator: Mutator):
         # TODO use hash to speed up comparisons
         for e1, e2 in combinations(exprs, 2):
             # no need for recursive, since subexpr already merged if congruent
-            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2, recursive=False):
+            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(
+                e2, recursive=False, g=mutator.G_transient, tg=mutator.tg_in
+            ):
                 full_eq.add_eq(e1, e2)
 
     repres = {}
@@ -615,7 +617,7 @@ def isolate_lone_params(mutator: Mutator):
             return mutator.create_expression(
                 operation,
                 *operands,
-                from_ops=[from_expr.get_trait(F.Parameters.is_parameter_operatable)],
+                from_ops=[from_expr.as_parameter_operatable()],
             ).as_operand()
 
         retained_ops = [

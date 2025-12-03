@@ -290,6 +290,8 @@ class is_expression(fabll.Node):
         self,
         other_factory: "type[fabll.NodeT]",
         other_operands: Sequence["F.Parameters.can_be_operand"],
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
     ) -> bool:
@@ -327,6 +329,8 @@ class is_expression(fabll.Node):
             self.get_operands(),
             list(other_operands),
             commutative=commutative,
+            g=g,
+            tg=tg,
             allow_uncorrelated=allow_uncorrelated,
             check_constrained=check_constrained,
         )
@@ -400,6 +404,8 @@ class is_expression(fabll.Node):
     def is_congruent_to(
         self,
         other: "is_expression",
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
         recursive: bool = False,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
@@ -460,6 +466,8 @@ class is_expression(fabll.Node):
         return recursive and is_expression.are_pos_congruent(
             self_operands,
             other_operands,
+            g=g,
+            tg=tg,
             commutative=commutative,
             allow_uncorrelated=allow_uncorrelated,
             check_constrained=check_constrained,
@@ -472,6 +480,8 @@ class is_expression(fabll.Node):
     def are_pos_congruent(
         left: Sequence["F.Parameters.can_be_operand"],
         right: Sequence["F.Parameters.can_be_operand"],
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
         commutative: bool = False,
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
@@ -501,7 +511,8 @@ class is_expression(fabll.Node):
             return False
 
         def operands_congruent(
-            op1: Parameters.can_be_operand, op2: Parameters.can_be_operand
+            op1: Parameters.can_be_operand,
+            op2: Parameters.can_be_operand,
         ) -> bool:
             # Same node - congruent
             if op1.is_same(op2):
@@ -518,12 +529,14 @@ class is_expression(fabll.Node):
                     lit1.is_not_correlatable() or lit2.is_not_correlatable()
                 ):
                     return False
-                return lit1.equals(lit2)
+                return bool(lit1.equals(lit2, g=g, tg=tg))
 
             if expr1 := op1_obj.try_get_trait(is_expression):
                 expr2 = op2_obj.get_trait(is_expression)
                 return expr1.is_congruent_to(
                     expr2,
+                    g=g,
+                    tg=tg,
                     recursive=True,
                     allow_uncorrelated=allow_uncorrelated,
                     check_constrained=check_constrained,
@@ -1636,6 +1649,10 @@ class Xor(fabll.Node):
 
 
 class Implies(fabll.Node):
+    as_operand = fabll.Traits.MakeEdge(Parameters.can_be_operand.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(
+        Parameters.is_parameter_operatable.MakeChild()
+    )
     is_assertable = fabll.Traits.MakeEdge(is_assertable.MakeChild())
     is_expression = fabll.Traits.MakeEdge(
         is_expression.MakeChild(

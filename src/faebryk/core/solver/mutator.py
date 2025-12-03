@@ -1289,7 +1289,11 @@ class Mutator:
         operands = list(operands)
         # Don't create A is A, lit is lit
         if expr.is_congruent_to_factory(
-            expression_factory, operands, allow_uncorrelated=True
+            expression_factory,
+            operands,
+            g=self.G_transient,
+            tg=self.tg_in,
+            allow_uncorrelated=True,
         ):
             return expr
 
@@ -1305,7 +1309,11 @@ class Mutator:
             and alias.get_sibling_trait(
                 F.Expressions.is_expression
             ).is_congruent_to_factory(
-                expression_factory, operands, allow_uncorrelated=True
+                expression_factory,
+                operands,
+                g=self.G_transient,
+                tg=self.tg_in,
+                allow_uncorrelated=True,
             )
         }
         if congruent:
