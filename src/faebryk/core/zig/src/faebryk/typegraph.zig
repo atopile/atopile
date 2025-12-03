@@ -606,7 +606,7 @@ pub const TypeGraph = struct {
         if (mount_reference) |_mount_reference| {
             _ = EdgeComposition.add_child(make_child, _mount_reference.node, "mount");
         }
-        _ = EdgePointer.point_to(make_child, child_type.node, identifier, null);
+        _ = EdgePointer.point_to(make_child, type_reference.node, identifier, null);
         _ = EdgeComposition.add_child(target_type, make_child.node, identifier);
 
         return make_child;
@@ -1329,7 +1329,9 @@ pub const TypeGraph = struct {
 
                 var attachment_parent = self.parent_instance;
                 if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
-                    attachment_parent = ChildReferenceNode.resolve(mount_reference, attachment_parent);
+                    attachment_parent = ChildReferenceNode.resolve(mount_reference, attachment_parent) orelse {
+                        return visitor.VisitResult(void){ .ERROR = error.UnresolvedMountReference };
+                    };
                 }
 
                 // 2.2) Instantiate child
@@ -1694,9 +1696,7 @@ test "basic instantiation" {
     try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p1).?, Electrical);
     try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p2).?, Electrical);
     try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_tp).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(resistor_p1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(resistor_p2).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(resistor_cap1).?, Capacitor);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1_makechild).?, Electrical);
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);

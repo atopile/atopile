@@ -1607,25 +1607,6 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
 # ------------------------------------------------------------
 
 
-class Optional(Node):
-    value = Node.MakeChild()
-
-    def setup(self, g: graph.GraphView, value: Node) -> Self:
-        fbrk.EdgePointer.point_to(
-            bound_node=self.instance,
-            target_node=value.instance.node(),
-            identifier="value",
-            order=None,
-        )
-        return self
-
-    def get_value(self) -> Node | None:
-        value = fbrk.EdgePointer.get_pointed_node_by_identifier(
-            bound_node=self.instance, identifier="value"
-        )
-        return Node.bind_instance(instance=value) if value else None
-
-
 # TODO shouldnt this all be in ImplementsTrait?
 class Traits:
     def __init__(self, node: NodeT):

@@ -60,37 +60,32 @@ class is_ato_block(fabll.Node):
     """
 
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    block_type = fabll.Parameter.MakeChild()  # TODO: enum domain
+    block_type = F.Parameters.EnumParameter.MakeChild(enum_t=BlockType)
 
     @classmethod
-    def MakeChild_Module(cls) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
+    def _MakeChild(cls, block_type: BlockType) -> fabll._ChildField[Any]:
+        lit = F.Literals.EnumValue.MakeChild(
+            name=block_type.name, value=block_type.value
+        )
+        out = fabll._ChildField(cls)
         out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                ref=[out, cls.block_type], value=BlockType.MODULE
+            F.Expressions.Is.MakeChild_Constrain(
+                operands=[[out, cls.block_type], [lit]]
             )
         )
         return out
 
     @classmethod
-    def MakeChild_Component(cls) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.block_type], BlockType.COMPONENT
-            )
-        )
-        return out
+    def MakeChild_Module(cls) -> fabll._ChildField[Any]:
+        return cls._MakeChild(BlockType.MODULE)
 
     @classmethod
-    def MakeChild_Interface(cls) -> fabll.ChildField[Any]:
-        out = fabll.ChildField(cls)
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_ConstrainToLiteral(
-                [out, cls.block_type], BlockType.INTERFACE
-            )
-        )
-        return out
+    def MakeChild_Component(cls) -> fabll._ChildField[Any]:
+        return cls._MakeChild(BlockType.COMPONENT)
+
+    @classmethod
+    def MakeChild_Interface(cls) -> fabll._ChildField[Any]:
+        return cls._MakeChild(BlockType.INTERFACE)
 
 
 class _ScopeStack:
@@ -330,7 +325,7 @@ class ASTVisitor:
       ensuring names are declared before reuse); structural validation and path
       resolution are delegated to the TypeGraph.
     - Defer cross-file linkage, stdlib loading, and part selection to the
-      surrounding build/linker code. The visitor produces a `BuildState` that
+      surrounding build/linker code. This visitor produces a `BuildState` that
       higher layers consume to finish linking.
 
     TODO: store graph references instead of reifying as IR?
@@ -360,10 +355,9 @@ class ASTVisitor:
         )
 
         # TODO: from "system" type graph
-        self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
-            self._type_graph
-        ).get_or_create_type()
-        self._pointer_sequence_type_identifier = F.Collections.PointerSequence.__name__
+        self._pointer_sequence_type = self._type_graph.get_type_by_name(
+            type_identifier=F.Collections.PointerSequence.__name__
+        )
         self._experiments: set[ASTVisitor._Experiments] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
@@ -626,10 +620,7 @@ class ASTVisitor:
 
         pointer_action = AddMakeChildAction(
             target_path=target_path,
-            child_spec=NewChildSpec(
-                type_identifier=self._pointer_sequence_type_identifier,
-                type_node=self._pointer_sequence_type,
-            ),
+            child_spec=NewChildSpec(type_node=self._pointer_sequence_type),
             parent_reference=parent_reference,
             parent_path=parent_path,
         )
@@ -693,15 +684,15 @@ class ASTVisitor:
             str, node.type_ref.get().name.get().try_extract_constrained_literal()
         )
         symbol = self._scope_stack.resolve_symbol(type_name)
-        count: int | None = None
+        count: float | None = None
 
         if (
-            count_literal := node.new_count.get()
-            .value.get()
-            .try_extract_constrained_literal()
+            count := not_none(
+                node.new_count.get().value.get().try_extract_aliased_literal()
+            ).get_value()
         ) is not None:
-            assert count_literal.is_integer()
-            count = int(count_literal)
+            assert count.is_integer()
+            count = int(count)
 
         return NewChildSpec(
             symbol=symbol,
@@ -742,15 +733,16 @@ class ASTVisitor:
     def _select_elements(
         iterable_field: AST.IterableFieldRef, sequence_elements: list[FieldPath]
     ) -> list[FieldPath]:
-        def _extract_slice_value(attr: fabll.ChildField[AST.Number]) -> int | None:
+        def _extract_slice_value(attr: fabll._ChildField[AST.Number]) -> int | None:
             if (
-                value_literal := attr.get()
-                .value.get()
-                .try_extract_constrained_literal()
+                value := not_none(
+                    attr.get().value.get().try_extract_aliased_literal()
+                ).get_value()
             ) is None:
                 return None
 
-            return int(value_literal)
+            assert value.is_integer()
+            return int(value)
 
         if (slice_node := iterable_field.slice.get()) is None:
             return sequence_elements
@@ -797,7 +789,7 @@ class ASTVisitor:
     def visit_ForStmt(self, node: AST.ForStmt):
         self.ensure_experiment(ASTVisitor._Experiments.FOR_LOOP)
 
-        iterable_node = node.iterable.get().get_value()
+        iterable_node = node.iterable.get().deref()
         item_paths: list[FieldPath]
 
         if iterable_node.isinstance(AST.FieldRefList):

@@ -12,9 +12,35 @@ from enum import StrEnum
 from typing import Iterable, Self
 
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
-from faebryk.core.zig.gen.graph.graph import GraphView
 from faebryk.library import Collections
+from faebryk.libs.util import cast_assert
+
+
+class is_assignable(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class is_arithmetic(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    as_assignable = fabll.Traits.ImpliedTrait(is_assignable).MakeChild()
+
+
+class is_arithmetic_atom(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    as_arithmetic = fabll.Traits.ImpliedTrait(is_arithmetic).MakeChild()
+
+
+class is_connectable(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class is_statement(fabll.Node):
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+LiteralT = float | int | str | bool
 
 
 @dataclass(frozen=True)
@@ -27,29 +53,36 @@ class SourceInfo:
 
 
 class FileLocation(fabll.Node):
-    start_line = fabll.Parameter.MakeChild()
-    start_col = fabll.Parameter.MakeChild()
-    end_line = fabll.Parameter.MakeChild()
-    end_col = fabll.Parameter.MakeChild()
+    start_line = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    start_col = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    end_line = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
+    end_col = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=True, negative=False
+    )
 
-    def setup(
-        self, g: GraphView, start_line: int, start_col: int, end_line: int, end_col: int
+    def setup(  # type: ignore
+        self, start_line: int, start_col: int, end_line: int, end_col: int
     ) -> Self:
-        self.start_line.get().constrain_to_literal(g=g, value=start_line)
-        self.start_col.get().constrain_to_literal(g=g, value=start_col)
-        self.end_line.get().constrain_to_literal(g=g, value=end_line)
-        self.end_col.get().constrain_to_literal(g=g, value=end_col)
+        self.start_line.get().alias_to_literal(g=self.g, value=start_line)
+        self.start_col.get().alias_to_literal(g=self.g, value=start_col)
+        self.end_line.get().alias_to_literal(g=self.g, value=end_line)
+        self.end_col.get().alias_to_literal(g=self.g, value=end_col)
         return self
 
 
 class SourceChunk(fabll.Node):
-    text = fabll.Parameter.MakeChild()
+    text = F.Parameters.StringParameter.MakeChild()
     loc = FileLocation.MakeChild()
 
-    def setup(self, g: GraphView, source_info: SourceInfo) -> Self:
-        self.text.get().constrain_to_literal(g=g, value=source_info.text)
+    def setup(self, source_info: SourceInfo) -> Self:  # type: ignore
+        self.text.get().alias_to_literal(source_info.text, g=self.g)
         self.loc.get().setup(
-            g=g,
             start_line=source_info.start_line,
             start_col=source_info.start_col,
             end_line=source_info.end_line,
@@ -59,22 +92,22 @@ class SourceChunk(fabll.Node):
 
 
 class TypeRef(fabll.Node):
-    name = fabll.Parameter.MakeChild()
+    name = F.Parameters.StringParameter.MakeChild()
     source = SourceChunk.MakeChild()
 
-    def setup(self, g: GraphView, name: str, source_info: SourceInfo) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.name.get().constrain_to_literal(g=g, value=name)
+    def setup(self, name: str, source_info: SourceInfo) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.name.get().alias_to_literal(name, g=self.g)
         return self
 
 
 class ImportPath(fabll.Node):
     source = SourceChunk.MakeChild()
-    path = fabll.Parameter.MakeChild()
+    path = F.Parameters.StringParameter.MakeChild()
 
-    def setup(self, g: GraphView, path: str, source_info: SourceInfo) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.path.get().constrain_to_literal(g=g, value=path)
+    def setup(self, path: str, source_info: SourceInfo) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.path.get().alias_to_literal(path, g=self.g)
         return self
 
 
@@ -86,32 +119,37 @@ class FieldRefPart(fabll.Node):
         source_info: SourceInfo
 
     source = SourceChunk.MakeChild()
-    name = fabll.Parameter.MakeChild()
-    key = fabll.Parameter.MakeChild()
+    name = F.Parameters.StringParameter.MakeChild()
+    key = F.Parameters.StringParameter.MakeChild()
 
-    def setup(self, g: GraphView, info: Info) -> Self:
-        self.source.get().setup(g=g, source_info=info.source_info)
-        self.name.get().constrain_to_literal(g=g, value=info.name)
+    def setup(self, info: Info) -> Self:  # type: ignore
+        self.source.get().setup(source_info=info.source_info)
+        self.name.get().alias_to_literal(info.name, g=self.g)
 
         if info.key is not None:
-            self.key.get().constrain_to_literal(g=g, value=info.key)
+            # TODO: split int and str cases?
+            self.key.get().alias_to_literal(str(info.key), g=self.g)
 
         return self
 
 
 class FieldRef(fabll.Node):
+    _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
+    _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
+    _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
+
     source = SourceChunk.MakeChild()
-    pin = fabll.Parameter.MakeChild()
+    pin = F.Parameters.StringParameter.MakeChild()
     parts = Collections.PointerSequence.MakeChild()  # TODO: specify child type
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, parts: Iterable[FieldRefPart.Info]
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, parts: Iterable[FieldRefPart.Info]
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
         for part_info in parts:
-            part = FieldRefPart.bind_typegraph(self.tg).create_instance(g=g)
-            part.setup(g=g, info=part_info)
+            part = FieldRefPart.bind_typegraph(self.tg).create_instance(g=self.g)
+            part.setup(info=part_info)
 
             EdgeComposition.add_child(
                 bound_node=self.instance,
@@ -126,130 +164,149 @@ class FieldRef(fabll.Node):
 
 class Number(fabll.Node):
     source = SourceChunk.MakeChild()
-    value = fabll.Parameter.MakeChild()
+    value = F.Parameters.NumericParameter.MakeChild()
 
-    def setup(self, g: GraphView, source_info: SourceInfo, value: int | float) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.value.get().constrain_to_literal(g=g, value=value)
+    def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.value.get().alias_to_literal(g=self.g, value=float(value))
         return self
 
 
 class Boolean(fabll.Node):
-    source = SourceChunk.MakeChild()
-    value = fabll.Parameter.MakeChild()
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
-    def setup(self, g: GraphView, source_info: SourceInfo, value: bool) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.value.get().constrain_to_literal(g=g, value=value)
+    source = SourceChunk.MakeChild()
+    value = F.Parameters.BooleanParameter.MakeChild()
+
+    def setup(self, source_info: SourceInfo, value: bool) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.value.get().alias_to_single(value=value, g=self.g)
         return self
 
 
 class Unit(fabll.Node):
     source = SourceChunk.MakeChild()
-    symbol = fabll.Parameter.MakeChild()
+    symbol = F.Parameters.StringParameter.MakeChild()
 
-    def setup(self, g: GraphView, source_info: SourceInfo, symbol: str) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.symbol.get().constrain_to_literal(g=g, value=symbol)
+    def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.symbol.get().alias_to_literal(symbol, g=self.g)
         return self
 
 
 class Quantity(fabll.Node):
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
+    _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
+    _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
+
     source = SourceChunk.MakeChild()
     number = Number.MakeChild()
     unit = Unit.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         value: int | float,
         value_source_info: SourceInfo,
         unit: tuple[str, SourceInfo] | None = None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.number.get().setup(g=g, source_info=value_source_info, value=value)
+        self.source.get().setup(source_info=source_info)
+        self.number.get().setup(source_info=value_source_info, value=value)
 
         if unit is not None:
             symbol, unit_source = unit
-            self.unit.get().setup(g=g, source_info=unit_source, symbol=symbol)
+            self.unit.get().setup(source_info=unit_source, symbol=symbol)
 
         return self
 
 
 class BinaryExpression(fabll.Node):
-    source = SourceChunk.MakeChild()
-    operator = fabll.Parameter.MakeChild()
-    lhs = fabll.Optional.MakeChild()  # TODO: reqyired but deferred
-    rhs = fabll.Optional.MakeChild()
+    _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
-    def setup(
+    source = SourceChunk.MakeChild()
+    operator = F.Parameters.StringParameter.MakeChild()
+    lhs = F.Collections.Pointer.MakeChild()  # TODO: reqyired but deferred
+    rhs = F.Collections.Pointer.MakeChild()
+
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         operator: str,
-        lhs: "ArithmeticT",
-        rhs: "ArithmeticT",
+        lhs: is_arithmetic,
+        rhs: is_arithmetic,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.operator.get().constrain_to_literal(g=g, value=operator)
-        self.lhs.get().setup(g=g, value=lhs)
-        self.rhs.get().setup(g=g, value=rhs)
+        self.source.get().setup(source_info=source_info)
+        self.operator.get().alias_to_literal(operator, g=self.g)
+        self.lhs.get().point(lhs)
+        self.rhs.get().point(rhs)
         return self
 
-    def get_lhs(self) -> "ArithmeticT":
-        return self.lhs.get().get_value()
+    def get_lhs(self) -> is_arithmetic:
+        return self.lhs.get().deref().get_trait(is_arithmetic)
 
-    def get_rhs(self) -> "ArithmeticT":
-        return self.rhs.get().get_value()
+    def get_rhs(self) -> is_arithmetic:
+        return self.rhs.get().deref().get_trait(is_arithmetic)
 
 
 class GroupExpression(fabll.Node):
-    source = SourceChunk.MakeChild()
-    expression = fabll.Optional.MakeChild()
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
+    _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
+    _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, expression: "ArithmeticT"
+    source = SourceChunk.MakeChild()
+    expression = F.Collections.Pointer.MakeChild()
+
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, expression: is_arithmetic
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.expression.get().setup(g=g, value=expression)
+        self.source.get().setup(source_info=source_info)
+        self.expression.get().point(expression)
         return self
 
-    def get_expression(self) -> "ArithmeticT":
-        return self.expression.get().get_value()
+    def get_expression(self) -> is_arithmetic:
+        return self.expression.get().deref().get_trait(is_arithmetic)
 
 
 class ComparisonClause(fabll.Node):
-    source = SourceChunk.MakeChild()
-    operator = fabll.Parameter.MakeChild()
-    rhs = fabll.Optional.MakeChild()
+    class ComparisonOperator(StrEnum):
+        LESS_THAN = "<"
+        GREATER_THAN = ">"
+        LT_EQ = "<="
+        GT_EQ = ">="
+        WITHIN = "within"
+        IS = "is"
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, operator: str, rhs: "ArithmeticT"
+    source = SourceChunk.MakeChild()
+    operator = F.Parameters.EnumParameter.MakeChild(enum_t=ComparisonOperator)
+    rhs = F.Collections.Pointer.MakeChild()
+
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, operator: str, rhs: is_arithmetic
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.operator.get().constrain_to_literal(g=g, value=operator)
-        self.rhs.get().setup(g=g, value=rhs)
+        operator_ = self.ComparisonOperator(operator)
+        self.source.get().setup(source_info=source_info)
+        self.operator.get().alias_to_literal(operator_, g=self.g)
+        self.rhs.get().point(rhs)
         return self
 
-    def get_rhs(self) -> "ArithmeticT":
-        return self.rhs.get().get_value()
+    def get_rhs(self) -> is_arithmetic:
+        return self.rhs.get().deref().get_trait(is_arithmetic)
 
 
 class ComparisonExpression(fabll.Node):
     source = SourceChunk.MakeChild()
-    lhs = fabll.Optional.MakeChild()
+    lhs = F.Collections.Pointer.MakeChild()
     rhs_clauses = Collections.PointerSequence.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
-        lhs: "ArithmeticT",
-        rhs_clauses: Iterable["ComparisonClause"],
+        lhs: is_arithmetic,
+        rhs_clauses: Iterable[ComparisonClause],
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.lhs.get().setup(g=g, value=lhs)
+        self.source.get().setup(source_info=source_info)
+        self.lhs.get().point(lhs)
 
         for clause in rhs_clauses:
             EdgeComposition.add_child(
@@ -261,18 +318,21 @@ class ComparisonExpression(fabll.Node):
 
         return self
 
-    def get_lhs(self) -> "ArithmeticT":
-        return self.lhs.get().get_value()
+    def get_lhs(self) -> is_arithmetic:
+        return self.lhs.get().deref().get_trait(is_arithmetic)
 
 
 class BilateralQuantity(fabll.Node):
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
+    _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
+    _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
+
     source = SourceChunk.MakeChild()
     quantity = Quantity.MakeChild()
     tolerance = Quantity.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         quantity_value: int | float,
         quantity_value_source_info: SourceInfo,
@@ -283,10 +343,9 @@ class BilateralQuantity(fabll.Node):
         tolerance_unit: tuple[str, SourceInfo] | None,
         tolerance_source_info: SourceInfo,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
         self.quantity.get().setup(
-            g=g,
             source_info=quantity_source_info,
             value=quantity_value,
             value_source_info=quantity_value_source_info,
@@ -294,7 +353,6 @@ class BilateralQuantity(fabll.Node):
         )
 
         self.tolerance.get().setup(
-            g=g,
             source_info=tolerance_source_info,
             value=tolerance_value,
             value_source_info=tolerance_value_source_info,
@@ -305,13 +363,16 @@ class BilateralQuantity(fabll.Node):
 
 
 class BoundedQuantity(fabll.Node):
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
+    _is_arithmetic = fabll.Traits.MakeEdge(is_arithmetic.MakeChild())
+    _is_arithmetic_atom = fabll.Traits.MakeEdge(is_arithmetic_atom.MakeChild())
+
     source = SourceChunk.MakeChild()
     start = Quantity.MakeChild()
     end = Quantity.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         start_value: int | float,
         start_unit: tuple[str, SourceInfo] | None,
@@ -322,10 +383,9 @@ class BoundedQuantity(fabll.Node):
         end_source_info: SourceInfo,
         end_value_source_info: SourceInfo,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
         self.start.get().setup(
-            g=g,
             source_info=start_source_info,
             value=start_value,
             value_source_info=start_value_source_info,
@@ -333,7 +393,6 @@ class BoundedQuantity(fabll.Node):
         )
 
         self.end.get().setup(
-            g=g,
             source_info=end_source_info,
             value=end_value,
             value_source_info=end_value_source_info,
@@ -346,13 +405,14 @@ class BoundedQuantity(fabll.Node):
 class Scope(fabll.Node):
     stmts = Collections.PointerSet.MakeChild()
 
-    def setup(self, g: GraphView, stmts: Iterable["StatementT"]) -> Self:
+    def setup(self, stmts: Iterable[is_statement]) -> Self:  # type: ignore
         for stmt in stmts:
-            self.stmts.get().append(stmt)
+            stmt_node = fabll.Traits(stmt).get_obj_raw()
+            self.stmts.get().append(stmt_node)
 
             EdgeComposition.add_child(
                 bound_node=self.instance,
-                child=stmt.instance.node(),
+                child=stmt_node.instance.node(),
                 child_identifier=str(id(stmt)),
             )
 
@@ -364,58 +424,57 @@ class Scope(fabll.Node):
 class File(fabll.Node):
     source = SourceChunk.MakeChild()
     scope = Scope.MakeChild()
-    path = fabll.Parameter.MakeChild()
+    path = F.Parameters.StringParameter.MakeChild()
 
     # TODO: optional path
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         path: str,
-        stmts: Iterable["StatementT"],
+        stmts: Iterable[is_statement],
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.path.get().constrain_to_literal(g=g, value=path)
-        self.scope.get().setup(g=g, stmts=stmts)
+        self.source.get().setup(source_info=source_info)
+        self.path.get().alias_to_literal(*path)
+        self.scope.get().setup(stmts=stmts)
 
         return self
 
 
 class BlockDefinition(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     class BlockType(StrEnum):
         MODULE = "module"
         COMPONENT = "component"
         INTERFACE = "interface"
 
     source = SourceChunk.MakeChild()
-    block_type = fabll.Parameter.MakeChild()  # TODO: enum domain
+    block_type = F.Parameters.EnumParameter.MakeChild(enum_t=BlockType)
     type_ref = TypeRef.MakeChild()
     super_type_ref = TypeRef.MakeChild()
     scope = Scope.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         block_type: str,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
         super_type_ref_info: tuple[str, SourceInfo] | None,
-        stmts: Iterable["StatementT"],
+        stmts: Iterable[is_statement],
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.block_type.get().constrain_to_literal(g=g, value=block_type)
+        block_type_ = self.BlockType(block_type)
+        self.source.get().setup(source_info=source_info)
+        self.block_type.get().alias_to_literal(block_type_)
 
-        self.type_ref.get().setup(
-            g=g, name=type_ref_name, source_info=type_ref_source_info
-        )
+        self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
         if super_type_ref_info is not None:
             self.super_type_ref.get().setup(
-                g=g, name=super_type_ref_info[0], source_info=super_type_ref_info[1]
+                name=super_type_ref_info[0], source_info=super_type_ref_info[1]
             )
 
-        self.scope.get().setup(g=g, stmts=stmts)
+        self.scope.get().setup(stmts=stmts)
 
         return self
 
@@ -437,29 +496,26 @@ class Slice(fabll.Node):
     stop = Number.MakeChild()
     step = Number.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         start: tuple[int, SourceInfo] | None = None,
         stop: tuple[int, SourceInfo] | None = None,
         step: tuple[int, SourceInfo] | None = None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
         if start is not None:
             start_value, start_source_info = start
-            self.start.get().setup(
-                g=g, source_info=start_source_info, value=start_value
-            )
+            self.start.get().setup(source_info=start_source_info, value=start_value)
 
         if stop is not None:
             stop_value, stop_source_info = stop
-            self.stop.get().setup(g=g, source_info=stop_source_info, value=stop_value)
+            self.stop.get().setup(source_info=stop_source_info, value=stop_value)
 
         if step is not None:
             step_value, step_source_info = step
-            self.step.get().setup(g=g, source_info=step_source_info, value=step_value)
+            self.step.get().setup(source_info=step_source_info, value=step_value)
 
         return self
 
@@ -469,36 +525,35 @@ class IterableFieldRef(fabll.Node):
     field = FieldRef.MakeChild()
     slice = Slice.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         field_parts: Iterable[FieldRefPart.Info],
         field_source_info: SourceInfo,
         slice_config: SliceConfig | None = None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.field.get().setup(g=g, source_info=field_source_info, parts=field_parts)
+        self.source.get().setup(source_info=source_info)
+        self.field.get().setup(source_info=field_source_info, parts=field_parts)
 
         if slice_config is not None:
-            self.slice.get().source.get().setup(g=g, source_info=slice_config.source)
+            self.slice.get().source.get().setup(source_info=slice_config.source)
 
             if slice_config.start is not None:
                 start_value, start_source_info = slice_config.start
                 self.slice.get().start.get().setup(
-                    g=g, source_info=start_source_info, value=start_value
+                    source_info=start_source_info, value=start_value
                 )
 
             if slice_config.stop is not None:
                 stop_value, stop_source_info = slice_config.stop
                 self.slice.get().stop.get().setup(
-                    g=g, source_info=stop_source_info, value=stop_value
+                    source_info=stop_source_info, value=stop_value
                 )
 
             if slice_config.step is not None:
                 step_value, step_source_info = slice_config.step
                 self.slice.get().step.get().setup(
-                    g=g, source_info=step_source_info, value=step_value
+                    source_info=step_source_info, value=step_value
                 )
 
         return self
@@ -508,10 +563,10 @@ class FieldRefList(fabll.Node):
     source = SourceChunk.MakeChild()
     items = Collections.PointerSequence.MakeChild()
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, items: Iterable[FieldRef]
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, items: Iterable[FieldRef]
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
         for item in items:
             self.items.get().append(item)
@@ -525,86 +580,95 @@ class FieldRefList(fabll.Node):
 
 
 class ForStmt(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
     scope = Scope.MakeChild()
-    target = fabll.Parameter.MakeChild()
-    iterable = fabll.Optional.MakeChild()
+    target = F.Parameters.StringParameter.MakeChild()
+    iterable = F.Collections.Pointer.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         target: str,
         iterable: "IterableFieldRef | FieldRefList",
-        stmts: Iterable["StatementT"],
+        stmts: Iterable[is_statement],
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.target.get().constrain_to_literal(g=g, value=target)
-        self.iterable.get().setup(g=g, value=iterable)
-        self.scope.get().setup(g=g, stmts=stmts)
+        self.source.get().setup(source_info=source_info)
+        self.target.get().alias_to_literal(*target)
+        self.iterable.get().point(iterable)
+        self.scope.get().setup(stmts=stmts)
         return self
 
-    def get_iterable(self) -> "IterableFieldRef | FieldRefList":
-        return self.iterable.get().get_value()
+    def get_iterable(self) -> IterableFieldRef | FieldRefList:
+        return cast_assert(
+            (IterableFieldRef, FieldRefList), self.iterable.get().deref()
+        )
 
 
 class PragmaStmt(fabll.Node):
-    source = SourceChunk.MakeChild()
-    pragma = fabll.Parameter.MakeChild()
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
-    def setup(self, g: GraphView, source_info: SourceInfo, pragma: str) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.pragma.get().constrain_to_literal(g=g, value=pragma)
+    source = SourceChunk.MakeChild()
+    pragma = F.Parameters.StringParameter.MakeChild()
+
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, pragma: str
+    ) -> Self:
+        self.source.get().setup(source_info=source_info)
+        self.pragma.get().alias_to_literal(pragma)
         return self
 
 
 class ImportStmt(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
     path = ImportPath.MakeChild()
     type_ref = TypeRef.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
         path_info: tuple[str, SourceInfo] | None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.type_ref.get().setup(
-            g=g, name=type_ref_name, source_info=type_ref_source_info
-        )
+        self.source.get().setup(source_info=source_info)
+        self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
         if path_info is not None:
             path, path_source_info = path_info
-            self.path.get().setup(g=g, path=path, source_info=path_source_info)
+            self.path.get().setup(path=path, source_info=path_source_info)
 
         return self
 
 
 class TemplateArg(fabll.Node):
     source = SourceChunk.MakeChild()
-    name = fabll.Parameter.MakeChild()
-    value = fabll.Parameter.MakeChild()
+    name = F.Parameters.StringParameter.MakeChild()
+    value = F.Parameters.AnyParameter.MakeChild()
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, name: str, value: "LiteralT"
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, name: str, value: "LiteralT"
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.name.get().constrain_to_literal(g=g, value=name)
-        self.value.get().constrain_to_literal(g=g, value=value)
+        self.source.get().setup(source_info=source_info)
+        self.name.get().alias_to_literal(name)
+        self.value.get().setup(value=value)
         return self
+
+    def get_value(self) -> "LiteralT":
+        return self.value.get().get_value()
 
 
 class Template(fabll.Node):
     source = SourceChunk.MakeChild()
     args = Collections.PointerSequence.MakeChild()
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, args: Iterable[TemplateArg]
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, args: Iterable[TemplateArg]
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
         for arg in args:
             self.args.get().append(arg)
@@ -618,121 +682,112 @@ class Template(fabll.Node):
 
 
 class NewExpression(fabll.Node):
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
+
     source = SourceChunk.MakeChild()
     type_ref = TypeRef.MakeChild()
     template = Template.MakeChild()
     new_count = Number.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
         template: tuple[SourceInfo, Iterable[TemplateArg]] | None = None,
         new_count_info: tuple[int, SourceInfo] | None = None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.type_ref.get().setup(
-            g=g, name=type_ref_name, source_info=type_ref_source_info
-        )
+        self.source.get().setup(source_info=source_info)
+        self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
         if template is not None:
             template_source, template_args = template
-            self.template.get().setup(
-                g=g, source_info=template_source, args=template_args
-            )
+            self.template.get().setup(source_info=template_source, args=template_args)
 
         if new_count_info is not None:
             count, count_source_info = new_count_info
-            self.new_count.get().setup(g=g, source_info=count_source_info, value=count)
+            self.new_count.get().setup(source_info=count_source_info, value=count)
 
         return self
 
 
 class String(fabll.Node):
-    source = SourceChunk.MakeChild()
-    text = fabll.Parameter.MakeChild()
+    _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
-    def setup(self, g: GraphView, source_info: SourceInfo, text: str) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.text.get().constrain_to_literal(g=g, value=text)
+    source = SourceChunk.MakeChild()
+    text = F.Parameters.StringParameter.MakeChild()
+
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, text: str
+    ) -> Self:
+        self.source.get().setup(source_info=source_info)
+        self.text.get().alias_to_literal(text)
         return self
 
 
 class Assignable(fabll.Node):
     source = SourceChunk.MakeChild()
-    value = fabll.Optional.MakeChild()
+    value = F.Collections.Pointer.MakeChild()
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, value: "AssignableT"
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, value: is_assignable
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-
-        self.value.get().setup(g=g, value=value)
+        self.source.get().setup(source_info=source_info)
+        self.value.get().point(value)
         return self
 
-    def get_value(self) -> "AssignableT":
-        return self.value.get().get_value()
+    def get_value(self) -> is_assignable:
+        return self.value.get().deref().get_trait(is_assignable)
 
 
 class Assignment(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
     target = FieldRef.MakeChild()  # TODO: declarations?
     assignable = Assignable.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         target_field_ref_parts: list[FieldRefPart.Info],
         target_field_ref_source_info: SourceInfo,
-        assignable_value: "AssignableT",
+        assignable_value: is_assignable,
         assignable_source_info: SourceInfo,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
         self.target.get().setup(
-            g=g, source_info=target_field_ref_source_info, parts=target_field_ref_parts
+            source_info=target_field_ref_source_info, parts=target_field_ref_parts
         )
         self.assignable.get().setup(
-            g=g, source_info=assignable_source_info, value=assignable_value
+            source_info=assignable_source_info, value=assignable_value
         )
         return self
 
 
 class ConnectStmt(fabll.Node):
-    source = SourceChunk.MakeChild()
-    lhs = fabll.Optional.MakeChild()
-    rhs = fabll.Optional.MakeChild()
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
-    def setup(
+    source = SourceChunk.MakeChild()
+    lhs = F.Collections.Pointer.MakeChild()
+    rhs = F.Collections.Pointer.MakeChild()
+
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
-        lhs: "ConnectableT",
-        rhs: "ConnectableT",
+        lhs: is_connectable,
+        rhs: is_connectable,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.lhs.get().setup(g=g, value=lhs)
-        self.rhs.get().setup(g=g, value=rhs)
+        self.source.get().setup(source_info=source_info)
+        self.lhs.get().point(lhs)
+        self.rhs.get().point(rhs)
         return self
 
-    def _get_operand(self, node: fabll.Node) -> "ConnectableT":
-        match node_type := fabll.Node.get_type_name(node):
-            case FieldRef.__name__:
-                return FieldRef.bind_instance(node.instance)
-            case SignaldefStmt.__name__:
-                return SignaldefStmt.bind_instance(node.instance)
-            case PinDeclaration.__name__:
-                return PinDeclaration.bind_instance(node.instance)
-            case _:
-                raise ValueError(f"Expected ConnectableT, got {node_type}")
+    def get_lhs(self) -> is_connectable:
+        return self.lhs.get().deref().get_trait(is_connectable)
 
-    def get_lhs(self) -> "ConnectableT":
-        return self._get_operand(self.lhs.get().get_value())
-
-    def get_rhs(self) -> "ConnectableT":
-        return self._get_operand(self.rhs.get().get_value())
+    def get_rhs(self) -> is_connectable:
+        return self.rhs.get().deref().get_trait(is_connectable)
 
 
 class DirectedConnectStmt(fabll.Node):
@@ -740,30 +795,31 @@ class DirectedConnectStmt(fabll.Node):
         RIGHT = "RIGHT"
         LEFT = "LEFT"
 
-    source = SourceChunk.MakeChild()
-    direction = fabll.Parameter.MakeChild()  # TODO: enum domain
-    lhs = fabll.Optional.MakeChild()
-    rhs = fabll.Optional.MakeChild()
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
-    def setup(
+    source = SourceChunk.MakeChild()
+    direction = F.Parameters.EnumParameter.MakeChild(enum_t=Direction)
+    lhs = F.Collections.Pointer.MakeChild()
+    rhs = F.Collections.Pointer.MakeChild()
+
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         direction: "DirectedConnectStmt.Direction",
-        lhs: "ConnectableT",
-        rhs: "ConnectableT | DirectedConnectStmt",
+        lhs: is_connectable,
+        rhs: "is_connectable | DirectedConnectStmt",
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.direction.get().constrain_to_literal(g=g, value=direction.value)
-        self.lhs.get().setup(g=g, value=lhs)
-        self.rhs.get().setup(g=g, value=rhs)
+        self.source.get().setup(source_info=source_info)
+        self.direction.get().alias_to_literal(direction)
+        self.lhs.get().point(lhs)
+        self.rhs.get().point(rhs)
         return self
 
-    def get_lhs(self) -> "ConnectableT":
-        return self.lhs.get().get_value()
+    def get_lhs(self) -> is_connectable:
+        return self.lhs.get().deref().get_trait(is_connectable)
 
-    def get_rhs(self) -> "ConnectableT | DirectedConnectStmt":
-        return self.rhs.get().get_value()
+    def get_rhs(self) -> "is_connectable | DirectedConnectStmt":
+        return self.rhs.get().deref().get_trait(is_connectable)
 
 
 class RetypeStmt(fabll.Node):
@@ -771,19 +827,18 @@ class RetypeStmt(fabll.Node):
     target = FieldRef.MakeChild()
     new_type_ref = TypeRef.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         target_parts: Iterable[FieldRefPart.Info],
         target_source_info: SourceInfo,
         new_type_name: str,
         new_type_source_info: SourceInfo,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.target.get().setup(g=g, source_info=target_source_info, parts=target_parts)
+        self.source.get().setup(source_info=source_info)
+        self.target.get().setup(source_info=target_source_info, parts=target_parts)
         self.new_type_ref.get().setup(
-            g=g, name=new_type_name, source_info=new_type_source_info
+            name=new_type_name, source_info=new_type_source_info
         )
         return self
 
@@ -794,107 +849,120 @@ class PinDeclaration(fabll.Node):
         NUMBER = "number"
         STRING = "string"
 
-    source = SourceChunk.MakeChild()
-    kind = fabll.Parameter.MakeChild()
-    label = fabll.Parameter.MakeChild()
+    _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
-    def setup(
+    source = SourceChunk.MakeChild()
+    kind = F.Parameters.EnumParameter.MakeChild(enum_t=Kind)
+    label = F.Parameters.AnyParameter.MakeChild()
+
+    _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
+
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         kind: "PinDeclaration.Kind",
         label_value: "LiteralT | None" = None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.kind.get().constrain_to_literal(g=g, value=kind.value)
+        self.source.get().setup(source_info=source_info)
+        self.kind.get().alias_to_literal(kind)
 
         if label_value is not None:
-            self.label.get().constrain_to_literal(g=g, value=label_value)
+            self.label.get().setup(value=label_value)
 
         return self
 
 
 class SignaldefStmt(fabll.Node):
-    source = SourceChunk.MakeChild()
-    name = fabll.Parameter.MakeChild()
+    _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
-    def setup(self, g: GraphView, source_info: SourceInfo, name: str) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.name.get().constrain_to_literal(g=g, value=name)
+    source = SourceChunk.MakeChild()
+    name = F.Parameters.StringParameter.MakeChild()
+
+    def setup(self, source_info: SourceInfo, name: str) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
+        self.name.get().alias_to_literal(name)
         return self
 
 
 class AssertStmt(fabll.Node):
-    source = SourceChunk.MakeChild()
-    comparison = fabll.Optional.MakeChild()
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
-    def setup(
-        self, g: GraphView, source_info: SourceInfo, comparison: ComparisonExpression
+    source = SourceChunk.MakeChild()
+    comparison = F.Collections.Pointer.MakeChild()
+
+    def setup(  # type: ignore
+        self, source_info: SourceInfo, comparison: ComparisonExpression
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.comparison.get().setup(g=g, value=comparison)
+        self.source.get().setup(source_info=source_info)
+        self.comparison.get().point(comparison)
         return self
 
     def get_comparison(self) -> "ComparisonExpression":
-        return self.comparison.get().get_value()
+        return cast_assert(ComparisonExpression, self.comparison.get().deref())
 
 
 class DeclarationStmt(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
     field_ref = FieldRef.MakeChild()
     unit = Unit.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         field_ref_parts: Iterable[FieldRefPart.Info],
         field_ref_source_info: SourceInfo,
         unit_symbol: str,
         unit_source_info: SourceInfo,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
         self.field_ref.get().setup(
-            g=g, source_info=field_ref_source_info, parts=field_ref_parts
+            source_info=field_ref_source_info, parts=field_ref_parts
         )
-        self.unit.get().setup(g=g, source_info=unit_source_info, symbol=unit_symbol)
+        self.unit.get().setup(source_info=unit_source_info, symbol=unit_symbol)
         return self
 
 
 class StringStmt(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
     string = String.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         string_value: str,
         string_source_info: SourceInfo,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
-        self.string.get().setup(g=g, source_info=string_source_info, text=string_value)
+        self.source.get().setup(source_info=source_info)
+        self.string.get().setup(source_info=string_source_info, text=string_value)
         return self
 
 
 class PassStmt(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
 
-    def setup(self, g: GraphView, source_info: SourceInfo) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+    def setup(self, source_info: SourceInfo) -> Self:  # type: ignore
+        self.source.get().setup(source_info=source_info)
         return self
 
 
 class TraitStmt(fabll.Node):
+    _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
+
     source = SourceChunk.MakeChild()
     type_ref = TypeRef.MakeChild()
     target = FieldRef.MakeChild()
     template = Template.MakeChild()
-    constructor = fabll.Parameter.MakeChild()
+    constructor = F.Parameters.StringParameter.MakeChild()
 
-    def setup(
+    def setup(  # type: ignore
         self,
-        g: GraphView,
         source_info: SourceInfo,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
@@ -902,64 +970,19 @@ class TraitStmt(fabll.Node):
         template_info: tuple[SourceInfo, Iterable[TemplateArg]] | None = None,
         constructor: str | None = None,
     ) -> Self:
-        self.source.get().setup(g=g, source_info=source_info)
+        self.source.get().setup(source_info=source_info)
 
-        self.type_ref.get().setup(
-            g=g, name=type_ref_name, source_info=type_ref_source_info
-        )
+        self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
         if target_info is not None:
             target_parts, target_source_info = target_info
-            self.target.get().setup(
-                g=g, source_info=target_source_info, parts=target_parts
-            )
+            self.target.get().setup(source_info=target_source_info, parts=target_parts)
 
         if template_info is not None:
             template_source, template_args = template_info
-            self.template.get().setup(
-                g=g, source_info=template_source, args=template_args
-            )
+            self.template.get().setup(source_info=template_source, args=template_args)
 
         if constructor is not None:
-            self.constructor.get().constrain_to_literal(g=g, value=constructor)
+            self.constructor.get().alias_to_literal(constructor)
 
         return self
-
-
-LiteralT = float | int | str | bool
-
-ArithmeticAtomT = (
-    FieldRef | Quantity | BilateralQuantity | BoundedQuantity | GroupExpression
-)
-
-ArithmeticT = BinaryExpression | ArithmeticAtomT
-
-AssignableT = (
-    NewExpression
-    | String
-    | Boolean
-    | Quantity
-    | BoundedQuantity
-    | BilateralQuantity
-    | ArithmeticT
-)
-
-ConnectableT = FieldRef | SignaldefStmt | PinDeclaration
-
-StatementT = (
-    Assignment
-    | AssertStmt
-    | BlockDefinition
-    | ConnectStmt
-    | DeclarationStmt
-    | DirectedConnectStmt
-    | ForStmt
-    | ImportStmt
-    | PassStmt
-    | PinDeclaration
-    | PragmaStmt
-    | RetypeStmt
-    | SignaldefStmt
-    | StringStmt
-    | TraitStmt
-)

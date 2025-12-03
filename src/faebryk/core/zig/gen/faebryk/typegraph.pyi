@@ -51,6 +51,7 @@ class TypeGraph:
     def debug_add_reference(
         self, *, type_node: BoundNode, path: list[str]
     ) -> BoundNode: ...
+    def add_reference(self, *, type_node: BoundNode, path: list[str]) -> BoundNode: ...
     def add_make_link(
         self,
         *,

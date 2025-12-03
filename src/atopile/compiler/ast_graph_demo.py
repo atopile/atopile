@@ -51,13 +51,13 @@ def _flatten_optional(node: BoundNode) -> tuple[BoundNode, bool]:
     current = node
     from_optional = False
 
-    while _type_name(current) == "Optional":
-        optional_bound = fabll.Optional.bind_instance(current)
-        value_node = optional_bound.get_value()
-        if value_node is None:
-            raise ValueError("Optional node without value encountered during rendering")
-        current = value_node.instance
-        from_optional = True
+    # while _type_name(current) == "Optional":
+    #     optional_bound = F.Collections.Pointer.bind_instance(current)
+    #     value_node = optional_bound.get_value()
+    #     if value_node is None:
+    #         raise ValueError("Optional node without value encountered during rendering")
+    #     current = value_node.instance
+    #     from_optional = True
 
     return current, from_optional
 
@@ -159,14 +159,15 @@ def describe_node(
 
     result = f"{type_name}{attrs_text}"
 
-    if include_parameter_literal and type_name == "Parameter":
-        match fabll.Parameter.bind_instance(ctx.node).try_extract_constrained_literal():
-            case str() as lit_value:
-                result += f" is! '{truncate_text(lit_value)}'"
-            case None:
-                pass
-            case lit_value:
-                result += f" is! {lit_value}"
+    # FIXME
+    # if include_parameter_literal and type_name == "Parameter":
+    #     match F.Parameters.Parameter.bind_instance(ctx.node).try_extract_constrained_literal():
+    #         case str() as lit_value:
+    #             result += f" is! '{truncate_text(lit_value)}'"
+    #         case None:
+    #             pass
+    #         case lit_value:
+    #             result += f" is! {lit_value}"
 
     return f"?{result}" if ctx.from_optional else result
 
