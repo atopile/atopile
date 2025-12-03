@@ -10,6 +10,7 @@ from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.operand import EdgeOperand
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+from faebryk.core.zig.gen.faebryk.trait import EdgeTrait
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
 from faebryk.core.zig.gen.graph.graph import (
     BFSPath,
@@ -237,6 +238,19 @@ class InstanceGraphFunctions:
         return edges
 
     @staticmethod
+    def _collect_trait_edges(bound_node: BoundNode) -> list:
+        """Collect all trait edges of a node."""
+        edges: list[Any] = []
+
+        def collect(ctx, edge):
+            ctx.append(edge)
+
+        EdgeTrait.visit_trait_instance_edges(
+            bound_node=bound_node, ctx=edges, f=collect
+        )
+        return edges
+
+    @staticmethod
     def _build_node_counts(root_bound: BoundNode) -> dict[int, int]:
         """
         Build a mapping of node UUID -> total node count (node + descendants).
@@ -248,10 +262,9 @@ class InstanceGraphFunctions:
 
         def count(bound_node: BoundNode) -> int:
             key = InstanceGraphFunctions._node_key(bound_node)
-            if key in counts:
-                return counts[key]
+            # Check if already visited FIRST - return 0 to avoid double counting
             if key in visited:
-                return 0  # Cycle, don't count again
+                return 0
 
             visited.add(key)
             total = 1  # Count this node
@@ -281,12 +294,19 @@ class InstanceGraphFunctions:
         return counts.get(root_key, 0)
 
     @staticmethod
-    def render(root: BoundNode) -> str:
+    def render(
+        root: BoundNode,
+        show_traits: bool = False,
+        filter_names: list[str] | None = None,
+    ) -> str:
         """
         Render an instance graph as ASCII tree.
 
         Args:
             root: A BoundNode instance
+            show_traits: If True, also show trait edges (default: False)
+            filter_names: If provided, only render subtrees under children
+                         with these names (e.g., ["_can_attach", "resistance"])
 
         Returns:
             ASCII tree representation showing type names and instance names
@@ -295,6 +315,9 @@ class InstanceGraphFunctions:
         stream = io.StringIO()
         visited: set[int] = set()
         labels: dict[int, str] = {}
+        node_names: dict[int, str] = {}
+        # Track where each node was first rendered (for "already rendered" message)
+        first_rendered_at: dict[int, str] = {}
 
         # Build edge type ID to name mapping
         edge_type_names: dict[int, str] = {
@@ -304,12 +327,27 @@ class InstanceGraphFunctions:
             EdgeInterfaceConnection.get_tid(): "Conn",
             EdgeOperand.get_tid(): "Op",
         }
+        # Trait edges are identified by checking EdgeTrait.is_instance()
 
         root_bound = root
 
         # Alias for cleaner code
         node_key = InstanceGraphFunctions._node_key
         collect_children = InstanceGraphFunctions._collect_children
+        collect_trait_edges = InstanceGraphFunctions._collect_trait_edges
+
+        def get_node_name(bound_node: BoundNode) -> str:
+            """Get just the node name (not the full label with type)."""
+            key = node_key(bound_node)
+            if key in node_names:
+                return node_names[key]
+            if isinstance(name := bound_node.node().get_attr(key="name"), str):
+                node_names[key] = name
+                return name
+            # Fallback to showing the node id
+            fallback_name = f"<node@{key}>"
+            node_names[key] = fallback_name
+            return fallback_name
 
         def get_node_label(bound_node: BoundNode) -> str:
             """Build label showing type name and instance name."""
@@ -353,46 +391,174 @@ class InstanceGraphFunctions:
             edge_tid = edge.edge_type()
             return edge_type_names.get(edge_tid, f"?{edge_tid}")
 
-        # Pre-compute node counts using shared logic
-        node_counts = InstanceGraphFunctions._build_node_counts(root_bound)
-        root_count = node_counts.get(node_key(root_bound), 0)
-
-        def render_node(bound_node: BoundNode, prefix: str) -> None:
-            key = node_key(bound_node)
-            if key in visited:
-                # Show which node the cycle points to
-                cycle_label = labels.get(key, f"<node@{key}>")
-                print(f"{prefix}(cycle → {cycle_label})", file=stream)
-                return
-
-            visited.add(key)
+        def get_sorted_children(bound_node: BoundNode) -> list:
+            """Get children sorted by edge type then edge name."""
             children = []
+            # Composition edges
             for edge in collect_children(bound_node):
                 edge_name = EdgeComposition.get_name(edge=edge.edge())
                 edge_type_name = get_edge_type_name(edge.edge())
                 children.append((edge_name, edge, edge_type_name))
 
-            children.sort(key=lambda item: item[0])
+            # Trait edges (if enabled)
+            if show_traits:
+                for edge in collect_trait_edges(bound_node):
+                    # Get trait instance node name as edge name
+                    trait_node = edge.g().bind(node=edge.edge().target())
+                    trait_name = get_node_name(trait_node)
+                    # Trait edges don't have get_tid, mark them as "Trait"
+                    children.append((trait_name, edge, "Trait"))
+
+            # Sort by edge type name first, then edge name
+            children.sort(key=lambda item: (item[2], item[0]))
+            return children
+
+        def count_new_nodes(bound_node: BoundNode, already_counted: set[int]) -> int:
+            """
+            Count nodes in subtree that haven't been counted yet.
+            Returns 0 for nodes already in already_counted.
+            """
+            seen: set[int] = set(already_counted)  # Copy to avoid modifying original
+
+            def count(node: BoundNode) -> int:
+                key = node_key(node)
+                if key in seen:
+                    return 0  # Already counted
+                seen.add(key)
+
+                total = 1  # Count this node
+                for _, edge, _ in get_sorted_children(node):
+                    child_bound = edge.g().bind(node=edge.edge().target())
+                    total += count(child_bound)
+                return total
+
+            return count(bound_node)
+
+        def render_node(
+            bound_node: BoundNode,
+            prefix: str,
+            path: list[tuple[int, str]] = None,
+            edge_name: str = None,
+        ) -> None:
+            if path is None:
+                path = []
+
+            key = node_key(bound_node)
+            current_node_name = get_node_name(bound_node)
+            display_name = edge_name if edge_name else current_node_name
+
+            if key in visited:
+                # Check if this is a real cycle (in current path)
+                path_keys = [k for k, _ in path]
+                if key in path_keys:
+                    # Real cycle - node is an ancestor in current path
+                    cycle_start_idx = path_keys.index(key)
+                    cycle_path = path[cycle_start_idx:] + [(key, display_name)]
+                    cycle_path_names = [name for _, name in cycle_path]
+                    cycle_info = " → ".join(cycle_path_names)
+                    cycle_length = len(cycle_path)
+                    cycle_msg = (
+                        f"{prefix}    (cycle: {cycle_info}, length={cycle_length})"
+                    )
+                    print(cycle_msg, file=stream)
+                # Shared nodes are handled in the parent's loop - don't print here
+                return
+
+            visited.add(key)
+            # Track where this node was first rendered
+            first_rendered_at[key] = display_name
+            path = path + [(key, display_name)]
+
+            children = get_sorted_children(bound_node)
 
             total = len(children)
             for idx, (edge_name, bound_edge, edge_type_name) in enumerate(children):
                 is_last = idx == total - 1
                 connector = "└──" if is_last else "├──"
                 child_bound = bound_edge.g().bind(node=bound_edge.edge().target())
-                display_name = edge_name if edge_name else "_"
+                child_display_name = edge_name if edge_name else "_"
                 node_label = get_node_label(child_bound)
-                child_count = node_counts.get(node_key(child_bound), 0)
-                # Format: [EdgeType] name: TypeName (N)
+                child_key = node_key(child_bound)
+
+                # Check if this child was already rendered
+                if child_key in visited:
+                    # Shared node - show on same line
+                    original_name = first_rendered_at.get(child_key, "?")
+                    print(
+                        f"{prefix}{connector} [{edge_type_name}] {child_display_name}: "
+                        f"{node_label} {child_key:x} (same as {original_name})",
+                        file=stream,
+                    )
+                    # Still call render_node to handle any cycle detection in path
+                    child_prefix = prefix + ("    " if is_last else "│   ")
+                    render_node(
+                        child_bound, child_prefix, path, edge_name=child_display_name
+                    )
+                else:
+                    # New node - compute count and render normally
+                    child_count = count_new_nodes(child_bound, visited)
+                    print(
+                        f"{prefix}{connector} [{edge_type_name}] {child_display_name}: "
+                        f"{node_label} {child_key:x} ({child_count})",
+                        file=stream,
+                    )
+                    child_prefix = prefix + ("    " if is_last else "│   ")
+                    render_node(
+                        child_bound, child_prefix, path, edge_name=child_display_name
+                    )
+
+        # Compute root count and render
+        root_key = node_key(root_bound)
+
+        if filter_names:
+            # Filter mode: find matching children and render only those subtrees
+            filter_set = set(filter_names)
+            children = get_sorted_children(root_bound)
+            matching = [
+                (name, edge, etype)
+                for name, edge, etype in children
+                if name in filter_set
+            ]
+
+            if not matching:
                 print(
-                    f"{prefix}{connector} [{edge_type_name}] {display_name}: "
-                    f"{node_label} ({child_count})",
+                    f"{get_node_label(root_bound)} {root_key:x} "
+                    f"(no children matching: {filter_names})",
                     file=stream,
                 )
-                child_prefix = prefix + ("    " if is_last else "│   ")
-                render_node(child_bound, child_prefix)
-
-        print(f"{get_node_label(root_bound)} ({root_count})", file=stream)
-        render_node(root_bound, "")
+            else:
+                # Print root with count of matched subtrees only
+                print(
+                    f"{get_node_label(root_bound)} {root_key:x} "
+                    f"(filtered to {len(matching)} children)",
+                    file=stream,
+                )
+                # Render only matching children
+                total = len(matching)
+                for idx, (edge_name, bound_edge, edge_type_name) in enumerate(matching):
+                    is_last = idx == total - 1
+                    connector = "└──" if is_last else "├──"
+                    child_bound = bound_edge.g().bind(node=bound_edge.edge().target())
+                    child_display_name = edge_name if edge_name else "_"
+                    node_label = get_node_label(child_bound)
+                    child_key = node_key(child_bound)
+                    child_count = count_new_nodes(child_bound, visited)
+                    print(
+                        f"{connector} [{edge_type_name}] {child_display_name}: "
+                        f"{node_label} {child_key:x} ({child_count})",
+                        file=stream,
+                    )
+                    child_prefix = "    " if is_last else "│   "
+                    render_node(
+                        child_bound, child_prefix, [], edge_name=child_display_name
+                    )
+        else:
+            # Normal mode: render entire tree
+            root_count = count_new_nodes(root_bound, set())
+            print(
+                f"{get_node_label(root_bound)} {root_key:x} ({root_count})", file=stream
+            )
+            render_node(root_bound, "", [], edge_name=None)
 
         return stream.getvalue()
 
