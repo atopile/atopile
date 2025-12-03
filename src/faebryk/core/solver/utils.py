@@ -129,13 +129,24 @@ class MutatorUtils:
     def __init__(self, mutator: "Mutator"):
         self.mutator = mutator
 
+    def dimensionless(self) -> "F.Units.is_unit":
+        return (
+            F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
+            .create_instance(self.mutator.G_transient)
+            .get_trait(F.Units.is_unit)
+        )
+
     def make_number_literal_from_range(
         self, lower: float, upper: float
     ) -> F.Literals.Numbers:
         return (
-            F.Literals.Numbers.bind_typegraph(self.mutator.tg_out)
+            F.Literals.Numbers.bind_typegraph(self.mutator.tg_in)
             .create_instance(self.mutator.G_transient)
-            .setup_from_interval(lower=lower, upper=upper)
+            .setup_from_min_max(
+                lower,
+                upper,
+                unit=self.dimensionless(),
+            )
         )
 
     # TODO should be part of mutator
@@ -219,7 +230,12 @@ class MutatorUtils:
         # TODO this is weird
         if subset_lits:
             for k, vs in subset_lits:
-                if all(k.is_subset_of(other_k) for other_k, _ in subset_lits):
+                if all(
+                    k.is_subset_of(
+                        other_k, g=self.mutator.G_transient, tg=self.mutator.tg_in
+                    )
+                    for other_k, _ in subset_lits
+                ):
                     return k, vs[0]
         return None
 
@@ -254,7 +270,9 @@ class MutatorUtils:
     ) -> F.Expressions.is_expression | F.Literals.is_literal:
         existing = self.try_extract_literal(po, check_pre_transform=True)
         if existing is not None:
-            if existing.equals(literal):
+            if existing.equals(
+                literal, g=self.mutator.G_transient, tg=self.mutator.tg_in
+            ):
                 if terminate:
                     for op in po.get_operations(F.Expressions.Is, predicates_only=True):
                         if op.get_trait(F.Expressions.is_expression).in_operands(
@@ -276,7 +294,9 @@ class MutatorUtils:
             if literal.in_container(
                 po_is.get_trait(F.Expressions.is_expression)
                 .get_operand_literals()
-                .values()
+                .values(),
+                g=self.mutator.G_transient,
+                tg=self.mutator.tg_in,
             ):
                 return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
         if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
@@ -323,7 +343,9 @@ class MutatorUtils:
         if existing is not None:
             ex_lit, ex_op = existing
             if ex_op.try_cast(F.Expressions.Is):
-                if not ex_lit.is_subset_of(literal):
+                if not ex_lit.is_subset_of(
+                    literal, g=self.mutator.G_transient, tg=self.mutator.tg_in
+                ):
                     raise ContradictionByLiteral(
                         "Tried subset to different literal",
                         involved=[po],
@@ -333,7 +355,9 @@ class MutatorUtils:
                 return ex_op.get_trait(F.Expressions.is_expression)
 
             # no point in adding more general subset
-            if ex_lit.is_subset_of(literal):
+            if ex_lit.is_subset_of(
+                literal, g=self.mutator.G_transient, tg=self.mutator.tg_in
+            ):
                 return ex_op.is_expression.get()
             # other cases handled by intersect subsets algo
 
@@ -382,7 +406,9 @@ class MutatorUtils:
                 to, po = po, to
                 to_is_lit, po_is_lit = po_is_lit, to_is_lit
             else:
-                if not po_is_lit.equals(to_is_lit):
+                if not po_is_lit.equals(
+                    to_is_lit, g=self.mutator.G_transient, tg=self.mutator.tg_in
+                ):
                     raise ContradictionByLiteral(
                         "Incompatible literal aliases",
                         involved=list(from_ops),
@@ -1073,7 +1099,7 @@ class MutatorUtils:
     def is_correlatable_literal(op):
         if not MutatorUtils.is_literal(op):
             return False
-        return op.is_single_element() or op.is_empty()
+        return op.is_singleton() or op.is_empty()
 
     @staticmethod
     def get_supersets(
@@ -1095,8 +1121,9 @@ class MutatorUtils:
         op: F.Parameters.is_parameter_operatable,
     ) -> dict[F.Parameters.can_be_operand, F.Expressions.Is]:
         return {
-            e.get_other_operand(op.as_operand()): e
+            other_p: e
             for e in op.get_operations(F.Expressions.Is, predicates_only=True)
+            if (other_p := e.get_other_operand(op.as_operand()))
         }
 
     def merge_parameters(
@@ -1162,6 +1189,9 @@ class MutatorUtils:
                 F.Parameters.NumericParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup(
+                    units=F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
+                    .create_instance(self.mutator.G_out)
+                    .get_trait(F.Units.is_unit),
                     # In canonicalization removed: within, units
                     domain=domain,
                     likely_constrained=likely_constrained,

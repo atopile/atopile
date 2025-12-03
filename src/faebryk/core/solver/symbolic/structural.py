@@ -74,8 +74,10 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             param = op_0
             lit = op_1.get_sibling_trait(F.Literals.is_literal)
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.max_elem()
-            if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
+            boundary = lit_n.max_elem(g=mutator.G_transient, tg=mutator.tg_out)
+            if boundary.op_greater_or_equal(
+                mutator.make_lit(math.inf), g=mutator.G_transient, tg=mutator.tg_out
+            ):
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "GreaterEqual inf not possible",
@@ -91,8 +93,10 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             param = op_1
             lit = op_0.get_sibling_trait(F.Literals.is_literal)
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.min_elem()
-            if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
+            boundary = lit_n.min_elem(g=mutator.G_transient, tg=mutator.tg_out)
+            if boundary.op_greater_or_equal(
+                mutator.make_lit(math.inf), g=mutator.G_transient, tg=mutator.tg_out
+            ):
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "LessEqual -inf not possible",
@@ -387,7 +391,9 @@ def merge_intersect_subsets(mutator: Mutator):
         if len(ss_lits) <= 1:
             continue
 
-        intersected = F.Literals.is_literal.intersect_all(*ss_lits.keys())
+        intersected = F.Literals.is_literal.intersect_all(
+            *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
+        )
 
         # short-cut, would be detected by subset_to
         if intersected.is_empty():
@@ -401,7 +407,9 @@ def merge_intersect_subsets(mutator: Mutator):
         old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
 
         # already exists
-        if contained := intersected.equals(*ss_lits):
+        if contained := intersected.equals(
+            *ss_lits, g=mutator.G_transient, tg=mutator.tg_out
+        ):
             _, target = contained
         else:
             target = mutator.utils.subset_to(
@@ -766,7 +774,7 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
             e: other_p
             for e in p.get_operations(Is, predicates_only=True)
             if not e.is_expression.get().get_operand_literals()
-            and (other_p := e.get_other_operand(p.as_operand())) is not p.as_operand()
+            and (other_p := e.get_other_operand(p.as_operand()))
         }
         for alias_expr, alias in non_lit_aliases.items():
             alias_expr_po = alias_expr.get_trait(F.Parameters.is_parameter_operatable)

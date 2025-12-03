@@ -62,6 +62,12 @@ class BoundExpressions:
                 .create_instance(g=self.g)
                 .get_trait(F.Units.is_unit)
             )
+        else:
+            is_unit_node = (
+                F.Units.Dimensionless.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .get_trait(F.Units.is_unit)
+            )
         return (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
@@ -641,7 +647,6 @@ def test_subset_of_literal():
     #     ) == E.lit_op_range((0.0, 0.0))
 
 
-@pytest.mark.segfault
 def test_alias_classes():
     E = BoundExpressions()
     A, B, C, D, H = (E.parameter_op() for _ in range(5))
@@ -720,7 +725,6 @@ def test_inspect_known_superranges():
     )
 
 
-@pytest.mark.segfault
 def test_obvious_contradiction_by_literal():
     E = BoundExpressions()
     p0, p1 = [E.parameter_op(units=E.U.V) for _ in range(2)]
@@ -735,7 +739,6 @@ def test_obvious_contradiction_by_literal():
         solver.simplify_symbolically(E.tg, E.g)
 
 
-@pytest.mark.segfault
 def test_subset_is():
     E = BoundExpressions()
     A, B = [E.parameter_op() for _ in range(2)]
@@ -1724,7 +1727,6 @@ def test_fold_pow():
     assert res == E.power(lit, lit_operand)
 
 
-@pytest.mark.segfault
 def test_graph_split():
     E = BoundExpressions()
 
@@ -1916,7 +1918,6 @@ def test_fold_not():
     ) == E.lit_bool(True)
 
 
-@pytest.mark.segfault
 def test_fold_ss_transitive():
     E = BoundExpressions()
     A = E.parameter_op()
@@ -1934,7 +1935,6 @@ def test_fold_ss_transitive():
     ) == E.lit_op_range((0, 10))
 
 
-@pytest.mark.segfault
 def test_ss_intersect():
     E = BoundExpressions()
     A = E.parameter_op()

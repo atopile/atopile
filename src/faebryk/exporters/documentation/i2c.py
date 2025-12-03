@@ -31,9 +31,7 @@ def export_i2c_tree(
         {
             mif: lit
             for mif in bus
-            if (
-                lit := solver.inspect_get_known_supersets(mif.address)
-            ).is_single_element()
+            if (lit := solver.inspect_get_known_supersets(mif.address)).is_singleton()
         }
         for bus in buses.values()
     ]

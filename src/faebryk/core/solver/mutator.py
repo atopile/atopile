@@ -1093,10 +1093,8 @@ class Mutator:
         param_obj = fabll.Traits(param).get_obj_raw()
 
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
-            if units is None and (old_g_is_unit := p.get_units()):
-                old_g_unit_node = fabll.Node.bind_instance(
-                    not_none(fabll.Traits(old_g_is_unit).get_obj_raw().instance)
-                )
+            if units is None:
+                old_g_unit_node = fabll.Traits(p.get_units()).get_obj_raw()
                 units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.is_unit)
 
             if domain is None:
@@ -1798,7 +1796,9 @@ class Mutator:
             mapping,
             lambda x: x[0],
             by_eq=True,
-            custom_eq=lambda x, y: bool(x[1].equals(y[1])),
+            custom_eq=lambda x, y: bool(
+                x[1].equals(y[1], g=self.G_transient, tg=self.tg_in)
+            ),
         )
         if dupes:
             raise ContradictionByLiteral(
@@ -1815,13 +1815,17 @@ class Mutator:
             grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
             for k, v in grouped_ss.items():
                 ss_lits = [ss_lit for _, ss_lit in v]
-                merged_ss = F.Literals.is_literal.intersect_all(*ss_lits)
+                merged_ss = F.Literals.is_literal.intersect_all(
+                    *ss_lits, g=self.G_transient, tg=self.tg_in
+                )
                 if merged_ss.is_empty():
                     raise ContradictionByLiteral(
                         "Empty intersection", [k], ss_lits, mutator=self
                     )
                 if k in mapping_dict:
-                    if not mapping_dict[k].is_subset_of(merged_ss):
+                    if not mapping_dict[k].is_subset_of(
+                        merged_ss, g=self.G_transient, tg=self.tg_in
+                    ):
                         raise ContradictionByLiteral(
                             "is lit not subset of ss lits",
                             [k],

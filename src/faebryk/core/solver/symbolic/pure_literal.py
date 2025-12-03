@@ -53,7 +53,7 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.SymmetricDifference: _Multi(
         F.Literals.is_literal.op_symmetric_difference_intervals
     ),
-    F.Expressions.Is: _Multi(F.Literals.is_literal.op_is_equal),
+    F.Expressions.Is: _Multi(F.Literals.is_literal.equals),
     F.Expressions.GreaterOrEqual: _Multi(F.Literals.Numbers.op_greater_or_equal),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_greater_than),
     F.Expressions.IsSubset: _Multi(F.Literals.is_literal.is_subset_of),

@@ -290,9 +290,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         ):
             mutator.mutate_parameter(
                 param,
-                units=F.Units.Dimensionless.bind_typegraph(mutator.tg_out)
-                .create_instance(mutator.G_out)
-                .get_trait(F.Units.is_unit),
+                units=mutator.utils.dimensionless(),
                 soft_set=soft_set.convert_to_dimensionless(
                     g=mutator.G_out, tg=mutator.tg_out
                 )
@@ -336,7 +334,9 @@ def convert_to_canonical_operations(mutator: Mutator):
             p = (
                 F.Parameters.NumericParameter.bind_typegraph(mutator.tg_out)
                 .create_instance(mutator.G_out)
-                .setup()
+                .setup(
+                    units=mutator.utils.dimensionless(),
+                )
             )
             p_p = p.is_parameter.get()
             p_po = p.is_parameter_operatable.get()

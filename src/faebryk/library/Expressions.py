@@ -2445,11 +2445,14 @@ class Is(fabll.Node):
 
     def get_other_operand(
         self, operand: "F.Parameters.can_be_operand"
-    ) -> "F.Parameters.can_be_operand":
+    ) -> "F.Parameters.can_be_operand | None":
         return next(
-            op
-            for op in self.is_expression.get().get_operands()
-            if not op.is_same(operand)
+            (
+                op
+                for op in self.is_expression.get().get_operands()
+                if not op.is_same(operand)
+            ),
+            None,
         )
 
     @classmethod

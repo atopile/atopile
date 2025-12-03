@@ -30,7 +30,7 @@ def reflexive_predicates(mutator: Mutator):
         operands = pred.get_operands()
         if operands[0].try_get_sibling_trait(F.Literals.is_literal):
             continue
-        if operands[0] is not operands[1]:
+        if len(operands) >= 2 and operands[0] is not operands[1]:
             continue
 
         mutator.utils.alias_is_literal_and_check_predicate_eval(

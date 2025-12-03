@@ -552,7 +552,7 @@ class DefaultSolver(Solver):
 
         ss_lit = value_po.try_get_subset_or_alias_literal()
         if ss_lit is None:
-            ss_lit = value.domain_set().get_trait(F.Literals.is_literal)
+            ss_lit = value.domain_set()
 
         solver_lit = None
         if self.state is not None:
@@ -563,7 +563,7 @@ class DefaultSolver(Solver):
         if solver_lit is None:
             return ss_lit
 
-        return F.Literals.is_literal.intersect_all(ss_lit, solver_lit)
+        return F.Literals.is_literal.intersect_all(ss_lit, solver_lit, g=g, tg=tg)
 
     @override
     def get_any_single(

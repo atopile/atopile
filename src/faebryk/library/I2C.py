@@ -126,7 +126,7 @@ class I2C(fabll.Node):
     #             for interface in bus_interfaces
     #         }
     #         unresolved, resolved = partition_as_list(
-    #             lambda s: s[1].is_single_element(), addresses.items()
+    #             lambda s: s[1].is_singleton(), addresses.items()
     #         )
 
     #         # Check for duplicates

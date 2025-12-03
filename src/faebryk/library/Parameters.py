@@ -343,7 +343,7 @@ class is_parameter(fabll.Node):
 
         return out
 
-    def domain_set(self) -> "F.NumberDomain":
+    def domain_set(self) -> "F.Literals.is_literal":
         # TODO
         pass
 
@@ -559,7 +559,7 @@ class NumericParameter(fabll.Node):
     def setup(
         self,
         *,
-        units: "Units.is_unit | None" = None,
+        units: "Units.is_unit",
         # hard constraints
         within: "Literals.Numbers | None" = None,
         domain: "NumberDomain | None" = None,
@@ -572,13 +572,7 @@ class NumericParameter(fabll.Node):
         from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import has_unit
 
-        if units:
-            has_unit = (
-                has_unit.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .setup(unit=units)
-            )
-            fabll.Traits.add_instance_to(self, has_unit)
+        fabll.Traits.create_and_add_instance_to(self, has_unit).setup(unit=units)
         if domain is None:  # Default domain is unbounded
             domain = (
                 NumberDomain.bind_typegraph(tg=self.tg)

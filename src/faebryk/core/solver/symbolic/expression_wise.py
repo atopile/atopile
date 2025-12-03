@@ -641,7 +641,7 @@ def fold_subset(expr: F.Expressions.IsSubset, mutator: Mutator):
 
     # A ss ([X]) -> A is ([X])
     # A ss {} -> A is {}
-    if B_lit.is_single_element() or B_lit.is_empty():
+    if B_lit.is_singleton() or B_lit.is_empty():
         mutator.mutate_expression(e, expression_factory=F.Expressions.Is)
         return
 
@@ -683,7 +683,7 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
         assert len(literal_operands) == 1
         lit = literal_operands[0]
         lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-        if not lit.is_single_element() and not lit.is_empty():
+        if not lit.is_singleton() and not lit.is_empty():
             lit_op = lit.as_operand()
             if left.is_same(lit_op):
                 mutator.mutate_expression(
