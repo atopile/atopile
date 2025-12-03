@@ -1015,6 +1015,7 @@ def test_literal_folding_add_multiplicative_2():
 
 
 def test_transitive_subset():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
 
     # TODO: Constrain to real number domain
@@ -1900,6 +1901,7 @@ def test_fold_not():
 
 
 def test_fold_ss_transitive():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -1917,6 +1919,7 @@ def test_fold_ss_transitive():
 
 
 def test_ss_intersect():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
