@@ -164,9 +164,7 @@ class is_literal(fabll.Node):
         types = [Strings, Numbers, Booleans, AbstractEnums]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
-            print(f"Checking if {obj} is instance of {t}")
             if obj.isinstance(t):
-                print(f"Casting {obj} to {t}")
                 return obj.cast(t)
 
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
