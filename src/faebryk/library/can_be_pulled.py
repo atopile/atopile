@@ -1,13 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from functools import reduce
 from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import cast_assert
 
 
 class can_be_pulled(fabll.Node):
@@ -94,8 +92,9 @@ class can_be_pulled(fabll.Node):
 
     @property
     def pull_resistance(self) -> F.Parameters.NumericParameter | None:
-        """Calculate the effective pull resistance by finding parallel resistors
-        connected between the line and the reference power rail."""
+        """Calculate effective pull resistance between line and reference.hv.
+        Returns a NumericParameter aliased to the resolved literal, or None if it
+        cannot be derived."""
         if (
             connected_to := self.line._is_interface.get().get_connected()
         ) is None:
@@ -107,51 +106,55 @@ class can_be_pulled(fabll.Node):
                 continue
             parent, _ = maybe_parent
 
-            if not isinstance(parent, F.Resistor):
+            if not parent.isinstance(F.Resistor):
                 continue
 
-            other_side = [x for x in parent.unnamed if x is not mif]
+            resistor = F.Resistor.bind_instance(parent.instance)
+            other_side = [x for x in resistor.get_children(direct_only=True, include_root=False, types=F.Electrical) if not x.is_same(mif)]
             assert len(other_side) == 1, "Resistors are bilateral"
 
             if (
-                self.reference.hv
-                not in other_side[0].get()._is_interface.get().get_connected()
+                self.reference.hv.get()
+                not in other_side[0]._is_interface.get().get_connected()
             ):
                 # cannot trivially determine effective resistance
                 return None
 
-            parallel_resistors.append(parent)
+            parallel_resistors.append(resistor)
 
         if len(parallel_resistors) == 0:
-            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
-        elif len(parallel_resistors) == 1:
-            (resistor,) = parallel_resistors
-            return resistor.resistance.try_get_literal_subset()
-        else:
-            resistances = [
-                resistor.resistance.try_get_literal_subset()
-                for resistor in parallel_resistors
-            ]
+            return None
 
-            if any(r is None for r in resistances):
-                # incomplete solution
+        resistances: list[F.Literals.Numbers | None] = []
+        parameters: list[F.Parameters.NumericParameter] = []
+        for resistor in parallel_resistors:
+            param = resistor.resistance.get()
+            parameters.append(param)
+            lit_trait = param.get_trait(F.Parameters.is_parameter_operatable).try_get_subset_or_alias_literal()
+            resistances.append(None if lit_trait is None else fabll.Traits(lit_trait).get_obj_raw())
+
+        if any(r is None for r in resistances):
+            # missing resistance information
+            return None
+        try:            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+            inverse_sum = None
+            resistance_literals = [r.cast(F.Literals.Numbers) for r in resistances]  # type: ignore[arg-type]
+            for resistance in resistance_literals:
+                inv = resistance.op_invert(g=self.g, tg=self.tg)
+                inverse_sum = inv if inverse_sum is None else inverse_sum.op_add_intervals(g=self.g, tg=self.tg, other=inv) # type: ignore[arg-type]
+
+            if inverse_sum is None:
                 return None
 
-            if any(not isinstance(r, Quantity_Interval) for r in resistances):
-                # invalid resistance value
-                return None
-
-            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
-            try:
-                return cast_assert(
-                    (Quantity_Interval, Quantity_Interval_Disjoint),
-                    reduce(
-                        lambda a, b: a + b,
-                        [
-                            cast_assert(Quantity_Interval, r).op_invert()
-                            for r in resistances
-                        ],
-                    ),
-                ).op_invert()
-            except ZeroDivisionError:
-                return None
+            eff_literal = inverse_sum.op_invert(g=self.g, tg=self.tg).convert_to_unit(
+                g=self.g, tg=self.tg, unit=parameters[0].get_units()
+            )
+            eff_param = (
+                F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup(units=parameters[0].get_units())
+            )
+            eff_param.alias_to_literal(g=self.g, value=eff_literal)
+            return eff_param
+        except ZeroDivisionError:
+            return None
