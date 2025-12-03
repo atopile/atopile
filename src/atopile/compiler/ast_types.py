@@ -740,7 +740,7 @@ class Assignable(fabll.Node):
         self, source_info: SourceInfo, value: is_assignable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.value.get().point(value)
+        self.value.get().point(fabll.Traits(value).get_obj_raw())
         return self
 
     def get_value(self) -> is_assignable:

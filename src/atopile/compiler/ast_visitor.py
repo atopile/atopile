@@ -68,6 +68,7 @@ class is_ato_block(fabll.Node):
             name=block_type.name, value=block_type.value
         )
         out = fabll._ChildField(cls)
+        out.add_dependant(lit, before=True)
         out.add_dependant(
             F.Expressions.Is.MakeChild_Constrain(
                 operands=[[out, cls.block_type], [lit]]
@@ -549,9 +550,8 @@ class ASTVisitor:
         for part_node in node.parts.get().as_list():
             part = part_node.cast(t=AST.FieldRefPart)
             name_literal = part.name.get().try_extract_constrained_literal()
-            segments.append(
-                FieldPath.Segment(identifier=cast_assert(str, name_literal))
-            )
+            (name,) = not_none(name_literal).get_values()
+            segments.append(FieldPath.Segment(identifier=name))
 
             if (
                 key_literal := part.key.get().try_extract_constrained_literal()
@@ -655,7 +655,9 @@ class ASTVisitor:
         # TODO: broaden assignable support and handle keyed/pin field references
 
         target_path = self.visit_FieldRef(node.target.get())
-        assignable = self.visit(node.assignable.get().get_value())
+        assignable_t = node.assignable.get().get_value()
+        assignable = self.visit(fabll.Traits(assignable_t).get_obj_raw())
+        print(f"Assignable: {assignable}")
 
         parent_path: FieldPath | None = None
         parent_reference: BoundNode | None = None
@@ -682,19 +684,23 @@ class ASTVisitor:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 
     def visit_NewExpression(self, node: AST.NewExpression):
-        type_name = cast_assert(
-            str, node.type_ref.get().name.get().try_extract_constrained_literal()
+        type_name_lit = not_none(
+            node.type_ref.get().name.get().try_extract_constrained_literal()
         )
+        (type_name,) = type_name_lit.get_values()
         symbol = self._scope_stack.resolve_symbol(type_name)
-        count: float | None = None
 
         if (
-            count := not_none(
+            count_lit := (
                 node.new_count.get().value.get().try_extract_aliased_literal()
-            ).get_value()
+            )
         ) is not None:
+            count = count_lit.get_value()
+            assert count is not None
             assert count.is_integer()
             count = int(count)
+        else:
+            count = None
 
         return NewChildSpec(
             symbol=symbol,
