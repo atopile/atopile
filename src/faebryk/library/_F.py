@@ -58,11 +58,11 @@ from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_usage_example import has_usage_example
+from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
-from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_generated_by_kicad_footprint import is_generated_by_kicad_footprint
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
@@ -181,11 +181,11 @@ __all__ = [
     "has_package_requirements",
     "has_part_picked",
     "has_usage_example",
+    "is_auto_generated",
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
     "Units",
-    "is_auto_generated",
     "is_generated_by_kicad_footprint",
     "Electrical",
     "has_simple_value_representation",

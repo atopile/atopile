@@ -91,13 +91,15 @@ class KicadFootprint(fabll.Node):
         return [F.Pad.bind_instance(pin_pad.instance) for pin_pad in pin_pads]
 
     @classmethod
-    def MakeChild(cls, pin_names: list[str]) -> fabll._ChildField:
+    def MakeChild(cls, pin_names: list[str]) -> fabll._ChildField:  # type: ignore
         out = fabll._ChildField(cls)
         for pin_name in pin_names:
             pin_parameter = F.Parameters.StringParameter.MakeChild()
             out.add_dependant(pin_parameter)
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral([pin_parameter], pin_name)
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
+                    [pin_parameter], pin_name
+                )
             )
             out.add_dependant(
                 F.Collections.PointerSet.MakeEdge([out, cls.pin_names_], [pin_name])
@@ -109,7 +111,7 @@ class KicadFootprint(fabll.Node):
             )
         return out
 
-    def setup(self, pin_names: list[str]) -> Self:
+    def setup(self, pin_names: list[str]) -> Self:  # type: ignore
         for pin_name in pin_names:
             # Pin name parameters
             pin_parameter = F.Parameters.StringParameter.bind_typegraph_from_instance(

@@ -65,23 +65,23 @@ class is_auto_generated(fabll.Node):
         out = fabll._ChildField(cls)
         if source is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.source_], source
                 )
             )
         if system is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.system_], system
                 )
             )
         if date is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral([out, cls.date_], date)
+                F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.date_], date)
             )
         if checksum is not None:
             out.add_dependant(
-                F.Expressions.Is.MakeChild_ConstrainToLiteral(
+                F.Literals.Strings.MakeChild_ConstrainToLiteral(
                     [out, cls.checksum_], checksum
                 )
             )
