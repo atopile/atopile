@@ -181,14 +181,8 @@ class Strings(fabll.Node):
             for lit in self.values.get().as_list()
         ]
 
-    def is_singleton(self) -> str | None:
-        vals = self.get_values()
-        if len(vals) != 1:
-            return None
-        return vals[0]
-
     @classmethod
-    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls)
         lits = [StringLiteralSingleton.MakeChild(value=value) for value in values]
         out.add_dependant(
@@ -2658,7 +2652,7 @@ class Numbers(fabll.Node):
             g=g, tg=tg, other=other_converted.get_numeric_set()
         )
 
-    def op_intersect_intervals(
+    def op_intersect_interval(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
     ) -> "Numbers":
         """
@@ -2677,7 +2671,22 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_union_intervals(
+    @staticmethod
+    def op_intersect_intervals(
+        g: graph.GraphView, tg: fbrk.TypeGraph, *others: "Numbers"
+    ) -> "Numbers":
+        """
+        Compute the intersection of multiple quantity sets.
+        All sets must have commensurable units.
+        """
+        if not others:
+            raise ValueError("intersect_all requires at least one quantity set")
+        result = others[0]
+        for other in others[1:]:
+            result = result.op_intersect_interval(g=g, tg=tg, other=other)
+        return result
+
+    def op_union_interval(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
     ) -> "Numbers":
         """
@@ -2695,6 +2704,21 @@ class Numbers(fabll.Node):
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
+
+    @staticmethod
+    def op_union_intervals(
+        g: graph.GraphView, tg: fbrk.TypeGraph, *others: "Numbers"
+    ) -> "Numbers":
+        """
+        Compute the union of multiple quantity sets.
+        All sets must have commensurable units.
+        """
+        if not others:
+            raise ValueError("union_all requires at least one quantity set")
+        result = others[0]
+        for other in others[1:]:
+            result = result.op_union_interval(g=g, tg=tg, other=other)
+        return result
 
     def op_difference_intervals(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
@@ -3174,21 +3198,6 @@ class Numbers(fabll.Node):
             max=self.get_numeric_set().get_max_value(),
             unit=self.get_is_unit(),
         )
-
-    @staticmethod
-    def intersect_all(
-        g: graph.GraphView, tg: fbrk.TypeGraph, *quantity_sets: "Numbers"
-    ) -> "Numbers":
-        """
-        Compute the intersection of multiple quantity sets.
-        All sets must have commensurable units.
-        """
-        if not quantity_sets:
-            raise ValueError("intersect_all requires at least one quantity set")
-        result = quantity_sets[0]
-        for qs in quantity_sets[1:]:
-            result = result.op_intersect_intervals(g=g, tg=tg, other=qs)
-        return result
 
     def op_greater_or_equal(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
@@ -3936,9 +3945,38 @@ class TestNumbers:
         quantity_set_2.setup_from_min_max(
             min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
-        result = quantity_set_1.op_intersect_intervals(g=g, tg=tg, other=quantity_set_2)
+        result = quantity_set_1.op_intersect_interval(g=g, tg=tg, other=quantity_set_2)
         # Intersection of [0, 5] and [3, 8] is [3, 5]
         assert result.get_numeric_set().get_min_value() == 3.0
+        assert result.get_numeric_set().get_max_value() == 5.0
+
+    def test_op_intersect_intervals(self):
+        """Test intersection of multiple quantity sets."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter, is_unit
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        # Set 1: [0, 5]
+        quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_1.setup_from_min_max(
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
+        # Set 2: [3, 8]
+        quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_2.setup_from_min_max(
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+        )
+        # Set 3: [5, 12]
+        quantity_set_3 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_3.setup_from_min_max(
+            min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
+        )
+        result = Numbers.op_intersect_intervals(
+            g, tg, quantity_set_1, quantity_set_2, quantity_set_3
+        )
+        # Intersection of [0, 5], [3, 8], and [5, 12] is [5, 5]
+        assert result.get_numeric_set().get_min_value() == 5.0
         assert result.get_numeric_set().get_max_value() == 5.0
 
     def test_op_union(self):
@@ -3958,10 +3996,39 @@ class TestNumbers:
         quantity_set_2.setup_from_min_max(
             min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
         )
-        result = quantity_set_1.op_union_intervals(g=g, tg=tg, other=quantity_set_2)
+        result = quantity_set_1.op_union_interval(g=g, tg=tg, other=quantity_set_2)
         # Union of [0, 5] and [3, 8] is [0, 8]
         assert result.get_numeric_set().get_min_value() == 0.0
         assert result.get_numeric_set().get_max_value() == 8.0
+
+    def test_op_union_intervals(self):
+        """Test union of multiple quantity sets."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter, is_unit
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        # Set 1: [0, 5]
+        quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_1.setup_from_min_max(
+            min=0.0, max=5.0, unit=meter_instance.get_trait(is_unit)
+        )
+        # Set 2: [3, 8]
+        quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_2.setup_from_min_max(
+            min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit)
+        )
+        # Set 3: [5, 12]
+        quantity_set_3 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_3.setup_from_min_max(
+            min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
+        )
+        result = Numbers.op_union_intervals(
+            g, tg, quantity_set_1, quantity_set_2, quantity_set_3
+        )
+        # Union of [0, 5], [3, 8], and [5, 12] is [0, 12]
+        assert result.get_numeric_set().get_min_value() == 0.0
+        assert result.get_numeric_set().get_max_value() == 12.0
 
     def test_op_difference(self):
         """Test difference of two quantity sets."""
@@ -4086,31 +4153,6 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 5.0
         # Unit should be dimensionless
         assert result.get_is_unit().is_dimensionless()
-
-    def test_intersect_all(self):
-        """Test intersection of multiple quantity sets."""
-        g = graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Meter, is_unit
-
-        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
-        # Set 1: [0, 10]
-        qs1 = Numbers.create_instance(g=g, tg=tg)
-        qs1.setup_from_min_max(
-            min=0.0, max=10.0, unit=meter_instance.get_trait(is_unit)
-        )
-        # Set 2: [3, 8]
-        qs2 = Numbers.create_instance(g=g, tg=tg)
-        qs2.setup_from_min_max(min=3.0, max=8.0, unit=meter_instance.get_trait(is_unit))
-        # Set 3: [5, 12]
-        qs3 = Numbers.create_instance(g=g, tg=tg)
-        qs3.setup_from_min_max(
-            min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
-        )
-        # Intersection: [5, 8]
-        result = Numbers.intersect_all(g, tg, qs1, qs2, qs3)
-        assert result.get_numeric_set().get_min_value() == 5.0
-        assert result.get_numeric_set().get_max_value() == 8.0
 
     def test_op_is_bit_set(self):
         """Test bit set operation."""
@@ -4430,7 +4472,7 @@ class Counts(fabll.Node):
     counts = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:  # type: ignore
         """
         Create a Counts literal as a child field at type definition time.
         Does not require g or tg - works at type level.
@@ -4669,7 +4711,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         return values[0]
 
     @classmethod
-    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore
         return fabll._ChildField(
             cls,
             attributes=BooleansAttributes(
@@ -4793,7 +4835,7 @@ class EnumValue(fabll.Node):
     value_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:
+    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls)
         F.Collections.Pointer.MakeEdgeForField(
             out,
@@ -4884,7 +4926,7 @@ class AbstractEnums(fabll.Node):
         return None if len(values) == 0 else values[0]
 
     @classmethod
-    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField[Self]:  # type: ignore
         atype = EnumsFactory(type(enum_members[0]))
         cls_n = cast(type[fabll.NodeT], atype)
         out = fabll._ChildField(cls)
@@ -5161,6 +5203,17 @@ class TestStringLiterals:
         )
         assert lit
         assert lit.get_values() == values
+
+    def test_string_literal_is_singleton(self):
+        values = ["a", "b", "c"]
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        string_set = Strings.bind_typegraph(tg=tg).create_instance(g=g)
+        string_set.setup_from_values(*values)
+        assert string_set.is_singleton() is None
+        singleton_string_set = Strings.bind_typegraph(tg=tg).create_instance(g=g)
+        singleton_string_set.setup_from_values("a")
+        assert singleton_string_set.is_singleton() == "a"
 
 
 class TestBooleans:
