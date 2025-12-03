@@ -237,7 +237,7 @@ class Test:
         print(ex.value.path)
         # assert set(ex.value.path) == {ep1.lv, ep2.hv}
 
-    def test_erc_power_source_short():
+    def test_erc_power_source_short(self):
         """
         Test that a power source is shorted when connected to another power source
         """
@@ -257,9 +257,10 @@ class Test:
             simple_erc(tg)
 
 
-    def test_erc_power_source_no_short():
+    def test_erc_power_source_no_short(self):
         """
-        Test that a power source is not shorted when connected to another non-power source
+        Test that a power source is not shorted when connected to another
+        non-power source
         """
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
