@@ -15,7 +15,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.library import Collections
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import cast_assert, not_none
 
 
 class is_assignable(fabll.Node):
@@ -24,12 +24,12 @@ class is_assignable(fabll.Node):
 
 class is_arithmetic(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-    as_assignable = fabll.Traits.ImpliedTrait(is_assignable).MakeChild()
+    as_assignable = fabll.Traits.ImpliedTrait(is_assignable)
 
 
 class is_arithmetic_atom(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-    as_arithmetic = fabll.Traits.ImpliedTrait(is_arithmetic).MakeChild()
+    as_arithmetic = fabll.Traits.ImpliedTrait(is_arithmetic)
 
 
 class is_connectable(fabll.Node):
@@ -69,10 +69,10 @@ class FileLocation(fabll.Node):
     def setup(  # type: ignore
         self, start_line: int, start_col: int, end_line: int, end_col: int
     ) -> Self:
-        self.start_line.get().alias_to_literal(g=self.g, value=start_line)
-        self.start_col.get().alias_to_literal(g=self.g, value=start_col)
-        self.end_line.get().alias_to_literal(g=self.g, value=end_line)
-        self.end_col.get().alias_to_literal(g=self.g, value=end_col)
+        self.start_line.get().alias_to_literal(g=self.g, value=float(start_line))
+        self.start_col.get().alias_to_literal(g=self.g, value=float(start_col))
+        self.end_line.get().alias_to_literal(g=self.g, value=float(end_line))
+        self.end_col.get().alias_to_literal(g=self.g, value=float(end_col))
         return self
 
 
@@ -164,7 +164,10 @@ class FieldRef(fabll.Node):
 
 class Number(fabll.Node):
     source = SourceChunk.MakeChild()
-    value = F.Parameters.NumericParameter.MakeChild()
+    # TODO: should this be a Numbers literal?
+    value = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Dimensionless, integer=False, negative=True, zero_allowed=True
+    )
 
     def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
@@ -479,7 +482,11 @@ class BlockDefinition(fabll.Node):
         return self
 
     def get_block_type(self) -> BlockType:
-        return self.BlockType(self.block_type.get().try_extract_constrained_literal())
+        block_type_lit = not_none(
+            self.block_type.get().try_extract_constrained_literal()
+        )
+        (block_type,) = block_type_lit.get_values()
+        return self.BlockType(block_type)
 
 
 @dataclass(frozen=True)

@@ -442,10 +442,10 @@ class ASTVisitor:
                 self.visit(scope_child)
 
     def visit_PragmaStmt(self, node: AST.PragmaStmt):
-        if (pragma_text := node.pragma.get().try_extract_constrained_literal()) is None:
+        if (pragma_lit := node.pragma.get().try_extract_constrained_literal()) is None:
             raise DslException(f"Pragma statement has no pragma text: {node}")
 
-        pragma_text = cast_assert(str, pragma_text)
+        (pragma_text,) = pragma_lit.get_values()
         pragma_func_name, pragma_args = self._parse_pragma(pragma_text)
 
         match pragma_func_name:
@@ -471,12 +471,14 @@ class ASTVisitor:
                 raise DslException(f"Pragma function not recognized: `{pragma_text}`")
 
     def visit_ImportStmt(self, node: AST.ImportStmt):
-        type_ref_name = cast_assert(
-            str, node.type_ref.get().name.get().try_extract_constrained_literal()
+        type_ref_name_lit = not_none(
+            node.type_ref.get().name.get().try_extract_constrained_literal()
         )
+        (type_ref_name,) = type_ref_name_lit.get_values()
 
-        path_literal = node.path.get().path.get().try_extract_constrained_literal()
-        path = cast_assert(str, path_literal) if path_literal is not None else None
+        path_lit = node.path.get().path.get().try_extract_constrained_literal()
+        (path,) = path_lit.get_values() if path_lit is not None else (None,)
+
         import_ref = ImportRef(name=type_ref_name, path=path)
 
         if path is None and type_ref_name not in STDLIB_ALLOWLIST:
@@ -488,10 +490,10 @@ class ASTVisitor:
         if self._scope_stack.depth != 1:
             raise DslException("Nested block definitions are not permitted")
 
-        module_name = cast_assert(
-            str,
+        module_name_lit = not_none(
             node.type_ref.get().name.get().try_extract_constrained_literal(),
         )
+        (module_name,) = module_name_lit.get_values()
 
         if self._scope_stack.is_symbol_defined(module_name):
             raise DslException(f"Symbol `{module_name}` already defined in scope")
