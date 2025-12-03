@@ -141,15 +141,18 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     p_operands = e.get_operand_operatables()
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
         partition_as_list(
-            lambda o: not mutator.has_been_mutated(
-                o.get_trait(F.Parameters.is_parameter_operatable)
-            ),
+            lambda o: not mutator.has_been_mutated(o),
             p_operands,
         )
     )
     replacable_nonliteral_operands = Counter(_replacable_nonliteral_operands)
     literal_sum = mutator.utils.fold_op(
-        literal_operands, lambda a, b: a.op_add_intervals(b), F.Literals.Numbers, 0
+        literal_operands,
+        lambda a, b: a.op_add_intervals(
+            g=mutator.G_transient, tg=mutator.tg_out, other=b
+        ),
+        F.Literals.Numbers,
+        0,
     )
 
     new_factors, old_factors = mutator.utils.collect_factors(
@@ -174,7 +177,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
 
     new_operands: list[F.Parameters.can_be_operand] = [
         *factored_operands,
-        *(x.get_trait(F.Parameters.can_be_operand) for x in old_factors),
+        *(x.as_operand() for x in old_factors),
         *(x.as_operand() for x in literal_sum),
         *(x.as_operand() for x in non_replacable_nonliteral_operands),
     ]
@@ -207,7 +210,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     """
 
     e = expr.get_trait(F.Expressions.is_expression)
-    e_po = e.get_trait(F.Parameters.is_parameter_operatable)
+    e_po = e.as_parameter_operatable()
     literal_operands = list(e.get_operand_literals().values())
     p_operands = e.get_operand_operatables()
 
@@ -217,7 +220,12 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
     replacable_nonliteral_operands = Counter(_replacable_nonliteral_operands)
 
     literal_prod = mutator.utils.fold_op(
-        literal_operands, lambda a, b: a.op_mul_intervals(b), F.Literals.Numbers, 1
+        literal_operands,
+        lambda a, b: a.op_mul_intervals(
+            g=mutator.G_transient, tg=mutator.tg_out, other=b
+        ),
+        F.Literals.Numbers,
+        1,
     )
 
     new_powers, old_powers = mutator.utils.collect_factors(
@@ -249,7 +257,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         new_operands: list[F.Parameters.can_be_operand] = [
             *powered_operands,
-            *(x.get_trait(F.Parameters.can_be_operand) for x in old_powers),
+            *(x.as_operand() for x in old_powers),
             *(x.as_operand() for x in literal_prod),
             *(x.as_operand() for x in non_replacable_nonliteral_operands),
         ]
@@ -343,7 +351,9 @@ def fold_pow(expr: F.Expressions.Power, mutator: Mutator):
         exp_n := mutator.utils.is_numeric_literal(exp)
     ):
         try:
-            result = base_n.op_pow_intervals(exp_n)
+            result = base_n.op_pow_intervals(
+                exponent=exp_n, g=mutator.G_transient, tg=mutator.tg_out
+            )
         except NotImplementedError:
             # TODO either fix or raise a warning
             return
@@ -679,7 +689,9 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
                 mutator.mutate_expression(
                     e,
                     operands=[
-                        lit_n.min_elem().get_trait(F.Parameters.can_be_operand),
+                        lit_n.min_elem(
+                            g=mutator.G_transient, tg=mutator.tg_out
+                        ).get_trait(F.Parameters.can_be_operand),
                         right,
                     ],
                 )
@@ -689,7 +701,9 @@ def fold_ge(expr: F.Expressions.GreaterOrEqual, mutator: Mutator):
                     e,
                     operands=[
                         left,
-                        lit_n.max_elem().get_trait(F.Parameters.can_be_operand),
+                        lit_n.max_elem(
+                            g=mutator.G_transient, tg=mutator.tg_out
+                        ).get_trait(F.Parameters.can_be_operand),
                     ],
                 )
         return

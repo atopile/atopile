@@ -620,22 +620,25 @@ class MutatorUtils:
         self,
         counter: Counter[F.Parameters.is_parameter_operatable],
         collect_type: type[T],
-    ) -> tuple[dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers], list[T]]:
+    ) -> tuple[
+        dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers],
+        list[F.Parameters.is_parameter_operatable],
+    ]:
         # Convert the counter to a dict for easy manipulation
         factors: dict[
             F.Parameters.is_parameter_operatable,
             F.Literals.Numbers,
         ] = {op: self.mutator.make_lit(count) for op, count in counter.items()}
         # Store operations of type collect_type grouped by their non-literal operand
-        same_literal_factors: dict[F.Parameters.is_parameter_operatable, list[T]] = (
-            defaultdict(list)
-        )
+        same_literal_factors: dict[
+            F.Parameters.is_parameter_operatable,
+            list[F.Parameters.is_parameter_operatable],
+        ] = defaultdict(list)
 
         # Look for operations matching collect_type and gather them
         for collect_op in set(factors.keys()):
             if not collect_op.get_obj().isinstance(collect_type):
                 continue
-            collect_op_t = fabll.Traits(collect_op).get_trait_of_obj(collect_type)
             expr = collect_op.get_trait(F.Expressions.is_expression)
             # Skip if operation doesn't have exactly two operands
             # TODO unnecessary strict
@@ -663,7 +666,7 @@ class MutatorUtils:
             # pick non-literal operand
             paramop = next(iter(expr.get_operand_operatables()))
             # Collect these factors under the non-literal operand
-            same_literal_factors[paramop].append(collect_op_t)
+            same_literal_factors[paramop].append(collect_op)
             # If this operand isn't in factors yet, initialize it with 0
             if paramop not in factors:
                 factors[paramop] = self.mutator.make_lit(0)
@@ -672,18 +675,18 @@ class MutatorUtils:
 
         # new_factors: combined literal counts, old_factors: leftover items
         new_factors = {}
-        old_factors = []
+        old_factors = list[F.Parameters.is_parameter_operatable]()
 
         # Combine literals for each non-literal operand
         for var, count in factors.items():
             muls = same_literal_factors[var]
             # If no effective multiplier or only a single factor, treat as leftover
-            if count == 0 and len(muls) <= 1:
+            if count.is_singleton() == 0 and len(muls) <= 1:
                 old_factors.extend(muls)
                 continue
 
             # If only count=1 and no additional factors, just keep the variable
-            if count == 1 and not muls:
+            if count.is_singleton() == 1 and not muls:
                 old_factors.append(var)
                 continue
 

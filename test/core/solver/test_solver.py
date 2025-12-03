@@ -2600,8 +2600,8 @@ def test_exec_pure_literal_expressions(
     lits = lits_factory(E)
     expected = expected_factory(E)
 
-    lits_converted = list(map(F.Literals.make_lit, lits))
-    expected_converted = F.Literals.make_lit(E.g, E.tg, expected)
+    lits_converted = list(map(F.Literals.make_simple_lit_singleton, lits))
+    expected_converted = F.Literals.make_simple_lit_singleton(E.g, E.tg, expected)
 
     expr = op(*lits_converted)  # type: ignore
     assert _exec_pure_literal_expressions(expr) == expected_converted
@@ -2712,3 +2712,9 @@ def test_solve_voltage_divider_complex():
     # # check solver knowing result
     # assert solver_v_out == res_v_out
     # assert solver_total_current == res_total_current
+
+
+if __name__ == "__main__":
+    import typer
+
+    typer.run(test_simplify)

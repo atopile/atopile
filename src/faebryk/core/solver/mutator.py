@@ -1039,7 +1039,9 @@ class Mutator:
     def make_lit(self, value: str) -> F.Literals.Strings: ...
 
     def make_lit(self, value: F.Literals.LiteralValues) -> F.Literals.LiteralNodes:
-        return F.Literals.make_lit(self.G_transient, self.tg_out, value)
+        return F.Literals.make_simple_lit_singleton(
+            self.G_transient, self.tg_out, value
+        )
 
     def _mutate(
         self,
@@ -1098,7 +1100,15 @@ class Mutator:
                 units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.is_unit)
 
             if domain is None:
-                domain = p.get_domain().copy_into(self.G_out)
+                domain = (
+                    F.NumberDomain.bind_typegraph(self.tg_out)
+                    .create_instance(self.G_out)
+                    .setup(
+                        negative=p.get_domain().negative.get().extract_single(),
+                        zero_allowed=p.get_domain().zero_allowed.get().extract_single(),
+                        integer=p.get_domain().integer.get().extract_single(),
+                    )
+                )
 
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
@@ -1106,7 +1116,7 @@ class Mutator:
                 .setup(
                     units=units,
                     within=within if override_within else p.get_within(),
-                    domain=domain if domain is not None else p.get_domain(),
+                    domain=domain,
                     soft_set=soft_set if soft_set is not None else p.get_soft_set(),
                     guess=guess if guess is not None else p.get_guess(),
                     tolerance_guess=tolerance_guess

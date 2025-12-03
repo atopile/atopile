@@ -275,7 +275,7 @@ class is_unit(fabll.Node):
         unit_vector: BasisVector,
         multiplier: float = 1.0,
         offset: float = 0.0,
-    ) -> fabll._ChildField[Any]:
+    ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
 
         from faebryk.library.Literals import NumericInterval, Strings

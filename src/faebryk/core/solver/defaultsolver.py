@@ -49,7 +49,6 @@ class DefaultSolver(Solver):
         # TODO: get order from topo sort
         # and types from decorator
         pre = [
-            canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
             canonical.constrain_within_domain,
             canonical.alias_predicates_to_true,
@@ -584,7 +583,7 @@ class DefaultSolver(Solver):
 
         lit = self.inspect_get_known_supersets(operatable)
         out = lit.any()
-        singleton_lit = F.Literals.make_lit(lit.g, lit.tg, out)
+        singleton_lit = F.Literals.make_simple_lit_singleton(lit.g, lit.tg, out)
         if lock:
             F.Expressions.Is.from_operands(
                 operatable.as_operand.get(),

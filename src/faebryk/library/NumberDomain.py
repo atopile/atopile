@@ -3,6 +3,7 @@
 
 from typing import TYPE_CHECKING, Any, Self, Type
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from faebryk.library.Literals import Booleans, Numbers
@@ -67,7 +68,14 @@ class NumberDomain(fabll.Node):
         ]
         return out
 
-    def unbounded(self, units: type[fabll.NodeT]) -> "Literals.Numbers":
+    def unbounded(
+        self,
+        units: type[fabll.NodeT],
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Literals.Numbers":
+        from faebryk.library.Units import is_unit
+
         if self.integer.get().extract_single():
             # TODO
             pass
@@ -77,7 +85,10 @@ class NumberDomain(fabll.Node):
         if self.negative.get().extract_single():
             # TODO
             pass
-        return Numbers.unbounded(units=units)
+        g = g or self.g
+        tg = tg or self.tg
+        has_unit = units.bind_typegraph(tg=tg).create_instance(g=g)
+        return Numbers.unbounded(g=g, tg=tg, unit=has_unit.get_trait(is_unit))
 
     @classmethod
     def get_shared_domain(cls, *domains: "NumberDomain") -> "NumberDomain":

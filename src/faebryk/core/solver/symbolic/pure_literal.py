@@ -24,7 +24,7 @@ class _Multi:
 
     def run(self, mutator: Mutator, *args: F.Literals.is_literal) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_lit(
+            init_lit = F.Literals.make_simple_lit_singleton(
                 mutator.G_in, mutator.tg_in, self.init
             ).get_trait(F.Literals.is_literal)
             args = (init_lit, init_lit, *args)

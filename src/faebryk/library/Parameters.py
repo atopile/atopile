@@ -97,7 +97,6 @@ class is_parameter_operatable(fabll.Node):
     ) -> T:
         lit = self.try_get_constrained_literal(lit_type=lit_type)
         if lit is None:
-            print("NOT CONSTRAINED")
             raise ParameterIsNotConstrainedToLiteral(parameter=self)
         return lit
 

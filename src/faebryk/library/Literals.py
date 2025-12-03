@@ -2599,8 +2599,10 @@ class Numbers(fabll.Node):
             min=max_value, max=max_value, unit=self.get_is_unit()
         )
 
-    def is_singleton(self) -> bool:
-        return self.get_numeric_set().is_single_element()
+    def is_singleton(self) -> float | None:
+        if self.get_numeric_set().is_single_element():
+            return self.get_min_value()
+        return None
 
     def closest_elem(
         self, g: graph.GraphView, tg: fbrk.TypeGraph, target: "Numbers"
@@ -4935,7 +4937,7 @@ LiteralNodes = Numbers | Booleans | Strings | AbstractEnums
 LiteralLike = LiteralValues | LiteralNodes | is_literal
 
 
-def make_lit(
+def make_simple_lit_singleton(
     g: graph.GraphView, tg: graph.TypeGraph, value: LiteralValues
 ) -> LiteralNodes:
     match value:
@@ -4945,9 +4947,18 @@ def make_lit(
                 attributes=BooleansAttributes(has_true=value, has_false=not value),
             )
         case float() | int():
+            from faebryk.library.Units import Dimensionless
+
             value = float(value)
-            return Numbers.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=LiteralsAttributes(value=value)
+            return (
+                Numbers.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_singleton(
+                    value=value,
+                    unit=Dimensionless.bind_typegraph(tg=tg)
+                    .create_instance(g=g)
+                    .is_unit.get(),
+                )
             )
         case Enum():
             return AbstractEnums.bind_typegraph(tg=tg).create_instance(
