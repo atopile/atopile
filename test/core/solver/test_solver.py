@@ -784,11 +784,12 @@ def test_subset_single_alias():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert E.is_(
-        not_none(
-            repr_map.try_get_literal(A.as_parameter_operatable())
-        ).get_sibling_trait(F.Parameters.can_be_operand),
-        E.lit_op_single((1, E.U.V)).get_sibling_trait(F.Parameters.can_be_operand),
+    g_out = repr_map.G_out
+    tg_out = repr_map.tg_out
+    assert not_none(repr_map.try_get_literal(A.as_parameter_operatable())).equals(
+        E.lit_op_single((1, E.U.V)).get_sibling_trait(F.Literals.is_literal),
+        g=g_out,
+        tg=tg_out,
     )
 
 
