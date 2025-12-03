@@ -65,6 +65,8 @@ class has_simple_value_representation(fabll.Node):
             lit = self.param.get_trait(
                 F.Parameters.is_parameter_operatable
             ).try_get_aliased_literal()
+            if lit is None:
+                raise ValueError(f"No literal found for {self.param}")
             return lit.pretty_str()
 
             # TODO this is probably not the only place we will ever need
@@ -115,10 +117,11 @@ class has_simple_value_representation(fabll.Node):
             try:
                 value = self._get_value()
             except Exception as e:
-                if self.default is None:
-                    raise
+                if not self.default:
+                    logger.debug(f"No value or default for `{self.param}`: {e}")
+                    return ""
                 logger.debug(f"Failed to get value for `{self.param}`: {e}")
-                return ""
+                return self.default
             return join_if_non_empty(
                 " ",
                 self.prefix,
@@ -270,27 +273,39 @@ def test_repr_chain_basic():
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
-        .setup_from_interval(
-            lower=10.0,
-            upper=20,
-            unit=F.Units.Volt,
+        .setup_from_min_max(
+            min=10.0,
+            max=20,
+            unit=F.Units.Volt.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
         ),
     )
     m.param2.get().alias_to_literal(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
-        .setup_from_singleton(value=5.0, unit=F.Units.Ampere),
+        .setup_from_singleton(
+            value=5.0,
+            unit=F.Units.Ampere.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
+        ),
     )
     m.param3.get().alias_to_literal(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
-        .setup_from_singleton(value=10.0, unit=F.Units.Volt),
+        .setup_from_singleton(
+            value=10.0,
+            unit=F.Units.Volt.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
+        ),
     )
 
     val = m.get_trait(has_simple_value_representation).get_value()
-    assert val == "TM 15V ±33% 5A P2 10V P3"
+    assert val == "TM 15.0V ±33% 5.0A P2 10.0V P3"
 
 
 def test_repr_chain_non_number():
@@ -316,8 +331,15 @@ def test_repr_chain_non_number():
         )
 
     m = TestModule.bind_typegraph(tg).create_instance(g=g)
+    # Use AbstractEnums directly - setup() internally uses EnumsFactory for type defs
+    test_enum_lit = (
+        F.Literals.AbstractEnums.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(TestEnum.A)
+    )
     m.param1.get().get_trait(F.Parameters.is_parameter_operatable).alias_to_literal(
-        g=g, value=TestEnum.A
+        g=g,
+        value=test_enum_lit,
     )
     m.param2.get().alias_to_single(value=True)
 
@@ -356,8 +378,10 @@ def test_repr_chain_no_literal():
         .create_instance(g=g)
         .setup_from_singleton(
             value=10.0,
-            unit=F.Units.Volt,
+            unit=F.Units.Volt.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
         ),
     )
     val = m.get_trait(has_simple_value_representation).get_value()
-    assert val == "10V P3: MISSING"
+    assert val == "10.0V P3: MISSING"

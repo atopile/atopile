@@ -164,8 +164,11 @@ class is_literal(fabll.Node):
         types = [Strings, Numbers, Booleans, AbstractEnums]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
+            print(f"Checking if {obj} is instance of {t}")
             if obj.isinstance(t):
+                print(f"Casting {obj} to {t}")
                 return obj.cast(t)
+
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
     def pretty_repr(self) -> str:
@@ -174,9 +177,7 @@ class is_literal(fabll.Node):
         return f"{lit.get_type_name()}({lit.get_values()})"
 
     def pretty_str(self) -> str:
-        # TODO
-        lit = self.switch_cast()
-        return f"{lit.get_values()[0]}"
+        return self.switch_cast().pretty_str()
 
     def is_not_correlatable(self) -> bool:
         return not self.is_singleton() and not self.is_empty()
@@ -321,6 +322,12 @@ class Strings(fabll.Node):
             .create_instance(g=g)
             .setup_from_values(*(set(self.get_values()) ^ set(other.get_values())))
         )
+
+    def pretty_str(self) -> str:
+        values = self.get_values()
+        if len(values) == 1:
+            return values[0]
+        return str(values)
 
 
 @dataclass(frozen=True)
@@ -3480,6 +3487,31 @@ class Numbers(fabll.Node):
             },
         }
 
+    def pretty_str(self) -> str:
+        """Format number with units and tolerance for display."""
+        numeric_set = self.get_numeric_set()
+        min_val = numeric_set.get_min_value()
+        max_val = numeric_set.get_max_value()
+
+        # Get unit symbol
+        try:
+            unit = self.get_is_unit()
+            unit_symbol = unit.get_symbols()[0]
+        except Exception:
+            unit_symbol = ""
+
+        # Singleton value
+        if numeric_set.is_singleton():
+            return f"{min_val}{unit_symbol}"
+
+        # Range - calculate center and tolerance
+        center = (min_val + max_val) / 2
+        if center != 0:
+            tolerance_rel = abs((max_val - min_val) / 2 / center) * 100
+            return f"{center}{unit_symbol} ±{tolerance_rel:.0f}%"
+        else:
+            return f"{min_val}-{max_val}{unit_symbol}"
+
 
 class TestNumbers:
     def test_make_child(self):
@@ -4714,6 +4746,12 @@ class Counts(fabll.Node):
             )
         )
 
+    def pretty_str(self) -> str:
+        values = self.get_values()
+        if len(values) == 1:
+            return str(values[0])
+        return str(values)
+
 
 class TestCounts:
     def test_make_child(self):
@@ -4856,6 +4894,22 @@ class TestCounts:
         tg = fbrk.TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
         assert repr(counts) == "Counts([])"
+
+    def test_pretty_str_singleton(self):
+        """Test pretty_str for a singleton Counts value."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        counts = Counts.create_instance(g=g, tg=tg)
+        counts.setup_from_values(values=[42])
+        assert counts.pretty_str() == "42"
+
+    def test_pretty_str_multiple(self):
+        """Test pretty_str for multiple Counts values."""
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        counts = Counts.create_instance(g=g, tg=tg)
+        counts.setup_from_values(values=[1, 2, 3])
+        assert counts.pretty_str() == "[1, 2, 3]"
 
 
 @dataclass(frozen=True)
@@ -5047,6 +5101,12 @@ class Booleans(fabll.Node[BooleansAttributes]):
             ),
         )
 
+    def pretty_str(self) -> str:
+        values = self.get_values()
+        if len(values) == 1:
+            return str(values[0]).lower()
+        return str(values)
+
 
 class EnumValue(fabll.Node):
     name_ = F.Collections.Pointer.MakeChild()
@@ -5228,6 +5288,12 @@ class AbstractEnums(fabll.Node):
         raise NotImplementedError(
             "op_symmetric_difference_intervals not implemented for AbstractEnums"
         )
+
+    def pretty_str(self) -> str:
+        values = self.get_values()
+        if len(values) == 1:
+            return values[0]
+        return str(values)
 
 
 @once
