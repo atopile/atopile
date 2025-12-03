@@ -18,6 +18,14 @@ from faebryk.library import Collections
 from faebryk.libs.util import cast_assert, not_none
 
 
+def _add_anon_child(node: fabll.NodeT, child: fabll.NodeT):
+    EdgeComposition.add_child(
+        bound_node=node.instance,
+        child=child.instance.node(),
+        child_identifier=str(id(child)),
+    )
+
+
 class is_assignable(fabll.Node):
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
@@ -151,11 +159,7 @@ class FieldRef(fabll.Node):
             part = FieldRefPart.bind_typegraph(self.tg).create_instance(g=self.g)
             part.setup(info=part_info)
 
-            EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=part.instance.node(),
-                child_identifier=str(id(part)),
-            )
+            _add_anon_child(self, part)
 
             self.parts.get().append(part)
 
@@ -241,8 +245,13 @@ class BinaryExpression(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.operator.get().alias_to_literal(operator, g=self.g)
+
         self.lhs.get().point(lhs)
+        _add_anon_child(self, lhs)
+
         self.rhs.get().point(rhs)
+        _add_anon_child(self, rhs)
+
         return self
 
     def get_lhs(self) -> is_arithmetic:
@@ -265,6 +274,7 @@ class GroupExpression(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.expression.get().point(expression)
+        _add_anon_child(self, expression)
         return self
 
     def get_expression(self) -> is_arithmetic:
@@ -291,6 +301,7 @@ class ComparisonClause(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.operator.get().alias_to_literal(operator_, g=self.g)
         self.rhs.get().point(rhs)
+        _add_anon_child(self, rhs)
         return self
 
     def get_rhs(self) -> is_arithmetic:
@@ -310,13 +321,9 @@ class ComparisonExpression(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.lhs.get().point(lhs)
-
+        _add_anon_child(self, lhs)
         for clause in rhs_clauses:
-            EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=clause.instance.node(),
-                child_identifier=str(id(clause)),
-            )
+            _add_anon_child(self, clause)
             self.rhs_clauses.get().append(clause)
 
         return self
@@ -413,11 +420,7 @@ class Scope(fabll.Node):
             stmt_node = fabll.Traits(stmt).get_obj_raw()
             self.stmts.get().append(stmt_node)
 
-            EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=stmt_node.instance.node(),
-                child_identifier=str(id(stmt)),
-            )
+            _add_anon_child(self, stmt)
 
         return self
 
@@ -577,11 +580,7 @@ class FieldRefList(fabll.Node):
 
         for item in items:
             self.items.get().append(item)
-            EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=item.instance.node(),
-                child_identifier=str(id(item)),
-            )
+            _add_anon_child(self, item)
 
         return self
 
@@ -604,6 +603,7 @@ class ForStmt(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.target.get().alias_to_literal(*target)
         self.iterable.get().point(iterable)
+        _add_anon_child(self, iterable)
         self.scope.get().setup(stmts=stmts)
         return self
 
@@ -679,11 +679,7 @@ class Template(fabll.Node):
 
         for arg in args:
             self.args.get().append(arg)
-            EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=arg.instance.node(),
-                child_identifier=str(id(arg)),
-            )
+            _add_anon_child(self, arg)
 
         return self
 
@@ -741,6 +737,7 @@ class Assignable(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.value.get().point(fabll.Traits(value).get_obj_raw())
+        _add_anon_child(self, value)
         return self
 
     def get_value(self) -> is_assignable:
@@ -787,7 +784,9 @@ class ConnectStmt(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.lhs.get().point(lhs)
+        _add_anon_child(self, lhs)
         self.rhs.get().point(rhs)
+        _add_anon_child(self, rhs)
         return self
 
     def get_lhs(self) -> is_connectable:
@@ -819,7 +818,9 @@ class DirectedConnectStmt(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.direction.get().alias_to_literal(direction)
         self.lhs.get().point(lhs)
+        _add_anon_child(self, lhs)
         self.rhs.get().point(rhs)
+        _add_anon_child(self, rhs)
         return self
 
     def get_lhs(self) -> is_connectable:
@@ -903,6 +904,7 @@ class AssertStmt(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.comparison.get().point(comparison)
+        _add_anon_child(self, comparison)
         return self
 
     def get_comparison(self) -> "ComparisonExpression":
