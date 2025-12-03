@@ -59,7 +59,7 @@ class has_linked_kicad_footprint(fabll.Node):
 
     def get_transformer(self) -> "PCB_Transformer":
         transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_value()
+            self.transformer_.get().force_extract_literal().get_values()[0]
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
 

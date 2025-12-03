@@ -4,9 +4,9 @@
 import faebryk.core.node as fabll
 
 
-class can_attach_to_footprint(fabll.Node):
+class is_kicad_net(fabll.Node):
     """
-    Marker trait for nodes that can be attached to a footprint.
+    A node that is a KiCad net.
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()

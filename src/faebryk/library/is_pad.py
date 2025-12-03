@@ -4,9 +4,10 @@
 import faebryk.core.node as fabll
 
 
-class can_attach_to_footprint(fabll.Node):
+class is_pad(fabll.Node):
     """
-    Marker trait for nodes that can be attached to a footprint.
+    A pad is a connection point on a footprint.
+    It can be connected to a lead of a package.
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()

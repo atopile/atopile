@@ -25,23 +25,34 @@ from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_solver import has_solver
+from faebryk.library.can_attach_to_any_pad import can_attach_to_any_pad
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
+from faebryk.library.is_footprint import is_footprint
+from faebryk.library.is_kicad_footprint import is_kicad_footprint
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
+from faebryk.library.is_kicad_net import is_kicad_net
+from faebryk.library.is_kicad_pad import is_kicad_pad
+from faebryk.library.is_pad import is_pad
 from faebryk.library.is_pickable import is_pickable
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
+from faebryk.library.has_associated_footprint import has_associated_footprint
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
 from faebryk.library.PCB import PCB
 import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.SerializableMetadata import SerializableMetadata
+from faebryk.library.can_attach_to_pad_by_name import can_attach_to_pad_by_name
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.library.has_linked_kicad_footprint import has_linked_kicad_footprint
+from faebryk.library.has_linked_kicad_net import has_linked_kicad_net
+from faebryk.library.has_linked_kicad_pad import has_linked_kicad_pad
 from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_package_requirements import has_package_requirements
@@ -52,6 +63,7 @@ from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_i
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 from faebryk.library.is_auto_generated import is_auto_generated
+from faebryk.library.is_generated_by_kicad_footprint import is_generated_by_kicad_footprint
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.ElectricPower import ElectricPower
@@ -76,6 +88,7 @@ from faebryk.library.MOSFET import MOSFET
 from faebryk.library.Battery import Battery
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
+from faebryk.library.has_associated_net import has_associated_net
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
@@ -94,6 +107,7 @@ from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
+from faebryk.library.is_lead import is_lead
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
@@ -107,6 +121,7 @@ from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
+from faebryk.library.has_associated_pad import has_associated_pad
 from faebryk.library.CAN import CAN
 from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
@@ -133,23 +148,34 @@ __all__ = [
     "Signal",
     "is_app_root",
     "has_solver",
+    "can_attach_to_any_pad",
     "can_attach_to_footprint",
+    "is_footprint",
+    "is_kicad_footprint",
     "has_part_removed",
     "is_lazy",
+    "is_kicad_net",
+    "is_kicad_pad",
+    "is_pad",
     "is_pickable",
     "Literals",
     "can_bridge",
     "has_linked_pad",
     "has_footprint",
     "implements_design_check",
+    "has_associated_footprint",
     "Parameters",
     "can_bridge_by_name",
     "Expressions",
     "PCB",
     "PCBTransformer",
     "SerializableMetadata",
+    "can_attach_to_pad_by_name",
     "has_datasheet",
     "has_designator_prefix",
+    "has_linked_kicad_footprint",
+    "has_linked_kicad_net",
+    "has_linked_kicad_pad",
     "has_net_name",
     "has_overriden_name",
     "has_package_requirements",
@@ -160,6 +186,7 @@ __all__ = [
     "is_pickable_by_type",
     "Units",
     "is_auto_generated",
+    "is_generated_by_kicad_footprint",
     "Electrical",
     "has_simple_value_representation",
     "ElectricPower",
@@ -184,6 +211,7 @@ __all__ = [
     "Battery",
     "ElectricLogic",
     "ElectricSignal",
+    "has_associated_net",
     "Capacitor",
     "Crystal",
     "Fuse",
@@ -202,6 +230,7 @@ __all__ = [
     "SPI",
     "SWD",
     "UART_Base",
+    "is_lead",
     "MultiCapacitor",
     "FilterElectricalLC",
     "Crystal_Oscillator",
@@ -215,6 +244,7 @@ __all__ = [
     "is_atomic_part",
     "SPIFlash",
     "UART",
+    "has_associated_pad",
     "CAN",
     "Ethernet",
     "OpAmp",

@@ -4,9 +4,9 @@
 import faebryk.core.node as fabll
 
 
-class can_attach_to_footprint(fabll.Node):
+class can_attach_to_any_pad(fabll.Node):
     """
-    Marker trait for nodes that can be attached to a footprint.
+    Attach a lead to any pad.
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
