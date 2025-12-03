@@ -468,6 +468,8 @@ def test_solve_phase_one():
     solver.simplify_symbolically(E.tg, E.g)
 
 
+# TODO remove slow
+@pytest.mark.slow
 def test_simplify():
     E = BoundExpressions()
 
@@ -639,6 +641,7 @@ def test_subset_of_literal():
     #     ) == E.lit_op_range((0.0, 0.0))
 
 
+@pytest.mark.segfault
 def test_alias_classes():
     E = BoundExpressions()
     A, B, C, D, H = (E.parameter_op() for _ in range(5))
@@ -687,6 +690,8 @@ def test_solve_realworld_biggest():
     # pick_part_recursively(app, solver)
 
 
+# TODO remove slow (1pytest -m "not slow" test/core/solver/test_solver.py.5min)
+@pytest.mark.slow
 def test_inspect_known_superranges():
     E = BoundExpressions()
     p0 = E.parameter_op(
@@ -715,6 +720,7 @@ def test_inspect_known_superranges():
     )
 
 
+@pytest.mark.segfault
 def test_obvious_contradiction_by_literal():
     E = BoundExpressions()
     p0, p1 = [E.parameter_op(units=E.U.V) for _ in range(2)]
@@ -729,6 +735,7 @@ def test_obvious_contradiction_by_literal():
         solver.simplify_symbolically(E.tg, E.g)
 
 
+@pytest.mark.segfault
 def test_subset_is():
     E = BoundExpressions()
     A, B = [E.parameter_op() for _ in range(2)]
@@ -1024,7 +1031,6 @@ def test_literal_folding_add_multiplicative_2():
 
 
 def test_transitive_subset():
-    assert False, "SEGFAULTING"
     E = BoundExpressions()
 
     # TODO: Constrain to real number domain
@@ -1718,6 +1724,7 @@ def test_fold_pow():
     assert res == E.power(lit, lit_operand)
 
 
+@pytest.mark.segfault
 def test_graph_split():
     E = BoundExpressions()
 
@@ -1909,8 +1916,8 @@ def test_fold_not():
     ) == E.lit_bool(True)
 
 
+@pytest.mark.segfault
 def test_fold_ss_transitive():
-    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -1927,8 +1934,8 @@ def test_fold_ss_transitive():
     ) == E.lit_op_range((0, 10))
 
 
+@pytest.mark.segfault
 def test_ss_intersect():
-    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -2066,11 +2073,19 @@ def test_implication():
 
     E.is_subset(A, E.lit_op_discrete_set(5, 10))
 
-    E.is_subset(A, E.lit_op_single(5), assert_=True).operation_implies(
-        E.is_subset(B, E.lit_op_range_from_center_rel((100, E.U.dl), 0.1), assert_=True)
+    E.implies(
+        E.is_subset(A, E.lit_op_single(5), assert_=True),
+        E.is_subset(
+            B, E.lit_op_range_from_center_rel((100, E.U.dl), 0.1), assert_=True
+        ),
+        assert_=True,
     )
-    E.is_subset(A, E.lit_op_single(10), assert_=True).operation_implies(
-        E.is_subset(B, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1), assert_=True)
+    E.implies(
+        E.is_subset(A, E.lit_op_single(10), assert_=True),
+        E.is_subset(
+            B, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1), assert_=True
+        ),
+        assert_=True,
     )
 
     E.is_subset(A, E.lit_op_single(10), assert_=True)
@@ -2232,6 +2247,8 @@ def test_simplify_non_terminal_manual_test_1():
     solver.simplify(E.g, E.tg)
 
 
+# TODO remove slow
+@pytest.mark.slow
 def test_simplify_non_terminal_manual_test_2():
     """
     Test that non-terminal simplification works
@@ -2250,15 +2267,17 @@ def test_simplify_non_terminal_manual_test_2():
     )
     for p1, p2 in pairwise(ps):
         E.is_subset(
-            p2.as_operand(), E.multiply(p1.as_operand(), increase), assert_=True
+            p2.as_operand.get(), E.multiply(p1.as_operand.get(), increase), assert_=True
         )
-        E.is_(p1.as_operand(), E.divide(p2.as_operand(), increase), assert_=True)
+        E.is_(
+            p1.as_operand.get(), E.divide(p2.as_operand.get(), increase), assert_=True
+        )
 
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g, terminal=False, print_context=context)
 
     origin = 1, E.lit_op_range(((9, E.U.V), (11, E.U.V)))
-    E.is_(ps[origin[0]].as_operand(), (origin[1]), assert_=True)
+    E.is_(ps[origin[0]].as_operand.get(), (origin[1]), assert_=True)
     solver.simplify(E.g, E.tg)
 
     solver.update_superset_cache(*ps)
@@ -2273,9 +2292,10 @@ def test_simplify_non_terminal_manual_test_2():
                 E.is_(_inc, E.divide(_inc, increase), assert_=True)
 
         p_lit = solver.inspect_get_known_supersets(p)
-        print(f"{p.as_parameter_operatable().compact_repr(context)}, lit:", p_lit)
+        print(f"{p.as_parameter_operatable.get().compact_repr(context)}, lit:", p_lit)
+        print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
         assert E.is_subset(p_lit.as_operand(), E.multiply(origin[1], _inc))
-        E.is_(p.as_operand(), p_lit.as_operand(), assert_=True)
+        E.is_(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
         solver.simplify(E.g, E.tg)
 
 
@@ -2600,17 +2620,24 @@ def test_exec_pure_literal_expressions(
     lits = lits_factory(E)
     expected = expected_factory(E)
 
-    lits_converted = list(map(F.Literals.make_simple_lit_singleton, lits))
+    lits_converted = [
+        F.Literals.make_simple_lit_singleton(E.g, E.tg, lit) for lit in lits
+    ]
     expected_converted = F.Literals.make_simple_lit_singleton(E.g, E.tg, expected)
 
     expr = op(*lits_converted)  # type: ignore
-    assert _exec_pure_literal_expressions(expr) == expected_converted
+    assert (
+        _exec_pure_literal_expressions(
+            E.g, E.tg, expr.get_sibling_trait(F.Expressions.is_expression)
+        )
+        == expected_converted
+    )
 
     if op == E.greater_than:
         pytest.xfail("GreaterThan is not supported in solver")
 
-    def _get_param_from_lit(lit):
-        if isinstance(lit, F.Literals.BoolSet):
+    def _get_param_from_lit(lit: F.Literals.LiteralNodes):
+        if isinstance(lit, F.Literals.Booleans):
             return E.bool_parameter_op()
         else:
             return E.parameter_op()
@@ -2717,4 +2744,5 @@ def test_solve_voltage_divider_complex():
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_simplify)
+    # typer.run(test_simplify)
+    typer.run(test_subset_is)

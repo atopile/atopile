@@ -537,7 +537,7 @@ class DefaultSolver(Solver):
         """
         Careful, only use after solver ran!
         """
-        value_po = value.as_parameter_operatable()
+        value_po = value.as_parameter_operatable.get()
 
         is_lit = value_po.try_get_aliased_literal()
         if is_lit is not None:
@@ -552,7 +552,7 @@ class DefaultSolver(Solver):
 
         ss_lit = value_po.try_get_subset_or_alias_literal()
         if ss_lit is None:
-            ss_lit = value.domain_set()
+            ss_lit = value.domain_set().get_trait(F.Literals.is_literal)
 
         solver_lit = None
         if self.state is not None:

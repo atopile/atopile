@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Callable
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
@@ -22,11 +24,13 @@ class _Multi:
     f: Callable[..., Any]
     init: F.Literals.LiteralValues | None = None
 
-    def run(self, mutator: Mutator, *args: F.Literals.is_literal) -> Any:
+    def run(
+        self, g: graph.GraphView, tg: fbrk.TypeGraph, *args: F.Literals.is_literal
+    ) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_simple_lit_singleton(
-                mutator.G_in, mutator.tg_in, self.init
-            ).get_trait(F.Literals.is_literal)
+            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.init).get_trait(
+                F.Literals.is_literal
+            )
             args = (init_lit, init_lit, *args)
         return functools.reduce(self.f, args)
 
@@ -60,7 +64,8 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
 
 
 def _exec_pure_literal_operands(
-    mutator: Mutator,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
     expr_type: "fabll.ImplementsType",
     operands: Iterable[F.Parameters.can_be_operand],
 ) -> F.Literals.is_literal | None:
@@ -72,20 +77,22 @@ def _exec_pure_literal_operands(
     expr_type_node = fabll.Traits(expr_type).get_obj_raw().get_type_node()
     if expr_type_node not in _map:
         return None
-    if not all(mutator.utils.is_literal(o) for o in operands):
+    if not all(o.try_get_sibling_trait(F.Literals.is_literal) for o in operands):
         return None
     try:
-        return _map[expr_type_node].run(mutator, *operands)
+        return _map[expr_type_node].run(g, tg, *operands)
     except (ValueError, NotImplementedError, ZeroDivisionError):
         return None
 
 
 def _exec_pure_literal_expressions(
-    mutator: Mutator,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
     expr: F.Expressions.is_expression,
 ) -> F.Literals.is_literal | None:
     return _exec_pure_literal_operands(
-        mutator,
+        g,
+        tg,
         not_none(
             fabll.TypeNodeBoundTG.try_get_trait_of_type(
                 fabll.ImplementsType,
@@ -112,7 +119,9 @@ def fold_pure_literal_expressions(mutator: Mutator):
         # if expression is not evaluatable that's fine
         # just means we can't say anything about the result
         result = _exec_pure_literal_expressions(
-            mutator, expr.get_trait(F.Expressions.is_expression)
+            mutator.G_transient,
+            mutator.tg_in,
+            expr.get_trait(F.Expressions.is_expression),
         )
         if result is None:
             continue

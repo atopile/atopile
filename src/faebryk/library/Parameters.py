@@ -583,7 +583,11 @@ class NumericParameter(fabll.Node):
             domain = (
                 NumberDomain.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .setup(negative=True, zero_allowed=True, integer=False)
+                .setup(
+                    args=NumberDomain.Args(
+                        negative=True, zero_allowed=True, integer=False
+                    )
+                )
             )
 
         self.number_domain.get().point(
@@ -929,33 +933,25 @@ def test_get_operations_recursive():
     p1_po = p1.get_trait(is_parameter_operatable)
 
     # Create nested expressions: (p1 + p2) * p3
-    add_expr = (
-        Add.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(
-            p1.get_trait(can_be_operand),
-            p2.get_trait(can_be_operand),
-        )
+    add_expr = Add.c(
+        p1.get_trait(can_be_operand),
+        p2.get_trait(can_be_operand),
     )
 
-    mul_expr = (
-        Multiply.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(
-            add_expr.get_trait(can_be_operand),
-            p3.get_trait(can_be_operand),
-        )
+    mul_expr = Multiply.c(
+        add_expr,
+        p3.get_trait(can_be_operand),
     )
 
     # Non-recursive: p1 only sees the Add directly
     p1_ops_non_recursive = p1_po.get_operations(recursive=False)
-    assert add_expr in p1_ops_non_recursive
-    assert mul_expr not in p1_ops_non_recursive
+    assert fabll.Traits(add_expr).get_obj(Add) in p1_ops_non_recursive
+    assert fabll.Traits(mul_expr).get_obj(Multiply) not in p1_ops_non_recursive
 
     # Recursive: p1 sees both Add and Multiply (through the Add)
     p1_ops_recursive = p1_po.get_operations(recursive=True)
-    assert add_expr in p1_ops_recursive
-    assert mul_expr in p1_ops_recursive
+    assert fabll.Traits(add_expr).get_obj(Add) in p1_ops_recursive
+    assert fabll.Traits(mul_expr).get_obj(Multiply) in p1_ops_recursive
 
 
 def test_():

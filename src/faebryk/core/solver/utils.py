@@ -368,7 +368,9 @@ class MutatorUtils:
         from_ops = from_ops or []
         if to_canon := to.try_get_sibling_trait(F.Expressions.is_canonical):
             res = _exec_pure_literal_expressions(
-                mutator=self.mutator, expr=to_canon.as_expression()
+                g=self.mutator.G_transient,
+                tg=self.mutator.tg_in,
+                expr=to_canon.as_expression(),
             )
             if res is not None:
                 to = res.as_operand()
@@ -446,7 +448,9 @@ class MutatorUtils:
 
         if to_canon := to.try_get_sibling_trait(F.Expressions.is_canonical):
             res = _exec_pure_literal_expressions(
-                mutator=self.mutator, expr=to_canon.as_expression()
+                g=self.mutator.G_transient,
+                tg=self.mutator.tg_in,
+                expr=to_canon.as_expression(),
             )
             if res is not None:
                 to = res.as_operand()
@@ -1117,7 +1121,9 @@ class MutatorUtils:
                     .try_cast(F.Parameters.NumericParameter)
                 )
             ]
-            domain = F.NumberDomain.get_shared_domain(*numberdomains)
+            domain = F.NumberDomain.get_shared_domain(
+                *numberdomains, g=self.mutator.G_out, tg=self.mutator.tg_out
+            )
             nps = [
                 fabll.Traits(p).get_obj(F.Parameters.NumericParameter) for p in params
             ]
@@ -1128,7 +1134,11 @@ class MutatorUtils:
             soft_sets = {ss for p in nps if (ss := p.get_soft_set()) is not None}
             soft_set = None
             if soft_sets:
-                soft_set = F.Literals.Numbers.op_intersect_intervals(*soft_sets)
+                soft_set = F.Literals.Numbers.op_intersect_intervals(
+                    *soft_sets,
+                    g=self.mutator.G_out,
+                    tg=self.mutator.tg_out,
+                )
 
             # heuristic:
             # get median
@@ -1182,7 +1192,7 @@ class MutatorUtils:
             new = (
                 F.Parameters.EnumParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
-                .setup(enum_type=enum)
+                .setup(enum=enum)
             )
             return new.get_trait(F.Parameters.is_parameter)
         else:

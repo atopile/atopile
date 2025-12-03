@@ -765,8 +765,8 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
         non_lit_aliases = {
             e: other_p
             for e in p.get_operations(Is, predicates_only=True)
-            if not e.get_trait(F.Expressions.is_expression).get_operand_literals()
-            and (other_p := e.get_other_operand(p.as_operand())) is not p
+            if not e.is_expression.get().get_operand_literals()
+            and (other_p := e.get_other_operand(p.as_operand())) is not p.as_operand()
         }
         for alias_expr, alias in non_lit_aliases.items():
             alias_expr_po = alias_expr.get_trait(F.Parameters.is_parameter_operatable)

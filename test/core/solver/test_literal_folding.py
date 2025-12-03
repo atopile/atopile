@@ -134,7 +134,11 @@ class Builders(Namespace):
             .setup(
                 domain=F.NumberDomain.bind_typegraph(tg=tg)
                 .create_instance(g=g)
-                .setup(negative=True, zero_allowed=True, integer=False)
+                .setup(
+                    args=F.NumberDomain.Args(
+                        negative=True, zero_allowed=True, integer=False
+                    )
+                )
             )
         )
 

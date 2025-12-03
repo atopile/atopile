@@ -1103,11 +1103,7 @@ class Mutator:
                 domain = (
                     F.NumberDomain.bind_typegraph(self.tg_out)
                     .create_instance(self.G_out)
-                    .setup(
-                        negative=p.get_domain().negative.get().extract_single(),
-                        zero_allowed=p.get_domain().zero_allowed.get().extract_single(),
-                        integer=p.get_domain().integer.get().extract_single(),
-                    )
+                    .setup(p.get_domain().get_args())
                 )
 
             new_param = (
@@ -1500,7 +1496,8 @@ class Mutator:
             if assert_ and expr_factory is Is:
                 return self.utils.alias_to(operands[0], operands[1], from_ops=from_ops)
             res = _exec_pure_literal_operands(
-                self,
+                self.G_transient,
+                self.tg_in,
                 not_none(expr_bound.try_get_type_trait(fabll.ImplementsType)),
                 operands,
             )

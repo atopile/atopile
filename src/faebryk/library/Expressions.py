@@ -98,7 +98,7 @@ class is_expression(fabll.Node):
     _repr_enum = F.Literals.EnumsFactory(ReprStyle.Placement)
 
     @classmethod
-    def MakeChild(cls, repr_style: ReprStyle) -> fabll._ChildField[Any]:
+    def MakeChild(cls, repr_style: ReprStyle) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         cls._MakeReprStyle(out, repr_style)
         return out
@@ -2447,7 +2447,9 @@ class Is(fabll.Node):
         self, operand: "F.Parameters.can_be_operand"
     ) -> "F.Parameters.can_be_operand":
         return next(
-            op for op in self.get_trait(is_expression).get_operands() if op != operand
+            op
+            for op in self.is_expression.get().get_operands()
+            if not op.is_same(operand)
         )
 
     @classmethod

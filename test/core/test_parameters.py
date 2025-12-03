@@ -22,10 +22,10 @@ def test_new_definitions():
 
     parameters.NumericParameter.setup(
         units=F.Units.Ohm,
-        domain=number_domain.create_number_domain(negative=False),
-        soft_set=literals.Numbers.setup_from_interval(
-            1, 10e6, F.Units.Ohm
+        domain=number_domain.create_number_domain(
+            args=F.NumberDomain.Args(negative=False)
         ),
+        soft_set=literals.Numbers.setup_from_interval(1, 10e6, F.Units.Ohm),
         likely_constrained=True,
     )
 
@@ -136,6 +136,7 @@ def test_expression_congruence_not():
     x = Is(A, EnumSet(F.LED.Color.EMERALD))
     assert x.is_congruent_to(Is(A, EnumSet(F.LED.Color.EMERALD)))
     assert Not(x).is_congruent_to(Not(x))
+
 
 if __name__ == "__main__":
     # test_enums()
