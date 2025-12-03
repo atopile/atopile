@@ -213,6 +213,12 @@ class Strings(fabll.Node):
             raise ValueError(f"Expected 1 value, got {len(values)}")
         return values[0]
 
+    def is_singleton(self) -> str | None:
+        elements = self.get_values()
+        if not len(elements) == 1:
+            return None
+        return next(iter(elements))
+
 
 @dataclass(frozen=True)
 class NumericAttributes(fabll.NodeAttributes):

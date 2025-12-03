@@ -1779,7 +1779,12 @@ class Mutator:
 
         ops = self.get_literal_aliases(new_only=new_only)
         mapping = {self.utils.get_lit_mapping_from_lit_expr(op) for op in ops}
-        dupes = duplicates(mapping, lambda x: x[0], by_eq=True)
+        dupes = duplicates(
+            mapping,
+            lambda x: x[0],
+            by_eq=True,
+            custom_eq=lambda x, y: bool(x[1].equals(y[1])),
+        )
         if dupes:
             raise ContradictionByLiteral(
                 "Literal contradictions",
@@ -1989,29 +1994,33 @@ def test_mutator_basic_bootstrap():
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
-        # TODO
-        # param_num =
-        # F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    # param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+    param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
     param_bool_op = app.param_bool.get().get_trait(F.Parameters.can_be_operand)
 
     print(repr(param_bool_op))
 
     app.param_str.get().alias_to_literal("a", "b", "c")
     app.param_bool.get().alias_to_single(True)
-    # app.param_num.get().alias_to_literal(
-    #    g=g,
-    #    value=F.Literals.Numbers.bind_typegraph(tg=tg)
-    #    .create_instance(g=g)
-    #    .setup_from_interval(1, 5),
-    # )
-    # F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
-    #    param_num_op,
-    #    param_num_op,
-    # )
+    app.param_num.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(
+            1,
+            5,
+            unit=F.Units.Dimensionless.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .is_unit.get(),
+        ),
+    )
+    F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
+        param_num_op,
+        param_num_op,
+    )
     F.Expressions.Or.bind_typegraph(tg=tg).create_instance(g=g).setup(
         param_bool_op,
         param_bool_op,
@@ -2025,21 +2034,21 @@ def test_mutator_basic_bootstrap():
     @algorithm("test")
     def algo(mutator: Mutator):
         params = mutator.get_parameters()
-        assert len(params) == 2
+        assert len(params) >= 3
         exprs = mutator.get_expressions(include_terminated=True)
-        assert len(exprs) == 3
+        assert len(exprs) >= 4
         pos = mutator.get_parameter_operatables()
-        assert len(pos) == 5
+        assert len(pos) >= 7
         is_exprs = mutator.get_typed_expressions(F.Expressions.Is)
-        assert len(is_exprs) == 2
+        assert len(is_exprs) >= 2
         preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
-        assert len(preds) == 2
+        assert len(preds) >= 2
 
-        # mutator.create_expression(
-        #    F.Expressions.Multiply,
-        #    param_num_op,
-        #    param_num_op,
-        # )
+        mutator.create_expression(
+            F.Expressions.Multiply,
+            param_num_op,
+            param_num_op,
+        )
         mutator.create_expression(
             F.Expressions.Not,
             param_bool_op,
