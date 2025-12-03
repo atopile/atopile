@@ -890,6 +890,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if name.startswith("__") or name.endswith("__fields"):
             return
         if isinstance(value, Field):
+            # Skip fields that are already registered (e.g., loop variables pointing
+            # to fields already in a list). This prevents the same _ChildField from
+            # being registered twice under different locators.
+            if cls._is_field_registered(value):
+                return
             cls._add_field(locator=name, field=value)
         if (
             isinstance(value, list)
@@ -897,6 +902,20 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             and all(isinstance(c, Field) for c in value)
         ):
             cls._add_field(locator=name, field=ListField(fields=value))
+
+    @classmethod
+    def _is_field_registered(cls, field: Field) -> bool:
+        """
+        Check if a field is already registered, either directly or as part of a list.
+        This prevents duplicate registration when loop variables reference existing fields.
+        """
+        for registered in cls.__fields.values():
+            if registered is field:
+                return True
+            # Check if field is inside a ListField
+            if isinstance(registered, ListField) and field in registered:
+                return True
+        return False
 
     @classmethod
     def _add_field(cls, locator: str, field: Field):
