@@ -2197,6 +2197,7 @@ def test_type_children():
     children = Node.bind_instance(Resistor.get_or_create_type()).get_children(
         direct_only=True,
         types=Node,
+        tg=tg,
     )
     print(indented_container([c.get_full_name(types=True) for c in children]))
 
@@ -2214,7 +2215,8 @@ def test_resistor_instantiation():
     assert res_inst._type_identifier() == "Resistor"
     assert res_inst.unnamed[0].get().get_name() == "unnamed[0]"
     assert res_inst.resistance.get().get_name() == "resistance"
-    assert res_inst.resistance.get().get_units().get_type_name() == "Ohm"
+    assert res_inst.resistance.get().get_units().get_symbols()[0] == "Ω"
+    assert res_inst.resistance.get().get_units().get_symbols()[1] == "Ohm"
     assert res_inst.get_trait(fabll.is_module)
     electricals = (
         res_inst.get_trait(F.can_attach_to_footprint_symmetrically)
