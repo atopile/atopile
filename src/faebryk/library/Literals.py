@@ -2675,13 +2675,13 @@ class Numbers(fabll.Node):
         self, *others: "Numbers", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
-        Compute the intersection of multiple quantity sets.
+        Compute the intersection of this quantity set with multiple others.
         All sets must have commensurable units.
         """
         if not others:
-            raise ValueError("intersect_all requires at least one quantity set")
-        result = others[0]
-        for other in others[1:]:
+            return self  # No others, just return self
+        result = self
+        for other in others:
             result = result.op_intersect_interval(g=g, tg=tg, other=other)
         return result
 
@@ -2708,13 +2708,13 @@ class Numbers(fabll.Node):
         self, *others: "Numbers", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
-        Compute the union of multiple quantity sets.
+        Compute the union of this quantity set with multiple others.
         All sets must have commensurable units.
         """
         if not others:
-            raise ValueError("union_all requires at least one quantity set")
-        result = others[0]
-        for other in others[1:]:
+            return self  # No others, just return self
+        result = self
+        for other in others:
             result = result.op_union_interval(g=g, tg=tg, other=other)
         return result
 
@@ -3970,8 +3970,8 @@ class TestNumbers:
         quantity_set_3.setup_from_min_max(
             min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
         )
-        result = Numbers.op_intersect_intervals(
-            quantity_set_1, quantity_set_2, quantity_set_3, g=g, tg=tg
+        result = quantity_set_1.op_intersect_intervals(
+            quantity_set_2, quantity_set_3, g=g, tg=tg
         )
         # Intersection of [0, 5], [3, 8], and [5, 12] is [5, 5]
         assert result.get_numeric_set().get_min_value() == 5.0
@@ -4021,8 +4021,8 @@ class TestNumbers:
         quantity_set_3.setup_from_min_max(
             min=5.0, max=12.0, unit=meter_instance.get_trait(is_unit)
         )
-        result = Numbers.op_union_intervals(
-            quantity_set_1, quantity_set_2, quantity_set_3, g=g, tg=tg
+        result = quantity_set_1.op_union_intervals(
+            quantity_set_2, quantity_set_3, g=g, tg=tg
         )
         # Union of [0, 5], [3, 8], and [5, 12] is [0, 12]
         assert result.get_numeric_set().get_min_value() == 0.0
