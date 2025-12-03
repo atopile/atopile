@@ -173,7 +173,7 @@ class AtoCodeGen:
                 self.imports.add(AtoCodeGen.Import(name))
 
             trait = AtoCodeGen.Trait(
-                name,
+                name=name,
                 args={k: v for k, v in args.items() if v is not None},
                 constructor=constructor,
             )

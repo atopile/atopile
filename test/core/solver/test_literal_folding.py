@@ -94,7 +94,7 @@ def lit(val: float) -> F.Literals.Numbers:
     return (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup_from_singleton(value=val, unit=dimless)
+        .setup_from_singleton(value=val, unit=dimless.get_trait(F.Units.is_unit))
     )
 
 
@@ -103,10 +103,15 @@ def lit_op_single(val: float) -> F.Parameters.can_be_operand:
 
 
 def lit_op_range(lower: float, upper: float) -> F.Parameters.can_be_operand:
+    dimless = F.Units.Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).setup()
     return (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup_from_interval(lower=lower, upper=upper)
+        .setup_from_min_max(
+            min=lower,
+            max=upper,
+            unit=dimless.get_trait(F.Units.is_unit),
+        )
     ).get_trait(F.Parameters.can_be_operand)
 
 
@@ -180,12 +185,17 @@ class Filters(Namespace):
 
     @staticmethod
     def _unwrap_param(value: ValueT) -> F.Literals.Numbers:
-        # TODO where is this coming from?
-        if isinstance(value, fabll.Range):
-            return lit(value)
+        # # TODO where is this coming from?
+        # if isinstance(value, fabll.Range):
+        #     return lit(value)
         assert isinstance(value, ValueT)
         if isinstance(value, F.Parameters.is_parameter):
-            return value.get_literal()
+            return (
+                fabll.Traits(value)
+                .get_obj_raw()
+                .cast(F.Parameters.NumericParameter)
+                .force_extract_literal()
+            )
         elif isinstance(value, F.Expressions.is_arithmetic):
             try:
                 return evaluate_expr(value)
@@ -198,19 +208,19 @@ class Filters(Namespace):
     @staticmethod
     def is_negative(value: ValueT) -> bool:
         lit = Filters._unwrap_param(value)
-        return lit.max_elem < 0
+        return lit.get_max_value() < 0
 
     @_decorator
     @staticmethod
     def is_positive(value: ValueT) -> bool:
         lit = Filters._unwrap_param(value)
-        return lit.min_elem > 0
+        return lit.get_min_value() > 0
 
     @_decorator
     @staticmethod
     def is_fractional(value: ValueT) -> bool:
         lit = Filters._unwrap_param(value)
-        return not lit.is_integer
+        return not lit.is_integer()
 
     @_decorator
     @staticmethod
@@ -223,7 +233,7 @@ class Filters(Namespace):
     @staticmethod
     def crosses_zero(value: ValueT) -> bool:
         lit = Filters._unwrap_param(value)
-        return 0 in lit or Filters.is_zero(lit)
+        return lit.contains_value(0) or Filters.is_zero(lit)
 
     @_decorator
     @staticmethod
@@ -240,10 +250,13 @@ class Filters(Namespace):
     @staticmethod
     def within_limits(value: ValueT) -> bool:
         lit = Filters._unwrap_param(value)
-        abs_lit = abs(lit)
+        abs_lit = lit.op_abs(g=g, tg=tg)
         return bool(
-            (abs_lit.max_elem <= ABS_UPPER_LIMIT or abs_lit.max_elem == inf)
-            and abs_lit.min_elem >= ABS_LOWER_LIMIT
+            (
+                abs_lit.get_max_value() <= ABS_UPPER_LIMIT
+                or abs_lit.get_max_value() == inf
+            )
+            and abs_lit.get_min_value() >= ABS_LOWER_LIMIT
         )
 
     @_decorator
@@ -499,10 +512,10 @@ def evaluate_expr(
             operand = evaluate_expr(expr.operands[0])
             operator = operator_map[type(expr)]
             return operator(operand)
-        case Quantity_Interval():
-            # TODO: why are we getting these?
+            # case QuantityInterval():
+            #     # TODO: why are we getting these?
             return lit(expr)
-        case Quantity_Interval_Disjoint():
+        case F.Literals.Numbers():
             return expr
         case F.Parameters.is_parameter():
             return expr.get_literal()
@@ -514,7 +527,7 @@ def evaluate_expr(
 @settings(deadline=timedelta(milliseconds=1000))
 def test_can_evaluate_literals(expr: F.Expressions.is_arithmetic):
     result = evaluate_expr(expr)
-    assert isinstance(result, Quantity_Interval_Disjoint)
+    assert isinstance(result, F.Literals.Numbers)
 
 
 def _track():
@@ -645,7 +658,7 @@ def debug_fix_literal_folding(expr: F.Expressions.is_arithmetic):
     solver.update_superset_cache(root)
     solver_result = solver.inspect_get_known_supersets(root)
 
-    assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
+    assert isinstance(evaluated_expr, F.Literals.Numbers)
     correct = solver_result == evaluated_expr
 
     if not correct:

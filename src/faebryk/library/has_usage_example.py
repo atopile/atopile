@@ -14,7 +14,7 @@ class has_usage_example(fabll.Node):
         fabll = "fabll"
         ato = "ato"
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     example_ = F.Parameters.StringParameter.MakeChild()
     language_ = F.Parameters.EnumParameter.MakeChild(enum_t=Language)

@@ -114,12 +114,17 @@ class hashable_dict:
         return hash(self) == hash(other)
 
 
-def unique[T, U](it: Iterable[T], key: Callable[[T], U]) -> list[T]:
+def unique[T, U](
+    it: Iterable[T],
+    key: Callable[[T], U],
+    custom_eq: Callable[[U, U], bool] | None = None,
+) -> list[T]:
     seen: list[U] = []
     out: list[T] = []
+    custom_eq = custom_eq or (lambda x, y: x == y)
     for i in it:
         v = key(i)
-        if v in seen:
+        if any(custom_eq(v, s) for s in seen):
             continue
         seen.append(v)
         out.append(i)
@@ -131,13 +136,16 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
 
 
 def duplicates[T, U](
-    it: Iterable[T], key: Callable[[T], U], by_eq: bool = False
+    it: Iterable[T],
+    key: Callable[[T], U],
+    by_eq: bool = False,
+    custom_eq: Callable[[T, T], bool] | None = None,
 ) -> dict[U, list[T]]:
     if by_eq:
         return {
             k: uv
             for k, v in groupby(it, key).items()
-            if len(uv := unique(v, key=lambda x: x)) > 1
+            if len(uv := unique(v, key=lambda x: x, custom_eq=custom_eq)) > 1
         }
     else:
         return {k: v for k, v in groupby(it, key).items() if len(v) > 1}

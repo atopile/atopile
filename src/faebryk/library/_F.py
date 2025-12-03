@@ -36,7 +36,6 @@ from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
-from faebryk.library.requires_external_usage import requires_external_usage
 import faebryk.library.Expressions as Expressions
 from faebryk.library.PCB import PCB
 import faebryk.library.PCBTransformer as PCBTransformer
@@ -63,6 +62,7 @@ from faebryk.library.TestPoint import TestPoint
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
+from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.Comparator import Comparator
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Net import Net
@@ -100,6 +100,7 @@ from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_pulls import has_pulls
 from faebryk.library.has_explicit_part import has_explicit_part
@@ -143,7 +144,6 @@ __all__ = [
     "implements_design_check",
     "Parameters",
     "can_bridge_by_name",
-    "requires_external_usage",
     "Expressions",
     "PCB",
     "PCBTransformer",
@@ -170,6 +170,7 @@ __all__ = [
     "XtalIF",
     "has_net_name_affix",
     "has_pin_association_heuristic",
+    "requires_external_usage",
     "Comparator",
     "has_single_electric_reference",
     "Net",
@@ -207,6 +208,7 @@ __all__ = [
     "DifferentialPair",
     "FilterElectricalRC",
     "ResistorArray",
+    "ResistorVoltageDivider",
     "has_designator",
     "has_pulls",
     "has_explicit_part",

@@ -53,7 +53,7 @@ def constrain_within_domain(mutator: Mutator):
 
     for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
         p = param.get_trait(F.Parameters.is_parameter)
-        po = p.as_parameter_operatable()
+        po = p.as_parameter_operatable.get()
         new_param = mutator.mutate_parameter(
             p,
             override_within=True,
@@ -61,12 +61,12 @@ def constrain_within_domain(mutator: Mutator):
         )
         if (within := param.get_within()) is not None:
             mutator.utils.subset_to(
-                new_param.as_operand(),
+                new_param.as_operand.get(),
                 within.get_trait(F.Parameters.can_be_operand),
                 from_ops=[po],
             )
         mutator.utils.subset_to(
-            new_param.as_operand(),
+            new_param.as_operand.get(),
             param.get_domain().as_operand(),
             from_ops=[po],
         )
@@ -130,7 +130,9 @@ def convert_to_canonical_literals(mutator: Mutator):
             _: int, operand: F.Parameters.can_be_operand
         ) -> F.Parameters.can_be_operand:
             if np := fabll.Traits(operand).get_obj_raw().try_cast(F.Literals.Numbers):
-                return np.to_dimensionless().get_trait(F.Parameters.can_be_operand)
+                return np.convert_to_dimensionless(
+                    g=mutator.G_out, tg=mutator.tg_out
+                ).as_operand.get()
             return operand
 
         # need to ignore existing because non-canonical literals

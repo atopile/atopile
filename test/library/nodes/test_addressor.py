@@ -23,9 +23,21 @@ class ConfigurableI2CClient(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def setup(self, g, tg) -> None:
-        self.addressor.get().address.get().alias_to_literal(g, self.i2c.get().address.get())
-        self.addressor.get().base.get().alias_to_literal(g, F.Literals.Numbers.bind_typegraph(tg).create_instance(g).setup_from_singleton(value=16))
+    def setup(self, g, tg) -> None:  # type: ignore
+        self.addressor.get().address.get().alias_to_literal(
+            g, self.i2c.get().address.get()
+        )
+        self.addressor.get().base.get().alias_to_literal(
+            g,
+            F.Literals.Numbers.bind_typegraph(tg)
+            .create_instance(g)
+            .setup_from_singleton(
+                value=16,
+                unit=F.Units.Dimensionless.bind_typegraph(tg)
+                .create_instance(g)
+                .get_trait(F.Units.is_unit),
+            ),
+        )
 
         for a, b in zip(self.addressor.get().address_lines, self.config):
             a._is_interface.get().connect_to(b.get())
@@ -38,7 +50,17 @@ def test_addressor():
     app.setup(g, tg)
 
     # app.addressor.offset.alias_is(3)
-    app.i2c.get().address.get().alias_to_literal(g, F.Literals.Numbers.bind_typegraph(tg).create_instance(g).setup_from_singleton(value=16 + 3))
+    app.i2c.get().address.get().alias_to_literal(
+        g,
+        F.Literals.Numbers.bind_typegraph(tg)
+        .create_instance(g)
+        .setup_from_singleton(
+            value=16 + 3,
+            unit=F.Units.Dimensionless.bind_typegraph(tg)
+            .create_instance(g)
+            .get_trait(F.Units.is_unit),
+        ),
+    )
 
     solver = DefaultSolver()
     solver.simplify(g, tg)
@@ -94,9 +116,7 @@ def test_i2c_duplicate_addresses():
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        check_design(
-            app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE
-        )
+        check_design(app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE)
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )
@@ -114,9 +134,7 @@ def test_i2c_duplicate_addresses_isolated():
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        check_design(
-            app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE
-        )
+        check_design(app.tg, stage=F.implements_design_check.CheckStage.POST_SOLVE)
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 class is_parameter_operatable(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def try_get_constrained_literal[T: "fabll.NodeT" = "Literals.is_literal"](
         self,
@@ -263,8 +263,31 @@ class is_parameter_operatable(fabll.Node):
         return out
 
 
+class can_be_operand(fabll.Node):
+    """
+    Parameter, Expression, Literal
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    def as_parameter_operatable(self) -> "is_parameter_operatable":
+        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
+
+    def is_parameter_operatable(self) -> "is_parameter_operatable | None":
+        return fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable)
+
+    def get_obj_type_node(self) -> graph.BoundNode:
+        return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
+
+    def get_raw_obj(self) -> fabll.Node:
+        return fabll.Traits(self).get_obj_raw()
+
+
 class is_parameter(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
+    as_parameter_operatable = fabll.Traits.ImpliedTrait(is_parameter_operatable)
 
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
@@ -329,32 +352,6 @@ class is_parameter(fabll.Node):
         # TODO
         pass
 
-    def as_parameter_operatable(self) -> "is_parameter_operatable":
-        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
-
-    def as_operand(self) -> "can_be_operand":
-        return fabll.Traits(self).get_trait_of_obj(can_be_operand)
-
-
-class can_be_operand(fabll.Node):
-    """
-    Parameter, Expression, Literal
-    """
-
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-    def as_parameter_operatable(self) -> "is_parameter_operatable":
-        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
-
-    def is_parameter_operatable(self) -> "is_parameter_operatable | None":
-        return fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable)
-
-    def get_obj_type_node(self) -> graph.BoundNode:
-        return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
-
-    def get_raw_obj(self) -> fabll.Node:
-        return fabll.Traits(self).get_obj_raw()
-
 
 class ParameterIsNotConstrainedToLiteral(Exception):
     def __init__(self, parameter: fabll.Node):
@@ -378,11 +375,9 @@ class ReprContext:
 
 
 class StringParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
-        is_parameter_operatable.MakeChild()
-    )
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         from faebryk.library.Literals import Strings
@@ -406,7 +401,7 @@ class StringParameter(fabll.Node):
         g = g or self.instance.g()
         from faebryk.library.Literals import Strings
 
-        self._is_parameter_operatable.get().alias_to_literal(
+        self.is_parameter_operatable.get().alias_to_literal(
             g=g,
             value=Strings.bind_typegraph(tg=self.tg)
             .create_instance(g=g)
@@ -415,11 +410,9 @@ class StringParameter(fabll.Node):
 
 
 class BooleanParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
-        is_parameter_operatable.MakeChild()
-    )
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         from faebryk.library.Literals import Booleans
@@ -442,7 +435,7 @@ class BooleanParameter(fabll.Node):
         g = g or self.instance.g()
         from faebryk.library.Literals import Booleans
 
-        self._is_parameter_operatable.get().alias_to_literal(
+        self.is_parameter_operatable.get().alias_to_literal(
             g=g,
             value=Booleans.bind_typegraph_from_instance(
                 instance=self.instance
@@ -454,11 +447,9 @@ class BooleanParameter(fabll.Node):
 
 
 class EnumParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
-        is_parameter_operatable.MakeChild()
-    )
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     enum_domain_pointer = F.Collections.Pointer.MakeChild()
 
     def get_enum_type(self) -> "F.Literals.AbstractEnums":
@@ -500,7 +491,7 @@ class EnumParameter(fabll.Node):
             .setup(*enum_members)
         )
 
-        self._is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
+        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
     @classmethod
     def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField["Self"]:
@@ -530,12 +521,10 @@ class EnumParameter(fabll.Node):
 
 
 class NumericParameter(fabll.Node):
-    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
-    _is_parameter_operatable = fabll.Traits.MakeEdge(
-        is_parameter_operatable.MakeChild()
-    )
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
-    _number_domain = F.Collections.Pointer.MakeChild()
+    is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
+    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    number_domain = F.Collections.Pointer.MakeChild()
 
     # domain = fabll.ChildField(NumberDomain)
 
@@ -546,7 +535,7 @@ class NumericParameter(fabll.Node):
 
     def get_domain(self) -> "NumberDomain":
         return F.NumberDomain.bind_instance(
-            instance=self._number_domain.get().deref().instance
+            instance=self.number_domain.get().deref().instance
         )
 
     def get_within(self) -> "Literals.Numbers | None":
@@ -616,7 +605,7 @@ class NumericParameter(fabll.Node):
                 .setup(negative=True, zero_allowed=True, integer=False)
             )
 
-        self._number_domain.get().point(
+        self.number_domain.get().point(
             fabll.Node.bind_instance(instance=domain.instance)
         )
         return self
@@ -653,7 +642,7 @@ class NumericParameter(fabll.Node):
 
         out.add_dependant(
             fabll.MakeEdge(
-                [out, cls._number_domain],
+                [out, cls.number_domain],
                 [domain],
                 edge=fbrk.EdgePointer.build(identifier="number_domain", order=None),
             )
@@ -1116,3 +1105,10 @@ def test_dynamic_param():
     dp_float.setup(3.14)
     assert dp_float.get_tag() == AnyParameter._Tag.NUMERIC
     assert dp_float.get_value() == 3.14
+
+
+def test_():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    a = is_parameter.bind_typegraph(tg=tg).create_instance(g=g)
+    a.as_operand.get()

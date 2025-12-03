@@ -66,7 +66,7 @@ class BoundExpressions:
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(
-                is_unit=is_unit_node,
+                units=is_unit_node,
                 within=within,
                 domain=domain,
                 soft_set=soft_set,
@@ -103,26 +103,61 @@ class BoundExpressions:
         mol = F.Units.Mole
         cd = F.Units.Candela
 
-        # Derived SI units
-        Ohm = F.Units.Ohm
-        V = F.Units.Volt
-        W = F.Units.Watt
+        # Derived SI units (coherent)
+        rad = F.Units.Radian
+        sr = F.Units.Steradian
         Hz = F.Units.Hertz
-        Fa = F.Units.Farad  # 'F' would conflict with F import
+        N = F.Units.Newton
+        Pa = F.Units.Pascal
+        J = F.Units.Joule
+        W = F.Units.Watt
+        C = F.Units.Coulomb
+        V = F.Units.Volt
+        Fa = F.Units.Farad  # 'F' conflicts with F import
+        Ohm = F.Units.Ohm
+        S = F.Units.Siemens
+        Wb = F.Units.Weber
+        T = F.Units.Tesla
         H = F.Units.Henry
+        degC = F.Units.DegreeCelsius
         lm = F.Units.Lumen
         lx = F.Units.Lux
+        Bq = F.Units.Becquerel
+        Gy = F.Units.Gray
+        Sv = F.Units.Sievert
+        kat = F.Units.Katal
+
+        # SI patches
+        g = F.Units.Gram
 
         # Dimensionless / scalar
         dl = F.Units.Dimensionless
+        pct = F.Units.Percent
         ppm = F.Units.Ppm
-        nat = F.Units.Natural
-        dB = F.Units.Decibel
+
+        # Angles (non-SI)
+        deg = F.Units.Degree
+        arcmin = F.Units.ArcMinute
+        arcsec = F.Units.ArcSecond
+
+        # Time (non-SI)
+        min_ = F.Units.Minute  # 'min' is a Python builtin
+        hr = F.Units.Hour
+        day = F.Units.Day
+        wk = F.Units.Week
+        mo = F.Units.Month
+        yr = F.Units.Year
+
+        # Volume
+        L = F.Units.Liter
+
+        # Angular frequency
+        rpm = F.Units.RPM
 
         # Data units
         bit = F.Units.Bit
         B = F.Units.Byte
-        bps = F.Units.BitPerSecond
+        bps = F.Units.BitsPerSecond
 
         # Compound units
         Ah = F.Units.AmpereHour
@@ -306,20 +341,47 @@ class BoundExpressions:
     def lit_op_single(self, value: float | _Quantity) -> F.Parameters.can_be_operand:
         unit = None
         if isinstance(value, tuple):
-            unit = value[1]
+            unit: type[fabll.Node] | None = value[1]
             value = value[0]
+            is_unit = (
+                unit.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .get_trait(F.Units.is_unit)
+            )
+        else:
+            unit = self.U.dl
 
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
-            .setup_from_singleton(value=value, unit=unit)
+            .setup_from_singleton(value=value, unit=is_unit)
         ).get_trait(F.Parameters.can_be_operand)
 
-    def lit_op_range(self, *ranges: _Range) -> F.Parameters.can_be_operand:
-        # FIXME
+    def lit_op_range(self, range: _Range) -> F.Parameters.can_be_operand:
+        lower = range[0]
+        upper = range[1]
+        if isinstance(lower, tuple):
+            lower_value = lower[0]
+            lower_unit = lower[1]
+        else:
+            lower_value = lower
+            lower_unit = self.U.dl
+        if isinstance(upper, tuple):
+            upper_value = upper[0]
+            upper_unit = upper[1]
+        else:
+            upper_value = upper
+            upper_unit = self.U.dl
+        assert lower_unit == upper_unit
+        is_unit = (
+            lower_unit.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .get_trait(F.Units.is_unit)
+        )
         return (
-            F.Literals.Numbers.bind_typegraph(tg=self.tg).create_instance(g=self.g)
-            # .setup_from_interval(lower=lower, upper=upper)
+            F.Literals.Numbers.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup_from_min_max(min=lower_value, max=upper_value, unit=is_unit)
         ).get_trait(F.Parameters.can_be_operand)
 
     def lit_op_range_from_center_rel(
@@ -387,15 +449,15 @@ def test_solve_phase_one():
         voltage3 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    voltage1 = app.voltage1.get().get_trait(F.Parameters.can_be_operand)
-    voltage2 = app.voltage2.get().get_trait(F.Parameters.can_be_operand)
-    voltage3 = app.voltage3.get().get_trait(F.Parameters.can_be_operand)
+    voltage1_op = app.voltage1.get().as_operand.get()
+    voltage2_op = app.voltage2.get().as_operand.get()
+    voltage3_op = app.voltage3.get().as_operand.get()
 
-    E.is_(voltage1, voltage2, assert_=True)
-    E.is_(voltage3, E.add(voltage1, voltage2), assert_=True)
+    E.is_(voltage1_op, voltage2_op, assert_=True)
+    E.is_(voltage3_op, E.add(voltage1_op, voltage2_op), assert_=True)
 
-    E.is_(voltage1, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
-    E.is_(voltage3, E.lit_op_range(((2, E.U.V), (6, E.U.V))), assert_=True)
+    E.is_(voltage1_op, E.lit_op_range(((1, E.U.V), (3, E.U.V))), assert_=True)
+    E.is_(voltage3_op, E.lit_op_range(((2, E.U.V), (6, E.U.V))), assert_=True)
 
     solver.simplify_symbolically(E.tg, E.g)
 
@@ -414,10 +476,7 @@ def test_simplify():
     # => (H + I + J + 17) < 11
     app_ops = [p.get().get_trait(F.Parameters.can_be_operand) for p in app.ops]
     constants: list[F.Parameters.can_be_operand] = [
-        F.Literals.make_lit(g=E.g, tg=E.tg, value=c).get_trait(
-            F.Parameters.can_be_operand
-        )
-        for c in range(0, 10)
+        E.lit_op_single((c, E.U.dl)) for c in range(0, 10)
     ]
     E.is_(constants[5], E.subtract(app_ops[0], app_ops[0]), assert_=True)
     E.is_(
@@ -956,6 +1015,7 @@ def test_literal_folding_add_multiplicative_2():
 
 
 def test_transitive_subset():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
 
     # TODO: Constrain to real number domain
@@ -1841,6 +1901,7 @@ def test_fold_not():
 
 
 def test_fold_ss_transitive():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -1858,6 +1919,7 @@ def test_fold_ss_transitive():
 
 
 def test_ss_intersect():
+    assert False, "SEGFAULTING"
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()

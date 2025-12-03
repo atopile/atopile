@@ -37,12 +37,12 @@ class SerializableMetadata(fabll.Node):
         return None
 
     @property
-    def key(self) -> F.Literals.Strings | None:
-        return self.key_.get().try_extract_constrained_literal()
+    def key(self) -> str:
+        return self.key_.get().force_extract_literal().get_values()[0]
 
     @property
-    def value(self) -> F.Literals.Strings | None:
-        return self.value_.get().try_extract_constrained_literal()
+    def value(self) -> str:
+        return self.value_.get().force_extract_literal().get_values()[0]
 
     # def handle_duplicate(self, old: TraitImpl, node: fabll.Node) -> bool:
     #     if not isinstance(old, has_descriptive_properties_defined):

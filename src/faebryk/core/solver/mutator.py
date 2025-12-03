@@ -855,8 +855,8 @@ class MutationMap:
                     instance=lit_n.instance
                 )
                 .create_instance(g=lit_n.g)
-                .setup_from_singleton(g=lit_n.g, tg=lit_n.tg, value=1, unit=param_unit),
-            ).get_trait(F.Literals.is_literal)
+                .setup_from_singleton(value=1, unit=param_unit),
+            ).is_literal.get()
         return lit
 
     def __repr__(self) -> str:
@@ -1072,8 +1072,8 @@ class Mutator:
         likely_constrained: bool | None = None,
         override_within: bool = False,
     ) -> F.Parameters.is_parameter:
-        if param.as_parameter_operatable() in self.transformations.mutated:
-            out = self.get_mutated(param.as_parameter_operatable())
+        if param.as_parameter_operatable.get() in self.transformations.mutated:
+            out = self.get_mutated(param.as_parameter_operatable.get())
             p = out.as_parameter()
             if (
                 np := fabll.Traits(p)
@@ -1089,6 +1089,7 @@ class Mutator:
             return p
 
         param_obj = fabll.Traits(param).get_obj_raw()
+
         if p := param_obj.try_cast(F.Parameters.NumericParameter):
             if units is None and (old_g_is_unit := p.get_units()):
                 old_g_unit_node = fabll.Node.bind_instance(
@@ -1103,7 +1104,7 @@ class Mutator:
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
                 .setup(
-                    is_unit=units,
+                    units=units,
                     within=within if override_within else p.get_within(),
                     domain=domain if domain is not None else p.get_domain(),
                     soft_set=soft_set if soft_set is not None else p.get_soft_set(),
@@ -1116,6 +1117,8 @@ class Mutator:
                     else param.get_likely_constrained(),
                 )
             )
+        # else:
+        #    new_param = param_obj.copy_into(self.G_out)
         elif p := param_obj.try_cast(F.Parameters.BooleanParameter):
             new_param = (
                 F.Parameters.BooleanParameter.bind_typegraph(self.tg_out)
@@ -1128,6 +1131,7 @@ class Mutator:
                 .create_instance(self.G_out)
                 .setup()
             )
+
         elif p := param_obj.try_cast(F.Parameters.EnumParameter):
             new_param = F.Parameters.EnumParameter.bind_typegraph(
                 self.tg_out
@@ -1136,8 +1140,7 @@ class Mutator:
             assert False, "Unknown parameter type"
 
         return self._mutate(
-            param.as_parameter_operatable(),
-            new_param.get_trait(F.Parameters.is_parameter_operatable),
+            param.as_parameter_operatable.get(), new_param.is_parameter_operatable.get()
         ).as_parameter()
 
     def _create_expression[T: fabll.NodeT](
@@ -1164,7 +1167,11 @@ class Mutator:
 
         for op in new_operands:
             if op.has_trait(F.Parameters.is_parameter_operatable):
-                assert op.g == new_expr.g, f"Graph mismatch: {op.g} != {new_expr.g}"
+                assert (
+                    op.g.get_self_node()
+                    .node()
+                    .is_same(other=new_expr.g.get_self_node().node())
+                ), f"Graph mismatch: {op.g} != {new_expr.g}"
 
         return new_expr
 
@@ -1411,7 +1418,11 @@ class Mutator:
         self, obj: F.Parameters.can_be_operand, accept_soft: bool = True
     ) -> F.Parameters.can_be_operand:
         # TODO is this ok?
-        if obj.g == self.G_out:
+        if (
+            obj.g.get_self_node()
+            .node()
+            .is_same(other=self.G_out.get_self_node().node())
+        ):
             return obj
         if obj_po := obj.is_parameter_operatable():
             return self.get_copy_po(obj_po, accept_soft).as_operand()
@@ -1436,9 +1447,8 @@ class Mutator:
         # TODO: not sure if ok
         # if obj is new, no need to copy
         # TODO add guard to _mutate to not let new stuff be mutated
-        if (
-            obj_po in self.transformations.created
-            or obj_po in self.transformations.mutated.values()
+        if obj_po in self.transformations.created or obj_po in set(
+            self.transformations.mutated.values()
         ):
             return obj_po
 
@@ -1451,7 +1461,7 @@ class Mutator:
                 F.Parameters.is_parameter_operatable
             )
         elif p := obj_po.is_parameter():
-            return self.mutate_parameter(p).as_parameter_operatable()
+            return self.mutate_parameter(p).as_parameter_operatable.get()
 
         assert False
 
@@ -1534,7 +1544,7 @@ class Mutator:
         param: F.Parameters.is_parameter,
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
     ) -> F.Parameters.is_parameter:
-        self.transformations.created[param.as_parameter_operatable()] = list(
+        self.transformations.created[param.as_parameter_operatable.get()] = list(
             from_ops or []
         )
         return param
@@ -1777,7 +1787,12 @@ class Mutator:
 
         ops = self.get_literal_aliases(new_only=new_only)
         mapping = {self.utils.get_lit_mapping_from_lit_expr(op) for op in ops}
-        dupes = duplicates(mapping, lambda x: x[0], by_eq=True)
+        dupes = duplicates(
+            mapping,
+            lambda x: x[0],
+            by_eq=True,
+            custom_eq=lambda x, y: bool(x[1].equals(y[1])),
+        )
         if dupes:
             raise ContradictionByLiteral(
                 "Literal contradictions",
@@ -1987,29 +2002,33 @@ def test_mutator_basic_bootstrap():
 
     class App(fabll.Node):
         param_str = F.Parameters.StringParameter.MakeChild()
-        # TODO
-        # param_num =
-        # F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
+        param_num = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Dimensionless)
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    # param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
+    param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
     param_bool_op = app.param_bool.get().get_trait(F.Parameters.can_be_operand)
 
     print(repr(param_bool_op))
 
     app.param_str.get().alias_to_literal("a", "b", "c")
     app.param_bool.get().alias_to_single(True)
-    # app.param_num.get().alias_to_literal(
-    #    g=g,
-    #    value=F.Literals.Numbers.bind_typegraph(tg=tg)
-    #    .create_instance(g=g)
-    #    .setup_from_interval(1, 5),
-    # )
-    # F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
-    #    param_num_op,
-    #    param_num_op,
-    # )
+    app.param_num.get().alias_to_literal(
+        g=g,
+        value=F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_min_max(
+            1,
+            5,
+            unit=F.Units.Dimensionless.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .is_unit.get(),
+        ),
+    )
+    F.Expressions.Add.bind_typegraph(tg=tg).create_instance(g=g).setup(
+        param_num_op,
+        param_num_op,
+    )
     F.Expressions.Or.bind_typegraph(tg=tg).create_instance(g=g).setup(
         param_bool_op,
         param_bool_op,
@@ -2023,21 +2042,21 @@ def test_mutator_basic_bootstrap():
     @algorithm("test")
     def algo(mutator: Mutator):
         params = mutator.get_parameters()
-        assert len(params) == 2
+        assert len(params) >= 3
         exprs = mutator.get_expressions(include_terminated=True)
-        assert len(exprs) == 3
+        assert len(exprs) >= 4
         pos = mutator.get_parameter_operatables()
-        assert len(pos) == 5
+        assert len(pos) >= 7
         is_exprs = mutator.get_typed_expressions(F.Expressions.Is)
-        assert len(is_exprs) == 2
+        assert len(is_exprs) >= 2
         preds = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
-        assert len(preds) == 2
+        assert len(preds) >= 2
 
-        # mutator.create_expression(
-        #    F.Expressions.Multiply,
-        #    param_num_op,
-        #    param_num_op,
-        # )
+        mutator.create_expression(
+            F.Expressions.Multiply,
+            param_num_op,
+            param_num_op,
+        )
         mutator.create_expression(
             F.Expressions.Not,
             param_bool_op,

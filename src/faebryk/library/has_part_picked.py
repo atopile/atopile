@@ -2,14 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from typing import TYPE_CHECKING, Self
+from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.libs.picker.picker import PickedPart, PickSupplier
 from faebryk.libs.util import not_none
-
-if TYPE_CHECKING:
-    from faebryk.libs.picker.picker import PickedPart, PickSupplier
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +26,15 @@ class has_part_picked(fabll.Node):
 
     def try_get_part(self) -> "PickedPart | None":
         class DummyPickSupplier(PickSupplier):
-            supplier_id = str(self.supplier_id_.get().try_extract_constrained_literal())
+            supplier_id = self.supplier_id_.get().try_extract_constrained_literal().get_values()[0]
 
             def attach(self, *args, **kwargs):
                 return None
 
         return PickedPart(
-            manufacturer=str(
-                self.manufacturer_.get().try_extract_constrained_literal()
-            ),
-            partno=str(self.partno_.get().try_extract_constrained_literal()),
-            supplier_partno=str(
-                self.supplier_partno_.get().try_extract_constrained_literal()
-            ),
+            manufacturer=self.manufacturer_.get().try_extract_constrained_literal().get_values()[0],
+            partno=self.partno_.get().try_extract_constrained_literal().get_values()[0],
+            supplier_partno=self.supplier_partno_.get().try_extract_constrained_literal().get_values()[0],
             supplier=DummyPickSupplier(),  # or None
         )
 

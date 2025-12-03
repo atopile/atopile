@@ -559,6 +559,135 @@ fn wrap_edge_composition_try_get_single_child_of_type() type {
     };
 }
 
+fn wrap_edge_composition_get_children_query() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_children_query",
+            .doc = "Get children of a node matching the query (replicates Python get_children)",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                direct_only: ?*py.PyObject,
+                types: ?*py.PyObject = null,
+                include_root: ?*py.PyObject = null,
+                sort: ?*py.PyObject = null,
+                required_traits: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            // Unwrap boolean arguments
+            const direct_only = bind.unwrap_bool(kwarg_obj.direct_only);
+            const include_root = if (kwarg_obj.include_root) |obj| bind.unwrap_bool(obj) else false;
+            const sort = if (kwarg_obj.sort) |obj| bind.unwrap_bool(obj) else false;
+
+            // Convert Python types list to Zig slice
+            var types_list = std.ArrayList(graph.NodeReference).init(std.heap.c_allocator);
+            defer types_list.deinit();
+
+            if (kwarg_obj.types) |types_obj| {
+                if (types_obj != py.Py_None()) {
+                    if (py.PyList_Check(types_obj) == 0) {
+                        py.PyErr_SetString(py.PyExc_TypeError, "types must be a list of Node");
+                        return null;
+                    }
+                    const types_size = py.PyList_Size(types_obj);
+                    var i: isize = 0;
+                    while (i < types_size) : (i += 1) {
+                        const item = py.PyList_GetItem(types_obj, i);
+                        if (item == null) {
+                            py.PyErr_SetString(py.PyExc_ValueError, "Failed to get list item");
+                            return null;
+                        }
+                        const node_ptr = bind.castWrapper("Node", &graph_py.node_type, NodeWrapper, item) orelse {
+                            py.PyErr_SetString(py.PyExc_TypeError, "types list items must be Node");
+                            return null;
+                        };
+                        types_list.append(node_ptr.data) catch {
+                            py.PyErr_SetString(py.PyExc_MemoryError, "Failed to append to types list");
+                            return null;
+                        };
+                    }
+                }
+            }
+
+            // Convert Python required_traits list to Zig slice
+            var traits_list = std.ArrayList(graph.NodeReference).init(std.heap.c_allocator);
+            defer traits_list.deinit();
+
+            if (kwarg_obj.required_traits) |traits_obj| {
+                if (traits_obj != py.Py_None()) {
+                    if (py.PyList_Check(traits_obj) == 0) {
+                        py.PyErr_SetString(py.PyExc_TypeError, "required_traits must be a list of Node");
+                        return null;
+                    }
+                    const traits_size = py.PyList_Size(traits_obj);
+                    var i: isize = 0;
+                    while (i < traits_size) : (i += 1) {
+                        const item = py.PyList_GetItem(traits_obj, i);
+                        if (item == null) {
+                            py.PyErr_SetString(py.PyExc_ValueError, "Failed to get list item");
+                            return null;
+                        }
+                        const node_ptr = bind.castWrapper("Node", &graph_py.node_type, NodeWrapper, item) orelse {
+                            py.PyErr_SetString(py.PyExc_TypeError, "required_traits list items must be Node");
+                            return null;
+                        };
+                        traits_list.append(node_ptr.data) catch {
+                            py.PyErr_SetString(py.PyExc_MemoryError, "Failed to append to traits list");
+                            return null;
+                        };
+                    }
+                }
+            }
+
+            // Build the query
+            const query = faebryk.composition.ChildQuery{
+                .direct_only = direct_only,
+                .types = types_list.items,
+                .include_root = include_root,
+                .sort = sort,
+                .required_traits = traits_list.items,
+            };
+
+            // Call the Zig function
+            var result = faebryk.composition.EdgeComposition.get_children_query(
+                kwarg_obj.bound_node.*,
+                query,
+                std.heap.c_allocator,
+            );
+            defer result.deinit();
+
+            // Convert result to Python list of BoundNode
+            const py_list = py.PyList_New(@intCast(result.items.len)) orelse {
+                py.PyErr_SetString(py.PyExc_MemoryError, "Failed to create result list");
+                return null;
+            };
+
+            for (result.items, 0..) |node_ref, i| {
+                const bound_node = graph.BoundNodeReference{
+                    .node = node_ref,
+                    .g = kwarg_obj.bound_node.g,
+                };
+                const py_node = graph_py.makeBoundNodePyObject(bound_node);
+                if (py_node == null or py.PyList_SetItem(py_list, @intCast(i), py_node) < 0) {
+                    if (py_node != null) py.Py_DECREF(py_node.?);
+                    py.Py_DECREF(py_list);
+                    return null;
+                }
+            }
+
+            return py_list;
+        }
+    };
+}
+
 fn wrap_edge_composition(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_edge_composition_create(),
@@ -577,6 +706,7 @@ fn wrap_edge_composition(root: *py.PyObject) void {
         wrap_edge_composition_get_child_by_identifier(),
         wrap_edge_composition_visit_children_of_type(),
         wrap_edge_composition_try_get_single_child_of_type(),
+        wrap_edge_composition_get_children_query(),
     };
     bind.wrap_namespace_struct(root, faebryk.composition.EdgeComposition, extra_methods);
     edge_composition_type = type_registry.getRegisteredTypeObject("EdgeComposition");

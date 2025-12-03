@@ -266,7 +266,7 @@ def resolve_alias_classes(mutator: Mutator):
             # check if all in eq_class already aliased
             # Then no need to to create new representative
             _repr = eq_class_params[0]
-            _repr_po = _repr.as_parameter_operatable()
+            _repr_po = _repr.as_parameter_operatable.get()
             iss = _repr_po.get_operations(F.Expressions.Is)
             iss_exprs = {
                 o
@@ -307,7 +307,8 @@ def resolve_alias_classes(mutator: Mutator):
 
         for p in eq_class_params:
             mutator._mutate(
-                p.as_parameter_operatable(), representative.as_parameter_operatable()
+                p.as_parameter_operatable.get(),
+                representative.as_parameter_operatable.get(),
             )
 
     for eq_class in p_eq_classes:
@@ -340,7 +341,7 @@ def resolve_alias_classes(mutator: Mutator):
                 .create_instance(g=mutator.G_out)
                 .get_trait(F.Parameters.is_parameter),
                 from_ops=list(eq_class),
-            ).as_parameter_operatable()
+            ).as_parameter_operatable.get()
 
         for e in eq_class_exprs:
             e_po = e.as_parameter_operatable()

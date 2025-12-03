@@ -3,6 +3,8 @@
 
 import logging
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -10,7 +12,6 @@ from atopile import errors
 from faebryk.libs.exceptions import accumulate
 
 logger = logging.getLogger(__name__)
-
 
 class ERCFault(errors.UserException):
     """Base class for ERC faults."""
@@ -82,23 +83,6 @@ def simple_erc(tg: fbrk.TypeGraph):
             logger.info("Checking for hv/lv shorts")
             for ep in electricpower:
                 if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
-
-                    def _keep_head(x: fabll.Node) -> bool:
-                        if parent := x.get_parent():
-                            parent_node, _ = parent
-                            if isinstance(parent_node, F.ElectricPower):
-                                return parent_node.hv is not x
-
-                        return True
-
-                    def _keep_tail(x: fabll.Node) -> bool:
-                        if parent := x.get_parent():
-                            parent_node, _ = parent
-                            if isinstance(parent_node, F.ElectricPower):
-                                return parent_node.lv is not x
-
-                        return True
-
                     raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
@@ -190,3 +174,101 @@ class needs_erc_check(fabll.Node):
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
         simple_erc(self.tg)
+
+class Test:
+
+    def test_erc_isolated_connect(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+
+        y1 = electricPowerType.create_instance(g=g)
+        y2 = electricPowerType.create_instance(g=g)
+
+        y1.make_source()
+        y2.make_source()
+
+        with pytest.raises(ERCPowerSourcesShortedError):
+            y1._is_interface.get().connect_to(y2)
+            simple_erc(tg)
+
+        # TODO no more LDO in fabll
+        # ldo1 = F.LDO()
+        # ldo2 = F.LDO()
+
+        # with pytest.raises(ERCPowerSourcesShortedError):
+        #     ldo1.power_out.connect(ldo2.power_out)
+        #     simple_erc(ldo1.get_graph())
+
+        i2cType = F.I2C.bind_typegraph(tg)
+        a1 = i2cType.create_instance(g=g)
+        b1 = i2cType.create_instance(g=g)
+
+        a1._is_interface.get().connect_to(b1)
+        assert a1._is_interface.get().is_connected_to(b1)
+        assert a1.scl.get()._is_interface.get().is_connected_to(b1.scl.get())
+        assert a1.sda.get()._is_interface.get().is_connected_to(b1.sda.get())
+
+        assert not a1.scl.get()._is_interface.get().is_connected_to(b1.sda.get())
+        assert not a1.sda.get()._is_interface.get().is_connected_to(b1.scl.get())
+
+
+    def test_erc_electric_power_short(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+        ep1 = electricPowerType.create_instance(g=g)
+        ep2 = electricPowerType.create_instance(g=g)
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        # This is okay!
+        simple_erc(tg)
+
+        ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
+
+        # This is not okay!
+        with pytest.raises(ERCFaultShortedInterfaces) as ex:
+            simple_erc(tg)
+
+        # TODO figure out a nice way to format paths for this
+        print(ex.value.path)
+        # assert set(ex.value.path) == {ep1.lv, ep2.hv}
+
+    def test_erc_power_source_short():
+        """
+        Test that a power source is shorted when connected to another power source
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        power_out_1._is_interface.get().connect_to(power_out_2)
+        power_out_2._is_interface.get().connect_to(power_out_1)
+
+        power_out_1.make_source()
+        power_out_2.make_source()
+
+        with pytest.raises(ERCPowerSourcesShortedError):
+            simple_erc(tg)
+
+
+    def test_erc_power_source_no_short():
+        """
+        Test that a power source is not shorted when connected to another non-power source
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        power_out_1.make_source()
+
+        power_out_1._is_interface.get().connect_to(power_out_2)
+
+        simple_erc(tg)
