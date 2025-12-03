@@ -139,7 +139,7 @@ def duplicates[T, U](
     it: Iterable[T],
     key: Callable[[T], U],
     by_eq: bool = False,
-    custom_eq: Callable[[U, U], bool] | None = None,
+    custom_eq: Callable[[T, T], bool] | None = None,
 ) -> dict[U, list[T]]:
     if by_eq:
         return {
