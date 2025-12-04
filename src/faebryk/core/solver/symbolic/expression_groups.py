@@ -128,7 +128,7 @@ def associative_flatten(mutator: Mutator):
     for +, *, and, or, &, |, ^
     """
     ops = mutator.get_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_fully_associative,)
+        sort_by_depth=True, required_traits=(F.Expressions.is_associative,)
     )
     # get out deepest expr in compressable tree
     root_ops = [

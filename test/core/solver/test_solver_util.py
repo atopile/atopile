@@ -63,13 +63,13 @@ def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
-        F.Expressions.is_associative
+        F.Expressions.is_flattenable
     ):
         assert len(res.destroyed_operations) == 0
         return
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
-        F.Expressions.is_fully_associative
+        F.Expressions.is_associative
     ):
         assert set(res.extracted_operands) & {A, B, C}
         assert not set(res.extracted_operands) & {D, E}

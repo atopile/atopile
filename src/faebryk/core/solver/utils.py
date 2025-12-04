@@ -930,9 +930,9 @@ class MutatorUtils:
         def can_be_flattened(
             o: F.Parameters.can_be_operand,
         ) -> bool:
-            if not to_flatten.has_trait(F.Expressions.is_associative):
+            if not to_flatten.has_trait(F.Expressions.is_flattenable):
                 return False
-            if not to_flatten.has_trait(F.Expressions.is_fully_associative):
+            if not to_flatten.has_trait(F.Expressions.is_associative):
                 if to_flatten_expr.get_operands()[0] is not o:
                     return False
             if not o.has_same_type_as(to_flatten):

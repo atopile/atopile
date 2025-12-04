@@ -668,18 +668,34 @@ class is_canonical(fabll.Node):
 
 
 class is_reflexive(fabll.Node):
+    """
+    f(x,x) == true
+    """
+
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_idempotent(fabll.Node):
+    """
+    f^n(x) == f(x) | n>0
+    """
+
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class has_idempotent_operands(fabll.Node):
+    """
+    f(x,x) == x
+    """
+
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_commutative(fabll.Node):
+    """
+    f(x,y) == f(y,x)
+    """
+
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     @classmethod
@@ -688,20 +704,38 @@ class is_commutative(fabll.Node):
 
 
 class has_unary_identity(fabll.Node):
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    """
+    f(x,𝜖) == x
+    """
 
-
-class is_fully_associative(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_associative(fabll.Node):
+    """
+    f(f(x,y),z) == f(x,f(y,z))
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class is_flattenable(fabll.Node):
+    """
+    f(f(x,y),z) == f(x,y,z)
+    """
+
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 class is_involutory(fabll.Node):
+    """
+    f(f(x)) == x
+    """
+
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+
+# TODO expression class that captures not(f(x,y)) == f(y, x)
 
 # --------------------------------------------------------------------------------------
 
@@ -722,8 +756,8 @@ class Add(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -816,8 +850,8 @@ class Multiply(fabll.Node):
     is_canonical = fabll.Traits.MakeEdge(is_canonical.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSet.MakeChild()
 
@@ -1560,8 +1594,8 @@ class Or(fabll.Node):
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1826,8 +1860,8 @@ class Union(fabll.Node):
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
@@ -1872,8 +1906,8 @@ class Intersection(fabll.Node):
     has_idempotent_operands = fabll.Traits.MakeEdge(has_idempotent_operands.MakeChild())
     is_commutative = fabll.Traits.MakeEdge(is_commutative.MakeChild())
     has_unary_identity = fabll.Traits.MakeEdge(has_unary_identity.MakeChild())
-    is_fully_associative = fabll.Traits.MakeEdge(is_fully_associative.MakeChild())
-    is_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_fully_associative = fabll.Traits.MakeEdge(is_associative.MakeChild())
+    is_associative = fabll.Traits.MakeEdge(is_flattenable.MakeChild())
 
     operands = OperandSequence.MakeChild()
 
