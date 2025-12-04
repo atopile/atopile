@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.picker.lcsc import PickedPartLCSC
@@ -111,7 +113,8 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
 
 
 def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
-    if not cmp.has_trait(F.has_footprint):
+    if not cmp.has_trait(F.Footprints.has_associated_footprint):
+        logger.warning(f"Missing associated footprint on component '{cmp}'")
         return
     # TODO make extra trait for this
     if cmp.has_trait(F.has_part_picked) and isinstance(
@@ -131,27 +134,26 @@ def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
         return
 
     part = cmp.get_trait(F.has_part_picked).get_part()
-    footprint = cmp.get_trait(F.has_footprint).get_footprint()
+    footprint = cmp.get_children(
+        direct_only=False, types=fabll.Node, required_trait=F.is_kicad_footprint
+    )[0]
 
     value = (
         cmp.get_trait(F.has_simple_value_representation).get_value()
         if cmp.has_trait(F.has_simple_value_representation)
         else ""
     )
-    designator = cmp.get_trait(F.has_designator).get_designator()
-
-    if not footprint.has_trait(F.has_kicad_footprint):
-        logger.warning(f"Missing kicad footprint on component '{cmp}'")
-        return
+    designator = cmp.get_trait(F.has_designator).get_designator() or ""
 
     if not isinstance(part, PickedPartLCSC):
+        logger.warning(f"Non-LCSC parts not supported in JLCPCB BOM: {part}")
         return
 
     manufacturer = part.manufacturer
     partnumber = part.partno
 
     footprint_name = footprint.get_trait(
-        F.has_kicad_footprint
+        F.is_kicad_footprint
     ).get_kicad_footprint_name()
 
     return BOMLine(
@@ -163,3 +165,44 @@ def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
         Partnumber=partnumber,
         LCSC_Partnumber=part.lcsc_id,
     )
+
+
+def test_get_bomline():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestNode(fabll.Node):
+        class TestFootprint(fabll.Node):
+            _is_kicad_footprint = fabll.Traits.MakeEdge(
+                F.is_kicad_footprint.MakeChild(
+                    kicad_identifier="test_lib:R_0402_1005Metric",
+                    pinmap={},
+                )
+            )
+
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        _has_designator = fabll.Traits.MakeEdge(F.has_designator.MakeChild("R1"))
+        _has_part_picked = fabll.Traits.MakeEdge(
+            F.has_part_picked.MakeChild(
+                PickedPartLCSC(
+                    manufacturer="Amazing manufacturer",
+                    partno="ABC-Part",
+                    supplier_partno="12345",
+                )
+            )
+        )
+        _has_associated_footprint = fabll.Traits.MakeEdge(
+            F.Footprints.has_associated_footprint.MakeChild(fabll.Node.MakeChild())
+        )
+        fp = TestFootprint.MakeChild()
+
+    node = TestNode.bind_typegraph(tg).create_instance(g=g)
+
+    bomline = _get_bomline(node)
+
+    assert bomline is not None
+    assert bomline.Designator == "R1"
+    assert bomline.Footprint == "R_0402_1005Metric"
+    assert bomline.Value == ""
+    assert bomline.Manufacturer == "Amazing manufacturer"
+    assert bomline.Partnumber == "ABC-Part"

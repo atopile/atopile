@@ -300,7 +300,7 @@ class PCB_Transformer:
         fabll.Traits.create_and_add_instance_to(
             node=g_fp, trait=F.PCBTransformer.has_linked_kicad_footprint
         ).setup(pcb_fp, self)
-        pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
+        pin_names = g_fp.get_trait(F.is_kicad_footprint).get_pin_names()
         pcb_pads = FuncSet[kicad.pcb.Pad](pcb_fp.pads)
         for fpad in g_fp.get_children(
             direct_only=True,
@@ -644,7 +644,7 @@ class PCB_Transformer:
     def _get_pad(ffp: "F.Footprints.Footprint", intf: "F.Electrical"):
         import faebryk.library._F as F
 
-        pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
+        pin_map = ffp.get_trait(F.is_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
             lambda pad_and_name: intf._is_interface.get().is_connected_to(

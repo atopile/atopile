@@ -924,7 +924,8 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def _is_field_registered(cls, field: Field) -> bool:
         """
         Check if a field is already registered, either directly or as part of a list.
-        This prevents duplicate registration when loop variables reference existing fields.
+        This prevents duplicate registration when loop variables reference existing
+        fields.
         """
         for registered in cls.__fields.values():
             if registered is field:
@@ -2320,7 +2321,7 @@ def test_kicad_footprint():
     pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
-        F.has_kicad_footprint.bind_typegraph(tg=tg)
+        F.is_kicad_footprint.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup(
             kicad_identifier="libR_0402_1005Metric2",
