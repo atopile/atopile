@@ -290,7 +290,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
             # if only one literal operand, equal to it
             if len(new_operands) == 1:
                 mutator.utils.alias_to(
-                    new_expr.get_sibling_trait(F.Parameters.can_be_operand),
+                    new_expr.as_operand.get(),
                     new_operands[0],
                     terminate=True,
                 )
@@ -493,7 +493,7 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
     e = expr.is_expression.get()
     if any(lit.equals_singleton(True) for lit in e.get_operand_literals().values()):
         mutator.utils.alias_is_literal_and_check_predicate_eval(
-            e, mutator.make_lit(True).as_literal()
+            e, mutator.make_lit(True).is_literal.get()
         )
         return
 
@@ -556,7 +556,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                 op_or_e = op_or.is_expression.get()
                 if not op_or_e.get_operands():
                     mutator.utils.alias_is_literal_and_check_predicate_eval(
-                        e, mutator.make_lit(True).as_literal()
+                        e, mutator.make_lit(True).is_literal.get()
                     )
                 for inner_op in op_or_e.get_operands():
                     inner_op_e = inner_op.get_sibling_trait(F.Expressions.is_expression)
@@ -580,9 +580,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                         ).get_operations(F.Expressions.Not)
                         if parent_nots:
                             for n in parent_nots:
-                                mutator.assert_(
-                                    n.get_sibling_trait(F.Expressions.is_assertable)
-                                )
+                                mutator.assert_(n.is_assertable.get())
                         else:
                             mutator.create_expression(
                                 F.Expressions.Not,
@@ -594,7 +592,7 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
     if expr.try_get_trait(F.Expressions.is_predicate):
         mutator.utils.alias_is_literal_and_check_predicate_eval(
             op.get_sibling_trait(F.Expressions.is_expression),
-            mutator.make_lit(False).as_literal(),
+            mutator.make_lit(False).is_literal.get(),
         )
 
 

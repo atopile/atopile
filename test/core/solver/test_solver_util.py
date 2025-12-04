@@ -351,7 +351,7 @@ def test_mutation_map_compressed_mapping_forwards_identity():
 
     f = mapping.compressed_mapping_forwards
     assert {k: v.maps_to for k, v in f.items()} == {
-        v: v.get_sibling_trait(F.Parameters.is_parameter_operatable) for v in variables
+        v: v.as_parameter_operatable.get() for v in variables
     }
 
 
@@ -581,7 +581,7 @@ def test_traceback_filtering_tree():
     solver = DefaultSolver()
     out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
 
-    A_new = out.data.mutation_map.map_forward(A.as_parameter_operatable()).maps_to
+    A_new = out.data.mutation_map.map_forward(A.as_parameter_operatable.get()).maps_to
     assert A_new
     tb = out.data.mutation_map.get_traceback(A_new)
     logger.info(rich_to_string(tb.filtered().as_rich_tree()))

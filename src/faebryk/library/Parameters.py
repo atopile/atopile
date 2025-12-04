@@ -329,7 +329,7 @@ class is_parameter(fabll.Node):
         unitstr = ""
 
         out = f"{letter}{unitstr}"
-        out += self.get_sibling_trait(is_parameter_operatable)._get_lit_suffix()
+        out += self.as_parameter_operatable.get()._get_lit_suffix()
 
         return out
 

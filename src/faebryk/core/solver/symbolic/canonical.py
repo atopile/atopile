@@ -84,7 +84,7 @@ def alias_predicates_to_true(mutator: Mutator):
     for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
         new_predicate = mutator.mutate_expression(predicate)
         mutator.utils.alias_to(
-            new_predicate.get_sibling_trait(F.Parameters.can_be_operand),
+            new_predicate.as_operand.get(),
             mutator.make_lit(True).can_be_operand.get(),
         )
 

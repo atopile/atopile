@@ -5,7 +5,7 @@ import logging
 import math
 from enum import Enum
 from itertools import pairwise
-from typing import Any, Callable, cast
+from typing import Callable, cast
 
 import pytest
 
@@ -556,7 +556,7 @@ def test_simplify():
     ]
     E.is_(constants[5], E.subtract(app_ops[0], app_ops[0]), assert_=True)
     E.is_(
-        constants[9].get_sibling_trait(F.Parameters.can_be_operand),
+        constants[9],
         E.lit_op_range(((0, E.U.dl), (1, E.U.dl))),
     )
     acc = app.ops[0].get().can_be_operand.get()

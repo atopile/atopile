@@ -1271,7 +1271,7 @@ class Mutator:
         # usages are as operand or with prior knowledge with sibling trait
         # so its fine for the sec to leave like this
         # I think we can't guarantee new_expr_po to be canonical, but maybe im wrong
-        return out  # type: ignore
+        return out.get_sibling_trait(F.Expressions.is_canonical)
 
     def soft_replace(
         self,
@@ -1487,9 +1487,7 @@ class Mutator:
 
         if expr := obj_po.try_get_sibling_trait(F.Expressions.is_expression):
             # TODO consider using copy here instead of recreating expr
-            return self.mutate_expression(expr).get_sibling_trait(
-                F.Parameters.is_parameter_operatable
-            )
+            return self.mutate_expression(expr).as_parameter_operatable.get()
         elif p := obj_po.get_sibling_trait(F.Parameters.is_parameter):
             return self.mutate_parameter(p).as_parameter_operatable.get()
 

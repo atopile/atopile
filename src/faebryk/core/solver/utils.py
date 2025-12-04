@@ -539,7 +539,7 @@ class MutatorUtils:
         """
         self.alias_to(
             expr.as_operand.get(),
-            value.get_sibling_trait(F.Parameters.can_be_operand),
+            value.as_operand.get(),
             terminate=True,
         )
         if not (expr_co := expr.try_get_sibling_trait(F.Expressions.is_predicate)):
