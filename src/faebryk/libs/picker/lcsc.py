@@ -522,7 +522,7 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 
 
 def check_attachable(component: fabll.Node):
-    if not component.has_trait(F.has_footprint):
+    if not component.has_trait(F.Footprints.has_associated_footprint):
         if not component.has_trait(F.Footprints.can_attach_to_footprint):
             if not component.has_trait(F.has_pin_association_heuristic):
                 raise LCSC_PinmapException(
@@ -565,7 +565,7 @@ def attach(
             )
 
     # TODO maybe check the symbol matches, even if a footprint is already attached?
-    if not component.has_trait(F.has_footprint):
+    if not component.has_trait(F.Footprints.has_associated_footprint):
         assert apart is not None
         if not component.has_trait(F.Footprints.can_attach_to_footprint):
             # TODO make this a trait

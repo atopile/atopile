@@ -532,7 +532,7 @@ class PartLifecycle:
 
             lifecycle = PartLifecycle.singleton()
 
-            f_fp = component.get_trait(F.has_footprint).get_footprint()
+            f_fp = component.get_trait(F.Footprints.has_associated_footprint).get_footprint()
 
             # At this point, all footprints MUST have a KiCAD identifier
             fp_id = f_fp.get_trait(

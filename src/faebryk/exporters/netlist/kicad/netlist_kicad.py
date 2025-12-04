@@ -97,7 +97,7 @@ def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
 
 def attach_kicad_info(tg: fbrk.TypeGraph) -> None:
     """Attach kicad info to the footprints in the graph."""
-    fp_implementors = fabll.Traits.get_implementors(F.has_footprint.bind_typegraph(tg))
+    fp_implementors = fabll.Traits.get_implementors(F.Footprints.has_associated_footprint.bind_typegraph(tg))
 
     # add trait/info to footprints
     for fp_implementor in fp_implementors:

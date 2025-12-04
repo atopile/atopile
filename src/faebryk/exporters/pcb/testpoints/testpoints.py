@@ -21,8 +21,8 @@ def _get_testpoints(app: fabll.Node) -> list[F.TestPoint]:
             direct_only=False,
             include_root=True,
         )
-        if testpoint.has_trait(F.has_footprint)
-        and testpoint.get_trait(F.has_footprint)
+        if testpoint.has_trait(F.Footprints.has_associated_footprint)
+        and testpoint.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
         .has_trait(F.is_kicad_footprint)
     ]
@@ -41,7 +41,7 @@ def export_testpoints(
     for testpoint in testpoints:
         designator = not_none(testpoint.get_trait(F.has_designator).get_designator())
         full_name = testpoint.get_full_name()
-        fp = testpoint.get_trait(F.has_footprint).get_footprint()
+        fp = testpoint.get_trait(F.Footprints.has_associated_footprint).get_footprint()
         footprint = PCB_Transformer.get_kicad_pcb_fp(fp)  # get KiCad footprint
         position = footprint.at
         layer = footprint.layer

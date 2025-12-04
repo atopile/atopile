@@ -20,7 +20,7 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
     def attach(self, footprint: F.Footprints.GenericFootprint):
         # TODO: Forward this trait to parent*2
         has_footprint = fabll.Traits.create_and_add_instance_to(
-            node=self, trait=F.has_footprint
+            node=self, trait=F.Footprints.has_associated_footprint
         )
         has_footprint.set_footprint(footprint)
 

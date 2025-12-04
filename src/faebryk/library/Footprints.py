@@ -114,6 +114,7 @@ class GenericPad(fabll.Node):
         self.is_pad.get().setup(pad_name, pad_number)
 
 
+# TODO this is a placeholder for now, will be removed
 class GenericFootprint(fabll.Node):
     """Generic footprint"""
 

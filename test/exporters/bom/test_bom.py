@@ -92,7 +92,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
     bomline = _get_bomline(m)
     assert bomline is not None
     assert bomline.LCSC_Partnumber == "C18166021"
-    assert m.get_trait(F.has_footprint).get_footprint() is fp
+    assert m.get_trait(F.Footprints.has_associated_footprint).get_footprint() is fp
 
 
 def test_bom_kicad_footprint_lcsc_compact():
@@ -115,7 +115,7 @@ def test_bom_kicad_footprint_lcsc_compact():
     assert bomline is not None
     assert bomline.LCSC_Partnumber == "C18166021"
     assert (
-        m.get_trait(F.has_footprint)
+        m.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
         .get_trait(F.is_kicad_footprint)
         .get_kicad_footprint_name()

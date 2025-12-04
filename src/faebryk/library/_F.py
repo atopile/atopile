@@ -56,7 +56,6 @@ from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_i
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 import faebryk.library.PCBTransformer as PCBTransformer
-from faebryk.library.has_footprint import has_footprint
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.Electrical import Electrical
 from faebryk.library.is_kicad_footprint import is_kicad_footprint
@@ -72,7 +71,6 @@ from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.has_linked_kicad_footprint import has_linked_kicad_footprint
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Net import Net
-from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 import faebryk.library.is_generated_by_kicad_footprint as is_generated_by_kicad_footprint
 from faebryk.library.ElectricLogic import ElectricLogic
@@ -173,7 +171,6 @@ __all__ = [
     "is_pickable_by_type",
     "Units",
     "PCBTransformer",
-    "has_footprint",
     "is_atomic_part",
     "Electrical",
     "is_kicad_footprint",
@@ -189,7 +186,6 @@ __all__ = [
     "has_linked_kicad_footprint",
     "has_single_electric_reference",
     "Net",
-    "can_attach_to_footprint_symmetrically",
     "can_attach_via_pinmap",
     "is_generated_by_kicad_footprint",
     "ElectricLogic",

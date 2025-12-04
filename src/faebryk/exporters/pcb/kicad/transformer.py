@@ -203,7 +203,7 @@ class PCB_Transformer:
         import faebryk.library._F as F
 
         for node, fp in PCB_Transformer.map_footprints(self.tg, self.pcb).items():
-            if node.has_trait(F.has_footprint):
+            if node.has_trait(F.Footprints.has_associated_footprint):
                 self.bind_footprint(fp, node)
             else:
                 _ = fabll.Traits.create_and_add_instance_to(
@@ -239,7 +239,7 @@ class PCB_Transformer:
         unattached_nodes = {
             node
             for node, trait in fabll.Node.bind_typegraph(self.tg).nodes_with_trait(
-                F.has_footprint
+                F.Footprints.has_associated_footprint
             )
             if not node.has_trait(F.PCBTransformer.has_linked_kicad_footprint)
         }
@@ -296,7 +296,7 @@ class PCB_Transformer:
         ).setup(pcb_fp, self)
 
         # By now, the node being bound MUST have a footprint
-        g_fp = module.get_trait(F.has_footprint).get_footprint()
+        g_fp = module.get_trait(F.Footprints.has_associated_footprint).get_footprint()
         fabll.Traits.create_and_add_instance_to(
             node=g_fp, trait=F.PCBTransformer.has_linked_kicad_footprint
         ).setup(pcb_fp, self)

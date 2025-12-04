@@ -212,7 +212,7 @@ def check_missing_picks(module: fabll.Node):
 
     if missing:
         no_fp, with_fp = map(
-            list, partition(lambda m: m.has_trait(F.has_footprint), missing)
+            list, partition(lambda m: m.has_trait(F.Footprints.has_associated_footprint), missing)
         )
 
         if with_fp:
