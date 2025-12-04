@@ -139,21 +139,19 @@ class LiteralsAttributes(fabll.NodeAttributes):
 
 
 @dataclass(frozen=True)
-class StringLiteralSingletonAttributes(fabll.NodeAttributes):
+class StringAttributes(fabll.NodeAttributes):
     value: str
 
 
-class StringLiteralSingleton(fabll.Node[StringLiteralSingletonAttributes]):
-    Attributes = StringLiteralSingletonAttributes
+class String(fabll.Node[StringAttributes]):
+    Attributes = StringAttributes
 
     def get_value(self) -> str:
         return self.attributes().value
 
     @classmethod
-    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(
-            cls, attributes=StringLiteralSingletonAttributes(value=value)
-        )
+    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:  # type: ignore
+        out = fabll._ChildField(cls, attributes=StringAttributes(value=value))
         return out
 
 
@@ -166,26 +164,23 @@ class Strings(fabll.Node):
     values = F.Collections.PointerSet.MakeChild()
 
     def setup_from_values(self, *values: str) -> Self:
-        StirngLitT = StringLiteralSingleton.bind_typegraph(tg=self.tg)
+        StirngLitT = String.bind_typegraph(tg=self.tg)
         for value in values:
             self.values.get().append(
                 StirngLitT.create_instance(
                     g=self.instance.g(),
-                    attributes=StringLiteralSingletonAttributes(value=value),
+                    attributes=StringAttributes(value=value),
                 )
             )
         return self
 
     def get_values(self) -> list[str]:
-        return [
-            lit.cast(StringLiteralSingleton).get_value()
-            for lit in self.values.get().as_list()
-        ]
+        return [lit.cast(String).get_value() for lit in self.values.get().as_list()]
 
     @classmethod
-    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:
+    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls)
-        lits = [StringLiteralSingleton.MakeChild(value=value) for value in values]
+        lits = [String.MakeChild(value=value) for value in values]
         out.add_dependant(
             *F.Collections.PointerSet.MakeEdges(
                 [out, cls.values], [[lit] for lit in lits]
