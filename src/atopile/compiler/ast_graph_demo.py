@@ -6,6 +6,7 @@ import typer
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
+import faebryk.library._F as F
 from atopile.compiler.build import Linker, build_file, build_stdlib
 from atopile.config import config
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
@@ -13,11 +14,14 @@ from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
 from faebryk.core.zig.gen.graph.graph import BoundEdge, BoundNode, GraphView
 
 RENDER_SOURCE_CHUNKS = False
+MAX_VALUE_LENGTH = 40
 
 
-def truncate_text(text: str) -> str:
+def truncate_text(text: str, max_length: int = MAX_VALUE_LENGTH) -> str:
     if "\n" in text:
-        return text.split("\n")[0] + "..."
+        text = text.split("\n")[0] + "..."
+    if len(text) > max_length:
+        return text[: max_length - 3] + "..."
     return text
 
 
@@ -25,14 +29,10 @@ def truncate_text(text: str) -> str:
 class RenderNodeContext:
     inbound_edge: BoundEdge | None
     node: BoundNode
-    from_optional: bool
 
 
 def _type_name(node: BoundNode) -> str | None:
-    try:
-        return fabll.Node.bind_instance(node).get_type_name()
-    except Exception:
-        return None
+    return fabll.Node.bind_instance(node).get_type_name()
 
 
 def _format_edge_label(
@@ -45,21 +45,6 @@ def _format_edge_label(
     if edge_name:
         return f".{edge_name}" if prefix_on_name else edge_name
     return ".<anonymous>" if prefix_on_anonymous else "<anonymous>"
-
-
-def _flatten_optional(node: BoundNode) -> tuple[BoundNode, bool]:
-    current = node
-    from_optional = False
-
-    # while _type_name(current) == "Optional":
-    #     optional_bound = F.Collections.Pointer.bind_instance(current)
-    #     value_node = optional_bound.get_value()
-    #     if value_node is None:
-    #         raise ValueError("Optional node without value encountered during rendering")
-    #     current = value_node.instance
-    #     from_optional = True
-
-    return current, from_optional
 
 
 def _collect_interface_extras(node: BoundNode, root: fabll.Node) -> str:
@@ -122,17 +107,10 @@ def _child_contexts(
             return
 
         child_node = parent.g().bind(node=edge.target())
-        flattened_node, from_optional = _flatten_optional(child_node)
-        if _is_excluded(flattened_node, excluded):
+        if _is_excluded(child_node, excluded):
             return
 
-        acc.append(
-            RenderNodeContext(
-                inbound_edge=bound_edge,
-                node=flattened_node,
-                from_optional=from_optional,
-            )
-        )
+        acc.append(RenderNodeContext(inbound_edge=bound_edge, node=child_node))
 
     for edge_type_id in edge_type_ids:
         parent.visit_edges_of_type(
@@ -144,10 +122,73 @@ def _child_contexts(
     return children
 
 
+def _format_list(values: list, max_items: int = 3, quote: str = "") -> str:
+    """Format a list of values for display."""
+    formatted = ", ".join(f"{quote}{v}{quote}" for v in values[:max_items])
+    suffix = "..." if len(values) > max_items else ""
+    return f"[{formatted}{suffix}]"
+
+
+def _extract_literal_value(node: BoundNode, type_name: str) -> str | None:
+    """Extract display value from literal types."""
+    try:
+        match type_name:
+            # Collection types
+            case "Strings":
+                values = F.Literals.Strings.bind_instance(node).get_values()
+                if len(values) == 1:
+                    return f'"{truncate_text(values[0])}"'
+                elif values:
+                    return _format_list(
+                        [truncate_text(v) for v in values], max_items=3, quote='"'
+                    )
+            case "Counts":
+                values = F.Literals.Counts.bind_instance(node).get_values()
+                if len(values) == 1:
+                    return str(values[0])
+                elif values:
+                    return _format_list(values, max_items=5)
+            case "Booleans":
+                values = F.Literals.Booleans.bind_instance(node).get_values()
+                if len(values) == 1:
+                    return str(values[0])
+                elif values:
+                    return _format_list(values)
+            case "Numerics":
+                values = list(F.Literals.Numerics.bind_instance(node).get_values())
+                if len(values) == 1:
+                    return str(values[0])
+                elif values:
+                    return _format_list(values)
+            # Tagged union
+            case "AnyLiteral":
+                value = F.Literals.AnyLiteral.bind_instance(node).get_value()
+                if isinstance(value, str):
+                    return f'"{truncate_text(value)}"'
+                return str(value)
+            # Enums
+            case _ if type_name.endswith("Enums") or type_name == "AbstractEnums":
+                bound = F.Literals.AbstractEnums.bind_instance(node)
+                values = bound.get_values()
+                if len(values) == 1:
+                    return f"'{values[0]}'"
+                elif values:
+                    return _format_list(values, quote="'")
+            # AST location info
+            case "FileLocation":
+                loc = AST.FileLocation.bind_instance(node)
+                start = f"{loc.get_start_line()}:{loc.get_start_col()}"
+                end = f"{loc.get_end_line()}:{loc.get_end_col()}"
+                return f"{start}-{end}"
+    except Exception:
+        pass
+    return None
+
+
 def describe_node(
     ctx: RenderNodeContext,
     *,
-    include_parameter_literal: bool = False,
+    include_literal_values: bool = False,
 ) -> str:
     type_name = _type_name(ctx.node) or "<anonymous>"
 
@@ -159,34 +200,29 @@ def describe_node(
 
     result = f"{type_name}{attrs_text}"
 
-    # FIXME
-    # if include_parameter_literal and type_name == "Parameter":
-    #     match F.Parameters.Parameter.bind_instance(ctx.node).try_extract_constrained_literal():
-    #         case str() as lit_value:
-    #             result += f" is! '{truncate_text(lit_value)}'"
-    #         case None:
-    #             pass
-    #         case lit_value:
-    #             result += f" is! {lit_value}"
+    if include_literal_values:
+        literal_value = _extract_literal_value(ctx.node, type_name)
+        if literal_value:
+            result += f" = {literal_value}"
 
-    return f"?{result}" if ctx.from_optional else result
+    return result
 
 
 def ast_renderer(ctx: RenderNodeContext) -> str:
     edge_label = _format_edge_label(ctx.inbound_edge)
-    type_description = describe_node(ctx, include_parameter_literal=True)
+    type_description = describe_node(ctx, include_literal_values=True)
     return f"{edge_label}: {type_description}"
 
 
 def typegraph_renderer(ctx: RenderNodeContext) -> str:
     edge_label = _format_edge_label(ctx.inbound_edge, prefix_on_anonymous=False)
-    type_description = describe_node(ctx, include_parameter_literal=True)
+    type_description = describe_node(ctx, include_literal_values=True)
     return f"{edge_label}: {type_description}"
 
 
 def instancegraph_renderer(ctx: RenderNodeContext, root: fabll.Node) -> str:
     edge_label = _format_edge_label(ctx.inbound_edge)
-    type_description = describe_node(ctx, include_parameter_literal=True)
+    type_description = describe_node(ctx, include_literal_values=True)
     extras_text = _collect_interface_extras(ctx.node, root)
     return f"{edge_label}: {type_description}{extras_text}"
 
@@ -201,22 +237,27 @@ def print_tree(
     edge_type_ids = _edge_type_ids(edge_types)
     excluded = _excluded_names(exclude_node_types)
 
-    root_node, root_from_optional = _flatten_optional(bound_node)
+    root_node = bound_node
     if _is_excluded(root_node, excluded):
         return
 
     visited: set[int] = set()
 
     def walk(ctx: RenderNodeContext, prefix: str, is_last: bool) -> None:
+        node_uuid = ctx.node.node().get_uuid()
+        is_cycle = node_uuid in visited
+
         line = renderer(ctx)
+        if is_cycle:
+            line += " ↺"  # cycle indicator
+
         if prefix:
             connector = "└─ " if is_last else "├─ "
             print(f"{prefix}{connector}{line}")
         else:
             print(line)
 
-        node_uuid = ctx.node.node().get_uuid()
-        if node_uuid in visited:
+        if is_cycle:
             return
 
         visited.add(node_uuid)
@@ -230,11 +271,7 @@ def print_tree(
 
         visited.remove(node_uuid)
 
-    root_ctx = RenderNodeContext(
-        inbound_edge=None,
-        node=root_node,
-        from_optional=root_from_optional,
-    )
+    root_ctx = RenderNodeContext(inbound_edge=None, node=root_node)
     walk(root_ctx, prefix="", is_last=True)
 
 
@@ -252,10 +289,13 @@ def main():
     result = build_file(graph, source_path.resolve())
 
     _section("AST Graph")
+    excluded_types: list[type] = []
+    if not RENDER_SOURCE_CHUNKS:
+        excluded_types.append(AST.SourceChunk)
     print_tree(
         result.ast_root.instance,
         renderer=ast_renderer,
-        exclude_node_types=[AST.SourceChunk] if not RENDER_SOURCE_CHUNKS else None,
+        exclude_node_types=excluded_types or None,
     )
 
     for type_name, type_root in result.state.type_roots.items():
