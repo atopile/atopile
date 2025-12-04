@@ -297,7 +297,9 @@ class MutatorUtils:
             ):
                 return self.mutator.make_lit(True).is_literal.get()
         if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
-            if not ss_lit.is_superset_of(literal):  # type: ignore
+            if not literal.is_subset_of(
+                ss_lit, g=self.mutator.G_transient, tg=self.mutator.tg_in
+            ):
                 raise ContradictionByLiteral(
                     "Tried alias to literal incompatible with subset",
                     involved=[po],

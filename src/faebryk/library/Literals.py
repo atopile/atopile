@@ -34,17 +34,35 @@ class is_literal(fabll.Node):
 
     as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
 
-    def _cmp(self: "is_literal", other: "is_literal") -> "LiteralNodesPair | None":
-        obj1 = self.switch_cast()
-        obj2 = other.switch_cast()
+    @staticmethod
+    def _to_lits(*objs: "is_literal | LiteralNodes") -> list["is_literal"]:
+        return [
+            o.get_sibling_trait(is_literal) if not isinstance(o, is_literal) else o
+            for o in objs
+        ]
+
+    @staticmethod
+    def _to_nodes(*objs: "is_literal | LiteralNodes") -> list["LiteralNodes"]:
+        return [o.switch_cast() if isinstance(o, is_literal) else o for o in objs]
+
+    @staticmethod
+    def _cmp(
+        o1: "is_literal | LiteralNodes", o2: "is_literal | LiteralNodes"
+    ) -> "LiteralNodesPair | None":
+        obj1 = is_literal._to_nodes(o1)[0]
+        obj2 = is_literal._to_nodes(o2)[0]
         if type(obj1) is not type(obj2):
             return None
-        return obj1, obj2  # type: ignore
+        return cast(LiteralNodesPair, (obj1, obj2))
 
     def is_subset_of(
-        self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
+        self: "is_literal | LiteralNodes",
+        other: "is_literal | LiteralNodes",
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ) -> bool:
-        if objs := self._cmp(other):
+        if objs := is_literal._cmp(self, other):
             return objs[0].is_subset_of(
                 objs[1],  # type: ignore # stupid pylance
                 g=g,
@@ -53,9 +71,13 @@ class is_literal(fabll.Node):
         raise ValueError("incompatible types")
 
     def op_intersect_intervals(
-        self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "is_literal | LiteralNodes",
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ) -> "is_literal":
-        if objs := self._cmp(other):
+        if objs := is_literal._cmp(self, other):
             return (
                 objs[0]
                 .op_intersect_intervals(
@@ -68,9 +90,13 @@ class is_literal(fabll.Node):
         raise ValueError("incompatible types")
 
     def op_union_intervals(
-        self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "is_literal | LiteralNodes",
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ) -> "is_literal":
-        if objs := self._cmp(other):
+        if objs := is_literal._cmp(self, other):
             return (
                 objs[0]
                 .op_union_intervals(
@@ -83,9 +109,13 @@ class is_literal(fabll.Node):
         raise ValueError("incompatible types")
 
     def op_symmetric_difference_intervals(
-        self, other: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "is_literal | LiteralNodes",
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ) -> "is_literal":
-        if objs := self._cmp(other):
+        if objs := is_literal._cmp(self, other):
             return (
                 objs[0]
                 .op_symmetric_difference_intervals(
@@ -98,33 +128,38 @@ class is_literal(fabll.Node):
         raise ValueError("incompatible types")
 
     def in_container(
-        self, other: Iterable["is_literal"], g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: Iterable["is_literal | LiteralNodes"],
+        *,
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ) -> bool:
         return any(self.equals(other, g=g, tg=tg) for other in other)
 
     @staticmethod
     def intersect_all(
-        *objs: "is_literal", g: graph.GraphView, tg: fbrk.TypeGraph
+        *objs: "is_literal | LiteralNodes", g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "is_literal":
         if not objs:
             raise ValueError("Cannot intersect empty list")
+        objs_lit = is_literal._to_lits(*objs)
         if len(objs) == 1:
-            return objs[0]
+            return objs_lit[0]
 
         return functools.reduce(
             lambda a, b: a.op_intersect_intervals(g=g, tg=tg, other=b),
-            objs,
+            objs_lit,
         )
 
     def equals(
         self,
-        *others: "is_literal",
+        *others: "is_literal | LiteralNodes",
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
     ) -> tuple[int, "is_literal"] | None:
         self_c = self.switch_cast()
-        for i, other in enumerate(others):
-            other_c = other.switch_cast()
+        other_nodes = is_literal._to_nodes(*others)
+        for i, other_c in enumerate(other_nodes):
             if type(self_c) is not type(other_c):
                 continue
             if self_c.equals(
@@ -1878,7 +1913,6 @@ class NumericSet(fabll.Node):
             return False
         self_intervals = self.get_intervals()
         value_intervals = value.get_intervals()
-        print(self_intervals, value_intervals)
         if len(self_intervals) != len(value_intervals):
             return False
         for r1, r2 in zip(self_intervals, value_intervals):
@@ -2638,7 +2672,7 @@ class Numbers(fabll.Node):
 
     @classmethod
     def unbounded(
-        cls, g: graph.GraphView, tg: fbrk.TypeGraph, unit: "is_unit"
+        cls, unit: "is_unit", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """Create an unbounded quantity set (-∞, +∞) with the given unit."""
         quantity_set = cls.create_instance(g=g, tg=tg)
@@ -2698,7 +2732,7 @@ class Numbers(fabll.Node):
             raise ValueError("empty interval cannot have max element")
         return self.get_numeric_set().get_max_value()
 
-    def min_elem(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def min_elem(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """Return the minimum element as a single-value Numbers."""
 
         min_value = self.get_min_value()
@@ -2706,7 +2740,7 @@ class Numbers(fabll.Node):
             min=min_value, max=min_value, unit=self.get_is_unit()
         )
 
-    def max_elem(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def max_elem(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """Return the maximum element as a single-value Numbers."""
 
         max_value = self.get_max_value()
@@ -2720,7 +2754,7 @@ class Numbers(fabll.Node):
         return None
 
     def closest_elem(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, target: "Numbers"
+        self, target: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Find the closest element in this quantity set to a target value.
@@ -2861,7 +2895,9 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def convert_to_unit(self, g: graph.GraphView, tg: fbrk.TypeGraph, unit: "is_unit"):
+    def convert_to_unit(
+        self, unit: "is_unit", *, g: graph.GraphView, tg: fbrk.TypeGraph
+    ):
         """
         Convert to specified unit.
         """
@@ -2894,7 +2930,7 @@ class Numbers(fabll.Node):
         )
 
     def _convert_other_to_self_unit(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
+        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Convert between two units with the same basis vector but different multiplier
@@ -2905,7 +2941,7 @@ class Numbers(fabll.Node):
         return other.convert_to_unit(g=g, tg=tg, unit=self.get_is_unit())
 
     def convert_to_dimensionless(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph
+        self, *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Convert to dimensionless units.
@@ -2944,7 +2980,7 @@ class Numbers(fabll.Node):
         )
 
     def op_add_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
+        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """Arithmetically add two quantity sets. Units must be commensurable."""
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -2958,7 +2994,7 @@ class Numbers(fabll.Node):
         )
 
     def op_mul_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
+        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Arithmetically multiply two quantity sets.
@@ -2977,7 +3013,7 @@ class Numbers(fabll.Node):
             unit=result_unit,
         )
 
-    def op_negate(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_negate(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Arithmetically negate this quantity set (multiply by -1).
         Unit remains the same.
@@ -2990,7 +3026,7 @@ class Numbers(fabll.Node):
         )
 
     def op_subtract_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
+        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Subtract another quantity set from this one.
@@ -3008,7 +3044,7 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_invert(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_invert(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Invert this quantity set (1/x).
         Unit is also inverted.
@@ -3022,7 +3058,7 @@ class Numbers(fabll.Node):
         )
 
     def op_div_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "Numbers"
+        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Divide this quantity set by another.
@@ -3042,7 +3078,7 @@ class Numbers(fabll.Node):
         )
 
     def op_pow_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, exponent: "Numbers"
+        self, exponent: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Raise this quantity set to a power.
@@ -3071,7 +3107,7 @@ class Numbers(fabll.Node):
         )
 
     def op_round(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, ndigits: int = 0
+        self, *, ndigits: int = 0, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Numbers":
         """
         Round this quantity set to the specified number of decimal places.
@@ -3084,7 +3120,7 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_abs(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_abs(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Take the absolute value of this quantity set.
         Unit remains the same.
@@ -3096,7 +3132,7 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_log(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_log(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Take the natural logarithm of this quantity set.
         Unit remains the same (should be dimensionless for physical meaning).
@@ -3108,7 +3144,7 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_sqrt(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_sqrt(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Take the square root of this quantity set.
         Equivalent to raising to the power of 0.5.
@@ -3121,7 +3157,7 @@ class Numbers(fabll.Node):
         half.setup_from_min_max(min=0.5, max=0.5, unit=dimensionless_unit.is_unit.get())
         return self.op_pow_intervals(g=g, tg=tg, exponent=half)
 
-    def op_sin(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_sin(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Take the sine of this quantity set.
         Input must be in radians.
@@ -3140,7 +3176,7 @@ class Numbers(fabll.Node):
             unit=dimensionless_unit.is_unit.get(),
         )
 
-    def op_cos(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_cos(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Take the cosine of this quantity set.
         Input must be in radians.
@@ -3157,7 +3193,7 @@ class Numbers(fabll.Node):
         shifted = self.op_add_intervals(g=g, tg=tg, other=pi_half)
         return shifted.op_sin(g=g, tg=tg)
 
-    def op_floor(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_floor(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Floor this quantity set (round down to nearest integer).
         Computed as round(x - 0.5).
@@ -3167,7 +3203,7 @@ class Numbers(fabll.Node):
         shifted = self.op_subtract_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
-    def op_ceil(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_ceil(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Ceiling this quantity set (round up to nearest integer).
         Computed as round(x + 0.5).
@@ -3177,7 +3213,7 @@ class Numbers(fabll.Node):
         shifted = self.op_add_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
-    def op_total_span(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_total_span(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Returns the total span of all intervals in this disjoint set.
         For a single interval, this is equivalent to max - min.
@@ -3213,10 +3249,11 @@ class Numbers(fabll.Node):
 
     def op_deviation_to(
         self,
+        other: "Numbers",
+        *,
+        relative: bool = False,
         g: graph.GraphView,
         tg: fbrk.TypeGraph,
-        other: "Numbers",
-        relative: bool = False,
     ) -> "Numbers":
         """
         Calculate the deviation between this quantity set and another.
@@ -3300,7 +3337,7 @@ class Numbers(fabll.Node):
         """Return any element from this set as a primitive value."""
         return self.get_min_value()
 
-    def as_gapless(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def as_gapless(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         """
         Return a quantity set spanning from min to max as a single interval.
         Fills in any gaps in disjoint intervals.
@@ -4949,7 +4986,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         attrs = self.attributes()
         return not attrs.has_true and not attrs.has_false
 
-    def op_not(self, g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "Booleans":
+    def op_not(self, *, g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "Booleans":
         """Logical NOT of all values in this set."""
         values = self.get_values()
         return Booleans.bind_typegraph(tg=tg).create_instance(
@@ -4958,7 +4995,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         )
 
     def op_and(
-        self, g: "graph.GraphView", tg: "fbrk.TypeGraph", other: "Booleans"
+        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Booleans":
         """Logical AND of all combinations of values from both sets."""
         result = set()
@@ -4970,7 +5007,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         )
 
     def op_or(
-        self, g: "graph.GraphView", tg: "fbrk.TypeGraph", other: "Booleans"
+        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Booleans":
         """Logical OR of all combinations of values from both sets."""
         result = set()
@@ -4982,7 +5019,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         )
 
     def op_xor(
-        self, g: "graph.GraphView", tg: "fbrk.TypeGraph", other: "Booleans"
+        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Booleans":
         """Logical XOR of all combinations of values from both sets."""
         result = set()
@@ -4994,7 +5031,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
         )
 
     def op_implies(
-        self, g: "graph.GraphView", tg: "fbrk.TypeGraph", other: "Booleans"
+        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Booleans":
         """Logical implication (self -> other) for all combinations."""
         result = set()
@@ -5016,6 +5053,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
     def equals(
         self,
         other: "Booleans",
+        *,
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> bool:
