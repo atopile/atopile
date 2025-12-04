@@ -6,7 +6,7 @@ import functools
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -25,19 +25,29 @@ class _Multi:
     init: F.Literals.LiteralValues | None = None
 
     def run(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, *args: F.Literals.is_literal
+        self, *args: F.Literals.LiteralNodes, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_simple_lit_singleton(
-                g, tg, self.init
-            ).is_literal.get()
+            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.init)
             args = (init_lit, init_lit, *args)
-        return functools.reduce(self.f, args)
+
+        def _f(
+            *args: F.Literals.LiteralNodes,
+        ) -> F.Literals.LiteralNodes | F.Literals.is_literal | bool:
+            return self.f(*args, g=g, tg=tg)
+
+        out = functools.reduce(
+            _f,  # type: ignore # some function return is_literal/bool but its ok
+            args,
+        )
+        # TODO: remove hack for equals returning bool
+        if isinstance(out, F.Literals.LiteralValues):
+            out = F.Literals.make_simple_lit_singleton(g, tg, out)
+        return out if isinstance(out, F.Literals.is_literal) else out.is_literal.get()
 
 
 # TODO consider making this a trait instead
 
-# FIXME: the function take a bad mix of literalnodes and is_literal
 _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
     F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
@@ -77,10 +87,13 @@ def _exec_pure_literal_operands(
     expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
     if expr_type_node.get_uuid() not in _map:
         return None
-    if not all(o.try_get_sibling_trait(F.Literals.is_literal) for o in operands):
+    lits = [o.try_get_sibling_trait(F.Literals.is_literal) for o in operands]
+    if not all(lits):
         return None
+    lits = cast(list[F.Literals.is_literal], lits)
+    lits_nodes = [o.switch_cast() for o in lits]
     try:
-        return _map[expr_type_node.get_uuid()].run(g, tg, *operands)
+        return _map[expr_type_node.get_uuid()].run(g=g, tg=tg, *lits_nodes)
     except (ValueError, NotImplementedError, ZeroDivisionError):
         return None
 

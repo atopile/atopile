@@ -840,7 +840,7 @@ class MutationMap:
         def _default():
             if not domain_default:
                 return None
-            if not (p := po.get_sibling_trait(F.Parameters.is_parameter)):
+            if not (p := po.try_get_sibling_trait(F.Parameters.is_parameter)):
                 raise ValueError("domain_default only supported for parameters")
             return p.domain_set()
 
