@@ -979,7 +979,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         # no point in op! is op! (always true)
         if expr.try_get_trait(F.Expressions.is_predicate):
             mutator.create_expression(
-                type(expr),
+                mutator.utils.hack_get_expr_type(expr_e),
                 *operands,
                 assert_=True,
                 allow_uncorrelated=True,

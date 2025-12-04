@@ -1197,10 +1197,7 @@ class Mutator:
     ) -> F.Expressions.is_canonical:
         expr_obj = fabll.Traits(expr).get_obj_raw()
         if expression_factory is None:
-            # TODO this is a hack, we should not do it like this
-            # better build something into is_expression trait that allows copying
-            type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())
-            expression_factory = fabll.TypeNodeBoundTG.__TYPE_NODE_MAP__[type_node].t
+            expression_factory = self.utils.hack_get_expr_type(expr)
 
         if operands is None:
             operands = expr.get_operands()
@@ -1711,19 +1708,18 @@ class Mutator:
         new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
-    ) -> set[F.Expressions.is_expression]:
+    ) -> set[F.Expressions.is_expression] | list[F.Expressions.is_expression]:
         # TODO make this first class instead of calling
-        return {
-            e.get_trait(F.Expressions.is_expression)
-            for e in self.get_typed_expressions(
-                t=fabll.Node,
-                sort_by_depth=sort_by_depth,
-                created_only=created_only,
-                new_only=new_only,
-                include_terminated=include_terminated,
-                required_traits=required_traits,
-            )
-        }
+        typed = self.get_typed_expressions(
+            t=fabll.Node,
+            sort_by_depth=sort_by_depth,
+            created_only=created_only,
+            new_only=new_only,
+            include_terminated=include_terminated,
+            required_traits=required_traits,
+        )
+        t = set if isinstance(typed, set) else list
+        return t(e.get_trait(F.Expressions.is_expression) for e in typed)
 
     @property
     def non_copy_mutated(self) -> set[F.Expressions.is_expression]:

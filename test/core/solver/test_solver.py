@@ -2501,6 +2501,7 @@ if __name__ == "__main__":
     setup_basic_logging()
 
     # typer.run(test_simplify)
-    typer.run(
-        lambda: test_super_simple_literal_folding(F.Expressions.Add.c, (5, 10), 15)
-    )
+    # typer.run(
+    #    lambda: test_super_simple_literal_folding(F.Expressions.Add.c, (5, 10), 15)
+    # )
+    typer.run(test_voltage_divider_find_v_out_with_division)

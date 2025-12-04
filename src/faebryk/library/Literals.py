@@ -37,8 +37,7 @@ class is_literal(fabll.Node):
     @staticmethod
     def _to_lits(*objs: "is_literal | LiteralNodes") -> list["is_literal"]:
         return [
-            o.get_sibling_trait(is_literal) if not isinstance(o, is_literal) else o
-            for o in objs
+            o.is_literal.get() if not isinstance(o, is_literal) else o for o in objs
         ]
 
     @staticmethod

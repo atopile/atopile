@@ -1552,6 +1552,15 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.t._create_type(self)
         return typenode
 
+    def get_type_name(self) -> str:
+        return fbrk.EdgeComposition.get_name(
+            edge=not_none(
+                fbrk.EdgeComposition.get_parent_edge(
+                    bound_node=self.get_or_create_type()
+                )
+            ).edge()
+        )
+
     def as_type_node(self) -> "NodeT":
         return self.t.bind_instance(instance=self.get_or_create_type())
 
@@ -1652,7 +1661,8 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         )
         bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
         for child in children:
-            if child.get_child_type().node().is_same(other=bound_trait.node()):
+            child_type = child.get_child_type()
+            if child_type.node().is_same(other=bound_trait.node()):
                 return True
         return False
 
