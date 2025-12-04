@@ -15,7 +15,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.library import Collections
-from faebryk.libs.util import cast_assert, not_none
+from faebryk.libs.util import cast_assert
 
 
 def _add_anon_child(node: fabll.NodeT, child: fabll.NodeT):
@@ -89,11 +89,11 @@ class FileLocation(fabll.Node):
 
 
 class SourceChunk(fabll.Node):
-    text = F.Parameters.StringParameter.MakeChild()
+    text = F.Literals.Strings.MakeChild()
     loc = FileLocation.MakeChild()
 
     def setup(self, source_info: SourceInfo) -> Self:  # type: ignore
-        self.text.get().alias_to_literal(source_info.text, g=self.g)
+        self.text.get().setup_from_values(source_info.text)
         self.loc.get().setup(
             start_line=source_info.start_line,
             start_col=source_info.start_col,
@@ -104,22 +104,22 @@ class SourceChunk(fabll.Node):
 
 
 class TypeRef(fabll.Node):
-    name = F.Parameters.StringParameter.MakeChild()
+    name = F.Literals.Strings.MakeChild()
     source = SourceChunk.MakeChild()
 
     def setup(self, name: str, source_info: SourceInfo) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
-        self.name.get().alias_to_literal(name, g=self.g)
+        self.name.get().setup_from_values(name)
         return self
 
 
 class ImportPath(fabll.Node):
     source = SourceChunk.MakeChild()
-    path = F.Parameters.StringParameter.MakeChild()
+    path = F.Literals.Strings.MakeChild()
 
     def setup(self, path: str, source_info: SourceInfo) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
-        self.path.get().alias_to_literal(path, g=self.g)
+        self.path.get().setup_from_values(path)
         return self
 
 
@@ -131,18 +131,24 @@ class FieldRefPart(fabll.Node):
         source_info: SourceInfo
 
     source = SourceChunk.MakeChild()
-    name = F.Parameters.StringParameter.MakeChild()
-    key = F.Parameters.StringParameter.MakeChild()
+    name = F.Literals.Strings.MakeChild()
+    key = F.Literals.Strings.MakeChild()
 
     def setup(self, info: Info) -> Self:  # type: ignore
         self.source.get().setup(source_info=info.source_info)
-        self.name.get().alias_to_literal(info.name, g=self.g)
+        self.name.get().setup_from_values(info.name)
 
         if info.key is not None:
             # TODO: split int and str cases?
-            self.key.get().alias_to_literal(str(info.key), g=self.g)
+            self.key.get().setup_from_values(str(info.key))
 
         return self
+
+    def get_key(self) -> int | str | None:
+        if len(key_values := self.key.get().get_values()) == 0:
+            return None
+        (key,) = key_values
+        return key
 
 
 class FieldRef(fabll.Node):
@@ -151,7 +157,7 @@ class FieldRef(fabll.Node):
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
     source = SourceChunk.MakeChild()
-    pin = F.Parameters.StringParameter.MakeChild()
+    pin = F.Literals.Strings.MakeChild()
     parts = Collections.PointerSequence.MakeChild()  # TODO: specify child type
 
     def setup(  # type: ignore
@@ -169,17 +175,20 @@ class FieldRef(fabll.Node):
 
         return self
 
+    def get_pin(self) -> str | None:
+        if len(pin_values := self.pin.get().get_values()) == 0:
+            return None
+        (pin,) = pin_values
+        return pin
+
 
 class Decimal(fabll.Node):
     source = SourceChunk.MakeChild()
-    # TODO: should this be a Numbers literal?
-    value = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=False, negative=True, zero_allowed=True
-    )
+    value = F.Literals.Numerics.MakeChild()
 
     def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
-        self.value.get().alias_to_literal(g=self.g, value=float(value))
+        self.value.get().setup_from_values(float(value))
         return self
 
 
@@ -200,21 +209,21 @@ class Boolean(fabll.Node):
     _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
     source = SourceChunk.MakeChild()
-    value = F.Parameters.BooleanParameter.MakeChild()
+    value = F.Literals.Booleans.MakeChild()
 
     def setup(self, source_info: SourceInfo, value: bool) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
-        self.value.get().alias_to_single(value=value, g=self.g)
+        self.value.get().setup_from_values(value)
         return self
 
 
 class Unit(fabll.Node):
     source = SourceChunk.MakeChild()
-    symbol = F.Parameters.StringParameter.MakeChild()
+    symbol = F.Literals.Strings.MakeChild()
 
     def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
-        self.symbol.get().alias_to_literal(symbol, g=self.g)
+        self.symbol.get().setup_from_values(symbol)
         return self
 
 
@@ -249,7 +258,7 @@ class BinaryExpression(fabll.Node):
     _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
     source = SourceChunk.MakeChild()
-    operator = F.Parameters.StringParameter.MakeChild()
+    operator = F.Literals.Strings.MakeChild()
     lhs = F.Collections.Pointer.MakeChild()  # TODO: reqyired but deferred
     rhs = F.Collections.Pointer.MakeChild()
 
@@ -261,7 +270,7 @@ class BinaryExpression(fabll.Node):
         rhs: is_arithmetic,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.operator.get().alias_to_literal(operator, g=self.g)
+        self.operator.get().setup_from_values(operator)
 
         self.lhs.get().point(lhs)
         _add_anon_child(self, lhs)
@@ -308,7 +317,9 @@ class ComparisonClause(fabll.Node):
         IS = "is"
 
     source = SourceChunk.MakeChild()
-    operator = F.Parameters.EnumParameter.MakeChild(enum_t=ComparisonOperator)
+    operator = F.Literals.EnumsFactory(ComparisonOperator).MakeChild(
+        *ComparisonOperator.__members__.values()
+    )
     rhs = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore
@@ -316,7 +327,7 @@ class ComparisonClause(fabll.Node):
     ) -> Self:
         operator_ = self.ComparisonOperator(operator)
         self.source.get().setup(source_info=source_info)
-        self.operator.get().alias_to_literal(operator_, g=self.g)
+        self.operator.get().setup(operator_)
         self.rhs.get().point(rhs)
         _add_anon_child(self, rhs)
         return self
@@ -441,13 +452,14 @@ class Scope(fabll.Node):
 
         return self
 
-    # TODO: get_child_stmts -> Iterable[Assignment | ...]
+    def get_child_stmts(self) -> Iterable[is_statement]:
+        return (stmt.get_trait(is_statement) for stmt in self.stmts.get().as_list())
 
 
 class File(fabll.Node):
     source = SourceChunk.MakeChild()
     scope = Scope.MakeChild()
-    path = F.Parameters.StringParameter.MakeChild()
+    path = F.Literals.Strings.MakeChild()
 
     # TODO: optional path
     def setup(  # type: ignore
@@ -457,7 +469,7 @@ class File(fabll.Node):
         stmts: Iterable[is_statement],
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.path.get().alias_to_literal(*path)
+        self.path.get().setup_from_values(path)
         self.scope.get().setup(stmts=stmts)
 
         return self
@@ -472,7 +484,9 @@ class BlockDefinition(fabll.Node):
         INTERFACE = "interface"
 
     source = SourceChunk.MakeChild()
-    block_type = F.Parameters.EnumParameter.MakeChild(enum_t=BlockType)
+    block_type = F.Literals.EnumsFactory(BlockType).MakeChild(
+        *BlockType.__members__.values()
+    )
     type_ref = TypeRef.MakeChild()
     super_type_ref = TypeRef.MakeChild()
     scope = Scope.MakeChild()
@@ -488,7 +502,7 @@ class BlockDefinition(fabll.Node):
     ) -> Self:
         block_type_ = self.BlockType(block_type)
         self.source.get().setup(source_info=source_info)
-        self.block_type.get().alias_to_literal(block_type_)
+        self.block_type.get().setup(block_type_)
 
         self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
@@ -502,11 +516,18 @@ class BlockDefinition(fabll.Node):
         return self
 
     def get_block_type(self) -> BlockType:
-        block_type_lit = not_none(
-            self.block_type.get().try_extract_constrained_literal()
-        )
-        (block_type,) = block_type_lit.get_values()
+        block_type = self.block_type.get().get_single_value()
         return self.BlockType(block_type)
+
+    def get_type_ref_name(self) -> str:
+        (type_ref_name,) = self.type_ref.get().name.get().get_values()
+        return type_ref_name
+
+    def get_super_type_ref_name(self) -> str | None:
+        if len(values := self.super_type_ref.get().name.get().get_values()) == 0:
+            return None
+        (name,) = values
+        return name
 
 
 @dataclass(frozen=True)
@@ -546,14 +567,12 @@ class Slice(fabll.Node):
 
         return self
 
-    def get_start(self) -> int:
-        return self.start.get().get_value()
-
-    def get_stop(self) -> int:
-        return self.stop.get().get_value()
-
-    def get_step(self) -> int:
-        return self.step.get().get_value()
+    def get_values(self) -> tuple[int, int, int]:
+        return (
+            self.start.get().get_value(),
+            self.stop.get().get_value(),
+            self.step.get().get_value(),
+        )
 
 
 class IterableFieldRef(fabll.Node):
@@ -616,7 +635,7 @@ class ForStmt(fabll.Node):
 
     source = SourceChunk.MakeChild()
     scope = Scope.MakeChild()
-    target = F.Parameters.StringParameter.MakeChild()
+    target = F.Literals.Strings.MakeChild()
     iterable = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore
@@ -627,7 +646,7 @@ class ForStmt(fabll.Node):
         stmts: Iterable[is_statement],
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.target.get().alias_to_literal(*target)
+        self.target.get().setup_from_values(target)
         self.iterable.get().point(iterable)
         _add_anon_child(self, iterable)
         self.scope.get().setup(stmts=stmts)
@@ -643,14 +662,20 @@ class PragmaStmt(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    pragma = F.Parameters.StringParameter.MakeChild()
+    pragma = F.Literals.Strings.MakeChild()
 
     def setup(  # type: ignore
         self, source_info: SourceInfo, pragma: str
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.pragma.get().alias_to_literal(pragma)
+        self.pragma.get().setup_from_values(pragma)
         return self
+
+    def get_pragma(self) -> str | None:
+        if len(pragma_values := self.pragma.get().get_values()) == 0:
+            return None
+        (pragma,) = pragma_values
+        return pragma
 
 
 class ImportStmt(fabll.Node):
@@ -676,17 +701,27 @@ class ImportStmt(fabll.Node):
 
         return self
 
+    def get_type_ref_name(self) -> str:
+        (type_ref_name,) = self.type_ref.get().name.get().get_values()
+        return type_ref_name
+
+    def get_path(self) -> str | None:
+        if len(path_values := self.path.get().path.get().get_values()) == 0:
+            return None
+        (path,) = path_values
+        return path
+
 
 class TemplateArg(fabll.Node):
     source = SourceChunk.MakeChild()
-    name = F.Parameters.StringParameter.MakeChild()
-    value = F.Parameters.AnyParameter.MakeChild()
+    name = F.Literals.Strings.MakeChild()
+    value = F.Literals.AnyLiteral.MakeChild()
 
     def setup(  # type: ignore
         self, source_info: SourceInfo, name: str, value: "LiteralT"
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.name.get().alias_to_literal(name)
+        self.name.get().setup_from_values(name)
         self.value.get().setup(value=value)
         return self
 
@@ -739,18 +774,28 @@ class NewExpression(fabll.Node):
 
         return self
 
+    def get_type_ref_name(self) -> str:
+        (type_ref_name,) = self.type_ref.get().name.get().get_values()
+        return type_ref_name
+
+    def get_new_count(self) -> int | None:
+        if len(count_values := self.new_count.get().value.get().get_values()) == 0:
+            return None
+        (count,) = count_values
+        return count
+
 
 class String(fabll.Node):
     _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
     source = SourceChunk.MakeChild()
-    text = F.Parameters.StringParameter.MakeChild()
+    text = F.Literals.Strings.MakeChild()
 
     def setup(  # type: ignore
         self, source_info: SourceInfo, text: str
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.text.get().alias_to_literal(text)
+        self.text.get().setup_from_values(text)
         return self
 
 
@@ -830,7 +875,9 @@ class DirectedConnectStmt(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    direction = F.Parameters.EnumParameter.MakeChild(enum_t=Direction)
+    direction = F.Literals.EnumsFactory(Direction).MakeChild(
+        *Direction.__members__.values()
+    )
     lhs = F.Collections.Pointer.MakeChild()
     rhs = F.Collections.Pointer.MakeChild()
 
@@ -842,7 +889,7 @@ class DirectedConnectStmt(fabll.Node):
         rhs: "is_connectable | DirectedConnectStmt",
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.direction.get().alias_to_literal(direction)
+        self.direction.get().setup(direction)
         self.lhs.get().point(lhs)
         _add_anon_child(self, lhs)
         self.rhs.get().point(rhs)
@@ -886,8 +933,8 @@ class PinDeclaration(fabll.Node):
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
     source = SourceChunk.MakeChild()
-    kind = F.Parameters.EnumParameter.MakeChild(enum_t=Kind)
-    label = F.Parameters.AnyParameter.MakeChild()
+    kind = F.Literals.EnumsFactory(Kind).MakeChild(*Kind.__members__.values())
+    label = F.Literals.AnyLiteral.MakeChild()
 
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
@@ -898,7 +945,7 @@ class PinDeclaration(fabll.Node):
         label_value: "LiteralT | None" = None,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.kind.get().alias_to_literal(kind)
+        self.kind.get().setup(kind)
 
         if label_value is not None:
             self.label.get().setup(value=label_value)
@@ -911,11 +958,11 @@ class SignaldefStmt(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    name = F.Parameters.StringParameter.MakeChild()
+    name = F.Literals.Strings.MakeChild()
 
     def setup(self, source_info: SourceInfo, name: str) -> Self:  # type: ignore
         self.source.get().setup(source_info=source_info)
-        self.name.get().alias_to_literal(name)
+        self.name.get().setup_from_values(name)
         return self
 
 
@@ -994,7 +1041,7 @@ class TraitStmt(fabll.Node):
     type_ref = TypeRef.MakeChild()
     target = FieldRef.MakeChild()
     template = Template.MakeChild()
-    constructor = F.Parameters.StringParameter.MakeChild()
+    constructor = F.Literals.Strings.MakeChild()
 
     def setup(  # type: ignore
         self,
@@ -1018,6 +1065,6 @@ class TraitStmt(fabll.Node):
             self.template.get().setup(source_info=template_source, args=template_args)
 
         if constructor is not None:
-            self.constructor.get().alias_to_literal(constructor)
+            self.constructor.get().setup_from_values(constructor)
 
         return self

@@ -435,15 +435,13 @@ class BooleanParameter(fabll.Node):
         g = g or self.instance.g()
         from faebryk.library.Literals import Booleans
 
-        self.is_parameter_operatable.get().alias_to_literal(
-            g=g,
-            value=Booleans.bind_typegraph_from_instance(
-                instance=self.instance
-            ).create_instance(
-                self.instance.g(),
-                attributes=Booleans.Attributes(has_true=value, has_false=not value),
-            ),
+        lit = (
+            Booleans.bind_typegraph_from_instance(instance=self.instance)
+            .create_instance(g=g)
+            .setup_from_values(value)
         )
+
+        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
 
 class EnumParameter(fabll.Node):

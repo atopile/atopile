@@ -60,7 +60,9 @@ class is_ato_block(fabll.Node):
     """
 
     _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    block_type = F.Parameters.EnumParameter.MakeChild(enum_t=BlockType)
+    block_type = F.Literals.EnumsFactory(BlockType).MakeChild(
+        *BlockType.__members__.values()
+    )
 
     @classmethod
     def _MakeChild(cls, block_type: BlockType) -> fabll._ChildField[Any]:
@@ -443,11 +445,10 @@ class ASTVisitor:
                 self.visit(scope_child)
 
     def visit_PragmaStmt(self, node: AST.PragmaStmt):
-        if (pragma_lit := node.pragma.get().try_extract_constrained_literal()) is None:
+        if (pragma := node.get_pragma()) is None:
             raise DslException(f"Pragma statement has no pragma text: {node}")
 
-        (pragma_text,) = pragma_lit.get_values()
-        pragma_func_name, pragma_args = self._parse_pragma(pragma_text)
+        pragma_func_name, pragma_args = self._parse_pragma(pragma)
 
         match pragma_func_name:
             case ASTVisitor._Pragma.EXPERIMENT.value:
@@ -465,21 +466,13 @@ class ASTVisitor:
                     case [ASTVisitor._Experiments.INSTANCE_TRAITS]:
                         self.enable_experiment(ASTVisitor._Experiments.INSTANCE_TRAITS)
                     case _:
-                        raise DslException(
-                            f"Experiment not recognized: `{pragma_text}`"
-                        )
+                        raise DslException(f"Experiment not recognized: `{pragma}`")
             case _:
-                raise DslException(f"Pragma function not recognized: `{pragma_text}`")
+                raise DslException(f"Pragma function not recognized: `{pragma}`")
 
     def visit_ImportStmt(self, node: AST.ImportStmt):
-        type_ref_name_lit = not_none(
-            node.type_ref.get().name.get().try_extract_constrained_literal()
-        )
-        (type_ref_name,) = type_ref_name_lit.get_values()
-
-        path_lit = node.path.get().path.get().try_extract_constrained_literal()
-        (path,) = path_lit.get_values() if path_lit is not None else (None,)
-
+        type_ref_name = node.get_type_ref_name()
+        path = node.get_path()
         import_ref = ImportRef(name=type_ref_name, path=path)
 
         if path is None and type_ref_name not in STDLIB_ALLOWLIST:
@@ -491,10 +484,7 @@ class ASTVisitor:
         if self._scope_stack.depth != 1:
             raise DslException("Nested block definitions are not permitted")
 
-        module_name_lit = not_none(
-            node.type_ref.get().name.get().try_extract_constrained_literal(),
-        )
-        (module_name,) = module_name_lit.get_values()
+        module_name = node.get_type_ref_name()
 
         if self._scope_stack.is_symbol_defined(module_name):
             raise DslException(f"Symbol `{module_name}` already defined in scope")
@@ -549,22 +539,13 @@ class ASTVisitor:
 
         for part_node in node.parts.get().as_list():
             part = part_node.cast(t=AST.FieldRefPart)
-            name_literal = part.name.get().try_extract_constrained_literal()
-            (name,) = not_none(name_literal).get_values()
+            (name,) = part.name.get().get_values()
             segments.append(FieldPath.Segment(identifier=name))
 
-            if (
-                key_literal := part.key.get().try_extract_constrained_literal()
-            ) is not None:
-                if isinstance(key_literal, float):
-                    assert key_literal.is_integer()
-                    key_literal = int(key_literal)
+            if (key := part.get_key()) is not None:
+                segments.append(FieldPath.Segment(identifier=str(key), is_index=True))
 
-                segments.append(
-                    FieldPath.Segment(identifier=str(key_literal), is_index=True)
-                )
-
-        if node.pin.get().try_extract_constrained_literal() is not None:
+        if node.get_pin() is not None:
             raise NotImplementedError(
                 "Field references with pin suffixes are not supported yet"
             )
@@ -684,17 +665,14 @@ class ASTVisitor:
                 raise NotImplementedError(f"Unhandled assignable type: {assignable}")
 
     def visit_NewExpression(self, node: AST.NewExpression):
-        type_name_lit = not_none(
-            node.type_ref.get().name.get().try_extract_constrained_literal()
-        )
-        (type_name,) = type_name_lit.get_values()
+        type_name = node.get_type_ref_name()
         symbol = self._scope_stack.resolve_symbol(type_name)
 
         return NewChildSpec(
             symbol=symbol,
             type_identifier=symbol.name,
             type_node=symbol.type_node,
-            count=node.new_count.get().get_value(),
+            count=node.get_new_count(),
         )
 
         # TODO: handle template args
@@ -732,12 +710,7 @@ class ASTVisitor:
         if (slice_node := iterable_field.slice.get()) is None:
             return sequence_elements
 
-        start_idx, stop_idx, step_idx = (
-            slice_node.get_start(),
-            slice_node.get_stop(),
-            slice_node.get_step(),
-        )
-
+        start_idx, stop_idx, step_idx = slice_node.get_values()
         if step_idx == 0:
             raise DslException("Slice step cannot be zero")
 
@@ -794,9 +767,7 @@ class ASTVisitor:
         else:
             raise DslException("Unexpected iterable type")
 
-        target_literal = node.target.get().try_extract_constrained_literal()
-        loop_var = cast_assert(str, target_literal)
-
+        (loop_var,) = node.target.get().get_values()
         # Execute body for each item by aliasing the loop var to the item's path
         for item_path in item_paths:
             with self._scope_stack.temporary_alias(loop_var, item_path):
