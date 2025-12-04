@@ -1057,7 +1057,7 @@ class MutatorUtils:
         operables = [
             o_po
             for o in expr.get_operands()
-            if (o_po := o.get_sibling_trait(F.Parameters.is_parameter_operatable))
+            if (o_po := o.try_get_sibling_trait(F.Parameters.is_parameter_operatable))
         ]
         op_set = set(operables)
 
@@ -1105,7 +1105,9 @@ class MutatorUtils:
         if po_expr := po.try_get_sibling_trait(F.Expressions.is_expression):
             for op in po_expr.get_operands():
                 if not (
-                    op_po := op.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                    op_po := op.try_get_sibling_trait(
+                        F.Parameters.is_parameter_operatable
+                    )
                 ):
                     continue
                 for param, count in MutatorUtils.count_param_occurrences(op_po).items():
