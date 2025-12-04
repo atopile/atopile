@@ -68,7 +68,7 @@ def test_bom_kicad_footprint_no_lcsc():
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
         )
     )
-    m.get_trait(F.can_attach_to_footprint).attach(fp)
+    m.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
     _build(m)
 
     bomline = _get_bomline(m)
@@ -84,7 +84,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
         )
     )
-    m.get_trait(F.can_attach_to_footprint).attach(fp)
+    m.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
     m.add(F.has_explicit_part.by_supplier("C18166021", pinmap={}))
 
     _build(m)

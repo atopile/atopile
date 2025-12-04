@@ -75,7 +75,7 @@ class is_atomic_part(fabll.Node):
             .from_path(fp_path, lib_name=fp_lib)
         )
         # TODO: This trait is forwarded by a trait with attach function
-        parent.get_trait(F.can_attach_to_footprint).attach(fp)
+        parent.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
 
         # TODO symbol
 

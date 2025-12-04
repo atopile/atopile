@@ -62,7 +62,7 @@ class has_explicit_part(fabll.Node):
     #     if self.override_footprint:
     #         fp, fp_kicad_id = self.override_footprint
     #         fp.add(F.KicadFootprint.has_kicad_identifier(fp_kicad_id))
-    #         obj.get_trait(F.can_attach_to_footprint).attach(fp)
+    #         obj.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
 
     # def _merge(self, overlay: "has_explicit_part"):
     #     attrs = [
