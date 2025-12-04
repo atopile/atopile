@@ -251,6 +251,19 @@ class InstanceGraphFunctions:
         return edges
 
     @staticmethod
+    def _collect_pointer_edges(bound_node: BoundNode) -> list:
+        """Collect all pointer edges of a node."""
+        edges: list[Any] = []
+
+        def collect(ctx, edge):
+            ctx.append(edge)
+
+        EdgePointer.visit_pointed_edges(
+            bound_node=bound_node, ctx=edges, f=collect
+        )
+        return edges
+
+    @staticmethod
     def _build_node_counts(root_bound: BoundNode) -> dict[int, int]:
         """
         Build a mapping of node UUID -> total node count (node + descendants).
@@ -297,6 +310,7 @@ class InstanceGraphFunctions:
     def render(
         root: BoundNode,
         show_traits: bool = False,
+        show_pointers: bool = False,
         filter_types: list[str] | None = None,
     ) -> str:
         """
@@ -305,6 +319,7 @@ class InstanceGraphFunctions:
         Args:
             root: A BoundNode instance
             show_traits: If True, also show trait edges (default: False)
+            show_pointers: If True, also show pointer edges (default: False)
             filter_types: If provided, only render subtrees under children
                          with these type names (e.g., ["Electrical", "is_module"])
 
@@ -335,6 +350,7 @@ class InstanceGraphFunctions:
         node_key = InstanceGraphFunctions._node_key
         collect_children = InstanceGraphFunctions._collect_children
         collect_trait_edges = InstanceGraphFunctions._collect_trait_edges
+        collect_pointer_edges = InstanceGraphFunctions._collect_pointer_edges
 
         def get_node_name(bound_node: BoundNode) -> str:
             """Get just the node name (not the full label with type)."""
@@ -428,7 +444,14 @@ class InstanceGraphFunctions:
                     target_type = get_type_name(target_bound) or ""
                     children.append(("→", edge, "Trait", target_type))
 
-            # Sort by target type name first, then edge type (Comp before Trait)
+            # Pointer edges (if enabled)
+            if show_pointers:
+                for edge in collect_pointer_edges(bound_node):
+                    target_bound = edge.g().bind(node=edge.edge().target())
+                    target_type = get_type_name(target_bound) or ""
+                    children.append(("→", edge, "Ptr", target_type))
+
+            # Sort by target type name first, then edge type (Comp before Ptr/Trait)
             children.sort(key=lambda item: (item[3], item[2]))
             return children
 
@@ -500,7 +523,9 @@ class InstanceGraphFunctions:
                         node_label, child_key, f"({child_count})"
                     )
 
-                render_node(child_bound, child_prefix, path, edge_name=child_display_name)
+                render_node(
+                    child_bound, child_prefix, path, edge_name=child_display_name
+                )
 
         def render_node(
             bound_node: BoundNode,
