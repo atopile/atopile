@@ -24,8 +24,11 @@ class ConfigurableI2CClient(fabll.Node):
     )
 
     def setup(self, g, tg) -> None:  # type: ignore
-        self.addressor.get().address.get().alias_to_literal(
-            g, self.i2c.get().address.get()
+        F.Expressions.Is.c(
+            self.addressor.get().address.get().can_be_operand.get(),
+            self.i2c.get().address.get().can_be_operand.get(),
+            g=g,
+            tg=tg,
         )
         self.addressor.get().base.get().alias_to_literal(
             g,
@@ -35,7 +38,7 @@ class ConfigurableI2CClient(fabll.Node):
                 value=16,
                 unit=F.Units.Dimensionless.bind_typegraph(tg)
                 .create_instance(g)
-                .get_trait(F.Units.is_unit),
+                .is_unit.get(),
             ),
         )
 
@@ -58,7 +61,7 @@ def test_addressor():
             value=16 + 3,
             unit=F.Units.Dimensionless.bind_typegraph(tg)
             .create_instance(g)
-            .get_trait(F.Units.is_unit),
+            .is_unit.get(),
         ),
     )
 

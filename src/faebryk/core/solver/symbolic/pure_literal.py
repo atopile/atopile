@@ -6,8 +6,10 @@ import functools
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
@@ -22,18 +24,30 @@ class _Multi:
     f: Callable[..., Any]
     init: F.Literals.LiteralValues | None = None
 
-    def run(self, mutator: Mutator, *args: F.Literals.is_literal) -> Any:
+    def run(
+        self, *args: F.Literals.LiteralNodes, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_lit(
-                mutator.G_in, mutator.tg_in, self.init
-            ).get_trait(F.Literals.is_literal)
+            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.init)
             args = (init_lit, init_lit, *args)
-        return functools.reduce(self.f, args)
+
+        def _f(
+            *args: F.Literals.LiteralNodes,
+        ) -> F.Literals.LiteralNodes | F.Literals.is_literal | bool:
+            return self.f(*args, g=g, tg=tg)
+
+        out = functools.reduce(
+            _f,  # type: ignore # some function return is_literal/bool but its ok
+            args,
+        )
+        # TODO: remove hack for equals returning bool
+        if isinstance(out, F.Literals.LiteralValues):
+            out = F.Literals.make_simple_lit_singleton(g, tg, out)
+        return out if isinstance(out, F.Literals.is_literal) else out.is_literal.get()
 
 
 # TODO consider making this a trait instead
 
-# FIXME: the function take a bad mix of literalnodes and is_literal
 _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.Add: _Multi(F.Literals.Numbers.op_add_intervals, 0),
     F.Expressions.Multiply: _Multi(F.Literals.Numbers.op_mul_intervals, 1),
@@ -49,7 +63,7 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
     F.Expressions.SymmetricDifference: _Multi(
         F.Literals.is_literal.op_symmetric_difference_intervals
     ),
-    F.Expressions.Is: _Multi(F.Literals.is_literal.op_is_equal),
+    F.Expressions.Is: _Multi(F.Literals.is_literal.equals),
     F.Expressions.GreaterOrEqual: _Multi(F.Literals.Numbers.op_greater_or_equal),
     F.Expressions.GreaterThan: _Multi(F.Literals.Numbers.op_greater_than),
     F.Expressions.IsSubset: _Multi(F.Literals.is_literal.is_subset_of),
@@ -60,32 +74,38 @@ _CanonicalExpressions: dict[type[fabll.NodeT], _Multi] = {
 
 
 def _exec_pure_literal_operands(
-    mutator: Mutator,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
     expr_type: "fabll.ImplementsType",
     operands: Iterable[F.Parameters.can_be_operand],
 ) -> F.Literals.is_literal | None:
     operands = list(operands)
     _map = {
-        k.bind_typegraph(expr_type.tg).get_or_create_type().node(): v
+        k.bind_typegraph(expr_type.tg).get_or_create_type().node().get_uuid(): v
         for k, v in _CanonicalExpressions.items()
     }
-    expr_type_node = fabll.Traits(expr_type).get_obj_raw().get_type_node()
-    if expr_type_node not in _map:
+    expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
+    if expr_type_node.get_uuid() not in _map:
         return None
-    if not all(mutator.utils.is_literal(o) for o in operands):
+    lits = [o.try_get_sibling_trait(F.Literals.is_literal) for o in operands]
+    if not all(lits):
         return None
+    lits = cast(list[F.Literals.is_literal], lits)
+    lits_nodes = [o.switch_cast() for o in lits]
     try:
-        return _map[expr_type_node].run(mutator, *operands)
+        return _map[expr_type_node.get_uuid()].run(g=g, tg=tg, *lits_nodes)
     except (ValueError, NotImplementedError, ZeroDivisionError):
         return None
 
 
 def _exec_pure_literal_expressions(
-    mutator: Mutator,
+    g: graph.GraphView,
+    tg: fbrk.TypeGraph,
     expr: F.Expressions.is_expression,
 ) -> F.Literals.is_literal | None:
     return _exec_pure_literal_operands(
-        mutator,
+        g,
+        tg,
         not_none(
             fabll.TypeNodeBoundTG.try_get_trait_of_type(
                 fabll.ImplementsType,
@@ -99,23 +119,21 @@ def _exec_pure_literal_expressions(
 
 @algorithm("Fold pure literal expressions", terminal=False)
 def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.get_typed_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_canonical,)
-    )
+    exprs = mutator.get_expressions(sort_by_depth=True)
 
     for expr in exprs:
-        expr_t_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        expr_po = expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
         # TODO is this needed?
-        if mutator.has_been_mutated(expr_t_po) or mutator.is_removed(expr_t_po):
+        if mutator.has_been_mutated(expr_po) or mutator.is_removed(expr_po):
             continue
 
         # if expression is not evaluatable that's fine
         # just means we can't say anything about the result
         result = _exec_pure_literal_expressions(
-            mutator, expr.get_trait(F.Expressions.is_expression)
+            mutator.G_transient,
+            mutator.tg_in,
+            expr,
         )
         if result is None:
             continue
-        mutator.utils.alias_is_literal_and_check_predicate_eval(
-            expr.get_trait(F.Expressions.is_expression), result
-        )
+        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)

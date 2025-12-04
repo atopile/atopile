@@ -62,7 +62,11 @@ class has_simple_value_representation(fabll.Node):
             return "" if literal is None else literal.get_values()[0]
 
         def _get_value(self) -> str:
-            lit = self.param.get_trait(F.Parameters.is_parameter_operatable).try_get_aliased_literal()
+            lit = self.param.get_trait(
+                F.Parameters.is_parameter_operatable
+            ).try_get_aliased_literal()
+            if lit is None:
+                raise ValueError(f"No literal found for {self.param}")
             return lit.pretty_str()
 
             # TODO this is probably not the only place we will ever need
@@ -73,7 +77,7 @@ class has_simple_value_representation(fabll.Node):
             #         raise ValueError("tolerance not supported for enum")
             #     # TODO handle units
             #     enum = EnumSet.from_value(value)
-            #     if not enum.is_single_element():
+            #     if not enum.is_singleton():
             #         raise NotImplementedError()
             #     val = next(iter(enum.elements))
             #     # TODO not sure I like this
@@ -85,7 +89,7 @@ class has_simple_value_representation(fabll.Node):
             #     if self.tolerance:
             #         raise ValueError("tolerance not supported for boolean")
             #     bool_val = BoolSet.from_value(value)
-            #     if not bool_val.is_single_element():
+            #     if not bool_val.is_singleton():
             #         raise NotImplementedError()
             #     return str(next(iter(bool_val.elements))).lower()
 
@@ -93,7 +97,7 @@ class has_simple_value_representation(fabll.Node):
             #     unit = self.unit if self.unit is not None else self.param.units
             #     # TODO If tolerance, maybe hint that it's weird there isn't any
             #     value_lit = Quantity_Interval_Disjoint.from_value(value)
-            #     if value_lit.is_single_element():
+            #     if value_lit.is_singleton():
             #         return to_si_str(value_lit.min_elem, unit, 2)
             #     if len(value_lit._intervals.intervals) > 1:
             #         raise NotImplementedError()
@@ -113,10 +117,11 @@ class has_simple_value_representation(fabll.Node):
             try:
                 value = self._get_value()
             except Exception as e:
-                if self.default is None:
-                    raise
+                if not self.default:
+                    logger.debug(f"No value or default for `{self.param}`: {e}")
+                    return ""
                 logger.debug(f"Failed to get value for `{self.param}`: {e}")
-                return ""
+                return self.default
             return join_if_non_empty(
                 " ",
                 self.prefix,
@@ -268,27 +273,35 @@ def test_repr_chain_basic():
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
-        .setup_from_interval(
-            lower=10.0,
-            upper=20,
-            unit=F.Units.Volt,
+        .setup_from_min_max(
+            min=10.0,
+            max=20,
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
     m.param2.get().alias_to_literal(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
-        .setup_from_singleton(value=5.0, unit=F.Units.Ampere),
+        .setup_from_singleton(
+            value=5.0,
+            unit=F.Units.Ampere.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .is_unit.get(),
+        ),
     )
     m.param3.get().alias_to_literal(
         g=g,
         value=F.Literals.Numbers.bind_typegraph(tg)
         .create_instance(g=g)
-        .setup_from_singleton(value=10.0, unit=F.Units.Volt),
+        .setup_from_singleton(
+            value=10.0,
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        ),
     )
 
-    val = m.get_trait(has_simple_value_representation).get_value()
-    assert val == "TM 15V ±33% 5A P2 10V P3"
+    val = m._simple_repr.get().get_value()
+    assert val == "TM 15.0V ±33% 5.0A P2 10.0V P3"
 
 
 def test_repr_chain_non_number():
@@ -314,12 +327,19 @@ def test_repr_chain_non_number():
         )
 
     m = TestModule.bind_typegraph(tg).create_instance(g=g)
-    m.param1.get().get_trait(F.Parameters.is_parameter_operatable).alias_to_literal(
-        g=g, value=TestEnum.A
+    # Use AbstractEnums directly - setup() internally uses EnumsFactory for type defs
+    test_enum_lit = (
+        F.Literals.AbstractEnums.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(TestEnum.A)
+    )
+    m.param1.get().is_parameter_operatable.get().alias_to_literal(
+        g=g,
+        value=test_enum_lit,
     )
     m.param2.get().alias_to_single(value=True)
 
-    val = m.get_trait(has_simple_value_representation).get_value()
+    val = m._simple_repr.get().get_value()
     assert val == "AS P2: true"
 
 
@@ -345,7 +365,7 @@ def test_repr_chain_no_literal():
 
     m = TestModule.bind_typegraph(tg).create_instance(g=g)
 
-    val = m.get_trait(has_simple_value_representation).get_value()
+    val = m._simple_repr.get().get_value()
     assert val == "P3: MISSING"
 
     m.param1.get().alias_to_literal(
@@ -354,8 +374,8 @@ def test_repr_chain_no_literal():
         .create_instance(g=g)
         .setup_from_singleton(
             value=10.0,
-            unit=F.Units.Volt,
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
-    val = m.get_trait(has_simple_value_representation).get_value()
-    assert val == "10V P3: MISSING"
+    val = m._simple_repr.get().get_value()
+    assert val == "10.0V P3: MISSING"

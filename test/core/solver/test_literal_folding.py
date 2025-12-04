@@ -94,25 +94,29 @@ def lit(val: float) -> F.Literals.Numbers:
     return (
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup_from_singleton(value=val, unit=dimless.get_trait(F.Units.is_unit))
+        .setup_from_singleton(value=val, unit=dimless.is_unit.get())
     )
 
 
 def lit_op_single(val: float) -> F.Parameters.can_be_operand:
-    return lit(val).get_trait(F.Parameters.can_be_operand)
+    return lit(val).is_literal.get().as_operand.get()
 
 
 def lit_op_range(lower: float, upper: float) -> F.Parameters.can_be_operand:
     dimless = F.Units.Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).setup()
     return (
-        F.Literals.Numbers.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup_from_min_max(
-            min=lower,
-            max=upper,
-            unit=dimless.get_trait(F.Units.is_unit),
+        (
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_min_max(
+                min=lower,
+                max=upper,
+                unit=dimless.is_unit.get(),
+            )
         )
-    ).get_trait(F.Parameters.can_be_operand)
+        .is_literal.get()
+        .as_operand.get()
+    )
 
 
 def op(x: fabll.NodeT) -> F.Parameters.can_be_operand:
@@ -134,15 +138,19 @@ class Builders(Namespace):
             .setup(
                 domain=F.NumberDomain.bind_typegraph(tg=tg)
                 .create_instance(g=g)
-                .setup(negative=True, zero_allowed=True, integer=False)
+                .setup(
+                    args=F.NumberDomain.Args(
+                        negative=True, zero_allowed=True, integer=False
+                    )
+                )
             )
         )
 
         F.Expressions.Is.from_operands(
-            p.get_trait(F.Parameters.can_be_operand),
+            p.can_be_operand.get(),
             literal,
         )
-        return p.get_trait(F.Parameters.is_parameter)
+        return p.is_parameter.get()
 
     @staticmethod
     def operator(

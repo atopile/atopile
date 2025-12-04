@@ -63,13 +63,13 @@ def test_flatten_associative(op: Callable[..., F.Parameters.can_be_operand]):
     # (e.g., F.Expressions.Add.c -> F.Expressions.Add)
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
-        F.Expressions.is_associative
+        F.Expressions.is_flattenable
     ):
         assert len(res.destroyed_operations) == 0
         return
 
     if not op_class.bind_typegraph(E.tg).try_get_type_trait(
-        F.Expressions.is_fully_associative
+        F.Expressions.is_associative
     ):
         assert set(res.extracted_operands) & {A, B, C}
         assert not set(res.extracted_operands) & {D, E}
@@ -113,7 +113,10 @@ def test_mutator_no_graph_merge():
     assert p3_new.tg is not G_new
     assert (
         cast_assert(
-            F.Parameters.is_parameter, mutator.get_mutated(p1.as_parameter_operatable())
+            F.Parameters.is_parameter,
+            mutator.get_mutated(
+                p1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+            ),
         ).tg
         is G_new
     )
@@ -126,29 +129,39 @@ def test_get_expressions_involved_in():
 
     E1 = E.add(A, B)
 
-    res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
+    res = MutatorUtils.get_expressions_involved_in(
+        E1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    )
     assert res == set()
 
     E2 = E.add(E1, A)
 
-    res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
+    res = MutatorUtils.get_expressions_involved_in(
+        E1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    )
     assert res == {fabll.Traits(E2).get_obj_raw()}
 
     E3 = E.add(E2, B)
 
-    res = MutatorUtils.get_expressions_involved_in(E1.as_parameter_operatable())
+    res = MutatorUtils.get_expressions_involved_in(
+        E1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    )
     assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
-    res = MutatorUtils.get_expressions_involved_in(E2.as_parameter_operatable())
+    res = MutatorUtils.get_expressions_involved_in(
+        E2.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    )
     assert res == {fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable(), up_only=False
+        E2.get_sibling_trait(F.Parameters.is_parameter_operatable), up_only=False
     )
     assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
-        E2.as_parameter_operatable(), up_only=False, include_root=True
+        E2.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        up_only=False,
+        include_root=True,
     )
     assert res == {
         fabll.Traits(E1).get_obj_raw(),
@@ -185,7 +198,10 @@ def test_get_correlations_basic():
     op1, op2, overlap_exprs = correlations[0]
 
     # Check that the correlated operands are A and B
-    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert {op1, op2} == {
+        A.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+    }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
@@ -214,7 +230,10 @@ def test_get_correlations_nested_uncorrelated():
 
     assert len(inner_correlations) == 1
     op1, op2, overlap_exprs = inner_correlations[0]
-    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert {op1, op2} == {
+        A.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+    }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
@@ -243,7 +262,10 @@ def test_get_correlations_nested_correlated():
 
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {inner.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert {op1, op2} == {
+        inner.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+    }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
@@ -256,7 +278,7 @@ def test_get_correlations_self_correlated():
     )
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A.as_parameter_operatable()}
+    assert {op1, op2} == {A.get_sibling_trait(F.Parameters.is_parameter_operatable)}
     assert not overlap_exprs
 
 
@@ -287,7 +309,10 @@ def test_get_correlations_shared_predicates():
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert {op1, op2} == {
+        A.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+    }
     assert overlap_exprs == {fabll.Traits(E2).get_obj_raw()}
 
 
@@ -311,7 +336,10 @@ def test_get_correlations_correlated_regression():
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {a_neg.as_parameter_operatable(), B.as_parameter_operatable()}
+    assert {op1, op2} == {
+        a_neg.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+    }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
 
@@ -323,7 +351,7 @@ def test_mutation_map_compressed_mapping_forwards_identity():
 
     f = mapping.compressed_mapping_forwards
     assert {k: v.maps_to for k, v in f.items()} == {
-        v: v.get_sibling_trait(F.Parameters.is_parameter_operatable) for v in variables
+        v: v.as_parameter_operatable.get() for v in variables
     }
 
 
@@ -340,13 +368,13 @@ def test_mutation_map_compressed_mapping_backwards_identity():
 def test_mutation_map_compressed_mapping_backwards_copy():
     E = BoundExpressions()
     context, variables = _create_letters(E, 3)
-    variables = [v.as_parameter_operatable() for v in variables]
+    variables = [v.as_parameter_operatable.get() for v in variables]
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
-    variables_new = [v.as_parameter_operatable() for v in variables_new]
+    variables_new = [v.as_parameter_operatable.get() for v in variables_new]
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -373,13 +401,13 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 def test_mutation_map_compressed_mapping_backwards_mutate():
     E = BoundExpressions()
     context, variables = _create_letters(E, 3)
-    variables = [v.as_parameter_operatable() for v in variables]
+    variables = [v.as_parameter_operatable.get() for v in variables]
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
-    variables_new = [v.as_parameter_operatable() for v in variables_new]
+    variables_new = [v.as_parameter_operatable.get() for v in variables_new]
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -415,13 +443,13 @@ def test_mutation_map_non_copy_mutated_identity():
 def test_mutation_map_non_copy_mutated_mutate():
     E = BoundExpressions()
     context, variables = _create_letters(E, 3)
-    variables = [v.as_parameter_operatable() for v in variables]
+    variables = [v.as_parameter_operatable.get() for v in variables]
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 3)
-    variables_new = [v.as_parameter_operatable() for v in variables_new]
+    variables_new = [v.as_parameter_operatable.get() for v in variables_new]
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -446,13 +474,13 @@ def test_mutation_map_non_copy_mutated_mutate():
 def test_mutation_map_non_copy_mutated_mutate_expression():
     E = BoundExpressions()
     context, variables = _create_letters(E, 2)
-    op = E.add(*[v.as_operand() for v in variables])
+    op = E.add(*[v.as_operand.get() for v in variables])
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 2)
-    op_new = E.multiply(*[v.as_operand() for v in variables_new])
+    op_new = E.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(
         MutationStage(
@@ -477,13 +505,13 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
 def test_mutation_map_submap():
     E = BoundExpressions()
     context, variables = _create_letters(E, 2)
-    op = E.add(*[v.as_operand() for v in variables])
+    op = E.add(*[v.as_operand.get() for v in variables])
 
     mapping = MutationMap.bootstrap(E.tg, E.g, print_context=context)
 
     E2 = BoundExpressions()
     _, variables_new = _create_letters(E2, 2)
-    op_new = E.multiply(*[v.as_operand() for v in variables_new])
+    op_new = E.multiply(*[v.as_operand.get() for v in variables_new])
 
     mapping_new = mapping.extend(  # noqa: F841
         MutationStage(
@@ -525,13 +553,15 @@ def test_traceback_filtering_chain():
     context, variables = _create_letters(E, 3)
     A, B, C = variables
 
-    E1 = E.add(A.as_operand(), B.as_operand())
-    E2 = E.add(E1, A.as_operand())
+    E1 = E.add(A.as_operand.get(), B.as_operand.get())
+    E2 = E.add(E1, A.as_operand.get())
 
     solver = DefaultSolver()
     out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=False)
 
-    E2_new = out.data.mutation_map.map_forward(E2.as_parameter_operatable()).maps_to
+    E2_new = out.data.mutation_map.map_forward(
+        E2.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
     assert E2_new
     tb = out.data.mutation_map.get_traceback(E2_new)
     logger.info(tb.filtered())
@@ -542,16 +572,16 @@ def test_traceback_filtering_tree():
     context, variables = _create_letters(E, 3)
     A, B, C = variables
 
-    E.is_subset(B.as_operand(), E.lit_op_range((0, 10)), assert_=True)
-    E.is_subset(C.as_operand(), E.lit_op_range((5, 15)), assert_=True)
+    E.is_subset(B.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
+    E.is_subset(C.as_operand.get(), E.lit_op_range((5, 15)), assert_=True)
 
-    E.is_subset(A.as_operand(), B.as_operand(), assert_=True)
-    E.is_subset(A.as_operand(), C.as_operand(), assert_=True)
+    E.is_subset(A.as_operand.get(), B.as_operand.get(), assert_=True)
+    E.is_subset(A.as_operand.get(), C.as_operand.get(), assert_=True)
 
     solver = DefaultSolver()
     out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=True)
 
-    A_new = out.data.mutation_map.map_forward(A.as_parameter_operatable()).maps_to
+    A_new = out.data.mutation_map.map_forward(A.as_parameter_operatable.get()).maps_to
     assert A_new
     tb = out.data.mutation_map.get_traceback(A_new)
     logger.info(rich_to_string(tb.filtered().as_rich_tree()))
@@ -567,8 +597,8 @@ def test_contradiction_message_subset():
     context, variables = _create_letters(E, 1)
     (A,) = variables
 
-    E.is_subset(A.as_operand(), E.lit_op_range((6, 7)), assert_=True)
-    E.is_(A.as_operand(), E.lit_op_range((4, 5)), assert_=True)
+    E.is_subset(A.as_operand.get(), E.lit_op_range((6, 7)), assert_=True)
+    E.is_(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
 
     solver = DefaultSolver()
 
@@ -581,8 +611,8 @@ def test_contradiction_message_superset():
     context, variables = _create_letters(E, 1)
     (A,) = variables
 
-    E.is_superset(A.as_operand(), E.lit_op_range((0, 10)), assert_=True)
-    E.is_(A.as_operand(), E.lit_op_range((4, 5)), assert_=True)
+    E.is_superset(A.as_operand.get(), E.lit_op_range((0, 10)), assert_=True)
+    E.is_(A.as_operand.get(), E.lit_op_range((4, 5)), assert_=True)
 
     solver = DefaultSolver()
 

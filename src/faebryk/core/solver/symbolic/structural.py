@@ -51,21 +51,24 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
     ge_exprs = {
         e
-        for e in mutator.get_typed_expressions(GreaterOrEqual, sort_by_depth=True)
+        for e in mutator.get_typed_expressions(
+            GreaterOrEqual,
+            sort_by_depth=True,
+            required_traits=(F.Expressions.is_predicate,),
+        )
         # Look for expressions with only one non-literal operand
-        if e.try_get_trait(F.Expressions.is_predicate)
-        and len(
+        if len(
             [
                 op
-                for op in e.get_trait(F.Expressions.is_expression).get_operands()
-                if op.is_parameter_operatable()
+                for op in e.is_expression.get().get_operands()
+                if op.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
             ]
         )
         == 1
     }
 
     for ge in ge_exprs:
-        ge_e = ge.get_trait(F.Expressions.is_expression)
+        ge_e = ge.is_expression.get()
         op_0 = ge_e.get_operands()[0]
         op_1 = ge_e.get_operands()[1]
         is_left = op_0.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
@@ -74,40 +77,48 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             param = op_0
             lit = op_1.get_sibling_trait(F.Literals.is_literal)
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.max_elem()
-            if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
+            boundary = lit_n.get_max_value()
+            if boundary >= math.inf:
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "GreaterEqual inf not possible",
-                        involved=[param.as_parameter_operatable()],
+                        involved=[
+                            param.get_sibling_trait(
+                                F.Parameters.is_parameter_operatable
+                            )
+                        ],
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False).as_literal()
+                    ge_e, mutator.make_lit(False).is_literal.get()
                 )
                 continue
-            interval = boundary
+            interval = mutator.utils.make_number_literal_from_range(boundary, math.inf)
         else:
             param = op_1
             lit = op_0.get_sibling_trait(F.Literals.is_literal)
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.min_elem()
-            if boundary.op_greater_or_equal(mutator.make_lit(math.inf)):
+            boundary = lit_n.get_min_value()
+            if boundary <= -math.inf:
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "LessEqual -inf not possible",
-                        involved=[param.as_parameter_operatable()],
+                        involved=[
+                            param.get_sibling_trait(
+                                F.Parameters.is_parameter_operatable
+                            )
+                        ],
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    ge_e, mutator.make_lit(False).as_literal()
+                    ge_e, mutator.make_lit(False).is_literal.get()
                 )
                 continue
-            interval = boundary
+            interval = mutator.utils.make_number_literal_from_range(-math.inf, boundary)
 
         mutator.mutate_expression(
             ge_e,
-            operands=[param, interval.get_trait(F.Parameters.can_be_operand)],
+            operands=[param, interval.can_be_operand.get()],
             expression_factory=IsSubset,
         )
 
@@ -180,7 +191,9 @@ def remove_congruent_expressions(mutator: Mutator):
         # TODO use hash to speed up comparisons
         for e1, e2 in combinations(exprs, 2):
             # no need for recursive, since subexpr already merged if congruent
-            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2, recursive=False):
+            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(
+                e2, recursive=False, g=mutator.G_transient, tg=mutator.tg_in
+            ):
                 full_eq.add_eq(e1, e2)
 
     repres = {}
@@ -237,10 +250,8 @@ def resolve_alias_classes(mutator: Mutator):
         ops: set[F.Parameters.is_parameter_operatable] = {
             # Literal expressions are basically literals
             o
-            for o in is_expr.get_trait(
-                F.Expressions.is_expression
-            ).get_operand_operatables()
-            if not mutator.utils.is_literal_expression(o.as_operand())
+            for o in is_expr.is_expression.get().get_operand_operatables()
+            if not mutator.utils.is_literal_expression(o.as_operand.get())
         }
         # eq between non-literal operands
         full_eq.add_eq(*ops)
@@ -271,16 +282,16 @@ def resolve_alias_classes(mutator: Mutator):
             iss_exprs = {
                 o
                 for e in iss
-                for o in e.get_trait(
+                for o in e.is_expression.get().get_operands_with_trait(
                     F.Expressions.is_expression
-                ).get_operands_with_trait(F.Expressions.is_expression)
+                )
             }
             if eq_class_exprs.issubset(iss_exprs):
                 # check if all predicates are already propagated
                 class_expressions = {
                     e
                     for operand in eq_class_exprs
-                    for e in operand.as_parameter_operatable().get_operations()
+                    for e in operand.as_parameter_operatable.get().get_operations()
                     # skip POps Is, because they create the alias classes
                     # or literal aliases (done by distribute algo)
                     if not (
@@ -339,17 +350,19 @@ def resolve_alias_classes(mutator: Mutator):
             representative = mutator.register_created_parameter(
                 F.Parameters.BooleanParameter.bind_typegraph(mutator.tg_out)
                 .create_instance(g=mutator.G_out)
-                .get_trait(F.Parameters.is_parameter),
+                .is_parameter.get(),
                 from_ops=list(eq_class),
             ).as_parameter_operatable.get()
 
         for e in eq_class_exprs:
-            e_po = e.as_parameter_operatable()
+            e_po = e.as_parameter_operatable.get()
             mutator.soft_replace(e_po, representative)
             if mutator.utils.are_aliased(e_po, *eq_class_params):
                 continue
             mutator.utils.alias_to(
-                e.as_operand(), representative.as_operand(), from_ops=list(eq_class)
+                e.as_operand.get(),
+                representative.as_operand.get(),
+                from_ops=list(eq_class),
             )
 
 
@@ -387,7 +400,9 @@ def merge_intersect_subsets(mutator: Mutator):
         if len(ss_lits) <= 1:
             continue
 
-        intersected = F.Literals.is_literal.intersect_all(*ss_lits.keys())
+        intersected = F.Literals.is_literal.intersect_all(
+            *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
+        )
 
         # short-cut, would be detected by subset_to
         if intersected.is_empty():
@@ -401,23 +416,22 @@ def merge_intersect_subsets(mutator: Mutator):
         old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
 
         # already exists
-        if contained := intersected.equals(*ss_lits):
+        if contained := intersected.equals(
+            *ss_lits, g=mutator.G_transient, tg=mutator.tg_out
+        ):
             _, target = contained
         else:
             target = mutator.utils.subset_to(
-                param.as_operand(),
-                intersected.as_operand(),
-                from_ops=[
-                    old_ss.get_trait(F.Parameters.is_parameter_operatable)
-                    for old_ss in old_sss
-                ],
+                param.as_operand.get(),
+                intersected.as_operand.get(),
+                from_ops=[old_ss.is_parameter_operatable.get() for old_ss in old_sss],
             )
             target_obj = fabll.Traits(target).get_obj_raw()
             assert target_obj.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
 
         # Merge
         for old_ss in old_sss:
-            old_ss_po = old_ss.get_trait(F.Parameters.is_parameter_operatable)
+            old_ss_po = old_ss.is_parameter_operatable.get()
             target_po = target.get_sibling_trait(F.Parameters.is_parameter_operatable)
             mutator._mutate(
                 old_ss_po,
@@ -434,13 +448,13 @@ def empty_set(mutator: Mutator):
 
     # A is {} -> False
     for e in mutator.get_typed_expressions(Is):
-        e_expr = e.get_trait(F.Expressions.is_expression)
+        e_expr = e.is_expression.get()
         lits = e_expr.get_operand_literals()
         if not lits:
             continue
         if any(lit.is_empty() for lit in lits.values()):
             mutator.utils.alias_is_literal_and_check_predicate_eval(
-                e_expr, mutator.make_lit(False).as_literal()
+                e_expr, mutator.make_lit(False).is_literal.get()
             )
 
     # A ss {} -> False
@@ -457,8 +471,8 @@ def transitive_subset(mutator: Mutator):
     """
     # for all A ss! B | B not lit
     for ss_op in mutator.utils.get_all_subsets():
-        ss_op_e = ss_op.get_trait(F.Expressions.is_expression)
-        ss_op_po = ss_op.get_trait(F.Parameters.is_parameter_operatable)
+        ss_op_e = ss_op.is_expression.get()
+        ss_op_po = ss_op.is_parameter_operatable.get()
         A, B = ss_op_e.get_operands()
         if not (B_po := B.try_get_sibling_trait(F.Parameters.is_parameter_operatable)):
             continue
@@ -473,7 +487,7 @@ def transitive_subset(mutator: Mutator):
                 C,
                 from_ops=[
                     ss_op_po,
-                    *(e.get_trait(F.Parameters.is_parameter_operatable) for e in es),
+                    *(e.is_parameter_operatable.get() for e in es),
                 ],
             )
 
@@ -481,7 +495,7 @@ def transitive_subset(mutator: Mutator):
         # for non-lits done by eq classes
         X = mutator.utils.try_extract_literal(B_po)
         if X is not None:
-            mutator.utils.subset_to(A, X.as_operand(), from_ops=[ss_op_po, B_po])
+            mutator.utils.subset_to(A, X.as_operand.get(), from_ops=[ss_op_po, B_po])
 
 
 @algorithm("Predicate flat terminate", terminal=False)
@@ -496,7 +510,7 @@ def predicate_flat_terminate(mutator: Mutator):
     """
     predicates = mutator.get_expressions(required_traits=(F.Expressions.is_predicate,))
     for p_e in predicates:
-        p_po = p_e.as_parameter_operatable()
+        p_po = p_e.as_parameter_operatable.get()
         if any(p_e.get_operands_with_trait(F.Expressions.is_expression)):
             continue
 
@@ -518,7 +532,7 @@ def predicate_terminated_is_true(mutator: Mutator):
             continue
         if mutator.is_predicate_terminated(p_c):
             continue
-        p_e = p.get_trait(F.Expressions.is_expression)
+        p_e = p.is_expression.get()
         if not any(
             lit.equals_singleton(True) for lit in p_e.get_operand_literals().values()
         ):
@@ -543,9 +557,9 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = mutator.get_expressions(sort_by_depth=True)
     for e in exprs:
-        if mutator.utils.is_pure_literal_expression(e.as_operand()):
+        if mutator.utils.is_pure_literal_expression(e.as_operand.get()):
             continue
-        e_po = e.as_parameter_operatable()
+        e_po = e.as_parameter_operatable.get()
         # handled in _todo
         if mutator.utils.is_alias_is_literal(e_po) or mutator.utils.is_subset_literal(
             e_po
@@ -595,8 +609,12 @@ def isolate_lone_params(mutator: Mutator):
         op_without_param: F.Parameters.can_be_operand,
         from_expr: F.Expressions.is_expression,
     ) -> tuple[F.Parameters.can_be_operand, F.Parameters.can_be_operand]:
-        if not (op_with_param_e := op_with_param.is_expresssion()):
-            return op_with_param.as_operand(), op_without_param
+        if not (
+            op_with_param_e := op_with_param.try_get_sibling_trait(
+                F.Expressions.is_expression
+            )
+        ):
+            return op_with_param.as_operand.get(), op_without_param
 
         def op_or_create_expr(
             operation: type[fabll.NodeT], *operands: F.Parameters.can_be_operand
@@ -607,8 +625,8 @@ def isolate_lone_params(mutator: Mutator):
             return mutator.create_expression(
                 operation,
                 *operands,
-                from_ops=[from_expr.get_trait(F.Parameters.is_parameter_operatable)],
-            ).as_operand()
+                from_ops=[from_expr.as_parameter_operatable.get()],
+            ).as_operand.get()
 
         retained_ops = [
             op
@@ -623,7 +641,7 @@ def isolate_lone_params(mutator: Mutator):
         ]
 
         if not moved_ops:
-            return op_with_param.as_operand(), op_without_param
+            return op_with_param.as_operand.get(), op_without_param
 
         op_node = fabll.Traits(op_with_param).get_obj_raw()
         if op_node.isinstance(F.Expressions.Add):
@@ -636,7 +654,7 @@ def isolate_lone_params(mutator: Mutator):
                         op_or_create_expr(
                             Multiply,
                             op,
-                            mutator.make_lit(-1).get_trait(F.Parameters.can_be_operand),
+                            mutator.make_lit(-1).is_literal.get().as_operand.get(),
                         )
                         for op in moved_ops
                     ],
@@ -651,7 +669,7 @@ def isolate_lone_params(mutator: Mutator):
                     op_or_create_expr(
                         Power,
                         op_or_create_expr(Multiply, *moved_ops),
-                        mutator.make_lit(-1).get_trait(F.Parameters.can_be_operand),
+                        mutator.make_lit(-1).is_literal.get().as_operand.get(),
                     ),
                 ),
             )
@@ -661,11 +679,11 @@ def isolate_lone_params(mutator: Mutator):
                 op_or_create_expr(
                     Power,
                     op_without_param,
-                    mutator.make_lit(-1).get_trait(F.Parameters.can_be_operand),
+                    mutator.make_lit(-1).is_literal.get().as_operand.get(),
                 ),  # TODO: fix exponent
             )
         else:
-            return op_with_param.as_operand(), op_without_param
+            return op_with_param.as_operand.get(), op_without_param
 
     def isolate_param(
         expr: F.Expressions.is_expression, param: F.Parameters.is_parameter_operatable
@@ -692,7 +710,7 @@ def isolate_lone_params(mutator: Mutator):
         while True:
             new_op_with_param, new_op_without_param = _isolate_param(
                 param,
-                op_with_param.as_parameter_operatable(),
+                op_with_param.get_sibling_trait(F.Parameters.is_parameter_operatable),
                 op_without_param,
                 from_expr=expr,
             )
@@ -704,15 +722,15 @@ def isolate_lone_params(mutator: Mutator):
 
             op_with_param, op_without_param = new_op_with_param, new_op_without_param
 
-            if op_with_param.is_same(param.as_operand()):
+            if op_with_param.is_same(param.as_operand.get()):
                 return op_with_param, op_without_param
 
             # TODO: check for no further progress
 
     exprs = mutator.get_typed_expressions(Is, sort_by_depth=True)
     for expr in exprs:
-        expr_e = expr.get_trait(F.Expressions.is_expression)
-        expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        expr_e = expr.is_expression.get()
+        expr_po = expr.is_expression.get().as_parameter_operatable.get()
         if mutator.utils.try_extract_literal(expr_po) is None:
             continue
 
@@ -725,7 +743,7 @@ def isolate_lone_params(mutator: Mutator):
 
         unaliased_params = {
             p
-            for p in mutator.utils.find_unique_params(expr_po.as_operand())
+            for p in mutator.utils.find_unique_params(expr_po.as_operand.get())
             if mutator.utils.try_extract_literal(p) is None
         }
 
@@ -735,7 +753,7 @@ def isolate_lone_params(mutator: Mutator):
 
         param = unaliased_params.pop()
 
-        if param.as_operand() in expr_e.get_operands() and not any(
+        if param.as_operand.get() in expr_e.get_operands() and not any(
             op is not param and mutator.utils.find_unique_params(op) == {param}
             for op in expr_e.get_operands()
         ):
@@ -765,21 +783,21 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
         non_lit_aliases = {
             e: other_p
             for e in p.get_operations(Is, predicates_only=True)
-            if not e.get_trait(F.Expressions.is_expression).get_operand_literals()
-            and (other_p := e.get_other_operand(p.as_operand())) is not p
+            if not e.is_expression.get().get_operand_literals()
+            and (other_p := e.get_other_operand(p.as_operand.get()))
         }
         for alias_expr, alias in non_lit_aliases.items():
-            alias_expr_po = alias_expr.get_trait(F.Parameters.is_parameter_operatable)
+            alias_expr_po = alias_expr.is_expression.get().as_parameter_operatable.get()
             if is_alias:
                 mutator.utils.alias_to(
                     alias,
-                    lit.as_operand(),
+                    lit.as_operand.get(),
                     from_ops=[p, alias_expr_po],
                 )
             else:
                 mutator.utils.subset_to(
                     alias,
-                    lit.as_operand(),
+                    lit.as_operand.get(),
                     from_ops=[p, alias_expr_po],
                 )
 
@@ -799,7 +817,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
             p.get_sibling_trait(F.Expressions.is_predicate)
         ):
             continue
-        if mutator.utils.is_literal_expression(p.as_operand()):
+        if mutator.utils.is_literal_expression(p.as_operand.get()):
             continue
 
         for op in p.get_operand_operatables():
@@ -809,7 +827,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
                 unfulfilled_only=True,
             ):
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
-                    p, mutator.make_lit(True).as_literal()
+                    p, mutator.make_lit(True).is_literal.get()
                 )
                 break
 
@@ -879,7 +897,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             e
             for p in any_lit
             for e in p.get_operations(Is, predicates_only=True)
-            if e.get_trait(F.Expressions.is_expression).get_operand_literals()
+            if e.is_expression.get().get_operand_literals()
         }
 
         expr_po = expr.get_trait(F.Parameters.is_parameter_operatable)
@@ -891,7 +909,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             from_ops=[
                 expr_po,
                 *(
-                    lao.get_trait(F.Parameters.is_parameter_operatable)
+                    lao.is_expression.get().as_parameter_operatable.get()
                     for lao in lit_alias_origins
                 ),
             ],
@@ -955,7 +973,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
             e
             for p in any_lit
             for e in p.get_operations(Is, predicates_only=True)
-            if e.get_trait(F.Expressions.is_expression).get_operand_literals()
+            if e.is_expression.get().get_operand_literals()
         }
 
         # no point in op! is op! (always true)
@@ -968,7 +986,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 from_ops=[
                     expr.get_trait(F.Parameters.is_parameter_operatable),
                     *(
-                        lao.get_trait(F.Parameters.is_parameter_operatable)
+                        lao.is_expression.get().as_parameter_operatable.get()
                         for lao in lit_alias_origins
                     ),
                 ],
@@ -982,7 +1000,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
             from_ops=[
                 expr.get_trait(F.Parameters.is_parameter_operatable),
                 *(
-                    lao.get_trait(F.Parameters.is_parameter_operatable)
+                    lao.is_expression.get().as_parameter_operatable.get()
                     for lao in lit_alias_origins
                 ),
             ],

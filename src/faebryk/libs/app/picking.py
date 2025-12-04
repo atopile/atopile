@@ -38,7 +38,7 @@ def load_part_info_from_pcb(G: graph.GraphView):
 
     for node, trait in nodes:
         assert node.has_trait(fabll.is_module)
-        if isinstance(node, F.Footprint):
+        if isinstance(node, F.Footprints.GenericFootprint):
             continue
         if node.has_trait(F.has_part_picked):
             continue
@@ -133,20 +133,29 @@ def save_part_info_to_pcb(g: graph.GraphView, tg: fbrk.TypeGraph):
             continue
 
         if isinstance(part, PickedPartLCSC):
-            fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(key=Properties.lcsc, value=part.lcsc_id)
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(key=Properties.lcsc, value=part.lcsc_id)
 
-        fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(key=Properties.manufacturer, value=part.manufacturer)
-        fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(key=Properties.partno, value=part.partno)
+        fabll.Traits.create_and_add_instance_to(
+            node=node, trait=F.SerializableMetadata
+        ).setup(key=Properties.manufacturer, value=part.manufacturer)
+        fabll.Traits.create_and_add_instance_to(
+            node=node, trait=F.SerializableMetadata
+        ).setup(key=Properties.partno, value=part.partno)
 
         for p in node.get_children(direct_only=True, types=F.Parameters.is_parameter):
             lit = p.try_get_literal()
             if lit is None:
                 continue
             lit = F.Literals.Numbers.setup_from_singleton(value=lit)
-            fabll.Traits.create_and_add_instance_to(node=node, trait=F.SerializableMetadata).setup(
+            fabll.Traits.create_and_add_instance_to(
+                node=node, trait=F.SerializableMetadata
+            ).setup(
                 key=f"{Properties.param_prefix}{p.get_name()}",
-                value=json.dumps(lit.serialize())
+                value=json.dumps(lit.serialize()),
             )
+
 
 def test_save_part_info_to_pcb():
     print("")
@@ -154,7 +163,11 @@ def test_save_part_info_to_pcb():
     tg = fbrk.TypeGraph.create(g=g)
 
     res = F.Resistor.bind_typegraph(tg).create_instance(g=g)
-    fabll.Traits.create_and_add_instance_to(res, F.has_part_picked).setup(PickedPartLCSC(supplier_partno="C123456", manufacturer="blaze-it-inc", partno="69420"))
+    fabll.Traits.create_and_add_instance_to(res, F.has_part_picked).setup(
+        PickedPartLCSC(
+            supplier_partno="C123456", manufacturer="blaze-it-inc", partno="69420"
+        )
+    )
 
     save_part_info_to_pcb(g, tg)
 

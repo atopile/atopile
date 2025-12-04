@@ -175,6 +175,23 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
         identifier: str | None = None,
         before: bool = False,
     ):
+        """
+        Attach additional fields (children or edges) to this field that will be
+        created when this field is instantiated.
+
+        ### Args
+        - dependant: One or more _ChildField or _EdgeField to create alongside
+                this field.
+        - identifier: Optional identifier prefix for the dependant's locator.
+        - before: If True, prepend to dependants list (created first).
+
+        ### Example
+            - Add a trait to a child electrical
+
+            unnamed[0].add_dependant(
+                fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [unnamed[0]])
+            )
+        """
         for d in dependant:
             if identifier is not None:
                 d._set_locator(f"{identifier}_{id(d):04x}")
@@ -901,6 +918,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         if name.startswith("__") or name.endswith("__fields"):
             return
         if isinstance(value, Field):
+            # Skip fields that are already registered (e.g., loop variables pointing
+            # to fields already in a list). This prevents the same _ChildField from
+            # being registered twice under different locators.
+            if cls._is_field_registered(value):
+                return
             cls._add_field(locator=name, field=value)
         if (
             isinstance(value, list)
@@ -908,6 +930,21 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             and all(isinstance(c, Field) for c in value)
         ):
             cls._add_field(locator=name, field=ListField(fields=value))
+
+    @classmethod
+    def _is_field_registered(cls, field: Field) -> bool:
+        """
+        Check if a field is already registered, either directly or as part of a list.
+        This prevents duplicate registration when loop variables reference existing
+        fields.
+        """
+        for registered in cls.__fields.values():
+            if registered is field:
+                return True
+            # Check if field is inside a ListField
+            if isinstance(registered, ListField) and field in registered:
+                return True
+        return False
 
     @classmethod
     def _add_field(cls, locator: str, field: Field):
@@ -1388,7 +1425,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def get_trait[TR: Node](self, trait: type[TR]) -> TR:
         impl = self.try_get_trait(trait)
         if impl is None:
-            raise TraitNotFound(f"No trait {trait} found")
+            raise TraitNotFound(f"No trait {trait} found on {self}")
         return impl
 
     def has_trait(self, trait: type["NodeT"]) -> bool:
@@ -2217,6 +2254,7 @@ def test_type_children():
     children = Node.bind_instance(Resistor.get_or_create_type()).get_children(
         direct_only=True,
         types=Node,
+        tg=tg,
     )
     print(indented_container([c.get_full_name(types=True) for c in children]))
 
@@ -2234,10 +2272,11 @@ def test_resistor_instantiation():
     assert res_inst._type_identifier() == "Resistor"
     assert res_inst.unnamed[0].get().get_name() == "unnamed[0]"
     assert res_inst.resistance.get().get_name() == "resistance"
-    assert res_inst.resistance.get().get_units().get_type_name() == "Ohm"
+    assert res_inst.resistance.get().get_units().get_symbols()[0] == "Ω"
+    assert res_inst.resistance.get().get_units().get_symbols()[1] == "Ohm"
     assert res_inst.get_trait(fabll.is_module)
     electricals = (
-        res_inst.get_trait(F.can_attach_to_footprint_symmetrically)
+        res_inst.get_trait(F.Footprints.can_attach_to_footprint)
         .electricals_.get()
         .as_list()
     )
@@ -2302,7 +2341,7 @@ def test_kicad_footprint():
     pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
-        F.has_kicad_footprint.bind_typegraph(tg=tg)
+        F.is_kicad_footprint.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup(
             kicad_identifier="libR_0402_1005Metric2",

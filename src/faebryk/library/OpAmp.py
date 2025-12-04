@@ -6,19 +6,39 @@ import faebryk.library._F as F
 
 
 class OpAmp(fabll.Node):
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     input = F.DifferentialPair.MakeChild()
-    output = F.Electrical.MakeChild()
+    output = F.Electrical.MakeChild() # TODO this should be an ElectricSignal with reference set to power
 
     bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
-
     input_bias_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     input_offset_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
     gain_bandwidth_product = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
     output_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     slew_rate = F.Parameters.NumericParameter.MakeChild(unit=F.Units.VoltsPerSecond)
 
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
+
+    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "hv"]))
+    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "lv"]))
+    output.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [output]))
+    input.add_dependant(
+        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [input, "p", "line"])
+    )
+    input.add_dependant(
+        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [input, "n", "line"])
+    )
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(

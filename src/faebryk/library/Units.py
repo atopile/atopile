@@ -275,7 +275,7 @@ class is_unit(fabll.Node):
         unit_vector: BasisVector,
         multiplier: float = 1.0,
         offset: float = 0.0,
-    ) -> fabll._ChildField[Any]:
+    ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
 
         from faebryk.library.Literals import NumericInterval, Strings
@@ -483,7 +483,7 @@ class is_unit(fabll.Node):
             .setup(vector=vector, multiplier=multiplier, offset=offset)
         )
 
-        return unit.get_trait(is_unit)
+        return unit.is_unit.get()
 
     def scaled_copy(
         self, g: graph.GraphView, tg: graph.TypeGraph, multiplier: float
@@ -1072,7 +1072,7 @@ class _UnitExpressionResolver:
                 vector=_BasisVector.ORIGIN,
                 multiplier=1.0,
                 offset=0.0,
-            ).get_trait(is_unit)
+            )
 
         return reduce(
             lambda a, b: a.op_multiply(self.g, self.tg, b),
@@ -1792,8 +1792,8 @@ class TestIsUnit(_TestWithContext):
 
     def test_assert_commmensurability_single_item(self, ctx: BoundUnitsContext):
         """Test that single item list returns its unit"""
-        result = TestIsUnit.assert_commensurability([ctx.Meter.get_trait(is_unit)])
-        assert result == ctx.Meter.get_trait(is_unit)
+        result = TestIsUnit.assert_commensurability([ctx.Meter.is_unit.get()])
+        assert result == ctx.Meter.is_unit.get()
         parent, _ = result.get_parent_force()
         assert parent.isinstance(Meter)
         assert is_unit.bind_instance(result.instance).get_symbols() == ["m"]
@@ -2042,9 +2042,7 @@ class TestIsUnit(_TestWithContext):
 
     def test_to_base_units_derived(self, ctx: BoundUnitsContext):
         """Derived unit normalizes to base SI dimensions."""
-        newton = (
-            Newton.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).get_trait(is_unit)
-        )
+        newton = Newton.bind_typegraph(tg=ctx.tg).create_instance(g=ctx.g).is_unit.get()
         base = newton.to_base_units(g=ctx.g, tg=ctx.tg)
 
         assert base._extract_basis_vector() == BasisVector(

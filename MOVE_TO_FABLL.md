@@ -100,3 +100,15 @@ NOTE TO SELF THURSDAY:
 - get_trait creates lots of runtime problems, switch to \_trait.get()
   - consider invariant field in traits to capture sibling relationship
 - pure literal seems a bit fucked (operand order)
+
+NOTE TO SELF TUESDAY:
+
+- started fixing solver stuff for numeric parameters
+- was fixing test_simplify in test_solver.py
+  - now working, but hangs/slow?
+- ran pytest in the evening, but will take a while
+  - check on it in morning
+
+solver todo
+
+- [ ] mark exprs as literal during expr_mutation, then flag to solver that it needs to run flatten_literals afterwards

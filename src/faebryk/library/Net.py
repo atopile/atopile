@@ -23,19 +23,19 @@ class Net(fabll.Node):
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-    def get_connected_pads(self) -> dict[F.Pad, F.Footprint]:
+    def get_connected_pads(self) -> dict[F.Pad, F.Footprints.GenericFootprint]:
         return {
             pad: fp
             for mif in self.get_connected_interfaces()
-            if (fp := mif.get_parent_of_type(F.Footprint)) is not None
+            if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
             and (pad := mif.get_parent_of_type(F.Pad)) is not None
         }
 
-    def get_footprints(self) -> set[F.Footprint]:
+    def get_footprints(self) -> set[F.Footprints.GenericFootprint]:
         return {
             fp
             for mif in self.get_connected_interfaces()
-            if (fp := mif.get_parent_of_type(F.Footprint)) is not None
+            if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
         }
 
     # TODO should this be here?

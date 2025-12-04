@@ -18,7 +18,7 @@ class has_datasheet(fabll.Node):
         return self.datasheet_.get().force_extract_literal().get_values()[0]
 
     @classmethod
-    def MakeChild(cls, datasheet: str) -> fabll._ChildField:
+    def MakeChild(cls, datasheet: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
@@ -55,11 +55,11 @@ def test_makechild_sets_datasheet_on_instance():
     datasheet_url = "https://example.com/another.pdf"
 
     class ModuleWithDatasheet(fabll.Node):
-        datasheet = fabll.Traits.MakeEdge(
+        has_datasheet = fabll.Traits.MakeEdge(
             has_datasheet.MakeChild(datasheet=datasheet_url)
         )
 
     module = ModuleWithDatasheet.bind_typegraph(tg=tg).create_instance(g=g)
 
     assert module.has_trait(has_datasheet)
-    assert module.get_trait(has_datasheet).get_datasheet() == datasheet_url
+    assert module.has_datasheet.get().get_datasheet() == datasheet_url

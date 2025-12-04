@@ -123,7 +123,7 @@ def simple_erc(tg: fbrk.TypeGraph):
         # sym_fps = [
         #    n.get_trait(has_footprint).get_footprint()
         #    for n in parts
-        #    if n.has_trait(can_attach_to_footprint_symmetrically)
+        #    if n.has_trait(F.Footprints.can_attach_to_footprint)
         # ]
         # logger.info(f"Checking {len(sym_fps)} symmetric footprints")
         # for fp in sym_fps:
@@ -237,7 +237,7 @@ class Test:
         print(ex.value.path)
         # assert set(ex.value.path) == {ep1.lv, ep2.hv}
 
-    def test_erc_power_source_short():
+    def test_erc_power_source_short(self):
         """
         Test that a power source is shorted when connected to another power source
         """
@@ -257,9 +257,10 @@ class Test:
             simple_erc(tg)
 
 
-    def test_erc_power_source_no_short():
+    def test_erc_power_source_no_short(self):
         """
-        Test that a power source is not shorted when connected to another non-power source
+        Test that a power source is not shorted when connected to another
+        non-power source
         """
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)

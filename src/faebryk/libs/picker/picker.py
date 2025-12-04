@@ -189,9 +189,9 @@ def check_missing_picks(module: fabll.Node):
             types=fabll.Node,
             required_trait=fabll.is_module,
             direct_only=False,
-            f_filter=lambda x: not isinstance(x, F.Footprint),
+            f_filter=lambda x: not isinstance(x, F.Footprints.GenericFootprint),
         )
-        and not isinstance(m, F.Footprint)
+        and not isinstance(m, F.Footprints.GenericFootprint)
         # no parent with part picked
         and not try_or(
             lambda: m.get_parent_with_trait(F.has_part_picked),
@@ -212,7 +212,7 @@ def check_missing_picks(module: fabll.Node):
 
     if missing:
         no_fp, with_fp = map(
-            list, partition(lambda m: m.has_trait(F.has_footprint), missing)
+            list, partition(lambda m: m.has_trait(F.Footprints.has_associated_footprint), missing)
         )
 
         if with_fp:

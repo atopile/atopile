@@ -11,18 +11,22 @@ class Battery(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    voltage = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Volt,
-    )
-    capacity = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.AmpereHour,
-    )
     power = F.ElectricPower.MakeChild()
+
+    voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    capacity = F.Parameters.NumericParameter.MakeChild(unit=F.Units.AmpereHour)
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
+
+    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "hv"]))
+    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "lv"]))
 
     _single_electric_reference = fabll.Traits.MakeEdge(
         fabll._ChildField(F.has_single_electric_reference)

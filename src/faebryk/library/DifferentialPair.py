@@ -29,9 +29,7 @@ class DifferentialPair(fabll.Node):
             g=self.g
         )
         rs = [
-            F.Resistor.bind_typegraph(self.tg).create_instance(
-                g=self.g
-            )
+            F.Resistor.bind_typegraph(self.tg).create_instance(g=self.g)
             for _ in range(2)
         ]
 
@@ -41,8 +39,8 @@ class DifferentialPair(fabll.Node):
                 value=self.impedance.get().force_extract_literal(),
             )
 
-        rs[0].get_trait(F.can_bridge).bridge(terminated_bus.p.get(), self.p.get())
-        rs[1].get_trait(F.can_bridge).bridge(terminated_bus.n.get(), self.n.get())
+        rs[0].can_bridge.get().bridge(terminated_bus.p.get(), self.p.get())
+        rs[1].can_bridge.get().bridge(terminated_bus.n.get(), self.n.get())
         self._is_interface.get().connect_shallow_to(terminated_bus)
 
         return terminated_bus

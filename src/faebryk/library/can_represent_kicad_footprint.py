@@ -44,15 +44,15 @@ class can_represent_kicad_footprint(fabll.Node):
         return (
             self.component_.get()
             .deref()
-            .get_trait(F.has_kicad_footprint)
+            .get_trait(F.is_kicad_footprint)
             .get_pin_names()[pin]
         )
 
     def get_kicad_obj(self) -> FBRKNetlist.Component:
-        fp = self.component_.get().deref().get_trait(F.has_footprint).get_footprint()
+        fp = self.component_.get().deref().get_trait(F.Footprints.has_associated_footprint).get_footprint()
 
         kicad_footprint = fp.get_trait(
-            F.has_kicad_footprint
+            F.is_kicad_footprint
         ).get_kicad_footprint_identifier()
 
         if kicad_footprint is None:

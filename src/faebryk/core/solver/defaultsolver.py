@@ -49,7 +49,6 @@ class DefaultSolver(Solver):
         # TODO: get order from topo sort
         # and types from decorator
         pre = [
-            canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
             canonical.constrain_within_domain,
             canonical.alias_predicates_to_true,
@@ -538,7 +537,7 @@ class DefaultSolver(Solver):
         """
         Careful, only use after solver ran!
         """
-        value_po = value.as_parameter_operatable()
+        value_po = value.as_parameter_operatable.get()
 
         is_lit = value_po.try_get_aliased_literal()
         if is_lit is not None:
@@ -564,7 +563,9 @@ class DefaultSolver(Solver):
         if solver_lit is None:
             return ss_lit
 
-        return F.Literals.is_literal.intersect_all(ss_lit, solver_lit)
+        return F.Literals.is_literal.intersect_all(
+            ss_lit, solver_lit, g=value.g, tg=value.tg
+        )
 
     @override
     def get_any_single(
@@ -584,11 +585,11 @@ class DefaultSolver(Solver):
 
         lit = self.inspect_get_known_supersets(operatable)
         out = lit.any()
-        singleton_lit = F.Literals.make_lit(lit.g, lit.tg, out)
+        singleton_lit = F.Literals.make_simple_lit_singleton(lit.g, lit.tg, out)
         if lock:
             F.Expressions.Is.from_operands(
                 operatable.as_operand.get(),
-                singleton_lit.as_operand.get(),
+                singleton_lit.can_be_operand.get(),
                 assert_=True,
             )
         return out
@@ -620,7 +621,7 @@ def test_defaultsolver_super_basic():
     res = solver.simplify_symbolically(tg, g, terminal=True)
     lit = res.data.mutation_map.try_get_literal(P.is_parameter_operatable.get())
     assert lit
-    print(lit.pretty_repr())
+    print(lit.pretty_str())
     assert lit.equals_singleton(True)
 
 
@@ -650,18 +651,18 @@ def test_defaultsolver_basic():
     app.A.get().alias_to_single(True)
     FT.Expressions.Is.c(
         FT.Expressions.Or.c(
-            app.A.get().as_operand.get(),
-            app.B.get().as_operand.get(),
+            app.A.get().can_be_operand.get(),
+            app.B.get().can_be_operand.get(),
             assert_=False,
         ),
-        app.C.get().as_operand.get(),
+        app.C.get().can_be_operand.get(),
         assert_=True,
     )
 
     solver = DefaultSolver()
     res = solver.simplify_symbolically(tg, g, terminal=True)
     C_lit = res.data.mutation_map.try_get_literal(
-        app.C.get().get_trait(FT.Parameters.is_parameter_operatable),
+        app.C.get().is_parameter_operatable.get(),
         # TODO should not be needed
         allow_subset=True,
     )

@@ -37,7 +37,7 @@ class NullSolver(Solver):
     def inspect_get_known_supersets(
         self, value: F.Parameters.is_parameter
     ) -> F.Literals.is_literal:
-        lit = value.as_parameter_operatable().try_get_subset_or_alias_literal()
+        lit = value.as_parameter_operatable.get().try_get_subset_or_alias_literal()
         if lit is None:
             lit = value.domain_set()
         return lit

@@ -29,10 +29,21 @@ class BJT(fabll.Node):
     base = F.Electrical.MakeChild()
     collector = F.Electrical.MakeChild()
 
+    doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
+    operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
+
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
+
+    emitter.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [emitter]))
+    base.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [base]))
+    collector.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [collector]))
 
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=collector, out_=emitter)
@@ -53,9 +64,6 @@ class BJT(fabll.Node):
     designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
     )
-
-    doping_type = F.Parameters.EnumParameter.MakeChild(enum_t=DopingType)
-    operation_region = F.Parameters.EnumParameter.MakeChild(enum_t=OperationRegion)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

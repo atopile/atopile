@@ -1,8 +1,10 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Self, Type
 
+import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 from faebryk.library.Literals import Booleans, Numbers
@@ -14,22 +16,27 @@ if TYPE_CHECKING:
 
 
 class NumberDomain(fabll.Node):
-    from faebryk.library.Parameters import can_be_operand
+    @dataclass
+    class Args:
+        negative: bool = False
+        zero_allowed: bool = True
+        integer: bool = False
+
+    from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
     # Type annotation for type checkers - assigned at module level
     BoundNumberDomainContext: Type["BoundNumberDomainContext"]  # type: ignore[assignment]
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
 
     negative = BooleanParameter.MakeChild()
     zero_allowed = BooleanParameter.MakeChild()
     integer = BooleanParameter.MakeChild()
 
-    def setup(
-        self, negative: bool = False, zero_allowed: bool = True, integer: bool = False
-    ) -> Self:
-        self.negative.get().alias_to_single(value=negative)
-        self.zero_allowed.get().alias_to_single(value=zero_allowed)
-        self.integer.get().alias_to_single(value=integer)
+    def setup(self, args: Args | None = None) -> Self:
+        args = args or self.Args()
+        self.negative.get().alias_to_single(value=args.negative)
+        self.zero_allowed.get().alias_to_single(value=args.zero_allowed)
+        self.integer.get().alias_to_single(value=args.integer)
         return self
 
     @classmethod
@@ -67,7 +74,21 @@ class NumberDomain(fabll.Node):
         ]
         return out
 
-    def unbounded(self, units: type[fabll.NodeT]) -> "Literals.Numbers":
+    def get_args(self) -> Args:
+        return NumberDomain.Args(
+            negative=self.negative.get().extract_single(),
+            zero_allowed=self.zero_allowed.get().extract_single(),
+            integer=self.integer.get().extract_single(),
+        )
+
+    def unbounded(
+        self,
+        units: type[fabll.NodeT],
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> "Literals.Numbers":
+        from faebryk.library.Units import is_unit
+
         if self.integer.get().extract_single():
             # TODO
             pass
@@ -77,36 +98,41 @@ class NumberDomain(fabll.Node):
         if self.negative.get().extract_single():
             # TODO
             pass
-        return Numbers.unbounded(units=units)
+        g = g or self.g
+        tg = tg or self.tg
+        has_unit = units.bind_typegraph(tg=tg).create_instance(g=g)
+        return Numbers.unbounded(g=g, tg=tg, unit=has_unit.get_trait(is_unit))
 
     @classmethod
-    def get_shared_domain(cls, *domains: "NumberDomain") -> "NumberDomain":
+    def get_shared_domain(
+        cls,
+        *domains: "NumberDomain",
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
+    ) -> "NumberDomain":
         if len(domains) == 0:
             raise ValueError("No domains provided")
+        new_domain = cls.bind_typegraph(tg=tg).create_instance(g=g)
+        one = domains[0].get_args()
         if len(domains) == 1:
-            return domains[0]
-        one, two = domains[:2]
+            return new_domain.setup(args=one)
+        two = domains[1].get_args()
 
         # TODO could consider just using And() expression, but lets leave this for now
-        shared = (
-            cls.bind_typegraph_from_instance(one.instance)
-            .create_instance(one.instance.g())
-            .setup(
-                negative=one.negative.get().extract_single()
-                and two.negative.get().extract_single(),
-                zero_allowed=one.zero_allowed.get().extract_single()
-                and two.zero_allowed.get().extract_single(),
-                integer=one.integer.get().extract_single()
-                or two.integer.get().extract_single(),
+        shared = new_domain.setup(
+            args=NumberDomain.Args(
+                negative=one.negative and two.negative,
+                zero_allowed=one.zero_allowed and two.zero_allowed,
+                integer=one.integer or two.integer,
             )
         )
 
         if len(domains) == 2:
             return shared
-        return NumberDomain.get_shared_domain(shared, *domains[2:])
+        return NumberDomain.get_shared_domain(shared, *domains[2:], g=g, tg=tg)
 
-    def as_operand(self) -> "can_be_operand":
-        return self._can_be_operand.get()
+    def as_operand(self) -> "can_be_operandT":
+        return self.can_be_operand.get()
 
 
 # Binding context ----------------------------------------------------------------------
@@ -124,15 +150,9 @@ class BoundNumberDomainContext:
 
     def create_number_domain(
         self,
-        negative: bool = False,
-        zero_allowed: bool = True,
-        integer: bool = False,
+        args: "NumberDomain.Args",
     ) -> "NumberDomain":
-        return self.NumberDomain.create_instance(g=self.g).setup(
-            negative=negative,
-            zero_allowed=zero_allowed,
-            integer=integer,
-        )
+        return self.NumberDomain.create_instance(g=self.g).setup(args=args)
 
 
 NumberDomain.BoundNumberDomainContext = BoundNumberDomainContext

@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
@@ -39,15 +39,21 @@ class has_single_electric_reference(fabll.Node):
         children_with_trait = parent_node.get_children(
             direct_only=True,
             types=fabll.Node,
-            required_trait=self,
+            required_trait=has_single_electric_reference,
         )
 
         # if a child is a power, connect to shared reference
         for child in children_with_trait:
             if ground_only:
-                child.get_trait(self).get_reference().lv.get()._is_interface.get().connect_to(reference.lv.get())
+                child.get_trait(
+                    has_single_electric_reference
+                ).get_reference().lv.get()._is_interface.get().connect_to(
+                    reference.lv.get()
+                )
             else:
-                child.get_trait(self).get_reference()._is_interface.get().connect_to(reference)
+                child.get_trait(
+                    has_single_electric_reference
+                ).get_reference()._is_interface.get().connect_to(reference)
 
         children_that_are_power = parent_node.get_children(
             direct_only=True,
@@ -68,12 +74,12 @@ class has_single_electric_reference(fabll.Node):
     @property
     def exclude(self) -> list[fabll.Node]:
         ref_list = self.exclude_.get().as_list()
-        return [ref.get() for ref in ref_list]
+        return ref_list
 
     @classmethod
     def MakeChild(
         cls, ground_only: bool = False, exclude: list[fabll._ChildField] = []
-    ) -> fabll._ChildField:
+    ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         # Reference pointer does not exist yet. Created when added to obj
         out.add_dependant(

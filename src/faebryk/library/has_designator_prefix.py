@@ -226,7 +226,7 @@ class has_designator_prefix(fabll.Node):
     prefix_param_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
-    def MakeChild(cls, prefix: str | Prefix) -> fabll._ChildField[Any]:
+    def MakeChild(cls, prefix: str | Prefix) -> fabll._ChildField[Self]:
         if isinstance(prefix, cls.Prefix):
             prefix = prefix.value
         out = fabll._ChildField(cls)
@@ -250,12 +250,14 @@ def test_has_designator_prefix():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        prefix = fabll.Traits.MakeEdge(has_designator_prefix.MakeChild("A"))
+        has_designator_prefix = fabll.Traits.MakeEdge(
+            has_designator_prefix.MakeChild("A")
+        )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
     assert module.has_trait(has_designator_prefix)
-    assert module.get_trait(has_designator_prefix).get_prefix() == "A"
+    assert module.has_designator_prefix.get().get_prefix() == "A"
 
 
 def test_has_designator_prefix_from_enum():
@@ -263,15 +265,15 @@ def test_has_designator_prefix_from_enum():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        prefix = fabll.Traits.MakeEdge(
+        has_designator_prefix = fabll.Traits.MakeEdge(
             has_designator_prefix.MakeChild(has_designator_prefix.Prefix.B)
         )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
     assert module.has_trait(has_designator_prefix)
-    assert module.get_trait(has_designator_prefix).get_prefix() == "B"
+    assert module.has_designator_prefix.get().get_prefix() == "B"
     assert (
-        module.get_trait(has_designator_prefix).get_prefix()
+        module.has_designator_prefix.get().get_prefix()
         == has_designator_prefix.Prefix.B.value
     )

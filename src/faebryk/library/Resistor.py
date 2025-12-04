@@ -20,12 +20,17 @@ class Resistor(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
-    _can_attach = fabll.Traits.MakeEdge(
-        F.can_attach_to_footprint_symmetrically.MakeChild(*unnamed)
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
     )
-    _can_bridge = fabll.Traits.MakeEdge(
+
+    for e in unnamed:
+        e.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [e]))
+
+    can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
     )
+
     _is_pickable = fabll.Traits.MakeEdge(
         F.is_pickable_by_type.MakeChild(
             endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,

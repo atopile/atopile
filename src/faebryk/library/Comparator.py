@@ -45,6 +45,20 @@ class Comparator(fabll.Node):
     # ----------------------------------------
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
+
+    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "hv"]))
+    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "lv"]))
+    output.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [output]))
+    inverting_input.add_dependant(
+        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [inverting_input])
+    )
+    non_inverting_input.add_dependant(
+        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [non_inverting_input])
+    )
+
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
         F.has_simple_value_representation.MakeChild(

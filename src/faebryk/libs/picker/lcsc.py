@@ -522,8 +522,8 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 
 
 def check_attachable(component: fabll.Node):
-    if not component.has_trait(F.has_footprint):
-        if not component.has_trait(F.can_attach_to_footprint):
+    if not component.has_trait(F.Footprints.has_associated_footprint):
+        if not component.has_trait(F.Footprints.can_attach_to_footprint):
             if not component.has_trait(F.has_pin_association_heuristic):
                 raise LCSC_PinmapException(
                     "",
@@ -550,7 +550,7 @@ def attach(
     try:
         epart = download_easyeda_info(partno, get_model=get_model)
     except LCSC_NoDataException:
-        if component.has_trait(F.has_footprint):
+        if component.has_trait(F.Footprints.has_associated_footprint):
             apart = None
             epart = None
         else:
@@ -565,9 +565,9 @@ def attach(
             )
 
     # TODO maybe check the symbol matches, even if a footprint is already attached?
-    if not component.has_trait(F.has_footprint):
+    if not component.has_trait(F.Footprints.has_associated_footprint):
         assert apart is not None
-        if not component.has_trait(F.can_attach_to_footprint):
+        if not component.has_trait(F.Footprints.can_attach_to_footprint):
             # TODO make this a trait
             pins = [
                 (pin.number.number, pin.name.name)
@@ -605,7 +605,7 @@ def attach(
             .from_path(apart.fp_path, lib_name=apart.path.name)
         )
         # TODO: This trait is forwarded by a trait with attach function
-        component.get_trait(F.can_attach_to_footprint).attach(fp)
+        component.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
 
     if check_only:
         return
