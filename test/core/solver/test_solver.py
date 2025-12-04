@@ -172,80 +172,83 @@ class BoundExpressions:
     def add(
         self, *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Add.c(*operands, g=self.g)
+        return F.Expressions.Add.c(*operands, g=self.g, tg=self.tg)
 
     def subtract(
         self,
         minuend: F.Parameters.can_be_operand,
         *subtrahends: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Subtract.c(minuend, *subtrahends, g=self.g)
+        return F.Expressions.Subtract.c(minuend, *subtrahends, g=self.g, tg=self.tg)
 
     def multiply(
         self, *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Multiply.c(*operands, g=self.g)
+        return F.Expressions.Multiply.c(*operands, g=self.g, tg=self.tg)
 
     def divide(
         self,
         numerator: F.Parameters.can_be_operand,
         *denominators: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Divide.c(numerator, *denominators, g=self.g)
+        return F.Expressions.Divide.c(numerator, *denominators, g=self.g, tg=self.tg)
 
     def sqrt(self, operand: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        return F.Expressions.Sqrt.c(operand, g=self.g)
+        return F.Expressions.Sqrt.c(operand, g=self.g, tg=self.tg)
 
     def power(
         self,
         base: F.Parameters.can_be_operand,
         exponent: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Power.c(base, exponent, g=self.g)
+        return F.Expressions.Power.c(base, exponent, g=self.g, tg=self.tg)
 
     def round(
         self, operand: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Round.c(operand, g=self.g)
+        return F.Expressions.Round.c(operand, g=self.g, tg=self.tg)
 
     def abs(self, operand: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        return F.Expressions.Abs.c(operand, g=self.g)
+        return F.Expressions.Abs.c(operand, g=self.g, tg=self.tg)
 
     def sin(self, operand: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        return F.Expressions.Sin.c(operand, g=self.g)
+        return F.Expressions.Sin.c(operand, g=self.g, tg=self.tg)
 
     def log(
         self,
         operand: F.Parameters.can_be_operand,
         base: F.Parameters.can_be_operand | None = None,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Log.c(operand, base, g=self.g)
+        return F.Expressions.Log.c(operand, base, g=self.g, tg=self.tg)
 
     def cos(self, operand: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        return F.Expressions.Cos.c(operand, g=self.g)
+        return F.Expressions.Cos.c(operand, g=self.g, tg=self.tg)
 
     def floor(
         self, operand: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Floor.c(operand, g=self.g)
+        return F.Expressions.Floor.c(operand, g=self.g, tg=self.tg)
 
     def ceil(self, operand: F.Parameters.can_be_operand) -> F.Parameters.can_be_operand:
-        return F.Expressions.Ceil.c(operand, g=self.g)
+        return F.Expressions.Ceil.c(operand, g=self.g, tg=self.tg)
 
     def min(
         self, *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Min.c(*operands, g=self.g)
+        return F.Expressions.Min.c(*operands, g=self.g, tg=self.tg)
 
     def max(
         self, *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Max.c(*operands, g=self.g)
+        return F.Expressions.Max.c(*operands, g=self.g, tg=self.tg)
 
     def is_(
-        self, *operands: F.Parameters.can_be_operand, assert_: bool = False
+        self,
+        *operands: F.Parameters.can_be_operand,
+        assert_: bool = False,
+        tg: fbrk.TypeGraph | None = None,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Is.c(*operands, g=self.g, assert_=assert_)
+        return F.Expressions.Is.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
     def is_subset(
         self,
@@ -253,7 +256,9 @@ class BoundExpressions:
         superset: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.IsSubset.c(subset, superset, g=self.g, assert_=assert_)
+        return F.Expressions.IsSubset.c(
+            subset, superset, g=self.g, tg=self.tg, assert_=assert_
+        )
 
     def is_superset(
         self,
@@ -261,7 +266,9 @@ class BoundExpressions:
         subset: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.IsSuperset.c(superset, subset, g=self.g, assert_=assert_)
+        return F.Expressions.IsSuperset.c(
+            superset, subset, g=self.g, tg=self.tg, assert_=assert_
+        )
 
     def greater_or_equal(
         self,
@@ -269,7 +276,9 @@ class BoundExpressions:
         right: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.GreaterOrEqual.c(left, right, g=self.g, assert_=assert_)
+        return F.Expressions.GreaterOrEqual.c(
+            left, right, g=self.g, tg=self.tg, assert_=assert_
+        )
 
     def greater_than(
         self,
@@ -277,7 +286,9 @@ class BoundExpressions:
         right: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.GreaterThan.c(left, right, g=self.g, assert_=assert_)
+        return F.Expressions.GreaterThan.c(
+            left, right, g=self.g, tg=self.tg, assert_=assert_
+        )
 
     def less_or_equal(
         self,
@@ -285,7 +296,9 @@ class BoundExpressions:
         right: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.LessOrEqual.c(left, right, g=self.g, assert_=assert_)
+        return F.Expressions.LessOrEqual.c(
+            left, right, g=self.g, tg=self.tg, assert_=assert_
+        )
 
     def less_than(
         self,
@@ -293,24 +306,26 @@ class BoundExpressions:
         right: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.LessThan.c(left, right, g=self.g, assert_=assert_)
+        return F.Expressions.LessThan.c(
+            left, right, g=self.g, tg=self.tg, assert_=assert_
+        )
 
     def not_(
         self,
         operand: F.Parameters.can_be_operand,
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Not.c(operand, g=self.g, assert_=assert_)
+        return F.Expressions.Not.c(operand, g=self.g, tg=self.tg, assert_=assert_)
 
     def and_(
         self, *operands: F.Parameters.can_be_operand, assert_: bool = False
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.And.c(*operands, g=self.g, assert_=assert_)
+        return F.Expressions.And.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
     def or_(
         self, *operands: F.Parameters.can_be_operand, assert_: bool = False
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Or.c(*operands, g=self.g, assert_=assert_)
+        return F.Expressions.Or.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
     def implies(
         self,
@@ -319,30 +334,30 @@ class BoundExpressions:
         assert_: bool = False,
     ) -> F.Parameters.can_be_operand:
         return F.Expressions.Implies.c(
-            antecedent, consequent, g=self.g, assert_=assert_
+            antecedent, consequent, g=self.g, tg=self.tg, assert_=assert_
         )
 
     def xor(
         self, *operands: F.Parameters.can_be_operand, assert_: bool = False
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Xor.c(*operands, g=self.g, assert_=assert_)
+        return F.Expressions.Xor.c(*operands, g=self.g, tg=self.tg, assert_=assert_)
 
     def intersection(
         self, *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Intersection.c(*operands, g=self.g)
+        return F.Expressions.Intersection.c(*operands, g=self.g, tg=self.tg)
 
     def union(
         self, *operands: F.Parameters.can_be_operand
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.Union.c(*operands, g=self.g)
+        return F.Expressions.Union.c(*operands, g=self.g, tg=self.tg)
 
     def symmetric_difference(
         self,
         left: F.Parameters.can_be_operand,
         right: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
-        return F.Expressions.SymmetricDifference.c(left, right, g=self.g)
+        return F.Expressions.SymmetricDifference.c(left, right, g=self.g, tg=self.tg)
 
     def lit_op_single(self, value: float | _Quantity) -> F.Parameters.can_be_operand:
         unit = None
@@ -363,7 +378,7 @@ class BoundExpressions:
             .setup_from_singleton(value=value, unit=is_unit)
         ).get_trait(F.Parameters.can_be_operand)
 
-    def lit_op_range(self, range: _Range) -> F.Parameters.can_be_operand:
+    def _range_to(self, range: _Range) -> tuple[float, float, type[fabll.Node]]:
         lower = range[0]
         upper = range[1]
         if isinstance(lower, tuple):
@@ -379,6 +394,10 @@ class BoundExpressions:
             upper_value = upper
             upper_unit = self.U.dl
         assert lower_unit == upper_unit
+        return lower_value, upper_value, lower_unit
+
+    def lit_op_range(self, range: _Range) -> F.Parameters.can_be_operand:
+        lower_value, upper_value, lower_unit = self._range_to(range)
         is_unit = (
             lower_unit.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
@@ -388,6 +407,31 @@ class BoundExpressions:
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup_from_min_max(min=lower_value, max=upper_value, unit=is_unit)
+        ).get_trait(F.Parameters.can_be_operand)
+
+    def lit_op_ranges(self, *ranges: _Range) -> F.Parameters.can_be_operand:
+        ranges_values = [self._range_to(range) for range in ranges]
+        assert len(set(range_value[2] for range_value in ranges_values)) == 1
+        is_unit = (
+            ranges_values[0][2]
+            .bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .get_trait(F.Units.is_unit)
+        )
+        return (
+            F.Literals.Numbers.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup(
+                numeric_set=F.Literals.NumericSet.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup_from_values(
+                    values=[
+                        (range_value[0], range_value[1])
+                        for range_value in ranges_values
+                    ]
+                ),
+                unit=is_unit,
+            )
         ).get_trait(F.Parameters.can_be_operand)
 
     def lit_op_range_from_center_rel(
@@ -2548,120 +2592,138 @@ def test_fold_correlated():
         pytest.xfail("TODO")
 
 
+_A: list[
+    tuple[
+        Callable[[BoundExpressions], Callable[..., F.Parameters.can_be_operand]],
+        Callable[
+            [BoundExpressions],
+            list[F.Parameters.can_be_operand | F.Literals.LiteralValues],
+        ],
+        Callable[
+            [BoundExpressions], F.Parameters.can_be_operand | F.Literals.LiteralValues
+        ],
+    ]
+] = [
+    # Add tests
+    (lambda E: E.add, lambda E: [], lambda E: 0),
+    (lambda E: E.add, lambda E: [1, 2, 3, 4, 5], lambda E: 15),
+    # Multiply tests
+    (lambda E: E.multiply, lambda E: [1, 2, 3, 4, 5], lambda E: 120),
+    (lambda E: E.multiply, lambda E: [], lambda E: 1),
+    # Power tests
+    (lambda E: E.power, lambda E: [2, 3], lambda E: 8),
+    # Round tests
+    (lambda E: E.round, lambda E: [2.4], lambda E: 2),
+    (
+        lambda E: E.round,
+        lambda E: [E.lit_op_range((-2.6, 5.3))],
+        lambda E: E.lit_op_range((-3, 5)),
+    ),
+    # Abs tests
+    (lambda E: E.abs, lambda E: [-2], lambda E: 2),
+    (
+        lambda E: E.abs,
+        lambda E: [E.lit_op_range((-2, 3))],
+        lambda E: E.lit_op_range((0, 3)),
+    ),
+    # Sin tests
+    (lambda E: E.sin, lambda E: [0], lambda E: 0),
+    (
+        lambda E: E.sin,
+        lambda E: [E.lit_op_range((0, 2 * math.pi))],
+        lambda E: E.lit_op_range((-1, 1)),
+    ),
+    # Log tests
+    (lambda E: E.log, lambda E: [10], lambda E: math.log(10)),
+    (
+        lambda E: E.log,
+        lambda E: [E.lit_op_range((1, 10))],
+        lambda E: E.lit_op_range((math.log(1), math.log(10))),
+    ),
+    # Or tests
+    (lambda E: E.or_, lambda E: [False, False, True], lambda E: True),
+    (
+        lambda E: E.or_,
+        lambda E: [False, E.lit_bool(True, False), True],
+        lambda E: True,
+    ),
+    (lambda E: E.or_, lambda E: [], lambda E: False),
+    # Not tests
+    (lambda E: E.not_, lambda E: [False], lambda E: True),
+    # Intersection tests
+    (
+        lambda E: E.intersection,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
+        lambda E: E.lit_op_range((10, 10)),
+    ),
+    # Union tests
+    (
+        lambda E: E.union,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
+        lambda E: E.lit_op_range((0, 20)),
+    ),
+    # SymmetricDifference tests
+    (
+        lambda E: E.symmetric_difference,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
+        lambda E: E.lit_op_range((0, 20)),
+    ),
+    (
+        lambda E: E.symmetric_difference,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((5, 20))],
+        lambda E: E.lit_op_ranges((0, 5), (10, 20)),
+    ),
+    # Is tests
+    (
+        lambda E: E.is_,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((0, 10))],
+        lambda E: True,
+    ),
+    # GreaterOrEqual tests
+    (
+        lambda E: E.greater_or_equal,
+        lambda E: [E.lit_op_range((10, 20)), E.lit_op_range((0, 10))],
+        lambda E: True,
+    ),
+    (
+        lambda E: E.greater_or_equal,
+        lambda E: [E.lit_op_range((5, 20)), E.lit_op_range((0, 10))],
+        lambda E: E.lit_bool(True, False),
+    ),
+    # GreaterThan tests
+    (
+        lambda E: E.greater_than,
+        lambda E: [E.lit_op_range((10, 20)), E.lit_op_range((0, 10))],
+        lambda E: E.lit_bool(True, False),
+    ),
+    (
+        lambda E: E.greater_than,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
+        lambda E: False,
+    ),
+    # IsSubset tests
+    (
+        lambda E: E.is_subset,
+        lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((0, 20))],
+        lambda E: True,
+    ),
+]
+
+
 @pytest.mark.parametrize(
     "op_factory, lits_factory, expected_factory",
-    [
-        # Add tests
-        (lambda E: E.add, lambda E: [], lambda E: 0),
-        (lambda E: E.add, lambda E: [1, 2, 3, 4, 5], lambda E: 15),
-        # Multiply tests
-        (lambda E: E.multiply, lambda E: [1, 2, 3, 4, 5], lambda E: 120),
-        (lambda E: E.multiply, lambda E: [], lambda E: 1),
-        # Power tests
-        (lambda E: E.power, lambda E: [2, 3], lambda E: 8),
-        # Round tests
-        (lambda E: E.round, lambda E: [2.4], lambda E: 2),
-        (
-            lambda E: E.round,
-            lambda E: [E.lit_op_range((-2.6, 5.3))],
-            lambda E: E.lit_op_range((-3, 5)),
-        ),
-        # Abs tests
-        (lambda E: E.abs, lambda E: [-2], lambda E: 2),
-        (
-            lambda E: E.abs,
-            lambda E: [E.lit_op_range((-2, 3))],
-            lambda E: E.lit_op_range((0, 3)),
-        ),
-        # Sin tests
-        (lambda E: E.sin, lambda E: [0], lambda E: 0),
-        (
-            lambda E: E.sin,
-            lambda E: [E.lit_op_range((0, 2 * math.pi))],
-            lambda E: E.lit_op_range((-1, 1)),
-        ),
-        # Log tests
-        (lambda E: E.log, lambda E: [10], lambda E: math.log(10)),
-        (
-            lambda E: E.log,
-            lambda E: [E.lit_op_range((1, 10))],
-            lambda E: E.lit_op_range((math.log(1), math.log(10))),
-        ),
-        # Or tests
-        (lambda E: E.or_, lambda E: [False, False, True], lambda E: True),
-        (
-            lambda E: E.or_,
-            lambda E: [False, E.lit_bool(True, False), True],
-            lambda E: True,
-        ),
-        (lambda E: E.or_, lambda E: [], lambda E: False),
-        # Not tests
-        (lambda E: E.not_, lambda E: [False], lambda E: True),
-        # Intersection tests
-        (
-            lambda E: E.intersection,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-            lambda E: E.lit_op_range((10, 10)),
-        ),
-        # Union tests
-        (
-            lambda E: E.union,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-            lambda E: E.lit_op_range((0, 20)),
-        ),
-        # SymmetricDifference tests
-        (
-            lambda E: E.symmetric_difference,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-            lambda E: E.lit_op_range((0, 20)),
-        ),
-        (
-            lambda E: E.symmetric_difference,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((5, 20))],
-            lambda E: E.lit_op_range((0, 5), (10, 20)),
-        ),
-        # Is tests
-        (
-            lambda E: E.is_,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((0, 10))],
-            lambda E: True,
-        ),
-        # GreaterOrEqual tests
-        (
-            lambda E: E.greater_or_equal,
-            lambda E: [E.lit_op_range((10, 20)), E.lit_op_range((0, 10))],
-            lambda E: True,
-        ),
-        (
-            lambda E: E.greater_or_equal,
-            lambda E: [E.lit_op_range((5, 20)), E.lit_op_range((0, 10))],
-            lambda E: E.lit_bool(True, False),
-        ),
-        # GreaterThan tests
-        (
-            lambda E: E.greater_than,
-            lambda E: [E.lit_op_range((10, 20)), E.lit_op_range((0, 10))],
-            lambda E: E.lit_bool(True, False),
-        ),
-        (
-            lambda E: E.greater_than,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((10, 20))],
-            lambda E: False,
-        ),
-        # IsSubset tests
-        (
-            lambda E: E.is_subset,
-            lambda E: [E.lit_op_range((0, 10)), E.lit_op_range((0, 20))],
-            lambda E: True,
-        ),
-    ],
+    _A,
 )
 def test_exec_pure_literal_expressions(
     op_factory: Callable[
         [BoundExpressions], Callable[..., F.Parameters.can_be_operand]
     ],
-    lits_factory: Callable[[BoundExpressions], list[Any]],
-    expected_factory: Callable[[BoundExpressions], Any],
+    lits_factory: Callable[
+        [BoundExpressions], list[F.Parameters.can_be_operand | F.Literals.LiteralValues]
+    ],
+    expected_factory: Callable[
+        [BoundExpressions], F.Parameters.can_be_operand | F.Literals.LiteralValues
+    ],
 ):
     E = BoundExpressions()
     from faebryk.core.solver.symbolic.pure_literal import (
@@ -2673,22 +2735,33 @@ def test_exec_pure_literal_expressions(
     expected = expected_factory(E)
 
     lits_converted = [
-        F.Literals.make_simple_lit_singleton(E.g, E.tg, lit) for lit in lits
+        F.Literals.make_simple_lit_singleton(E.g, E.tg, lit).get_trait(
+            F.Parameters.can_be_operand
+        )
+        if not isinstance(lit, fabll.Node)
+        else lit
+        for lit in lits
     ]
-    expected_converted = F.Literals.make_simple_lit_singleton(E.g, E.tg, expected)
+    expected_converted = (
+        F.Literals.make_simple_lit_singleton(E.g, E.tg, expected).get_trait(
+            F.Parameters.can_be_operand
+        )
+        if not isinstance(expected, fabll.Node)
+        else expected
+    ).get_sibling_trait(F.Literals.is_literal)
 
     expr = op(*lits_converted)  # type: ignore
     assert not_none(
         _exec_pure_literal_expressions(
             E.g, E.tg, expr.get_sibling_trait(F.Expressions.is_expression)
         )
-    ).equals(expected_converted.is_literal.get(), g=E.g, tg=E.tg)
+    ).equals(expected_converted, g=E.g, tg=E.tg)
 
     if op == E.greater_than:
         pytest.xfail("GreaterThan is not supported in solver")
 
-    def _get_param_from_lit(lit: F.Literals.LiteralNodes):
-        if isinstance(lit, F.Literals.Booleans):
+    def _get_param_from_lit(lit: F.Literals.is_literal):
+        if fabll.Traits(lit).get_obj_raw().isinstance(F.Literals.Booleans):
             return E.bool_parameter_op()
         else:
             return E.parameter_op()
@@ -2699,7 +2772,7 @@ def test_exec_pure_literal_expressions(
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert not_none(repr_map.try_get_literal(result.as_parameter_operatable())).equals(
-        expected_converted.is_literal.get(),
+        expected_converted,
         g=E.g,
         tg=E.tg,
     )

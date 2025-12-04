@@ -598,11 +598,12 @@ def _make_instance_from_operand_instance[T: fabll.NodeT](
     expr_factory: type[T],
     operand_instances: "tuple[F.Parameters.can_be_operand, ...]",
     g: graph.GraphView | None,
+    tg: fbrk.TypeGraph | None,
 ) -> T:
-    if not operand_instances:
-        raise ValueError("At least one operand is required")
+    if not operand_instances and (not g or not tg):
+        raise ValueError("At least one operand is required if no graph is provided")
     g = g or operand_instances[0].instance.g()
-    tg = operand_instances[0].tg
+    tg = tg or operand_instances[0].tg
     return expr_factory.bind_typegraph(tg=tg).create_instance(g=g)
 
 
@@ -737,8 +738,9 @@ class Add(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands)
 
     @classmethod
@@ -746,8 +748,9 @@ class Add(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g))
+        return _op(cls.from_operands(*operands, g=g, tg=tg))
 
 
 class Subtract(fabll.Node):
@@ -782,9 +785,10 @@ class Subtract(fabll.Node):
         minuend: "F.Parameters.can_be_operand",
         *subtrahends: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
         operands = (minuend, *subtrahends)
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(minuend, *subtrahends)
 
     @classmethod
@@ -793,8 +797,9 @@ class Subtract(fabll.Node):
         minuend: "F.Parameters.can_be_operand",
         *subtrahends: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(minuend, *subtrahends, g=g))
+        return _op(cls.from_operands(minuend, *subtrahends, g=g, tg=tg))
 
 
 class Multiply(fabll.Node):
@@ -839,8 +844,9 @@ class Multiply(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands)
 
     @classmethod
@@ -848,8 +854,9 @@ class Multiply(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g))
+        return _op(cls.from_operands(*operands, g=g, tg=tg))
 
 
 class Divide(fabll.Node):
@@ -889,9 +896,10 @@ class Divide(fabll.Node):
         numerator: "F.Parameters.can_be_operand",
         *denominators: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
         operands = (numerator, *denominators)
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(numerator, *denominators)
 
     @classmethod
@@ -900,8 +908,9 @@ class Divide(fabll.Node):
         numerator: "F.Parameters.can_be_operand",
         *denominators: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(numerator, *denominators, g=g))
+        return _op(cls.from_operands(numerator, *denominators, g=g, tg=tg))
 
 
 class Sqrt(fabll.Node):
@@ -933,8 +942,9 @@ class Sqrt(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -942,8 +952,9 @@ class Sqrt(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Power(fabll.Node):
@@ -988,8 +999,11 @@ class Power(fabll.Node):
         base: "F.Parameters.can_be_operand",
         exponent: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (base, exponent), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (base, exponent), g=g, tg=tg
+        )
         return instance.setup(base, exponent)
 
     @classmethod
@@ -998,8 +1012,9 @@ class Power(fabll.Node):
         base: "F.Parameters.can_be_operand",
         exponent: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(base, exponent, g=g))
+        return _op(cls.from_operands(base, exponent, g=g, tg=tg))
 
 
 class Log(fabll.Node):
@@ -1041,9 +1056,10 @@ class Log(fabll.Node):
         operand: "F.Parameters.can_be_operand",
         base: "F.Parameters.can_be_operand | None" = None,
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
         operands = (operand, base) if base is not None else (operand,)
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(operand, base)
 
     @classmethod
@@ -1052,8 +1068,9 @@ class Log(fabll.Node):
         operand: "F.Parameters.can_be_operand",
         base: "F.Parameters.can_be_operand | None" = None,
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, base, g=g))
+        return _op(cls.from_operands(operand, base, g=g, tg=tg))
 
 
 class Sin(fabll.Node):
@@ -1082,8 +1099,9 @@ class Sin(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -1091,8 +1109,9 @@ class Sin(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Cos(fabll.Node):
@@ -1119,8 +1138,9 @@ class Cos(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -1128,8 +1148,9 @@ class Cos(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Abs(fabll.Node):
@@ -1159,8 +1180,9 @@ class Abs(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -1168,8 +1190,9 @@ class Abs(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Round(fabll.Node):
@@ -1199,8 +1222,9 @@ class Round(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -1208,8 +1232,9 @@ class Round(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Floor(fabll.Node):
@@ -1237,8 +1262,9 @@ class Floor(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -1246,8 +1272,9 @@ class Floor(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Ceil(fabll.Node):
@@ -1273,8 +1300,9 @@ class Ceil(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand)
 
     @classmethod
@@ -1282,8 +1310,9 @@ class Ceil(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g))
+        return _op(cls.from_operands(operand, g=g, tg=tg))
 
 
 class Min(fabll.Node):
@@ -1311,8 +1340,9 @@ class Min(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands)
 
     @classmethod
@@ -1320,8 +1350,9 @@ class Min(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g))
+        return _op(cls.from_operands(*operands, g=g, tg=tg))
 
 
 class Max(fabll.Node):
@@ -1349,8 +1380,9 @@ class Max(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands)
 
     @classmethod
@@ -1358,8 +1390,9 @@ class Max(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g))
+        return _op(cls.from_operands(*operands, g=g, tg=tg))
 
 
 class Integrate(fabll.Node):
@@ -1394,8 +1427,11 @@ class Integrate(fabll.Node):
         operand: "F.Parameters.can_be_operand",
         variable: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand, variable), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (operand, variable), g=g, tg=tg
+        )
         return instance.setup(operand, variable)
 
     @classmethod
@@ -1404,8 +1440,9 @@ class Integrate(fabll.Node):
         operand: "F.Parameters.can_be_operand",
         variable: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, variable, g=g))
+        return _op(cls.from_operands(operand, variable, g=g, tg=tg))
 
 
 class Differentiate(fabll.Node):
@@ -1440,8 +1477,11 @@ class Differentiate(fabll.Node):
         operand: "F.Parameters.can_be_operand",
         variable: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand, variable), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (operand, variable), g=g, tg=tg
+        )
         return instance.setup(operand, variable)
 
     @classmethod
@@ -1450,8 +1490,9 @@ class Differentiate(fabll.Node):
         operand: "F.Parameters.can_be_operand",
         variable: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, variable, g=g))
+        return _op(cls.from_operands(operand, variable, g=g, tg=tg))
 
 
 class And(fabll.Node):
@@ -1486,9 +1527,10 @@ class And(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands, assert_=assert_)
 
     @classmethod
@@ -1496,9 +1538,10 @@ class And(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, assert_=assert_))
+        return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
 class Or(fabll.Node):
@@ -1539,9 +1582,10 @@ class Or(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands, assert_=assert_)
 
     @classmethod
@@ -1549,9 +1593,10 @@ class Or(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, assert_=assert_))
+        return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
 class Not(fabll.Node):
@@ -1586,9 +1631,10 @@ class Not(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (operand,), g=g)
+        instance = _make_instance_from_operand_instance(cls, (operand,), g=g, tg=tg)
         return instance.setup(operand, assert_=assert_)
 
     @classmethod
@@ -1596,9 +1642,10 @@ class Not(fabll.Node):
         cls,
         operand: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(operand, g=g, assert_=assert_))
+        return _op(cls.from_operands(operand, g=g, tg=tg, assert_=assert_))
 
 
 class Xor(fabll.Node):
@@ -1633,9 +1680,10 @@ class Xor(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands, assert_=assert_)
 
     @classmethod
@@ -1643,9 +1691,10 @@ class Xor(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, assert_=assert_))
+        return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
 class Implies(fabll.Node):
@@ -1684,10 +1733,11 @@ class Implies(fabll.Node):
         antecedent: "F.Parameters.can_be_operand",
         consequent: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
         instance = _make_instance_from_operand_instance(
-            cls, (antecedent, consequent), g=g
+            cls, (antecedent, consequent), g=g, tg=tg
         )
         return instance.setup(antecedent, consequent, assert_=assert_)
 
@@ -1697,9 +1747,12 @@ class Implies(fabll.Node):
         antecedent: "F.Parameters.can_be_operand",
         consequent: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(antecedent, consequent, g=g, assert_=assert_))
+        return _op(
+            cls.from_operands(antecedent, consequent, g=g, tg=tg, assert_=assert_)
+        )
 
 
 class IfThenElse(fabll.Node):
@@ -1735,9 +1788,10 @@ class IfThenElse(fabll.Node):
         then_value: "F.Parameters.can_be_operand",
         else_value: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
         instance = _make_instance_from_operand_instance(
-            cls, (condition, then_value, else_value), g=g
+            cls, (condition, then_value, else_value), g=g, tg=tg
         )
         return instance.setup(condition, then_value, else_value)
 
@@ -1748,8 +1802,9 @@ class IfThenElse(fabll.Node):
         then_value: "F.Parameters.can_be_operand",
         else_value: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(condition, then_value, else_value, g=g))
+        return _op(cls.from_operands(condition, then_value, else_value, g=g, tg=tg))
 
     def try_run(self):
         # TODO
@@ -1787,8 +1842,9 @@ class Union(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands)
 
     @classmethod
@@ -1796,8 +1852,9 @@ class Union(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g))
+        return _op(cls.from_operands(*operands, g=g, tg=tg))
 
 
 class Intersection(fabll.Node):
@@ -1831,8 +1888,9 @@ class Intersection(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(*operands)
 
     @classmethod
@@ -1840,8 +1898,9 @@ class Intersection(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g))
+        return _op(cls.from_operands(*operands, g=g, tg=tg))
 
 
 class Difference(fabll.Node):
@@ -1875,8 +1934,11 @@ class Difference(fabll.Node):
         minuend: "F.Parameters.can_be_operand",
         subtrahend: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (minuend, subtrahend), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (minuend, subtrahend), g=g, tg=tg
+        )
         return instance.setup(minuend, subtrahend)
 
     @classmethod
@@ -1885,8 +1947,9 @@ class Difference(fabll.Node):
         minuend: "F.Parameters.can_be_operand",
         subtrahend: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(minuend, subtrahend, g=g))
+        return _op(cls.from_operands(minuend, subtrahend, g=g, tg=tg))
 
 
 class SymmetricDifference(fabll.Node):
@@ -1923,8 +1986,9 @@ class SymmetricDifference(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
         return instance.setup(left, right)
 
     @classmethod
@@ -1933,8 +1997,9 @@ class SymmetricDifference(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g))
+        return _op(cls.from_operands(left, right, g=g, tg=tg))
 
 
 class LessThan(fabll.Node):
@@ -1973,9 +2038,10 @@ class LessThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
         return instance.setup(left, right, assert_=assert_)
 
     @classmethod
@@ -1984,9 +2050,10 @@ class LessThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g, assert_=assert_))
+        return _op(cls.from_operands(left, right, g=g, tg=tg, assert_=assert_))
 
 
 class GreaterThan(fabll.Node):
@@ -2026,9 +2093,10 @@ class GreaterThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
         return instance.setup(left, right, assert_=assert_)
 
     @classmethod
@@ -2037,9 +2105,10 @@ class GreaterThan(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g, assert_=assert_))
+        return _op(cls.from_operands(left, right, g=g, tg=tg, assert_=assert_))
 
 
 class LessOrEqual(fabll.Node):
@@ -2078,9 +2147,10 @@ class LessOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
         return instance.setup(left, right, assert_=assert_)
 
     @classmethod
@@ -2089,9 +2159,10 @@ class LessOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g, assert_=assert_))
+        return _op(cls.from_operands(left, right, g=g, tg=tg, assert_=assert_))
 
 
 class GreaterOrEqual(fabll.Node):
@@ -2132,9 +2203,10 @@ class GreaterOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
         return instance.setup(left, right, assert_=assert_)
 
     @classmethod
@@ -2143,9 +2215,10 @@ class GreaterOrEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g, assert_=assert_))
+        return _op(cls.from_operands(left, right, g=g, tg=tg, assert_=assert_))
 
 
 class NotEqual(fabll.Node):
@@ -2184,9 +2257,10 @@ class NotEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (left, right), g=g)
+        instance = _make_instance_from_operand_instance(cls, (left, right), g=g, tg=tg)
         return instance.setup(left, right, assert_=assert_)
 
     @classmethod
@@ -2195,9 +2269,10 @@ class NotEqual(fabll.Node):
         left: "F.Parameters.can_be_operand",
         right: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(left, right, g=g, assert_=assert_))
+        return _op(cls.from_operands(left, right, g=g, tg=tg, assert_=assert_))
 
 
 class IsBitSet(fabll.Node):
@@ -2237,9 +2312,12 @@ class IsBitSet(fabll.Node):
         value: "F.Parameters.can_be_operand",
         bit_index: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (value, bit_index), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (value, bit_index), g=g, tg=tg
+        )
         return instance.setup(value, bit_index, assert_=assert_)
 
     @classmethod
@@ -2248,9 +2326,10 @@ class IsBitSet(fabll.Node):
         value: "F.Parameters.can_be_operand",
         bit_index: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(value, bit_index, g=g, assert_=assert_))
+        return _op(cls.from_operands(value, bit_index, g=g, tg=tg, assert_=assert_))
 
 
 class IsSubset(fabll.Node):
@@ -2291,9 +2370,12 @@ class IsSubset(fabll.Node):
         subset: "F.Parameters.can_be_operand",
         superset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (subset, superset), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (subset, superset), g=g, tg=tg
+        )
         return instance.setup(subset, superset, assert_=assert_)
 
     @classmethod
@@ -2302,9 +2384,10 @@ class IsSubset(fabll.Node):
         subset: "F.Parameters.can_be_operand",
         superset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(subset, superset, g=g, assert_=assert_))
+        return _op(cls.from_operands(subset, superset, g=g, tg=tg, assert_=assert_))
 
 
 class IsSuperset(fabll.Node):
@@ -2343,9 +2426,12 @@ class IsSuperset(fabll.Node):
         superset: "F.Parameters.can_be_operand",
         subset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (superset, subset), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (superset, subset), g=g, tg=tg
+        )
         return instance.setup(superset, subset, assert_=assert_)
 
     @classmethod
@@ -2354,9 +2440,10 @@ class IsSuperset(fabll.Node):
         superset: "F.Parameters.can_be_operand",
         subset: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(superset, subset, g=g, assert_=assert_))
+        return _op(cls.from_operands(superset, subset, g=g, tg=tg, assert_=assert_))
 
 
 class Cardinality(fabll.Node):
@@ -2395,9 +2482,12 @@ class Cardinality(fabll.Node):
         set: "F.Parameters.can_be_operand",
         cardinality: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, (set, cardinality), g=g)
+        instance = _make_instance_from_operand_instance(
+            cls, (set, cardinality), g=g, tg=tg
+        )
         return instance.setup(set, cardinality, assert_=assert_)
 
     @classmethod
@@ -2406,9 +2496,10 @@ class Cardinality(fabll.Node):
         set: "F.Parameters.can_be_operand",
         cardinality: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(set, cardinality, g=g, assert_=assert_))
+        return _op(cls.from_operands(set, cardinality, g=g, tg=tg, assert_=assert_))
 
 
 class Is(fabll.Node):
@@ -2477,9 +2568,10 @@ class Is(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> Self:
-        instance = _make_instance_from_operand_instance(cls, operands, g=g)
+        instance = _make_instance_from_operand_instance(cls, operands, g=g, tg=tg)
         return instance.setup(
             *operands,
             assert_=assert_,
@@ -2490,9 +2582,10 @@ class Is(fabll.Node):
         cls,
         *operands: "F.Parameters.can_be_operand",
         g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
         assert_: bool = False,
     ) -> "F.Parameters.can_be_operand":
-        return _op(cls.from_operands(*operands, g=g, assert_=assert_))
+        return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
 
 # Tests --------------------------------------------------------------------------------
