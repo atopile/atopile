@@ -3505,11 +3505,13 @@ class Numbers(fabll.Node):
 
         # Range - calculate center and tolerance
         center = (min_val + max_val) / 2
-        if center != 0:
-            tolerance_rel = abs((max_val - min_val) / 2 / center) * 100
+        if (
+            center != 0
+            and (tolerance_rel := abs((max_val - min_val) / 2 / center) * 100) < 1
+        ):
             return f"{center}{unit_symbol} ±{tolerance_rel:.0f}%"
         else:
-            return f"{min_val}-{max_val}{unit_symbol}"
+            return f"{min_val}..{max_val}{unit_symbol}"
 
 
 class TestNumbers:

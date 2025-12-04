@@ -1161,6 +1161,18 @@ fn wrap_graphview_get_self_node() type {
     };
 }
 
+fn graphview_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+    const wrapper = bind.castWrapper("GraphView", &graph_view_type, GraphViewWrapper, self) orelse return null;
+    const count = wrapper.data.get_node_count();
+
+    var buf: [64]u8 = undefined;
+    const str = std.fmt.bufPrintZ(&buf, "GraphView(nodes={d})", .{count}) catch {
+        return null;
+    };
+
+    return py.PyUnicode_FromString(str);
+}
+
 fn wrap_graphview(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_graphview_create(),
@@ -1175,6 +1187,10 @@ fn wrap_graphview(root: *py.PyObject) void {
     };
     bind.wrap_namespace_struct(root, graph.graph.GraphView, extra_methods);
     graph_view_type = type_registry.getRegisteredTypeObject("GraphView");
+
+    if (graph_view_type) |typ| {
+        typ.tp_repr = @ptrCast(&graphview_repr);
+    }
 }
 
 fn wrap_graph_module(root: *py.PyObject) ?*py.PyObject {

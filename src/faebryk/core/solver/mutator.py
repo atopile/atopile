@@ -1243,7 +1243,10 @@ class Mutator:
             ).check_if_instance_of_type_has_trait(F.Expressions.is_canonical)
 
             if exists := self.utils.find_congruent_expression(
-                expression_factory, *operands, allow_uncorrelated=False
+                expression_factory,
+                *operands,
+                allow_uncorrelated=False,
+                dont_match=[expr],
             ):
                 exists_po = exists.get_trait(F.Parameters.is_parameter_operatable)
                 return self._mutate(

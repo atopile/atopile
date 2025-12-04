@@ -122,7 +122,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         Cardinality: None,
     }
     _UnsupportedOperations = {
-        k.bind_typegraph(mutator.tg_in).get_or_create_type().node(): v
+        k.bind_typegraph(mutator.tg_in).get_or_create_type().node().get_uuid(): v
         for k, v in UnsupportedOperations.items()
     }
 
@@ -266,7 +266,10 @@ def convert_to_canonical_operations(mutator: Mutator):
     ]
 
     lookup = {
-        Convertible.bind_typegraph(mutator.tg_in).get_or_create_type().node(): (
+        Convertible.bind_typegraph(mutator.tg_in)
+        .get_or_create_type()
+        .node()
+        .get_uuid(): (
             Target,
             Converter,
         )
@@ -312,14 +315,14 @@ def convert_to_canonical_operations(mutator: Mutator):
         else:
             mutator.mutate_parameter(param)
 
-    exprs = mutator.get_typed_expressions(sort_by_depth=True)
+    exprs = mutator.get_expressions(sort_by_depth=True)
     for e in exprs:
-        e_expr = e.get_trait(F.Expressions.is_expression)
-        e_type = not_none(e.get_type_node()).node()
-        e_po = e_expr.as_parameter_operatable.get()
-        if e_type in _UnsupportedOperations:
-            replacement = _UnsupportedOperations[e_type]
-            rep = e_expr.compact_repr(mutator.print_context)
+        e_type = not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node()
+        e_type_uuid = e_type.get_uuid()
+        e_po = e.as_parameter_operatable.get()
+        if e_type_uuid in _UnsupportedOperations:
+            replacement = _UnsupportedOperations[e_type_uuid]
+            rep = e.compact_repr(mutator.print_context)
             if replacement is None:
                 logger.warning(f"{type(e)}({rep}) not supported by solver, skipping")
                 mutator.remove(e.get_trait(F.Parameters.is_parameter_operatable))
@@ -329,8 +332,8 @@ def convert_to_canonical_operations(mutator: Mutator):
                 f"{type(e)}({rep}) not supported by solver, converting to {replacement}"
             )
 
-        operands = [_strip_units(o) for o in e_expr.get_operands()]
-        from_ops = [e.get_trait(F.Parameters.is_parameter_operatable)]
+        operands = [_strip_units(o) for o in e.get_operands()]
+        from_ops = [e_po]
         # TODO move up, by implementing Parameter Target
         # Min, Max
         if e.isinstance(F.Expressions.Min, F.Expressions.Max):
@@ -374,16 +377,17 @@ def convert_to_canonical_operations(mutator: Mutator):
             mutator._mutate(e_po, p_po)
             continue
 
-        if e_type not in lookup:
-            mutator.mutate_expression(e_expr, operands, from_ops=from_ops)
+        # Canonical-expressions need to be mutated to strip the units
+        if e_type_uuid not in lookup:
+            mutator.mutate_expression(e, operands)
             continue
 
         # Rest
-        Target, Converter = lookup[e_type]
+        Target, Converter = lookup[e_type_uuid]
 
         setattr(c, "from_ops", from_ops)
         mutator.mutate_expression(
-            e_expr,
+            e,
             Converter(operands),
             expression_factory=Target,
             # TODO: copy-pasted this from convert_to_canonical_literals

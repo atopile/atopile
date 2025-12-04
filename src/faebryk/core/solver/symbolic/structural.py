@@ -51,14 +51,17 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
     ge_exprs = {
         e
-        for e in mutator.get_typed_expressions(GreaterOrEqual, sort_by_depth=True)
+        for e in mutator.get_typed_expressions(
+            GreaterOrEqual,
+            sort_by_depth=True,
+            required_traits=(F.Expressions.is_predicate,),
+        )
         # Look for expressions with only one non-literal operand
-        if e.try_get_trait(F.Expressions.is_predicate)
-        and len(
+        if len(
             [
                 op
                 for op in e.is_expression.get().get_operands()
-                if op.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                if op.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
             ]
         )
         == 1
@@ -74,10 +77,8 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             param = op_0
             lit = op_1.get_sibling_trait(F.Literals.is_literal)
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.max_elem(g=mutator.G_transient, tg=mutator.tg_out)
-            if boundary.op_greater_or_equal(
-                mutator.make_lit(math.inf), g=mutator.G_transient, tg=mutator.tg_out
-            ):
+            boundary = lit_n.get_max_value()
+            if boundary >= math.inf:
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "GreaterEqual inf not possible",
@@ -92,15 +93,13 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                     ge_e, mutator.make_lit(False).is_literal.get()
                 )
                 continue
-            interval = boundary
+            interval = mutator.utils.make_number_literal_from_range(boundary, math.inf)
         else:
             param = op_1
             lit = op_0.get_sibling_trait(F.Literals.is_literal)
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
-            boundary = lit_n.min_elem(g=mutator.G_transient, tg=mutator.tg_out)
-            if boundary.op_greater_or_equal(
-                mutator.make_lit(math.inf), g=mutator.G_transient, tg=mutator.tg_out
-            ):
+            boundary = lit_n.get_min_value()
+            if boundary <= -math.inf:
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "LessEqual -inf not possible",
@@ -115,11 +114,11 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
                     ge_e, mutator.make_lit(False).is_literal.get()
                 )
                 continue
-            interval = boundary
+            interval = mutator.utils.make_number_literal_from_range(-math.inf, boundary)
 
         mutator.mutate_expression(
             ge_e,
-            operands=[param, interval.is_literal.get().as_operand.get()],
+            operands=[param, interval.can_be_operand.get()],
             expression_factory=IsSubset,
         )
 

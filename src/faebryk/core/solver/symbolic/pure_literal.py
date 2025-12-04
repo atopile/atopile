@@ -71,16 +71,16 @@ def _exec_pure_literal_operands(
 ) -> F.Literals.is_literal | None:
     operands = list(operands)
     _map = {
-        k.bind_typegraph(expr_type.tg).get_or_create_type().node(): v
+        k.bind_typegraph(expr_type.tg).get_or_create_type().node().get_uuid(): v
         for k, v in _CanonicalExpressions.items()
     }
-    expr_type_node = fabll.Traits(expr_type).get_obj_raw().get_type_node()
-    if expr_type_node not in _map:
+    expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
+    if expr_type_node.get_uuid() not in _map:
         return None
     if not all(o.try_get_sibling_trait(F.Literals.is_literal) for o in operands):
         return None
     try:
-        return _map[expr_type_node].run(g, tg, *operands)
+        return _map[expr_type_node.get_uuid()].run(g, tg, *operands)
     except (ValueError, NotImplementedError, ZeroDivisionError):
         return None
 
@@ -106,14 +106,12 @@ def _exec_pure_literal_expressions(
 
 @algorithm("Fold pure literal expressions", terminal=False)
 def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.get_typed_expressions(
-        sort_by_depth=True, required_traits=(F.Expressions.is_canonical,)
-    )
+    exprs = mutator.get_expressions(sort_by_depth=True)
 
     for expr in exprs:
-        expr_t_po = expr.get_trait(F.Parameters.is_parameter_operatable)
+        expr_po = expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
         # TODO is this needed?
-        if mutator.has_been_mutated(expr_t_po) or mutator.is_removed(expr_t_po):
+        if mutator.has_been_mutated(expr_po) or mutator.is_removed(expr_po):
             continue
 
         # if expression is not evaluatable that's fine
@@ -121,10 +119,8 @@ def fold_pure_literal_expressions(mutator: Mutator):
         result = _exec_pure_literal_expressions(
             mutator.G_transient,
             mutator.tg_in,
-            expr.get_trait(F.Expressions.is_expression),
+            expr,
         )
         if result is None:
             continue
-        mutator.utils.alias_is_literal_and_check_predicate_eval(
-            expr.get_trait(F.Expressions.is_expression), result
-        )
+        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)

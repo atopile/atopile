@@ -590,6 +590,7 @@ class MutatorUtils:
         expr_factory: type[T],
         *operands: F.Parameters.can_be_operand,
         allow_uncorrelated: bool = False,
+        dont_match: list[F.Expressions.is_expression] | None = None,
     ) -> T | None:
         non_lits = [
             op_po
@@ -599,13 +600,17 @@ class MutatorUtils:
         literal_expr = all(
             self.is_literal(op) or self.is_literal_expression(op) for op in operands
         )
+        dont_match_set = set(dont_match or [])
         if literal_expr:
             lit_ops = {
                 op
                 for op in self.mutator.get_typed_expressions(
                     expr_factory, created_only=False, include_terminated=True
                 )
-                if self.is_literal_expression(op.get_trait(F.Parameters.can_be_operand))
+                if op.get_trait(F.Expressions.is_expression) not in dont_match_set
+                and self.is_literal_expression(
+                    op.get_trait(F.Parameters.can_be_operand)
+                )
                 # check congruence
                 and F.Expressions.is_expression.are_pos_congruent(
                     op.get_trait(F.Expressions.is_expression).get_operands(),
@@ -624,6 +629,7 @@ class MutatorUtils:
             expr_t
             for expr in non_lits[0].get_operations()
             if (expr_t := expr.try_cast(expr_factory))
+            and expr_t.get_trait(F.Expressions.is_expression) not in dont_match_set
         ]
         for c in candidates:
             # TODO congruence check instead
