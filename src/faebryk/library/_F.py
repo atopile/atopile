@@ -37,7 +37,6 @@ import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.implements_design_check import implements_design_check
-from faebryk.library.has_associated_footprint import has_associated_footprint
 from faebryk.library.has_footprint import has_footprint
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
@@ -158,7 +157,6 @@ __all__ = [
     "can_bridge",
     "has_linked_pad",
     "implements_design_check",
-    "has_associated_footprint",
     "has_footprint",
     "Parameters",
     "can_bridge_by_name",
