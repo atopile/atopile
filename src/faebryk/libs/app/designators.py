@@ -61,8 +61,7 @@ def attach_random_designators(tg: fbrk.TypeGraph):
     # Step 4: Assign designators to components that don't have one yet
     # Sort by name for deterministic ordering
     components_sorted = natsorted(
-        components_with_designator,
-        key=lambda c: c.get_full_name() or ""
+        components_with_designator, key=lambda c: c.get_full_name() or ""
     )
 
     for component in components_sorted:
@@ -125,7 +124,7 @@ def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Nod
         node: ref
         for node, trait in nodes_traits.items()
         if (ref := _get_pcb_designator(trait)) is not None
-        and not isinstance(node, F.Footprints.Footprint)
+        and not isinstance(node, F.Footprints.GenericFootprint)
     }
 
     if attach:

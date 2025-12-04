@@ -13,6 +13,13 @@ class is_lead(fabll.Node):
 
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    def attach_to_pad(self, pad: fabll.Node):
+        if not pad.has_trait(F.Footprints.is_pad):
+            raise ValueError(f"Pad {pad} is not a pad")
+        fabll.Traits.create_and_add_instance_to(
+            node=self, trait=F.has_associated_pad
+        ).setup(pad=pad)
+
 
 def test_is_lead():
     from faebryk.library.has_associated_pad import has_associated_pad

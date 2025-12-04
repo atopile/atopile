@@ -641,10 +641,10 @@ class PCB_Transformer:
 
     # Pads ---------------------------------------------------------------------------
     @staticmethod
-    def _get_pad(ffp: "F.Footprints.Footprint", intf: "F.Electrical"):
+    def _get_pad(ffp: "F.Footprints.GenericFootprint", intf: "F.Electrical"):
         import faebryk.library._F as F
 
-        pin_map = ffp.get_trait(F.is_kicad_footprint).get_pin_names()
+        pin_map = ffp.get_trait(F.is_kicad_footprint).get_pad_names()
         pin_name = find(
             pin_map.items(),
             lambda pad_and_name: intf._is_interface.get().is_connected_to(
@@ -659,7 +659,7 @@ class PCB_Transformer:
 
     @staticmethod
     def get_pad(intf: "F.Electrical") -> tuple[KiCadFootprint, KiCadPad, fabll.Node]:
-        obj, ffp = F.Footprints.Footprint.get_footprint_of_parent(intf)
+        obj, ffp = F.Footprints.GenericFootprint.get_footprint_of_parent(intf)
         fp, pad = PCB_Transformer._get_pad(ffp, intf)
 
         return fp, pad, obj

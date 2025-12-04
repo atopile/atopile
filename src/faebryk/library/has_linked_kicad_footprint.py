@@ -17,13 +17,13 @@ class has_linked_kicad_footprint(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
-    footprint_ptr_ = F.Collections.Pointer.MakeChild()
+    footprint_ = F.Collections.Pointer.MakeChild()
     transformer_ = F.Parameters.StringParameter.MakeChild()
 
     @property
-    def footprint(self):
+    def footprint(self) -> fabll.Node:
         """Return the KiCad footprint associated with this node"""
-        return self.footprint_ptr_.get().deref()
+        return self.footprint_.get().deref()
 
     def get_transformer(self) -> "PCB_Transformer":
         transformer_id = int(
@@ -42,7 +42,7 @@ class has_linked_kicad_footprint(fabll.Node):
         out = fabll._ChildField(cls)
         out.add_dependant(footprint)
         out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.footprint_ptr_], [footprint])
+            F.Collections.Pointer.MakeEdge([out, cls.footprint_], [footprint])
         )
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(

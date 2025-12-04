@@ -550,7 +550,7 @@ def attach(
     try:
         epart = download_easyeda_info(partno, get_model=get_model)
     except LCSC_NoDataException:
-        if component.has_trait(F.has_footprint):
+        if component.has_trait(F.Footprints.has_associated_footprint):
             apart = None
             epart = None
         else:

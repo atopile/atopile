@@ -16,7 +16,6 @@ class is_kicad_footprint(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
     kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
-    pinmap_ = F.Collections.PointerSet.MakeChild()
 
     def get_kicad_footprint_identifier(self) -> str:
         return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
@@ -24,66 +23,30 @@ class is_kicad_footprint(fabll.Node):
     def get_kicad_footprint_name(self) -> str:
         return self.get_kicad_footprint_identifier().split(":")[1]
 
-    def get_pin_names(self) -> dict[F.Pad, str]:
-        pin_names = {}
-        pointers = self.pinmap_.get().as_list()
-        for pointer in pointers:
-            tuple = F.Collections.PointerTuple.bind_instance(pointer.instance)
-            pin_names[tuple.deref_pointer()] = tuple.get_literals_as_list()[0]
-        return pin_names
+    def get_pad_names(self) -> list[str]:
+        # FIX: is_kicad_pad is not a child of is_kicad_footprint, but of
+        # the sibling node of the parent of is_kicad_footprint
+        return [
+            p.get_trait(F.is_kicad_pad).get_pad_name()
+            for p in self.get_children(
+                direct_only=False, types=fabll.Node, required_trait=F.is_kicad_pad
+            )
+        ]
 
     @classmethod
-    def MakeChild(
-        cls, kicad_identifier: str, pinmap: dict[fabll._ChildField[F.Pad], str]
-    ) -> fabll._ChildField:
+    def MakeChild(cls, kicad_identifier: str) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral(
                 [out, cls.kicad_identifier_], kicad_identifier
             )
         )
-
-        for pad, pad_str in pinmap.items():
-            # Tuple
-            pin_tuple = F.Collections.PointerTuple.MakeChild()
-            out.add_dependant(pin_tuple)
-            # Add tuple to pinmap set
-            out.add_dependant(
-                F.Collections.PointerSet.MakeEdge(
-                    [out, cls.pinmap_],
-                    [pin_tuple],
-                )
-            )
-            # Pad Str
-            lit = F.Literals.Strings.MakeChild(pad_str)
-            out.add_dependant(lit)
-            out.add_dependant(
-                F.Collections.PointerTuple.AppendLiteral(
-                    tup_ref=[pin_tuple], elem_ref=[lit]
-                )
-            )
-            # Electrical
-            if pad is None:
-                continue
-            out.add_dependant(
-                F.Collections.PointerTuple.SetPointer(
-                    tup_ref=[pin_tuple], elem_ref=[pad]
-                )
-            )
         return out
 
-    def setup(self, kicad_identifier: str, pinmap: dict[F.Pad, str]) -> Self:
+    def setup(self, kicad_identifier: str) -> Self:
         self.kicad_identifier_.get().alias_to_single(
             g=self.instance.g(), value=kicad_identifier
         )
-        for pad, pad_str in pinmap.items():
-            # Create pin_tuple instance
-            pin_tuple = F.Collections.PointerTuple.bind_typegraph(
-                tg=self.tg
-            ).create_instance(g=self.instance.g())
-            pin_tuple.pointer.get().point(pad)
-            pin_tuple.append_literal(pad_str)
-            self.pinmap_.get().append(pin_tuple)
         return self
 
 
@@ -91,22 +54,31 @@ def test_is_kicad_footprint():
     g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
-    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
-    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    class KCFootprint(fabll.Node):
+        class KCPad(fabll.Node):
+            is_kicad_pad = fabll.Traits.MakeEdge(
+                F.is_kicad_pad.MakeChild(pad_name="P1")
+            )
 
-    kicad_footprint = (
-        is_kicad_footprint.bind_typegraph(tg=tg)
-        .create_instance(g=g)
-        .setup(
-            kicad_identifier="Resistor:libR_0402_1005Metric2",
-            pinmap={pad1: "P1", pad2: "P2"},
+        is_kicad_footprint = fabll.Traits.MakeEdge(
+            is_kicad_footprint.MakeChild(
+                kicad_identifier="Resistor:libR_0402_1005Metric2"
+            )
         )
-    )
+        kc_pad = KCPad.MakeChild()
+
+    kicad_footprint = KCFootprint.bind_typegraph(tg=tg).create_instance(g=g)
 
     assert (
-        kicad_footprint.get_kicad_footprint_identifier()
+        kicad_footprint.is_kicad_footprint.get().get_kicad_footprint_identifier()
         == "Resistor:libR_0402_1005Metric2"
     )
-    assert kicad_footprint.get_kicad_footprint_name() == "libR_0402_1005Metric2"
-    assert kicad_footprint.get_pin_names() == {pad1: "P1", pad2: "P2"}
+    assert (
+        kicad_footprint.is_kicad_footprint.get().get_kicad_footprint_name()
+        == "libR_0402_1005Metric2"
+    )
+    kc_fp_trait = kicad_footprint.is_kicad_footprint.get()
+    pad_names = kc_fp_trait.get_pad_names()
+
+    assert len(pad_names) == 1
+    assert pad_names[0] == "P1"

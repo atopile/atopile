@@ -49,7 +49,7 @@ class _has_local_kicad_footprint_named_defined(fabll.Node):
         self.lib_reference = lib_reference
         self.pinmap = pinmap
 
-    def get_footprint(self) -> F.Footprints.Footprint:
+    def get_footprint(self) -> F.Footprints.GenericFootprint:
         if fp := self.try_get_footprint():
             return fp
         else:

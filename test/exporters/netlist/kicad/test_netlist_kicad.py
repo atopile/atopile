@@ -84,7 +84,7 @@ def netlist_graph():
         fabll.Traits.create_and_add_instance_to(r, F.has_designator).setup(designator)
         fabll.Traits.create_and_add_instance_to(
             r, F.can_attach_to_footprint_symmetrically
-        ).attach(F.Footprints.Footprint.bind_typegraph(tg).create_instance(g=g))
+        ).attach(F.Footprints.GenericFootprint.bind_typegraph(tg).create_instance(g=g))
 
         fabll.Traits.create_and_add_instance_to(r, F.is_kicad_footprint).setup(
             kicad_identifier="Resistor_SMD:R_0805_2012Metric",  # TODO: get from SMDSize

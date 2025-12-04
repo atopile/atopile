@@ -68,7 +68,7 @@ def make_fbrk_netlist_from_graph(
 
     comps = {
         t.get_trait(F.can_represent_kicad_footprint).get_kicad_obj()
-        for t in F.Footprints.Footprint.bind_typegraph(tg).get_instances(g)
+        for t in F.Footprints.GenericFootprint.bind_typegraph(tg).get_instances(g)
         if t.has_trait(F.has_footprint)
     }
 

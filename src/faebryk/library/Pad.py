@@ -49,7 +49,7 @@ class Pad(fabll.Node):
         #     return list(intf.get_trait(F.has_lnked_pad).get_pads())
 
         # This is a bit slower, but finds them all
-        _, footprint = F.Footprints.Footprint.get_footprint_of_parent(intf)
+        _, footprint = F.Footprints.GenericFootprint.get_footprint_of_parent(intf)
         pads = [
             pad
             for pad in footprint.get_children(
@@ -61,8 +61,8 @@ class Pad(fabll.Node):
         ]
         return pads
 
-    def get_fp(self) -> F.Footprints.Footprint:
-        return not_none(self.get_parent_of_type(F.Footprints.Footprint))
+    def get_fp(self) -> F.Footprints.GenericFootprint:
+        return not_none(self.get_parent_of_type(F.Footprints.GenericFootprint))
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

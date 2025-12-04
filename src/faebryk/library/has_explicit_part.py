@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import Self, override
+from typing import Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -23,7 +23,8 @@ class has_explicit_part(fabll.Node):
         mfr: str,
         partno: str,
         pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
-        override_footprint: tuple[fabll._ChildField[F.Footprints.Footprint], str] | None = None,
+        override_footprint: tuple[fabll._ChildField[F.Footprints.GenericFootprint], str]
+        | None = None,
     ) -> fabll._ChildField[Self]:
         return cls.MakeChild(mfr, partno, None, None, pinmap, override_footprint)
 
@@ -33,7 +34,8 @@ class has_explicit_part(fabll.Node):
         supplier_partno: str,
         supplier_id: str = "lcsc",
         pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None = None,
-        override_footprint: tuple[fabll._ChildField[F.Footprints.Footprint], str] | None = None,
+        override_footprint: tuple[fabll._ChildField[F.Footprints.GenericFootprint], str]
+        | None = None,
     ) -> fabll._ChildField[Self]:
         if supplier_id != "lcsc":
             raise NotImplementedError(f"Supplier {supplier_id} not supported")
@@ -118,7 +120,9 @@ class has_explicit_part(fabll.Node):
         return pinmap
 
     @property
-    def override_footprint(self) -> tuple[fabll._ChildField[F.Footprints.Footprint], str] | None:
+    def override_footprint(
+        self,
+    ) -> tuple[fabll._ChildField[F.Footprints.GenericFootprint], str] | None:
         literal = F.Collections.PointerTuple.bind_instance(
             self.override_footprint_.get().instance
         ).get_literals_as_list()
@@ -135,7 +139,8 @@ class has_explicit_part(fabll.Node):
         supplier_id: str | None,
         supplier_partno: str | None,
         pinmap: dict[str, fabll._ChildField[F.Electrical] | None] | None,
-        override_footprint: tuple[fabll._ChildField[F.Footprints.Footprint], str] | None = None,
+        override_footprint: tuple[fabll._ChildField[F.Footprints.GenericFootprint], str]
+        | None = None,
     ):
         out = fabll._ChildField(cls)
         # Literals
