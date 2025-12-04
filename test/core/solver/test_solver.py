@@ -573,7 +573,9 @@ def test_simplify_logic_and():
     app = app_type.create_instance(g=E.g)
 
     anded = E.and_(
-        app.p[0].get().get_trait(F.Parameters.can_be_operand), E.lit_bool(True)
+        app.p[0].get().get_trait(F.Parameters.can_be_operand),
+        E.lit_bool(True),
+        assert_=True,
     )
 
     for p in app.p[1:]:
@@ -591,7 +593,6 @@ def test_simplify_logic_and():
         assert_=True,
     )
 
-    anded.get_sibling_trait(F.Expressions.is_assertable).assert_()
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g)
     # TODO actually test something
@@ -604,8 +605,7 @@ def test_shortcircuit_logic_and():
         .create_instance(E.g)
         .get_trait(F.Parameters.can_be_operand)
     )
-    expr = E.and_(p0, E.lit_bool(False))
-    expr.get_sibling_trait(F.Expressions.is_assertable).assert_()
+    E.and_(p0, E.lit_bool(False), assert_=True)
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral):
@@ -901,8 +901,8 @@ def test_symmetric_inequality_correlated():
     E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
     E.is_(p1, p0, assert_=True)
 
-    E.greater_or_equal(p0, p1).get_sibling_trait(F.Expressions.is_assertable).assert_()
-    E.greater_or_equal(p1, p0).get_sibling_trait(F.Expressions.is_assertable).assert_()
+    E.greater_or_equal(p0, p1, assert_=True)
+    E.greater_or_equal(p1, p0, assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -946,9 +946,7 @@ def test_simple_literal_folds_arithmetic(
     E.is_(p1, E.lit_op_single(operands[1]), assert_=True)
 
     expr = expr_type(p0, p1)
-    E.less_or_equal(expr, E.lit_op_single(100.0)).get_sibling_trait(
-        F.Expressions.is_assertable
-    ).assert_()
+    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -974,16 +972,14 @@ def test_simple_literal_folds_arithmetic(
 def test_super_simple_literal_folding(
     expr_type: Callable[..., F.Parameters.can_be_operand],
     operands: tuple[float, ...],
-    expected: Any,
+    expected: float,
 ):
     E = BoundExpressions()
     operands_op = [E.lit_op_single(o) for o in operands]
     expr = expr_type(*operands_op)
     solver = DefaultSolver()
 
-    E.less_or_equal(expr, E.lit_op_single(100.0)).get_sibling_trait(
-        F.Expressions.is_assertable
-    ).assert_()
+    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert not_none(
@@ -1008,9 +1004,7 @@ def test_literal_folding_add_multiplicative():
     )
     # expect: 8A + 2AB
 
-    E.less_or_equal(expr, E.lit_op_single(100.0)).get_sibling_trait(
-        F.Expressions.is_assertable
-    ).assert_()
+    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -1063,9 +1057,7 @@ def test_literal_folding_add_multiplicative_2():
         B,
     )
 
-    E.less_or_equal(expr, E.lit_op_single(100.0)).get_sibling_trait(
-        F.Expressions.is_assertable
-    ).assert_()
+    E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -1389,9 +1381,7 @@ def test_base_unit_switch():
     E = BoundExpressions()
     A = E.parameter_op(units=E.U.Ah)
     E.is_(A, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))))
-    E.greater_or_equal(A, E.lit_op_single((0.100, E.U.Ah))).get_sibling_trait(
-        F.Expressions.is_assertable
-    ).assert_()
+    E.greater_or_equal(A, E.lit_op_single((0.100, E.U.Ah)), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
@@ -1425,8 +1415,8 @@ def test_congruence_filter():
     A = E.enum_parameter_op(F.LED.Color)
     x = E.is_(A, E.lit_op_enum(F.LED.Color.EMERALD))
 
-    y1 = E.not_(x).get_sibling_trait(F.Expressions.is_assertable).assert_()
-    y2 = E.not_(x).get_sibling_trait(F.Expressions.is_assertable).assert_()
+    y1 = E.not_(x, assert_=True)
+    y2 = E.not_(x, assert_=True)
     assert y1.get_sibling_trait(F.Expressions.is_expression).is_congruent_to(
         y2.get_sibling_trait(F.Expressions.is_expression),
         g=E.g,
@@ -1919,7 +1909,7 @@ def test_find_contradiction_by_gt():
     E.is_(A, E.lit_op_range((0, 10)), assert_=True)
     E.is_(B, E.lit_op_range((20, 30)), assert_=True)
 
-    E.greater_than(A, B).get_sibling_trait(F.Expressions.is_assertable).assert_()
+    E.greater_than(A, B, assert_=True)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
