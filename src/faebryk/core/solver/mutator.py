@@ -1936,8 +1936,12 @@ class Mutator:
         self.algo(self)
 
     def _copy_unmutated(self):
-        # copy full typegraph over
-        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
+        # TODO we might have new types in tg_in that haven't been copied over yet
+        # but we can't just blindly copy over because tg_out might be modified (pretty
+        # likely)
+        # with the current way of how the get_copy works, tg_out will get the new types
+        # anyway so for now not a huge problem, later when we do smarter node copy we
+        # need to handle this
 
         touched = self.transformations.mutated.keys() | self.transformations.removed
         # TODO might not need to sort
