@@ -2,11 +2,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Self, cast
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.util import KeyErrorAmbiguous, not_none
+from faebryk.libs.util import KeyErrorAmbiguous, not_none, times
 
 if TYPE_CHECKING:
     import faebryk.library.Literals as Literals
@@ -728,7 +730,8 @@ def test_enum_param():
     tg = fbrk.TypeGraph.create(g=g)
     from enum import Enum
 
-    import faebryk.library._F as TF
+    from faebryk.library.has_usage_example import has_usage_example
+    from faebryk.library.Literals import AbstractEnums, EnumsFactory
 
     class ExampleNode(fabll.Node):
         class MyEnum(Enum):
@@ -738,19 +741,19 @@ def test_enum_param():
             D = "d"
 
         enum_p_tg = EnumParameter.MakeChild(enum_t=MyEnum)
-        constraint = TF.Literals.AbstractEnums.MakeChild_ConstrainToLiteral(
+        constraint = AbstractEnums.MakeChild_ConstrainToLiteral(
             [enum_p_tg], MyEnum.B, MyEnum.C
         )
 
-        _has_usage_example = TF.has_usage_example.MakeChild(
+        _has_usage_example = has_usage_example.MakeChild(
             example="",
-            language=TF.has_usage_example.Language.ato,
+            language=has_usage_example.Language.ato,
         ).put_on_type()
 
     example_node = ExampleNode.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Enum Literal Type Node
-    atype = TF.Literals.EnumsFactory(ExampleNode.MyEnum)
+    atype = EnumsFactory(ExampleNode.MyEnum)
     cls_n = cast(type[fabll.NodeT], atype)
     _ = cls_n.bind_typegraph(tg=tg).get_or_create_type()
 
@@ -762,12 +765,12 @@ def test_enum_param():
 
     assert [
         (m.name, m.value)
-        for m in F.Literals.AbstractEnums.get_all_members_of_type(
+        for m in AbstractEnums.get_all_members_of_type(
             node=abstract_enum_type_node, tg=tg
         )
     ] == [(m.name, m.value) for m in ExampleNode.MyEnum]
 
-    assert F.Literals.AbstractEnums.get_enum_as_dict_for_type(
+    assert AbstractEnums.get_enum_as_dict_for_type(
         node=abstract_enum_type_node, tg=tg
     ) == {m.name: m.value for m in ExampleNode.MyEnum}
 
@@ -783,15 +786,15 @@ def test_enum_param():
 def test_string_param():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    import faebryk.library._F as F
+    from faebryk.library.Literals import Strings
 
     string_p = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
     string_p.alias_to_literal("IG constrained")
-    assert string_p.force_extract_literal().get_value() == "IG constrained"
+    assert string_p.force_extract_literal().get_values()[0] == "IG constrained"
 
     class ExampleStringParameter(fabll.Node):
         string_p_tg = StringParameter.MakeChild()
-        constraint = F.Literals.Strings.MakeChild_ConstrainToLiteral(
+        constraint = Strings.MakeChild_ConstrainToLiteral(
             [string_p_tg], "TG constrained"
         )
 
@@ -802,7 +805,7 @@ def test_string_param():
 def test_boolean_param():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    import faebryk.library._F as F
+    from faebryk.library.Literals import Booleans
 
     boolean_p = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     boolean_p.alias_to_single(value=True, g=g)
@@ -810,9 +813,7 @@ def test_boolean_param():
 
     class ExampleBooleanParameter(fabll.Node):
         boolean_p_tg = BooleanParameter.MakeChild()
-        constraint = F.Literals.Booleans.MakeChild_ConstrainToLiteral(
-            [boolean_p_tg], True
-        )
+        constraint = Booleans.MakeChild_ConstrainToLiteral([boolean_p_tg], True)
 
     ebp = ExampleBooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
     assert ebp.boolean_p_tg.get().force_extract_literal().get_values()[0]
@@ -935,6 +936,378 @@ def test_get_operations_recursive():
     p1_ops_recursive = p1_po.get_operations(recursive=True)
     assert fabll.Traits(add_expr).get_obj(Add) in p1_ops_recursive
     assert fabll.Traits(mul_expr).get_obj(Multiply) in p1_ops_recursive
+
+
+def test_new_definitions():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.library.Literals import BoundLiteralContext
+    from faebryk.library.NumberDomain import BoundNumberDomainContext, NumberDomain
+    from faebryk.library.Units import Ohm
+
+    literals = BoundLiteralContext(tg, g)
+    parameters = BoundParameterContext(tg, g)
+    number_domain = BoundNumberDomainContext(tg, g)
+
+    parameters.NumericParameter.setup(
+        units=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        domain=number_domain.create_number_domain(
+            args=NumberDomain.Args(negative=False)
+        ),
+        soft_set=literals.Numbers.setup_from_min_max(
+            min=1,
+            max=10e6,
+            unit=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        ),
+        likely_constrained=True,
+    )
+
+
+def test_compact_repr():
+    """
+    Test compact_repr for parameters and expressions.
+
+    This test verifies that:
+    1. Parameters are assigned letters A, B, C... in order of first use
+    2. Expressions are formatted with proper symbols (+, *, ≥, ¬, ∧)
+    3. After exhausting A-Z, a-z, α-ω, it wraps to A₁, B₁, etc.
+    """
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.library.Expressions import Add, And, GreaterOrEqual, Multiply, Not
+    from faebryk.library.Literals import BoundLiteralContext
+    from faebryk.library.Units import Dimensionless, Volt
+
+    # Create unit instances for Volt and Dimensionless
+    volt_unit = Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    dimensionless_unit = (
+        Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    )
+    literals = BoundLiteralContext(tg=tg, g=g)
+
+    # Create numeric parameters with Volt unit
+    p1 = (
+        NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(units=volt_unit)
+    )
+    p2 = (
+        NumericParameter.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(units=volt_unit)
+    )
+
+    context = ReprContext()
+
+    # Create literal: 5 V
+    five_volt = literals.create_numbers_from_singleton(value=5.0, unit=volt_unit)
+
+    # Create literal: 10 (dimensionless scalar)
+    ten_scalar = literals.create_numbers_from_singleton(
+        value=10.0, unit=dimensionless_unit
+    )
+
+    # Build expression: (p1 + p2 + 5V) * 10
+    # Using .c() methods which return can_be_operand
+    p1_op = p1.can_be_operand.get()
+    p2_op = p2.can_be_operand.get()
+    five_volt_op = five_volt.can_be_operand.get()
+    ten_scalar_op = ten_scalar.can_be_operand.get()
+
+    # (p1 + p2)
+    p1_plus_p2 = Add.c(p1_op, p2_op)
+    # (p1 + p2 + 5V)
+    sum_with_five = Add.c(p1_plus_p2, five_volt_op)
+    # ((p1 + p2 + 5V) * 10)
+    expr = Multiply.c(sum_with_five, ten_scalar_op)
+
+    # Get expression repr
+    expr_po = expr.get_sibling_trait(is_parameter_operatable)
+    exprstr = expr_po.compact_repr(context)
+    assert exprstr == "((A + B) + 5.0V) * 10.0"
+
+    # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
+    expr2 = Add.c(p2_op, p1_op)
+    expr2_po = expr2.get_sibling_trait(is_parameter_operatable)
+    expr2str = expr2_po.compact_repr(context)
+    assert expr2str == "B + A"
+
+    # Create a boolean parameter (p3 will be 'C')
+    p3 = BooleanParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    p3_op = p3.can_be_operand.get()
+
+    # Create Not(p3)
+    expr3 = Not.c(p3_op)
+    expr3_po = expr3.get_sibling_trait(is_parameter_operatable)
+    expr3str = expr3_po.compact_repr(context)
+    assert expr3str == "¬C"
+
+    # Create 10 V literal for comparison
+    ten_volt = literals.create_numbers_from_singleton(value=10.0, unit=volt_unit)
+    ten_volt_op = ten_volt.can_be_operand.get()
+
+    # Create expr >= 10V
+    ge_expr = GreaterOrEqual.c(expr, ten_volt_op)
+
+    # Create And(Not(p3), expr >= 10V)
+    expr4 = And.c(expr3, ge_expr)
+    expr4_po = expr4.get_sibling_trait(is_parameter_operatable)
+    expr4str = expr4_po.compact_repr(context)
+    assert expr4str == "¬C ∧ ((((A + B) + 5.0V) * 10.0) ≥ 10.0V)"
+
+    # Helper to create dimensionless numeric parameters
+    def make_param():
+        return (
+            NumericParameter.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup(units=dimensionless_unit)
+        )
+
+    # Create parameters to exhaust letters D-Y (ord("Z") - ord("C") - 1 = 22)
+    # C is used by p3
+    manyps = times(ord("Z") - ord("C") - 1, make_param)
+    # Sum them to register in context
+    if manyps:
+        ops = [p.can_be_operand.get() for p in manyps]
+        sum_expr = Add.c(*ops)
+        sum_expr_po = sum_expr.get_sibling_trait(is_parameter_operatable)
+        sum_expr_po.compact_repr(context)
+
+    # Next parameter should be 'Z'
+    pZ = make_param()
+    pZ_repr = pZ.is_parameter.get().compact_repr(context)
+    assert pZ_repr == "Z"
+
+    # Next should wrap to lowercase 'a'
+    pa = make_param()
+    pa_repr = pa.is_parameter.get().compact_repr(context)
+    assert pa_repr == "a"
+
+    # Create parameters b through z (ord("z") - ord("a") = 25)
+    manyps2 = times(ord("z") - ord("a"), make_param)
+    if manyps2:
+        ops = [p.can_be_operand.get() for p in manyps2]
+        sum_expr2 = Add.c(*ops)
+        sum_expr2_po = sum_expr2.get_sibling_trait(is_parameter_operatable)
+        sum_expr2_po.compact_repr(context)
+
+    # Next should be Greek alpha
+    palpha = make_param()
+    palpha_repr = palpha.is_parameter.get().compact_repr(context)
+    assert palpha_repr == "α"
+
+    pbeta = make_param()
+    pbeta_repr = pbeta.is_parameter.get().compact_repr(context)
+    assert pbeta_repr == "β"
+
+    # Create parameters γ through ω (ord("ω") - ord("β") = 23)
+    manyps3 = times(ord("ω") - ord("β"), make_param)
+    if manyps3:
+        ops = [p.can_be_operand.get() for p in manyps3]
+        sum_expr3 = Add.c(*ops)
+        sum_expr3_po = sum_expr3.get_sibling_trait(is_parameter_operatable)
+        sum_expr3_po.compact_repr(context)
+
+    # After exhausting all alphabets, should wrap with subscript A₁
+    pAA = make_param()
+    pAA_repr = pAA.is_parameter.get().compact_repr(context)
+    assert pAA_repr == "A₁"
+
+
+@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
+def test_expression_congruence():
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.library.Expressions import Add, Is, Subtract
+    from faebryk.library.Literals import (
+        Booleans,
+        BooleansAttributes,
+        BoundLiteralContext,
+    )
+    from faebryk.library.Units import Dimensionless
+
+    parameters = BoundParameterContext(tg, g)
+
+    p1 = parameters.NumericParameter
+    p2 = parameters.NumericParameter
+    p3 = parameters.NumericParameter
+
+    assert (
+        Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(
+            p1.is_parameter.get().as_operand.get(),
+            p2.is_parameter.get().as_operand.get(),
+        )
+        .is_expression.get()
+        .is_congruent_to(
+            Add.bind_typegraph(tg)
+            .create_instance(g)
+            .setup(p1.can_be_operand.get(), p2.can_be_operand.get())
+            .is_expression.get(),
+            g=g,
+            tg=tg,
+        )
+    )
+    assert (
+        Add.bind_typegraph(tg)
+        .create_instance(g)
+        .setup(
+            p1.is_parameter.get().as_operand.get(),
+            p2.is_parameter.get().as_operand.get(),
+        )
+        .is_expression.get()
+        .is_congruent_to(
+            Add.bind_typegraph(tg)
+            .create_instance(g)
+            .setup(p2.can_be_operand.get(), p1.can_be_operand.get())
+            .is_expression.get(),
+            g=g,
+            tg=tg,
+        )
+    )
+
+    # Create literals context
+    literals = BoundLiteralContext(tg=tg, g=g)
+    dimensionless = (
+        Dimensionless.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get()
+    )
+
+    # Test singleton literal hash equality
+    zero_lit_1 = literals.create_numbers_from_singleton(value=0.0, unit=dimensionless)
+    zero_lit_2 = literals.create_numbers_from_singleton(value=0.0, unit=dimensionless)
+    assert hash(zero_lit_1.is_literal.get()) == hash(zero_lit_2.is_literal.get())
+    assert zero_lit_1.is_literal.get() == zero_lit_2.is_literal.get()
+
+    # Test Add congruence with singleton literals
+    zero_lit = literals.create_numbers_from_singleton(value=0.0, unit=dimensionless)
+    add_expr_1 = Add.from_operands(
+        zero_lit.can_be_operand.get(),
+        p2.can_be_operand.get(),
+        p1.can_be_operand.get(),
+        g=g,
+        tg=tg,
+    )
+    add_expr_2 = Add.from_operands(
+        p1.can_be_operand.get(),
+        p2.can_be_operand.get(),
+        zero_lit.can_be_operand.get(),
+        g=g,
+        tg=tg,
+    )
+    assert add_expr_1.is_expression.get().is_congruent_to(
+        add_expr_2.is_expression.get(), g=g, tg=tg
+    )
+
+    # Test Add congruence with interval literals (allow_uncorrelated)
+    interval_lit_1 = literals.create_numbers_from_interval(
+        min=0.0, max=1.0, unit=dimensionless
+    )
+    interval_lit_2 = literals.create_numbers_from_interval(
+        min=0.0, max=1.0, unit=dimensionless
+    )
+    add_interval_1 = Add.from_operands(interval_lit_1.can_be_operand.get(), g=g, tg=tg)
+    add_interval_2 = Add.from_operands(interval_lit_2.can_be_operand.get(), g=g, tg=tg)
+    assert add_interval_1.is_expression.get().is_congruent_to(
+        add_interval_2.is_expression.get(), g=g, tg=tg, allow_uncorrelated=True
+    )
+
+    # Test Subtract non-congruence (order matters)
+    sub_1 = Subtract.from_operands(
+        p1.can_be_operand.get(), p2.can_be_operand.get(), g=g, tg=tg
+    )
+    sub_2 = Subtract.from_operands(
+        p2.can_be_operand.get(), p1.can_be_operand.get(), g=g, tg=tg
+    )
+    assert not sub_1.is_expression.get().is_congruent_to(
+        sub_2.is_expression.get(), g=g, tg=tg
+    )
+
+    # Test Is congruence (commutative)
+    is_expr_1 = Is.from_operands(
+        p1.can_be_operand.get(), p2.can_be_operand.get(), g=g, tg=tg
+    )
+    is_expr_2 = Is.from_operands(
+        p2.can_be_operand.get(), p1.can_be_operand.get(), g=g, tg=tg
+    )
+    assert is_expr_1.is_expression.get().is_congruent_to(
+        is_expr_2.is_expression.get(), g=g, tg=tg
+    )
+
+    # Test Is congruence with boolean literal
+    bool_true = Booleans.bind_typegraph(tg=tg).create_instance(
+        g=g, attributes=BooleansAttributes(True, False)
+    )
+    is_bool_1 = Is.from_operands(
+        p1.can_be_operand.get(), bool_true.can_be_operand.get(), g=g, tg=tg
+    )
+    is_bool_2 = Is.from_operands(
+        bool_true.can_be_operand.get(), p1.can_be_operand.get(), g=g, tg=tg
+    )
+    assert is_bool_1.is_expression.get().is_congruent_to(
+        is_bool_2.is_expression.get(), g=g, tg=tg
+    )
+
+    # Test Is non-congruence when aliased (p3 aliased to p2)
+    Is.from_operands(
+        p3.can_be_operand.get(), p2.can_be_operand.get(), g=g, tg=tg, assert_=True
+    )
+    is_p1_p3 = Is.from_operands(
+        p1.can_be_operand.get(), p3.can_be_operand.get(), g=g, tg=tg
+    )
+    is_p1_p2 = Is.from_operands(
+        p1.can_be_operand.get(), p2.can_be_operand.get(), g=g, tg=tg
+    )
+    assert not is_p1_p3.is_expression.get().is_congruent_to(
+        is_p1_p2.is_expression.get(), g=g, tg=tg
+    )
+
+
+@pytest.mark.xfail(reason="TODO is_congruent_to not implemeneted yet")
+def test_expression_congruence_not():
+    """Test congruence with Not expressions and enum literals."""
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    from faebryk.library.Expressions import Is, Not
+    from faebryk.library.LED import LED
+    from faebryk.library.Literals import AbstractEnums
+
+    # Create an enum parameter
+    A = EnumParameter.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Create enum literal for LED.Color.EMERALD
+    enum_lit_1 = (
+        AbstractEnums.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(LED.Color.EMERALD)
+    )
+    enum_lit_2 = (
+        AbstractEnums.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(LED.Color.EMERALD)
+    )
+
+    # Create Is(A, EMERALD) expressions
+    x = Is.from_operands(
+        A.can_be_operand.get(), enum_lit_1.can_be_operand.get(), g=g, tg=tg
+    )
+    x2 = Is.from_operands(
+        A.can_be_operand.get(), enum_lit_2.can_be_operand.get(), g=g, tg=tg
+    )
+    assert x.is_expression.get().is_congruent_to(x2.is_expression.get(), g=g, tg=tg)
+
+    # Create Not(x) expressions and check congruence
+    not_x = Not.from_operands(x.can_be_operand.get(), g=g, tg=tg)
+    not_x2 = Not.from_operands(x.can_be_operand.get(), g=g, tg=tg)
+    assert not_x.is_expression.get().is_congruent_to(
+        not_x2.is_expression.get(), g=g, tg=tg
+    )
+
+
+if __name__ == "__main__":
+    from faebryk.library.Parameters import test_enum_param
+
+    test_enum_param()
 
 
 if __name__ == "__main__":
