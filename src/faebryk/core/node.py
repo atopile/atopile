@@ -188,7 +188,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             - Add a trait to a child electrical
 
             unnamed[0].add_dependant(
-                fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [unnamed[0]])
+                fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [unnamed[0]])
             )
         """
         for d in dependant:
@@ -2321,18 +2321,18 @@ def test_kicad_footprint():
     pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
-        F.is_kicad_footprint.bind_typegraph(tg=tg)
+        F.KiCadFootprints.is_kicad_footprint.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup(
             kicad_identifier="libR_0402_1005Metric2",
-            pinmap={pad1: "P1", pad2: "P2"},
+            # pinmap={pad1: "P1", pad2: "P2"},
         )
     )
     print(
         f"kicad_footprint.get_kicad_footprint():"
         f" {kicad_footprint.get_kicad_footprint_identifier()}"
     )
-    print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
+    print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pad_names()}")
 
 
 def test_node_equality():

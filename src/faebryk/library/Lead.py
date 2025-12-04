@@ -1,5 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import re
+from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -20,25 +22,23 @@ class is_lead(fabll.Node):
     def get_lead(self) -> tuple[fabll.Node, str]:
         return not_none(self.get_parent())
 
-    def find_matching_pad(
-        self, pads: list[F.Footprints.is_pad]
-    ) -> F.Footprints.is_pad | None:
+    def find_matching_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
         # 1. try find name match with regex if can_attach_to_pad_by_name is present
         # 2. try any pin if can_attach_to_any_pad is present
         # 3. try find exact name match (lead name == pad name)
         # 4. if no match, return None
-        if self.has_trait(F.can_attach_to_pad_by_name):
+        if self.has_trait(can_attach_to_pad_by_name):
             matched_pad = next(
                 (
                     pad
                     for pad in pads
-                    if self.get_trait(F.can_attach_to_pad_by_name).regex.match(
+                    if self.get_trait(can_attach_to_pad_by_name).regex.match(
                         pad.pad_name
                     )
                 ),
                 None,
             )
-        elif self.has_trait(F.can_attach_to_any_pad):
+        elif self.has_trait(can_attach_to_any_pad):
             matched_pad = next(
                 (pad for pad in pads),
                 None,
@@ -56,29 +56,89 @@ class is_lead(fabll.Node):
         return matched_pad
 
 
-def test_is_lead():
-    from faebryk.library.has_associated_pad import has_associated_pad
+class can_attach_to_any_pad(fabll.Node):
+    """
+    Attach a lead to any pad.
+    """
 
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+
+
+class can_attach_to_pad_by_name(fabll.Node):
+    """
+    Attach a lead to a pad by matching the pad name using a regex.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+
+    regex_ = F.Parameters.StringParameter.MakeChild()
+
+    @property
+    def regex(self) -> re.Pattern:
+        return re.compile(self.regex_.get().force_extract_literal().get_values()[0])
+
+    @classmethod
+    def MakeChild(cls, regex: str) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.regex_], regex)
+        )
+        return out
+
+
+class has_associated_pad(fabll.Node):
+    """
+    A node that has an associated pad.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+
+    pad_ptr_ = F.Collections.Pointer.MakeChild()
+
+    @property
+    def pad(self):
+        """The pad associated with this node"""
+        return self.pad_ptr_.get().deref()
+
+    @classmethod
+    def MakeChild(cls, pad: fabll._ChildField[fabll.Node]) -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(pad)
+        return out
+
+    def setup(self, pad: fabll.Node) -> Self:
+        self.pad_ptr_.get().point(pad)
+
+        parent = self.get_parent_with_trait(is_lead)[0].cast(Lead)
+        if parent is None:
+            raise ValueError("Parent is not a Lead")
+        pad.get_trait(
+            F.Footprints.has_associated_net
+        ).net.part_of.get()._is_interface.get().connect_to(parent.line.get())
+        return self
+
+
+def test_is_lead():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestLead(fabll.Node):
         _is_lead = fabll.Traits.MakeEdge(is_lead.MakeChild())
         _can_attach_to_any_pad = fabll.Traits.MakeEdge(
-            F.can_attach_to_any_pad.MakeChild()
+            can_attach_to_any_pad.MakeChild()
         )
         line = F.Electrical.MakeChild()
 
     lead = TestLead.bind_typegraph(tg).create_instance(g=g)
 
     assert lead.has_trait(is_lead)
-    assert lead.has_trait(F.can_attach_to_any_pad)
+    assert lead.has_trait(can_attach_to_any_pad)
 
     # emulate attaching to a pad, normaly done in build process
     class TestPad(fabll.Node):
         # _is_pad = fabll.Traits.MakeEdge(F.Footprints.is_pad.MakeChild())
         _has_associated_net = fabll.Traits.MakeEdge(
-            F.has_associated_net.MakeChild(F.Net.MakeChild())
+            F.KiCadFootprints.has_associated_net.MakeChild(F.Net.MakeChild())
         )
 
     pad = TestPad.bind_typegraph(tg).create_instance(g=g)
@@ -90,7 +150,7 @@ def test_is_lead():
     connected_pad = lead.get_trait(has_associated_pad).pad
     assert connected_pad.is_same(pad)
     assert (
-        connected_pad.get_trait(F.has_associated_net)
+        connected_pad.get_trait(F.KiCadFootprints.has_associated_net)
         .net.get_trait(fabll.is_interface)
         .is_connected_to(lead.line.get())
     )

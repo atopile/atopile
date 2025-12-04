@@ -49,14 +49,18 @@ class Comparator(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "hv"]))
-    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "lv"]))
-    output.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [output]))
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "hv"])
+    )
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "lv"])
+    )
+    output.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [output]))
     inverting_input.add_dependant(
-        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [inverting_input])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [inverting_input])
     )
     non_inverting_input.add_dependant(
-        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [non_inverting_input])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [non_inverting_input])
     )
 
     S = F.has_simple_value_representation.Spec

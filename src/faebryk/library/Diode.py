@@ -17,7 +17,9 @@ class Diode(fabll.Node):
     current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     """Current at which the design is functional"""
     reverse_working_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
-    reverse_leakage_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
+    reverse_leakage_current = F.Parameters.NumericParameter.MakeChild(
+        unit=F.Units.Ampere
+    )
     max_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
     """Current at which the design may be damaged"""
 
@@ -30,8 +32,8 @@ class Diode(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    anode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [anode]))
-    cathode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [cathode]))
+    anode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode]))
+    cathode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode]))
 
     _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=anode, out_=cathode))
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import StrEnum, auto
+from enum import StrEnum
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
@@ -45,7 +45,7 @@ class Capacitor(fabll.Node):
     )
 
     for e in unnamed:
-        e.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [e]))
+        e.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e]))
 
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])

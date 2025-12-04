@@ -11,7 +11,9 @@ class OpAmp(fabll.Node):
     # ----------------------------------------
     power = F.ElectricPower.MakeChild()
     input = F.DifferentialPair.MakeChild()
-    output = F.Electrical.MakeChild() # TODO this should be an ElectricSignal with reference set to power
+    output = (
+        F.Electrical.MakeChild()
+    )  # TODO this should be an ElectricSignal with reference set to power
 
     bandwidth = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Hertz)
     input_bias_current = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Ampere)
@@ -30,14 +32,18 @@ class OpAmp(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "hv"]))
-    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "lv"]))
-    output.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [output]))
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "hv"])
+    )
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "lv"])
+    )
+    output.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [output]))
     input.add_dependant(
-        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [input, "p", "line"])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [input, "p", "line"])
     )
     input.add_dependant(
-        fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [input, "n", "line"])
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [input, "n", "line"])
     )
 
     S = F.has_simple_value_representation.Spec

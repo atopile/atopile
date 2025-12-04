@@ -41,9 +41,11 @@ class BJT(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    emitter.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [emitter]))
-    base.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [base]))
-    collector.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [collector]))
+    emitter.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [emitter]))
+    base.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [base]))
+    collector.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [collector])
+    )
 
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=collector, out_=emitter)

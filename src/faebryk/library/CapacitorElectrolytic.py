@@ -41,8 +41,8 @@ class CapacitorElectrolytic(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    anode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [anode]))
-    cathode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [cathode]))
+    anode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode]))
+    cathode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode]))
 
     _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
 

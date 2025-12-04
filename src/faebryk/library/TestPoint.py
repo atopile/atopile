@@ -28,7 +28,7 @@ class TestPoint(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    contact.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [contact]))
+    contact.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [contact]))
 
     designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.TP)

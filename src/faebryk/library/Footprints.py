@@ -2,12 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.library import _F as F
+
+if TYPE_CHECKING:
+    from faebryk.library.Net import Net
 
 
 class is_footprint(fabll.Node):
@@ -62,6 +65,29 @@ class is_pad(fabll.Node):
         self.pad_name_.get().alias_to_single(value=pad_name)
         self.pad_number_.get().alias_to_single(value=pad_number)
         return self
+
+
+class has_associated_net(fabll.Node):
+    """
+    Link between pad-node and net. Added during build process.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+
+    net_ptr_ = F.Collections.Pointer.MakeChild()
+
+    @property
+    def net(self) -> "Net":
+        """Return the net associated with this node"""
+        from faebryk.library.Net import Net
+
+        return self.net_ptr_.get().deref().cast(Net)
+
+    @classmethod
+    def MakeChild(cls, net: "fabll._ChildField[Net]") -> fabll._ChildField[Self]:
+        out = fabll._ChildField(cls)
+        out.add_dependant(net)
+        return out
 
 
 class can_attach_to_footprint(fabll.Node):
@@ -134,6 +160,7 @@ class GenericFootprint(fabll.Node):
         return out
 
     def setup(self, pads: list[tuple[str, str]]):
+        """Setup the footprint with pads(number, name)"""
         for number, name in pads:
             pad = GenericPad.bind_typegraph(tg=self.tg).create_instance(
                 g=self.instance.g()
