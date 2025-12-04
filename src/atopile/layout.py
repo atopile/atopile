@@ -10,7 +10,6 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 import faebryk.libs.exceptions
 from atopile.address import AddressError, AddrStr
-from atopile.compiler import front_end
 from atopile.config import ProjectConfig, config
 from faebryk.libs.util import (
     DefaultFactoryDict,
