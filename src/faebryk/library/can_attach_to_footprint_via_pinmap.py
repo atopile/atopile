@@ -12,12 +12,12 @@ class can_attach_to_footprint_via_pinmap(fabll.Node):
 
     # TODO: Forward this trait to parent
     _can_attach_to_footprint = fabll.Traits.MakeEdge(
-        (F.can_attach_to_footprint.MakeChild())
+        (F.Footprints.can_attach_to_footprint.MakeChild())
     )
 
     pinmap_ = F.Collections.PointerSet.MakeChild()
 
-    def attach(self, footprint: F.Footprint):
+    def attach(self, footprint: F.Footprints.Footprint):
         # TODO: Forward this trait to parent*2
         has_footprint = fabll.Traits.create_and_add_instance_to(
             node=self, trait=F.has_footprint

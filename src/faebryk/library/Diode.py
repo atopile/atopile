@@ -27,7 +27,7 @@ class Diode(fabll.Node):
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
-        F.can_attach_to_footprint.MakeChild()
+        F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
     anode.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [anode]))

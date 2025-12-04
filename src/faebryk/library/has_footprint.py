@@ -13,20 +13,20 @@ class has_footprint(fabll.Node):
 
     footprint_pointer_ = F.Collections.Pointer.MakeChild()
 
-    def set_footprint(self, fp: F.Footprint):
+    def set_footprint(self, fp: F.Footprints.Footprint):
         self.footprint_pointer_.get().point(fp)
 
-    def try_get_footprint(self) -> F.Footprint | None:
+    def try_get_footprint(self) -> F.Footprints.Footprint | None:
         if fp := self.footprint_pointer_.get().deref():
-            return F.Footprint.bind_instance(fp.instance)
+            return F.Footprints.Footprint.bind_instance(fp.instance)
         else:
             return None
 
-    def get_footprint(self) -> F.Footprint:
+    def get_footprint(self) -> F.Footprints.Footprint:
         return not_none(self.try_get_footprint())
 
     @classmethod
-    def MakeChild(cls, fp: fabll._ChildField[F.Footprint]):
+    def MakeChild(cls, fp: fabll._ChildField[F.Footprints.Footprint]):
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(

@@ -60,7 +60,7 @@ def test_has_linked_kicad_footprint():
         _is_kicad_footprint = fabll.Traits.MakeEdge(F.is_kicad_footprint.MakeChild())
 
     class TestFootprint(fabll.Node):
-        _is_footprint = fabll.Traits.MakeEdge(F.is_footprint.MakeChild())
+        _is_footprint = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
         _has_linked_kicad_footprint = fabll.Traits.MakeEdge(
             has_linked_kicad_footprint.MakeChild(
                 TestKiCadFootprint.MakeChild(), transformer=None

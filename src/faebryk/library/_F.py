@@ -16,10 +16,8 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 import faebryk.library.Collections as Collections
-from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
-from faebryk.library.Footprint import Footprint
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.NumberDomain import NumberDomain
@@ -27,7 +25,6 @@ from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_solver import has_solver
 from faebryk.library.can_attach_to_any_pad import can_attach_to_any_pad
-from faebryk.library.is_footprint import is_footprint
 from faebryk.library.is_kicad_footprint import is_kicad_footprint
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
@@ -35,12 +32,13 @@ from faebryk.library.is_kicad_net import is_kicad_net
 from faebryk.library.is_kicad_pad import is_kicad_pad
 from faebryk.library.is_pad import is_pad
 from faebryk.library.is_pickable import is_pickable
+import faebryk.library.Footprints as Footprints
 import faebryk.library.Literals as Literals
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.has_linked_pad import has_linked_pad
-from faebryk.library.has_footprint import has_footprint
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.has_associated_footprint import has_associated_footprint
+from faebryk.library.has_footprint import has_footprint
 import faebryk.library.Parameters as Parameters
 from faebryk.library.can_bridge_by_name import can_bridge_by_name
 import faebryk.library.Expressions as Expressions
@@ -139,10 +137,8 @@ from faebryk.library.HDMI import HDMI
 
 __all__ = [
     "Collections",
-    "can_attach_to_footprint",
     "is_sink",
     "is_source",
-    "Footprint",
     "Logic",
     "Mechanical",
     "NumberDomain",
@@ -150,7 +146,6 @@ __all__ = [
     "is_app_root",
     "has_solver",
     "can_attach_to_any_pad",
-    "is_footprint",
     "is_kicad_footprint",
     "has_part_removed",
     "is_lazy",
@@ -158,12 +153,13 @@ __all__ = [
     "is_kicad_pad",
     "is_pad",
     "is_pickable",
+    "Footprints",
     "Literals",
     "can_bridge",
     "has_linked_pad",
-    "has_footprint",
     "implements_design_check",
     "has_associated_footprint",
+    "has_footprint",
     "Parameters",
     "can_bridge_by_name",
     "Expressions",

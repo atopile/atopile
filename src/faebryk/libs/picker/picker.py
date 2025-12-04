@@ -189,9 +189,9 @@ def check_missing_picks(module: fabll.Node):
             types=fabll.Node,
             required_trait=fabll.is_module,
             direct_only=False,
-            f_filter=lambda x: not isinstance(x, F.Footprint),
+            f_filter=lambda x: not isinstance(x, F.Footprints.Footprint),
         )
-        and not isinstance(m, F.Footprint)
+        and not isinstance(m, F.Footprints.Footprint)
         # no parent with part picked
         and not try_or(
             lambda: m.get_parent_with_trait(F.has_part_picked),

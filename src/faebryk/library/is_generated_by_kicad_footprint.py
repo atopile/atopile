@@ -169,7 +169,7 @@ def test_is_generated_by_kicad_footprint():
 
         _is_mmodule = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _can_attach_to_footprint = fabll.Traits.MakeEdge(
-            F.can_attach_to_footprint.MakeChild()
+            F.Footprints.can_attach_to_footprint.MakeChild()
         )
 
     user_node = NodeWithAssociatedFootprint.bind_typegraph(tg).create_instance(g=g)

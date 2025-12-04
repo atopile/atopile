@@ -286,7 +286,7 @@ class PCB_Transformer:
         """
         Generates links between:
         - fabll.Module and PCB Footprint
-        - F.Footprint and PCB Footprint
+        - F.Footprints.Footprint and PCB Footprint
         - F.Pad and PCB Pads
         """
         import faebryk.library._F as F
@@ -641,7 +641,7 @@ class PCB_Transformer:
 
     # Pads ---------------------------------------------------------------------------
     @staticmethod
-    def _get_pad(ffp: "F.Footprint", intf: "F.Electrical"):
+    def _get_pad(ffp: "F.Footprints.Footprint", intf: "F.Electrical"):
         import faebryk.library._F as F
 
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
@@ -659,7 +659,7 @@ class PCB_Transformer:
 
     @staticmethod
     def get_pad(intf: "F.Electrical") -> tuple[KiCadFootprint, KiCadPad, fabll.Node]:
-        obj, ffp = F.Footprint.get_footprint_of_parent(intf)
+        obj, ffp = F.Footprints.Footprint.get_footprint_of_parent(intf)
         fp, pad = PCB_Transformer._get_pad(ffp, intf)
 
         return fp, pad, obj
@@ -1977,7 +1977,7 @@ class PCB_Transformer:
 
         # components with footprints
         components = fabll.Traits.get_implementor_objects(
-            trait=F.has_associated_footprint.bind_typegraph(self.app.tg)
+            trait=F.Footprints.has_associated_footprint.bind_typegraph(self.app.tg)
         )
 
         # cluster components by their parent so we can insert them grouped by

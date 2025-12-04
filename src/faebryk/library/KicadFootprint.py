@@ -65,7 +65,7 @@ class KicadFootprint(fabll.Node):
 
     pin_names_ = F.Collections.PointerSet.MakeChild()
     pins_ = F.Collections.PointerSet.MakeChild()
-    footprint = F.Footprint.MakeChild()
+    footprint = F.Footprints.Footprint.MakeChild()
 
     _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 

@@ -21,7 +21,7 @@ class has_linked_kicad_footprint(fabll.Node):
     """
     Link applied to:
     - Modules which are represented in the PCB
-    - F.Footprint which are represented in the PCB
+    - F.Footprints.Footprint which are represented in the PCB
     """
 
     _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
