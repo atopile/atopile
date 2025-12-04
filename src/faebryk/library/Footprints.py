@@ -145,8 +145,9 @@ class GenericFootprint(fabll.Node):
 #     g = fabll.graph.GraphView.create()
 #     tg = fbrk.TypeGraph.create(g=g)
 
-#     has_associated_footprint = F.Footprints.has_associated_footprint.bind_typegraph(tg=tg).create_instance(g=g)
-#     is_footprint = F.Footprints.is_footprint.bind_typegraph(tg=tg).create_instance(g=g)
+#     has_associated_footprint = has_associated_footprint.bind_typegraph(tg=tg).
+#     .create_instance(g=g)
+#     is_footprint = is_footprint.bind_typegraph(tg=tg).create_instance(g=g)
 
 #     has_associated_footprint.set_footprint(is_footprint)
 
