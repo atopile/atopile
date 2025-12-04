@@ -342,6 +342,16 @@ class has_associated_net(fabll.Node):
         return out
 
 
+class GenericKiCadFootprint(fabll.Node):
+    is_kicad_footprint_ = fabll.Traits.MakeEdge(is_kicad_footprint.MakeChild(""))
+    kicad_pads_ = F.Collections.PointerSet.MakeChild()
+
+
+class GenericKiCadPad(fabll.Node):
+    is_kicad_pad_ = fabll.Traits.MakeEdge(is_kicad_pad.MakeChild(""))
+    pad_name_ = F.Parameters.StringParameter.MakeChild()
+
+
 def test_is_kicad_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
@@ -379,11 +389,13 @@ def test_has_linked_kicad_footprint():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestKiCadFootprint(fabll.Node):
-        _is_kicad_footprint = fabll.Traits.MakeEdge(F.is_kicad_footprint.MakeChild())
+        is_kicad_footprint_ = fabll.Traits.MakeEdge(
+            is_kicad_footprint.MakeChild("ABC_lib:ABC_PART")
+        )
 
     class TestFootprint(fabll.Node):
-        _is_footprint = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
-        _has_linked_kicad_footprint = fabll.Traits.MakeEdge(
+        is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
+        has_linked_kicad_footprint_ = fabll.Traits.MakeEdge(
             has_linked_kicad_footprint.MakeChild(
                 TestKiCadFootprint.MakeChild(), transformer=None
             )
@@ -391,9 +403,12 @@ def test_has_linked_kicad_footprint():
         pads_ = F.Collections.PointerSet.MakeChild()  # TODO
 
     fp = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-    assert fp.has_trait(has_linked_kicad_footprint)
-    kicad_fp = fp.get_trait(has_linked_kicad_footprint).footprint
-    assert kicad_fp.has_trait(F.is_kicad_footprint)
+    k_fp = fp.has_linked_kicad_footprint_.get().footprint
+    assert k_fp.has_trait(is_kicad_footprint)
+    assert (
+        k_fp.get_trait(is_kicad_footprint).get_kicad_footprint_identifier()
+        == "ABC_lib:ABC_PART"
+    )
 
 
 def test_is_generated_by_kicad_footprint():
@@ -453,7 +468,7 @@ def test_is_generated_by_kicad_footprint():
     assert user_node.has_trait(is_generated_from_kicad_footprint_file)
 
     gen_kfp_trait = user_node.get_trait(is_generated_from_kicad_footprint_file)
-    fp_names = is_generated_from_kicad_footprint_file._extract_pad_names_from_kicad_footprint_file(
+    fp_names = is_generated_from_kicad_footprint_file._extract_pad_names_from_kicad_footprint_file(  # noqa: E501
         fp_file
     )
 
