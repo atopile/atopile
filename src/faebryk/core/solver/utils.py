@@ -121,7 +121,7 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
 
     def __str__(self):
-        literals_str = "\n".join(f" - {lit.pretty_repr()}" for lit in self.literals)
+        literals_str = "\n".join(f" - {lit.pretty_str()}" for lit in self.literals)
         return f"{super().__str__()}\n\nLiterals:\n{literals_str}"
 
 

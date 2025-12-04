@@ -171,7 +171,7 @@ class is_literal(fabll.Node):
     def pretty_repr(self) -> str:
         # TODO
         lit = self.switch_cast()
-        return f"{lit.get_type_name()}({lit.get_values()})"
+        return f"{lit.get_type_name()}({lit.pretty_str()})"
 
     def pretty_str(self) -> str:
         return self.switch_cast().pretty_str()
@@ -3492,7 +3492,10 @@ class Numbers(fabll.Node):
         # Get unit symbol
         try:
             unit = self.get_is_unit()
-            unit_symbol = unit.get_symbols()[0]
+            if unit.is_dimensionless():
+                unit_symbol = ""
+            else:
+                unit_symbol = unit.get_symbols()[0]
         except Exception:
             unit_symbol = ""
 

@@ -545,7 +545,7 @@ class MutationStage:
                     if fabll.Traits(op).get_obj_raw().isinstance(Expressions.Is)
                     else "subset"
                 )
-                key = f"new_{alias_type}\n{lit.pretty_repr()}"
+                key = f"new_{alias_type}\n{lit.pretty_str()}"
                 value = expr.compact_repr(context_new)
             if key_from_ops:
                 key = f"{key} from\n{key_from_ops}"

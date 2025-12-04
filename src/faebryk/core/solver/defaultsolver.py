@@ -621,7 +621,7 @@ def test_defaultsolver_super_basic():
     res = solver.simplify_symbolically(tg, g, terminal=True)
     lit = res.data.mutation_map.try_get_literal(P.is_parameter_operatable.get())
     assert lit
-    print(lit.pretty_repr())
+    print(lit.pretty_str())
     assert lit.equals_singleton(True)
 
 

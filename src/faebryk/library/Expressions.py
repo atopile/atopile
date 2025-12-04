@@ -235,7 +235,7 @@ class is_expression(fabll.Node):
 
         def format_operand(op: Parameters.can_be_operand):
             if lit := op.try_get_sibling_trait(Literals.is_literal):
-                return lit.pretty_repr()
+                return lit.pretty_str()
             if po := op.get_sibling_trait(F.Parameters.is_parameter_operatable):
                 op_out = po.compact_repr(context, use_name=use_name)
                 if (op_expr := op.try_get_sibling_trait(is_expression)) and len(

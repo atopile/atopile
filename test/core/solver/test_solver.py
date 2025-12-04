@@ -1014,7 +1014,7 @@ def test_simple_literal_folds_arithmetic(
     ],
 )
 def test_super_simple_literal_folding(
-    expr_type: Callable[..., F.Parameters.can_be_operand],
+    expr_type: Callable[[F.Parameters.can_be_operand], F.Parameters.can_be_operand],
     operands: tuple[float, ...],
     expected: float,
 ):
@@ -2963,5 +2963,11 @@ def test_solve_voltage_divider_complex():
 if __name__ == "__main__":
     import typer
 
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+
     # typer.run(test_simplify)
-    typer.run(test_subset_is)
+    typer.run(
+        lambda: test_super_simple_literal_folding(F.Expressions.Add.c, (5, 10), 15)
+    )

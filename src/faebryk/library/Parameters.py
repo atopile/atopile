@@ -20,7 +20,10 @@ class ContradictingLiterals(Exception):
         self.literals = literals
 
     def __str__(self) -> str:
-        return f"ContradictingLiterals: {', '.join(lit.pretty_repr() for lit in self.literals)}"
+        return (
+            f"ContradictingLiterals:"
+            f" {', '.join(lit.pretty_str() for lit in self.literals)}"
+        )
 
 
 class can_be_operand(fabll.Node):
@@ -259,9 +262,9 @@ class is_parameter_operatable(fabll.Node):
         except KeyErrorAmbiguous as e:
             return f"{{AMBIGUOUS_I: {e.duplicates}}}"
         if lit is not None:
-            out = f"{{I|{lit.pretty_repr()}}}"
+            out = f"{{I|{lit.pretty_str()}}}"
         elif (lit := self.try_get_subset_or_alias_literal()) is not None:
-            out = f"{{S|{lit.pretty_repr()}}}"
+            out = f"{{S|{lit.pretty_str()}}}"
         if lit and lit.equals_singleton(True):
             out = "✓"
         elif lit and lit.equals_singleton(False):
