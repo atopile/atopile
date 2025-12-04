@@ -105,24 +105,11 @@ class has_associated_footprint(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
-    def get_footprint(self):
-        return is_footprint.bind_instance(
-            EdgePointer.get_referenced_node_from_node(node=self.instance)
-        )
+    def get_footprint(self) -> is_footprint:
+        return fabll.Node.bind_instance(EdgePointer.get_referenced_node_from_node(node=self.instance)).get_trait(is_footprint)
 
-    def set_footprint(self, footprint: "is_footprint"):
-        EdgePointer.point_to(
-            bound_node=self.instance, target_node=footprint.instance.node(), order=None
-        )
-
-    @classmethod
-    def MakeChild(
-        cls, footprint: fabll._ChildField[is_footprint]
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(footprint)
-        out.add_dependant(F.Collections.Pointer.MakeEdge([out], [footprint]))
-        return out
+    def set_footprint(self, footprint: is_footprint):
+        EdgePointer.point_to(bound_node=self.instance, target_node=fbrk.EdgeTrait.get_owner_node_of(bound_node=footprint.instance).node(), order=None)
 
 
 class GenericPad(fabll.Node):
@@ -186,7 +173,7 @@ class GenericFootprint(fabll.Node):
 #             has_associated_footprint.instance, show_traits=True, show_pointers=True))
 
 
-def test_has_associated_footprint_typegraph(capsys):
+def test_has_associated_footprint(capsys):
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -195,22 +182,18 @@ def test_has_associated_footprint_typegraph(capsys):
 
     class TestModule(fabll.Node):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        _has_associated_footprint = fabll.Traits.MakeEdge(
-            has_associated_footprint.MakeChild(TestFootprint.MakeChild())
-        )
-        _can_attach_to_footprint = fabll.Traits.MakeEdge(
-            can_attach_to_footprint.MakeChild()
-        )
+        _has_associated_footprint = fabll.Traits.MakeEdge(has_associated_footprint.MakeChild())
+        _can_attach_to_footprint = fabll.Traits.MakeEdge(can_attach_to_footprint.MakeChild())
 
+    footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
     module_with_footprint = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+
+    module_with_footprint.get_trait(has_associated_footprint).set_footprint(footprint_instance._is_footprint.get())
 
     assert module_with_footprint.has_trait(has_associated_footprint)
     assert module_with_footprint.has_trait(can_attach_to_footprint)
-    assert (
-        module_with_footprint.get_trait(has_associated_footprint)
-        .get_footprint()
-        .has_trait(is_footprint)
-    )
+    assert module_with_footprint.get_trait(has_associated_footprint).get_footprint().instance.node().is_same(other=footprint_instance._is_footprint.get().instance.node())
 
-
-# def test_has_associated_footprint_instancegraph(capsys):
+    with capsys.disabled():
+        print(fabll.graph.InstanceGraphFunctions.render(
+            module_with_footprint.instance, show_traits=True, show_pointers=True))
