@@ -4,6 +4,7 @@
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
+from faebryk.libs.util import not_none
 
 
 class is_lead(fabll.Node):
@@ -11,16 +12,48 @@ class is_lead(fabll.Node):
     A lead is the connection from a component package to the footprint pad
     """
 
+    class PadMatchException(Exception):
+        pass
+
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    def attach_to_pad(self, pad: fabll.Node):
-        from faebryk.library.has_associated_pad import has_associated_pad
+    def get_lead(self) -> tuple[fabll.Node, str]:
+        return not_none(self.get_parent())
 
-        if not pad.has_trait(F.Footprints.is_pad):
-            raise ValueError(f"Pad {pad} is not a pad")
-        fabll.Traits.create_and_add_instance_to(
-            node=self, trait=has_associated_pad
-        ).setup(pad=pad)
+    def find_matching_pad(
+        self, pads: list[F.Footprints.is_pad]
+    ) -> F.Footprints.is_pad | None:
+        # 1. try find name match with regex if can_attach_to_pad_by_name is present
+        # 2. try any pin if can_attach_to_any_pad is present
+        # 3. try find exact name match (lead name == pad name)
+        # 4. if no match, return None
+        if self.has_trait(F.can_attach_to_pad_by_name):
+            matched_pad = next(
+                (
+                    pad
+                    for pad in pads
+                    if self.get_trait(F.can_attach_to_pad_by_name).regex.match(
+                        pad.pad_name
+                    )
+                ),
+                None,
+            )
+        elif self.has_trait(F.can_attach_to_any_pad):
+            matched_pad = next(
+                (pad for pad in pads),
+                None,
+            )
+        else:
+            matched_pad = next(
+                (pad for pad in pads if self.get_lead()[1] == pad.pad_name),
+                None,
+            )
+
+        if matched_pad is None:
+            raise self.PadMatchException(
+                f"No matching pad found for lead with is_lead trait: {self}"
+            )
+        return matched_pad
 
 
 def test_is_lead():
@@ -43,7 +76,7 @@ def test_is_lead():
 
     # emulate attaching to a pad, normaly done in build process
     class TestPad(fabll.Node):
-        _is_pad = fabll.Traits.MakeEdge(F.Footprints.is_pad.MakeChild())
+        # _is_pad = fabll.Traits.MakeEdge(F.Footprints.is_pad.MakeChild())
         _has_associated_net = fabll.Traits.MakeEdge(
             F.has_associated_net.MakeChild(F.Net.MakeChild())
         )
