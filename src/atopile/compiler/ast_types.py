@@ -201,8 +201,12 @@ class Integer(fabll.Node):
         self.value.get().setup_from_values(values=[value])
         return self
 
-    def get_value(self) -> int:
-        return self.value.get().get_single()
+    def get_value(self) -> int | None:
+        values = self.value.get().get_values()
+        if not values:
+            return None
+        (value,) = values
+        return value
 
 
 class Boolean(fabll.Node):
@@ -567,7 +571,7 @@ class Slice(fabll.Node):
 
         return self
 
-    def get_values(self) -> tuple[int, int, int]:
+    def get_values(self) -> tuple[int | None, int | None, int | None]:
         return (
             self.start.get().get_value(),
             self.stop.get().get_value(),
@@ -848,10 +852,7 @@ class ConnectStmt(fabll.Node):
     rhs = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore
-        self,
-        source_info: SourceInfo,
-        lhs: is_connectable,
-        rhs: is_connectable,
+        self, source_info: SourceInfo, lhs: is_connectable, rhs: is_connectable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.lhs.get().point(lhs)
@@ -861,10 +862,10 @@ class ConnectStmt(fabll.Node):
         return self
 
     def get_lhs(self) -> is_connectable:
-        return self.lhs.get().deref().get_trait(is_connectable)
+        return self.lhs.get().deref().cast(is_connectable)
 
     def get_rhs(self) -> is_connectable:
-        return self.rhs.get().deref().get_trait(is_connectable)
+        return self.rhs.get().deref().cast(t=is_connectable)
 
 
 class DirectedConnectStmt(fabll.Node):
@@ -897,10 +898,13 @@ class DirectedConnectStmt(fabll.Node):
         return self
 
     def get_lhs(self) -> is_connectable:
-        return self.lhs.get().deref().get_trait(is_connectable)
+        return self.lhs.get().deref().cast(t=is_connectable)
 
     def get_rhs(self) -> "is_connectable | DirectedConnectStmt":
-        return self.rhs.get().deref().get_trait(is_connectable)
+        node = self.rhs.get().deref()
+        if node.isinstance(DirectedConnectStmt):
+            return node.cast(t=DirectedConnectStmt)
+        return node.cast(t=is_connectable)
 
 
 class RetypeStmt(fabll.Node):

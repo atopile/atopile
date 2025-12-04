@@ -1,4 +1,4 @@
-from typing import Callable, Protocol, Self
+from typing import TYPE_CHECKING, Callable, Protocol, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -119,6 +119,11 @@ class SequenceProtocol(CollectionProtocol):
     ) -> "list[EdgeField]": ...
 
 
+if TYPE_CHECKING:
+
+    class _SequenceNodeType(fabll.Node, SequenceProtocol): ...
+
+
 class SequenceEdgeFactory(Protocol):
     def __call__(
         self, identifier: str, order: int | None
@@ -129,7 +134,7 @@ def AbstractSequence(
     edge_factory: SequenceEdgeFactory,
     retrieval_function: Callable[[fabll.NodeT, str], list[fabll.NodeT]],
     typename: str | None = None,
-) -> type[SequenceProtocol]:
+) -> "type[_SequenceNodeType]":
     class ConcreteSequence(fabll.Node):
         """
         A sequence of (non-unique) elements.

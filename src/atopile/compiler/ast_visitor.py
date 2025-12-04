@@ -358,9 +358,9 @@ class ASTVisitor:
         )
 
         # TODO: from "system" type graph
-        self._pointer_sequence_type = self._type_graph.get_type_by_name(
-            type_identifier=F.Collections.PointerSequence.__name__
-        )
+        self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
+            self._type_graph
+        ).get_or_create_type()
         self._experiments: set[ASTVisitor._Experiments] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
@@ -603,7 +603,10 @@ class ASTVisitor:
 
         pointer_action = AddMakeChildAction(
             target_path=target_path,
-            child_spec=NewChildSpec(type_node=self._pointer_sequence_type),
+            child_spec=NewChildSpec(
+                type_identifier=F.Collections.PointerSequence.__name__,
+                type_node=self._pointer_sequence_type,
+            ),
             parent_reference=parent_reference,
             parent_path=parent_path,
         )
@@ -679,15 +682,19 @@ class ASTVisitor:
 
     def visit_ConnectStmt(self, node: AST.ConnectStmt):
         lhs, rhs = node.get_lhs(), node.get_rhs()
+        lhs_node, rhs_node = (
+            fabll.Traits(lhs).get_obj_raw(),
+            fabll.Traits(rhs).get_obj_raw(),
+        )
 
         # TODO: handle connectables other than field refs
-        if not lhs.isinstance(AST.FieldRef):
+        if not lhs_node.isinstance(AST.FieldRef):
             raise NotImplementedError("Unhandled connectable type for LHS")
-        if not rhs.isinstance(AST.FieldRef):
+        if not rhs_node.isinstance(AST.FieldRef):
             raise NotImplementedError("Unhandled connectable type for RHS")
 
-        lhs_path = self.visit_FieldRef(lhs.cast(t=AST.FieldRef))
-        rhs_path = self.visit_FieldRef(rhs.cast(t=AST.FieldRef))
+        lhs_path = self.visit_FieldRef(lhs_node.cast(t=AST.FieldRef))
+        rhs_path = self.visit_FieldRef(rhs_node.cast(t=AST.FieldRef))
 
         def _ensure_reference(path: FieldPath) -> BoundNode:
             (root, *_) = path.segments
@@ -707,14 +714,16 @@ class ASTVisitor:
     def _select_elements(
         iterable_field: AST.IterableFieldRef, sequence_elements: list[FieldPath]
     ) -> list[FieldPath]:
-        if (slice_node := iterable_field.slice.get()) is None:
-            return sequence_elements
+        start_idx, stop_idx, step_idx = iterable_field.slice.get().get_values()
 
-        start_idx, stop_idx, step_idx = slice_node.get_values()
         if step_idx == 0:
             raise DslException("Slice step cannot be zero")
 
-        return sequence_elements[slice(start_idx, stop_idx, step_idx)]
+        return (
+            sequence_elements
+            if (start_idx is None and stop_idx is None and step_idx is None)
+            else sequence_elements[slice(start_idx, stop_idx, step_idx)]
+        )
 
     def _pointer_member_paths(self, container_path: FieldPath) -> list[FieldPath]:
         try:
