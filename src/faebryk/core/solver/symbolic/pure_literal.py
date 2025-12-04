@@ -14,6 +14,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
+from faebryk.libs.test.boundexpressions import BoundExpressions
 from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class _Multi:
 
     def run(
         self, *args: F.Literals.LiteralNodes, g: graph.GraphView, tg: fbrk.TypeGraph
-    ) -> Any:
+    ) -> F.Literals.is_literal:
         if self.init is not None:
             init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.init)
             args = (init_lit, init_lit, *args)
@@ -137,3 +138,43 @@ def fold_pure_literal_expressions(mutator: Mutator):
         if result is None:
             continue
         mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)
+
+
+def test_fold_simple_literal_expressions_single():
+    """Test that Add(1, 2) folds to 3."""
+    from faebryk.core.solver.mutator import MutationMap
+
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    E = BoundExpressions(g=g, tg=tg)
+    expr = E.add(E.lit_op_single(1.0), E.lit_op_single(2.0))
+
+    mut_map = MutationMap.bootstrap(tg=tg, g=g)
+    mutator0 = Mutator(
+        mutation_map=mut_map,
+        algo=fold_pure_literal_expressions,
+        iteration=0,
+        terminal=True,
+    )
+    res0 = mutator0.run()
+    res0.mutation_stage.print_mutation_table()
+    mut_map = mut_map.extend(res0.mutation_stage)
+
+    lit = not_none(
+        (
+            mut_map.try_get_literal(
+                expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
+            )
+        )
+    )
+    assert lit.equals_singleton(3.0)
+
+
+if __name__ == "__main__":
+    import typer
+
+    from faebryk.libs.logging import setup_basic_logging
+
+    setup_basic_logging()
+    typer.run(test_fold_simple_literal_expressions_single)
