@@ -117,7 +117,9 @@ class Transformations:
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
 
         for s, d in self.mutated.items():
-            if (s_p := s.is_parameter()) and (d_p := d.is_parameter()):
+            if (s_p := s.try_get_sibling_trait(F.Parameters.is_parameter)) and (
+                d_p := d.try_get_sibling_trait(F.Parameters.is_parameter)
+            ):
                 s_p.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s_p]
                 d_mapping = context_new.variable_mapping.mapping.get(d_p, None)
@@ -176,7 +178,12 @@ class Transformations:
         for e in self.created:
             if not (e_co := e.try_get_sibling_trait(F.Expressions.is_predicate)):
                 continue
-            if target in e.as_expression().get_operand_operatables():
+            if (
+                target
+                in e.get_sibling_trait(
+                    F.Expressions.is_expression
+                ).get_operand_operatables()
+            ):
                 out.append(e_co)
         return out
 
@@ -551,9 +558,9 @@ class MutationStage:
             rows.append(
                 (
                     "terminated",
-                    fabll.Traits(op)
-                    .get_trait_of_obj(F.Expressions.is_expression)
-                    .compact_repr(context_new),
+                    op.get_sibling_trait(F.Expressions.is_expression).compact_repr(
+                        context_new
+                    ),
                 )
             )
 
@@ -671,7 +678,7 @@ class MutationStage:
                         reason = Traceback.Type.CONSTRAINED
                         related_ = [
                             self.get_traceback_stage(
-                                fabll.Traits(e).get_trait_of_obj(
+                                e.get_sibling_trait(
                                     F.Parameters.is_parameter_operatable
                                 )
                             )
@@ -833,7 +840,7 @@ class MutationMap:
         def _default():
             if not domain_default:
                 return None
-            if not (p := po.get_trait(F.Parameters.is_parameter)):
+            if not (p := po.get_sibling_trait(F.Parameters.is_parameter)):
                 raise ValueError("domain_default only supported for parameters")
             return p.domain_set()
 
@@ -1076,7 +1083,7 @@ class Mutator:
     ) -> F.Parameters.is_parameter:
         if param.as_parameter_operatable.get() in self.transformations.mutated:
             out = self.get_mutated(param.as_parameter_operatable.get())
-            p = out.as_parameter()
+            p = out.get_sibling_trait(F.Parameters.is_parameter)
             if (
                 np := fabll.Traits(p)
                 .get_obj_raw()
@@ -1145,7 +1152,7 @@ class Mutator:
 
         return self._mutate(
             param.as_parameter_operatable.get(), new_param.is_parameter_operatable.get()
-        ).as_parameter()
+        ).get_sibling_trait(F.Parameters.is_parameter)
 
     def _create_expression[T: fabll.NodeT](
         self,
@@ -1199,7 +1206,9 @@ class Mutator:
             operands = expr.get_operands()
 
         # if mutated
-        if (expr_po := expr.as_parameter_operatable()) in self.transformations.mutated:
+        if (
+            expr_po := expr.as_parameter_operatable.get()
+        ) in self.transformations.mutated:
             out = self.get_mutated(expr_po)
             out_obj = fabll.Traits(out).get_obj_raw()
             canon = out.get_sibling_trait(F.Expressions.is_canonical)
@@ -1207,7 +1216,7 @@ class Mutator:
             assert out_obj.isinstance(expression_factory)
             # still need to run soft_mutate even if expr already in repr
             if soft_mutate:
-                expr = out.as_expression()
+                expr = out.get_sibling_trait(F.Expressions.is_expression)
             else:
                 return canon
 
@@ -1301,9 +1310,9 @@ class Mutator:
         congruent = {
             alias
             for alias in (
-                self.utils.get_aliases(expr.as_parameter_operatable())
+                self.utils.get_aliases(expr.as_parameter_operatable.get())
                 if soft is Is
-                else self.utils.get_supersets(expr.as_parameter_operatable())
+                else self.utils.get_supersets(expr.as_parameter_operatable.get())
             )
             if fabll.Traits(alias).get_obj_raw().isinstance(expression_factory)
             and alias.get_sibling_trait(
@@ -1322,11 +1331,14 @@ class Mutator:
         out = self.create_expression(
             expression_factory,
             *operands,
-            from_ops=[expr.as_parameter_operatable(), *(from_ops or [])],
+            from_ops=[expr.as_parameter_operatable.get(), *(from_ops or [])],
             allow_uncorrelated=soft is IsSubset,
         )
         self.soft_mutate(
-            soft, expr.as_parameter_operatable(), out.as_operand(), from_ops=from_ops
+            soft,
+            expr.as_parameter_operatable.get(),
+            out.as_operand.get(),
+            from_ops=from_ops,
         )
         return out
 
@@ -1339,11 +1351,11 @@ class Mutator:
         from_ops: Sequence[F.Parameters.is_parameter_operatable] | None = None,
     ):
         # filter A is A, A ss A
-        if new.is_same(old.as_operand()):
+        if new.is_same(old.as_operand.get()):
             return
         self.create_expression(
             soft,
-            old.as_operand(),
+            old.as_operand.get(),
             new,
             assert_=True,
             from_ops=unique_ref([old] + list(from_ops or [])),
@@ -1363,14 +1375,16 @@ class Mutator:
         ```
         """
         unpacked = (
-            expr.get_operands()[0].is_parameter_operatable()
+            expr.get_operands()[0].get_sibling_trait(
+                F.Parameters.is_parameter_operatable
+            )
             if operands is None
             else operands[0]
         )
         if unpacked is None:
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(
-            expr.as_parameter_operatable(),
+            expr.as_parameter_operatable.get(),
             self.get_copy_po(unpacked),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
@@ -1394,10 +1408,14 @@ class Mutator:
         ):
             raise ValueError("Inner operand must be an expression")
         inner_operand = inner_expr_e.get_operands()[0]
-        if not (inner_operand_po := inner_operand.as_parameter_operatable()):
+        if not (
+            inner_operand_po := inner_operand.get_sibling_trait(
+                F.Parameters.is_parameter_operatable
+            )
+        ):
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(
-            expr.as_parameter_operatable(),
+            expr.as_parameter_operatable.get(),
             self.get_copy_po(inner_operand_po),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
@@ -1436,8 +1454,8 @@ class Mutator:
             .is_same(other=self.G_out.get_self_node().node())
         ):
             return obj
-        if obj_po := obj.is_parameter_operatable():
-            return self.get_copy_po(obj_po, accept_soft).as_operand()
+        if obj_po := obj.try_get_sibling_trait(F.Parameters.is_parameter_operatable):
+            return self.get_copy_po(obj_po, accept_soft).as_operand.get()
         if obj_lit := obj.try_get_sibling_trait(F.Literals.is_literal):
             return (
                 fabll.Traits(obj_lit)
@@ -1467,12 +1485,12 @@ class Mutator:
         # purely for debug
         self.transformations.copied.add(obj_po)
 
-        if expr := obj_po.is_expresssion():
+        if expr := obj_po.try_get_sibling_trait(F.Expressions.is_expression):
             # TODO consider using copy here instead of recreating expr
             return self.mutate_expression(expr).get_sibling_trait(
                 F.Parameters.is_parameter_operatable
             )
-        elif p := obj_po.is_parameter():
+        elif p := obj_po.get_sibling_trait(F.Parameters.is_parameter):
             return self.mutate_parameter(p).as_parameter_operatable.get()
 
         assert False
@@ -1571,11 +1589,11 @@ class Mutator:
         for p in po:
             p.assert_()
             if not _no_alias and not self.utils.is_alias_is_literal(
-                p.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                p.as_parameter_operatable.get()
             ):
                 self.utils.alias_to(
-                    p.get_sibling_trait(F.Parameters.can_be_operand),
-                    self.make_lit(True).get_trait(F.Parameters.can_be_operand),
+                    p.as_operand.get(),
+                    self.make_lit(True).can_be_operand.get(),
                     terminate=terminate,
                 )
 
@@ -1720,7 +1738,7 @@ class Mutator:
 
         aliases: set[F.Expressions.is_expression]
         aliases = {
-            is_.get_trait(F.Expressions.is_expression)
+            is_.is_expression.get()
             for is_ in self.get_typed_expressions(
                 Is, new_only=new_only, include_terminated=True
             )
@@ -1749,7 +1767,11 @@ class Mutator:
         return (
             is_
             for expr in aliases
-            if (is_ := self.utils.is_alias_is_literal(expr.as_parameter_operatable()))
+            if (
+                is_ := self.utils.is_alias_is_literal(
+                    expr.as_parameter_operatable.get()
+                )
+            )
         )
 
     def _get_literal_subsets(self, new_only: bool = True):
@@ -1788,11 +1810,7 @@ class Mutator:
         return (
             ss
             for expr in subsets
-            if (
-                ss := self.utils.is_subset_literal(
-                    expr.get_trait(F.Parameters.is_parameter_operatable)
-                )
-            )
+            if (ss := self.utils.is_subset_literal(expr.is_parameter_operatable.get()))
         )
 
     def get_literal_mappings(self, new_only: bool = True, allow_subset: bool = False):
@@ -2025,8 +2043,8 @@ def test_mutator_basic_bootstrap():
         param_bool = F.Parameters.BooleanParameter.MakeChild()
 
     app = App.bind_typegraph(tg=tg).create_instance(g=g)
-    param_num_op = app.param_num.get().get_trait(F.Parameters.can_be_operand)
-    param_bool_op = app.param_bool.get().get_trait(F.Parameters.can_be_operand)
+    param_num_op = app.param_num.get().can_be_operand.get()
+    param_bool_op = app.param_bool.get().can_be_operand.get()
 
     print(repr(param_bool_op))
 

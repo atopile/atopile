@@ -9,7 +9,6 @@ import faebryk.library._F as F
 from faebryk.libs.util import KeyErrorAmbiguous, not_none
 
 if TYPE_CHECKING:
-    import faebryk.library.Expressions as Expressions
     import faebryk.library.Literals as Literals
     import faebryk.library.Units as Units
     from faebryk.library.NumberDomain import NumberDomain
@@ -24,8 +23,24 @@ class ContradictingLiterals(Exception):
         return f"ContradictingLiterals: {', '.join(lit.pretty_repr() for lit in self.literals)}"
 
 
+class can_be_operand(fabll.Node):
+    """
+    Parameter, Expression, Literal
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    def get_obj_type_node(self) -> graph.BoundNode:
+        return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
+
+    def get_raw_obj(self) -> fabll.Node:
+        return fabll.Traits(self).get_obj_raw()
+
+
 class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
 
     def try_get_constrained_literal[T: "fabll.NodeT" = "Literals.is_literal"](
         self,
@@ -56,7 +71,7 @@ class is_parameter_operatable(fabll.Node):
 
         class E_Ctx:
             lit: is_literal | None = None
-            node = self.as_operand()
+            node = self.as_operand.get()
             predT = pred_type
 
         def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
@@ -117,8 +132,8 @@ class is_parameter_operatable(fabll.Node):
         from faebryk.library.Expressions import Is
 
         Is.bind_typegraph(tg=tg).create_instance(g=g).setup(
-            self.as_operand(),
-            value.get_trait(can_be_operand),
+            self.as_operand.get(),
+            value.is_literal.get().as_operand.get(),
             assert_=True,
         )
 
@@ -135,7 +150,9 @@ class is_parameter_operatable(fabll.Node):
         assert False
 
     def get_depth(self) -> int:
-        if expr := self.is_expresssion():
+        from faebryk.library.Expressions import is_expression
+
+        if expr := self.try_get_sibling_trait(is_expression):
             return expr.get_depth()
         return 0
 
@@ -163,25 +180,6 @@ class is_parameter_operatable(fabll.Node):
             return self.try_get_subset_or_alias_literal()
         return self.try_get_aliased_literal()
 
-    def as_parameter(self) -> "is_parameter":
-        return fabll.Traits(self).get_trait_of_obj(is_parameter)
-
-    def as_expression(self) -> "Expressions.is_expression":
-        from faebryk.library.Expressions import is_expression
-
-        return fabll.Traits(self).get_trait_of_obj(is_expression)
-
-    def as_operand(self) -> "can_be_operand":
-        return fabll.Traits(self).get_trait_of_obj(can_be_operand)
-
-    def is_parameter(self) -> "is_parameter | None":
-        return fabll.Traits(self).try_get_trait_of_obj(is_parameter)
-
-    def is_expresssion(self) -> "Expressions.is_expression | None":
-        from faebryk.library.Expressions import is_expression
-
-        return fabll.Traits(self).try_get_trait_of_obj(is_expression)
-
     def get_operations[T: "fabll.NodeT"](
         self,
         types: type[T] = fabll.Node,
@@ -207,7 +205,7 @@ class is_parameter_operatable(fabll.Node):
         e_ctx = E_Ctx()
         # Use the can_be_operand trait's instance, since that's where operand edges
         # are attached
-        operand_instance = e_ctx._self.as_operand().instance
+        operand_instance = e_ctx._self.as_operand.get().instance
         if types is fabll.Node:
             fbrk.EdgeOperand.visit_expression_edges(
                 bound_node=operand_instance,
@@ -243,11 +241,11 @@ class is_parameter_operatable(fabll.Node):
         return fabll.Traits(self).get_obj_raw()
 
     def has_implicit_predicates_recursive(self) -> bool:
-        from faebryk.library.Expressions import has_implicit_constraints
+        from faebryk.library.Expressions import has_implicit_constraints, is_expression
 
         if self.try_get_sibling_trait(has_implicit_constraints):
             return True
-        if expr := self.is_expresssion():
+        if expr := self.get_sibling_trait(is_expression):
             return any(
                 op.has_implicit_predicates_recursive()
                 for op in expr.get_operand_operatables()
@@ -271,31 +269,11 @@ class is_parameter_operatable(fabll.Node):
         return out
 
 
-class can_be_operand(fabll.Node):
-    """
-    Parameter, Expression, Literal
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-    def as_parameter_operatable(self) -> "is_parameter_operatable":
-        return fabll.Traits(self).get_trait_of_obj(is_parameter_operatable)
-
-    def is_parameter_operatable(self) -> "is_parameter_operatable | None":
-        return fabll.Traits(self).try_get_trait_of_obj(is_parameter_operatable)
-
-    def get_obj_type_node(self) -> graph.BoundNode:
-        return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
-
-    def get_raw_obj(self) -> fabll.Node:
-        return fabll.Traits(self).get_obj_raw()
-
-
 class is_parameter(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
     as_parameter_operatable = fabll.Traits.ImpliedTrait(is_parameter_operatable)
+    as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
 
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
@@ -385,19 +363,19 @@ class ReprContext:
 class StringParameter(fabll.Node):
     is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
-    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Strings | None":
         from faebryk.library.Literals import Strings
 
-        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_get_constrained_literal(
             lit_type=Strings
         )
 
     def force_extract_literal(self) -> "Literals.Strings":
         from faebryk.library.Literals import Strings
 
-        return self.get_trait(is_parameter_operatable).force_extract_literal(
+        return self.is_parameter_operatable.get().force_extract_literal(
             lit_type=Strings
         )
 
@@ -420,19 +398,19 @@ class StringParameter(fabll.Node):
 class BooleanParameter(fabll.Node):
     is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
-    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
 
     def try_extract_constrained_literal(self) -> "Literals.Booleans | None":
         from faebryk.library.Literals import Booleans
 
-        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_get_constrained_literal(
             lit_type=Booleans
         )
 
     def force_extract_literal(self) -> "Literals.Booleans":
         from faebryk.library.Literals import Booleans
 
-        return self.get_trait(is_parameter_operatable).force_extract_literal(
+        return self.is_parameter_operatable.get().force_extract_literal(
             lit_type=Booleans
         )
 
@@ -457,7 +435,7 @@ class BooleanParameter(fabll.Node):
 class EnumParameter(fabll.Node):
     is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
-    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     enum_domain_pointer = F.Collections.Pointer.MakeChild()
 
     def get_enum_type(self) -> "fabll.NodeT":
@@ -468,12 +446,12 @@ class EnumParameter(fabll.Node):
     def try_extract_constrained_literal[T: "F.Literals.AbstractEnums"](
         self,
     ) -> "F.Literals.AbstractEnums | None":
-        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_get_constrained_literal(
             lit_type=F.Literals.AbstractEnums
         )
 
     def force_extract_literal(self) -> "F.Literals.AbstractEnums":
-        return self.get_trait(is_parameter_operatable).force_extract_literal(
+        return self.is_parameter_operatable.get().force_extract_literal(
             lit_type=F.Literals.AbstractEnums
         )
 
@@ -531,7 +509,7 @@ class EnumParameter(fabll.Node):
 class NumericParameter(fabll.Node):
     is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
     is_parameter_operatable = fabll.Traits.MakeEdge(is_parameter_operatable.MakeChild())
-    as_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     number_domain = F.Collections.Pointer.MakeChild()
 
     # domain = fabll.ChildField(NumberDomain)
@@ -563,7 +541,7 @@ class NumericParameter(fabll.Node):
         pass
 
     def alias_to_literal(self, g: graph.GraphView, value: "Literals.Numbers") -> None:
-        self.get_trait(is_parameter_operatable).alias_to_literal(g=g, value=value)
+        self.is_parameter_operatable.get().alias_to_literal(g=g, value=value)
 
     def setup(
         self,
@@ -649,14 +627,14 @@ class NumericParameter(fabll.Node):
     def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
         from faebryk.library.Literals import Numbers
 
-        return self.get_trait(is_parameter_operatable).try_get_constrained_literal(
+        return self.is_parameter_operatable.get().try_get_constrained_literal(
             lit_type=Numbers
         )
 
     def force_extract_literal(self) -> "Literals.Numbers":
         from faebryk.library.Literals import Numbers
 
-        return self.get_trait(is_parameter_operatable).force_extract_literal(
+        return self.is_parameter_operatable.get().force_extract_literal(
             lit_type=Numbers
         )
 
@@ -711,7 +689,7 @@ def test_try_get():
     tg = fbrk.TypeGraph.create(g=g)
     p1 = StringParameter.bind_typegraph(tg=tg).create_instance(g=g)
     p1.alias_to_literal("a", "b")
-    p1_po = p1.get_trait(is_parameter_operatable)
+    p1_po = p1.is_parameter_operatable.get()
 
     assert not_none(p1.try_extract_constrained_literal()).get_values() == ["a", "b"]
 
@@ -721,8 +699,8 @@ def test_try_get():
         .setup_from_values("a", "b", "c")
     )
     IsSubset.bind_typegraph(tg).create_instance(g=g).setup(
-        subset=p1.get_trait(can_be_operand),
-        superset=ss_lit.get_trait(can_be_operand),
+        subset=p1.can_be_operand.get(),
+        superset=ss_lit.is_literal.get().as_operand.get(),
         assert_=True,
     )
 
@@ -850,9 +828,9 @@ def test_get_operations():
     p3 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
     # Get is_parameter_operatable traits
-    p1_po = p1.get_trait(is_parameter_operatable)
-    p2_po = p2.get_trait(is_parameter_operatable)
-    p3_po = p3.get_trait(is_parameter_operatable)
+    p1_po = p1.is_parameter_operatable.get()
+    p2_po = p2.is_parameter_operatable.get()
+    p3_po = p3.is_parameter_operatable.get()
 
     # Initially, no operations
     assert p1_po.get_operations() == set()
@@ -862,10 +840,7 @@ def test_get_operations():
     add_expr = (
         Add.bind_typegraph(tg=tg)
         .create_instance(g=g)
-        .setup(
-            p1.get_trait(can_be_operand),
-            p2.get_trait(can_be_operand),
-        )
+        .setup(p1.can_be_operand.get(), p2.can_be_operand.get())
     )
 
     # Now p1 and p2 should have the Add in their operations
@@ -884,8 +859,8 @@ def test_get_operations():
         Is.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup(
-            p1.get_trait(can_be_operand),
-            p3.get_trait(can_be_operand),
+            p1.can_be_operand.get(),
+            p3.can_be_operand.get(),
             assert_=True,  # This makes it a predicate
         )
     )
@@ -936,17 +911,16 @@ def test_get_operations_recursive():
     p2 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
     p3 = NumericParameter.bind_typegraph(tg=tg).create_instance(g=g)
 
-    p1_po = p1.get_trait(is_parameter_operatable)
-
+    p1_po = p1.is_parameter_operatable.get()
     # Create nested expressions: (p1 + p2) * p3
     add_expr = Add.c(
-        p1.get_trait(can_be_operand),
-        p2.get_trait(can_be_operand),
+        p1.can_be_operand.get(),
+        p2.can_be_operand.get(),
     )
 
     mul_expr = Multiply.c(
         add_expr,
-        p3.get_trait(can_be_operand),
+        p3.can_be_operand.get(),
     )
 
     # Non-recursive: p1 only sees the Add directly

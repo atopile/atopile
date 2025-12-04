@@ -276,9 +276,7 @@ def test_repr_chain_basic():
         .setup_from_min_max(
             min=10.0,
             max=20,
-            unit=F.Units.Volt.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
     m.param2.get().alias_to_literal(
@@ -289,7 +287,7 @@ def test_repr_chain_basic():
             value=5.0,
             unit=F.Units.Ampere.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .get_trait(F.Units.is_unit),
+            .is_unit.get(),
         ),
     )
     m.param3.get().alias_to_literal(
@@ -298,13 +296,11 @@ def test_repr_chain_basic():
         .create_instance(g=g)
         .setup_from_singleton(
             value=10.0,
-            unit=F.Units.Volt.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
 
-    val = m.get_trait(has_simple_value_representation).get_value()
+    val = m._simple_repr.get().get_value()
     assert val == "TM 15.0V ±33% 5.0A P2 10.0V P3"
 
 
@@ -337,13 +333,13 @@ def test_repr_chain_non_number():
         .create_instance(g=g)
         .setup(TestEnum.A)
     )
-    m.param1.get().get_trait(F.Parameters.is_parameter_operatable).alias_to_literal(
+    m.param1.get().is_parameter_operatable.get().alias_to_literal(
         g=g,
         value=test_enum_lit,
     )
     m.param2.get().alias_to_single(value=True)
 
-    val = m.get_trait(has_simple_value_representation).get_value()
+    val = m._simple_repr.get().get_value()
     assert val == "AS P2: true"
 
 
@@ -369,7 +365,7 @@ def test_repr_chain_no_literal():
 
     m = TestModule.bind_typegraph(tg).create_instance(g=g)
 
-    val = m.get_trait(has_simple_value_representation).get_value()
+    val = m._simple_repr.get().get_value()
     assert val == "P3: MISSING"
 
     m.param1.get().alias_to_literal(
@@ -378,10 +374,8 @@ def test_repr_chain_no_literal():
         .create_instance(g=g)
         .setup_from_singleton(
             value=10.0,
-            unit=F.Units.Volt.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Volt.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         ),
     )
-    val = m.get_trait(has_simple_value_representation).get_value()
+    val = m._simple_repr.get().get_value()
     assert val == "10.0V P3: MISSING"

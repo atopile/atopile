@@ -49,81 +49,82 @@ mfr_parts = [
         setup_fn=lambda r: (
             # bandwidth <= 1MHz
             F.Expressions.LessOrEqual.c(
-                left=r.bandwidth.get().get_trait(F.Parameters.can_be_operand),
+                left=r.bandwidth.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e6,
                     unit=F.Units.Hertz.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # input_bias_current <= 1nA
             F.Expressions.LessOrEqual.c(
-                left=r.input_bias_current.get().get_trait(F.Parameters.can_be_operand),
+                left=r.input_bias_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e-9,
                     unit=F.Units.Ampere.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # input_offset_voltage <= 1mV
             F.Expressions.LessOrEqual.c(
-                left=r.input_offset_voltage.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=r.input_offset_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e-3,
                     unit=F.Units.Volt.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # gain_bandwidth_product <= 1MHz
             F.Expressions.LessOrEqual.c(
-                left=r.gain_bandwidth_product.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=r.gain_bandwidth_product.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e6,
                     unit=F.Units.Hertz.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # output_current <= 1mA
             F.Expressions.LessOrEqual.c(
-                left=r.output_current.get().get_trait(F.Parameters.can_be_operand),
+                left=r.output_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e-3,
                     unit=F.Units.Ampere.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # slew_rate <= 1MV/s
             F.Expressions.LessOrEqual.c(
-                left=r.slew_rate.get().get_trait(F.Parameters.can_be_operand),
+                left=r.slew_rate.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
@@ -132,7 +133,8 @@ mfr_parts = [
                     .create_instance(g=r.g)
                     .get_trait(F.Units.is_unit),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -148,81 +150,82 @@ lcsc_id_parts = [
         setup_fn=lambda r: (
             # bandwidth <= 1MHz
             F.Expressions.LessOrEqual.c(
-                left=r.bandwidth.get().get_trait(F.Parameters.can_be_operand),
+                left=r.bandwidth.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e6,
                     unit=F.Units.Hertz.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # input_bias_current <= 1nA
             F.Expressions.LessOrEqual.c(
-                left=r.input_bias_current.get().get_trait(F.Parameters.can_be_operand),
+                left=r.input_bias_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e-9,
                     unit=F.Units.Ampere.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # input_offset_voltage <= 1mV
             F.Expressions.LessOrEqual.c(
-                left=r.input_offset_voltage.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=r.input_offset_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e-3,
                     unit=F.Units.Volt.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # gain_bandwidth_product <= 1MHz
             F.Expressions.LessOrEqual.c(
-                left=r.gain_bandwidth_product.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=r.gain_bandwidth_product.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e6,
                     unit=F.Units.Hertz.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # output_current <= 1mA
             F.Expressions.LessOrEqual.c(
-                left=r.output_current.get().get_trait(F.Parameters.can_be_operand),
+                left=r.output_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=1e-3,
                     unit=F.Units.Ampere.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # slew_rate <= 1MV/s
             F.Expressions.LessOrEqual.c(
-                left=r.slew_rate.get().get_trait(F.Parameters.can_be_operand),
+                left=r.slew_rate.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
@@ -231,7 +234,8 @@ lcsc_id_parts = [
                     .create_instance(g=r.g)
                     .get_trait(F.Units.is_unit),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -244,7 +248,7 @@ resistors = [
         packages=[SMDSize.I0402],
         setup_fn=lambda r: (
             F.Expressions.IsSubset.c(
-                subset=r.resistance.get().get_trait(F.Parameters.can_be_operand),
+                subset=r.resistance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_min_max(
@@ -252,35 +256,38 @@ resistors = [
                     max=11e3,
                     unit=F.Units.Ohm.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=r.max_power.get().get_trait(F.Parameters.can_be_operand),
+                left=r.max_power.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=0.05,
                     unit=F.Units.Watt.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=r.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                left=r.max_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=25,
                     unit=F.Units.Volt.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -290,7 +297,7 @@ resistors = [
         packages=[SMDSize.I0603],
         setup_fn=lambda r: (
             F.Expressions.IsSubset.c(
-                subset=r.resistance.get().get_trait(F.Parameters.can_be_operand),
+                subset=r.resistance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_min_max(
@@ -298,35 +305,38 @@ resistors = [
                     max=71e3,
                     unit=F.Units.Ohm.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=r.max_power.get().get_trait(F.Parameters.can_be_operand),
+                left=r.max_power.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=0.1,
                     unit=F.Units.Watt.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=r.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                left=r.max_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_singleton(
                     value=50,
                     unit=F.Units.Volt.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -336,7 +346,7 @@ resistors = [
         packages=[SMDSize.I0805],
         setup_fn=lambda r: (
             F.Expressions.IsSubset.c(
-                subset=r.resistance.get().get_trait(F.Parameters.can_be_operand),
+                subset=r.resistance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=r.tg)
                 .create_instance(g=r.g)
                 .setup_from_min_max(
@@ -344,9 +354,10 @@ resistors = [
                     max=3e-3 * 1.01,
                     unit=F.Units.Ohm.bind_typegraph(tg=r.tg)
                     .create_instance(g=r.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -359,7 +370,7 @@ capacitors = [
         packages=[SMDSize.I0603],
         setup_fn=lambda c: (
             F.Expressions.IsSubset.c(
-                subset=c.capacitance.get().get_trait(F.Parameters.can_be_operand),
+                subset=c.capacitance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=c.tg)
                 .create_instance(g=c.g)
                 .setup_from_min_max(
@@ -367,22 +378,24 @@ capacitors = [
                     max=110e-9,
                     unit=F.Units.Farad.bind_typegraph(tg=c.tg)
                     .create_instance(g=c.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=c.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                left=c.max_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=c.tg)
                 .create_instance(g=c.g)
                 .setup_from_singleton(
                     value=25,
                     unit=F.Units.Volt.bind_typegraph(tg=c.tg)
                     .create_instance(g=c.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # TODO: temperature_coefficient constraint when EnumParameter works
@@ -393,7 +406,7 @@ capacitors = [
         packages=[SMDSize.I0402],
         setup_fn=lambda c: (
             F.Expressions.IsSubset.c(
-                subset=c.capacitance.get().get_trait(F.Parameters.can_be_operand),
+                subset=c.capacitance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=c.tg)
                 .create_instance(g=c.g)
                 .setup_from_min_max(
@@ -401,22 +414,24 @@ capacitors = [
                     max=51.7e-12,
                     unit=F.Units.Farad.bind_typegraph(tg=c.tg)
                     .create_instance(g=c.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=c.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+                left=c.max_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=c.tg)
                 .create_instance(g=c.g)
                 .setup_from_singleton(
                     value=50,
                     unit=F.Units.Volt.bind_typegraph(tg=c.tg)
                     .create_instance(g=c.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # TODO: temperature_coefficient constraint when EnumParameter works
@@ -430,7 +445,7 @@ inductors = [
         packages=[SMDSize.I0603],
         setup_fn=lambda i: (
             F.Expressions.IsSubset.c(
-                subset=i.inductance.get().get_trait(F.Parameters.can_be_operand),
+                subset=i.inductance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_min_max(
@@ -438,53 +453,55 @@ inductors = [
                     max=12e-6,
                     unit=F.Units.Henry.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # max_current >= 0.05A
             F.Expressions.GreaterOrEqual.c(
-                left=i.max_current.get().get_trait(F.Parameters.can_be_operand),
+                left=i.max_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_singleton(
                     value=0.05,
                     unit=F.Units.Ampere.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # dc_resistance <= 1.17Ω
             F.Expressions.LessOrEqual.c(
-                left=i.dc_resistance.get().get_trait(F.Parameters.can_be_operand),
+                left=i.dc_resistance.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_singleton(
                     value=1.17,
                     unit=F.Units.Ohm.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # self_resonant_frequency >= 30MHz
             F.Expressions.GreaterOrEqual.c(
-                left=i.self_resonant_frequency.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=i.self_resonant_frequency.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_singleton(
                     value=30e6,
                     unit=F.Units.Hertz.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -494,7 +511,7 @@ inductors = [
         packages=[SMDSize.I0805],
         setup_fn=lambda i: (
             F.Expressions.IsSubset.c(
-                subset=i.inductance.get().get_trait(F.Parameters.can_be_operand),
+                subset=i.inductance.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_min_max(
@@ -502,53 +519,55 @@ inductors = [
                     max=29.7e-6,
                     unit=F.Units.Henry.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # max_current >= 0.06A
             F.Expressions.GreaterOrEqual.c(
-                left=i.max_current.get().get_trait(F.Parameters.can_be_operand),
+                left=i.max_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_singleton(
                     value=0.06,
                     unit=F.Units.Ampere.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # dc_resistance <= 10.7Ω
             F.Expressions.LessOrEqual.c(
-                left=i.dc_resistance.get().get_trait(F.Parameters.can_be_operand),
+                left=i.dc_resistance.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_singleton(
                     value=10.7,
                     unit=F.Units.Ohm.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # self_resonant_frequency >= 17MHz
             F.Expressions.GreaterOrEqual.c(
-                left=i.self_resonant_frequency.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=i.self_resonant_frequency.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=i.tg)
                 .create_instance(g=i.g)
                 .setup_from_singleton(
                     value=17e6,
                     unit=F.Units.Hertz.bind_typegraph(tg=i.tg)
                     .create_instance(g=i.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -562,9 +581,7 @@ mosfets = [
         setup_fn=lambda m: (
             # TODO: EnumParameter constraints for channel_type, saturation_type
             F.Expressions.IsSubset.c(
-                subset=m.gate_source_threshold_voltage.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                subset=m.gate_source_threshold_voltage.get().can_be_operand.get(),
                 superset=F.Literals.Numbers.bind_typegraph(tg=m.tg)
                 .create_instance(g=m.g)
                 .setup_from_min_max(
@@ -572,55 +589,55 @@ mosfets = [
                     max=3.4,
                     unit=F.Units.Volt.bind_typegraph(tg=m.tg)
                     .create_instance(g=m.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # max_drain_source_voltage >= 20V
             F.Expressions.GreaterOrEqual.c(
-                left=m.max_drain_source_voltage.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=m.max_drain_source_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=m.tg)
                 .create_instance(g=m.g)
                 .setup_from_singleton(
                     value=20,
                     unit=F.Units.Volt.bind_typegraph(tg=m.tg)
                     .create_instance(g=m.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # max_continuous_drain_current >= 2A
             F.Expressions.GreaterOrEqual.c(
-                left=m.max_continuous_drain_current.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=m.max_continuous_drain_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=m.tg)
                 .create_instance(g=m.g)
                 .setup_from_singleton(
                     value=2,
                     unit=F.Units.Ampere.bind_typegraph(tg=m.tg)
                     .create_instance(g=m.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # on_resistance <= 0.1Ω
             F.Expressions.LessOrEqual.c(
-                left=m.on_resistance.get().get_trait(F.Parameters.can_be_operand),
+                left=m.on_resistance.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=m.tg)
                 .create_instance(g=m.g)
                 .setup_from_singleton(
                     value=0.1,
                     unit=F.Units.Ohm.bind_typegraph(tg=m.tg)
                     .create_instance(g=m.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -634,76 +651,77 @@ diodes = [
         setup_fn=lambda d: (
             # current >= 1A
             F.Expressions.GreaterOrEqual.c(
-                left=d.current.get().get_trait(F.Parameters.can_be_operand),
+                left=d.current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=d.tg)
                 .create_instance(g=d.g)
                 .setup_from_singleton(
                     value=1,
                     unit=F.Units.Ampere.bind_typegraph(tg=d.tg)
                     .create_instance(g=d.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # forward_voltage <= 1.7V
             F.Expressions.LessOrEqual.c(
-                left=d.forward_voltage.get().get_trait(F.Parameters.can_be_operand),
+                left=d.forward_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=d.tg)
                 .create_instance(g=d.g)
                 .setup_from_singleton(
                     value=1.7,
                     unit=F.Units.Volt.bind_typegraph(tg=d.tg)
                     .create_instance(g=d.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # reverse_working_voltage >= 20V
             F.Expressions.GreaterOrEqual.c(
-                left=d.reverse_working_voltage.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=d.reverse_working_voltage.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=d.tg)
                 .create_instance(g=d.g)
                 .setup_from_singleton(
                     value=20,
                     unit=F.Units.Volt.bind_typegraph(tg=d.tg)
                     .create_instance(g=d.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # reverse_leakage_current <= 100µA
             F.Expressions.LessOrEqual.c(
-                left=d.reverse_leakage_current.get().get_trait(
-                    F.Parameters.can_be_operand
-                ),
+                left=d.reverse_leakage_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=d.tg)
                 .create_instance(g=d.g)
                 .setup_from_singleton(
                     value=100e-6,
                     unit=F.Units.Ampere.bind_typegraph(tg=d.tg)
                     .create_instance(g=d.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             # max_current >= 1A
             F.Expressions.GreaterOrEqual.c(
-                left=d.max_current.get().get_trait(F.Parameters.can_be_operand),
+                left=d.max_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=d.tg)
                 .create_instance(g=d.g)
                 .setup_from_singleton(
                     value=1,
                     unit=F.Units.Ampere.bind_typegraph(tg=d.tg)
                     .create_instance(g=d.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),
@@ -717,31 +735,31 @@ leds = [
         setup_fn=lambda led: (
             # TODO: EnumParameter constraints for color
             F.Expressions.GreaterOrEqual.c(
-                left=led.max_brightness.get().get_trait(F.Parameters.can_be_operand),
+                left=led.max_brightness.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=led.tg)
                 .create_instance(g=led.g)
                 .setup_from_singleton(
                     value=100e-3,
                     unit=F.Units.Candela.bind_typegraph(tg=led.tg)
                     .create_instance(g=led.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
             F.Expressions.GreaterOrEqual.c(
-                left=led.diode.get()
-                .max_current.get()
-                .get_trait(F.Parameters.can_be_operand),
+                left=led.diode.get().max_current.get().can_be_operand.get(),
                 right=F.Literals.Numbers.bind_typegraph(tg=led.tg)
                 .create_instance(g=led.g)
                 .setup_from_singleton(
                     value=20e-3,
                     unit=F.Units.Ampere.bind_typegraph(tg=led.tg)
                     .create_instance(g=led.g)
-                    .get_trait(F.Units.is_unit),
+                    .is_unit.get(),
                 )
-                .get_trait(F.Parameters.can_be_operand),
+                .is_literal.get()
+                .as_operand.get(),
                 assert_=True,
             ),
         ),

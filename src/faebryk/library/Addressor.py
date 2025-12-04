@@ -76,7 +76,7 @@ class Addressor(fabll.Node):
         dimensionles_unit = (
             F.Units.Dimensionless.bind_typegraph(self.offset.get().tg)
             .create_instance(self.offset.get().instance.g())
-            .get_trait(F.Units.is_unit)
+            .is_unit.get()
         )
         # Create max offset literal
         max_offset = (
@@ -93,8 +93,8 @@ class Addressor(fabll.Node):
         ).create_instance(self.offset.get().instance.g())
         # Setup greater than or equal expression
         greater_or_equal_expression.setup(
-            left=self.offset.get().get_trait(F.Parameters.can_be_operand),
-            right=max_offset.get_trait(F.Parameters.can_be_operand),
+            left=self.offset.get().can_be_operand.get(),
+            right=max_offset.is_literal.get().as_operand.get(),
             assert_=True,
         )
 

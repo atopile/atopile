@@ -103,7 +103,7 @@ def test_type_pick():
         g=module.g
     )
     is_subset.setup(
-        subset=module.resistance.get().get_trait(F.Parameters.can_be_operand),
+        subset=module.resistance.get().can_be_operand.get(),
         superset=F.Literals.Numbers.bind_typegraph(tg=module.tg)
         .create_instance(g=module.g)
         .setup_from_center_rel(
@@ -111,9 +111,10 @@ def test_type_pick():
             rel=0.1,
             unit=F.Units.Ohm.bind_typegraph(tg=module.tg)
             .create_instance(g=module.g)
-            .get_trait(F.Units.is_unit),
+            .is_unit.get(),
         )
-        .get_trait(F.Parameters.can_be_operand),
+        .is_literal.get()
+        .as_operand.get(),
         # assert_=True,
     )
 

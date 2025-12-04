@@ -35,7 +35,7 @@ class ConfigurableI2CClient(fabll.Node):
                 value=16,
                 unit=F.Units.Dimensionless.bind_typegraph(tg)
                 .create_instance(g)
-                .get_trait(F.Units.is_unit),
+                .is_unit.get(),
             ),
         )
 
@@ -58,7 +58,7 @@ def test_addressor():
             value=16 + 3,
             unit=F.Units.Dimensionless.bind_typegraph(tg)
             .create_instance(g)
-            .get_trait(F.Units.is_unit),
+            .is_unit.get(),
         ),
     )
 

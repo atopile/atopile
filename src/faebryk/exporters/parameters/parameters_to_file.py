@@ -29,7 +29,7 @@ def parameter_alias_classes(tg: fbrk.TypeGraph) -> list[set[F.Parameters.is_para
     for is_expr in is_exprs:
         params_ops = [
             op.get_trait(F.Parameters.is_parameter)
-            for op in is_expr.get_trait(F.Expressions.is_expression).get_operands()
+            for op in is_expr.is_expression.get().get_operands()
             if op.has_trait(F.Parameters.is_parameter)
         ]
         full_eq.add_eq(*params_ops)

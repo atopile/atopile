@@ -25,7 +25,7 @@ def reflexive_predicates(mutator: Mutator):
         sort_by_depth=True, required_traits=(F.Expressions.is_reflexive,)
     )
     for pred in predicates:
-        if not pred.as_parameter_operatable().get_operations():
+        if not pred.as_parameter_operatable.get().get_operations():
             continue
         operands = pred.get_operands()
         if operands[0].try_get_sibling_trait(F.Literals.is_literal):
@@ -34,7 +34,7 @@ def reflexive_predicates(mutator: Mutator):
             continue
 
         mutator.utils.alias_is_literal_and_check_predicate_eval(
-            pred, mutator.make_lit(True).as_literal()
+            pred, mutator.make_lit(True).is_literal.get()
         )
 
 
@@ -88,7 +88,7 @@ def unary_identity_unpack(mutator: Mutator):
             continue
         inner = expr.get_operands()[0]
         if mutator.utils.is_literal(inner):
-            mutator.utils.alias_to(expr.as_operand(), inner, terminate=True)
+            mutator.utils.alias_to(expr.as_operand.get(), inner, terminate=True)
         else:
             mutator.mutate_unpack_expression(expr)
 
@@ -110,7 +110,7 @@ def involutory_fold(mutator: Mutator):
             continue
         innest = inner.get_sibling_trait(F.Expressions.is_expression).get_operands()[0]
         if mutator.utils.is_literal(innest):
-            mutator.utils.alias_to(expr.as_operand(), innest, terminate=True)
+            mutator.utils.alias_to(expr.as_operand.get(), innest, terminate=True)
         else:
             mutator.mutator_neutralize_expressions(expr)
 
@@ -135,7 +135,9 @@ def associative_flatten(mutator: Mutator):
         e
         for e in ops
         if e.get_obj_type_node()
-        not in {n.get_type_node() for n in e.as_parameter_operatable().get_operations()}
+        not in {
+            n.get_type_node() for n in e.as_parameter_operatable.get().get_operations()
+        }
     ]
 
     def is_replacable(
@@ -147,10 +149,10 @@ def associative_flatten(mutator: Mutator):
         Only possible if not in use somewhere else or already mapped to new expr
         """
         # overly restrictive: equivalent replacement would be ok
-        if mutator.has_been_mutated(to_replace.as_parameter_operatable()):
+        if mutator.has_been_mutated(to_replace.as_parameter_operatable.get()):
             return False
-        if to_replace.as_parameter_operatable().get_operations() != {
-            parent_expr.as_parameter_operatable()
+        if to_replace.as_parameter_operatable.get().get_operations() != {
+            parent_expr.as_parameter_operatable.get()
         }:
             return False
         return True
@@ -162,7 +164,9 @@ def associative_flatten(mutator: Mutator):
         if not res.destroyed_operations:
             continue
 
-        mutator.remove(*[e.as_parameter_operatable() for e in res.destroyed_operations])
+        mutator.remove(
+            *[e.as_parameter_operatable.get() for e in res.destroyed_operations]
+        )
 
         mutator.mutate_expression(
             expr,

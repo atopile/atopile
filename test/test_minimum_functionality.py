@@ -14,8 +14,4 @@ def test_instantiate_resistor_2():
     Resistor = F.Resistor.bind_typegraph(tg=tg)
     res_inst = Resistor.create_instance(g=g)
     assert res_inst
-    assert (
-        fabll.Traits(res_inst.get_trait(fabll.is_module))
-        .get_obj_raw()
-        .isinstance(F.Resistor)
-    )
+    assert fabll.Traits(res_inst._is_module.get()).get_obj_raw().isinstance(F.Resistor)

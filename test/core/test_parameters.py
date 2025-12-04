@@ -21,11 +21,15 @@ def test_new_definitions():
     number_domain = F.NumberDomain.BoundNumberDomainContext(tg, g)
 
     parameters.NumericParameter.setup(
-        units=F.Units.Ohm,
+        units=F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         domain=number_domain.create_number_domain(
             args=F.NumberDomain.Args(negative=False)
         ),
-        soft_set=literals.Numbers.setup_from_interval(1, 10e6, F.Units.Ohm),
+        soft_set=literals.Numbers.setup_from_min_max(
+            min=1,
+            max=10e6,
+            unit=F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        ),
         likely_constrained=True,
     )
 
@@ -95,10 +99,16 @@ def test_expression_congruence():
     assert (
         F.Expressions.Add.bind_typegraph(tg)
         .create_instance(g)
-        .setup(p1, p2)
-        .get_trait(F.Expressions.is_expression)
+        .setup(
+            p1.is_parameter.get().as_operand.get(),
+            p2.is_parameter.get().as_operand.get(),
+        )
+        .is_expression.get()
         .is_congruent_to(
-            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p1, p2),
+            F.Expressions.Add.bind_typegraph(tg)
+            .create_instance(g)
+            .setup(p1.can_be_operand.get(), p2.can_be_operand.get())
+            .is_expression.get(),
             g=g,
             tg=tg,
         )
@@ -106,10 +116,16 @@ def test_expression_congruence():
     assert (
         F.Expressions.Add.bind_typegraph(tg)
         .create_instance(g)
-        .setup(p1, p2)
-        .get_trait(F.Expressions.is_expression)
+        .setup(
+            p1.is_parameter.get().as_operand.get(),
+            p2.is_parameter.get().as_operand.get(),
+        )
+        .is_expression.get()
         .is_congruent_to(
-            F.Expressions.Add.bind_typegraph(tg).create_instance(g).setup(p2, p1),
+            F.Expressions.Add.bind_typegraph(tg)
+            .create_instance(g)
+            .setup(p2.can_be_operand.get(), p1.can_be_operand.get())
+            .is_expression.get(),
             g=g,
             tg=tg,
         )

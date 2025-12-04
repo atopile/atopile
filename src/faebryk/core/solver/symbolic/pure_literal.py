@@ -28,9 +28,9 @@ class _Multi:
         self, g: graph.GraphView, tg: fbrk.TypeGraph, *args: F.Literals.is_literal
     ) -> Any:
         if self.init is not None:
-            init_lit = F.Literals.make_simple_lit_singleton(g, tg, self.init).get_trait(
-                F.Literals.is_literal
-            )
+            init_lit = F.Literals.make_simple_lit_singleton(
+                g, tg, self.init
+            ).is_literal.get()
             args = (init_lit, init_lit, *args)
         return functools.reduce(self.f, args)
 

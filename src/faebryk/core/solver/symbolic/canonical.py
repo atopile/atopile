@@ -52,7 +52,7 @@ def constrain_within_domain(mutator: Mutator):
     """
 
     for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
-        p = param.get_trait(F.Parameters.is_parameter)
+        p = param.is_parameter.get()
         po = p.as_parameter_operatable.get()
         new_param = mutator.mutate_parameter(
             p,
@@ -62,13 +62,14 @@ def constrain_within_domain(mutator: Mutator):
         if (within := param.get_within()) is not None:
             mutator.utils.subset_to(
                 new_param.as_operand.get(),
-                within.as_operand.get(),
+                within.can_be_operand.get(),
                 from_ops=[po],
             )
         mutator.utils.subset_to(
             new_param.as_operand.get(),
             param.get_domain()
             .unbounded(F.Units.Dimensionless, g=mutator.G_transient)
+            .is_literal.get()
             .as_operand.get(),
             from_ops=[po],
         )
@@ -84,7 +85,7 @@ def alias_predicates_to_true(mutator: Mutator):
         new_predicate = mutator.mutate_expression(predicate)
         mutator.utils.alias_to(
             new_predicate.get_sibling_trait(F.Parameters.can_be_operand),
-            mutator.make_lit(True).get_trait(F.Parameters.can_be_operand),
+            mutator.make_lit(True).can_be_operand.get(),
         )
 
 
@@ -137,7 +138,7 @@ def convert_to_canonical_operations(mutator: Mutator):
     def curry(e_type: type[fabll.NodeT]):
         def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
             _operands = [
-                mutator.make_lit(o).get_trait(F.Parameters.can_be_operand)
+                mutator.make_lit(o).can_be_operand.get()
                 if not isinstance(o, fabll.Node)
                 else o
                 for o in operands
@@ -226,7 +227,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             Sqrt,
             lambda operands: [
                 *operands,
-                mutator.make_lit(0.5).get_trait(F.Parameters.can_be_operand),
+                mutator.make_lit(0.5).can_be_operand.get(),
             ],
         ),
         (
@@ -276,9 +277,11 @@ def convert_to_canonical_operations(mutator: Mutator):
         operand: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
         if np := fabll.Traits(operand).get_obj_raw().try_cast(F.Literals.Numbers):
-            return np.convert_to_dimensionless(
-                g=mutator.G_transient, tg=mutator.tg_out
-            ).as_operand.get()
+            return (
+                np.convert_to_dimensionless(g=mutator.G_transient, tg=mutator.tg_out)
+                .is_literal.get()
+                .as_operand.get()
+            )
         return operand
 
     # Canonicalize parameter literals
@@ -350,14 +353,14 @@ def convert_to_canonical_operations(mutator: Mutator):
             mutator.create_expression(
                 IsSubset,
                 p_op,
-                union.get_trait(F.Parameters.can_be_operand),
+                union.is_expression.get().as_operand.get(),
                 from_ops=from_ops,
                 assert_=True,
             )
             if e.isinstance(F.Expressions.Min):
                 mutator.create_expression(
                     GreaterOrEqual,
-                    union.as_operand.get(),
+                    union.is_expression.get().as_operand.get(),
                     p_op,
                     from_ops=from_ops,
                 )
@@ -365,7 +368,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 mutator.create_expression(
                     GreaterOrEqual,
                     p_op,
-                    union.as_operand.get(),
+                    union.is_expression.get().as_operand.get(),
                     from_ops=from_ops,
                 )
             mutator._mutate(e_po, p_po)

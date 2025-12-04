@@ -66,7 +66,7 @@ class BoundExpressions:
             is_unit_node = (
                 F.Units.Dimensionless.bind_typegraph(tg=self.tg)
                 .create_instance(g=self.g)
-                .get_trait(F.Units.is_unit)
+                .is_unit.get()
             )
         return (
             F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
@@ -80,7 +80,7 @@ class BoundExpressions:
                 tolerance_guess=tolerance_guess,
                 likely_constrained=likely_constrained,
             )
-            .get_trait(F.Parameters.can_be_operand)
+            .can_be_operand.get()
         )
 
     def enum_parameter_op(self, enum_type) -> F.Parameters.can_be_operand:
@@ -88,14 +88,14 @@ class BoundExpressions:
             F.Parameters.EnumParameter.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
             .setup(enum=enum_type)
-        ).get_trait(F.Parameters.can_be_operand)
+        ).can_be_operand.get()
 
     def bool_parameter_op(self) -> F.Parameters.can_be_operand:
         return (
             F.Parameters.BooleanParameter.bind_typegraph(tg=self.tg).create_instance(
                 g=self.g
             )
-        ).get_trait(F.Parameters.can_be_operand)
+        ).can_be_operand.get()
 
     class U:
         """Short aliases for units from F.Units for concise test code."""
@@ -373,10 +373,14 @@ class BoundExpressions:
         )
 
         return (
-            F.Literals.Numbers.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .setup_from_singleton(value=value, unit=is_unit)
-        ).get_trait(F.Parameters.can_be_operand)
+            (
+                F.Literals.Numbers.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup_from_singleton(value=value, unit=is_unit)
+            )
+            .is_literal.get()
+            .as_operand.get()
+        )
 
     def _range_to(self, range: _Range) -> tuple[float, float, type[fabll.Node]]:
         lower = range[0]
@@ -404,10 +408,14 @@ class BoundExpressions:
             .get_trait(F.Units.is_unit)
         )
         return (
-            F.Literals.Numbers.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .setup_from_min_max(min=lower_value, max=upper_value, unit=is_unit)
-        ).get_trait(F.Parameters.can_be_operand)
+            (
+                F.Literals.Numbers.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup_from_min_max(min=lower_value, max=upper_value, unit=is_unit)
+            )
+            .is_literal.get()
+            .as_operand.get()
+        )
 
     def lit_op_ranges(self, *ranges: _Range) -> F.Parameters.can_be_operand:
         ranges_values = [self._range_to(range) for range in ranges]
@@ -444,20 +452,28 @@ class BoundExpressions:
             .get_trait(F.Units.is_unit)
         )
         return (
-            F.Literals.Numbers.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .setup_from_center_rel(center=center[0], rel=rel, unit=is_unit)
-        ).get_trait(F.Parameters.can_be_operand)
+            (
+                F.Literals.Numbers.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .setup_from_center_rel(center=center[0], rel=rel, unit=is_unit)
+            )
+            .is_literal.get()
+            .as_operand.get()
+        )
 
     def lit_bool(self, *values: bool) -> F.Parameters.can_be_operand:
         return (
-            F.Literals.Booleans.bind_typegraph(tg=self.tg).create_instance(
-                g=self.g,
-                attributes=F.Literals.Booleans.Attributes(
-                    has_true=True in values, has_false=False in values
-                ),
+            (
+                F.Literals.Booleans.bind_typegraph(tg=self.tg).create_instance(
+                    g=self.g,
+                    attributes=F.Literals.Booleans.Attributes(
+                        has_true=True in values, has_false=False in values
+                    ),
+                )
             )
-        ).get_trait(F.Parameters.can_be_operand)
+            .is_literal.get()
+            .as_operand.get()
+        )
 
     def lit_op_enum(self, *values: Enum) -> F.Parameters.can_be_operand:
         concrete_enum = F.Literals.EnumsFactory(type(values[0]))
@@ -468,7 +484,8 @@ class BoundExpressions:
                 g=self.g,
             )
             .setup(*values)
-            .get_trait(F.Parameters.can_be_operand)
+            .is_literal.get()
+            .as_operand.get()
         )
 
     def lit_op_discrete_set(
@@ -477,7 +494,8 @@ class BoundExpressions:
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
-            .get_trait(F.Parameters.can_be_operand)
+            .is_literal.get()
+            .as_operand.get()
         )
 
 
@@ -490,7 +508,7 @@ def _create_letters(
         params = [F.Parameters.NumericParameter.MakeChild() for _ in range(n)]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    params = [p.get().get_trait(F.Parameters.is_parameter) for p in app.params]
+    params = [p.get().is_parameter.get() for p in app.params]
 
     return context, params
 
@@ -505,9 +523,9 @@ def test_solve_phase_one():
         voltage3 = F.Parameters.NumericParameter.MakeChild(unit=E.U.V)
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    voltage1_op = app.voltage1.get().as_operand.get()
-    voltage2_op = app.voltage2.get().as_operand.get()
-    voltage3_op = app.voltage3.get().as_operand.get()
+    voltage1_op = app.voltage1.get().can_be_operand.get()
+    voltage2_op = app.voltage2.get().can_be_operand.get()
+    voltage3_op = app.voltage3.get().can_be_operand.get()
 
     E.is_(voltage1_op, voltage2_op, assert_=True)
     E.is_(voltage3_op, E.add(voltage1_op, voltage2_op), assert_=True)
@@ -532,7 +550,7 @@ def test_simplify():
     # (((((((((((A + B + 1) + C + 2) * D * 3) * E * 4) * F * 5) * G * (A - A)) + H + 7)
     #  + I + 8) + J + 9) - 3) - 4) < 11
     # => (H + I + J + 17) < 11
-    app_ops = [p.get().get_trait(F.Parameters.can_be_operand) for p in app.ops]
+    app_ops = [p.get().can_be_operand.get() for p in app.ops]
     constants: list[F.Parameters.can_be_operand] = [
         E.lit_op_single((c, E.U.dl)) for c in range(0, 10)
     ]
@@ -541,7 +559,7 @@ def test_simplify():
         constants[9].get_sibling_trait(F.Parameters.can_be_operand),
         E.lit_op_range(((0, E.U.dl), (1, E.U.dl))),
     )
-    acc = app.ops[0].get().get_trait(F.Parameters.can_be_operand)
+    acc = app.ops[0].get().can_be_operand.get()
     for i, p in enumerate(app_ops[1:3]):
         E.is_(acc, E.add(acc, p, constants[i]), assert_=True)
     for i, p in enumerate(app_ops[3:7]):
@@ -573,7 +591,7 @@ def test_simplify_logic_and():
     app = app_type.create_instance(g=E.g)
 
     anded = E.and_(
-        app.p[0].get().get_trait(F.Parameters.can_be_operand),
+        app.p[0].get().can_be_operand.get(),
         E.lit_bool(True),
         assert_=True,
     )
@@ -581,7 +599,7 @@ def test_simplify_logic_and():
     for p in app.p[1:]:
         E.is_(
             anded,
-            E.and_(anded, p.get().get_trait(F.Parameters.can_be_operand)),
+            E.and_(anded, p.get().can_be_operand.get()),
             assert_=True,
         )
     E.is_(
@@ -603,7 +621,7 @@ def test_shortcircuit_logic_and():
     p0 = (
         F.Parameters.BooleanParameter.bind_typegraph(E.tg)
         .create_instance(E.g)
-        .get_trait(F.Parameters.can_be_operand)
+        .can_be_operand.get()
     )
     E.and_(p0, E.lit_bool(False), assert_=True)
     solver = DefaultSolver()
@@ -619,11 +637,11 @@ def test_shortcircuit_logic_or():
         p = [F.Parameters.BooleanParameter.MakeChild() for _ in range(4)]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    ored = E.or_(app.p[0].get().get_trait(F.Parameters.can_be_operand), assert_=True)
+    ored = E.or_(app.p[0].get().can_be_operand.get(), assert_=True)
     for p in app.p[1:]:
         E.is_(
             ored,
-            E.or_(ored, p.get().get_trait(F.Parameters.can_be_operand)),
+            E.or_(ored, p.get().can_be_operand.get()),
             assert_=True,
         )
     E.is_(ored, E.or_(ored, ored), assert_=True)
@@ -632,7 +650,9 @@ def test_shortcircuit_logic_or():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert not_none(
-        repr_map.try_get_literal(ored.as_parameter_operatable())
+        repr_map.try_get_literal(
+            ored.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
     ).equals_singleton(True)
 
 
@@ -703,7 +723,7 @@ def test_alias_classes():
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C, D, H):
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g, print_context=context)
     # TODO actually test something
@@ -795,7 +815,7 @@ def test_subset_is():
 
     context = F.Parameters.ReprContext()
     for p in [A, B]:
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -808,7 +828,7 @@ def test_subset_is_expr():
 
     context = F.Parameters.ReprContext()
     for p in [A, B, C]:
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
 
     D = E.add(A, B)
     E.is_(C, E.lit_op_range((0, 15)), assert_=True)
@@ -832,7 +852,11 @@ def test_subset_single_alias():
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     g_out = repr_map.G_out
     tg_out = repr_map.tg_out
-    assert not_none(repr_map.try_get_literal(A.as_parameter_operatable())).equals(
+    assert not_none(
+        repr_map.try_get_literal(
+            A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+    ).equals(
         E.lit_op_single((1, E.U.V)).get_sibling_trait(F.Literals.is_literal),
         g=g_out,
         tg=tg_out,
@@ -847,14 +871,20 @@ def test_very_simple_alias_class():
 
     context = F.Parameters.ReprContext()
     for p in params:
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert (
-        repr_map.try_get_literal(A.as_parameter_operatable())
-        == repr_map.try_get_literal(B.as_parameter_operatable())
-        == repr_map.try_get_literal(C.as_parameter_operatable())
+        repr_map.try_get_literal(
+            A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+        == repr_map.try_get_literal(
+            B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+        == repr_map.try_get_literal(
+            C.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
     )
 
 
@@ -886,7 +916,9 @@ def test_less_obvious_contradiction_by_literal():
 
     print_context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable().compact_repr(print_context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(
+            print_context
+        )
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
@@ -908,12 +940,24 @@ def test_symmetric_inequality_correlated():
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     g_out = repr_map.G_out
     tg_out = repr_map.tg_out
-    assert not_none(repr_map.try_get_literal(p0.as_parameter_operatable())).equals(
-        not_none(repr_map.try_get_literal(p1.as_parameter_operatable())),
+    assert not_none(
+        repr_map.try_get_literal(
+            p0.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+    ).equals(
+        not_none(
+            repr_map.try_get_literal(
+                p1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+            )
+        ),
         g=g_out,
         tg=tg_out,
     )
-    assert not_none(repr_map.try_get_literal(p0.as_parameter_operatable())).equals(
+    assert not_none(
+        repr_map.try_get_literal(
+            p0.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+    ).equals(
         E.lit_op_range(((0, E.U.V), (10, E.U.V))).get_sibling_trait(
             F.Literals.is_literal
         ),
@@ -951,7 +995,7 @@ def test_simple_literal_folds_arithmetic(
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     deduced_subset = repr_map.try_get_literal(
-        expr.as_parameter_operatable(), allow_subset=True
+        expr.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=True
     )
     assert not_none(deduced_subset) == expected_result
 
@@ -983,7 +1027,9 @@ def test_super_simple_literal_folding(
 
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert not_none(
-        repr_map.try_get_literal(expr.as_parameter_operatable())
+        repr_map.try_get_literal(
+            expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
     ).equals_singleton(expected)
 
 
@@ -1009,9 +1055,17 @@ def test_literal_folding_add_multiplicative():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
-    rep_add = not_none(repr_map.map_forward(expr.as_parameter_operatable()).maps_to)
-    rep_A = repr_map.map_forward(A.as_parameter_operatable()).maps_to
-    rep_B = repr_map.map_forward(B.as_parameter_operatable()).maps_to
+    rep_add = not_none(
+        repr_map.map_forward(
+            expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        ).maps_to
+    )
+    rep_A = repr_map.map_forward(
+        A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
+    rep_B = repr_map.map_forward(
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
     assert isinstance(
         fabll.Traits(rep_add).get_obj_raw(),
         F.Expressions.Add,
@@ -1061,9 +1115,15 @@ def test_literal_folding_add_multiplicative_2():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    rep_add = repr_map.map_forward(expr.as_parameter_operatable()).maps_to
-    a_res = repr_map.map_forward(A.as_parameter_operatable()).maps_to
-    b_res = repr_map.map_forward(B.as_parameter_operatable()).maps_to
+    rep_add = repr_map.map_forward(
+        expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
+    a_res = repr_map.map_forward(
+        A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
+    b_res = repr_map.map_forward(
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
     assert isinstance(rep_add, F.Expressions.Add)
     assert a_res is not None
     a_ops = [
@@ -1093,7 +1153,7 @@ def test_transitive_subset():
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
 
     E.is_(C, E.lit_op_range((0, 10)), assert_=True)
 
@@ -1102,7 +1162,9 @@ def test_transitive_subset():
         E.tg, E.g, print_context=context
     ).data.mutation_map
     assert not_none(
-        repr_map.try_get_literal(A.as_parameter_operatable(), allow_subset=True)
+        repr_map.try_get_literal(
+            A.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=True
+        )
     ).equals(
         E.lit_op_range((0, 10)).get_sibling_trait(F.Literals.is_literal), g=E.g, tg=E.tg
     )
@@ -1125,31 +1187,51 @@ def test_nested_additions():
 
     assert (
         fabll.Traits(
-            not_none(repr_map.try_get_literal(A.as_parameter_operatable()))
+            not_none(
+                repr_map.try_get_literal(
+                    A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                )
+            )
         ).get_obj_raw()
         == fabll.Traits(E.lit_op_single(1)).get_obj_raw()
     )
     assert (
         fabll.Traits(
-            not_none(repr_map.try_get_literal(B.as_parameter_operatable()))
+            not_none(
+                repr_map.try_get_literal(
+                    B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                )
+            )
         ).get_obj_raw()
         == fabll.Traits(E.lit_op_single(1)).get_obj_raw()
     )
     assert (
         fabll.Traits(
-            not_none(repr_map.try_get_literal(C.as_parameter_operatable()))
+            not_none(
+                repr_map.try_get_literal(
+                    C.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                )
+            )
         ).get_obj_raw()
         == fabll.Traits(E.lit_op_single(2)).get_obj_raw()
     )
     assert (
         fabll.Traits(
-            not_none(repr_map.try_get_literal(D.as_parameter_operatable()))
+            not_none(
+                repr_map.try_get_literal(
+                    D.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                )
+            )
         ).get_obj_raw()
         == fabll.Traits(E.lit_op_single(3)).get_obj_raw()
     )
     assert (
         fabll.Traits(
-            not_none(repr_map.try_get_literal(D.as_parameter_operatable()))
+            not_none(
+                repr_map.try_get_literal(
+                    D.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                )
+            )
         ).get_obj_raw()
         == fabll.Traits(E.lit_op_single(3)).get_obj_raw()
     )
@@ -1385,7 +1467,11 @@ def test_base_unit_switch():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert not_none(repr_map.try_get_literal(A.as_parameter_operatable())).equals(
+    assert not_none(
+        repr_map.try_get_literal(
+            A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+    ).equals(
         E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))).get_sibling_trait(
             F.Literals.is_literal
         ),
@@ -1469,7 +1555,7 @@ def test_inspect_enum_led():
     led = F.LED.bind_typegraph(tg=E.tg).create_instance(g=E.g)
 
     E.is_subset(
-        led.color.get().get_trait(F.Parameters.can_be_operand),
+        led.color.get().can_be_operand.get(),
         E.lit_op_enum(F.LED.Color.EMERALD),
         assert_=True,
     )
@@ -1477,9 +1563,7 @@ def test_inspect_enum_led():
     solver = DefaultSolver()
     solver.update_superset_cache(led.color.get())
     assert (
-        solver.inspect_get_known_supersets(
-            led.color.get().get_trait(F.Parameters.is_parameter)
-        )
+        solver.inspect_get_known_supersets(led.color.get().is_parameter.get())
         == F.LED.Color.EMERALD
     )
 
@@ -1526,7 +1610,7 @@ def test_simple_negative_pick():
     E = BoundExpressions()
     led = F.LED.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     E.is_subset(
-        led.color.get().get_trait(F.Parameters.can_be_operand),
+        led.color.get().can_be_operand.get(),
         E.lit_op_enum(F.LED.Color.RED, F.LED.Color.BLUE),
         assert_=True,
     )
@@ -1584,7 +1668,7 @@ def test_jlcpcb_pick_resistor():
     E = BoundExpressions()
     resistor = F.Resistor.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     E.is_subset(
-        resistor.resistance.get().get_trait(F.Parameters.can_be_operand),
+        resistor.resistance.get().can_be_operand.get(),
         E.lit_op_range(((10, E.U.Ohm), (100, E.U.Ohm))),
         assert_=True,
     )
@@ -1601,12 +1685,12 @@ def test_jlcpcb_pick_capacitor():
     E = BoundExpressions()
     capacitor = F.Capacitor.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     E.is_subset(
-        capacitor.capacitance.get().get_trait(F.Parameters.can_be_operand),
+        capacitor.capacitance.get().can_be_operand.get(),
         E.lit_op_range(((100e-9, E.U.Fa), (1e-6, E.U.Fa))),
         assert_=True,
     )
     E.greater_or_equal(
-        capacitor.max_voltage.get().get_trait(F.Parameters.can_be_operand),
+        capacitor.max_voltage.get().can_be_operand.get(),
         E.lit_op_single((50, E.U.V)),
         assert_=True,
     )
@@ -1623,12 +1707,12 @@ def test_jlcpcb_pick_led():
     E = BoundExpressions()
     led = F.LED.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     E.is_subset(
-        led.color.get().get_trait(F.Parameters.can_be_operand),
+        led.color.get().can_be_operand.get(),
         E.lit_op_enum(F.LED.Color.EMERALD),
         assert_=True,
     )
     E.greater_or_equal(
-        led.diode.get().max_current.get().get_trait(F.Parameters.can_be_operand),
+        led.diode.get().max_current.get().can_be_operand.get(),
         E.lit_op_single((0.010, E.U.A)),
         assert_=True,
     )
@@ -1807,7 +1891,9 @@ def test_fold_pow():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
-    res = repr_map.try_get_literal(B.as_parameter_operatable())
+    res = repr_map.try_get_literal(
+        B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    )
     assert res == E.power(lit, lit_operand)
 
 
@@ -1820,8 +1906,8 @@ def test_graph_split():
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
 
-    Aop = app.A.get().get_trait(F.Parameters.can_be_operand)
-    Bop = app.B.get().get_trait(F.Parameters.can_be_operand)
+    Aop = app.A.get().can_be_operand.get()
+    Bop = app.B.get().can_be_operand.get()
 
     C = E.parameter_op()
     D = E.parameter_op()
@@ -1830,7 +1916,7 @@ def test_graph_split():
 
     context = F.Parameters.ReprContext()
     for p in (Aop, Bop, C, D):
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(
@@ -1839,10 +1925,14 @@ def test_graph_split():
 
     assert (
         not_none(
-            repr_map.map_forward(not_none(Aop.is_parameter_operatable())).maps_to
+            repr_map.map_forward(
+                not_none(Aop.get_sibling_trait(F.Parameters.is_parameter_operatable))
+            ).maps_to
         ).g
         is not not_none(
-            repr_map.map_forward(not_none(Bop.as_parameter_operatable())).maps_to
+            repr_map.map_forward(
+                not_none(Bop.get_sibling_trait(F.Parameters.is_parameter_operatable))
+            ).maps_to
         ).g
     )
 
@@ -1859,10 +1949,15 @@ def test_ss_single_into_alias():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
-    assert repr_map.try_get_literal(B.as_parameter_operatable()) == 5
-    assert repr_map.try_get_literal(A.as_parameter_operatable()) == E.lit_op_range(
-        (5, 10)
+    assert (
+        repr_map.try_get_literal(
+            B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+        == 5
     )
+    assert repr_map.try_get_literal(
+        A.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ) == E.lit_op_range((5, 10))
 
 
 @pytest.mark.parametrize(
@@ -2378,7 +2473,7 @@ def test_simplify_non_terminal_manual_test_2():
         p_lit = solver.inspect_get_known_supersets(p)
         print(f"{p.as_parameter_operatable.get().compact_repr(context)}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
-        assert E.is_subset(p_lit.as_operand(), E.multiply(origin[1], _inc))
+        assert E.is_subset(p_lit.as_operand.get(), E.multiply(origin[1], _inc))
         E.is_(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
         solver.simplify(E.g, E.tg)
 
@@ -2553,20 +2648,24 @@ def test_fold_correlated():
 
     context = F.Parameters.ReprContext()
     for p in (A, B, C):
-        p.as_parameter_operatable().compact_repr(context)
+        p.get_sibling_trait(F.Parameters.is_parameter_operatable).compact_repr(context)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(
         E.tg, E.g, print_context=context
     ).data.mutation_map
 
-    is_lit = repr_map.try_get_literal(C.as_parameter_operatable(), allow_subset=False)
-    ss_lit = repr_map.try_get_literal(C.as_parameter_operatable(), allow_subset=True)
+    is_lit = repr_map.try_get_literal(
+        C.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=False
+    )
+    ss_lit = repr_map.try_get_literal(
+        C.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=True
+    )
     assert ss_lit is not None
 
     # Test for ss estimation
     assert E.is_subset(
-        ss_lit.as_operand(), (op_inv(lit2, lit1))
+        ss_lit.as_operand.get(), (op_inv(lit2, lit1))
     )  # C ss [10, 15] - 5 == [5, 10]
     # Test for not wrongful is estimation
     assert not not_none(is_lit).equals(
@@ -2761,7 +2860,11 @@ def test_exec_pure_literal_expressions(
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert not_none(repr_map.try_get_literal(result.as_parameter_operatable())).equals(
+    assert not_none(
+        repr_map.try_get_literal(
+            result.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
+    ).equals(
         expected_converted,
         g=E.g,
         tg=E.tg,

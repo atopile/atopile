@@ -34,9 +34,7 @@ class can_be_pulled(fabll.Node):
         if not up and down_r:
             return down_r
 
-        resistor = F.Resistor.bind_typegraph(self.tg).create_instance(
-            g=self.g
-        )
+        resistor = F.Resistor.bind_typegraph(self.tg).create_instance(g=self.g)
         name = obj.get_name(accept_no_parent=True)
         # TODO handle collisions
         if up:
@@ -54,7 +52,7 @@ class can_be_pulled(fabll.Node):
             )
             down_r = resistor
 
-        resistor._can_bridge.get().bridge(
+        resistor.can_bridge.get().bridge(
             self.line,
             self.reference.hv.get() if up else self.reference.lv.get(),
         )
@@ -95,9 +93,7 @@ class can_be_pulled(fabll.Node):
         """Calculate effective pull resistance between line and reference.hv.
         Returns a NumericParameter aliased to the resolved literal, or None if it
         cannot be derived."""
-        if (
-            connected_to := self.line._is_interface.get().get_connected()
-        ) is None:
+        if (connected_to := self.line._is_interface.get().get_connected()) is None:
             return None
 
         parallel_resistors: list[F.Resistor] = []
@@ -110,7 +106,13 @@ class can_be_pulled(fabll.Node):
                 continue
 
             resistor = F.Resistor.bind_instance(parent.instance)
-            other_side = [x for x in resistor.get_children(direct_only=True, include_root=False, types=F.Electrical) if not x.is_same(mif)]
+            other_side = [
+                x
+                for x in resistor.get_children(
+                    direct_only=True, include_root=False, types=F.Electrical
+                )
+                if not x.is_same(mif)
+            ]
             assert len(other_side) == 1, "Resistors are bilateral"
 
             if (
@@ -130,18 +132,26 @@ class can_be_pulled(fabll.Node):
         for resistor in parallel_resistors:
             param = resistor.resistance.get()
             parameters.append(param)
-            lit_trait = param.get_trait(F.Parameters.is_parameter_operatable).try_get_subset_or_alias_literal()
-            resistances.append(None if lit_trait is None else fabll.Traits(lit_trait).get_obj_raw())
+            lit_trait = param.get_trait(
+                F.Parameters.is_parameter_operatable
+            ).try_get_subset_or_alias_literal()
+            resistances.append(
+                None if lit_trait is None else fabll.Traits(lit_trait).get_obj_raw()
+            )
 
         if any(r is None for r in resistances):
             # missing resistance information
             return None
-        try:            # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
+        try:  # R_eff = 1 / (1/R1 + 1/R2 + ... + 1/Rn)
             inverse_sum = None
             resistance_literals = [r.cast(F.Literals.Numbers) for r in resistances]  # type: ignore[arg-type]
             for resistance in resistance_literals:
                 inv = resistance.op_invert(g=self.g, tg=self.tg)
-                inverse_sum = inv if inverse_sum is None else inverse_sum.op_add_intervals(g=self.g, tg=self.tg, other=inv) # type: ignore[arg-type]
+                inverse_sum = (
+                    inv
+                    if inverse_sum is None
+                    else inverse_sum.op_add_intervals(g=self.g, tg=self.tg, other=inv)
+                )  # type: ignore[arg-type]
 
             if inverse_sum is None:
                 return None

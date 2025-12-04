@@ -47,9 +47,7 @@ def netlist_graph():
         .create_instance(g)
         .setup_from_singleton(
             value=100,
-            unit=F.Units.Ohm.bind_typegraph(tg)
-            .create_instance(g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Ohm.bind_typegraph(tg).create_instance(g).is_unit.get(),
         )
     )
     r200 = (
@@ -57,9 +55,7 @@ def netlist_graph():
         .create_instance(g)
         .setup_from_singleton(
             value=200,
-            unit=F.Units.Ohm.bind_typegraph(tg)
-            .create_instance(g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Ohm.bind_typegraph(tg).create_instance(g).is_unit.get(),
         )
     )
 
@@ -84,7 +80,7 @@ def netlist_graph():
 
     # attach footprint & designator
     for i, r in enumerate([resistor1, resistor2]):
-        designator = r.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
+        designator = r.designator_prefix.get().get_prefix() + str(i + 1)
         fabll.Traits.create_and_add_instance_to(r, F.has_designator).setup(designator)
         fabll.Traits.create_and_add_instance_to(
             r, F.can_attach_to_footprint_symmetrically

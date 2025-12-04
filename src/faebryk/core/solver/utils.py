@@ -215,10 +215,7 @@ class MutatorUtils:
                 raise ContradictionByLiteral(
                     "Multiple alias literals found",
                     involved=[po]
-                    + [
-                        x[1].get_trait(F.Parameters.is_parameter_operatable)
-                        for x in unique_lits
-                    ],
+                    + [x[1].is_parameter_operatable.get() for x in unique_lits],
                     literals=[x[0] for x in unique_lits],
                     mutator=self.mutator,
                 )
@@ -252,12 +249,12 @@ class MutatorUtils:
             if self.is_literal(op):
                 out.append(op)
                 continue
-            op_po = op.as_parameter_operatable()
+            op_po = op.get_sibling_trait(F.Parameters.is_parameter_operatable)
             lit = self.try_extract_literal(op_po, allow_subset=allow_subset)
             if lit is None:
                 out.append(op)
                 continue
-            out.append(lit.as_operand())
+            out.append(lit.as_operand.get())
             any_lit.append(op_po)
         return out, any_lit
 
@@ -275,14 +272,14 @@ class MutatorUtils:
             ):
                 if terminate:
                     for op in po.get_operations(F.Expressions.Is, predicates_only=True):
-                        if op.get_trait(F.Expressions.is_expression).in_operands(
-                            existing.as_operand()
+                        if op.is_expression.get().in_operands(
+                            existing.as_operand.get()
                         ):
                             self.mutator.predicate_terminate(
                                 op.get_trait(F.Expressions.is_predicate)
                             )
-                    return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
-                return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
+                    return self.mutator.make_lit(True).is_literal.get()
+                return self.mutator.make_lit(True).is_literal.get()
             raise ContradictionByLiteral(
                 "Tried alias to different literal",
                 involved=[po],
@@ -298,7 +295,7 @@ class MutatorUtils:
                 g=self.mutator.G_transient,
                 tg=self.mutator.tg_in,
             ):
-                return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
+                return self.mutator.make_lit(True).is_literal.get()
         if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
             if not ss_lit.is_superset_of(literal):  # type: ignore
                 raise ContradictionByLiteral(
@@ -309,8 +306,8 @@ class MutatorUtils:
                 )
         out = self.mutator.create_expression(
             F.Expressions.Is,
-            po.as_operand(),
-            literal.as_operand(),
+            po.as_operand.get(),
+            literal.as_operand.get(),
             from_ops=from_ops,
             assert_=True,
             # already checked for uncorrelated lit, op needs to be correlated
@@ -352,7 +349,7 @@ class MutatorUtils:
                         literals=[ex_lit, literal],
                         mutator=self.mutator,
                     )
-                return ex_op.get_trait(F.Expressions.is_expression)
+                return ex_op.is_expression.get()
 
             # no point in adding more general subset
             if ex_lit.is_subset_of(
@@ -366,8 +363,8 @@ class MutatorUtils:
             F.Expressions.is_expression,
             self.mutator.create_expression(
                 F.Expressions.IsSubset,
-                po.as_operand(),
-                literal.as_operand(),
+                po.as_operand.get(),
+                literal.as_operand.get(),
                 from_ops=from_ops,
                 assert_=True,
                 # already checked for uncorrelated lit, op needs to be correlated
@@ -394,10 +391,10 @@ class MutatorUtils:
             res = _exec_pure_literal_expressions(
                 g=self.mutator.G_transient,
                 tg=self.mutator.tg_in,
-                expr=to_canon.as_expression(),
+                expr=to_canon.as_expression.get(),
             )
             if res is not None:
-                to = res.as_operand()
+                to = res.as_operand.get()
 
         to_is_lit = self.is_literal(to)
         po_is_lit = self.is_literal(po)
@@ -415,8 +412,8 @@ class MutatorUtils:
                         literals=[po_is_lit, to_is_lit],
                         mutator=self.mutator,
                     )
-                return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
-        po_po = po.as_parameter_operatable()
+                return self.mutator.make_lit(True).is_literal.get()
+        po_po = po.get_sibling_trait(F.Parameters.is_parameter_operatable)
         from_ops = [po_po] + list(from_ops)
         if to_is_lit:
             assert check_existing
@@ -431,17 +428,17 @@ class MutatorUtils:
 
         # check if alias exists
         if (
-            po_po.is_expresssion()
+            po_po.get_sibling_trait(F.Expressions.is_expression)
             and (to_exp := to.try_get_sibling_trait(F.Expressions.is_expression))
             and check_existing
         ):
             if overlap := (
                 po_po.get_operations(F.Expressions.Is, predicates_only=True)
-                & to_exp.as_parameter_operatable().get_operations(
+                & to_exp.as_parameter_operatable.get().get_operations(
                     F.Expressions.Is, predicates_only=True
                 )
             ):
-                return next(iter(overlap)).get_trait(F.Expressions.is_expression)
+                return next(iter(overlap)).is_expression.get()
 
         return self.mutator.create_expression(
             F.Expressions.Is,
@@ -476,10 +473,10 @@ class MutatorUtils:
             res = _exec_pure_literal_expressions(
                 g=self.mutator.G_transient,
                 tg=self.mutator.tg_in,
-                expr=to_canon.as_expression(),
+                expr=to_canon.as_expression.get(),
             )
             if res is not None:
-                to = res.as_operand()
+                to = res.as_operand.get()
 
         to_lit = self.is_literal(to)
         po_lit = self.is_literal(po)
@@ -492,7 +489,7 @@ class MutatorUtils:
                     literals=[to_lit, po_lit],
                     mutator=self.mutator,
                 )
-            return self.mutator.make_lit(True).get_trait(F.Literals.is_literal)
+            return self.mutator.make_lit(True).is_literal.get()
 
         if to_lit:
             assert check_existing
@@ -512,14 +509,14 @@ class MutatorUtils:
             and check_existing
         ):
             if overlap := (
-                po.as_parameter_operatable().get_operations(
-                    F.Expressions.Is, predicates_only=True
-                )
-                & to.as_parameter_operatable().get_operations(
-                    F.Expressions.Is, predicates_only=True
-                )
+                po.get_sibling_trait(
+                    F.Parameters.is_parameter_operatable
+                ).get_operations(F.Expressions.Is, predicates_only=True)
+                & to.get_sibling_trait(
+                    F.Parameters.is_parameter_operatable
+                ).get_operations(F.Expressions.Is, predicates_only=True)
             ):
-                return next(iter(overlap)).get_trait(F.Expressions.is_expression)
+                return next(iter(overlap)).is_expression.get()
 
         return self.mutator.create_expression(
             F.Expressions.IsSubset,
@@ -541,13 +538,13 @@ class MutatorUtils:
         Call this when 100% sure what the result of a predicate is.
         """
         self.alias_to(
-            expr.as_operand(),
+            expr.as_operand.get(),
             value.get_sibling_trait(F.Parameters.can_be_operand),
             terminate=True,
         )
         if not (expr_co := expr.try_get_sibling_trait(F.Expressions.is_predicate)):
             return
-        expr_po = expr.as_parameter_operatable()
+        expr_po = expr.as_parameter_operatable.get()
         # all predicates alias to True, so alias False will already throw
         bool_lit = fabll.Traits(value).get_obj(F.Literals.Booleans)
         if bool_lit.is_false():
@@ -561,7 +558,7 @@ class MutatorUtils:
         # TODO is this still needed?
         # terminate all alias_is P -> True
         for op in expr_po.get_operations(F.Expressions.Is, predicates_only=True):
-            op_po = op.get_trait(F.Parameters.is_parameter_operatable)
+            op_po = op.is_parameter_operatable.get()
             lit = self.try_extract_literal(op_po)
             if lit is None:
                 continue
@@ -570,13 +567,15 @@ class MutatorUtils:
             self.mutator.predicate_terminate(op.get_trait(F.Expressions.is_predicate))
 
     def is_replacable_by_literal(self, op: F.Parameters.can_be_operand):
-        if not (op_po := op.is_parameter_operatable()):
+        if not (
+            op_po := op.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
+        ):
             return None
 
         # special case for Is(True, True) due to alias_is_literal check
         if fabll.Traits(op_po).get_obj_raw().try_cast(F.Expressions.Is) and {
             self.mutator.make_lit(True)
-        } == set(op_po.as_expression().get_operands()):
+        } == set(op_po.get_sibling_trait(F.Expressions.is_expression).get_operands()):
             return self.mutator.make_lit(True)
 
         lit = self.try_extract_literal(op_po, allow_subset=False)
@@ -592,7 +591,11 @@ class MutatorUtils:
         *operands: F.Parameters.can_be_operand,
         allow_uncorrelated: bool = False,
     ) -> T | None:
-        non_lits = [op_po for op in operands if (op_po := op.is_parameter_operatable())]
+        non_lits = [
+            op_po
+            for op in operands
+            if (op_po := op.try_get_sibling_trait(F.Parameters.is_parameter_operatable))
+        ]
         literal_expr = all(
             self.is_literal(op) or self.is_literal_expression(op) for op in operands
         )
@@ -682,7 +685,7 @@ class MutatorUtils:
             if not expr.get_operand_literals():
                 continue
             # handled by lit fold completely
-            if self.is_pure_literal_expression(collect_op.as_operand()):
+            if self.is_pure_literal_expression(collect_op.as_operand.get()):
                 continue
             if not F.Expressions.is_commutative.is_commutative_type(
                 collect_type.bind_typegraph(self.mutator.tg_in)
@@ -820,7 +823,7 @@ class MutatorUtils:
     def is_alias_is_literal(
         po: F.Parameters.is_parameter_operatable,
     ) -> F.Expressions.Is | None:
-        expr = po.is_expresssion()
+        expr = po.get_sibling_trait(F.Expressions.is_expression)
         if expr is None:
             return None
         if not (po_is := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.Is)):
@@ -961,8 +964,8 @@ class MutatorUtils:
     def get_lit_mapping_from_lit_expr(
         expr: F.Expressions.Is | F.Expressions.IsSubset,
     ) -> tuple[F.Parameters.is_parameter_operatable, F.Literals.is_literal]:
-        e = expr.get_trait(F.Expressions.is_expression)
-        e_po = e.as_parameter_operatable()
+        e = expr.is_expression.get()
+        e_po = e.as_parameter_operatable.get()
         assert MutatorUtils.is_alias_is_literal(e_po) or MutatorUtils.is_subset_literal(
             e_po
         )
@@ -1037,14 +1040,16 @@ class MutatorUtils:
             e for e in exclude if e.try_get_sibling_trait(F.Expressions.is_predicate)
         }
         excluded.update(
-            is_.get_trait(F.Expressions.is_expression)
+            is_.is_expression.get()
             for is_ in MutatorUtils.get_predicates_involved_in(
-                expr.as_parameter_operatable(), F.Expressions.Is
+                expr.as_parameter_operatable.get(), F.Expressions.Is
             )
         )
 
         operables = [
-            o_po for o in expr.get_operands() if (o_po := o.is_parameter_operatable())
+            o_po
+            for o in expr.get_operands()
+            if (o_po := o.get_sibling_trait(F.Parameters.is_parameter_operatable))
         ]
         op_set = set(operables)
 
@@ -1072,7 +1077,7 @@ class MutatorUtils:
         po: F.Parameters.can_be_operand,
     ) -> set[F.Parameters.is_parameter_operatable]:
         if po.try_get_sibling_trait(F.Parameters.is_parameter):
-            return {po.as_parameter_operatable()}
+            return {po.get_sibling_trait(F.Parameters.is_parameter_operatable)}
         if po_expr := po.try_get_sibling_trait(F.Expressions.is_expression):
             return {
                 p
@@ -1091,7 +1096,9 @@ class MutatorUtils:
             counts[p] += 1
         if po_expr := po.try_get_sibling_trait(F.Expressions.is_expression):
             for op in po_expr.get_operands():
-                if not (op_po := op.is_parameter_operatable()):
+                if not (
+                    op_po := op.get_sibling_trait(F.Parameters.is_parameter_operatable)
+                ):
                     continue
                 for param, count in MutatorUtils.count_param_occurrences(op_po).items():
                     counts[param] += count
@@ -1110,13 +1117,9 @@ class MutatorUtils:
         ss = [
             e
             for e in op.get_operations(F.Expressions.IsSubset, predicates_only=True)
-            if e.get_trait(F.Expressions.is_expression)
-            .get_operands()[0]
-            .is_same(op.as_operand())
+            if e.is_expression.get().get_operands()[0].is_same(op.as_operand.get())
         ]
-        return groupby(
-            ss, key=lambda e: e.get_trait(F.Expressions.is_expression).get_operands()[1]
-        )
+        return groupby(ss, key=lambda e: e.is_expression.get().get_operands()[1])
 
     @staticmethod
     def get_aliases(
@@ -1125,7 +1128,7 @@ class MutatorUtils:
         return {
             other_p: e
             for e in op.get_operations(F.Expressions.Is, predicates_only=True)
-            if (other_p := e.get_other_operand(op.as_operand()))
+            if (other_p := e.get_other_operand(op.as_operand.get()))
         }
 
     def merge_parameters(
@@ -1202,21 +1205,21 @@ class MutatorUtils:
                     tolerance_guess=tolerance_guess,
                 )
             )
-            return new.get_trait(F.Parameters.is_parameter)
+            return new.is_parameter.get()
         elif p_type_repr.isinstance(F.Parameters.BooleanParameter):
             new = (
                 F.Parameters.BooleanParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup()
             )
-            return new.get_trait(F.Parameters.is_parameter)
+            return new.is_parameter.get()
         elif p_type_repr.isinstance(F.Parameters.StringParameter):
             new = (
                 F.Parameters.StringParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup()
             )
-            return new.get_trait(F.Parameters.is_parameter)
+            return new.is_parameter.get()
         elif p_type_repr.isinstance(F.Parameters.EnumParameter):
             enum = F.Parameters.EnumParameter.check_single_single_enum(
                 [fabll.Traits(p).get_obj(F.Parameters.EnumParameter) for p in params]
@@ -1226,6 +1229,6 @@ class MutatorUtils:
                 .create_instance(self.mutator.G_out)
                 .setup(enum=enum)
             )
-            return new.get_trait(F.Parameters.is_parameter)
+            return new.is_parameter.get()
         else:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")

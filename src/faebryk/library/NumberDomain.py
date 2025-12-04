@@ -22,11 +22,11 @@ class NumberDomain(fabll.Node):
         zero_allowed: bool = True
         integer: bool = False
 
-    from faebryk.library.Parameters import can_be_operand
+    from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
     # Type annotation for type checkers - assigned at module level
     BoundNumberDomainContext: Type["BoundNumberDomainContext"]  # type: ignore[assignment]
-    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+    can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
 
     negative = BooleanParameter.MakeChild()
     zero_allowed = BooleanParameter.MakeChild()
@@ -131,8 +131,8 @@ class NumberDomain(fabll.Node):
             return shared
         return NumberDomain.get_shared_domain(shared, *domains[2:], g=g, tg=tg)
 
-    def as_operand(self) -> "can_be_operand":
-        return self._can_be_operand.get()
+    def as_operand(self) -> "can_be_operandT":
+        return self.can_be_operand.get()
 
 
 # Binding context ----------------------------------------------------------------------

@@ -563,7 +563,9 @@ class DefaultSolver(Solver):
         if solver_lit is None:
             return ss_lit
 
-        return F.Literals.is_literal.intersect_all(ss_lit, solver_lit, g=g, tg=tg)
+        return F.Literals.is_literal.intersect_all(
+            ss_lit, solver_lit, g=value.g, tg=value.tg
+        )
 
     @override
     def get_any_single(
@@ -587,7 +589,7 @@ class DefaultSolver(Solver):
         if lock:
             F.Expressions.Is.from_operands(
                 operatable.as_operand.get(),
-                singleton_lit.as_operand.get(),
+                singleton_lit.can_be_operand.get(),
                 assert_=True,
             )
         return out
@@ -649,18 +651,18 @@ def test_defaultsolver_basic():
     app.A.get().alias_to_single(True)
     FT.Expressions.Is.c(
         FT.Expressions.Or.c(
-            app.A.get().as_operand.get(),
-            app.B.get().as_operand.get(),
+            app.A.get().can_be_operand.get(),
+            app.B.get().can_be_operand.get(),
             assert_=False,
         ),
-        app.C.get().as_operand.get(),
+        app.C.get().can_be_operand.get(),
         assert_=True,
     )
 
     solver = DefaultSolver()
     res = solver.simplify_symbolically(tg, g, terminal=True)
     C_lit = res.data.mutation_map.try_get_literal(
-        app.C.get().get_trait(FT.Parameters.is_parameter_operatable),
+        app.C.get().is_parameter_operatable.get(),
         # TODO should not be needed
         allow_subset=True,
     )
