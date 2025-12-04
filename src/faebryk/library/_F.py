@@ -25,7 +25,6 @@ from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_solver import has_solver
 from faebryk.library.can_attach_to_any_pad import can_attach_to_any_pad
-from faebryk.library.is_kicad_footprint import is_kicad_footprint
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.is_lazy import is_lazy
 from faebryk.library.is_kicad_net import is_kicad_net
@@ -47,7 +46,6 @@ from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.can_attach_to_pad_by_name import can_attach_to_pad_by_name
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.library.has_linked_kicad_footprint import has_linked_kicad_footprint
 from faebryk.library.has_linked_kicad_net import has_linked_kicad_net
 from faebryk.library.has_linked_kicad_pad import has_linked_kicad_pad
 from faebryk.library.has_net_name import has_net_name
@@ -55,12 +53,12 @@ from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_usage_example import has_usage_example
+from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
-from faebryk.library.is_generated_by_kicad_footprint import is_generated_by_kicad_footprint
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.ElectricPower import ElectricPower
@@ -75,12 +73,12 @@ from faebryk.library.has_single_electric_reference import has_single_electric_re
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
-from faebryk.library.has_kicad_footprint import has_kicad_footprint
+from faebryk.library.is_kicad_footprint import is_kicad_footprint
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.has_associated_net import has_associated_net
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
-from faebryk.library.KicadFootprint import KicadFootprint
+from faebryk.library.has_linked_kicad_footprint import has_linked_kicad_footprint
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
@@ -93,7 +91,7 @@ from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
 from faebryk.library.is_lead import is_lead
 from faebryk.library.has_explicit_part import has_explicit_part
-from faebryk.library.is_atomic_part import is_atomic_part
+from faebryk.library.is_generated_by_kicad_footprint import is_generated_by_kicad_footprint
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
 from faebryk.library.BJT import BJT
@@ -145,7 +143,6 @@ __all__ = [
     "is_app_root",
     "has_solver",
     "can_attach_to_any_pad",
-    "is_kicad_footprint",
     "has_part_removed",
     "is_lazy",
     "is_kicad_net",
@@ -167,7 +164,6 @@ __all__ = [
     "can_attach_to_pad_by_name",
     "has_datasheet",
     "has_designator_prefix",
-    "has_linked_kicad_footprint",
     "has_linked_kicad_net",
     "has_linked_kicad_pad",
     "has_net_name",
@@ -175,12 +171,12 @@ __all__ = [
     "has_package_requirements",
     "has_part_picked",
     "has_usage_example",
+    "is_atomic_part",
     "is_auto_generated",
     "is_pickable_by_part_number",
     "is_pickable_by_supplier_id",
     "is_pickable_by_type",
     "Units",
-    "is_generated_by_kicad_footprint",
     "Electrical",
     "has_simple_value_representation",
     "ElectricPower",
@@ -195,12 +191,12 @@ __all__ = [
     "Net",
     "can_attach_to_footprint_symmetrically",
     "can_attach_via_pinmap",
-    "has_kicad_footprint",
+    "is_kicad_footprint",
     "ElectricLogic",
     "ElectricSignal",
     "has_associated_net",
     "can_attach_to_footprint_via_pinmap",
-    "KicadFootprint",
+    "has_linked_kicad_footprint",
     "Addressor",
     "CAN_TTL",
     "I2S",
@@ -213,7 +209,7 @@ __all__ = [
     "UART_Base",
     "is_lead",
     "has_explicit_part",
-    "is_atomic_part",
+    "is_generated_by_kicad_footprint",
     "SPIFlash",
     "UART",
     "BJT",
