@@ -48,7 +48,7 @@ def test_bom_explicit_pick():
             F.has_explicit_part.setup_by_supplier("C25804")
         )
         _can_attach_to_footprint = fabll.Traits.MakeEdge(
-            F.can_attach_to_footprint_symmetrically.MakeChild()
+            F.Footprints.can_attach_to_footprint.MakeChild()
         )
 
     test_component = TestComponent.bind_typegraph(tg).create_instance(g=g)
@@ -61,7 +61,7 @@ def test_bom_explicit_pick():
 
 def test_bom_kicad_footprint_no_lcsc():
     m = fabll.Module()
-    m.add(F.can_attach_to_footprint_symmetrically())
+    m.add(F.Footprints.can_attach_to_footprint())
     fp = F.KicadFootprint(pin_names=["1", "2"])
     fp.add(
         F.KicadFootprint.has_kicad_identifier(
@@ -77,7 +77,7 @@ def test_bom_kicad_footprint_no_lcsc():
 
 def test_bom_kicad_footprint_lcsc_verbose():
     m = fabll.Module()
-    m.add(F.can_attach_to_footprint_symmetrically())
+    m.add(F.Footprints.can_attach_to_footprint())
     fp = F.KicadFootprint(pin_names=["1", "2"])
     fp.add(
         F.KicadFootprint.has_kicad_identifier(
@@ -97,7 +97,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
 
 def test_bom_kicad_footprint_lcsc_compact():
     m = fabll.Module()
-    m.add(F.can_attach_to_footprint_symmetrically())
+    m.add(F.Footprints.can_attach_to_footprint())
     m.add(
         F.has_explicit_part.by_supplier(
             "C18166021",

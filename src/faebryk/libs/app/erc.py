@@ -123,7 +123,7 @@ def simple_erc(tg: fbrk.TypeGraph):
         # sym_fps = [
         #    n.get_trait(has_footprint).get_footprint()
         #    for n in parts
-        #    if n.has_trait(can_attach_to_footprint_symmetrically)
+        #    if n.has_trait(F.Footprints.can_attach_to_footprint)
         # ]
         # logger.info(f"Checking {len(sym_fps)} symmetric footprints")
         # for fp in sym_fps:

@@ -83,7 +83,7 @@ def netlist_graph():
         designator = r.designator_prefix.get().get_prefix() + str(i + 1)
         fabll.Traits.create_and_add_instance_to(r, F.has_designator).setup(designator)
         fabll.Traits.create_and_add_instance_to(
-            r, F.can_attach_to_footprint_symmetrically
+            r, F.Footprints.can_attach_to_footprint
         ).attach(F.Footprints.GenericFootprint.bind_typegraph(tg).create_instance(g=g))
 
         fabll.Traits.create_and_add_instance_to(r, F.is_kicad_footprint).setup(

@@ -2256,7 +2256,7 @@ def test_resistor_instantiation():
     assert res_inst.resistance.get().get_units().get_symbols()[1] == "Ohm"
     assert res_inst.get_trait(fabll.is_module)
     electricals = (
-        res_inst.get_trait(F.can_attach_to_footprint_symmetrically)
+        res_inst.get_trait(F.Footprints.can_attach_to_footprint)
         .electricals_.get()
         .as_list()
     )
