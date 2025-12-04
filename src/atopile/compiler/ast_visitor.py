@@ -337,7 +337,7 @@ class ASTVisitor:
     class _Pragma(StrEnum):
         EXPERIMENT = "experiment"
 
-    class _Experiments(StrEnum):
+    class _Experiment(StrEnum):
         BRIDGE_CONNECT = "BRIDGE_CONNECT"
         FOR_LOOP = "FOR_LOOP"
         TRAITS = "TRAITS"
@@ -361,7 +361,7 @@ class ASTVisitor:
         self._pointer_sequence_type = F.Collections.PointerSequence.bind_typegraph(
             self._type_graph
         ).get_or_create_type()
-        self._experiments: set[ASTVisitor._Experiments] = set()
+        self._experiments: set[ASTVisitor._Experiment] = set()
         self._scope_stack = _ScopeStack()
         self._type_stack = _TypeContextStack(
             graph=self._graph,
@@ -406,11 +406,11 @@ class ASTVisitor:
         ]
         return name, arguments
 
-    def enable_experiment(self, experiment: _Experiments) -> None:
+    def enable_experiment(self, experiment: _Experiment) -> None:
         print(f"Enabling experiment: {experiment}")
         self._experiments.add(experiment)
 
-    def ensure_experiment(self, experiment: _Experiments) -> None:
+    def ensure_experiment(self, experiment: _Experiment) -> None:
         if experiment not in self._experiments:
             raise DslException(f"Experiment {experiment} is not enabled")
 
@@ -453,18 +453,16 @@ class ASTVisitor:
         match pragma_func_name:
             case ASTVisitor._Pragma.EXPERIMENT.value:
                 match pragma_args:
-                    case [ASTVisitor._Experiments.BRIDGE_CONNECT]:
-                        self.enable_experiment(ASTVisitor._Experiments.BRIDGE_CONNECT)
-                    case [ASTVisitor._Experiments.FOR_LOOP]:
-                        self.enable_experiment(ASTVisitor._Experiments.FOR_LOOP)
-                    case [ASTVisitor._Experiments.TRAITS]:
-                        self.enable_experiment(ASTVisitor._Experiments.TRAITS)
-                    case [ASTVisitor._Experiments.MODULE_TEMPLATING]:
-                        self.enable_experiment(
-                            ASTVisitor._Experiments.MODULE_TEMPLATING
-                        )
-                    case [ASTVisitor._Experiments.INSTANCE_TRAITS]:
-                        self.enable_experiment(ASTVisitor._Experiments.INSTANCE_TRAITS)
+                    case [ASTVisitor._Experiment.BRIDGE_CONNECT]:
+                        self.enable_experiment(ASTVisitor._Experiment.BRIDGE_CONNECT)
+                    case [ASTVisitor._Experiment.FOR_LOOP]:
+                        self.enable_experiment(ASTVisitor._Experiment.FOR_LOOP)
+                    case [ASTVisitor._Experiment.TRAITS]:
+                        self.enable_experiment(ASTVisitor._Experiment.TRAITS)
+                    case [ASTVisitor._Experiment.MODULE_TEMPLATING]:
+                        self.enable_experiment(ASTVisitor._Experiment.MODULE_TEMPLATING)
+                    case [ASTVisitor._Experiment.INSTANCE_TRAITS]:
+                        self.enable_experiment(ASTVisitor._Experiment.INSTANCE_TRAITS)
                     case _:
                         raise DslException(f"Experiment not recognized: `{pragma}`")
             case _:
@@ -754,7 +752,7 @@ class ASTVisitor:
         ]
 
     def visit_ForStmt(self, node: AST.ForStmt):
-        self.ensure_experiment(ASTVisitor._Experiments.FOR_LOOP)
+        self.ensure_experiment(ASTVisitor._Experiment.FOR_LOOP)
 
         iterable_node = node.iterable.get().deref()
         item_paths: list[FieldPath]

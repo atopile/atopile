@@ -320,6 +320,7 @@ def main():
     )
 
 
-app = typer.Typer(rich_markup_mode="rich")
-app.command()(main)
-app()
+if __name__ == "__main__":
+    app = typer.Typer(rich_markup_mode="rich")
+    app.command()(main)
+    app()

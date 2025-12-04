@@ -11,8 +11,8 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import config
 from atopile.build_steps import muster
-from atopile.datatypes import TypeRef
-from atopile.parse import parse_text_as_file
+from atopile.compiler.datatypes import TypeRef
+from atopile.compiler.parse import parse_text_as_file
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.kicad.fileformats import kicad
 from faebryk.libs.util import cast_assert
@@ -25,7 +25,7 @@ def test_memory_usage():
     python ./tools/profile.py memray -- $(which pytest) -o addopts='' -s
     --log-cli-level=INFO -k test_memory_usage
     """
-    from atopile.front_end import Bob
+    from atopile.compiler.front_end import Bob
 
     bob = Bob()
     layout_path = Path(tempfile.mkdtemp()) / "layout.kicad_pcb"
