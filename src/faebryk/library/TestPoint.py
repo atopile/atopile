@@ -14,6 +14,8 @@ class TestPoint(fabll.Node):
     Basic test point.
     """
 
+    __test__ = False  # prevents pytest discovery
+
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
