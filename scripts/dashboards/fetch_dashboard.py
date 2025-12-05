@@ -39,9 +39,10 @@ from zoneinfo import ZoneInfo
 WORKFLOW_FILENAME = "pytest.yml"  # GitHub workflow file name
 REPORT_ARTIFACT_NAME = "test-report"
 REPORT_COPY_BASENAME = "test-report.html"
-POLL_SECONDS = 60
+POLL_SECONDS = 30
 BROWSER_CMD = "chromium-browser"
 DEFAULT_REPO = "atopile/atopile"
+DEFAULT_BRANCH = "feature/fabll_part2"
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
@@ -633,8 +634,8 @@ def open_in_browser(file_path: Path, browser_cmd: str | None = None) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch latest pytest summary artifact and view it.")
-    parser.add_argument("--branch", default="main", help="Branch to monitor (default: main)")
-    parser.add_argument("--interval", type=int, default=POLL_SECONDS, help="Polling interval seconds (default: 60)")
+    parser.add_argument("--branch", default=DEFAULT_BRANCH, help=f"Branch to monitor (default: {DEFAULT_BRANCH})")
+    parser.add_argument("--interval", type=int, default=POLL_SECONDS, help=f"Polling interval seconds (default: {POLL_SECONDS})")
     parser.add_argument(
         "--output-dir",
         default=str(SCRIPT_DIR),
