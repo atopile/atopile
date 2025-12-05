@@ -25,7 +25,11 @@ class Resistor(fabll.Node):
     )
 
     for e in unnamed:
-        e.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e]))
+        lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+        )
+        e.add_dependant(lead)
 
     can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])
