@@ -87,7 +87,7 @@ def _extract_and_check(
         expected = expected.can_be_operand.get()
     if not isinstance(expected, F.Parameters.can_be_operand):
         return extracted.equals_singleton(expected)
-    return bool(extracted.equals(expected.get_sibling_trait(F.Literals.is_literal)))
+    return extracted.equals(expected.get_sibling_trait(F.Literals.is_literal))
 
 
 def test_solve_phase_one():
@@ -1188,7 +1188,7 @@ def test_simple_parameter_isolation():
 
     x_op_y = E.lit_op_range_from_center_rel((3, E.U.dl), 0.01)
     y = E.lit_op_range_from_center_rel((1, E.U.dl), 0.01)
-    x_expected = (E.lit_op_range_from_center_rel((2, E.U.dl), 0.02),)
+    x_expected = E.lit_op_range_from_center_rel((2, E.U.dl), 0.02)
 
     X = E.parameter_op()
     Y = E.parameter_op()
@@ -1200,12 +1200,7 @@ def test_simple_parameter_isolation():
     solver = DefaultSolver()
     solver.update_superset_cache(X, Y)
 
-    assert (
-        solver.inspect_get_known_supersets(
-            X.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        == x_expected
-    )
+    assert _extract_and_check(X, solver, x_expected)
 
 
 def test_abstract_lowpass():
@@ -1232,9 +1227,11 @@ def test_abstract_lowpass():
     solver = DefaultSolver()
     solver.update_superset_cache(Li, C, fc)
 
-    assert solver.inspect_get_known_supersets(
-        C.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range(((6.0 * 158765796, E.U.dl), (6.0 * 410118344, E.U.dl)))
+    assert _extract_and_check(
+        C,
+        solver,
+        E.lit_op_range(((6.0 * 158765796, E.U.dl), (6.0 * 410118344, E.U.dl))),
+    )
 
 
 def test_param_isolation():
@@ -1248,9 +1245,9 @@ def test_param_isolation():
     solver = DefaultSolver()
     solver.update_superset_cache(X, Y)
 
-    assert solver.inspect_get_known_supersets(
-        X.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range_from_center_rel((2, E.U.dl), 0.02)
+    assert _extract_and_check(
+        X, solver, E.lit_op_range_from_center_rel((2, E.U.dl), 0.02)
+    )
 
 
 @pytest.mark.parametrize(
@@ -1279,12 +1276,7 @@ def test_extracted_literal_folding(op: Callable[..., F.Parameters.can_be_operand
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
 
-    assert (
-        solver.inspect_get_known_supersets(
-            C.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        == lito
-    )
+    assert _extract_and_check(C, solver, lito)
 
 
 def test_fold_pow():
@@ -1303,13 +1295,10 @@ def test_fold_pow():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
-    res = not_none(
-        repr_map.try_get_literal(
-            B.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    )
-    assert res.equals(
-        lit.op_pow_intervals(lit_operand).get_sibling_trait(F.Literals.is_literal),
+    assert _extract_and_check(
+        B,
+        repr_map,
+        lit.op_pow_intervals(lit_operand),
     )
 
 
@@ -1433,9 +1422,7 @@ def test_can_add_parameters():
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
 
-    assert solver.inspect_get_known_supersets(
-        C.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(E.lit_op_range((20, 200)).get_sibling_trait(F.Literals.is_literal))
+    assert _extract_and_check(C, solver, E.lit_op_range((20, 200)))
 
 
 def test_ss_estimation_ge():
@@ -1853,7 +1840,7 @@ def test_simplify_non_terminal_manual_test_2():
         p_lit = solver.inspect_get_known_supersets(p)
         print(f"{p.as_parameter_operatable.get().compact_repr(context)}, lit:", p_lit)
         print(f"{p_lit.as_operand.get()}, {E.multiply(origin[1], _inc)}")
-        assert E.is_subset(p_lit.as_operand.get(), E.multiply(origin[1], _inc))
+        assert p_lit.is_subset_of(origin[1] * _inc)
         E.is_(p.as_operand.get(), p_lit.as_operand.get(), assert_=True)
         solver.simplify(E.g, E.tg)
 
@@ -2171,6 +2158,7 @@ _A: list[
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "op_factory, lits_factory, expected_factory",
     _A,

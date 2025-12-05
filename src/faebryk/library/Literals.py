@@ -58,9 +58,11 @@ class is_literal(fabll.Node):
         self: "is_literal | LiteralNodes",
         other: "is_literal | LiteralNodes",
         *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
+        g = g or self.g
+        tg = tg or self.tg
         if objs := is_literal._cmp(self, other):
             return objs[0].is_subset_of(
                 objs[1],  # type: ignore # stupid pylance
@@ -156,7 +158,7 @@ class is_literal(fabll.Node):
             objs_lit,
         )
 
-    def equals(
+    def multi_equals(
         self: "is_literal | LiteralNodes",
         *others: "is_literal | LiteralNodes",
         g: graph.GraphView | None = None,
@@ -176,6 +178,16 @@ class is_literal(fabll.Node):
             ):
                 return i, other_c.is_literal.get()
         return None
+
+    def equals(
+        self: "is_literal | LiteralNodes",
+        other: "is_literal | LiteralNodes",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> bool:
+        g = g or self.g
+        tg = tg or self.tg
+        return bool(is_literal.multi_equals(self, other, g=g, tg=tg))
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
         return self.is_singleton() == singleton
@@ -202,6 +214,7 @@ class is_literal(fabll.Node):
         return super().__eq__(other)
 
     def switch_cast(self) -> "LiteralNodes":
+        # FIXME Enums check won't work like this
         types = [Strings, Numbers, Booleans, AbstractEnums]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:

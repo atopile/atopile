@@ -214,8 +214,8 @@ class MutatorUtils:
             unique_lits = unique(
                 alias_lits,
                 lambda x: x[0],
-                custom_eq=lambda x, y: bool(
-                    x.equals(y, g=self.mutator.G_transient, tg=self.mutator.tg_in)
+                custom_eq=lambda x, y: x.equals(
+                    y, g=self.mutator.G_transient, tg=self.mutator.tg_in
                 ),
             )
             if len(unique_lits) > 1:

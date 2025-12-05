@@ -1819,9 +1819,7 @@ class Mutator:
             mapping,
             lambda x: x[0],
             by_eq=True,
-            custom_eq=lambda x, y: bool(
-                x[1].equals(y[1], g=self.G_transient, tg=self.tg_in)
-            ),
+            custom_eq=lambda x, y: x[1].equals(y[1], g=self.G_transient, tg=self.tg_in),
         )
         if dupes:
             raise ContradictionByLiteral(

@@ -416,7 +416,7 @@ def merge_intersect_subsets(mutator: Mutator):
         old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
 
         # already exists
-        if contained := intersected.equals(
+        if contained := intersected.multi_equals(
             *ss_lits, g=mutator.G_transient, tg=mutator.tg_out
         ):
             _, target = contained

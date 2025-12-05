@@ -530,7 +530,7 @@ class is_expression(fabll.Node):
                     lit1.is_not_correlatable() or lit2.is_not_correlatable()
                 ):
                     return False
-                return bool(lit1.equals(lit2, g=g, tg=tg))
+                return lit1.equals(lit2, g=g, tg=tg)
 
             if expr1 := op1_obj.try_get_trait(is_expression):
                 expr2 = op2_obj.get_trait(is_expression)
