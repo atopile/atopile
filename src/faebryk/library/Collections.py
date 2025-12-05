@@ -60,7 +60,11 @@ class PointerProtocol(CollectionProtocol):
     @classmethod
     def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
     @classmethod
-    def MakeEdge(cls, pointer_ref: RefPath, elef_ref: RefPath) -> fabll._EdgeField: ...
+    def MakeEdge(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
+        """
+        Directional pointer edge from `pointer_ref` -> `elem_ref`
+        """
+        ...
     @classmethod
     def MakeEdgeForField(
         cls, out: fabll._ChildField, pointer_ref: RefPath, field: fabll._ChildField
@@ -87,6 +91,9 @@ def AbstractPointer(
 
         @classmethod
         def MakeEdge(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
+            """
+            Directional pointer edge from `pointer_ref` -> `elem_ref`
+            """
             return fabll._EdgeField(
                 pointer_ref,
                 elem_ref,
