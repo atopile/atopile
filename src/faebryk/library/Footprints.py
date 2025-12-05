@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.library import _F as F
 
 if TYPE_CHECKING:
@@ -103,23 +104,13 @@ class has_associated_footprint(fabll.Node):
     """
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-
     footprint_ = F.Collections.Pointer.MakeChild()
 
-    def get_footprint(self) -> "is_footprint":
-        return self.footprint_.get().deref().cast(is_footprint)
+    def get_footprint(self) -> is_footprint:
+        return fabll.Node.bind_instance(EdgePointer.get_referenced_node_from_node(node=self.instance)).get_trait(is_footprint)
 
-    # @classmethod
-    # def MakeChild(
-    #     cls, footprint: fabll._ChildField[is_footprint]
-    # ) -> fabll._ChildField[Self]:
-    #     out = fabll._ChildField(cls)
-    #     out.add_dependant(footprint)
-    #     out.add_dependant(F.Collections.Pointer.MakeEdge([out], [footprint]))
-    #     return out
-
-    def setup(self, footprint: "is_footprint"):
-        self.footprint_.get().point(footprint)
+    def set_footprint(self, footprint: is_footprint):
+        EdgePointer.point_to(bound_node=self.instance, target_node=fbrk.EdgeTrait.get_owner_node_of(bound_node=footprint.instance).node(), order=None)
 
 
 class GenericPad(fabll.Node):
@@ -202,7 +193,7 @@ def test_has_associated_footprint(capsys):
     footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
     module_with_footprint = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
-    module_with_footprint.get_trait(has_associated_footprint).setup(
+    module_with_footprint.get_trait(has_associated_footprint).set_footprint(
         footprint_instance._is_footprint.get()
     )
 

@@ -91,6 +91,8 @@ def test_make_fbrk_netlist_from_graph(capsys):
         _is_footprint = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
 
     class TestModule(fabll.Node):
+        elec = F.Electrical.MakeChild()
+
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
         _has_associated_footprint = fabll.Traits.MakeEdge(
             F.Footprints.has_associated_footprint.MakeChild()
@@ -102,14 +104,16 @@ def test_make_fbrk_netlist_from_graph(capsys):
     footprint_instance = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
     module_with_footprint = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
 
-    module_with_footprint.get_trait(F.Footprints.has_associated_footprint).setup(
-        footprint_instance._is_footprint.get()
-    )
+    net_instance = F.Net.bind_typegraph(tg=tg).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(net_instance, F.has_overriden_name).setup("hey")
+    net_instance.part_of.get()._is_interface.get().connect_to(module_with_footprint.elec.get())
+
+
+    module_with_footprint.get_trait(F.Footprints.has_associated_footprint).set_footprint(footprint_instance._is_footprint.get())
+
+    result = make_fbrk_netlist_from_graph(g, tg)
 
     with capsys.disabled():
-        print(
-            fabll.graph.InstanceGraphFunctions.render(
-                module_with_footprint.instance, show_traits=True, show_pointers=True
-            )
-        )
-        # print(result)
+        print(fabll.graph.InstanceGraphFunctions.render(
+            module_with_footprint.instance, show_traits=True, show_pointers=True, show_connections=True))
+        print(result)

@@ -3,6 +3,8 @@
 
 import logging
 
+from typing_extensions import deprecated
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -26,7 +28,7 @@ class Net(fabll.Node):
     def get_connected_pads(self) -> dict[F.Pad, F.Footprints.GenericFootprint]:
         return {
             pad: fp
-            for mif in self.get_connected_interfaces()
+            for mif in self.part_of.get()._is_interface.get().get_connected()
             if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
             and (pad := mif.get_parent_of_type(F.Pad)) is not None
         }
@@ -34,16 +36,9 @@ class Net(fabll.Node):
     def get_footprints(self) -> set[F.Footprints.GenericFootprint]:
         return {
             fp
-            for mif in self.get_connected_interfaces()
+            for mif in self.part_of.get()._is_interface.get().get_connected()
             if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
         }
-
-    # TODO should this be here?
-    def get_connected_interfaces(self):  # -> dict[fabll.Node, fabll.Path]:
-        # TODO: fix this, now it's getting every Electrical in the tg instead of just
-        # the ones connected to the net
-        # return self.part_of.get()._is_interface.get().get_connected()
-        return [e for e in F.Electrical.bind_typegraph(self.tg).get_instances()]
 
     def __repr__(self) -> str:
         up = super().__repr__()
@@ -53,6 +48,7 @@ class Net(fabll.Node):
             return up
 
     @staticmethod
+    @deprecated("Use is_interface.get_connected instead")
     def find_nets_for_mif(mif: F.Electrical) -> set["Net"]:
         """Return all nets that are connected to this mif"""
         return {
