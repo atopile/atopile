@@ -215,11 +215,13 @@ class is_literal(fabll.Node):
 
     def switch_cast(self) -> "LiteralNodes":
         # FIXME Enums check won't work like this
-        types = [Strings, Numbers, Booleans, AbstractEnums]
+        types = [Strings, Numbers, Booleans]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
             if obj.isinstance(t):
                 return obj.cast(t)
+        if enum := AbstractEnums.try_cast_to_enum(self):
+            return enum
 
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
@@ -5559,12 +5561,17 @@ class EnumValue(fabll.Node):
         return self.value_.get().deref().cast(Strings).get_values()[0]
 
 
+class is_enum_type(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
 class AbstractEnums(fabll.Node):
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
     is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
     values = F.Collections.PointerSet.MakeChild()
+    is_enum_type = fabll.Traits.MakeEdge(is_enum_type.MakeChild()).put_on_type()
 
     @staticmethod
     def get_enum_value(s: fabll.TypeNodeBoundTG, enum_member: Enum) -> EnumValue:
@@ -5735,6 +5742,17 @@ class AbstractEnums(fabll.Node):
         if len(values) == 1:
             return values[0]
         return str(values)
+
+    @staticmethod
+    def try_cast_to_enum(instance: fabll.NodeT) -> "AbstractEnums | None":
+        # TODO might want to improve this
+        if not (
+            fabll.TypeNodeBoundTG.try_get_trait_of_type(
+                is_enum_type, not_none(instance.get_type_node())
+            )
+        ):
+            return None
+        return AbstractEnums.bind_instance(instance=instance.instance)
 
 
 @once

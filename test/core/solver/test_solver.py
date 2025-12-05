@@ -13,6 +13,7 @@ import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.symbolic.pure_literal import _exec_pure_literal_expressions
 from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
@@ -239,6 +240,7 @@ def test_inequality_to_set():
     assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
 
 
+@pytest.mark.slow
 def test_remove_obvious_tautologies():
     E = BoundExpressions()
     p0, p1, p2 = [E.parameter_op(units=E.U.dl) for _ in range(3)]
@@ -653,6 +655,7 @@ def test_literal_folding_add_multiplicative_2():
     }
 
 
+@pytest.mark.slow
 def test_transitive_subset():
     E = BoundExpressions()
 
@@ -1267,7 +1270,11 @@ def test_extracted_literal_folding(op: Callable[..., F.Parameters.can_be_operand
 
     lit1 = E.lit_op_range(((0, 10)))
     lit2 = E.lit_op_range(((10, 20)))
-    lito = op(lit1, lit2)
+    lito = not_none(
+        _exec_pure_literal_expressions(
+            E.g, E.tg, op(lit1, lit2).get_trait(F.Expressions.is_expression)
+        )
+    )
 
     E.is_(A, lit1, assert_=True)
     E.is_(B, lit2, assert_=True)
@@ -1484,6 +1491,7 @@ def test_fold_not():
     assert _extract_and_check(B, solver, True)
 
 
+@pytest.mark.slow
 def test_fold_ss_transitive():
     E = BoundExpressions()
     A = E.parameter_op()
@@ -1499,6 +1507,7 @@ def test_fold_ss_transitive():
     assert _extract_and_check(A, solver, E.lit_op_range((0, 10)))
 
 
+@pytest.mark.slow
 def test_ss_intersect():
     E = BoundExpressions()
     A = E.parameter_op()
