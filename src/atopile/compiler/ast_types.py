@@ -263,7 +263,7 @@ class BinaryExpression(fabll.Node):
 
     source = SourceChunk.MakeChild()
     operator = F.Literals.Strings.MakeChild()
-    lhs = F.Collections.Pointer.MakeChild()  # TODO: reqyired but deferred
+    lhs = F.Collections.Pointer.MakeChild()  # TODO: required but deferred
     rhs = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore
@@ -581,18 +581,18 @@ class Slice(fabll.Node):
 
 class IterableFieldRef(fabll.Node):
     source = SourceChunk.MakeChild()
-    field = FieldRef.MakeChild()
+    field = F.Collections.Pointer.MakeChild()
     slice = Slice.MakeChild()
 
     def setup(  # type: ignore
         self,
         source_info: SourceInfo,
-        field_parts: Iterable[FieldRefPart.Info],
-        field_source_info: SourceInfo,
+        field_ref: FieldRef,
         slice_config: SliceConfig | None = None,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.field.get().setup(source_info=field_source_info, parts=field_parts)
+        self.field.get().point(field_ref)
+        _add_anon_child(self, field_ref)
 
         if slice_config is not None:
             self.slice.get().source.get().setup(source_info=slice_config.source)
@@ -616,6 +616,9 @@ class IterableFieldRef(fabll.Node):
                 )
 
         return self
+
+    def get_field(self) -> FieldRef:
+        return self.field.get().deref().cast(t=FieldRef)
 
 
 class FieldRefList(fabll.Node):
@@ -823,25 +826,26 @@ class Assignment(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    target = FieldRef.MakeChild()  # TODO: declarations?
+    target = F.Collections.Pointer.MakeChild()
     assignable = Assignable.MakeChild()
 
     def setup(  # type: ignore
         self,
         source_info: SourceInfo,
-        target_field_ref_parts: list[FieldRefPart.Info],
-        target_field_ref_source_info: SourceInfo,
+        target_field_ref: FieldRef,
         assignable_value: is_assignable,
         assignable_source_info: SourceInfo,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.target.get().setup(
-            source_info=target_field_ref_source_info, parts=target_field_ref_parts
-        )
+        self.target.get().point(target_field_ref)
+        _add_anon_child(self, target_field_ref)
         self.assignable.get().setup(
             source_info=assignable_source_info, value=assignable_value
         )
         return self
+
+    def get_target(self) -> FieldRef:
+        return self.target.get().deref().cast(t=FieldRef)
 
 
 class ConnectStmt(fabll.Node):
@@ -909,23 +913,26 @@ class DirectedConnectStmt(fabll.Node):
 
 class RetypeStmt(fabll.Node):
     source = SourceChunk.MakeChild()
-    target = FieldRef.MakeChild()
+    target = F.Collections.Pointer.MakeChild()
     new_type_ref = TypeRef.MakeChild()
 
     def setup(  # type: ignore
         self,
         source_info: SourceInfo,
-        target_parts: Iterable[FieldRefPart.Info],
-        target_source_info: SourceInfo,
+        target_field_ref: FieldRef,
         new_type_name: str,
         new_type_source_info: SourceInfo,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.target.get().setup(source_info=target_source_info, parts=target_parts)
+        self.target.get().point(target_field_ref)
+        _add_anon_child(self, target_field_ref)
         self.new_type_ref.get().setup(
             name=new_type_name, source_info=new_type_source_info
         )
         return self
+
+    def get_target(self) -> FieldRef:
+        return self.target.get().deref().cast(t=FieldRef)
 
 
 class PinDeclaration(fabll.Node):
@@ -992,23 +999,24 @@ class DeclarationStmt(fabll.Node):
     _is_statement = fabll.Traits.MakeEdge(is_statement.MakeChild())
 
     source = SourceChunk.MakeChild()
-    field_ref = FieldRef.MakeChild()
+    field_ref = F.Collections.Pointer.MakeChild()
     unit = Unit.MakeChild()
 
     def setup(  # type: ignore
         self,
         source_info: SourceInfo,
-        field_ref_parts: Iterable[FieldRefPart.Info],
-        field_ref_source_info: SourceInfo,
+        field_ref: FieldRef,
         unit_symbol: str,
         unit_source_info: SourceInfo,
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.field_ref.get().setup(
-            source_info=field_ref_source_info, parts=field_ref_parts
-        )
+        self.field_ref.get().point(field_ref)
+        _add_anon_child(self, field_ref)
         self.unit.get().setup(source_info=unit_source_info, symbol=unit_symbol)
         return self
+
+    def get_field_ref(self) -> FieldRef:
+        return self.field_ref.get().deref().cast(t=FieldRef)
 
 
 class StringStmt(fabll.Node):
@@ -1043,7 +1051,7 @@ class TraitStmt(fabll.Node):
 
     source = SourceChunk.MakeChild()
     type_ref = TypeRef.MakeChild()
-    target = FieldRef.MakeChild()
+    target = F.Collections.Pointer.MakeChild()
     template = Template.MakeChild()
     constructor = F.Literals.Strings.MakeChild()
 
@@ -1052,7 +1060,7 @@ class TraitStmt(fabll.Node):
         source_info: SourceInfo,
         type_ref_name: str,
         type_ref_source_info: SourceInfo,
-        target_info: tuple[Iterable[FieldRefPart.Info], SourceInfo] | None = None,
+        target_field_ref: FieldRef | None = None,
         template_info: tuple[SourceInfo, Iterable[TemplateArg]] | None = None,
         constructor: str | None = None,
     ) -> Self:
@@ -1060,9 +1068,9 @@ class TraitStmt(fabll.Node):
 
         self.type_ref.get().setup(name=type_ref_name, source_info=type_ref_source_info)
 
-        if target_info is not None:
-            target_parts, target_source_info = target_info
-            self.target.get().setup(source_info=target_source_info, parts=target_parts)
+        if target_field_ref is not None:
+            self.target.get().point(target_field_ref)
+            _add_anon_child(self, target_field_ref)
 
         if template_info is not None:
             template_source, template_args = template_info
@@ -1072,3 +1080,6 @@ class TraitStmt(fabll.Node):
             self.constructor.get().setup_from_values(constructor)
 
         return self
+
+    def get_target(self) -> FieldRef | None:
+        return self.target.get().deref().cast(t=FieldRef)

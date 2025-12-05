@@ -634,7 +634,7 @@ class ASTVisitor:
     def visit_Assignment(self, node: AST.Assignment):
         # TODO: broaden assignable support and handle keyed/pin field references
 
-        target_path = self.visit_FieldRef(node.target.get())
+        target_path = self.visit_FieldRef(node.get_target())
         assignable_t = node.assignable.get().get_value()
         assignable = self.visit(fabll.Traits(assignable_t).get_obj_raw())
         print(f"Assignable: {assignable}")
@@ -764,7 +764,7 @@ class ASTVisitor:
 
         elif iterable_node.isinstance(AST.IterableFieldRef):
             iterable_field = iterable_node.cast(t=AST.IterableFieldRef)
-            container_path = self.visit_FieldRef(iterable_field.field.get())
+            container_path = self.visit_FieldRef(iterable_field.get_field())
             member_paths = self._pointer_member_paths(container_path)
 
             selected = self._select_elements(iterable_field, member_paths)

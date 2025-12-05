@@ -204,16 +204,12 @@ class ANTLRVisitor(AtoParserVisitor):
         )
 
     def visitRetype_stmt(self, ctx: AtoParser.Retype_stmtContext) -> AST.RetypeStmt:
-        field_parts, field_source = self._field_ref_parts_from_ctx(
-            ctx.field_reference()
-        )
         type_ref_name, type_ref_source_info = self.visitType_reference(
             ctx.type_reference()
         )
         return self._new(AST.RetypeStmt).setup(
             source_info=self._extract_source_info(ctx),
-            target_parts=field_parts,
-            target_source_info=field_source,
+            target_field_ref=self.visitField_reference(ctx.field_reference()),
             new_type_name=type_ref_name,
             new_type_source_info=type_ref_source_info,
         )
@@ -284,8 +280,8 @@ class ANTLRVisitor(AtoParserVisitor):
         )
 
     def visitTrait_stmt(self, ctx: AtoParser.Trait_stmtContext) -> AST.TraitStmt:
-        target_info = (
-            self._field_ref_parts_from_ctx(ctx.field_reference())
+        target_field_ref = (
+            self.visitField_reference(ctx.field_reference())
             if ctx.field_reference() is not None
             else None
         )
@@ -308,7 +304,7 @@ class ANTLRVisitor(AtoParserVisitor):
             source_info=self._extract_source_info(ctx),
             type_ref_name=type_ref_name,
             type_ref_source_info=type_ref_source_info,
-            target_info=target_info,
+            target_field_ref=target_field_ref,
             template_info=template_info,
             constructor=constructor,
         )
@@ -329,13 +325,9 @@ class ANTLRVisitor(AtoParserVisitor):
     ) -> AST.IterableFieldRef | AST.FieldRefList:
         match [ctx.field_reference(), ctx.list_literal_of_field_references()]:
             case [field_ref_ctx, None]:
-                field_parts, field_source_info = self._field_ref_parts_from_ctx(
-                    field_ref_ctx
-                )
                 return self._new(AST.IterableFieldRef).setup(
                     source_info=self._extract_source_info(ctx),
-                    field_parts=field_parts,
-                    field_source_info=field_source_info,
+                    field_ref=self.visitField_reference(field_ref_ctx),
                     slice_config=self.visitSlice(ctx.slice_())
                     if ctx.slice_() is not None
                     else None,
@@ -410,20 +402,16 @@ class ANTLRVisitor(AtoParserVisitor):
             source_info=self._extract_source_info(ctx),
         )
 
-    # TODO: consolidate with visitField_reference?
-    def _field_ref_parts_from_ctx(
-        self, ctx: AtoParser.Field_referenceContext
-    ) -> tuple[list[AST.FieldRefPart.Info], AST.SourceInfo]:
-        return [
-            self.visitField_reference_part(part_ctx)
-            for part_ctx in ctx.field_reference_part()
-        ], self._extract_source_info(ctx)
-
     def visitField_reference(
         self, ctx: AtoParser.Field_referenceContext
     ) -> AST.FieldRef:
-        parts, source_info = self._field_ref_parts_from_ctx(ctx)
-        return self._new(AST.FieldRef).setup(source_info=source_info, parts=parts)
+        parts = [
+            self.visitField_reference_part(part_ctx)
+            for part_ctx in ctx.field_reference_part()
+        ]
+        return self._new(AST.FieldRef).setup(
+            source_info=self._extract_source_info(ctx), parts=parts
+        )
 
     def visitAssign_stmt(self, ctx: AtoParser.Assign_stmtContext) -> AST.Assignment:
         field_ref_ctx = ctx.field_reference_or_declaration().field_reference()
@@ -431,14 +419,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
         match (field_ref_ctx, decl_stmt_ctx):
             case (field_ref_ctx, None):
-                field_ref_parts = [
-                    self.visitField_reference_part(part)
-                    for part in field_ref_ctx.field_reference_part()
-                ]
-
-                # FIXME: not working?
-                field_ref_source_info = self._extract_source_info(field_ref_ctx)
-
+                target_field_ref = self.visitField_reference(field_ref_ctx)
                 # TODO: support final pin?
 
             case (None, decl_stmt_ctx):
@@ -452,8 +433,7 @@ class ANTLRVisitor(AtoParserVisitor):
 
         return self._new(AST.Assignment).setup(
             source_info=self._extract_source_info(ctx),
-            target_field_ref_parts=field_ref_parts,
-            target_field_ref_source_info=field_ref_source_info,
+            target_field_ref=target_field_ref,
             assignable_value=self.visitAssignable(ctx.assignable()),
             assignable_source_info=self._extract_source_info(ctx.assignable()),
         )
@@ -766,14 +746,9 @@ class ANTLRVisitor(AtoParserVisitor):
     def visitDeclaration_stmt(
         self, ctx: AtoParser.Declaration_stmtContext
     ) -> AST.DeclarationStmt:
-        field_parts, field_source = self._field_ref_parts_from_ctx(
-            ctx.field_reference()
-        )
-
         return self._new(AST.DeclarationStmt).setup(
             source_info=self._extract_source_info(ctx),
-            field_ref_parts=field_parts,
-            field_ref_source_info=field_source,
+            field_ref=self.visitField_reference(ctx.field_reference()),
             unit_symbol=self.visitUnit(ctx.unit()),
             unit_source_info=self._extract_source_info(ctx.unit()),
         )
