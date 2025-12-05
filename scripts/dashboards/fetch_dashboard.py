@@ -198,6 +198,42 @@ def parse_pytest_html_summary(html_text: str) -> dict:
     return summary
 
 
+def parse_failing_tests_by_file(html_text: str) -> list[tuple[str, int]]:
+    """
+    Extract failing tests from pytest-html report and group by file.
+    Returns list of (file_path, failure_count) tuples sorted by count descending.
+    """
+    import html
+
+    # Find the data-container JSON blob
+    match = re.search(r'<div[^>]+id="data-container"[^>]+data-jsonblob="([^"]+)"', html_text)
+    if not match:
+        return []
+
+    try:
+        json_str = html.unescape(match.group(1))
+        data = json.loads(json_str)
+        tests = data.get("tests", {})
+    except (json.JSONDecodeError, KeyError):
+        return []
+
+    # Count failures per file
+    file_counts: dict[str, int] = {}
+    for test_id, runs in tests.items():
+        for run in runs:
+            # Check for failed or error status
+            result = run.get("result", "").lower()
+            if result in ("failed", "error"):
+                # Extract file path from test_id (format: "path/to/file.py::test_name")
+                file_path = test_id.split("::")[0]
+                file_counts[file_path] = file_counts.get(file_path, 0) + 1
+                break  # Only count once per test_id
+
+    # Sort by count descending, then alphabetically by file path
+    sorted_files = sorted(file_counts.items(), key=lambda x: (-x[1], x[0]))
+    return sorted_files
+
+
 def format_commit_time(iso_time: str) -> str:
     """Format ISO timestamp to human-readable PST time."""
     try:
@@ -257,63 +293,15 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
         summary["commit_author"] = "unknown"
 
 
-def build_html(summary: dict) -> str:
-    status = summary.get("status", "unknown")
-    pass_count = _as_int(summary.get("passed"))
-    fail_count = _as_int(summary.get("failed"))
-    error_count = _as_int(summary.get("errors"))
-    skip_count = _as_int(summary.get("skipped"))
-    xfailed_count = _as_int(summary.get("xfailed"))
-    xpassed_count = _as_int(summary.get("xpassed"))
-    rerun_count = _as_int(summary.get("rerun"))
+# =============================================================================
+# HTML BUILDING BLOCKS
+# =============================================================================
 
-    tests = _as_int(summary.get("tests"))
-    inferred_total = (
-        pass_count
-        + fail_count
-        + error_count
-        + skip_count
-        + xfailed_count
-        + xpassed_count
-        + rerun_count
-    )
-    total = tests or inferred_total or 1
 
-    segments = [
-        ("Passed", pass_count, "#16a34a"),
-        ("Failed", fail_count, "#dc2626"),
-        ("Errors", error_count, "#b91c1c"),
-        ("Unexpected passes", xpassed_count, "#f97316"),
-        ("Expected failures", xfailed_count, "#8b5cf6"),
-        ("Skipped", skip_count, "#6b7280"),
-        ("Rerun", rerun_count, "#0ea5e9"),
-    ]
-
-    def segment_html(label: str, count: int, color: str) -> str:
-        if count <= 0:
-            return ""
-        pct = (count / total) * 100
-        return f'<div class="seg" style="width:{pct:.1f}%;background:{color}" title="{label}: {count} ({pct:.1f}%)"></div>'
-
-    bar_html = "".join(segment_html(*s) for s in segments if s[1] > 0)
-    summary_items = "".join(
-        f"<li><span class='label'>{label}:</span> <span class='count'>{count}</span></li>"
-        for label, count, _ in segments
-    )
-    run_url = summary.get("run_url", "")
-
-    commit_time = summary.get("commit_time", "unknown")
-    commit_message = (summary.get("commit_message") or "unknown").strip()
-    commit_author = summary.get("commit_author", "unknown")
-
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pytest results</title>
-  <style>
-    :root {{
+def _get_dashboard_css() -> str:
+    """Return the complete CSS stylesheet for the CRT-style dashboard theme."""
+    return """
+    :root {
       --bg: #020703;
       --panel: rgba(4, 18, 10, 0.82);
       --border: #1c3a25;
@@ -321,11 +309,13 @@ def build_html(summary: dict) -> str:
       --muted: #7acb8e;
       --accent: #d4ffd7;
       --danger: #ff6b6b;
-    }}
-    * {{
+    }
+    * {
       box-sizing: border-box;
-    }}
-    body {{
+    }
+
+    /* === Page Layout === */
+    body {
       margin: 0;
       padding: 48px;
       min-height: 100vh;
@@ -337,37 +327,46 @@ def build_html(summary: dict) -> str:
         #020703;
       color: var(--phosphor);
       text-shadow: 0 0 12px rgba(158, 252, 141, 0.45), 0 0 28px rgba(158, 252, 141, 0.25);
-      overflow: hidden;
+      overflow-x: hidden;
       position: relative;
       cursor: none;
-    }}
-    body::before {{
-      content: "";
-      position: fixed;
-      inset: -80px;
-      background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.65) 90%);
-      pointer-events: none;
-      z-index: 6;
-    }}
-    .crt-frame {{
+    }
+    .dashboard-layout {
+      display: flex;
+      gap: 32px;
+      align-items: stretch;
+      height: calc(100vh - 96px);
+    }
+
+    /* === Panel Components === */
+    .panel {
       position: relative;
-      max-width: 1440px;
-      margin: auto;
-      padding: 32px;
+      padding: 24px;
       border: 1px solid var(--border);
       border-radius: 18px;
       background: linear-gradient(135deg, rgba(4, 18, 9, 0.9), rgba(6, 28, 12, 0.92));
       box-shadow:
+        0 0 60px rgba(12, 60, 26, 0.45),
+        0 0 30px rgba(12, 60, 26, 0.4) inset;
+      overflow-y: auto;
+    }
+    .panel--main {
+      flex: 1;
+      padding: 32px;
+      box-shadow:
         0 0 90px rgba(12, 60, 26, 0.55),
         0 0 40px rgba(12, 60, 26, 0.5) inset,
         0 0 140px rgba(12, 60, 26, 0.35) inset;
-      overflow: hidden;
-    }}
-    .content {{
+    }
+    .panel--sidebar {
+      width: 700px;
+      flex-shrink: 0;
+    }
+    .panel__content {
       position: relative;
       z-index: 2;
-    }}
-    .glass {{
+    }
+    .panel__glass {
       position: absolute;
       inset: 0;
       pointer-events: none;
@@ -377,26 +376,29 @@ def build_html(summary: dict) -> str:
       mix-blend-mode: screen;
       opacity: 0.6;
       z-index: 1;
-    }}
-    .scanlines {{
+    }
+    .panel::-webkit-scrollbar { width: 8px; }
+    .panel::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); border-radius: 4px; }
+    .panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .panel::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* === CRT Effects === */
+    .scanlines {
       position: fixed;
       inset: 0;
       pointer-events: none;
       background: repeating-linear-gradient(
         to bottom,
-        rgba(0, 0, 0, 0.2) 0,
-        rgba(0, 0, 0, 0.2) 2px,
-        rgba(255, 255, 255, 0.02) 2px,
-        rgba(255, 255, 255, 0.02) 3px,
-        transparent 3px,
-        transparent 5px
+        rgba(0, 0, 0, 0.2) 0, rgba(0, 0, 0, 0.2) 2px,
+        rgba(255, 255, 255, 0.02) 2px, rgba(255, 255, 255, 0.02) 3px,
+        transparent 3px, transparent 5px
       );
       mix-blend-mode: multiply;
       opacity: 0.75;
       z-index: 7;
       animation: roll 8s linear infinite;
-    }}
-    .noise {{
+    }
+    .noise {
       position: fixed;
       inset: 0;
       pointer-events: none;
@@ -406,26 +408,24 @@ def build_html(summary: dict) -> str:
       mix-blend-mode: screen;
       animation: jitter 1.2s steps(4, end) infinite;
       z-index: 8;
-    }}
-    .flicker {{
-      animation: flicker 4s infinite;
-    }}
-    .ghost {{
-      text-shadow: 0 0 10px rgba(158, 252, 141, 0.45), 2px 0 14px rgba(158, 252, 141, 0.18);
-    }}
-    h1 {{
-      margin: 0 0 14px;
-      font-size: 3.4rem;
-      letter-spacing: 1px;
-    }}
-    .status {{
+    }
+    .flicker { animation: flicker 4s infinite; }
+    .ghost { text-shadow: 0 0 10px rgba(158, 252, 141, 0.45), 2px 0 14px rgba(158, 252, 141, 0.18); }
+
+    /* === Typography === */
+    h1 { margin: 0 0 14px; font-size: 3.4rem; letter-spacing: 1px; }
+    h2 { margin: 0 0 12px; font-size: 2rem; letter-spacing: 0.5px; }
+    .meta { font-size: 1.6rem; margin: 0 0 12px; color: var(--accent); }
+
+    /* === Main Panel Components === */
+    .status {
       font-size: 1.8rem;
       margin-bottom: 16px;
       display: flex;
       align-items: center;
       gap: 12px;
-    }}
-    .pill {{
+    }
+    .pill {
       display: inline-block;
       padding: 6px 16px;
       border-radius: 999px;
@@ -434,19 +434,9 @@ def build_html(summary: dict) -> str:
       color: var(--phosphor);
       box-shadow: 0 0 14px rgba(158, 252, 141, 0.35);
       font-weight: 700;
-    }}
-    .meta {{
-      font-size: 1.6rem;
-      margin: 0 0 12px;
-      color: var(--accent);
-    }}
-    .bar-row {{
-      display: flex;
-      align-items: center;
-      gap: 28px;
-      margin: 24px 0;
-    }}
-    .bar {{
+    }
+    .bar-row { display: flex; align-items: center; gap: 28px; margin: 24px 0; }
+    .bar {
       flex: 1;
       display: flex;
       height: 42px;
@@ -455,59 +445,9 @@ def build_html(summary: dict) -> str:
       background: rgba(2, 10, 5, 0.8);
       border: 1px solid #183822;
       box-shadow: 0 0 12px rgba(158, 252, 141, 0.35) inset;
-    }}
-    .seg {{
-      height: 100%;
-      filter: drop-shadow(0 0 6px rgba(158, 252, 141, 0.25));
-    }}
-    ul {{
-      list-style: none;
-      padding: 0;
-      margin: 18px 0;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 12px;
-    }}
-    li {{
-      background: rgba(5, 18, 10, 0.75);
-      border: 1px solid #15341f;
-      border-radius: 14px;
-      padding: 16px 18px;
-      box-shadow: 0 0 18px rgba(12, 60, 26, 0.35) inset;
-      font-size: 1.6rem;
-    }}
-    .label {{
-      color: var(--muted);
-    }}
-    .count {{
-      float: right;
-      color: var(--accent);
-      font-weight: 800;
-      font-size: 2rem;
-    }}
-    .meta-container {{
-      background: rgba(4, 14, 7, 0.65);
-      border: 1px solid #173923;
-      border-radius: 14px;
-      padding: 18px;
-      box-shadow: 0 0 24px rgba(12, 60, 26, 0.4) inset;
-      margin-top: 22px;
-    }}
-    .meta-container .meta {{
-      color: var(--accent);
-    }}
-    .meta-container .meta:last-child {{
-      margin-bottom: 0;
-    }}
-    .meta-container a {{
-      color: var(--phosphor);
-      text-decoration: none;
-      border-bottom: 1px dashed rgba(158, 252, 141, 0.5);
-    }}
-    .meta-container a:hover {{
-      color: #d6ffd2;
-    }}
-    .mascot {{
+    }
+    .seg { height: 100%; filter: drop-shadow(0 0 6px rgba(158, 252, 141, 0.25)); }
+    .mascot {
       width: 200px;
       height: 200px;
       max-width: 20%;
@@ -515,105 +455,220 @@ def build_html(summary: dict) -> str:
       filter: grayscale(1) brightness(1.5) contrast(1.2);
       opacity: 0.78;
       mix-blend-mode: screen;
-    }}
-    @keyframes roll {{
-      from {{
-        background-position: 0 0;
-      }}
-      to {{
-        background-position: 0 8px;
-      }}
-    }}
-    @keyframes jitter {{
-      0% {{
-        transform: translate(0, 0);
-      }}
-      20% {{
-        transform: translate(-1px, 0.5px);
-      }}
-      40% {{
-        transform: translate(1px, -0.5px);
-      }}
-      60% {{
-        transform: translate(-0.5px, -1px);
-      }}
-      80% {{
-        transform: translate(0.5px, 0.5px);
-      }}
-      100% {{
-        transform: translate(0, 0);
-      }}
-    }}
-    @keyframes flicker {{
-      0% {{
-        opacity: 0.96;
-      }}
-      5% {{
-        opacity: 0.85;
-      }}
-      10% {{
-        opacity: 0.98;
-      }}
-      15% {{
-        opacity: 0.92;
-      }}
-      25% {{
-        opacity: 0.97;
-      }}
-      30% {{
-        opacity: 0.88;
-      }}
-      40% {{
-        opacity: 1;
-      }}
-      50% {{
-        opacity: 0.9;
-      }}
-      60% {{
-        opacity: 0.99;
-      }}
-      70% {{
-        opacity: 0.93;
-      }}
-      80% {{
-        opacity: 0.96;
-      }}
-      90% {{
-        opacity: 0.89;
-      }}
-      100% {{
-        opacity: 0.98;
-      }}
-    }}
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 18px 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    li {
+      background: rgba(5, 18, 10, 0.75);
+      border: 1px solid #15341f;
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 0 18px rgba(12, 60, 26, 0.35) inset;
+      font-size: 1.6rem;
+    }
+    .label { color: var(--muted); }
+    .count { float: right; color: var(--accent); font-weight: 800; font-size: 2rem; }
+    .meta-container {
+      background: rgba(4, 14, 7, 0.65);
+      border: 1px solid #173923;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 0 24px rgba(12, 60, 26, 0.4) inset;
+      margin-top: 22px;
+    }
+    .meta-container .meta { color: var(--accent); }
+    .meta-container .meta:last-child { margin-bottom: 0; }
+    .meta-container a { color: var(--phosphor); text-decoration: none; border-bottom: 1px dashed rgba(158, 252, 141, 0.5); }
+    .meta-container a:hover { color: #d6ffd2; }
+
+    /* === Sidebar Components === */
+    .panel--sidebar h2 { color: var(--danger); text-shadow: 0 0 12px rgba(255, 107, 107, 0.5); }
+    .failing-files-list { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 0 0; }
+    .failing-files-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      font-size: 1.1rem;
+      border-radius: 10px;
+    }
+    .file-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 32px;
+      height: 28px;
+      padding: 0 8px;
+      background: rgba(220, 38, 38, 0.25);
+      border: 1px solid rgba(220, 38, 38, 0.5);
+      border-radius: 6px;
+      color: var(--danger);
+      font-weight: 800;
+      font-size: 1.2rem;
+      text-shadow: 0 0 8px rgba(255, 107, 107, 0.5);
+    }
+    .file-path { color: var(--muted); font-size: 1rem; word-break: break-all; }
+
+    /* === Animations === */
+    @keyframes roll { from { background-position: 0 0; } to { background-position: 0 8px; } }
+    @keyframes jitter {
+      0% { transform: translate(0, 0); }
+      20% { transform: translate(-1px, 0.5px); }
+      40% { transform: translate(1px, -0.5px); }
+      60% { transform: translate(-0.5px, -1px); }
+      80% { transform: translate(0.5px, 0.5px); }
+      100% { transform: translate(0, 0); }
+    }
+    @keyframes flicker {
+      0% { opacity: 0.96; } 5% { opacity: 0.85; } 10% { opacity: 0.98; }
+      15% { opacity: 0.92; } 25% { opacity: 0.97; } 30% { opacity: 0.88; }
+      40% { opacity: 1; } 50% { opacity: 0.9; } 60% { opacity: 0.99; }
+      70% { opacity: 0.93; } 80% { opacity: 0.96; } 90% { opacity: 0.89; }
+      100% { opacity: 0.98; }
+    }
+"""
+
+
+def _build_panel(content: str, modifier: str = "") -> str:
+    """Generate a panel HTML element with glass effect and content wrapper."""
+    mod_class = f" panel--{modifier}" if modifier else ""
+    return f"""<div class="panel{mod_class} flicker">
+      <div class="panel__glass"></div>
+      <div class="panel__content">
+{content}
+      </div>
+    </div>"""
+
+
+def _build_main_panel(summary: dict) -> str:
+    """Build the main pytest results panel HTML."""
+    status = summary.get("status", "unknown")
+    pass_count = _as_int(summary.get("passed"))
+    fail_count = _as_int(summary.get("failed"))
+    error_count = _as_int(summary.get("errors"))
+    skip_count = _as_int(summary.get("skipped"))
+    xfailed_count = _as_int(summary.get("xfailed"))
+    xpassed_count = _as_int(summary.get("xpassed"))
+    rerun_count = _as_int(summary.get("rerun"))
+
+    tests = _as_int(summary.get("tests"))
+    inferred_total = (
+        pass_count + fail_count + error_count + skip_count
+        + xfailed_count + xpassed_count + rerun_count
+    )
+    total = tests or inferred_total or 1
+
+    # Test result segments with colors
+    segments = [
+        ("Passed", pass_count, "#16a34a"),
+        ("Failed", fail_count, "#dc2626"),
+        ("Errors", error_count, "#b91c1c"),
+        ("Unexpected passes", xpassed_count, "#f97316"),
+        ("Expected failures", xfailed_count, "#8b5cf6"),
+        ("Skipped", skip_count, "#6b7280"),
+        ("Rerun", rerun_count, "#0ea5e9"),
+    ]
+
+    # Build progress bar segments
+    def segment_html(label: str, count: int, color: str) -> str:
+        if count <= 0:
+            return ""
+        pct = (count / total) * 100
+        return f'<div class="seg" style="width:{pct:.1f}%;background:{color}" title="{label}: {count} ({pct:.1f}%)"></div>'
+
+    bar_html = "".join(segment_html(*s) for s in segments if s[1] > 0)
+    bar_html = bar_html or '<div class="seg" style="width:100%;background:#0f2c18"></div>'
+
+    # Build summary list items
+    summary_items = "".join(
+        f"<li><span class='label'>{label}:</span> <span class='count'>{count}</span></li>"
+        for label, count, _ in segments
+    )
+
+    # Commit metadata
+    run_url = summary.get("run_url", "")
+    commit_time = summary.get("commit_time", "unknown")
+    commit_message = (summary.get("commit_message") or "unknown").strip()
+    commit_author = summary.get("commit_author", "unknown")
+
+    content = f"""        <h1 class="ghost">Pytest Progress</h1>
+        <div class="status ghost">Run status: <span class="pill">{status}</span></div>
+        <div class="meta ghost">Total tests: {total}</div>
+        <div class="bar-row">
+          <img class="mascot" src="happy.jpg" alt="happy sausage" />
+          <div class="bar">{bar_html}</div>
+          <img class="mascot" src="funktion-1.jpeg" alt="funktion-1" />
+        </div>
+        <ul class="ghost">{summary_items}</ul>
+        <div class="meta-container ghost">
+          <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
+          <div class="meta">Commit time: {commit_time}</div>
+          <div class="meta">Commit message: {commit_message}</div>
+          <div class="meta">Commit author: {commit_author}</div>
+        </div>"""
+
+    return _build_panel(content, "main")
+
+
+def _build_failing_files_panel(failing_files: list[tuple[str, int]]) -> str:
+    """Build the failing files sidebar panel HTML."""
+    if not failing_files:
+        return ""
+
+    # Build list items for each file
+    items = ""
+    for file_path, count in failing_files:
+        # Shorten path for display (show last 2-3 parts)
+        parts = file_path.split("/")
+        short_path = "/".join(parts[-3:]) if len(parts) > 3 else file_path
+        items += f'<li><span class="file-count">{count}</span><span class="file-path">{short_path}</span></li>'
+
+    content = f"""        <h2 class="ghost">Failing Files</h2>
+        <div class="meta ghost">{len(failing_files)} files with failures</div>
+        <ul class="failing-files-list ghost">{items}</ul>"""
+
+    return "\n    " + _build_panel(content, "sidebar")
+
+
+def _build_page_template(css: str, main_panel: str, sidebar: str) -> str:
+    """Assemble the complete HTML page from components."""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pytest results</title>
+  <style>{css}
   </style>
 </head>
 <body>
   <div class="scanlines"></div>
   <div class="noise"></div>
-  <div class="crt-frame flicker">
-    <div class="glass"></div>
-    <div class="content">
-      <h1 class="ghost">Pytest Progress</h1>
-      <div class="status ghost">Run status: <span class="pill">{status}</span></div>
-      <div class="meta ghost">Total tests: {total}</div>
-      <div class="bar-row">
-        <img class="mascot" src="happy.jpg" alt="happy sausage" />
-        <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#0f2c18"></div>'}</div>
-        <img class="mascot" src="funktion-1.jpeg" alt="funktion-1" />
-      </div>
-      <ul class="ghost">{summary_items}</ul>
-      <div class="meta-container ghost">
-        <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
-        <div class="meta">Commit time: {commit_time}</div>
-        <div class="meta">Commit message: {commit_message}</div>
-        <div class="meta">Commit author: {commit_author}</div>
-      </div>
-    </div>
+  <div class="dashboard-layout">
+    {main_panel}{sidebar}
   </div>
 </body>
 </html>
 """
-    return html
+
+
+# =============================================================================
+# PUBLIC API
+# =============================================================================
+
+
+def build_html(summary: dict, failing_files: list[tuple[str, int]] | None = None) -> str:
+    """Build the complete dashboard HTML from summary data and failing files."""
+    css = _get_dashboard_css()
+    main_panel = _build_main_panel(summary)
+    sidebar = _build_failing_files_panel(failing_files or [])
+    return _build_page_template(css, main_panel, sidebar)
 
 
 def open_in_browser(file_path: Path, browser_cmd: str | None = None) -> None:
@@ -675,6 +730,7 @@ def main() -> int:
                         try:
                             html_text = artifact_member.read_text(encoding="utf-8")
                             summary: dict[str, object] = parse_pytest_html_summary(html_text)
+                            failing_files = parse_failing_tests_by_file(html_text)
                         except Exception as exc:
                             print(f"Could not parse pytest HTML report: {exc}")
                             continue
@@ -687,7 +743,7 @@ def main() -> int:
                         summary_copy = out_dir / REPORT_COPY_BASENAME
                         shutil.copy2(artifact_member, summary_copy)
 
-                        html = build_html(summary)
+                        html = build_html(summary, failing_files)
                         dest = out_dir / "dashboard.html"
                         dest.write_text(html, encoding="utf-8")
                         inject_refresh(dest, args.interval)
