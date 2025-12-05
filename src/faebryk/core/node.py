@@ -96,6 +96,7 @@ class Field:
 
         self.locator: str | None | PLACEHOLDER = PLACEHOLDER()
         self._type_child = False
+        self._is_dependant = False  # Set when added as a dependant of another field
 
     def _set_identifier(self, identifier: str | None) -> None:
         if identifier is None:
@@ -193,6 +194,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             )
         """
         for d in dependant:
+            d._is_dependant = True  # Mark as dependant to prevent duplicate registration
             if identifier is not None:
                 d._set_locator(f"{identifier}_{id(d):04x}")
             else:
@@ -934,10 +936,14 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     @classmethod
     def _is_field_registered(cls, field: Field) -> bool:
         """
-        Check if a field is already registered, either directly or as part of a list.
+        Check if a field is already registered, either directly, as part of a list,
+        or as a dependant of another field.
         This prevents duplicate registration when loop variables reference existing
         fields.
         """
+        # Fast path: field was already added as a dependant
+        if field._is_dependant:
+            return True
         for registered in cls.__fields.values():
             if registered is field:
                 return True

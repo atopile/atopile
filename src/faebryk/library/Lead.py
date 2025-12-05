@@ -117,6 +117,11 @@ class has_associated_pad(fabll.Node):
         ).net.part_of.get()._is_interface.get().connect_to(parent.line.get())
         return self
 
+class can_attach_to_pad_by_name_heuristic(fabll.Node):
+    """
+    Replaces has_pin_association_heuristic
+    """
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 def test_is_lead():
     g = fabll.graph.GraphView.create()
@@ -154,3 +159,45 @@ def test_is_lead():
         .net.get_trait(fabll.is_interface)
         .is_connected_to(lead.line.get())
     )
+
+def test_can_attach_to_pad_by_name_heuristic(capsys):
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        anode = F.Electrical.MakeChild()
+        cathode = F.Electrical.MakeChild()
+
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+        for e in [anode, cathode]:
+            lead = is_lead.MakeChild()
+            lead.add_dependant(fabll.Traits.MakeEdge(can_attach_to_pad_by_name_heuristic.MakeChild(), [lead]))
+            e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
+
+    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    with capsys.disabled():
+        print(fabll.graph.InstanceGraphFunctions.render(module.instance, show_traits=True))
+
+def test_can_attach_to_any_pad(capsys):
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        unnamed = [F.Electrical.MakeChild() for _ in range(2)]
+
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+        for e in unnamed:
+            lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+            lead.add_dependant(
+                fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+            )
+            
+            e.add_dependant(lead)
+
+    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    with capsys.disabled():
+        print(fabll.graph.InstanceGraphFunctions.render(module.instance, show_traits=True))
