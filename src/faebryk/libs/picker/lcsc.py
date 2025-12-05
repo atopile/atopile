@@ -696,7 +696,7 @@ def setup_project_config(tmp_path):
 
 
 @pytest.mark.usefixtures("setup_project_config")
-def test_attach(capsys):
+def test_attach_resistor():
     import faebryk.core.faebrykpy as fbrk
     import faebryk.core.node as fabll
 
@@ -743,5 +743,51 @@ def test_attach(capsys):
     assert generated_from_kicad_footprint_file_t.pad_names == ["2", "1"]
     assert (
         "src/parts/UNI_ROYAL_0603WAF1001T5E/R0603.kicad_mod"
+        in generated_from_kicad_footprint_file_t.kicad_footprint_file_path
+    )
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_attach_mosfet():
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.node as fabll
+
+    LCSC_ID = "C8545"
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
+
+    attach(component=component, partno=LCSC_ID)
+
+    associated_footprint = component.try_get_trait(
+        F.Footprints.has_associated_footprint
+    )
+
+    assert associated_footprint is not None
+
+    # After attach: footprint should now be linked
+    footprint = associated_footprint.get_footprint()
+
+    # there should also be a kicad footprint linked
+    kicad_footprint = footprint.get_trait(
+        F.KiCadFootprints.has_linked_kicad_footprint
+    ).get_footprint()
+    generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
+        F.KiCadFootprints.is_generated_from_kicad_footprint_file
+    )
+
+    assert (
+        generated_from_kicad_footprint_file_t.kicad_library_id
+        == "Changjiang_Electronics_Tech_2N7002:SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR"
+    )
+    assert (
+        generated_from_kicad_footprint_file_t.library_name
+        == "Changjiang_Electronics_Tech_2N7002"
+    )
+    assert generated_from_kicad_footprint_file_t.pad_names == ["D", "G", "S"]
+    assert (
+        "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
         in generated_from_kicad_footprint_file_t.kicad_footprint_file_path
     )
