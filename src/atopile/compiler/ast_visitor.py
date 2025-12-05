@@ -14,6 +14,7 @@ from atopile.compiler.gentypegraph import (
     FieldPath,
     ImportRef,
     NewChildSpec,
+    NoOpAction,
     ScopeState,
     Symbol,
 )
@@ -213,7 +214,7 @@ class _TypeContextStack:
                 for a in actions:
                     self.apply_action(a)
                 return
-            case None:  # TODO: why would this be None?
+            case NoOpAction():
                 return
             case _:
                 raise NotImplementedError(f"Unhandled action: {action}")
@@ -524,11 +525,11 @@ class ASTVisitor:
         self._scope_stack.add_symbol(Symbol(name=module_name, type_node=type_node))
 
     def visit_PassStmt(self, node: AST.PassStmt):
-        pass
+        return NoOpAction()
 
     def visit_StringStmt(self, node: AST.StringStmt):
         # TODO: add docstring trait to preceding node
-        pass
+        return NoOpAction()
 
     def visit_FieldRef(self, node: AST.FieldRef) -> FieldPath:
         segments: list[FieldPath.Segment] = []
@@ -778,3 +779,5 @@ class ASTVisitor:
             with self._scope_stack.temporary_alias(loop_var, item_path):
                 for stmt in node.scope.get().stmts.get().as_list():
                     self._type_stack.apply_action(self.visit(stmt))
+
+        return NoOpAction()

@@ -94,6 +94,11 @@ class AddMakeLinkAction:
     rhs_ref: BoundNode
 
 
+@dataclass(frozen=True)
+class NoOpAction:
+    pass
+
+
 @dataclass
 class ScopeState:
     symbols: dict[str, Symbol] = field(default_factory=dict)
