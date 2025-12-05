@@ -624,7 +624,7 @@ class NumericInterval(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        return self.op_add(other=other.op_negate(g=g, tg=tg), g=g, tg=tg)
+        return self.op_add(other.op_negate(g=g, tg=tg), g=g, tg=tg)
 
     def op_multiply(
         self,
@@ -708,27 +708,28 @@ class NumericInterval(fabll.Node):
 
     def op_pow(
         self,
-        other: "NumericInterval",
-        *,
+        *others: "NumericInterval",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
         g = g or self.g
         tg = tg or self.tg
         base = self
-        exp = other
+        exp = others[0]
+        if len(others) > 1:
+            exp = exp.op_multiply(*others[1:], g=g, tg=tg)
         base_min = self.get_min_value()
         base_max = self.get_max_value()
-        exp_min = other.get_min_value()
-        exp_max = other.get_max_value()
+        exp_min = exp.get_min_value()
+        exp_max = exp.get_max_value()
 
         if exp_max < 0:
-            return base.op_pow(other=exp.op_negate(g=g, tg=tg), g=g, tg=tg).op_invert(
+            return base.op_pow(exp.op_negate(g=g, tg=tg), g=g, tg=tg).op_invert(
                 g=g, tg=tg
             )
         if exp_min < 0:
             raise NotImplementedError("crossing zero in exp not implemented yet")
-        if base_min < 0 and not other.is_integer():
+        if base_min < 0 and not exp.is_integer():
             raise NotImplementedError(
                 "cannot raise negative base to fractional exponent (complex result)"
             )
@@ -781,7 +782,7 @@ class NumericInterval(fabll.Node):
         other_intervals = other.op_invert(g=g, tg=tg).get_intervals()
         products = []
         for other_interval in other_intervals:
-            products.append(self.op_multiply(other=other_interval, g=g, tg=tg))
+            products.append(self.op_multiply(other_interval, g=g, tg=tg))
 
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup(intervals=products)
@@ -1160,7 +1161,7 @@ class TestNumericInterval:
         other_min_value = -0.5
         other_max_value = 1.5
         other.setup(min=other_min_value, max=other_max_value)
-        assert numeric_interval.is_subset_of(other=other)
+        assert numeric_interval.is_subset_of(other)
 
     def test_is_subset_of_false(self):
         g = graph.GraphView.create()
@@ -1173,7 +1174,7 @@ class TestNumericInterval:
         other_min_value = 1.5
         other_max_value = 2.5
         other.setup(min=other_min_value, max=other_max_value)
-        assert not numeric_interval.is_subset_of(other=other)
+        assert not numeric_interval.is_subset_of(other)
 
     def test_op_add(self):
         g = graph.GraphView.create()
@@ -1333,7 +1334,7 @@ class TestNumericInterval:
         exp_min_value = 1.0
         exp_max_value = 2.0
         exp.setup(min=exp_min_value, max=exp_max_value)
-        result = base.op_pow(g=g, tg=tg, other=exp)
+        result = base.op_pow(exp, g=g, tg=tg)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == 2.0
         assert result.get_intervals()[0].get_max_value() == 16.0
@@ -1749,7 +1750,7 @@ class NumericSet(fabll.Node):
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
-            intervals.append(interval.op_intersect(other=other, g=g, tg=tg))
+            intervals.append(interval.op_intersect(other, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def op_intersect_intervals(
@@ -1770,7 +1771,7 @@ class NumericSet(fabll.Node):
             rs, ro = self_intervals[s], other_intervals[o]
             rs_min, rs_max = rs.get_min_value(), rs.get_max_value()
             ro_min, ro_max = ro.get_min_value(), ro.get_max_value()
-            intersect = rs.op_intersect(other=ro, g=g, tg=tg)
+            intersect = rs.op_intersect(ro, g=g, tg=tg)
             if not intersect.is_empty():
                 result.append(intersect)
 
@@ -1818,7 +1819,7 @@ class NumericSet(fabll.Node):
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
-            intervals.append(interval.op_difference(other=other, g=g, tg=tg))
+            intervals.append(interval.op_difference(other, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def op_difference_intervals(
@@ -1833,7 +1834,7 @@ class NumericSet(fabll.Node):
         # TODO there is probably a more efficient way to do this
         out = self
         for o in other.get_intervals():
-            out = out.op_difference_interval(other=o, g=g, tg=tg)
+            out = out.op_difference_interval(o, g=g, tg=tg)
         return out
 
     def op_symmetric_difference_intervals(
@@ -1845,8 +1846,8 @@ class NumericSet(fabll.Node):
     ) -> "NumericSet":
         g = g or self.g
         tg = tg or self.tg
-        return self.op_union(other=other, g=g, tg=tg).op_difference_intervals(
-            other=self.op_intersect_intervals(other=other, g=g, tg=tg), g=g, tg=tg
+        return self.op_union(other, g=g, tg=tg).op_difference_intervals(
+            other=self.op_intersect_intervals(other, g=g, tg=tg), g=g, tg=tg
         )
 
     def op_pow(
@@ -1866,7 +1867,7 @@ class NumericSet(fabll.Node):
         out = []
         for self_interval in self_intervals:
             for other_interval in other_intervals:
-                out.append(self_interval.op_pow(other=other_interval, g=g, tg=tg))
+                out.append(self_interval.op_pow(other_interval, g=g, tg=tg))
 
         return numeric_set.setup(intervals=out)
 
@@ -1883,7 +1884,7 @@ class NumericSet(fabll.Node):
         intervals = []
         for self_interval in self.get_intervals():
             for other_interval in other.get_intervals():
-                intervals.append(self_interval.op_add(other=other_interval, g=g, tg=tg))
+                intervals.append(self_interval.op_add(other_interval, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def op_negate(
@@ -1906,7 +1907,7 @@ class NumericSet(fabll.Node):
     ) -> "NumericSet":
         g = g or self.g
         tg = tg or self.tg
-        return self.op_add(other=other.op_negate(g=g, tg=tg), g=g, tg=tg)
+        return self.op_add(other.op_negate(g=g, tg=tg), g=g, tg=tg)
 
     def op_multiply(
         self,
@@ -1921,9 +1922,7 @@ class NumericSet(fabll.Node):
         intervals = []
         for self_interval in self.get_intervals():
             for other_interval in other.get_intervals():
-                intervals.append(
-                    self_interval.op_multiply(other=other_interval, g=g, tg=tg)
-                )
+                intervals.append(self_interval.op_multiply(other_interval, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def op_invert(
@@ -1946,7 +1945,7 @@ class NumericSet(fabll.Node):
     ) -> "NumericSet":
         g = g or self.g
         tg = tg or self.tg
-        return self.op_multiply(other=other.op_invert(g=g, tg=tg), g=g, tg=tg)
+        return self.op_multiply(other.op_invert(g=g, tg=tg), g=g, tg=tg)
 
     def op_ge_intervals(
         self,
@@ -2354,7 +2353,7 @@ class TestNumericSet:
         numeric_set_1.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_2.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
-        result = numeric_set_1.op_pow(g=g, tg=tg, other=numeric_set_2)
+        result = numeric_set_1.op_pow(numeric_set_2, g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 1
         assert intervals[0].get_min_value() == 0.0
@@ -3051,7 +3050,7 @@ class Numbers(fabll.Node):
         tg = tg or others[0].tg
         result = others[0]
         for other in others[1:]:
-            result = result.op_intersect_interval(other=other, g=g, tg=tg)
+            result = result.op_intersect_interval(other, g=g, tg=tg)
         return result
 
     def op_union_interval(
@@ -3095,7 +3094,7 @@ class Numbers(fabll.Node):
         tg = tg or others[0].tg
         result = others[0]
         for other in others[1:]:
-            result = result.op_union_interval(other=other, g=g, tg=tg)
+            result = result.op_union_interval(other, g=g, tg=tg)
         return result
 
     def op_difference_intervals(
@@ -3366,7 +3365,7 @@ class Numbers(fabll.Node):
         exp_value = int(exp_numeric.get_min_value())
         result_unit = self.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
 
-        out_numeric_set = self.get_numeric_set().op_pow(g, tg, other=exp_numeric)
+        out_numeric_set = self.get_numeric_set().op_pow(exp_numeric, g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
@@ -3582,7 +3581,7 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        sym_diff = self.op_symmetric_difference_intervals(other=other, g=g, tg=tg)
+        sym_diff = self.op_symmetric_difference_intervals(other, g=g, tg=tg)
         deviation = sym_diff.op_total_span(g=g, tg=tg)
 
         if relative:

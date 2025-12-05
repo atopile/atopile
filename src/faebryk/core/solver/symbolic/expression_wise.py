@@ -148,9 +148,7 @@ def fold_add(expr: F.Expressions.Add, mutator: Mutator):
     replacable_nonliteral_operands = Counter(_replacable_nonliteral_operands)
     literal_sum = mutator.utils.fold_op(
         literal_operands,
-        lambda a, b: a.op_add_intervals(
-            g=mutator.G_transient, tg=mutator.tg_out, other=b
-        ),
+        lambda a, b: a.op_add_intervals(b, g=mutator.G_transient, tg=mutator.tg_out),
         F.Literals.Numbers,
         0,
     )
@@ -223,9 +221,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
     literal_prod = mutator.utils.fold_op(
         literal_operands,
-        lambda a, b: a.op_mul_intervals(
-            g=mutator.G_transient, tg=mutator.tg_out, other=b
-        ),
+        lambda a, b: a.op_mul_intervals(b, g=mutator.G_transient, tg=mutator.tg_out),
         F.Literals.Numbers,
         1,
     )
