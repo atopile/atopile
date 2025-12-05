@@ -357,7 +357,7 @@ def _get_dashboard_css() -> str:
         0 0 140px rgba(12, 60, 26, 0.35) inset;
     }
     .panel--sidebar {
-      width: 700px;
+      width: 500px;
       flex-shrink: 0;
     }
     .panel__content {
