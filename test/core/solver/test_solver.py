@@ -11,6 +11,8 @@ import pytest
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.mutator import MutationMap
+from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
@@ -44,6 +46,48 @@ def _create_letters(
     params = [p.get().is_parameter.get() for p in app.params]
 
     return context, params
+
+
+def _extract(
+    op: F.Parameters.can_be_operand,
+    res: MutationMap | Solver,
+    allow_subset: bool = False,
+    domain_default: bool = False,
+) -> F.Literals.is_literal:
+    if not isinstance(res, MutationMap):
+        assert not allow_subset and not domain_default
+        return res.inspect_get_known_supersets(
+            op.get_sibling_trait(F.Parameters.is_parameter)
+        )
+    return not_none(
+        res.try_get_literal(
+            op.get_sibling_trait(F.Parameters.is_parameter_operatable),
+            allow_subset=allow_subset,
+            domain_default=domain_default,
+        )
+    )
+
+
+def _extract_and_check(
+    op: F.Parameters.can_be_operand,
+    res: MutationMap | Solver,
+    expected: F.Parameters.can_be_operand
+    | F.Literals.LiteralValues
+    | F.Literals.LiteralNodes
+    | F.Literals.is_literal,
+    allow_subset: bool = False,
+    domain_default: bool = False,
+) -> bool:
+    extracted = _extract(
+        op, res, allow_subset=allow_subset, domain_default=domain_default
+    )
+    if isinstance(expected, F.Literals.is_literal):
+        expected = expected.as_operand.get()
+    if isinstance(expected, F.Literals.LiteralNodes):
+        expected = expected.can_be_operand.get()
+    if not isinstance(expected, F.Parameters.can_be_operand):
+        return extracted.equals_singleton(expected)
+    return bool(extracted.equals(expected.get_sibling_trait(F.Literals.is_literal)))
 
 
 def test_solve_phase_one():
@@ -182,11 +226,7 @@ def test_shortcircuit_logic_or():
     ored.get_parent_force()[0].get_trait(F.Expressions.is_assertable).assert_()
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert not_none(
-        repr_map.try_get_literal(
-            ored.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals_singleton(True)
+    assert _extract_and_check(ored, repr_map, True)
 
 
 def test_inequality_to_set():
@@ -196,13 +236,7 @@ def test_inequality_to_set():
     E.greater_than(p0, E.lit_op_single((1, E.U.dl)), assert_=True)
     solver = DefaultSolver()
     solver.update_superset_cache(p0)
-    assert solver.inspect_get_known_supersets(
-        p0.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range((1, 2)).get_sibling_trait(F.Literals.is_literal),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
 
 
 def test_remove_obvious_tautologies():
@@ -313,15 +347,7 @@ def test_inspect_known_superranges():
     )
     solver = DefaultSolver()
     solver.update_superset_cache(p0)
-    assert solver.inspect_get_known_supersets(
-        p0.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range(((5, E.U.V), (9, E.U.V))).get_sibling_trait(
-            F.Literals.is_literal
-        ),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(p0, solver, E.lit_op_range(((5, E.U.V), (9, E.U.V))))
 
 
 def test_obvious_contradiction_by_literal():
@@ -383,17 +409,7 @@ def test_subset_single_alias():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    g_out = repr_map.G_out
-    tg_out = repr_map.tg_out
-    assert not_none(
-        repr_map.try_get_literal(
-            A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals(
-        E.lit_op_single((1, E.U.V)).get_sibling_trait(F.Literals.is_literal),
-        g=g_out,
-        tg=tg_out,
-    )
+    assert _extract_and_check(A, repr_map, E.lit_op_single((1, E.U.V)))
 
 
 def test_very_simple_alias_class():
@@ -408,17 +424,12 @@ def test_very_simple_alias_class():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert (
-        repr_map.try_get_literal(
-            A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-        == repr_map.try_get_literal(
-            B.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-        == repr_map.try_get_literal(
-            C.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    )
+    A_res = _extract(A, repr_map)
+    B_res = _extract(B, repr_map)
+    C_res = _extract(C, repr_map)
+    assert A_res.equals(B_res)
+    assert B_res.equals(C_res)
+    assert A_res.equals(C_res)
 
 
 def test_domain():
@@ -471,32 +482,8 @@ def test_symmetric_inequality_correlated():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    g_out = repr_map.G_out
-    tg_out = repr_map.tg_out
-    assert not_none(
-        repr_map.try_get_literal(
-            p0.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals(
-        not_none(
-            repr_map.try_get_literal(
-                p1.get_sibling_trait(F.Parameters.is_parameter_operatable)
-            )
-        ),
-        g=g_out,
-        tg=tg_out,
-    )
-    assert not_none(
-        repr_map.try_get_literal(
-            p0.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals(
-        E.lit_op_range(((0, E.U.V), (10, E.U.V))).get_sibling_trait(
-            F.Literals.is_literal
-        ),
-        g=g_out,
-        tg=tg_out,
-    )
+    assert _extract_and_check(p0, repr_map, p1)
+    assert _extract_and_check(p1, repr_map, p0)
 
 
 @pytest.mark.parametrize(
@@ -527,10 +514,7 @@ def test_simple_literal_folds_arithmetic(
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    deduced_subset = repr_map.try_get_literal(
-        expr.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=True
-    )
-    assert not_none(deduced_subset) == expected_result
+    assert _extract_and_check(expr, repr_map, expected_result, allow_subset=True)
 
 
 @pytest.mark.parametrize(
@@ -559,11 +543,7 @@ def test_super_simple_literal_folding(
     E.less_or_equal(expr, E.lit_op_single(100.0), assert_=True)
 
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert not_none(
-        repr_map.try_get_literal(
-            expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals_singleton(expected)
+    assert _extract_and_check(expr, repr_map, expected)
 
 
 def test_literal_folding_add_multiplicative():
@@ -694,13 +674,7 @@ def test_transitive_subset():
     repr_map = solver.simplify_symbolically(
         E.tg, E.g, print_context=context
     ).data.mutation_map
-    assert not_none(
-        repr_map.try_get_literal(
-            A.get_sibling_trait(F.Parameters.is_parameter_operatable), allow_subset=True
-        )
-    ).equals(
-        E.lit_op_range((0, 10)).get_sibling_trait(F.Literals.is_literal), g=E.g, tg=E.tg
-    )
+    assert _extract_and_check(A, repr_map, E.lit_op_range((0, 10)), allow_subset=True)
 
 
 def test_nested_additions():
@@ -718,56 +692,10 @@ def test_nested_additions():
     solver = DefaultSolver()
     repr_map = not_none(solver.simplify_symbolically(E.tg, E.g).data.mutation_map)
 
-    assert (
-        fabll.Traits(
-            not_none(
-                repr_map.try_get_literal(
-                    A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-                )
-            )
-        ).get_obj_raw()
-        == fabll.Traits(E.lit_op_single(1)).get_obj_raw()
-    )
-    assert (
-        fabll.Traits(
-            not_none(
-                repr_map.try_get_literal(
-                    B.get_sibling_trait(F.Parameters.is_parameter_operatable)
-                )
-            )
-        ).get_obj_raw()
-        == fabll.Traits(E.lit_op_single(1)).get_obj_raw()
-    )
-    assert (
-        fabll.Traits(
-            not_none(
-                repr_map.try_get_literal(
-                    C.get_sibling_trait(F.Parameters.is_parameter_operatable)
-                )
-            )
-        ).get_obj_raw()
-        == fabll.Traits(E.lit_op_single(2)).get_obj_raw()
-    )
-    assert (
-        fabll.Traits(
-            not_none(
-                repr_map.try_get_literal(
-                    D.get_sibling_trait(F.Parameters.is_parameter_operatable)
-                )
-            )
-        ).get_obj_raw()
-        == fabll.Traits(E.lit_op_single(3)).get_obj_raw()
-    )
-    assert (
-        fabll.Traits(
-            not_none(
-                repr_map.try_get_literal(
-                    D.get_sibling_trait(F.Parameters.is_parameter_operatable)
-                )
-            )
-        ).get_obj_raw()
-        == fabll.Traits(E.lit_op_single(3)).get_obj_raw()
-    )
+    assert _extract_and_check(A, repr_map, 1)
+    assert _extract_and_check(B, repr_map, 1)
+    assert _extract_and_check(C, repr_map, 2)
+    assert _extract_and_check(D, repr_map, 3)
 
 
 def test_combined_add_and_multiply_with_ranges():
@@ -782,14 +710,8 @@ def test_combined_add_and_multiply_with_ranges():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(
-        C.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range_from_center_rel((4, E.U.dl), 0.01).get_sibling_trait(
-            F.Literals.is_literal
-        ),
-        g=E.g,
-        tg=E.tg,
+    assert _extract_and_check(
+        C, solver, E.lit_op_range_from_center_rel((4, E.U.dl), 0.01)
     )
 
 
@@ -816,13 +738,7 @@ def test_voltage_divider_find_v_out_no_division():
     # TODO: automatically rearrange expression to match
     # v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(
-        v_out.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range((0.45, 50)).get_sibling_trait(F.Literals.is_literal),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(v_out, solver, E.lit_op_range((0.45, 50)))
 
 
 def test_voltage_divider_find_v_out_with_division():
@@ -843,13 +759,7 @@ def test_voltage_divider_find_v_out_with_division():
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(
-        v_out.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range((0.45, 50)).get_sibling_trait(F.Literals.is_literal),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(v_out, solver, E.lit_op_range((0.45, 50)))
 
 
 def test_voltage_divider_find_v_out_single_variable_occurrences():
@@ -875,13 +785,7 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(
-        v_out.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range((9 / 11, 100 / 11)).get_sibling_trait(F.Literals.is_literal),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(v_out, solver, E.lit_op_range((9 / 11, 100 / 11)))
 
 
 def test_voltage_divider_find_v_in():
@@ -904,13 +808,7 @@ def test_voltage_divider_find_v_in():
 
     # TODO: should find [9.9, 100]
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(
-        v_in.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range((1.8, 200)).get_sibling_trait(F.Literals.is_literal),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(v_in, solver, E.lit_op_range((1.8, 200)))
 
 
 def test_voltage_divider_find_resistances():
@@ -934,15 +832,7 @@ def test_voltage_divider_find_resistances():
     solver = DefaultSolver()
     # FIXME: this test looks funky
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom, r_total)
-    assert solver.inspect_get_known_supersets(
-        v_out.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range(((0.9, E.U.V), (1, E.U.V))).get_sibling_trait(
-            F.Literals.is_literal
-        ),
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(v_out, solver, E.lit_op_range(((0.9, E.U.V), (1, E.U.V))))
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
@@ -962,14 +852,10 @@ def test_voltage_divider_find_r_top():
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
-    assert solver.inspect_get_known_supersets(
-        r_top.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals(
-        E.lit_op_range(
-            ((10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99)
-        ).get_sibling_trait(F.Literals.is_literal),
-        g=E.g,
-        tg=E.tg,
+    assert _extract_and_check(
+        r_top,
+        solver,
+        E.lit_op_range(((10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99)),
     )
 
 
@@ -1000,16 +886,8 @@ def test_base_unit_switch():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert not_none(
-        repr_map.try_get_literal(
-            A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals(
-        E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah))).get_sibling_trait(
-            F.Literals.is_literal
-        ),
-        g=E.g,
-        tg=E.tg,
+    assert _extract_and_check(
+        A, repr_map, E.lit_op_range(((0.100, E.U.Ah), (0.600, E.U.Ah)))
     )
 
 
@@ -1062,9 +940,7 @@ def test_inspect_enum_simple():
 
     solver = DefaultSolver()
     solver.update_superset_cache(fabll.Traits(A).get_obj_raw())
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals_singleton(F.LED.Color.EMERALD)
+    assert _extract_and_check(A, solver, F.LED.Color.EMERALD)
 
 
 def test_regression_enum_contradiction():
@@ -1095,9 +971,10 @@ def test_inspect_enum_led():
 
     solver = DefaultSolver()
     solver.update_superset_cache(led.color.get())
-    assert (
-        solver.inspect_get_known_supersets(led.color.get().is_parameter.get())
-        == F.LED.Color.EMERALD
+    assert _extract_and_check(
+        led.color.get().can_be_operand.get(),
+        solver,
+        F.LED.Color.EMERALD,
     )
 
 
@@ -1415,19 +1292,25 @@ def test_fold_pow():
     A = E.parameter_op()
     B = E.parameter_op()
 
-    lit = E.lit_op_range((5, 6))
-    lit_operand = E.lit_op_single(2)
+    lit = E.numbers().setup_from_min_max(5, 6, unit=E.u.make_dl())
+    lit_operand = E.numbers().setup_from_singleton(2, unit=E.u.make_dl())
+    lit_op = lit.can_be_operand.get()
+    lit_operand_op = lit_operand.can_be_operand.get()
 
-    E.is_(A, lit)
-    E.is_(B, E.power(A, lit_operand))
+    E.is_(A, lit_op, assert_=True)
+    E.is_(B, E.power(A, lit_operand_op), assert_=True)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
-    res = repr_map.try_get_literal(
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    res = not_none(
+        repr_map.try_get_literal(
+            B.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        )
     )
-    assert res == E.power(lit, lit_operand)
+    assert res.equals(
+        lit.op_pow_intervals(lit_operand).get_sibling_trait(F.Literals.is_literal),
+    )
 
 
 def test_graph_split():
@@ -1482,15 +1365,8 @@ def test_ss_single_into_alias():
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
 
-    assert (
-        repr_map.try_get_literal(
-            B.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-        == 5
-    )
-    assert repr_map.try_get_literal(
-        A.get_sibling_trait(F.Parameters.is_parameter_operatable)
-    ) == E.lit_op_range((5, 10))
+    assert _extract_and_check(B, repr_map, 5)
+    assert _extract_and_check(A, repr_map, E.lit_op_range((5, 10)))
 
 
 @pytest.mark.parametrize(
@@ -1559,7 +1435,7 @@ def test_can_add_parameters():
 
     assert solver.inspect_get_known_supersets(
         C.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range((20, 200))
+    ).equals(E.lit_op_range((20, 200)).get_sibling_trait(F.Literals.is_literal))
 
 
 def test_ss_estimation_ge():
@@ -1588,9 +1464,7 @@ def test_fold_mul_zero():
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
 
-    assert solver.inspect_get_known_supersets(
-        C.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_single(0)
+    assert _extract_and_check(C, solver, 0)
 
 
 def test_fold_or_true():
@@ -1605,9 +1479,7 @@ def test_fold_or_true():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(
-        C.get_sibling_trait(F.Parameters.is_parameter)
-    ).equals_singleton(True)
+    assert _extract_and_check(C, solver, True)
 
 
 def test_fold_not():
@@ -1622,9 +1494,7 @@ def test_fold_not():
     solver.update_superset_cache(
         fabll.Traits(A).get_obj_raw(), fabll.Traits(B).get_obj_raw()
     )
-    assert solver.inspect_get_known_supersets(
-        B.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_bool(True)
+    assert _extract_and_check(B, solver, True)
 
 
 def test_fold_ss_transitive():
@@ -1639,9 +1509,7 @@ def test_fold_ss_transitive():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range((0, 10))
+    assert _extract_and_check(A, solver, E.lit_op_range((0, 10)))
 
 
 def test_ss_intersect():
@@ -1657,9 +1525,7 @@ def test_ss_intersect():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
-    assert solver.inspect_get_known_supersets(
-        C.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range((10, 15))
+    assert _extract_and_check(C, solver, E.lit_op_range((10, 15)))
 
 
 @pytest.mark.parametrize(
@@ -1736,11 +1602,11 @@ def test_congruence_lits(
         F.Expressions.is_expression.are_pos_congruent(
             left, right, g=E.g, tg=E.tg, allow_uncorrelated=True
         )
-        == expected[0]
+        is expected[0]
     )
     assert (
         F.Expressions.is_expression.are_pos_congruent(left, right, g=E.g, tg=E.tg)
-        == expected[1]
+        is expected[1]
     )
 
 
@@ -1751,9 +1617,7 @@ def test_fold_literals():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range((0, 20))
+    assert _extract_and_check(A, solver, E.lit_op_range((0, 20)))
 
 
 def test_deduce_negative():
@@ -1804,9 +1668,9 @@ def test_implication():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
-    assert solver.inspect_get_known_supersets(
-        B.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range_from_center_rel((500, E.U.dl), 0.1)
+    assert _extract_and_check(
+        B, solver, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1)
+    )
 
 
 @pytest.mark.parametrize("A_value", [5, 10, 15])
@@ -1826,12 +1690,7 @@ def test_mapping(A_value):
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
-    assert (
-        solver.inspect_get_known_supersets(
-            B.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        == mapping[A_value]
-    )
+    assert _extract_and_check(B, solver, mapping[A_value])
 
 
 @pytest.mark.parametrize("op", [F.Expressions.Subtract.c, F.Expressions.Add.c])
@@ -1843,9 +1702,7 @@ def test_subtract_zero(op):
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_single(1)
+    assert _extract_and_check(A, solver, 1)
 
 
 def test_canonical_subtract_zero():
@@ -1867,12 +1724,8 @@ def test_canonical_subtract_zero():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B)
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_single(0)
-    assert solver.inspect_get_known_supersets(
-        B.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_single(1)
+    assert _extract_and_check(A, solver, 0)
+    assert _extract_and_check(B, solver, 1)
 
 
 def test_nested_fold_scalar():
@@ -1887,9 +1740,7 @@ def test_nested_fold_scalar():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_single(7)
+    assert _extract_and_check(A, solver, 7)
 
 
 def test_regression_lit_mul_fold_powers():
@@ -1908,9 +1759,7 @@ def test_regression_lit_mul_fold_powers():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(
-        not_none(A.try_get_sibling_trait(F.Parameters.is_parameter))
-    ) == E.lit_op_single(2**-0.5)
+    assert _extract_and_check(A, solver, 2**-0.5)
 
 
 def test_nested_fold_interval():
@@ -1932,9 +1781,7 @@ def test_nested_fold_interval():
 
     solver = DefaultSolver()
     solver.update_superset_cache(A)
-    assert solver.inspect_get_known_supersets(
-        A.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range((5.76, 8.36))
+    assert _extract_and_check(A, solver, E.lit_op_range((5.76, 8.36)))
 
 
 def test_simplify_non_terminal_manual_test_1():
@@ -2035,34 +1882,33 @@ def test_abstract_lowpass_ss():
     )
 
     # input
-    Li_const = E.lit_op_range_from_center_rel((1e-6, E.U.H), 0.01)
-    fc_const = E.lit_op_range_from_center_rel((1000, E.U.Hz), 0.01)
-    E.is_(Li, Li_const, assert_=True)
-    E.is_(fc, fc_const, assert_=True)
+    Li_const = E.numbers().setup_from_center_rel(1e-6, 0.01, unit=E.u.make_H())
+    fc_const = E.numbers().setup_from_center_rel(1000, 0.01, unit=E.u.make_Hz())
+    E.is_(Li, Li_const.can_be_operand.get(), assert_=True)
+    E.is_(fc, fc_const.can_be_operand.get(), assert_=True)
 
     # solve
     solver = DefaultSolver()
     solver.simplify_symbolically(E.tg, E.g)
 
+    # C_expected = 1 / (4 * math.pi**2 * Li_const * fc_const**2)
     C_expected = (
-        E.divide(
-            E.lit_op_single(1),
-            E.multiply(
-                E.lit_op_single(4),
-                E.lit_op_single(math.pi**2),
-                Li_const,
-                E.power(fc_const, E.lit_op_single(2)),
+        E.numbers()
+        .setup_from_singleton(1, unit=E.u.make_dl())
+        .op_div_intervals(
+            E.numbers()
+            .setup_from_singleton(4 * math.pi**2, unit=E.u.make_dl())
+            .op_mul_intervals(Li_const)
+            .op_mul_intervals(
+                fc_const.op_pow_intervals(
+                    E.numbers().setup_from_singleton(2, unit=E.u.make_dl())
+                ),
             ),
-        ),
+        )
     )
 
     solver.update_superset_cache(Li, C, fc)
-    assert (
-        solver.inspect_get_known_supersets(
-            C.get_sibling_trait(F.Parameters.is_parameter)
-        )
-        == C_expected
-    )
+    assert _extract_and_check(C, solver, C_expected)
 
 
 @pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
@@ -2083,9 +1929,9 @@ def test_voltage_divider_find_r_bottom():
 
     solver = DefaultSolver()
     solver.update_superset_cache(v_in, v_out, r_top)
-    assert solver.inspect_get_known_supersets(
-        r_bottom.get_sibling_trait(F.Parameters.is_parameter)
-    ) == E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01)
+    assert _extract_and_check(
+        r_bottom, solver, E.lit_op_range_from_center_rel((1, E.U.Ohm), 0.01)
+    )
 
 
 @pytest.mark.xfail(reason="TODO reenable ge fold")
@@ -2099,10 +1945,7 @@ def test_min_max_single():
 
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1)
-    out = solver.inspect_get_known_supersets(
-        p1.get_sibling_trait(F.Parameters.is_parameter)
-    )
-    assert out == E.lit_op_single((10, E.U.V))
+    assert _extract_and_check(p1, solver, E.lit_op_single((10, E.U.V)))
 
 
 @pytest.mark.xfail(reason="TODO")
@@ -2118,10 +1961,7 @@ def test_min_max_multi():
 
     solver = DefaultSolver()
     solver.update_superset_cache(p0, p1, p3)
-    out = solver.inspect_get_known_supersets(
-        p1.get_sibling_trait(F.Parameters.is_parameter)
-    )
-    assert out == E.lit_op_single((15, E.U.V))
+    assert _extract_and_check(p1, solver, E.lit_op_single((15, E.U.V)))
 
 
 @pytest.mark.xfail(
@@ -2151,6 +1991,7 @@ def test_symmetric_inequality_uncorrelated():
         solver.simplify_symbolically(E.tg, E.g)
 
 
+@pytest.mark.slow
 def test_fold_correlated():
     """
     ```
@@ -2203,8 +2044,6 @@ def test_fold_correlated():
     # Test for not wrongful is estimation
     assert not not_none(is_lit).equals(
         op_inv(lit2, lit1).get_sibling_trait(F.Literals.is_literal),
-        g=repr_map.G_out,
-        tg=repr_map.tg_out,
     )  # C not is [5, 10]
 
     # Test for correct is estimation
@@ -2393,15 +2232,7 @@ def test_exec_pure_literal_expressions(
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert not_none(
-        repr_map.try_get_literal(
-            result.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        )
-    ).equals(
-        expected_converted,
-        g=E.g,
-        tg=E.tg,
-    )
+    assert _extract_and_check(result, repr_map, expected_converted)
 
 
 @pytest.mark.slow

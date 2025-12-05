@@ -22,64 +22,6 @@ class BoundExpressions:
     A class to bind expressions to a graph and typegraph for concise test code.
     """
 
-    def __init__(
-        self, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
-    ):
-        self.g = g or graph.GraphView.create()
-        self.tg = tg or fbrk.TypeGraph.create(g=self.g)
-
-    def parameter_op(
-        self,
-        units: "type[fabll.Node] | None" = None,
-        within: "F.Literals.Numbers | None" = None,
-        domain: "F.NumberDomain | None" = None,
-        soft_set: "F.Literals.Numbers | None" = None,
-        guess: "F.Literals.Numbers | None" = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool = False,
-    ) -> F.Parameters.can_be_operand:
-        is_unit_node = None
-        if units:
-            is_unit_node = (
-                units.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .get_trait(F.Units.is_unit)
-            )
-        else:
-            is_unit_node = (
-                F.Units.Dimensionless.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .is_unit.get()
-            )
-        return (
-            F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .setup(
-                units=is_unit_node,
-                within=within,
-                domain=domain,
-                soft_set=soft_set,
-                guess=guess,
-                tolerance_guess=tolerance_guess,
-                likely_constrained=likely_constrained,
-            )
-            .can_be_operand.get()
-        )
-
-    def enum_parameter_op(self, enum_type) -> F.Parameters.can_be_operand:
-        return (
-            F.Parameters.EnumParameter.bind_typegraph(tg=self.tg)
-            .create_instance(g=self.g)
-            .setup(enum=enum_type)
-        ).can_be_operand.get()
-
-    def bool_parameter_op(self) -> F.Parameters.can_be_operand:
-        return (
-            F.Parameters.BooleanParameter.bind_typegraph(tg=self.tg).create_instance(
-                g=self.g
-            )
-        ).can_be_operand.get()
-
     class U:
         """Short aliases for units from F.Units for concise test code."""
 
@@ -151,6 +93,90 @@ class BoundExpressions:
         # Compound units
         Ah = F.Units.AmpereHour
         Vps = F.Units.VoltsPerSecond
+
+        def __init__(self, E: "BoundExpressions") -> None:
+            self.E = E
+
+        def make_dl(self) -> "F.Units.is_unit":
+            return (
+                F.Units.Dimensionless.bind_typegraph(tg=self.E.tg)
+                .create_instance(g=self.E.g)
+                .is_unit.get()
+            )
+
+        def make_H(self) -> "F.Units.is_unit":
+            return (
+                F.Units.Henry.bind_typegraph(tg=self.E.tg)
+                .create_instance(g=self.E.g)
+                .is_unit.get()
+            )
+
+        def make_Hz(self) -> "F.Units.is_unit":
+            return (
+                F.Units.Hertz.bind_typegraph(tg=self.E.tg)
+                .create_instance(g=self.E.g)
+                .is_unit.get()
+            )
+
+    def __init__(
+        self, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ):
+        self.g = g or graph.GraphView.create()
+        self.tg = tg or fbrk.TypeGraph.create(g=self.g)
+
+        self.u = self.U(self)
+
+    def parameter_op(
+        self,
+        units: "type[fabll.Node] | None" = None,
+        within: "F.Literals.Numbers | None" = None,
+        domain: "F.NumberDomain | None" = None,
+        soft_set: "F.Literals.Numbers | None" = None,
+        guess: "F.Literals.Numbers | None" = None,
+        tolerance_guess: float | None = None,
+        likely_constrained: bool = False,
+    ) -> F.Parameters.can_be_operand:
+        is_unit_node = None
+        if units:
+            is_unit_node = (
+                units.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .get_trait(F.Units.is_unit)
+            )
+        else:
+            is_unit_node = (
+                F.Units.Dimensionless.bind_typegraph(tg=self.tg)
+                .create_instance(g=self.g)
+                .is_unit.get()
+            )
+        return (
+            F.Parameters.NumericParameter.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup(
+                units=is_unit_node,
+                within=within,
+                domain=domain,
+                soft_set=soft_set,
+                guess=guess,
+                tolerance_guess=tolerance_guess,
+                likely_constrained=likely_constrained,
+            )
+            .can_be_operand.get()
+        )
+
+    def enum_parameter_op(self, enum_type) -> F.Parameters.can_be_operand:
+        return (
+            F.Parameters.EnumParameter.bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .setup(enum=enum_type)
+        ).can_be_operand.get()
+
+    def bool_parameter_op(self) -> F.Parameters.can_be_operand:
+        return (
+            F.Parameters.BooleanParameter.bind_typegraph(tg=self.tg).create_instance(
+                g=self.g
+            )
+        ).can_be_operand.get()
 
     def add(
         self, *operands: F.Parameters.can_be_operand
@@ -341,6 +367,9 @@ class BoundExpressions:
         right: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
         return F.Expressions.SymmetricDifference.c(left, right, g=self.g, tg=self.tg)
+
+    def numbers(self) -> F.Literals.Numbers:
+        return F.Literals.Numbers.bind_typegraph(tg=self.tg).create_instance(g=self.g)
 
     def lit_op_single(self, value: float | _Quantity) -> F.Parameters.can_be_operand:
         unit = None
