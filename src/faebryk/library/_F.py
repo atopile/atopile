@@ -109,7 +109,6 @@ from faebryk.library.Ethernet import Ethernet
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB2_0_IF import USB2_0_IF
-from faebryk.library.can_represent_kicad_footprint import can_represent_kicad_footprint
 from faebryk.library.can_be_pulled import can_be_pulled
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
@@ -214,7 +213,6 @@ __all__ = [
     "OpAmp",
     "RS485HalfDuplex",
     "USB2_0_IF",
-    "can_represent_kicad_footprint",
     "can_be_pulled",
     "USB2_0",
     "USB3_IF",
