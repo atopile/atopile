@@ -126,14 +126,14 @@ def convert_to_canonical_operations(mutator: Mutator):
         for k, v in UnsupportedOperations.items()
     }
 
-    def c[T: fabll.NodeT](op: type[T], *operands: F.Parameters.can_be_operand) -> T:
-        return fabll.Traits(
-            mutator.create_expression(
-                op,
-                *operands,
-                from_ops=getattr(c, "from_ops", None),
-            )
-        ).get_obj(op)
+    def c(
+        op: type[fabll.NodeT], *operands: F.Parameters.can_be_operand
+    ) -> F.Parameters.can_be_operand:
+        return mutator.create_expression(
+            op,
+            *operands,
+            from_ops=getattr(c, "from_ops", None),
+        ).as_operand.get()
 
     def curry(e_type: type[fabll.NodeT]):
         def _(*operands: F.Parameters.can_be_operand | F.Literals.LiteralValues):
@@ -143,7 +143,7 @@ def convert_to_canonical_operations(mutator: Mutator):
                 else o
                 for o in operands
             ]
-            return c(e_type, *_operands).get_trait(F.Parameters.can_be_operand)
+            return c(e_type, *_operands)
 
         return _
 

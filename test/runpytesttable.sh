@@ -3,9 +3,17 @@
 pytest -rA -vv "$@" 2>&1 \
   | sed -n '/short test summary info/,$p' \
   | python -c 'import sys
+import re
 from collections import defaultdict
 
 groups = defaultdict(list)
+
+# Pattern to match hex IDs like 0x55AAC3BFC670
+HEX_ID_PATTERN = re.compile(r"0x[0-9A-Fa-f]+")
+
+def normalize_key(s):
+    """Replace hex IDs with placeholder for grouping."""
+    return HEX_ID_PATTERN.sub("0x...", s)
 
 for raw in sys.stdin:
     line = raw.rstrip("\n")
@@ -17,9 +25,9 @@ for raw in sys.stdin:
 
     if " - " in rest:
         test_part, msg = rest.split(" - ", 1)
-        key = msg.strip()
+        key = normalize_key(msg.strip())
     else:
-        key = rest.strip()
+        key = normalize_key(rest.strip())
 
     groups[key].append(line)
 

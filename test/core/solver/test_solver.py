@@ -224,7 +224,6 @@ def test_shortcircuit_logic_or():
         )
     E.is_(ored, E.or_(ored, ored), assert_=True)
 
-    ored.get_parent_force()[0].get_trait(F.Expressions.is_assertable).assert_()
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
     assert _extract_and_check(ored, repr_map, True)
@@ -998,10 +997,18 @@ def test_simple_pick():
                     supplier_partno="C72043",
                 ),
                 params={
-                    "color": E.lit_op_enum(F.LED.Color.EMERALD),
-                    "max_brightness": E.lit_op_single((0.285, E.U.cd)),
-                    "forward_voltage": E.lit_op_single((3.0, E.U.V)),
-                    "max_current": E.lit_op_single((0.1100, E.U.A)),
+                    "color": E.lit_op_enum(F.LED.Color.EMERALD).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
+                    "max_brightness": E.lit_op_single(
+                        (0.285, E.U.cd)
+                    ).get_sibling_trait(F.Literals.is_literal),
+                    "forward_voltage": E.lit_op_single((3.0, E.U.V)).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
+                    "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
                 },  # type: ignore
                 pinmap={
                     "1": led.diode.get().cathode.get(),
@@ -1040,10 +1047,18 @@ def test_simple_negative_pick():
                     supplier_partno="C72043",
                 ),
                 params={
-                    "color": E.lit_op_enum(F.LED.Color.EMERALD),
-                    "max_brightness": E.lit_op_single((0.285, E.U.cd)),
-                    "forward_voltage": E.lit_op_single((3.0, E.U.V)),
-                    "max_current": E.lit_op_single((0.1100, E.U.A)),
+                    "color": E.lit_op_enum(F.LED.Color.EMERALD).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
+                    "max_brightness": E.lit_op_single(
+                        (0.285, E.U.cd)
+                    ).get_sibling_trait(F.Literals.is_literal),
+                    "forward_voltage": E.lit_op_single((3.0, E.U.V)).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
+                    "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
                 },  # type: ignore
                 pinmap={
                     "1": led.diode.get().cathode.get(),
@@ -1057,10 +1072,18 @@ def test_simple_negative_pick():
                     supplier_partno="C72041",
                 ),
                 params={
-                    "color": E.lit_op_enum(F.LED.Color.BLUE),
-                    "max_brightness": E.lit_op_single((0.0280, E.U.cd)),
-                    "forward_voltage": E.lit_op_single((3.0, E.U.V)),
-                    "max_current": E.lit_op_single((0.1100, E.U.A)),
+                    "color": E.lit_op_enum(F.LED.Color.BLUE).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
+                    "max_brightness": E.lit_op_single(
+                        (0.0280, E.U.cd)
+                    ).get_sibling_trait(F.Literals.is_literal),
+                    "forward_voltage": E.lit_op_single((3.0, E.U.V)).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
+                    "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
+                        F.Literals.is_literal
+                    ),
                 },  # type: ignore
                 pinmap={
                     "1": led.diode.get().cathode.get(),

@@ -1371,7 +1371,8 @@ class Mutator:
         """
         ```
         op(A, ...) -> A
-        op!(A, ...) -> A!
+        op!(E, ...) -> E!
+        op!(P, ...) -> P & P is! True
         ```
         """
         unpacked = (
@@ -1388,7 +1389,14 @@ class Mutator:
             self.get_copy_po(unpacked),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            self.assert_(out.get_sibling_trait(F.Expressions.is_assertable))
+            if assertable := out.try_get_sibling_trait(F.Expressions.is_assertable):
+                self.assert_(assertable)
+            else:
+                self.utils.alias_to(
+                    out.as_operand.get(),
+                    self.make_lit(True).can_be_operand.get(),
+                    from_ops=[out, expr.as_parameter_operatable.get()],
+                )
         return out
 
     def mutator_neutralize_expressions(

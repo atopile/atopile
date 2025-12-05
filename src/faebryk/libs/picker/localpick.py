@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class PickerOption:
     part: PickedPart
-    params: dict[str, F.Parameters.is_parameter_operatable] | None = None
+    params: dict[str, F.Literals.is_literal] | None = None
     """
     Parameters that need to be matched for this option to be valid.
 
@@ -62,8 +62,10 @@ def pick_module_by_params(
         return
 
     params = {
-        not_none(p.get_parent())[1]: p
-        for p in module.get_children(direct_only=True, types=F.Parameters)
+        not_none(p.get_parent())[1]: p.get_trait(F.Parameters.is_parameter)
+        for p in module.get_children(
+            direct_only=True, types=fabll.Node, required_trait=F.Parameters.is_parameter
+        )
     }
 
     filtered_options = [o for o in options if not o.filter or o.filter(module)]
@@ -71,21 +73,32 @@ def pick_module_by_params(
     contradictions = []
 
     for o in filtered_options:
-        predicate_list: list[Predicate] = []
+        predicate_list: list[F.Expressions.is_assertable] = []
 
         for k, v in (o.params or {}).items():
             if not k.startswith("_"):
                 param = params[k]
-                predicate_list.append(Is(param, v))
+                predicate_list.append(
+                    F.Expressions.Is.from_operands(
+                        param.as_operand.get(),
+                        v.as_operand.get(),
+                    ).is_assertable.get()
+                )
 
         # No predicates, thus always valid option
         if len(predicate_list) == 0:
-            predicate = Or(True)
+            predicate = F.Expressions.Or.from_operands(
+                F.Literals.make_simple_lit_singleton(
+                    module.g, module.tg, True
+                ).can_be_operand.get()
+            )
             continue
 
-        predicate = And(*predicate_list)
+        predicate = F.Expressions.And.from_operands(
+            *[p.get_sibling_trait(F.Parameters.can_be_operand) for p in predicate_list]
+        )
         try:
-            solver.try_fulfill(predicate, lock=True)
+            solver.try_fulfill(predicate.is_assertable.get(), lock=True)
         except Contradiction as c:
             contradictions.append(c)
         else:
@@ -97,10 +110,18 @@ def pick_module_by_params(
         raise PickErrorParams(module, list(options), solver)
 
     if option.pinmap:
-        module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
+        module.add(
+            F.can_attach_to_footprint_via_pinmap.bind_typegraph(tg=module.tg)
+            .create_instance(g=module.g)
+            .setup(option.pinmap)
+        )
 
     option.part.supplier.attach(module, option)
-    module.add(F.has_part_picked(option.part))
+    module.add(
+        F.has_part_picked.bind_typegraph(tg=module.tg)
+        .create_instance(g=module.g)
+        .setup(option.part)
+    )
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option
