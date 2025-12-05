@@ -31,10 +31,7 @@ simple_stmts
     ;
 simple_stmt
     : import_stmt
-    | dep_import_stmt
     | assign_stmt
-    | cum_assign_stmt
-    | set_assign_stmt
     | connect_stmt
     | directed_connect_stmt
     | retype_stmt
@@ -53,7 +50,7 @@ compound_stmt
     ;
 
 blockdef
-    : blocktype name blockdef_super? COLON block
+    : blocktype type_reference blockdef_super? COLON block
     ;
 // TODO @v0.4 consider ()
 blockdef_super
@@ -68,18 +65,12 @@ block
     | NEWLINE INDENT stmt+ DEDENT
     ;
 
-// TODO: @v0.4 remove the deprecated import form
-dep_import_stmt
-    : IMPORT type_reference FROM string
-    ;
 import_stmt
-    : (FROM string)? IMPORT type_reference (
-        COMMA type_reference
-    )*
+    : (FROM string)? IMPORT type_reference
     ;
 
 declaration_stmt
-    : field_reference type_info
+    : field_reference COLON unit
     ;
 field_reference_or_declaration
     : field_reference
@@ -87,24 +78,6 @@ field_reference_or_declaration
     ;
 assign_stmt
     : field_reference_or_declaration '=' assignable
-    ;
-cum_assign_stmt
-    : field_reference_or_declaration cum_operator cum_assignable
-    ;
-// TODO: consider sets cum operator
-set_assign_stmt
-    : field_reference_or_declaration (
-        OR_ASSIGN
-        | AND_ASSIGN
-    ) cum_assignable
-    ;
-cum_operator
-    : ADD_ASSIGN
-    | SUB_ASSIGN
-    ;
-cum_assignable
-    : literal_physical
-    | arithmetic_expression
     ;
 
 assignable
@@ -121,7 +94,10 @@ retype_stmt
 
 directed_connect_stmt
     // only one type of SPERM per stmt allowed. both here for better error messages
-    : bridgeable ((SPERM | LSPERM) bridgeable)+
+    : bridgeable (SPERM | LSPERM) (
+        bridgeable
+        | directed_connect_stmt
+    )
     ;
 connect_stmt
     : mif WIRE mif
@@ -252,16 +228,7 @@ term
     ;
 
 power
-    : functional (POWER functional)?
-    ;
-
-functional
-    : bound
-    | name '(' bound+ ')'
-    ;
-
-bound
-    : atom
+    : atom (POWER atom)?
     ;
 
 // Primary elements ----------------
@@ -306,10 +273,10 @@ bilateral_quantity
     : quantity PLUS_OR_MINUS bilateral_tolerance
     ;
 quantity
-    : number name?
+    : number unit?
     ;
 bilateral_tolerance
-    : number_signless (PERCENT | name)?
+    : number_signless (PERCENT | unit)?
     ;
 
 key
@@ -330,14 +297,11 @@ field_reference
     : field_reference_part (DOT field_reference_part)* pin_reference_end?
     ;
 type_reference
-    : name (DOT name)*
+    : name
     ;
 // TODO better unit
 unit
     : name
-    ;
-type_info
-    : COLON unit
     ;
 name
     : NAME

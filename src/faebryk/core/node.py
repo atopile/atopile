@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Protocol, Self, cast, override
+from typing import Any, Iterable, Iterator, Protocol, Self, Sequence, cast, override
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
@@ -10,6 +10,7 @@ from typing_extensions import Callable, deprecated
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
+from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -241,15 +242,25 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
-        self.t.tg.add_make_child(
+        make_child = self.t.tg.add_make_child(
             type_node=self.t.get_or_create_type(),
-            child_type_node=self.nodetype.bind_typegraph(
-                self.t.tg
-            ).get_or_create_type(),
+            child_type_identifier=self.nodetype._type_identifier(),
             identifier=identifier,
             node_attributes=self.attributes.to_node_attributes()
             if self.attributes is not None
             else None,
+            mount_reference=None,
+        )
+
+        type_reference = not_none(
+            self.t.tg.get_make_child_type_reference(make_child=make_child)
+        )
+        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
+
+        Linker.link_type_reference(
+            g=self.t.tg.get_graph_view(),
+            type_reference=type_reference,
+            target_type_node=child_type_node,
         )
 
     def get(self) -> T:
@@ -850,7 +861,7 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 mc = t.MakeChild(
                     nodetype=field.nodetype,
                     identifier=identifier,
-                    attributes=field.attributes,
+                    attributes=cast(NodeAttributes, field.attributes),
                 )
                 mc._add_to_typegraph()
             for dependant in field._dependants:
@@ -951,12 +962,27 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         identifier = child.get_identifier()
         nodetype = child.nodetype
 
+        parent_type_node = cls.bind_typegraph(tg).get_or_create_type()
         child_type_node = nodetype.bind_typegraph(tg).get_or_create_type()
-        return tg.add_make_child(
-            type_node=cls.bind_typegraph(tg).get_or_create_type(),
-            child_type_node=child_type_node,
+
+        make_child = tg.add_make_child(
+            type_node=parent_type_node,
+            child_type_identifier=nodetype._type_identifier(),
             identifier=identifier,
+            node_attributes=None,
+            mount_reference=None,
         )
+
+        type_reference = tg.get_make_child_type_reference(make_child=make_child)
+        assert type_reference is not None
+
+        Linker.link_type_reference(
+            g=parent_type_node.g(),
+            type_reference=type_reference,
+            target_type_node=child_type_node,
+        )
+
+        return make_child
 
     @classmethod
     def _add_type_child(
@@ -1644,14 +1670,12 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
 
         tg.add_make_link(
             type_node=type_node,
-            lhs_reference_node=tg.add_reference(
-                type_node=type_node,
-                path=lhs_reference_path,
-            ).node(),
-            rhs_reference_node=tg.add_reference(
-                type_node=type_node,
-                path=rhs_reference_path,
-            ).node(),
+            lhs_reference=tg.ensure_child_reference(
+                type_node=type_node, path=lhs_reference_path, validate=False
+            ),
+            rhs_reference=tg.ensure_child_reference(
+                type_node=type_node, path=rhs_reference_path, validate=False
+            ),
             edge_attributes=edge,
         )
 
@@ -1939,10 +1963,6 @@ class is_interface(Node):
         }
 
 
-# ------------------------------------------------------------
-# TODO move parameter stuff into own file (better into zig)
-
-
 # --------------------------------------------------------------------------------------
 # TODO remove
 # re-export graph.GraphView to be used from fabll namespace
@@ -1950,6 +1970,272 @@ Graph = fbrk.TypeGraph
 # Node type aliases
 Module = Node
 type Module = Node
+
+
+# --------------------------------------------------------------------------------------
+# Rendering
+
+
+class TreeRenderer:
+    """Renders graph trees, following composition edges."""
+
+    MAX_VALUE_LENGTH = 40  # characters
+
+    @dataclass
+    class NodeContext:
+        """Context for rendering a single node in the tree."""
+
+        inbound_edge: graph.BoundEdge | None
+        node: graph.BoundNode
+
+    @staticmethod
+    def truncate_text(text: str, max_length: int | None = None) -> str:
+        if max_length is None:
+            max_length = TreeRenderer.MAX_VALUE_LENGTH
+        if "\n" in text:
+            text = text.split("\n")[0] + "..."
+        if len(text) > max_length:
+            return text[: max_length - 3] + "..."
+        return text
+
+    @staticmethod
+    def format_edge_label(
+        edge: graph.BoundEdge | None,
+        *,
+        prefix_on_name: bool = True,
+        prefix_on_anonymous: bool = True,
+    ) -> str:
+        edge_name = fbrk.EdgeComposition.get_name(edge=edge.edge()) if edge else None
+        if edge_name:
+            return f".{edge_name}" if prefix_on_name else edge_name
+        return ".<anonymous>" if prefix_on_anonymous else "<anonymous>"
+
+    @staticmethod
+    def collect_interface_connections(node: graph.BoundNode, root: "Node") -> list[str]:
+        """Collect interface connection descriptions for a node."""
+        interface_edges: list[graph.BoundEdge] = []
+        node.visit_edges_of_type(
+            edge_type=fbrk.EdgeInterfaceConnection.get_tid(),
+            ctx=interface_edges,
+            f=lambda acc, bound_edge: acc.append(bound_edge),
+        )
+
+        connections = []
+        for bound_edge in interface_edges:
+            if bound_edge.edge().source().is_same(other=node.node()):
+                partner_ref = bound_edge.edge().target()
+            elif bound_edge.edge().target().is_same(other=node.node()):
+                partner_ref = bound_edge.edge().source()
+            else:
+                continue
+
+            partner_node = Node.bind_instance(bound_edge.g().bind(node=partner_ref))
+            connections.append(f"~ {partner_node.relative_address(root=root)}")
+
+        return connections
+
+    @staticmethod
+    def format_list(values: list, max_items: int = 3, quote: str = "") -> str:
+        """Format a list of values for display."""
+        formatted = ", ".join(f"{quote}{v}{quote}" for v in values[:max_items])
+        suffix = "..." if len(values) > max_items else ""
+        return f"[{formatted}{suffix}]"
+
+    @staticmethod
+    def extract_literal_value(node: graph.BoundNode, type_name: str) -> str | None:
+        """Extract display value from faebryk literal types."""
+        import faebryk.library._F as F
+
+        match type_name:
+            case "Strings":
+                values = F.Literals.Strings.bind_instance(node).get_values()
+                if len(values) == 1:
+                    return f'"{TreeRenderer.truncate_text(values[0])}"'
+                elif values:
+                    return TreeRenderer.format_list(
+                        [TreeRenderer.truncate_text(v) for v in values],
+                        max_items=3,
+                        quote='"',
+                    )
+            case "Counts":
+                values = F.Literals.Counts.bind_instance(node).get_values()
+                if len(values) == 1:
+                    return str(values[0])
+                elif values:
+                    return TreeRenderer.format_list(values, max_items=5)
+            case "Booleans":
+                values = F.Literals.Booleans.bind_instance(node).get_values()
+                if len(values) == 1:
+                    return str(values[0])
+                elif values:
+                    return TreeRenderer.format_list(values)
+            case "Numerics":
+                values = list(F.Literals.Numerics.bind_instance(node).get_values())
+                if len(values) == 1:
+                    return str(values[0])
+                elif values:
+                    return TreeRenderer.format_list(values)
+            case "AnyLiteral":
+                value = F.Literals.AnyLiteral.bind_instance(node).get_value()
+                if isinstance(value, str):
+                    return f'"{TreeRenderer.truncate_text(value)}"'
+                return str(value)
+            case _ if type_name.endswith("Enums") or type_name == "AbstractEnums":
+                bound = F.Literals.AbstractEnums.bind_instance(node)
+                values = bound.get_values()
+                if len(values) == 1:
+                    return f"'{values[0]}'"
+                elif values:
+                    return TreeRenderer.format_list(values, quote="'")
+
+    @staticmethod
+    def describe_node(
+        ctx: "TreeRenderer.NodeContext",
+        *,
+        value_extractor: Callable[[graph.BoundNode, str], str | None] | None = None,
+    ) -> str:
+        """
+        Build a description string for a node.
+
+        Args:
+            ctx: The render context containing the node.
+            value_extractor: Optional function to extract display values from nodes.
+                Takes (node, type_name) and returns a display string or None.
+        """
+        type_name = Node.bind_instance(ctx.node).get_type_name() or "<anonymous>"
+
+        attrs = ctx.node.node().get_attrs()
+        attrs_parts = [
+            f"{k}={TreeRenderer.truncate_text(str(v))}"
+            for k, v in attrs.items()
+            if k != "uuid"
+        ]
+        attrs_text = f"<{', '.join(attrs_parts)}>" if attrs_parts else ""
+
+        result = f"{type_name}{attrs_text}"
+
+        if value_extractor:
+            if value := value_extractor(ctx.node, type_name):
+                result += f" = {value}"
+
+        return result
+
+    @staticmethod
+    def _edge_type_ids(edge_types: Sequence[type]) -> list[int]:
+        ids: list[int] = []
+        for edge_type_cls in edge_types:
+            get_tid = getattr(edge_type_cls, "get_tid", None)
+            if not callable(get_tid):
+                raise AttributeError(
+                    f"{edge_type_cls!r} must expose a callable get_tid()"
+                )
+            ids.append(get_tid())  # type: ignore
+        return ids
+
+    @staticmethod
+    def _excluded_names(exclude_node_types: Sequence[type] | None) -> frozenset[str]:
+        if not exclude_node_types:
+            return frozenset()
+        return frozenset(t.__qualname__ for t in exclude_node_types)
+
+    @staticmethod
+    def _is_excluded(node: graph.BoundNode, excluded: frozenset[str]) -> bool:
+        if not excluded:
+            return False
+        type_name = Node.bind_instance(node).get_type_name()
+        return type_name is not None and type_name in excluded
+
+    @staticmethod
+    def _child_contexts(
+        parent: graph.BoundNode,
+        *,
+        edge_type_ids: Sequence[int],
+        excluded: frozenset[str],
+    ) -> list["TreeRenderer.NodeContext"]:
+        children: list[TreeRenderer.NodeContext] = []
+
+        def add_child(acc: list, bound_edge: graph.BoundEdge) -> None:
+            edge = bound_edge.edge()
+            if not edge.source().is_same(other=parent.node()):
+                return
+
+            child_node = parent.g().bind(node=edge.target())
+            if TreeRenderer._is_excluded(child_node, excluded):
+                return
+
+            acc.append(
+                TreeRenderer.NodeContext(inbound_edge=bound_edge, node=child_node)
+            )
+
+        for edge_type_id in edge_type_ids:
+            parent.visit_edges_of_type(
+                edge_type=edge_type_id,
+                ctx=children,
+                f=add_child,
+            )
+
+        return children
+
+    @staticmethod
+    def print_tree(
+        bound_node: graph.BoundNode,
+        *,
+        renderer: Callable[["TreeRenderer.NodeContext"], str],
+        edge_types: Sequence[type] | None = None,
+        exclude_node_types: Sequence[type[NodeT]] | None = None,
+    ) -> None:
+        """
+        Print a tree visualization of a faebryk graph starting from the given node.
+
+        Args:
+            bound_node: The root node to start traversal from.
+            renderer: A function that converts a NodeContext into a display string.
+            edge_types: Edge types to follow when traversing children.
+                        Defaults to (EdgeComposition,).
+            exclude_node_types: Node types to exclude from the output.
+        """
+        if edge_types is None:
+            edge_types = (fbrk.EdgeComposition,)
+
+        edge_type_ids = TreeRenderer._edge_type_ids(edge_types)
+        excluded = TreeRenderer._excluded_names(exclude_node_types)
+
+        root_node = bound_node
+        if TreeRenderer._is_excluded(root_node, excluded):
+            return
+
+        visited: set[int] = set()
+
+        def walk(ctx: TreeRenderer.NodeContext, prefix: str, is_last: bool) -> None:
+            node_uuid = ctx.node.node().get_uuid()
+            is_cycle = node_uuid in visited
+
+            line = renderer(ctx)
+            if is_cycle:
+                line += " ↺"
+
+            if prefix:
+                connector = "└─ " if is_last else "├─ "
+                print(f"{prefix}{connector}{line}")
+            else:
+                print(line)
+
+            if is_cycle:
+                return
+
+            visited.add(node_uuid)
+
+            child_prefix = prefix + ("   " if is_last else "│  ")
+            children = TreeRenderer._child_contexts(
+                ctx.node, edge_type_ids=edge_type_ids, excluded=excluded
+            )
+            for index, child_ctx in enumerate(children):
+                walk(child_ctx, child_prefix, index == len(children) - 1)
+
+            visited.remove(node_uuid)
+
+        root_ctx = TreeRenderer.NodeContext(inbound_edge=None, node=root_node)
+        walk(root_ctx, prefix="", is_last=True)
 
 
 # Going to replace MIF usages

@@ -3,7 +3,7 @@ import math
 from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from operator import ge
 from typing import TYPE_CHECKING, ClassVar, Iterable, Self, cast
 from warnings import deprecated
@@ -14,6 +14,7 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
+from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.libs.util import not_none, once
 
 if TYPE_CHECKING:
@@ -247,21 +248,19 @@ class LiteralsAttributes(fabll.NodeAttributes):
 
 
 @dataclass(frozen=True)
-class StringLiteralSingletonAttributes(fabll.NodeAttributes):
+class StringAttributes(fabll.NodeAttributes):
     value: str
 
 
-class StringLiteralSingleton(fabll.Node[StringLiteralSingletonAttributes]):
-    Attributes = StringLiteralSingletonAttributes
+class String(fabll.Node[StringAttributes]):
+    Attributes = StringAttributes
 
     def get_value(self) -> str:
         return self.attributes().value
 
     @classmethod
-    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(
-            cls, attributes=StringLiteralSingletonAttributes(value=value)
-        )
+    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:  # type: ignore
+        out = fabll._ChildField(cls, attributes=StringAttributes(value=value))
         return out
 
 
@@ -273,26 +272,23 @@ class Strings(fabll.Node):
     values = F.Collections.PointerSet.MakeChild()
 
     def setup_from_values(self, *values: str) -> Self:
-        StirngLitT = StringLiteralSingleton.bind_typegraph(tg=self.tg)
+        StirngLitT = String.bind_typegraph(tg=self.tg)
         for value in values:
             self.values.get().append(
                 StirngLitT.create_instance(
                     g=self.instance.g(),
-                    attributes=StringLiteralSingletonAttributes(value=value),
+                    attributes=StringAttributes(value=value),
                 )
             )
         return self
 
     def get_values(self) -> list[str]:
-        return [
-            lit.cast(StringLiteralSingleton).get_value()
-            for lit in self.values.get().as_list()
-        ]
+        return [lit.cast(String).get_value() for lit in self.values.get().as_list()]
 
     @classmethod
     def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
         out = fabll._ChildField(cls)
-        lits = [StringLiteralSingleton.MakeChild(value=value) for value in values]
+        lits = [String.MakeChild(value=value) for value in values]
         out.add_dependant(
             *F.Collections.PointerSet.MakeEdges(
                 [out, cls.values], [[lit] for lit in lits]
@@ -455,6 +451,27 @@ class TestNumeric:
         expected_value = 1.0
         numeric = Numeric.create_instance(g=g, tg=tg, value=expected_value)
         assert numeric.get_value() == expected_value
+
+
+class Numerics(fabll.Node):
+    values = F.Collections.PointerSet.MakeChild()
+
+    def setup_from_values(self, *values: float) -> Self:
+        for value in values:
+            numeric = Numeric.create_instance(g=self.g, tg=self.tg, value=value)
+            self.values.get().append(numeric)
+            EdgeComposition.add_child(
+                bound_node=self.instance,
+                child=numeric.instance.node(),
+                child_identifier=str(id(numeric)),
+            )
+        return self
+
+    def get_values(self) -> Iterable[float]:
+        return (
+            Numeric.bind_instance(instance=numeric.instance).get_value()
+            for numeric in self.values.get().as_list()
+        )
 
 
 class NumericInterval(fabll.Node):
@@ -1972,19 +1989,25 @@ class NumericSet(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if self.is_empty() or other.is_empty():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[])
+            return (
+                Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values()
             )
         if self.get_min_value() >= other.get_max_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(True)
             )
         if self.get_max_value() < other.get_min_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(False)
             )
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
 
     def op_gt_intervals(
@@ -1997,19 +2020,23 @@ class NumericSet(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if self.is_empty() or other.is_empty():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[])
-            )
+            return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
         if self.get_min_value() > other.get_max_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(True)
             )
         if self.get_max_value() <= other.get_min_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(False)
             )
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
 
     def op_le_intervals(
@@ -2022,19 +2049,23 @@ class NumericSet(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if self.is_empty() or other.is_empty():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[])
-            )
+            return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
         if self.get_max_value() <= other.get_min_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(True)
             )
         if self.get_min_value() > other.get_max_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(False)
             )
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
 
     def op_lt_intervals(
@@ -2047,19 +2078,23 @@ class NumericSet(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if self.is_empty() or other.is_empty():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[])
-            )
+            return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
         if self.get_max_value() < other.get_min_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[True])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(True)
             )
         if self.get_min_value() >= other.get_max_value():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[False])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(False)
             )
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
 
     def op_round(
@@ -3799,15 +3834,19 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         if not self.is_singleton() or not bit_position.is_singleton():
             # Uncertain result when either is a range
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g, attributes=BooleansAttributes.from_values(values=[False, True])
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(False, True)
             )
         # TODO: this doesnt seem ideal
         value = int(self.get_numeric_set().get_min_value())
         bit = int(bit_position.get_numeric_set().get_min_value())
         is_set = ((value >> bit) & 1) == 1
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[is_set])
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(is_set)
         )
 
     def __repr__(self) -> str:
@@ -4982,7 +5021,6 @@ class TestCount:
 class Counts(fabll.Node):
     """
     A literal representing a set of integer count values.
-    Used with CountParameter for constraining integer-valued parameters.
     """
 
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
@@ -4995,7 +5033,6 @@ class Counts(fabll.Node):
     def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:  # type: ignore
         """
         Create a Counts literal as a child field at type definition time.
-        Does not require g or tg - works at type level.
         """
         out = fabll._ChildField(cls)
 
@@ -5299,21 +5336,42 @@ class TestCounts:
 
 
 @dataclass(frozen=True)
-class BooleansAttributes(fabll.NodeAttributes):
-    has_true: bool
-    has_false: bool
+class BooleanAttributes(fabll.NodeAttributes):
+    value: bool
+
+
+class Boolean(fabll.Node[BooleanAttributes]):
+    Attributes = BooleanAttributes
+
+    def get_value(self) -> bool:
+        return self.attributes().value
 
     @classmethod
-    def from_values(cls, values: list[bool]) -> "BooleansAttributes":
-        return cls(has_true=True in values, has_false=False in values)
+    def MakeChild(cls, value: bool) -> fabll._ChildField[Self]:  # type: ignore
+        return fabll._ChildField(cls, attributes=BooleanAttributes(value=value))
 
 
-class Booleans(fabll.Node[BooleansAttributes]):
+class Booleans(fabll.Node):
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
-    Attributes = BooleansAttributes
     is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
+
+    values = F.Collections.PointerSet.MakeChild()
+
+    def setup_from_values(self, *values: bool) -> Self:
+        for value in (True, False):
+            if value in values:
+                lit = Boolean.bind_typegraph(tg=self.tg).create_instance(
+                    g=self.g, attributes=BooleanAttributes(value=value)
+                )
+                self.values.get().append(lit)
+                EdgeComposition.add_child(
+                    bound_node=self.instance,
+                    child=lit.instance.node(),
+                    child_identifier=str(id(lit)),
+                )
+        return self
 
     def get_single(self) -> bool:
         """Get the single boolean value. Raises if not exactly one value."""
@@ -5324,13 +5382,16 @@ class Booleans(fabll.Node[BooleansAttributes]):
 
     @classmethod
     def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore
-        return fabll._ChildField(
-            cls,
-            attributes=BooleansAttributes(
-                has_true=True in values,
-                has_false=False in values,
-            ),
+        out = fabll._ChildField(cls)
+        unique_values = set(values)
+        lits = [Boolean.MakeChild(value=v) for v in unique_values]
+        out.add_dependant(
+            *F.Collections.PointerSet.MakeEdges(
+                [out, cls.values], [[lit] for lit in lits]
+            )
         )
+        out.add_dependant(*lits, before=True)
+        return out
 
     @classmethod
     def MakeChild_ConstrainToLiteral(
@@ -5345,15 +5406,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
 
     def get_values(self) -> list[bool]:
         """Get the list of boolean values in this set."""
-        match self.attributes():
-            case BooleansAttributes(has_true=True, has_false=True):
-                return [True, False]
-            case BooleansAttributes(has_true=True, has_false=False):
-                return [True]
-            case BooleansAttributes(has_true=False, has_false=True):
-                return [False]
-            case _:
-                return []
+        return [lit.cast(Boolean).get_value() for lit in self.values.get().as_list()]
 
     def get_boolean_values(self) -> list[bool]:
         """Alias for get_values() for API compatibility."""
@@ -5361,8 +5414,7 @@ class Booleans(fabll.Node[BooleansAttributes]):
 
     def is_empty(self) -> bool:
         """Check if this set contains no values."""
-        attrs = self.attributes()
-        return not attrs.has_true and not attrs.has_false
+        return len(self.values.get().as_list()) == 0
 
     def op_not(
         self,
@@ -5373,10 +5425,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
         """Logical NOT of all values in this set."""
         g = g or self.g
         tg = tg or self.tg
-        values = self.get_values()
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g,
-            attributes=BooleansAttributes.from_values(values=[not v for v in values]),
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*[not v for v in self.get_values()])
         )
 
     def op_and(
@@ -5393,8 +5445,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add(v1 and v2)
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*result)
         )
 
     def op_or(
@@ -5411,8 +5465,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add(v1 or v2)
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*result)
         )
 
     def op_xor(
@@ -5429,8 +5485,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add(v1 != v2)
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*result)
         )
 
     def op_implies(
@@ -5447,8 +5505,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
         for v1 in self.get_values():
             for v2 in other.get_values():
                 result.add((not v1) or v2)
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=list(result))
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*result)
         )
 
     def is_true(self) -> bool:
@@ -5495,11 +5555,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
     ) -> "Booleans":
         g = g or self.g
         tg = tg or self.tg
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g,
-            attributes=BooleansAttributes.from_values(
-                values=list(set(self.get_values()) & set(other.get_values()))
-            ),
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*(set(self.get_values()) & set(other.get_values())))
         )
 
     def op_union_intervals(
@@ -5511,11 +5570,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
     ) -> "Booleans":
         g = g or self.g
         tg = tg or self.tg
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g,
-            attributes=BooleansAttributes.from_values(
-                values=list(set(self.get_values()) | set(other.get_values()))
-            ),
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*(set(self.get_values()) | set(other.get_values())))
         )
 
     def op_symmetric_difference_intervals(
@@ -5527,11 +5585,10 @@ class Booleans(fabll.Node[BooleansAttributes]):
     ) -> "Booleans":
         g = g or self.g
         tg = tg or self.tg
-        return Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g,
-            attributes=BooleansAttributes.from_values(
-                values=list(set(self.get_values()) ^ set(other.get_values()))
-            ),
+        return (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*(set(self.get_values()) ^ set(other.get_values())))
         )
 
     def pretty_str(self) -> str:
@@ -5652,6 +5709,8 @@ class AbstractEnums(fabll.Node):
 
     @classmethod
     def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField[Self]:  # type: ignore
+        if len(enum_members) == 0:
+            raise ValueError("At least one enum member is required")
         atype = EnumsFactory(type(enum_members[0]))
         cls_n = cast(type[fabll.NodeT], atype)
         out = fabll._ChildField(cls)
@@ -5778,7 +5837,66 @@ def EnumsFactory(enum_type: type[Enum]) -> type[AbstractEnums]:
     return ConcreteEnums
 
 
-# --------------------------------------------------------------------------------------
+class AnyLiteral(fabll.Node):
+    """
+    Tagged union of concrete literal types (Numbers, Booleans, Strings)
+    """
+
+    class _Tag(StrEnum):
+        STRING = "string"
+        BOOLEAN = "boolean"
+        NUMERIC = "numeric"
+
+    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
+
+    tag = EnumsFactory(_Tag).MakeChild(*_Tag.__members__.values())
+    value = F.Collections.Pointer.MakeChild()
+
+    def setup(self, value: str | bool | int | float) -> Self:  # type: ignore
+        match value:
+            case str():
+                self.tag.get().setup(self._Tag.STRING)
+                lit = (
+                    Strings.bind_typegraph(self.tg)
+                    .create_instance(g=self.g)
+                    .setup_from_values(value)
+                )
+            case bool():
+                self.tag.get().setup(self._Tag.BOOLEAN)
+                lit = (
+                    Booleans.bind_typegraph(self.tg)
+                    .create_instance(g=self.g)
+                    .setup_from_values(value)
+                )
+            case float() | int():
+                self.tag.get().setup(self._Tag.NUMERIC)
+                lit = (
+                    NumericSet.bind_typegraph(self.tg)
+                    .create_instance(g=self.g)
+                    .setup_from_singleton(value=value)
+                )
+        self.value.get().point(lit)
+        EdgeComposition.add_child(
+            bound_node=self.instance,
+            child=lit.instance.node(),
+            child_identifier=str(id(lit)),
+        )
+        return self
+
+    def get_value(self) -> str | bool | float:
+        tag = self.tag.get().get_single_value()
+        lit = self.value.get().deref()
+
+        match tag:
+            case self._Tag.STRING:
+                (v,) = lit.cast(Strings).get_values()
+                return v
+            case self._Tag.BOOLEAN:
+                return lit.cast(Booleans).get_single()
+            case self._Tag.NUMERIC:
+                return lit.cast(Numbers).get_value()
+            case _:
+                raise ValueError(f"Unsupported tag: {tag}")
 
 
 LiteralNodes = Numbers | Booleans | Strings | AbstractEnums | Counts
@@ -5798,9 +5916,10 @@ def make_simple_lit_singleton(
 ) -> LiteralNodes:
     match value:
         case bool():
-            return Booleans.bind_typegraph(tg=tg).create_instance(
-                g=g,
-                attributes=BooleansAttributes(has_true=value, has_false=not value),
+            return (
+                Booleans.bind_typegraph(tg=tg)
+                .create_instance(g=g)
+                .setup_from_values(value)
             )
         case float() | int():
             from faebryk.library.Units import Dimensionless
@@ -5870,9 +5989,10 @@ class BoundLiteralContext:
         return self.Numbers.create_instance(g=self.g, tg=self.tg)
 
     def create_booleans(self, booleans: list[bool] | None = None) -> "Booleans":
-        return Booleans.bind_typegraph(tg=self.tg).create_instance(
-            g=self.g, attributes=BooleansAttributes.from_values(values=booleans or [])
-        )
+        instance = Booleans.bind_typegraph(tg=self.tg).create_instance(g=self.g)
+        if booleans:
+            instance.setup_from_values(*booleans)
+        return instance
 
     def create_enums(self) -> "AbstractEnums":
         return self.Enums.create_instance(g=self.g)
@@ -6034,24 +6154,26 @@ class TestBooleans:
     def test_create_instance(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        bools = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        bools = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
         assert set(bools.get_values()) == {True, False}
 
     def test_get_single(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        bools = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        bools = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
         )
         assert bools.get_single() is True
 
     def test_op_not(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        bools = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        bools = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
         )
         result = bools.op_not(g=g, tg=tg)
         assert result.get_values() == [False]
@@ -6059,11 +6181,13 @@ class TestBooleans:
     def test_op_and(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        bools1 = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True, False])
+        bools1 = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
-        bools2 = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        bools2 = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
         )
         result = bools1.op_and(g=g, tg=tg, other=bools2)
         # True AND True = True, False AND True = False
@@ -6072,11 +6196,11 @@ class TestBooleans:
     def test_op_or(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
-        bools1 = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[False])
+        bools1 = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(False)
         )
-        bools2 = Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g, attributes=BooleansAttributes.from_values(values=[True])
+        bools2 = (
+            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
         )
         result = bools1.op_or(g=g, tg=tg, other=bools2)
         # False OR True = True

@@ -1,20 +1,31 @@
 from typing import TYPE_CHECKING
 
-import faebryk.core.node as fabll
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import BuildType, config
-from faebryk.library import _F as F
 
 if TYPE_CHECKING:
-    pass
+    import faebryk.core.node as fabll
+    from atopile.compiler.build import Linker
+    from faebryk.core.zig.gen.graph.graph import GraphView
 
 
-def init_app() -> fabll.Module:
+def init_app() -> "fabll.Node":
     with LoggingStage(name=f"init-{config.build.name}", description="Initializing app"):
+        import faebryk.library._F as F
+        from atopile.compiler.build import Linker, build_stdlib
+        from faebryk.core.zig.gen.graph.graph import GraphView
+
+        g_app = GraphView.create()
+        stdlib_tg, stdlib_registry = build_stdlib(g_app)
+        linker = Linker(config, stdlib_registry, stdlib_tg)
+
         match config.build.build_type:
             case BuildType.ATO:
-                return _init_ato_app()
+                return _init_ato_app(g_app, linker)
             case BuildType.PYTHON:
+                raise NotImplementedError(
+                    "Python builds are not supported yet"
+                )  # FIXME
                 app = _init_python_app()
                 app.add(F.is_app_root())
                 return app
@@ -22,7 +33,7 @@ def init_app() -> fabll.Module:
                 raise ValueError(f"Unknown build type: {config.build.build_type}")
 
 
-def _init_python_app() -> fabll.Module:
+def _init_python_app() -> "fabll.Node":
     """Initialize a specific .py build."""
 
     from atopile import errors
@@ -56,16 +67,15 @@ def _init_python_app() -> fabll.Module:
     return app
 
 
-def _init_ato_app() -> fabll.Module:
+def _init_ato_app(g: "GraphView", linker: "Linker") -> "fabll.Node":
     """Initialize a specific .ato build."""
-
     import faebryk.core.node as fabll
-    from atopile import front_end
-    from atopile.datatypes import TypeRef
+    from atopile.compiler.build import build_file
 
-    node = front_end.bob.build_file(
-        config.build.entry_file_path,
-        TypeRef.from_path_str(config.build.entry_section),
+    result = build_file(g, config.build.entry_file_path)
+    linker.link_imports(g, result.state)
+    app_type = result.state.type_roots[config.build.entry_section]
+    app_root = result.state.type_graph.instantiate_node(
+        type_node=app_type, attributes={}
     )
-    assert node.has_trait(fabll.is_module)
-    return node
+    return fabll.Node.bind_instance(app_root)

@@ -11,7 +11,7 @@ from antlr4 import CommonTokenStream, InputStream, ParserRuleContext, Token
 from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from pygments import token as pygments_token
 
-from atopile.parser.AtoLexer import AtoLexer
+from atopile.compiler.parser.AtoLexer import AtoLexer
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
@@ -186,18 +186,6 @@ class PygmentsLexer(pygments.lexer.Lexer):
         AtoLexer.NOT_EQ_2: pygments_token.Operator,
         AtoLexer.AT: pygments_token.Token,
         AtoLexer.ARROW: pygments_token.Token,
-        AtoLexer.ADD_ASSIGN: pygments_token.Token,
-        AtoLexer.SUB_ASSIGN: pygments_token.Token,
-        AtoLexer.MULT_ASSIGN: pygments_token.Token,
-        AtoLexer.AT_ASSIGN: pygments_token.Token,
-        AtoLexer.DIV_ASSIGN: pygments_token.Token,
-        AtoLexer.AND_ASSIGN: pygments_token.Token,
-        AtoLexer.OR_ASSIGN: pygments_token.Token,
-        AtoLexer.XOR_ASSIGN: pygments_token.Token,
-        AtoLexer.LEFT_SHIFT_ASSIGN: pygments_token.Token,
-        AtoLexer.RIGHT_SHIFT_ASSIGN: pygments_token.Token,
-        AtoLexer.POWER_ASSIGN: pygments_token.Token,
-        AtoLexer.IDIV_ASSIGN: pygments_token.Token,
         AtoLexer.NEWLINE: pygments_token.Whitespace,
         AtoLexer.COMMENT: pygments_token.Comment,
         AtoLexer.WS: pygments_token.Whitespace,

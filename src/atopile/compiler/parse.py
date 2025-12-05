@@ -5,10 +5,9 @@ from pathlib import Path
 from antlr4 import CommonTokenStream, FileStream, InputStream, Token
 from antlr4.error.ErrorListener import ErrorListener
 
-from atopile.parser.AtoLexer import AtoLexer
-from atopile.parser.AtoParser import AtoParser
-
-from .errors import UserFileNotFoundError, UserSyntaxError
+from atopile.compiler.parser.AtoLexer import AtoLexer
+from atopile.compiler.parser.AtoParser import AtoParser
+from atopile.errors import UserFileNotFoundError, UserSyntaxError
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)

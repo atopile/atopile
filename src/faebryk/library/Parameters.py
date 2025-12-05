@@ -445,22 +445,21 @@ class BooleanParameter(fabll.Node):
         g = g or self.instance.g()
         from faebryk.library.Literals import Booleans
 
-        self.is_parameter_operatable.get().alias_to_literal(
-            g=g,
-            value=Booleans.bind_typegraph_from_instance(
-                instance=self.instance
-            ).create_instance(
-                self.instance.g(),
-                attributes=Booleans.Attributes(has_true=value, has_false=not value),
-            ),
+        lit = (
+            Booleans.bind_typegraph_from_instance(instance=self.instance)
+            .create_instance(g=g)
+            .setup_from_values(value)
         )
+
+        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
     def domain_set(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Literals.Booleans":
-        return F.Literals.Booleans.bind_typegraph(tg=tg).create_instance(
-            g=g,
-            attributes=F.Literals.Booleans.Attributes(has_true=True, has_false=True),
+        return (
+            F.Literals.Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
         )
 
 
@@ -577,10 +576,26 @@ class NumericParameter(fabll.Node):
         # TODO
         pass
 
-    def alias_to_literal(self, g: graph.GraphView, value: "Literals.Numbers") -> None:
-        self.is_parameter_operatable.get().alias_to_literal(g=g, value=value)
+    def alias_to_literal(
+        self, g: graph.GraphView, value: "float | F.Literals.Numbers"
+    ) -> None:
+        match value:
+            case float():
+                from faebryk.library.Literals import Numbers
 
-    def setup(
+                lit = (
+                    Numbers.bind_typegraph(tg=self.tg)
+                    .create_instance(g=g)
+                    .setup_from_singleton(value=value, unit=self.get_units())
+                )
+            case F.Literals.Numbers():
+                lit = value
+            case _:
+                raise ValueError(f"Invalid value type: {type(value)}")
+
+        self.get_trait(is_parameter_operatable).alias_to_literal(g=g, value=lit)
+
+    def setup(  # type: ignore
         self,
         *,
         units: "Units.is_unit",
@@ -614,9 +629,9 @@ class NumericParameter(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore
         cls,
-        unit: type[fabll.NodeT] | None = None,
+        unit: type[fabll.NodeT],
         integer: bool = False,
         negative: bool = False,
         zero_allowed: bool = True,
@@ -635,8 +650,7 @@ class NumericParameter(fabll.Node):
         # )
         from faebryk.library.Units import has_unit
 
-        if unit:
-            out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
+        out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
 
         domain = NumberDomain.MakeChild(
             negative=negative, zero_allowed=zero_allowed, integer=integer
@@ -690,6 +704,99 @@ class NumericParameter(fabll.Node):
                 unit=self.get_units(),
             )
         )
+
+
+class AnyParameter(fabll.Node):
+    """
+    Tagged union of parameter types (String, Boolean, Numeric)
+    """
+
+    class _Tag(Enum):
+        STRING = "string"
+        BOOLEAN = "boolean"
+        NUMERIC = "numeric"
+
+    _is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
+    _is_parameter_operatable = fabll.Traits.MakeEdge(
+        is_parameter_operatable.MakeChild()
+    )
+    _can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
+
+    _tag = StringParameter.MakeChild()
+    _value_pointer = F.Collections.Pointer.MakeChild()
+
+    def get_tag(self) -> _Tag:
+        tag_str = self._tag.get().force_extract_literal().get_value()
+        return AnyParameter._Tag(tag_str)
+
+    def get_value_parameter(self) -> fabll.Node:
+        return fabll.Node.bind_instance(
+            instance=self._value_pointer.get().deref().instance
+        )
+
+    def get_value(self) -> str | bool | float:
+        tag = self.get_tag()
+        param = self.get_value_parameter()
+        match tag:
+            case AnyParameter._Tag.STRING:
+                lit = param.cast(StringParameter).force_extract_literal()
+                return lit.get_values()[0]
+            case AnyParameter._Tag.BOOLEAN:
+                lit = param.cast(BooleanParameter).force_extract_literal()
+                return lit.get_single()
+            case AnyParameter._Tag.NUMERIC:
+                lit = param.cast(NumericParameter).force_extract_literal()
+                return lit.get_value()
+
+    def setup(self, value: str | bool | int | float) -> Self:  # type: ignore
+        match value:
+            case str():
+                tag = AnyParameter._Tag.STRING
+                param = StringParameter.bind_typegraph(tg=self.tg).create_instance(
+                    g=self.g
+                )
+                param.alias_to_single(value)
+            case bool():
+                tag = AnyParameter._Tag.BOOLEAN
+                param = BooleanParameter.bind_typegraph(tg=self.tg).create_instance(
+                    g=self.g
+                )
+                param.alias_to_single(value, g=self.g)
+            case int() | float():
+                from faebryk.library.Literals import Numbers
+                from faebryk.library.Units import Dimensionless, is_unit
+
+                tag = AnyParameter._Tag.NUMERIC
+                param = NumericParameter.bind_typegraph(tg=self.tg).create_instance(
+                    g=self.g
+                )
+                param.setup()
+                dimensionless_unit = (
+                    Dimensionless.bind_typegraph(tg=self.tg)
+                    .create_instance(g=self.g)
+                    .get_trait(is_unit)
+                )
+                lit = (
+                    Numbers.bind_typegraph(tg=self.tg)
+                    .create_instance(g=self.g)
+                    .setup_from_singleton(
+                        g=self.g,
+                        tg=self.tg,
+                        value=float(value),
+                        unit=dimensionless_unit,
+                    )
+                )
+                param.get_trait(is_parameter_operatable).alias_to_literal(
+                    g=self.g, value=lit
+                )
+            case _:
+                raise ValueError(f"Unsupported value type: {type(value)}")
+
+        self._tag.get().alias_to_single(tag.value, g=self.g)
+        self._value_pointer.get().point(
+            fabll.Node.bind_instance(instance=param.instance)
+        )
+        return self
 
 
 # Binding context ----------------------------------------------------------------------
@@ -984,6 +1091,43 @@ def test_get_operations_recursive():
     p1_ops_recursive = p1_po.get_operations(recursive=True)
     assert fabll.Traits(add_expr).get_obj(Add) in p1_ops_recursive
     assert fabll.Traits(mul_expr).get_obj(Multiply) in p1_ops_recursive
+
+
+def test_dynamic_param():
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    # Test string value
+    dp_str = AnyParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    dp_str.setup("hello")
+    assert dp_str.get_tag() == AnyParameter._Tag.STRING
+    assert dp_str.get_value() == "hello"
+    str_param = dp_str.get_value_parameter().cast(StringParameter)
+    assert isinstance(str_param, StringParameter)
+
+    # Test boolean value (True)
+    dp_bool_t = AnyParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    dp_bool_t.setup(True)
+    assert dp_bool_t.get_tag() == AnyParameter._Tag.BOOLEAN
+    assert dp_bool_t.get_value() is True
+
+    # Test boolean value (False)
+    dp_bool_f = AnyParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    dp_bool_f.setup(False)
+    assert dp_bool_f.get_tag() == AnyParameter._Tag.BOOLEAN
+    assert dp_bool_f.get_value() is False
+
+    # Test int value
+    dp_int = AnyParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    dp_int.setup(42)
+    assert dp_int.get_tag() == AnyParameter._Tag.NUMERIC
+    assert dp_int.get_value() == 42.0
+
+    # Test float value
+    dp_float = AnyParameter.bind_typegraph(tg=tg).create_instance(g=g)
+    dp_float.setup(3.14)
+    assert dp_float.get_tag() == AnyParameter._Tag.NUMERIC
+    assert dp_float.get_value() == 3.14
 
 
 def test_new_definitions():

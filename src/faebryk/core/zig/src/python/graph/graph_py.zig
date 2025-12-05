@@ -244,6 +244,56 @@ fn applyAttributes(dynamic: *graph.graph.DynamicAttributes, kwargs: ?*py.PyObjec
     }
 }
 
+fn nodeAttributesToPyDict(node: *graph.graph.Node) ?*py.PyObject {
+    const dict = py.PyDict_New() orelse {
+        py.PyErr_SetString(py.PyExc_MemoryError, "Failed to allocate attribute dict");
+        return null;
+    };
+
+    const Visitor = struct {
+        dict: *py.PyObject,
+        had_error: bool = false,
+
+        pub fn visit(ctx_ptr: *anyopaque, key: []const u8, literal: Literal, _: bool) void {
+            const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+            if (ctx.had_error) return;
+
+            const key_ptr: [*c]const u8 = if (key.len == 0)
+                ""
+            else
+                @ptrCast(key.ptr);
+
+            const key_obj = py.PyUnicode_FromStringAndSize(key_ptr, @intCast(key.len)) orelse {
+                ctx.had_error = true;
+                return;
+            };
+
+            const value_obj = literalToPyObject(literal) orelse {
+                ctx.had_error = true;
+                py.Py_DECREF(key_obj);
+                return;
+            };
+
+            if (py.PyDict_SetItem(ctx.dict, key_obj, value_obj) < 0) {
+                ctx.had_error = true;
+            }
+
+            py.Py_DECREF(value_obj);
+            py.Py_DECREF(key_obj);
+        }
+    };
+
+    var visitor_ctx = Visitor{ .dict = dict };
+    node.attributes.visit(&visitor_ctx, Visitor.visit);
+
+    if (visitor_ctx.had_error) {
+        py.Py_DECREF(dict);
+        return null;
+    }
+
+    return dict;
+}
+
 // ====================================================================================================================
 
 fn wrap_node_create() type {
@@ -338,6 +388,23 @@ fn wrap_node_get_uuid() type {
         }
     };
 }
+
+fn wrap_node_get_attrs() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_attrs",
+            .doc = "Return a dict with all attributes",
+            .args_def = struct {},
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
+            return nodeAttributesToPyDict(wrapper.data) orelse null;
+        }
+    };
+}
+
 fn wrap_node_is_same() type {
     return struct {
         pub const descr = method_descr{
@@ -369,6 +436,7 @@ fn wrap_node(root: *py.PyObject) void {
         wrap_node_get_attr(),
         wrap_node_get_dynamic_attrs(),
         wrap_node_get_uuid(),
+        wrap_node_get_attrs(),
         wrap_node_is_same(),
     };
     bind.wrap_namespace_struct(root, graph.graph.Node, extra_methods);

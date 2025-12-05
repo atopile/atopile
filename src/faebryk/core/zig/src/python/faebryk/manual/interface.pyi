@@ -1,5 +1,6 @@
 from typing import Callable
 
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.graph.graph import BFSPath, BoundEdge, BoundNode, Edge, Node
 
 class EdgeInterfaceConnection:
@@ -21,10 +22,10 @@ class EdgeInterfaceConnection:
         f: Callable[[T, BoundEdge], None],
     ) -> None: ...
     @staticmethod
-    def is_connected_to(
-        *, source: BoundNode, target: BoundNode
-    ) -> BFSPath: ...
+    def is_connected_to(*, source: BoundNode, target: BoundNode) -> BFSPath: ...
     @staticmethod
     def get_connected(
         *, source: BoundNode, include_self: bool = True
     ) -> dict[BoundNode, BFSPath]: ...  # Returns dict mapping nodes to BFSPath objects
+    @staticmethod
+    def build(*, shallow: bool = ...) -> EdgeCreationAttributes: ...

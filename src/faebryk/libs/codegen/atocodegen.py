@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 
+from atopile.compiler.ast_visitor import ASTVisitor
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,13 +44,7 @@ class AtoCodeGen:
         name: str
         path: Path | None = None
 
-    @dataclass(frozen=True, eq=True)
-    class Experiment:
-        """Represents an ato language experiment/feature flag."""
-        value: str
-
-        # Common experiment flags
-        TRAITS = None  # Will be set after class definition
+    Experiment = ASTVisitor._Experiment
 
     @dataclass(kw_only=True)
     class Statement:
@@ -177,7 +173,7 @@ class AtoCodeGen:
                 self.imports.add(AtoCodeGen.Import(name))
 
             trait = AtoCodeGen.Trait(
-                name,
+                name=name,
                 args={k: v for k, v in args.items() if v is not None},
                 constructor=constructor,
             )
@@ -194,6 +190,3 @@ class AtoCodeGen:
                 self.add_stmt(AtoCodeGen.Spacer())
             for stmt in stmts:
                 self.add_stmt(stmt)
-
-    # Initialize experiment constants
-    Experiment.TRAITS = Experiment("TRAITS")

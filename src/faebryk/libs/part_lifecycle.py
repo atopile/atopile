@@ -428,7 +428,7 @@ class PartLifecycle:
             try:
                 lib = _find_footprint([fp_lib_path], lib_id)
             except* (LibNotInTable, FileNotFoundError):
-                from atopile.front_end import from_dsl  # TODO: F.is_from_dsl
+                from atopile.compiler.front_end import from_dsl  # TODO: F.is_from_dsl
 
                 if (
                     (is_atomic_part_ := component.try_get_trait(F.is_atomic_part))
@@ -532,7 +532,9 @@ class PartLifecycle:
 
             lifecycle = PartLifecycle.singleton()
 
-            f_fp = component.get_trait(F.Footprints.has_associated_footprint).get_footprint()
+            f_fp = component.get_trait(
+                F.Footprints.has_associated_footprint
+            ).get_footprint()
 
             # At this point, all footprints MUST have a KiCAD identifier
             fp_id = f_fp.get_trait(

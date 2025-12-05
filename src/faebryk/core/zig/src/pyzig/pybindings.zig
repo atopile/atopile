@@ -100,10 +100,13 @@ pub extern fn PyType_Ready(type: *PyTypeObject) c_int;
 pub extern fn PyModule_AddObject(module: ?*PyObject, name: [*:0]const u8, value: ?*PyObject) c_int;
 pub extern fn PyModule_GetDict(module: ?*PyObject) ?*PyObject;
 pub extern fn _Py_Dealloc(op: *PyObject) void;
+pub extern fn Py_IsInitialized() c_int;
+pub extern fn Py_IsFinalizing() c_int;
 pub extern fn PyObject_GenericGetAttr(obj: ?*PyObject, name: ?*PyObject) ?*PyObject;
 pub extern fn PyObject_GenericSetAttr(obj: ?*PyObject, name: ?*PyObject, value: ?*PyObject) c_int;
 pub extern fn PyType_GenericAlloc(type: *PyTypeObject, nitems: isize) ?*PyObject;
 pub extern fn PyType_GenericNew(type: *PyTypeObject, args: ?*PyObject, kwargs: ?*PyObject) ?*PyObject;
+pub extern fn PyObject_Free(ptr: ?*anyopaque) void;
 
 /// Member descriptor for struct fields
 pub const PyMemberDef = extern struct {
@@ -219,6 +222,7 @@ pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;
 pub extern fn PyUnicode_FromStringAndSize(str: [*c]const u8, size: isize) ?*PyObject;
 pub extern fn PyUnicode_AsUTF8(obj: ?*PyObject) ?[*:0]const u8;
 pub extern fn PyRun_StringFlags(code: [*:0]const u8, start: c_int, globals: ?*PyObject, locals: ?*PyObject, flags: ?*anyopaque) ?*PyObject;
+pub extern fn PyRun_SimpleString(code: [*:0]const u8) c_int;
 
 pub const Py_single_input: c_int = 256;
 pub const Py_file_input: c_int = 257;
@@ -263,6 +267,8 @@ pub fn Py_TYPE(obj: ?*PyObject) ?*PyTypeObject {
 
 // Error handling
 pub extern fn PyErr_SetString(exception: *PyObject, message: [*:0]const u8) void;
+pub extern fn PyErr_SetObject(exception: *PyObject, value: ?*PyObject) void;
+pub extern fn PyErr_NewException(name: [*:0]const u8, base: ?*PyObject, dict: ?*PyObject) ?*PyObject;
 pub extern fn PyErr_Clear() void;
 pub extern fn PyErr_Occurred() ?*PyObject;
 

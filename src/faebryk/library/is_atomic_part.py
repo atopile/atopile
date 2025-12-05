@@ -44,7 +44,7 @@ class is_atomic_part(fabll.Node):
     @property
     @once
     def path(self) -> Path:
-        from atopile.front_end import from_dsl
+        from atopile.compiler.front_end import from_dsl
 
         if (from_dsl_ := self.try_get_trait(from_dsl)) is None:
             raise ValueError(

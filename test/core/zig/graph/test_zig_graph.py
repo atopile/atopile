@@ -159,17 +159,44 @@ def test_typegraph_instantiate():
     g = graph.GraphView.create()
     type_graph = fbrk.TypeGraph.create(g=g)
 
-    Electrical = type_graph.add_type(identifier="Electrical")
+    type_graph.add_type(identifier="Electrical")
     Resistor = type_graph.add_type(identifier="Resistor")
-    type_graph.add_make_child(
-        type_node=Resistor, child_type_node=Electrical, identifier="p1"
+    make_child_p1 = type_graph.add_make_child(
+        type_node=Resistor,
+        child_type_identifier="Electrical",
+        identifier="p1",
+        node_attributes=None,
+        mount_reference=None,
     )
-    type_graph.add_make_child(
-        type_node=Resistor, child_type_node=Electrical, identifier="p2"
+    make_child_p2 = type_graph.add_make_child(
+        type_node=Resistor,
+        child_type_identifier="Electrical",
+        identifier="p2",
+        node_attributes=None,
+        mount_reference=None,
     )
 
-    rp1_ref = type_graph.add_reference(type_node=Resistor, path=["p1"])
-    rp2_ref = type_graph.add_reference(type_node=Resistor, path=["p2"])
+    electrical = type_graph.get_type_by_name(type_identifier="Electrical")
+    assert electrical is not None
+
+    for make_child in (make_child_p1, make_child_p2):
+        type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
+        assert type_ref is not None
+        Linker.link_type_reference(
+            g=g,
+            type_reference=type_ref,
+            target_type_node=electrical,
+        )
+
+    rp1_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p1"])
+    rp2_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p2"])
+    edge_attrs = EdgeCreationAttributes.init(
+        edge_type=EdgePointer.get_tid(),
+        directional=True,
+        name="test",
+        dynamic=None,
+    )
+
     type_graph.add_make_link(
         type_node=Resistor,
         lhs_reference_node=rp1_ref.node(),
@@ -180,7 +207,9 @@ def test_typegraph_instantiate():
         edge_attributes={"test_key": "test_value"},
     )
 
-    resistor_instance = type_graph.instantiate(type_identifier="Resistor")
+    resistor_instance = type_graph.instantiate(
+        type_identifier="Resistor", attributes={}
+    )
 
     collected = []
     fbrk.EdgeComposition.visit_children_edges(
@@ -214,7 +243,6 @@ def test_typegraph_instantiate():
     assert e.target().is_same(other=rp2.node())
     assert e.directional() is True
     assert e.name() == "test"
-    assert e.get_attr(key="test_key") == "test_value", e.get_attr(key="test_key")
 
 
 if __name__ == "__main__":

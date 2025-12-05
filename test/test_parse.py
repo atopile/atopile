@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from atopile.parse import UserSyntaxError, parse_text_as_file
+from atopile.compiler.parse import UserSyntaxError, parse_text_as_file
 
 
 def test_syntax_error():

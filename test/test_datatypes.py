@@ -1,4 +1,4 @@
-from atopile.datatypes import KeyOptItem, KeyOptMap, StackList, TypeRef
+from atopile.compiler.datatypes import KeyOptItem, KeyOptMap, StackList, TypeRef
 
 
 def test_ref_from_one():
