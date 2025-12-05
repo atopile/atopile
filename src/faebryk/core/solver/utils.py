@@ -211,7 +211,13 @@ class MutatorUtils:
             (k_lit, v) for k, v in aliases.items() if (k_lit := self.is_literal(k))
         ]
         if alias_lits:
-            unique_lits = unique(alias_lits, lambda x: x[0])
+            unique_lits = unique(
+                alias_lits,
+                lambda x: x[0],
+                custom_eq=lambda x, y: bool(
+                    x.equals(y, g=self.mutator.G_transient, tg=self.mutator.tg_in)
+                ),
+            )
             if len(unique_lits) > 1:
                 raise ContradictionByLiteral(
                     "Multiple alias literals found",
