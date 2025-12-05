@@ -159,7 +159,6 @@ def parse_pytest_html_summary(html_text: str) -> dict:
         "skipped": 0,
         "xfailed": 0,
         "xpassed": 0,
-        "rerun": 0,
         "tests": 0,
     }
 
@@ -179,7 +178,6 @@ def parse_pytest_html_summary(html_text: str) -> dict:
         "skipped": "skipped",
         "xfailed": "xfailed",
         "xpassed": "xpassed",
-        "rerun": "rerun",
     }
 
     if filters_block:
@@ -193,7 +191,7 @@ def parse_pytest_html_summary(html_text: str) -> dict:
         summary["tests"] = _extract_first_int(run_count_match.group(1))
 
     if summary["tests"] <= 0:
-        summary["tests"] = sum(summary[k] for k in ("passed", "failed", "errors", "skipped", "xfailed", "xpassed", "rerun"))
+        summary["tests"] = sum(summary[k] for k in ("passed", "failed", "errors", "skipped", "xfailed", "xpassed"))
 
     return summary
 
@@ -555,12 +553,11 @@ def _build_main_panel(summary: dict) -> str:
     skip_count = _as_int(summary.get("skipped"))
     xfailed_count = _as_int(summary.get("xfailed"))
     xpassed_count = _as_int(summary.get("xpassed"))
-    rerun_count = _as_int(summary.get("rerun"))
 
     tests = _as_int(summary.get("tests"))
     inferred_total = (
         pass_count + fail_count + error_count + skip_count
-        + xfailed_count + xpassed_count + rerun_count
+        + xfailed_count + xpassed_count
     )
     total = tests or inferred_total or 1
 
@@ -571,8 +568,7 @@ def _build_main_panel(summary: dict) -> str:
         ("Errors", error_count, "#b91c1c"),
         ("Unexpected passes", xpassed_count, "#f97316"),
         ("Expected failures", xfailed_count, "#8b5cf6"),
-        ("Skipped", skip_count, "#6b7280"),
-        ("Rerun", rerun_count, "#0ea5e9"),
+        ("Skipped", skip_count, "#6b7280")
     ]
 
     # Build progress bar segments
