@@ -4111,7 +4111,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_collect_unresolved_type_references(),
         wrap_typegraph_add_make_link(),
         wrap_typegraph_iter_make_children(),
-        wrap_typegraph_debug_iter_make_links(),
+        wrap_typegraph_iter_make_links(),
         wrap_typegraph_get_reference_path(),
         wrap_typegraph_debug_get_mount_chain(),
         wrap_typegraph_iter_pointer_members(),
@@ -5063,11 +5063,11 @@ fn wrap_operand_file(root: *py.PyObject) ?*py.PyObject {
     return module;
 }
 
-fn wrap_typegraph_debug_iter_make_links() type {
+fn wrap_typegraph_iter_make_links() type {
     return struct {
         pub const descr = method_descr{
-            .name = "debug_iter_make_links",
-            .doc = "Test helper: enumerate MakeLink nodes together with their lhs/rhs reference paths.",
+            .name = "iter_make_links",
+            .doc = "Enumerate MakeLink nodes together with their lhs/rhs reference paths.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
 
@@ -5083,9 +5083,9 @@ fn wrap_typegraph_debug_iter_make_links() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const infos = faebryk.typegraph.TypeGraph.iter_make_links_detailed(wrapper.data, allocator, kwarg_obj.type_node.*) catch |err| switch (err) {
+            const infos = faebryk.typegraph.TypeGraph.iter_make_links(wrapper.data, allocator, kwarg_obj.type_node.*) catch |err| switch (err) {
                 error.OutOfMemory => {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "debug_iter_make_links ran out of memory");
+                    py.PyErr_SetString(py.PyExc_MemoryError, "iter_make_links ran out of memory");
                     return null;
                 },
                 error.InvalidReference => {

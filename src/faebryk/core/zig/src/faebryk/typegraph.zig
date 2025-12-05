@@ -925,52 +925,6 @@ pub const TypeGraph = struct {
         };
     }
 
-    /// Resolve the make-child that represents `container_path[index]` in a
-    /// pointer sequence. This ensures the AST visitor does not need to search
-    /// through MakeChild nodes or replicate mount matching.
-    pub fn resolve_pointer_member(
-        self: *@This(),
-        type_node: BoundNodeReference,
-        container_path: []const []const u8,
-        index: usize,
-        failure: ?*?PathResolutionFailure,
-    ) error{ ChildNotFound, OutOfMemory, UnresolvedTypeReference }!BoundNodeReference {
-        var local_failure: ?PathResolutionFailure = null;
-        const container_result = self.resolve_path_segments(type_node, container_path, &local_failure) catch |err| switch (err) {
-            error.ChildNotFound => {
-                if (failure) |f| f.* = local_failure;
-                return error.ChildNotFound;
-            },
-            else => return err,
-        };
-        _ = container_result;
-
-        var buf: [32]u8 = undefined;
-        const identifier = std.fmt.bufPrint(&buf, "{d}", .{index}) catch {
-            return error.OutOfMemory;
-        };
-
-        return self.find_make_child_node_with_mount(
-            type_node,
-            identifier,
-            container_path,
-        ) catch |err| switch (err) {
-            error.ChildNotFound => {
-                if (failure) |f| {
-                    f.* = PathResolutionFailure{
-                        .kind = PathErrorKind.invalid_index,
-                        .failing_segment_index = container_path.len,
-                        .failing_segment = &.{},
-                        .has_index_value = true,
-                        .index_value = index,
-                    };
-                }
-                return err;
-            },
-            else => return err,
-        };
-    }
-
     /// Return every MakeChild belonging to `type_node` without filtering or
     /// reordering. Python tests consume this instead of manually walking
     /// EdgeComposition edges so Zig stays the single source of truth for which
@@ -1003,46 +957,6 @@ pub const TypeGraph = struct {
                         .identifier = identifier,
                         .make_child = make_child,
                     }) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
-            }.visit,
-        );
-
-        switch (result) {
-            .ERROR => return error.OutOfMemory,
-            else => {},
-        }
-
-        return list.toOwnedSlice();
-    }
-
-    /// Enumerate MakeLink nodes attached to `type_node`. Tests use this to
-    /// inspect user-visible connections without reimplementing traversal
-    /// against EdgeComposition directly.
-    pub fn iter_make_links(
-        self: *@This(),
-        allocator: std.mem.Allocator,
-        type_node: BoundNodeReference,
-    ) error{OutOfMemory}![]BoundNodeReference {
-        var list = std.ArrayList(BoundNodeReference).init(allocator);
-        errdefer list.deinit();
-
-        const VisitCtx = struct {
-            list: *std.ArrayList(BoundNodeReference),
-        };
-
-        var ctx = VisitCtx{ .list = &list };
-
-        const result = EdgeComposition.visit_children_of_type(
-            type_node,
-            self.get_MakeLink().node,
-            void,
-            &ctx,
-            struct {
-                pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                    const ctx_ptr: *VisitCtx = @ptrCast(@alignCast(self_ptr));
-                    const make_link = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-                    ctx_ptr.list.append(make_link) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
             }.visit,
@@ -1099,7 +1013,7 @@ pub const TypeGraph = struct {
 
     /// Enumerate MakeLink nodes together with their resolved reference paths so
     /// callers do not need to expand the `lhs`/`rhs` chains manually.
-    pub fn iter_make_links_detailed(
+    pub fn iter_make_links(
         self: *@This(),
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
@@ -1793,16 +1707,7 @@ test "typegraph iterators and mount chains" {
     try std.testing.expect(seen_zero);
     try std.testing.expect(seen_one);
 
-    const links = try tg.iter_make_links(a, top);
-    defer a.free(links);
-    try std.testing.expectEqual(@as(usize, 1), links.len);
-
-    const lhs = EdgeComposition.get_child_by_identifier(links[0], "lhs").?;
-    const rhs = EdgeComposition.get_child_by_identifier(links[0], "rhs").?;
-    try std.testing.expect(Node.is_same(lhs.node, base_reference.node));
-    try std.testing.expect(Node.is_same(rhs.node, extra_reference.node));
-
-    const detailed_links = try tg.iter_make_links_detailed(a, top);
+    const detailed_links = try tg.iter_make_links(a, top);
     defer {
         for (detailed_links) |info| {
             a.free(info.lhs_path);
@@ -1811,11 +1716,15 @@ test "typegraph iterators and mount chains" {
         a.free(detailed_links);
     }
     try std.testing.expectEqual(@as(usize, 1), detailed_links.len);
-    try std.testing.expect(Node.is_same(detailed_links[0].make_link.node, links[0].node));
     try std.testing.expectEqual(@as(usize, 1), detailed_links[0].lhs_path.len);
     try std.testing.expectEqualStrings("base", detailed_links[0].lhs_path[0]);
     try std.testing.expectEqual(@as(usize, 1), detailed_links[0].rhs_path.len);
     try std.testing.expectEqualStrings("extra", detailed_links[0].rhs_path[0]);
+
+    const lhs = EdgeComposition.get_child_by_identifier(detailed_links[0].make_link, "lhs").?;
+    const rhs = EdgeComposition.get_child_by_identifier(detailed_links[0].make_link, "rhs").?;
+    try std.testing.expect(Node.is_same(lhs.node, base_reference.node));
+    try std.testing.expect(Node.is_same(rhs.node, extra_reference.node));
 
     const lhs_path = try tg.get_reference_path(a, lhs);
     defer a.free(lhs_path);

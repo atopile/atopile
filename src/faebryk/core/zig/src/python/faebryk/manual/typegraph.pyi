@@ -71,7 +71,7 @@ class TypeGraph:
         *,
         type_node: BoundNode,
     ) -> list[tuple[str | None, BoundNode]]: ...
-    def debug_iter_make_links(
+    def iter_make_links(
         self,
         *,
         type_node: BoundNode,

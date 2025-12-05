@@ -23,7 +23,7 @@ def _get_make_child(type_graph, type_node, name: str):
 def _collect_make_links(type_graph, type_node):
     return [
         (make_link, list(lhs_path), list(rhs_path))
-        for make_link, lhs_path, rhs_path in type_graph.debug_iter_make_links(
+        for make_link, lhs_path, rhs_path in type_graph.iter_make_links(
             type_node=type_node
         )
     ]
