@@ -2358,6 +2358,7 @@ def try_relative_to(
         raise
 
 
+@once
 def repo_root() -> Path:
     return root_by_file(".git")
 
