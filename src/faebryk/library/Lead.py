@@ -139,7 +139,9 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
 
         return out
 
-    def get_pins()
+    def lead_matches_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
+        # TODO implement
+        pass
 
 
 class has_associated_pad(fabll.Node):
