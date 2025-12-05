@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import pytest
 from dataclasses_json import (
     CatchAll,
     Undefined,
@@ -567,53 +568,88 @@ def attach(
                 f"Part `{ex.part.path}` is not purely auto-generated. Not overwriting."
             )
 
-    # TODO maybe check the symbol matches, even if a footprint is already attached?
-    if not component.has_trait(F.Footprints.has_associated_footprint):
+    if component.has_trait(F.Footprints.can_attach_to_footprint):
+        # only add footprint if the component is marked
         assert apart is not None
-        if not component.has_trait(F.Footprints.can_attach_to_footprint):
-            # TODO make this a trait
-            pins = [
-                (pin.number.number, pin.name.name)
-                for sym in apart.symbol.kicad_sym.symbols
-                for unit in sym.symbols
-                for pin in unit.pins
-            ]
-            try:
-                pinmap = component.get_trait(F.has_pin_association_heuristic).get_pins(
-                    pins
+
+        pads_number_name_pairs = [
+            (pin.number.number, pin.name.name)
+            for sym in apart.symbol.kicad_sym.symbols
+            for unit in sym.symbols
+            for pin in unit.pins
+            if pin.number is not None
+        ]
+        leads = component.get_children(
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Lead.is_lead,
+        )
+
+        # try matching the ato part pad names to the component's leads
+        try:
+            for lead in leads:
+                lead_t = lead.get_trait(F.Lead.is_lead)
+                matched_pad = lead_t.find_matching_pad_name(
+                    [p[1] for p in pads_number_name_pairs]
                 )
-            except F.has_pin_association_heuristic.PinMatchException as e:
-                raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
-
-            if check_only:
-                return
-
-            fabll.Traits.create_and_add_instance_to(
-                component, F.can_attach_to_footprint_via_pinmap
-            ).setup(pinmap)
-
-            # TODO: symbol trait and module
-            # sym = F.Symbol.with_component(component, pinmap)
-            # sym.add(
-            #     F.Symbol.has_kicad_symbol(f"{apart.identifier}:{apart.sym_path.name}")
-            # )
+        except F.Lead.is_lead.PadMatchException as e:
+            raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
         if check_only:
             return
 
-        # footprint
-        fp = (
-            F.KicadFootprint.bind_typegraph_from_instance(instance=component.instance)
-            .create_instance(g=component.instance.g())
-            .from_path(apart.fp_path, lib_name=apart.path.name)
-        )
-        # TODO: This trait is forwarded by a trait with attach function
-        component.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
+        if not component.has_trait(F.Footprints.has_associated_footprint):
+            # create and add a footprint node to the component
+            fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
+                instance=component.instance
+            ).create_instance(g=component.instance.g())
+            fp.setup(pads_number_name_pairs)
 
-    if check_only:
-        return
+            fabll.Traits.create_and_add_instance_to(
+                node=component, trait=F.Footprints.has_associated_footprint
+            ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
 
-    # model done by kicad (in fp)
+            pads_t = fp.get_pads()
+            try:
+                for lead in leads:
+                    lead_t = lead.get_trait(F.Lead.is_lead)
+                    matched_pad = lead_t.find_matching_pad(pads_t)
+                    fabll.Traits.create_and_add_instance_to(
+                        node=lead, trait=F.Lead.has_associated_pad
+                    ).setup(pad=matched_pad, parent=lead, connect_net=False)
+            except F.Lead.is_lead.PadMatchException as e:
+                raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+
+        # link footprint to the component
+        footprint = component.get_trait(
+            F.Footprints.has_associated_footprint
+        ).get_footprint()
+
+        if not footprint.has_trait(F.KiCadFootprints.has_linked_kicad_footprint):
+            # create a kicad footprint node
+            kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
+                instance=footprint.instance
+            ).create_instance(g=component.instance.g())
+            fabll.Traits.create_and_add_instance_to(
+                node=kfp, trait=F.KiCadFootprints.is_generated_from_kicad_footprint_file
+            ).setup(
+                library_name=apart.path.name,
+                kicad_footprint_file_path=str(apart.fp_path),
+            )
+            fabll.Traits.create_and_add_instance_to(
+                node=footprint, trait=F.KiCadFootprints.has_linked_kicad_footprint
+            ).setup(kfp)
+
+        kicad_footprint = footprint.get_trait(
+            F.KiCadFootprints.has_linked_kicad_footprint
+        ).get_footprint()
+
+        # link the kicad footprint node to the footprint node
+        fabll.Traits.create_and_add_instance_to(
+            footprint, F.KiCadFootprints.has_linked_kicad_footprint
+        ).setup(kicad_footprint)
+
+    # 3D model done by kicad (in fp)
 
 
 class PickSupplierLCSC(PickSupplier):
@@ -646,3 +682,66 @@ class PickedPartLCSC(PickedPart):
     @property
     def lcsc_id(self) -> str:
         return self.supplier_partno
+
+
+# TODO: move to global fixtures, or put into the specific test
+@pytest.fixture()
+def setup_project_config(tmp_path):
+    from atopile.config import ProjectConfig, ProjectPaths, config
+
+    config.project = ProjectConfig.skeleton(
+        entry="", paths=ProjectPaths(build=tmp_path / "build", root=tmp_path)
+    )
+    yield
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_attach(capsys):
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.node as fabll
+
+    LCSC_ID = "C21190"
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    component = F.Resistor.bind_typegraph(tg=tg).create_instance(g=g)
+
+    # Before attach: no kicad footprint should be linked yet
+    associated_footprint = component.try_get_trait(
+        F.Footprints.has_associated_footprint
+    )
+
+    assert associated_footprint is None
+
+    attach(component=component, partno=LCSC_ID)
+
+    associated_footprint = component.try_get_trait(
+        F.Footprints.has_associated_footprint
+    )
+
+    assert associated_footprint is not None
+
+    # After attach: footprint should now be linked
+    footprint = associated_footprint.get_footprint()
+
+    # there should also be a kicad footprint linked
+    kicad_footprint = footprint.get_trait(
+        F.KiCadFootprints.has_linked_kicad_footprint
+    ).get_footprint()
+    generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
+        F.KiCadFootprints.is_generated_from_kicad_footprint_file
+    )
+
+    assert (
+        generated_from_kicad_footprint_file_t.kicad_library_id
+        == "UNI_ROYAL_0603WAF1001T5E:R0603"
+    )
+    assert (
+        generated_from_kicad_footprint_file_t.library_name == "UNI_ROYAL_0603WAF1001T5E"
+    )
+    assert generated_from_kicad_footprint_file_t.pad_names == ["2", "1"]
+    assert (
+        "src/parts/UNI_ROYAL_0603WAF1001T5E/R0603.kicad_mod"
+        in generated_from_kicad_footprint_file_t.kicad_footprint_file_path
+    )

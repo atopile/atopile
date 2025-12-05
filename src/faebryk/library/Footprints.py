@@ -107,16 +107,24 @@ class has_associated_footprint(fabll.Node):
     footprint_ = F.Collections.Pointer.MakeChild()
 
     def get_footprint(self) -> is_footprint:
-        return fabll.Node.bind_instance(EdgePointer.get_referenced_node_from_node(node=self.instance)).get_trait(is_footprint)
+        return fabll.Node.bind_instance(
+            EdgePointer.get_referenced_node_from_node(node=self.instance)
+        ).get_trait(is_footprint)
 
     def set_footprint(self, footprint: is_footprint):
-        EdgePointer.point_to(bound_node=self.instance, target_node=fbrk.EdgeTrait.get_owner_node_of(bound_node=footprint.instance).node(), order=None)
+        EdgePointer.point_to(
+            bound_node=self.instance,
+            target_node=fbrk.EdgeTrait.get_owner_node_of(
+                bound_node=footprint.instance
+            ).node(),
+            order=None,
+        )
 
 
 class GenericPad(fabll.Node):
     """Generic pad"""
 
-    is_pad = fabll.Traits.MakeEdge(is_pad.MakeChild(pad_name="", pad_number=""))
+    is_pad_ = fabll.Traits.MakeEdge(is_pad.MakeChild(pad_name="", pad_number=""))
 
     @classmethod
     def MakeChild(cls, pad_name: str, pad_number: str) -> fabll._ChildField[Self]:
@@ -125,7 +133,7 @@ class GenericPad(fabll.Node):
         return out
 
     def setup(self, pad_name: str, pad_number: str):
-        self.is_pad.get().setup(pad_name, pad_number)
+        self.is_pad_.get().setup(pad_name, pad_number)
 
 
 # TODO this is a placeholder for now, will be removed
@@ -135,6 +143,9 @@ class GenericFootprint(fabll.Node):
     is_footprint = fabll.Traits.MakeEdge(is_footprint.MakeChild())
 
     pads_ = F.Collections.PointerSet.MakeChild()
+
+    def get_pads(self) -> list[is_pad]:
+        return [pad.get_trait(is_pad) for pad in self.pads_.get().as_list()]
 
     @classmethod
     def MakeChild(cls, pads: list[tuple[str, str]]) -> fabll._ChildField[Self]:
@@ -155,6 +166,21 @@ class GenericFootprint(fabll.Node):
             )
             pad.setup(name, number)
             self.pads_.get().append(pad)
+
+
+def test_generic_footprint(capsys):
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    footprint = GenericFootprint.bind_typegraph(tg=tg).create_instance(g=g)
+    footprint.setup(pads=[("1", "A"), ("2", "B")])
+
+    pads = footprint.get_pads()
+    assert len(pads) == 2
+    assert pads[0].pad_name == "A"
+    assert pads[0].pad_number == "1"
+    assert pads[1].pad_name == "B"
+    assert pads[1].pad_number == "2"
 
 
 # def test_has_associated_footprint():

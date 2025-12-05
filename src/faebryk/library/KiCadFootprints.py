@@ -244,38 +244,25 @@ class has_linked_kicad_footprint(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
     footprint_ = F.Collections.Pointer.MakeChild()
-    transformer_ = F.Parameters.StringParameter.MakeChild()
 
-    @property
-    def footprint(self) -> fabll.Node:
+    def get_footprint(self) -> fabll.Node:
         """Return the KiCad footprint associated with this node"""
         return self.footprint_.get().deref()
 
-    def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_values()[0]
-        )
-        return ctypes.cast(transformer_id, ctypes.py_object).value
-
-    def set_footprint(self, footprint: fabll.Node):
-        # TODO
-        pass
-
     @classmethod
     def MakeChild(
-        cls, footprint: fabll._ChildField[fabll.Node], transformer: "PCB_Transformer"
+        cls, footprint: fabll._ChildField[fabll.Node]
     ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(footprint)
         out.add_dependant(
             F.Collections.Pointer.MakeEdge([out, cls.footprint_], [footprint])
         )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge(
-                [out, cls.transformer_], [str(id(transformer))]
-            )
-        )
         return out
+
+    def setup(self, footprint: fabll.Node):
+        self.footprint_.get().point(footprint)
+        return self
 
 
 class has_linked_kicad_net(fabll.Node):
