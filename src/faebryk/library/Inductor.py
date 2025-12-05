@@ -41,8 +41,13 @@ class Inductor(fabll.Node):
     _can_attatch_to_footprint = fabll.Traits.MakeEdge(
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
+
     for e in unnamed:
-        e.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [e]))
+        lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+        )
+        e.add_dependant(lead)
 
     _can_bridge = fabll.Traits.MakeEdge(
         F.can_bridge.MakeChild(in_=unnamed[0], out_=unnamed[1])

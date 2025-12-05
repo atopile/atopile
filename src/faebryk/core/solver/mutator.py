@@ -1197,10 +1197,7 @@ class Mutator:
     ) -> F.Expressions.is_canonical:
         expr_obj = fabll.Traits(expr).get_obj_raw()
         if expression_factory is None:
-            # TODO this is a hack, we should not do it like this
-            # better build something into is_expression trait that allows copying
-            type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())
-            expression_factory = fabll.TypeNodeBoundTG.__TYPE_NODE_MAP__[type_node].t
+            expression_factory = self.utils.hack_get_expr_type(expr)
 
         if operands is None:
             operands = expr.get_operands()
@@ -1374,7 +1371,8 @@ class Mutator:
         """
         ```
         op(A, ...) -> A
-        op!(A, ...) -> A!
+        op!(E, ...) -> E!
+        op!(P, ...) -> P & P is! True
         ```
         """
         unpacked = (
@@ -1391,7 +1389,14 @@ class Mutator:
             self.get_copy_po(unpacked),
         )
         if expr.try_get_sibling_trait(F.Expressions.is_predicate):
-            self.assert_(out.get_sibling_trait(F.Expressions.is_assertable))
+            if assertable := out.try_get_sibling_trait(F.Expressions.is_assertable):
+                self.assert_(assertable)
+            else:
+                self.utils.alias_to(
+                    out.as_operand.get(),
+                    self.make_lit(True).can_be_operand.get(),
+                    from_ops=[out, expr.as_parameter_operatable.get()],
+                )
         return out
 
     def mutator_neutralize_expressions(
@@ -1711,19 +1716,18 @@ class Mutator:
         new_only: bool = False,
         include_terminated: bool = False,
         required_traits: tuple[type[fabll.NodeT], ...] = (),
-    ) -> set[F.Expressions.is_expression]:
+    ) -> set[F.Expressions.is_expression] | list[F.Expressions.is_expression]:
         # TODO make this first class instead of calling
-        return {
-            e.get_trait(F.Expressions.is_expression)
-            for e in self.get_typed_expressions(
-                t=fabll.Node,
-                sort_by_depth=sort_by_depth,
-                created_only=created_only,
-                new_only=new_only,
-                include_terminated=include_terminated,
-                required_traits=required_traits,
-            )
-        }
+        typed = self.get_typed_expressions(
+            t=fabll.Node,
+            sort_by_depth=sort_by_depth,
+            created_only=created_only,
+            new_only=new_only,
+            include_terminated=include_terminated,
+            required_traits=required_traits,
+        )
+        t = set if isinstance(typed, set) else list
+        return t(e.get_trait(F.Expressions.is_expression) for e in typed)
 
     @property
     def non_copy_mutated(self) -> set[F.Expressions.is_expression]:
@@ -1823,9 +1827,7 @@ class Mutator:
             mapping,
             lambda x: x[0],
             by_eq=True,
-            custom_eq=lambda x, y: bool(
-                x[1].equals(y[1], g=self.G_transient, tg=self.tg_in)
-            ),
+            custom_eq=lambda x, y: x[1].equals(y[1], g=self.G_transient, tg=self.tg_in),
         )
         if dupes:
             raise ContradictionByLiteral(
@@ -1936,8 +1938,12 @@ class Mutator:
         self.algo(self)
 
     def _copy_unmutated(self):
-        # copy full typegraph over
-        self.G_out.insert_subgraph(subgraph=self.tg_in.get_type_subgraph())
+        # TODO we might have new types in tg_in that haven't been copied over yet
+        # but we can't just blindly copy over because tg_out might be modified (pretty
+        # likely)
+        # with the current way of how the get_copy works, tg_out will get the new types
+        # anyway so for now not a huge problem, later when we do smarter node copy we
+        # need to handle this
 
         touched = self.transformations.mutated.keys() | self.transformations.removed
         # TODO might not need to sort

@@ -416,10 +416,10 @@ def merge_intersect_subsets(mutator: Mutator):
         old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
 
         # already exists
-        if contained := intersected.equals(
-            *ss_lits, g=mutator.G_transient, tg=mutator.tg_out
+        if contained := intersected.multi_equals(
+            *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
         ):
-            _, target = contained
+            target = ss_lits[contained[1]][0].is_expression.get()
         else:
             target = mutator.utils.subset_to(
                 param.as_operand.get(),
@@ -979,7 +979,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         # no point in op! is op! (always true)
         if expr.try_get_trait(F.Expressions.is_predicate):
             mutator.create_expression(
-                type(expr),
+                mutator.utils.hack_get_expr_type(expr_e),
                 *operands,
                 assert_=True,
                 allow_uncorrelated=True,

@@ -264,6 +264,19 @@ class InstanceGraphFunctions:
         return edges
 
     @staticmethod
+    def _collect_connection_edges(bound_node: BoundNode) -> list:
+        """Collect all interface connection edges of a node."""
+        edges: list[Any] = []
+
+        def collect(ctx, edge):
+            ctx.append(edge)
+
+        EdgeInterfaceConnection.visit_connected_edges(
+            bound_node=bound_node, ctx=edges, f=collect
+        )
+        return edges
+
+    @staticmethod
     def _build_node_counts(root_bound: BoundNode) -> dict[int, int]:
         """
         Build a mapping of node UUID -> total node count (node + descendants).
@@ -311,6 +324,7 @@ class InstanceGraphFunctions:
         root: BoundNode,
         show_traits: bool = False,
         show_pointers: bool = False,
+        show_connections: bool = False,
         filter_types: list[str] | None = None,
     ) -> str:
         """
@@ -320,6 +334,7 @@ class InstanceGraphFunctions:
             root: A BoundNode instance
             show_traits: If True, also show trait edges (default: False)
             show_pointers: If True, also show pointer edges (default: False)
+            show_connections: If True, also show interface connection edges (default: False)
             filter_types: If provided, only render subtrees under children
                          with these type names (e.g., ["Electrical", "is_module"])
 
@@ -351,15 +366,24 @@ class InstanceGraphFunctions:
         collect_children = InstanceGraphFunctions._collect_children
         collect_trait_edges = InstanceGraphFunctions._collect_trait_edges
         collect_pointer_edges = InstanceGraphFunctions._collect_pointer_edges
+        collect_connection_edges = InstanceGraphFunctions._collect_connection_edges
 
         def get_node_name(bound_node: BoundNode) -> str:
             """Get just the node name (not the full label with type)."""
             key = node_key(bound_node)
             if key in node_names:
                 return node_names[key]
+            # Try direct name attribute first
             if isinstance(name := bound_node.node().get_attr(key="name"), str):
                 node_names[key] = name
                 return name
+            # Try getting name from parent composition edge
+            parent_edge = EdgeComposition.get_parent_edge(bound_node=bound_node)
+            if parent_edge is not None:
+                edge_name = EdgeComposition.get_name(edge=parent_edge.edge())
+                if edge_name:
+                    node_names[key] = edge_name
+                    return edge_name
             # Fallback to showing the node id
             fallback_name = f"<node@{key}>"
             node_names[key] = fallback_name
@@ -425,34 +449,50 @@ class InstanceGraphFunctions:
             return edge_type_names.get(edge_tid, f"?{edge_tid}")
 
         def get_sorted_children(bound_node: BoundNode) -> list:
-            """Get children sorted by target type name, then edge type."""
+            """Get children sorted by target type name, then edge type.
+
+            Returns: list of (edge_name, edge_type_name, target_type, target_bound)
+            """
             children = []
             # Composition edges
             for edge in collect_children(bound_node):
                 edge_name = EdgeComposition.get_name(edge=edge.edge())
                 edge_type_name = get_edge_type_name(edge.edge())
-                # Get target node's type for sorting
                 target_bound = edge.g().bind(node=edge.edge().target())
                 target_type = get_type_name(target_bound) or ""
-                children.append((edge_name, edge, edge_type_name, target_type))
+                children.append((edge_name, edge_type_name, target_type, target_bound))
 
             # Trait edges (if enabled)
             if show_traits:
                 for edge in collect_trait_edges(bound_node):
-                    # Trait edges are anonymous - use → as placeholder
                     target_bound = edge.g().bind(node=edge.edge().target())
                     target_type = get_type_name(target_bound) or ""
-                    children.append(("→", edge, "Trait", target_type))
+                    children.append(("→", "Trait", target_type, target_bound))
 
             # Pointer edges (if enabled)
             if show_pointers:
                 for edge in collect_pointer_edges(bound_node):
                     target_bound = edge.g().bind(node=edge.edge().target())
                     target_type = get_type_name(target_bound) or ""
-                    children.append(("→", edge, "Ptr", target_type))
+                    children.append(("→", "Ptr", target_type, target_bound))
+
+            # Connection edges (if enabled)
+            if show_connections:
+                for edge in collect_connection_edges(bound_node):
+                    # Use get_other_connected_node since connections are bidirectional
+                    other_node = EdgeInterfaceConnection.get_other_connected_node(
+                        edge=edge.edge(), node=bound_node.node()
+                    )
+                    # Skip self-connections (always present on interfaces)
+                    if other_node is not None and other_node != bound_node.node():
+                        target_bound = edge.g().bind(node=other_node)
+                        target_type = get_type_name(target_bound) or ""
+                        # Use target node's name to show what we're connected to
+                        conn_name = get_node_name(target_bound)
+                        children.append((conn_name, "Conn", target_type, target_bound))
 
             # Sort by target type name first, then edge type (Comp before Ptr/Trait)
-            children.sort(key=lambda item: (item[3], item[2]))
+            children.sort(key=lambda item: (item[2], item[1]))
             return children
 
         def count_new_nodes(bound_node: BoundNode, already_counted: set[int]) -> int:
@@ -469,8 +509,7 @@ class InstanceGraphFunctions:
                 seen.add(key)
 
                 total = 1  # Count this node
-                for _, edge, _, _ in get_sorted_children(node):
-                    child_bound = edge.g().bind(node=edge.edge().target())
+                for _, _, _, child_bound in get_sorted_children(node):
                     total += count(child_bound)
                 return total
 
@@ -494,15 +533,14 @@ class InstanceGraphFunctions:
             )
 
         def render_child_list(
-            children: list[tuple[str, Any, str, str]],
+            children: list[tuple[str, str, str, Any]],
             prefix: str,
             path: list[tuple[int, str]],
         ) -> None:
             """Render a list of children, handling visited/shared nodes."""
             total = len(children)
-            for idx, (edge_name, bound_edge, edge_type_name, _) in enumerate(children):
+            for idx, (edge_name, edge_type_name, _, child_bound) in enumerate(children):
                 is_last = idx == total - 1
-                child_bound = bound_edge.g().bind(node=bound_edge.edge().target())
                 child_display_name = edge_name if edge_name else "_"
                 node_label = get_node_label(child_bound)
                 child_key = node_key(child_bound)

@@ -170,7 +170,7 @@ def _process_candidates(
     filtered_candidates = []
     for c in it:
         try:
-            attach(module, c.lcsc_display, check_only=True, get_model=False)
+            attach(module, c.lcsc_display, check_only=True, get_3d_model=False)
             filtered_candidates.append(c)
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)

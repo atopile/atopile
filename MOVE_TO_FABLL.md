@@ -112,3 +112,10 @@ NOTE TO SELF TUESDAY:
 solver todo
 
 - [ ] mark exprs as literal during expr_mutation, then flag to solver that it needs to run flatten_literals afterwards
+
+NOTE TO SELF THURSDAY
+
+- currently going through `test_solver.py`
+  - nick fucked me real gud with his clanker code, but should be ok now
+- running `./test/runpytesttable.sh -m "not slow" test/core/solver/test_solver.py`
+  and then checking test-report.html

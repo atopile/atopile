@@ -24,12 +24,6 @@ from atopile.errors import (
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.documentation.i2c import export_i2c_tree
-from faebryk.exporters.netlist.graph import attach_net_names, attach_nets
-from faebryk.exporters.netlist.kicad.netlist_kicad import (
-    attach_kicad_info,
-    faebryk_netlist_to_kicad,
-)
-from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
@@ -257,33 +251,33 @@ def pick_parts(
     save_part_info_to_pcb(app.g)
 
 
-@muster.register(
-    "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
-)
-def prepare_nets(
-    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
-) -> None:
-    attach_random_designators(app.tg)
-    nets = attach_nets(app.tg)
-    # We have to re-attach the footprints, and subsequently nets, because the first
-    # attachment is typically done before the footprints have been created
-    # and therefore many nets won't be re-attached properly. Also, we just created
-    # and attached them to the design above, so they weren't even there to attach
+# @muster.register(
+#     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
+# )
+# def prepare_nets(
+#     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+# ) -> None:
+#     attach_random_designators(app.tg)
+#     nets = attach_nets(app.tg)
+#     # We have to re-attach the footprints, and subsequently nets, because the first
+#     # attachment is typically done before the footprints have been created
+#     # and therefore many nets won't be re-attached properly. Also, we just created
+#     # and attached them to the design above, so they weren't even there to attach
 
-    pcb.transformer.attach()
+#     pcb.transformer.attach()
 
-    if config.build.keep_net_names:
-        loaded_nets = load_net_names(app.g)
-        nets |= loaded_nets
+#     if config.build.keep_net_names:
+#         loaded_nets = load_net_names(app.g)
+#         nets |= loaded_nets
 
-    attach_net_names(nets)
-    check_net_names(app.tg)
+#     attach_net_names(nets)
+#     check_net_names(app.tg)
 
 
 @muster.register(
     "post-solve-checks",
     description="Running post-solve checks",
-    dependencies=[prepare_nets],
+    dependencies=[pick_parts],
 )
 def post_solve_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -468,26 +462,6 @@ def generate_bom(
         ),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
-
-
-@muster.register(
-    "netlist",
-    dependencies=[build_design],
-    produces_artifact=True,
-)
-def generate_netlist(
-    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
-) -> None:
-    """Generate a netlist for the project."""
-    attach_kicad_info(app.tg)
-
-    fbrk_netlist = make_fbrk_netlist_from_graph(app.g, app.tg)
-    kicad_netlist = faebryk_netlist_to_kicad(fbrk_netlist)
-
-    netlist_path = config.build.paths.netlist
-    netlist_path.parent.mkdir(parents=True, exist_ok=True)
-    kicad.dumps(kicad_netlist, netlist_path)
-
 
 @muster.register(
     name="glb",
@@ -705,7 +679,6 @@ def generate_i2c_tree(
     aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
-        generate_netlist,
         generate_manifest,
         generate_variable_report,
         generate_i2c_tree,

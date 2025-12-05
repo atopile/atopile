@@ -27,6 +27,7 @@ from faebryk.libs.util import (
     ConfigFlagInt,
     KeyErrorAmbiguous,
     groupby,
+    not_none,
     partition,
     unique,
 )
@@ -210,7 +211,13 @@ class MutatorUtils:
             (k_lit, v) for k, v in aliases.items() if (k_lit := self.is_literal(k))
         ]
         if alias_lits:
-            unique_lits = unique(alias_lits, lambda x: x[0])
+            unique_lits = unique(
+                alias_lits,
+                lambda x: x[0],
+                custom_eq=lambda x, y: x.equals(
+                    y, g=self.mutator.G_transient, tg=self.mutator.tg_in
+                ),
+            )
             if len(unique_lits) > 1:
                 raise ContradictionByLiteral(
                     "Multiple alias literals found",
@@ -484,7 +491,9 @@ class MutatorUtils:
         po_lit = self.is_literal(po)
 
         if to_lit and po_lit:
-            if not po.is_subset_of(to):  # type: ignore
+            if not po_lit.is_subset_of(
+                to_lit, g=self.mutator.G_transient, tg=self.mutator.tg_in
+            ):
                 raise ContradictionByLiteral(
                     "Incompatible literal subsets",
                     involved=from_ops,
@@ -831,8 +840,7 @@ class MutatorUtils:
     def is_alias_is_literal(
         po: F.Parameters.is_parameter_operatable,
     ) -> F.Expressions.Is | None:
-        expr = po.get_sibling_trait(F.Expressions.is_expression)
-        if expr is None:
+        if not (expr := po.try_get_sibling_trait(F.Expressions.is_expression)):
             return None
         if not (po_is := fabll.Traits(po).get_obj_raw().try_cast(F.Expressions.Is)):
             return None
@@ -1242,3 +1250,11 @@ class MutatorUtils:
             return new.is_parameter.get()
         else:
             raise TypeError(f"Unknown parameter type: {p_type_repr}")
+
+    @staticmethod
+    def hack_get_expr_type(expr: F.Expressions.is_expression) -> type[fabll.NodeT]:
+        # TODO this is a hack, we should not do it like this
+        # better build something into is_expression trait that allows copying
+        type_node = not_none(fabll.Traits(expr).get_obj_raw().get_type_node())
+        expression_factory = fabll.TypeNodeBoundTG.__TYPE_NODE_MAP__[type_node].t
+        return expression_factory

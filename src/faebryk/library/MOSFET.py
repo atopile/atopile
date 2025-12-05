@@ -48,9 +48,9 @@ class MOSFET(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    source.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [source]))
-    gate.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [gate]))
-    drain.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [drain]))
+    source.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [source]))
+    gate.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [gate]))
+    drain.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [drain]))
 
     designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)

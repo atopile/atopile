@@ -51,7 +51,8 @@ def libtof(ctx: typer.Context, root: Path):
     print(f"Found {len(refactor_files)} files to refactor.")
 
     # TO match:
-    # from faebryk.library.is_kicad_footprint import is_kicad_footprint
+    # from faebryk.library.KiCadFootprints.is_kicad_footprint import
+    # KiCadFootprints.is_kicad_footprint
     # from faebryk.library.has_simple_value_representation import (
     #     has_simple_value_representation,
     # )

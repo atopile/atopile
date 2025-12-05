@@ -189,7 +189,7 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             - Add a trait to a child electrical
 
             unnamed[0].add_dependant(
-                fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [unnamed[0]])
+                fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [unnamed[0]])
             )
         """
         for d in dependant:
@@ -1578,6 +1578,15 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         self.t._create_type(self)
         return typenode
 
+    def get_type_name(self) -> str:
+        return fbrk.EdgeComposition.get_name(
+            edge=not_none(
+                fbrk.EdgeComposition.get_parent_edge(
+                    bound_node=self.get_or_create_type()
+                )
+            ).edge()
+        )
+
     def as_type_node(self) -> "NodeT":
         return self.t.bind_instance(instance=self.get_or_create_type())
 
@@ -1676,7 +1685,8 @@ class TypeNodeBoundTG[N: NodeT, A: NodeAttributes]:
         )
         bound_trait = trait.bind_typegraph(self.tg).get_or_create_type()
         for child in children:
-            if child.get_child_type().node().is_same(other=bound_trait.node()):
+            child_type = child.get_child_type()
+            if child_type.node().is_same(other=bound_trait.node()):
                 return True
         return False
 
@@ -2607,18 +2617,18 @@ def test_kicad_footprint():
     pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
-        F.is_kicad_footprint.bind_typegraph(tg=tg)
+        F.KiCadFootprints.is_kicad_footprint.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup(
             kicad_identifier="libR_0402_1005Metric2",
-            pinmap={pad1: "P1", pad2: "P2"},
+            # pinmap={pad1: "P1", pad2: "P2"},
         )
     )
     print(
         f"kicad_footprint.get_kicad_footprint():"
         f" {kicad_footprint.get_kicad_footprint_identifier()}"
     )
-    print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pin_names()}")
+    print(f"kicad_footprint.get_pin_names(): {kicad_footprint.get_pad_names()}")
 
 
 def test_node_equality():

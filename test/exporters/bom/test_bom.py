@@ -117,7 +117,7 @@ def test_bom_kicad_footprint_lcsc_compact():
     assert (
         m.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
-        .get_trait(F.is_kicad_footprint)
+        .get_trait(F.KiCadFootprints.is_kicad_footprint)
         .get_kicad_footprint_name()
         == "PinHeader_1x02_P2.54mm_Vertical"
     )

@@ -50,6 +50,8 @@ def idempotent_deduplicate(mutator: Mutator):
         sort_by_depth=True, required_traits=(F.Expressions.has_idempotent_operands,)
     )
     for expr in exprs:
+        # TODO i think most idempotent expressions are using sets to represent operands
+        # thus this is never going to trigger
         unique_operands = unique(expr.get_operands(), key=lambda x: x)
         if len(unique_operands) != len(expr.get_operands()):
             mutator.mutate_expression(expr, operands=unique_operands)

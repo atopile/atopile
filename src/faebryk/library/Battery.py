@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 
@@ -25,8 +24,12 @@ class Battery(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "hv"]))
-    power.add_dependant(fabll.Traits.MakeEdge(F.is_lead.MakeChild(), [power, "lv"]))
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "hv"])
+    )
+    power.add_dependant(
+        fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [power, "lv"])
+    )
 
     _single_electric_reference = fabll.Traits.MakeEdge(
         fabll._ChildField(F.has_single_electric_reference)

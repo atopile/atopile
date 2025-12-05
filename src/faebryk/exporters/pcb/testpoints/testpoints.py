@@ -24,7 +24,7 @@ def _get_testpoints(app: fabll.Node) -> list[F.TestPoint]:
         if testpoint.has_trait(F.Footprints.has_associated_footprint)
         and testpoint.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
-        .has_trait(F.is_kicad_footprint)
+        .has_trait(F.KiCadFootprints.is_kicad_footprint)
     ]
 
 

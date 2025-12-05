@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Self, cast
@@ -335,13 +336,26 @@ class is_parameter(fabll.Node):
 
         return out
 
-    def domain_set(self) -> "F.Literals.is_literal":
-        # TODO
-        pass
+    def domain_set(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "F.Literals.is_literal":
+        g = g or self.g
+        tg = tg or self.tg
+        return self.switch_cast().domain_set(g=g, tg=tg).is_literal.get()
 
     def get_likely_constrained(self) -> bool:
         # TODO
         pass
+
+    def switch_cast(
+        self,
+    ) -> "StringParameter | BooleanParameter | EnumParameter | NumericParameter":
+        obj = fabll.Traits(self).get_obj_raw()
+        types = [StringParameter, BooleanParameter, EnumParameter, NumericParameter]
+        for t in types:
+            if x := obj.try_cast(t):
+                return x
+        raise TypeError(f"Unknown parameter type: {obj}")
 
 
 class ParameterIsNotConstrainedToLiteral(Exception):
@@ -399,6 +413,11 @@ class StringParameter(fabll.Node):
             .setup_from_values(*values),
         )
 
+    def domain_set(
+        self, *, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "Literals.Strings":
+        raise NotImplementedError("domain_set not implemented for StringParameter")
+
 
 class BooleanParameter(fabll.Node):
     is_parameter = fabll.Traits.MakeEdge(is_parameter.MakeChild())
@@ -433,6 +452,15 @@ class BooleanParameter(fabll.Node):
         )
 
         self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
+
+    def domain_set(
+        self, *, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "Literals.Booleans":
+        return (
+            F.Literals.Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(True, False)
+        )
 
 
 class EnumParameter(fabll.Node):
@@ -507,6 +535,11 @@ class EnumParameter(fabll.Node):
         if len(enums) != 1:
             raise ValueError("Multiple enum types found")
         return next(iter(enums))
+
+    def domain_set(
+        self, *, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "Literals.AbstractEnums":
+        raise NotImplementedError("domain_set not implemented for EnumParameter")
 
 
 class NumericParameter(fabll.Node):
@@ -654,6 +687,22 @@ class NumericParameter(fabll.Node):
 
         return self.is_parameter_operatable.get().force_extract_literal(
             lit_type=Numbers
+        )
+
+    def domain_set(
+        self, *, g: graph.GraphView, tg: fbrk.TypeGraph
+    ) -> "Literals.Numbers":
+        domain = self.get_domain().get_args()
+        return (
+            F.Literals.Numbers.bind_typegraph(tg=tg)
+            .create_instance(
+                g=g,
+            )
+            .setup_from_min_max(
+                min=-math.inf if domain.negative else 0,
+                max=math.inf,
+                unit=self.get_units(),
+            )
         )
 
 

@@ -38,8 +38,7 @@ class is_literal(fabll.Node):
     @staticmethod
     def _to_lits(*objs: "is_literal | LiteralNodes") -> list["is_literal"]:
         return [
-            o.get_sibling_trait(is_literal) if not isinstance(o, is_literal) else o
-            for o in objs
+            o.is_literal.get() if not isinstance(o, is_literal) else o for o in objs
         ]
 
     @staticmethod
@@ -60,9 +59,11 @@ class is_literal(fabll.Node):
         self: "is_literal | LiteralNodes",
         other: "is_literal | LiteralNodes",
         *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
+        g = g or self.g
+        tg = tg or self.tg
         if objs := is_literal._cmp(self, other):
             return objs[0].is_subset_of(
                 objs[1],  # type: ignore # stupid pylance
@@ -75,9 +76,11 @@ class is_literal(fabll.Node):
         self,
         other: "is_literal | LiteralNodes",
         *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "is_literal":
+        g = g or self.g
+        tg = tg or self.tg
         if objs := is_literal._cmp(self, other):
             return (
                 objs[0]
@@ -94,9 +97,11 @@ class is_literal(fabll.Node):
         self,
         other: "is_literal | LiteralNodes",
         *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "is_literal":
+        g = g or self.g
+        tg = tg or self.tg
         if objs := is_literal._cmp(self, other):
             return (
                 objs[0]
@@ -113,9 +118,11 @@ class is_literal(fabll.Node):
         self,
         other: "is_literal | LiteralNodes",
         *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "is_literal":
+        g = g or self.g
+        tg = tg or self.tg
         if objs := is_literal._cmp(self, other):
             return (
                 objs[0]
@@ -152,13 +159,15 @@ class is_literal(fabll.Node):
             objs_lit,
         )
 
-    def equals(
-        self,
+    def multi_equals(
+        self: "is_literal | LiteralNodes",
         *others: "is_literal | LiteralNodes",
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> tuple[int, "is_literal"] | None:
-        self_c = self.switch_cast()
+        g = g or self.g
+        tg = tg or self.tg
+        self_c = is_literal._to_nodes(self)[0]
         other_nodes = is_literal._to_nodes(*others)
         for i, other_c in enumerate(other_nodes):
             if type(self_c) is not type(other_c):
@@ -170,6 +179,16 @@ class is_literal(fabll.Node):
             ):
                 return i, other_c.is_literal.get()
         return None
+
+    def equals(
+        self: "is_literal | LiteralNodes",
+        other: "is_literal | LiteralNodes",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
+    ) -> bool:
+        g = g or self.g
+        tg = tg or self.tg
+        return bool(is_literal.multi_equals(self, other, g=g, tg=tg))
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
         return self.is_singleton() == singleton
@@ -196,11 +215,14 @@ class is_literal(fabll.Node):
         return super().__eq__(other)
 
     def switch_cast(self) -> "LiteralNodes":
-        types = [Strings, Numbers, Booleans, AbstractEnums]
+        # FIXME Enums check won't work like this
+        types = [Strings, Numbers, Booleans]
         obj = fabll.Traits(self).get_obj_raw()
         for t in types:
             if obj.isinstance(t):
                 return obj.cast(t)
+        if enum := AbstractEnums.try_cast_to_enum(self):
+            return enum
 
         raise ValueError(f"Cannot cast literal {self} of type {obj} to any of {types}")
 
@@ -324,8 +346,14 @@ class Strings(fabll.Node):
         return set(self.get_values()) <= set(other.get_values())
 
     def op_intersect_intervals(
-        self, other: "Strings", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Strings",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Strings":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Strings.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -333,8 +361,14 @@ class Strings(fabll.Node):
         )
 
     def op_union_intervals(
-        self, other: "Strings", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Strings",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Strings":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Strings.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -342,8 +376,14 @@ class Strings(fabll.Node):
         )
 
     def op_symmetric_difference_intervals(
-        self, other: "Strings", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Strings",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Strings":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Strings.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -571,11 +611,17 @@ class NumericInterval(fabll.Node):
         )
 
     def op_add(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericInterval":
         """
         Arithmetically adds two intervals.
         """
+        g = g or self.g
+        tg = tg or self.tg
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
             min=self.get_min_value() + other.get_min_value(),
@@ -583,10 +629,14 @@ class NumericInterval(fabll.Node):
         )
         return numeric_interval
 
-    def op_negate(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericInterval":
+    def op_negate(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericInterval":
         """
         Arithmetically negates a interval.
         """
+        g = g or self.g
+        tg = tg or self.tg
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
             min=-self.get_max_value(),
@@ -595,19 +645,31 @@ class NumericInterval(fabll.Node):
         return numeric_interval
 
     def op_subtract(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericInterval":
         """
         Arithmetically subtracts a interval from another interval.
         """
-        return self.op_add(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
+        g = g or self.g
+        tg = tg or self.tg
+        return self.op_add(other.op_negate(g=g, tg=tg), g=g, tg=tg)
 
     def op_multiply(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericInterval":
         """
         Arithmetically multiplies two intervals.
         """
+        g = g or self.g
+        tg = tg or self.tg
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
 
         self_min = self.get_min_value()
@@ -645,10 +707,14 @@ class NumericInterval(fabll.Node):
         )
         return numeric_interval
 
-    def op_invert(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
+    def op_invert(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericSet":
         """
         Arithmetically inverts a interval (1/x).
         """
+        g = g or self.g
+        tg = tg or self.tg
         _min = self.get_min_value()
         _max = self.get_max_value()
 
@@ -673,22 +739,29 @@ class NumericInterval(fabll.Node):
             return numeric_set.setup_from_values(values=[(1 / _max, 1 / _min)])
 
     def op_pow(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        *others: "NumericInterval",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         base = self
-        exp = other
+        exp = others[0]
+        if len(others) > 1:
+            exp = exp.op_multiply(*others[1:], g=g, tg=tg)
         base_min = self.get_min_value()
         base_max = self.get_max_value()
-        exp_min = other.get_min_value()
-        exp_max = other.get_max_value()
+        exp_min = exp.get_min_value()
+        exp_max = exp.get_max_value()
 
         if exp_max < 0:
-            return base.op_pow(g=g, tg=tg, other=exp.op_negate(g=g, tg=tg)).op_invert(
+            return base.op_pow(exp.op_negate(g=g, tg=tg), g=g, tg=tg).op_invert(
                 g=g, tg=tg
             )
         if exp_min < 0:
             raise NotImplementedError("crossing zero in exp not implemented yet")
-        if base_min < 0 and not other.is_integer():
+        if base_min < 0 and not exp.is_integer():
             raise NotImplementedError(
                 "cannot raise negative base to fractional exponent (complex result)"
             )
@@ -728,17 +801,20 @@ class NumericInterval(fabll.Node):
 
     def op_divide(
         self: "NumericInterval",
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
         other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
         """
         Arithmetically divides a interval by another interval.
         """
+        g = g or self.g
+        tg = tg or self.tg
         other_intervals = other.op_invert(g=g, tg=tg).get_intervals()
         products = []
         for other_interval in other_intervals:
-            products.append(self.op_multiply(g=g, tg=tg, other=other_interval))
+            products.append(self.op_multiply(other_interval, g=g, tg=tg))
 
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         numeric_set.setup(intervals=products)
@@ -746,11 +822,17 @@ class NumericInterval(fabll.Node):
         return numeric_set
 
     def op_intersect(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
         """
         Set intersects two intervals.
         """
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         min_ = max(self.get_min_value(), other.get_min_value())
         max_ = min(self.get_max_value(), other.get_max_value())
@@ -761,11 +843,17 @@ class NumericInterval(fabll.Node):
         return numeric_set
 
     def op_difference(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
         """
         Set difference of two intervals.
         """
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
 
         # no overlap
@@ -802,8 +890,14 @@ class NumericInterval(fabll.Node):
         )
 
     def op_round(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, ndigits: int = 0
+        self,
+        ndigits: int = 0,
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericInterval":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         numeric_interval.setup(
             min=Numeric.float_round(self.get_min_value(), ndigits),
@@ -811,7 +905,11 @@ class NumericInterval(fabll.Node):
         )
         return numeric_interval
 
-    def op_abs(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericInterval":
+    def op_abs(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericInterval":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         # case 1: crosses zero
         if self.get_min_value() < 0 < self.get_max_value():
@@ -838,7 +936,11 @@ class NumericInterval(fabll.Node):
         assert self.get_min_value() >= 0 and self.get_max_value() >= 0
         return self
 
-    def op_log(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericInterval":
+    def op_log(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericInterval":
+        g = g or self.g
+        tg = tg or self.tg
         if self.get_min_value() <= 0:
             raise ValueError(f"invalid log of {self}")
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
@@ -879,7 +981,11 @@ class NumericInterval(fabll.Node):
         sine_values = [math.sin(x) for x in xs]
         return (min(sine_values), max(sine_values))
 
-    def op_sine(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericInterval":
+    def op_sine(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericInterval":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_interval = NumericInterval.create_instance(g=g, tg=tg)
         min, max = NumericInterval.sine_on_interval(
             (float(self.get_min_value()), float(self.get_max_value()))
@@ -1087,7 +1193,7 @@ class TestNumericInterval:
         other_min_value = -0.5
         other_max_value = 1.5
         other.setup(min=other_min_value, max=other_max_value)
-        assert numeric_interval.is_subset_of(other=other)
+        assert numeric_interval.is_subset_of(other)
 
     def test_is_subset_of_false(self):
         g = graph.GraphView.create()
@@ -1100,7 +1206,7 @@ class TestNumericInterval:
         other_min_value = 1.5
         other_max_value = 2.5
         other.setup(min=other_min_value, max=other_max_value)
-        assert not numeric_interval.is_subset_of(other=other)
+        assert not numeric_interval.is_subset_of(other)
 
     def test_op_add(self):
         g = graph.GraphView.create()
@@ -1260,7 +1366,7 @@ class TestNumericInterval:
         exp_min_value = 1.0
         exp_max_value = 2.0
         exp.setup(min=exp_min_value, max=exp_max_value)
-        result = base.op_pow(g=g, tg=tg, other=exp)
+        result = base.op_pow(exp, g=g, tg=tg)
         assert len(result.get_intervals()) == 1
         assert result.get_intervals()[0].get_min_value() == 2.0
         assert result.get_intervals()[0].get_max_value() == 16.0
@@ -1665,17 +1771,29 @@ class NumericSet(fabll.Node):
         return other.is_superset_of(g=g, tg=tg, other=self)
 
     def op_intersect(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
-            intervals.append(interval.op_intersect(g=g, tg=tg, other=other))
+            intervals.append(interval.op_intersect(other, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def op_intersect_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         self_intervals = self.get_intervals()
         other_intervals = other.get_intervals()
@@ -1685,7 +1803,7 @@ class NumericSet(fabll.Node):
             rs, ro = self_intervals[s], other_intervals[o]
             rs_min, rs_max = rs.get_min_value(), rs.get_max_value()
             ro_min, ro_max = ro.get_min_value(), ro.get_max_value()
-            intersect = rs.op_intersect(g=g, tg=tg, other=ro)
+            intersect = rs.op_intersect(ro, g=g, tg=tg)
             if not intersect.is_empty():
                 result.append(intersect)
 
@@ -1709,40 +1827,70 @@ class NumericSet(fabll.Node):
         return numeric_set.setup(intervals=result)
 
     def op_union(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = self.get_intervals() + other.get_intervals()
         return numeric_set.setup(intervals=list(intervals))
 
     def op_difference_interval(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericInterval"
+        self,
+        other: "NumericInterval",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
-            intervals.append(interval.op_difference(g=g, tg=tg, other=other))
+            intervals.append(interval.op_difference(other, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
     def op_difference_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         # TODO there is probably a more efficient way to do this
         out = self
         for o in other.get_intervals():
-            out = out.op_difference_interval(g=g, tg=tg, other=o)
+            out = out.op_difference_interval(o, g=g, tg=tg)
         return out
 
     def op_symmetric_difference_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
-        return self.op_union(g=g, tg=tg, other=other).op_difference_intervals(
-            g=g, tg=tg, other=self.op_intersect_intervals(g=g, tg=tg, other=other)
+        g = g or self.g
+        tg = tg or self.tg
+        return self.op_union(other, g=g, tg=tg).op_difference_intervals(
+            other=self.op_intersect_intervals(other, g=g, tg=tg), g=g, tg=tg
         )
 
     def op_pow(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
 
         self_intervals = self.get_intervals()
@@ -1751,21 +1899,31 @@ class NumericSet(fabll.Node):
         out = []
         for self_interval in self_intervals:
             for other_interval in other_intervals:
-                out.append(self_interval.op_pow(g=g, tg=tg, other=other_interval))
+                out.append(self_interval.op_pow(other_interval, g=g, tg=tg))
 
         return numeric_set.setup(intervals=out)
 
     def op_add(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for self_interval in self.get_intervals():
             for other_interval in other.get_intervals():
-                intervals.append(self_interval.op_add(g=g, tg=tg, other=other_interval))
+                intervals.append(self_interval.op_add(other_interval, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
-    def op_negate(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
+    def op_negate(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
@@ -1773,23 +1931,37 @@ class NumericSet(fabll.Node):
         return numeric_set.setup(intervals=intervals)
 
     def op_subtract(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
-        return self.op_add(g=g, tg=tg, other=other.op_negate(g=g, tg=tg))
+        g = g or self.g
+        tg = tg or self.tg
+        return self.op_add(other.op_negate(g=g, tg=tg), g=g, tg=tg)
 
     def op_multiply(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for self_interval in self.get_intervals():
             for other_interval in other.get_intervals():
-                intervals.append(
-                    self_interval.op_multiply(g=g, tg=tg, other=other_interval)
-                )
+                intervals.append(self_interval.op_multiply(other_interval, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
-    def op_invert(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
+    def op_invert(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
@@ -1798,15 +1970,24 @@ class NumericSet(fabll.Node):
 
     def op_div_intervals(
         self: "NumericSet",
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
         other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
-        return self.op_multiply(g=g, tg=tg, other=other.op_invert(g=g, tg=tg))
+        g = g or self.g
+        tg = tg or self.tg
+        return self.op_multiply(other.op_invert(g=g, tg=tg), g=g, tg=tg)
 
     def op_ge_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         if self.is_empty() or other.is_empty():
             return (
                 Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values()
@@ -1830,8 +2011,14 @@ class NumericSet(fabll.Node):
         )
 
     def op_gt_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         if self.is_empty() or other.is_empty():
             return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
         if self.get_min_value() > other.get_max_value():
@@ -1853,8 +2040,14 @@ class NumericSet(fabll.Node):
         )
 
     def op_le_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         if self.is_empty() or other.is_empty():
             return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
         if self.get_max_value() <= other.get_min_value():
@@ -1876,8 +2069,14 @@ class NumericSet(fabll.Node):
         )
 
     def op_lt_intervals(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, other: "NumericSet"
+        self,
+        other: "NumericSet",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         if self.is_empty() or other.is_empty():
             return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
         if self.get_max_value() < other.get_min_value():
@@ -1899,29 +2098,47 @@ class NumericSet(fabll.Node):
         )
 
     def op_round(
-        self, g: graph.GraphView, tg: fbrk.TypeGraph, ndigits: int = 0
+        self,
+        ndigits: int = 0,
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
-            intervals.append(interval.op_round(g=g, tg=tg, ndigits=ndigits))
+            intervals.append(interval.op_round(ndigits=ndigits, g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
-    def op_abs(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
+    def op_abs(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_abs(g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
-    def op_log(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
+    def op_log(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
             intervals.append(interval.op_log(g=g, tg=tg))
         return numeric_set.setup(intervals=intervals)
 
-    def op_sin(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
+    def op_sin(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "NumericSet":
+        g = g or self.g
+        tg = tg or self.tg
         numeric_set = NumericSet.create_instance(g=g, tg=tg)
         intervals = []
         for interval in self.get_intervals():
@@ -2186,7 +2403,7 @@ class TestNumericSet:
         numeric_set_1.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
         numeric_set_2 = NumericSet.create_instance(g=g, tg=tg)
         numeric_set_2.setup_from_values(values=[(0.0, 1.0), (1.0, 2.0)])
-        result = numeric_set_1.op_pow(g=g, tg=tg, other=numeric_set_2)
+        result = numeric_set_1.op_pow(numeric_set_2, g=g, tg=tg)
         intervals = result.get_intervals()
         assert len(intervals) == 1
         assert intervals[0].get_min_value() == 0.0
@@ -2843,12 +3060,18 @@ class Numbers(fabll.Node):
         )
 
     def op_intersect_interval(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Compute the intersection of this quantity set with another.
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -2863,7 +3086,9 @@ class Numbers(fabll.Node):
 
     @staticmethod
     def op_intersect_intervals(
-        *others: "Numbers", g: graph.GraphView, tg: fbrk.TypeGraph
+        *others: "Numbers",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Compute the intersection of multiple quantity sets.
@@ -2871,18 +3096,26 @@ class Numbers(fabll.Node):
         """
         if not others:
             raise ValueError("intersect_all requires at least one quantity set")
+        g = g or others[0].g
+        tg = tg or others[0].tg
         result = others[0]
         for other in others[1:]:
-            result = result.op_intersect_interval(g=g, tg=tg, other=other)
+            result = result.op_intersect_interval(other, g=g, tg=tg)
         return result
 
     def op_union_interval(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Compute the union of this quantity set with another.
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -2897,7 +3130,9 @@ class Numbers(fabll.Node):
 
     @staticmethod
     def op_union_intervals(
-        *others: "Numbers", g: graph.GraphView, tg: fbrk.TypeGraph
+        *others: "Numbers",
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Compute the union of multiple quantity sets.
@@ -2905,19 +3140,27 @@ class Numbers(fabll.Node):
         """
         if not others:
             raise ValueError("union_all requires at least one quantity set")
+        g = g or others[0].g
+        tg = tg or others[0].tg
         result = others[0]
         for other in others[1:]:
-            result = result.op_union_interval(g=g, tg=tg, other=other)
+            result = result.op_union_interval(other, g=g, tg=tg)
         return result
 
     def op_difference_intervals(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Compute the set difference of this quantity set minus another.
         Returns elements that are in self but not in other.
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3015,9 +3258,15 @@ class Numbers(fabll.Node):
         )
 
     def op_add_intervals(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """Arithmetically add two quantity sets. Units must be commensurable."""
+        g = g or self.g
+        tg = tg or self.tg
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_add(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3029,12 +3278,18 @@ class Numbers(fabll.Node):
         )
 
     def op_mul_intervals(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Arithmetically multiply two quantity sets.
         Result unit is self.unit * other.unit.
         """
+        g = g or self.g
+        tg = tg or self.tg
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_multiply(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3048,11 +3303,15 @@ class Numbers(fabll.Node):
             unit=result_unit,
         )
 
-    def op_negate(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_negate(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Arithmetically negate this quantity set (multiply by -1).
         Unit remains the same.
         """
+        g = g or self.g
+        tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_negate(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -3061,12 +3320,18 @@ class Numbers(fabll.Node):
         )
 
     def op_subtract_intervals(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Subtract another quantity set from this one.
         Units must be commensurable. Result has the unit of self.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3079,11 +3344,15 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_invert(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_invert(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Invert this quantity set (1/x).
         Unit is also inverted.
         """
+        g = g or self.g
+        tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_invert(g=g, tg=tg)
         inverted_unit = self.get_is_unit().op_invert(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
@@ -3093,15 +3362,21 @@ class Numbers(fabll.Node):
         )
 
     def op_div_intervals(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Divide this quantity set by another.
         Result unit is self.unit / other.unit.
         Unlike add/subtract, division doesn't require commensurable units.
         """
+        g = g or self.g
+        tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_div_intervals(
-            g=g, tg=tg, other=other.get_numeric_set()
+            other=other.get_numeric_set(), g=g, tg=tg
         )
         divided_unit = self.get_is_unit().op_divide(
             g=g, tg=tg, other=other.get_is_unit()
@@ -3113,13 +3388,19 @@ class Numbers(fabll.Node):
         )
 
     def op_pow_intervals(
-        self, exponent: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        exponent: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Raise this quantity set to a power.
         Exponent must be dimensionless. If exponent is a range (not single value),
         then the base must also be dimensionless.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not exponent.get_is_unit().is_dimensionless():
             raise ValueError("exponent must have dimensionless units")
 
@@ -3134,7 +3415,7 @@ class Numbers(fabll.Node):
         exp_value = int(exp_numeric.get_min_value())
         result_unit = self.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
 
-        out_numeric_set = self.get_numeric_set().op_pow(g, tg, other=exp_numeric)
+        out_numeric_set = self.get_numeric_set().op_pow(exp_numeric, g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
@@ -3142,24 +3423,34 @@ class Numbers(fabll.Node):
         )
 
     def op_round(
-        self, *, ndigits: int = 0, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        *,
+        ndigits: int = 0,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Round this quantity set to the specified number of decimal places.
         Unit remains the same.
         """
-        out_numeric_set = self.get_numeric_set().op_round(g=g, tg=tg, ndigits=ndigits)
+        g = g or self.g
+        tg = tg or self.tg
+        out_numeric_set = self.get_numeric_set().op_round(ndigits=ndigits, g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
             unit=self.get_is_unit(),
         )
 
-    def op_abs(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_abs(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Take the absolute value of this quantity set.
         Unit remains the same.
         """
+        g = g or self.g
+        tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_abs(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -3167,11 +3458,15 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_log(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_log(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Take the natural logarithm of this quantity set.
         Unit remains the same (should be dimensionless for physical meaning).
         """
+        g = g or self.g
+        tg = tg or self.tg
         out_numeric_set = self.get_numeric_set().op_log(g=g, tg=tg)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -3179,11 +3474,15 @@ class Numbers(fabll.Node):
             unit=self.get_is_unit(),
         )
 
-    def op_sqrt(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_sqrt(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Take the square root of this quantity set.
         Equivalent to raising to the power of 0.5.
         """
+        g = g or self.g
+        tg = tg or self.tg
         # Create a dimensionless quantity set with value 0.5
         from faebryk.library.Units import Dimensionless
 
@@ -3192,12 +3491,16 @@ class Numbers(fabll.Node):
         half.setup_from_min_max(min=0.5, max=0.5, unit=dimensionless_unit.is_unit.get())
         return self.op_pow_intervals(g=g, tg=tg, exponent=half)
 
-    def op_sin(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_sin(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Take the sine of this quantity set.
         Input must be in radians.
         Result is dimensionless.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_angular():
             raise ValueError("sin only defined for quantities in radians")
         out_numeric_set = self.get_numeric_set().op_sin(g=g, tg=tg)
@@ -3211,13 +3514,17 @@ class Numbers(fabll.Node):
             unit=dimensionless_unit.is_unit.get(),
         )
 
-    def op_cos(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_cos(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Take the cosine of this quantity set.
         Input must be in radians.
         Computed as sin(x + pi/2).
         Result is dimensionless.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_angular():
             raise ValueError("cos only defined for quantities in radians")
         # Create pi/2 offset in radians
@@ -3228,32 +3535,44 @@ class Numbers(fabll.Node):
         shifted = self.op_add_intervals(g=g, tg=tg, other=pi_half)
         return shifted.op_sin(g=g, tg=tg)
 
-    def op_floor(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_floor(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Floor this quantity set (round down to nearest integer).
         Computed as round(x - 0.5).
         """
+        g = g or self.g
+        tg = tg or self.tg
         half = Numbers.create_instance(g=g, tg=tg)
         half.setup_from_min_max(min=0.5, max=0.5, unit=self.get_is_unit())
         shifted = self.op_subtract_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
-    def op_ceil(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_ceil(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Ceiling this quantity set (round up to nearest integer).
         Computed as round(x + 0.5).
         """
+        g = g or self.g
+        tg = tg or self.tg
         half = Numbers.create_instance(g=g, tg=tg)
         half.setup_from_min_max(min=0.5, max=0.5, unit=self.get_is_unit())
         shifted = self.op_add_intervals(g=g, tg=tg, other=half)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
-    def op_total_span(self, *, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
+    def op_total_span(
+        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+    ) -> "Numbers":
         """
         Returns the total span of all intervals in this disjoint set.
         For a single interval, this is equivalent to max - min.
         For multiple intervals, this sums the spans of each disjoint interval.
         """
+        g = g or self.g
+        tg = tg or self.tg
         intervals = self.get_numeric_set().get_intervals()
         total = sum(
             abs(interval.get_max_value() - interval.get_min_value())
@@ -3263,13 +3582,19 @@ class Numbers(fabll.Node):
         return result.setup_from_min_max(min=total, max=total, unit=self.get_is_unit())
 
     def op_symmetric_difference_intervals(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Compute the symmetric difference of this quantity set with another.
         Returns intervals that are in one set but not both.
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3287,8 +3612,8 @@ class Numbers(fabll.Node):
         other: "Numbers",
         *,
         relative: bool = False,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Calculate the deviation between this quantity set and another.
@@ -3304,7 +3629,9 @@ class Numbers(fabll.Node):
             A Numbers representing the deviation (single value).
             If relative=True, result is dimensionless.
         """
-        sym_diff = self.op_symmetric_difference_intervals(g=g, tg=tg, other=other)
+        g = g or self.g
+        tg = tg or self.tg
+        sym_diff = self.op_symmetric_difference_intervals(other, g=g, tg=tg)
         deviation = sym_diff.op_total_span(g=g, tg=tg)
 
         if relative:
@@ -3387,7 +3714,11 @@ class Numbers(fabll.Node):
         )
 
     def op_greater_or_equal(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """
         Check if self >= other (greater than or equal).
@@ -3397,6 +3728,8 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3405,7 +3738,11 @@ class Numbers(fabll.Node):
         )
 
     def op_greater_than(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """
         Check if self > other (greater than).
@@ -3415,6 +3752,8 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3423,7 +3762,11 @@ class Numbers(fabll.Node):
         )
 
     def op_le(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """
         Check if self <= other (less than or equal).
@@ -3433,6 +3776,8 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3441,7 +3786,11 @@ class Numbers(fabll.Node):
         )
 
     def op_lt(
-        self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """
         Check if self < other (less than).
@@ -3451,6 +3800,8 @@ class Numbers(fabll.Node):
         - [True, False] if uncertain (ranges overlap)
         Units must be commensurable.
         """
+        g = g or self.g
+        tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
             raise ValueError("incompatible units")
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
@@ -3462,8 +3813,8 @@ class Numbers(fabll.Node):
         self,
         bit_position: "Numbers",
         *,
-        g: graph.GraphView,
-        tg: fbrk.TypeGraph,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """
         Check if a specific bit is set in the value.
@@ -3471,7 +3822,8 @@ class Numbers(fabll.Node):
         If either is not a single element, returns Booleans(False, True)
         indicating uncertainty.
         """
-
+        g = g or self.g
+        tg = tg or self.tg
         if not self.is_singleton() or not bit_position.is_singleton():
             # Uncertain result when either is a range
             return (
@@ -4759,8 +5111,14 @@ class Counts(fabll.Node):
         return set(self.get_values()) == set(other.get_values())
 
     def op_intersect_intervals(
-        self, other: "Counts", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Counts",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Counts":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Counts.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -4770,8 +5128,14 @@ class Counts(fabll.Node):
         )
 
     def op_union_intervals(
-        self, other: "Counts", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Counts",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Counts":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Counts.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -4781,8 +5145,14 @@ class Counts(fabll.Node):
         )
 
     def op_symmetric_difference_intervals(
-        self, other: "Counts", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Counts",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Counts":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Counts.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -5038,8 +5408,15 @@ class Booleans(fabll.Node):
         """Check if this set contains no values."""
         return len(self.values.get().as_list()) == 0
 
-    def op_not(self, *, g: "graph.GraphView", tg: "fbrk.TypeGraph") -> "Booleans":
+    def op_not(
+        self,
+        *,
+        g: "graph.GraphView | None" = None,
+        tg: "fbrk.TypeGraph | None" = None,
+    ) -> "Booleans":
         """Logical NOT of all values in this set."""
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -5047,9 +5424,15 @@ class Booleans(fabll.Node):
         )
 
     def op_and(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """Logical AND of all combinations of values from both sets."""
+        g = g or self.g
+        tg = tg or self.tg
         result = set()
         for v1 in self.get_values():
             for v2 in other.get_values():
@@ -5061,9 +5444,15 @@ class Booleans(fabll.Node):
         )
 
     def op_or(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """Logical OR of all combinations of values from both sets."""
+        g = g or self.g
+        tg = tg or self.tg
         result = set()
         for v1 in self.get_values():
             for v2 in other.get_values():
@@ -5075,9 +5464,15 @@ class Booleans(fabll.Node):
         )
 
     def op_xor(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """Logical XOR of all combinations of values from both sets."""
+        g = g or self.g
+        tg = tg or self.tg
         result = set()
         for v1 in self.get_values():
             for v2 in other.get_values():
@@ -5089,9 +5484,15 @@ class Booleans(fabll.Node):
         )
 
     def op_implies(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         """Logical implication (self -> other) for all combinations."""
+        g = g or self.g
+        tg = tg or self.tg
         result = set()
         for v1 in self.get_values():
             for v2 in other.get_values():
@@ -5138,8 +5539,14 @@ class Booleans(fabll.Node):
         return set(self.get_values()) <= set(other.get_values())
 
     def op_intersect_intervals(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -5147,8 +5554,14 @@ class Booleans(fabll.Node):
         )
 
     def op_union_intervals(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -5156,8 +5569,14 @@ class Booleans(fabll.Node):
         )
 
     def op_symmetric_difference_intervals(
-        self, other: "Booleans", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "Booleans",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
+        g = g or self.g
+        tg = tg or self.tg
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
@@ -5199,12 +5618,17 @@ class EnumValue(fabll.Node):
         return self.value_.get().deref().cast(Strings).get_values()[0]
 
 
+class is_enum_type(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
 class AbstractEnums(fabll.Node):
     from faebryk.library.Parameters import can_be_operand as can_be_operandT
 
     is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
     can_be_operand = fabll.Traits.MakeEdge(can_be_operandT.MakeChild())
     values = F.Collections.PointerSet.MakeChild()
+    is_enum_type = fabll.Traits.MakeEdge(is_enum_type.MakeChild()).put_on_type()
 
     @staticmethod
     def get_enum_value(s: fabll.TypeNodeBoundTG, enum_member: Enum) -> EnumValue:
@@ -5331,24 +5755,42 @@ class AbstractEnums(fabll.Node):
         return set(self.get_values()) <= set(other.get_values())
 
     def op_intersect_intervals(
-        self, other: "AbstractEnums", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "AbstractEnums",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "AbstractEnums":
+        g = g or self.g
+        tg = tg or self.tg
         # TODO
         raise NotImplementedError(
             "op_intersect_intervals not implemented for AbstractEnums"
         )
 
     def op_union_intervals(
-        self, other: "AbstractEnums", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "AbstractEnums",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "AbstractEnums":
+        g = g or self.g
+        tg = tg or self.tg
         # TODO
         raise NotImplementedError(
             "op_union_intervals not implemented for AbstractEnums"
         )
 
     def op_symmetric_difference_intervals(
-        self, other: "AbstractEnums", *, g: graph.GraphView, tg: fbrk.TypeGraph
+        self,
+        other: "AbstractEnums",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "AbstractEnums":
+        g = g or self.g
+        tg = tg or self.tg
         # TODO
         raise NotImplementedError(
             "op_symmetric_difference_intervals not implemented for AbstractEnums"
@@ -5359,6 +5801,18 @@ class AbstractEnums(fabll.Node):
         if len(values) == 1:
             return values[0]
         return str(values)
+
+    @staticmethod
+    def try_cast_to_enum(lit: "is_literal") -> "AbstractEnums | None":
+        # TODO might want to improve this
+        obj = fabll.Traits(lit).get_obj_raw()
+        if not (
+            fabll.TypeNodeBoundTG.try_get_trait_of_type(
+                is_enum_type, not_none(obj.get_type_node())
+            )
+        ):
+            return None
+        return AbstractEnums.bind_instance(instance=obj.instance)
 
 
 @once
@@ -5822,6 +6276,8 @@ def test_enums():
     assert elements[3].value == MyEnum.D.value
 
     assert enum_lit.get_values() == ["a", "d"]
+
+    assert AbstractEnums.try_cast_to_enum(enum_lit.is_literal.get())
 
 
 # def test_make_lit():
