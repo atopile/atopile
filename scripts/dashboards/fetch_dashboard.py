@@ -20,18 +20,20 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 import zipfile
-import re
+from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import webbrowser
-import shutil
-import subprocess
+from zoneinfo import ZoneInfo
 
 
 WORKFLOW_FILENAME = "pytest.yml"  # GitHub workflow file name
@@ -195,6 +197,20 @@ def parse_pytest_html_summary(html_text: str) -> dict:
     return summary
 
 
+def format_commit_time(iso_time: str) -> str:
+    """Format ISO timestamp to human-readable PST time."""
+    try:
+        # Parse ISO 8601 timestamp (GitHub returns UTC)
+        dt = datetime.fromisoformat(iso_time.replace("Z", "+00:00"))
+        # Convert to PST (Pacific Standard Time)
+        pst = ZoneInfo("America/Los_Angeles")
+        dt_pst = dt.astimezone(pst)
+        # Format: "Nov 20, 2025 at 3:45 PM PST"
+        return dt_pst.strftime("%b %d, %Y at %I:%M %p %Z")
+    except Exception:
+        return iso_time
+
+
 def inject_run_metadata(summary: dict, run: dict) -> None:
     head_commit = run.get("head_commit") or {}
     status = run.get("conclusion") or run.get("status")
@@ -209,9 +225,13 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
     if "run_url" not in summary:
         summary["run_url"] = ""
 
-    commit_time = head_commit.get("timestamp") or run.get("updated_at") or run.get("created_at")
+    commit_time = (
+        head_commit.get("timestamp")
+        or run.get("updated_at")
+        or run.get("created_at")
+    )
     if commit_time:
-        summary["commit_time"] = commit_time
+        summary["commit_time"] = format_commit_time(commit_time)
     if "commit_time" not in summary:
         summary["commit_time"] = "unknown"
 
@@ -221,9 +241,15 @@ def inject_run_metadata(summary: dict, run: dict) -> None:
     if "commit_message" not in summary:
         summary["commit_message"] = "unknown"
 
-    author = (head_commit.get("author") or {}).get("name") or (head_commit.get("author") or {}).get("email")
+    author = (
+        (head_commit.get("author") or {}).get("name")
+        or (head_commit.get("author") or {}).get("email")
+    )
     if not author:
-        author = (head_commit.get("committer") or {}).get("name") or (head_commit.get("committer") or {}).get("email")
+        author = (
+            (head_commit.get("committer") or {}).get("name")
+            or (head_commit.get("committer") or {}).get("email")
+        )
     if author:
         summary["commit_author"] = author
     if "commit_author" not in summary:
@@ -286,32 +312,303 @@ def build_html(summary: dict) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pytest results</title>
   <style>
-    body {{ font-family: Arial, sans-serif; padding: 24px; max-width: 720px; margin: auto; color: #e8ecff; background: #070a23; }}
-    h1 {{ margin-bottom: 8px; }}
-    .status {{ font-size: 1rem; margin-bottom: 16px; }}
-    .pill {{ display: inline-block; padding: 4px 10px; border-radius: 9999px; font-weight: 600; background: #f95015; color: #070a23; }}
-    .bar {{ display: flex; height: 24px; border-radius: 12px; overflow: hidden; background: #0f1335; box-shadow: inset 0 1px 2px rgba(0,0,0,0.2); }}
-    .seg {{ height: 100%; }}
-    ul {{ list-style: none; padding: 0; margin: 12px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }}
-    li {{ background: #0f1433; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
-    .label {{ color: #cbd3ff; }}
-    .count {{ font-weight: 700; float: right; color: #ffffff; }}
-    .meta a {{ color: #f95015; text-decoration: none; }}
-    .mascot {{ display: flex; justify-content: center; margin: 24px 0; }}
-    .mascot img {{ max-width: 240px; width: 60%; height: auto; }}
+    :root {{
+      --bg: #020703;
+      --panel: rgba(4, 18, 10, 0.82);
+      --border: #1c3a25;
+      --phosphor: #b4ffb0;
+      --muted: #7acb8e;
+      --accent: #d4ffd7;
+      --danger: #ff6b6b;
+    }}
+    * {{
+      box-sizing: border-box;
+    }}
+    body {{
+      margin: 0;
+      padding: 48px;
+      min-height: 100vh;
+      font-family: "IBM Plex Mono", "Fira Code", "SFMono-Regular", monospace;
+      background:
+        radial-gradient(circle at 50% 15%, rgba(30, 70, 40, 0.35), transparent 40%),
+        radial-gradient(circle at 20% 80%, rgba(12, 40, 20, 0.35), transparent 35%),
+        radial-gradient(circle at 80% 70%, rgba(8, 25, 15, 0.3), transparent 45%),
+        #020703;
+      color: var(--phosphor);
+      text-shadow: 0 0 12px rgba(158, 252, 141, 0.45), 0 0 28px rgba(158, 252, 141, 0.25);
+      overflow: hidden;
+      position: relative;
+      cursor: none;
+    }}
+    body::before {{
+      content: "";
+      position: fixed;
+      inset: -80px;
+      background: radial-gradient(circle at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.65) 90%);
+      pointer-events: none;
+      z-index: 6;
+    }}
+    .crt-frame {{
+      position: relative;
+      max-width: 1440px;
+      margin: auto;
+      padding: 32px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(4, 18, 9, 0.9), rgba(6, 28, 12, 0.92));
+      box-shadow:
+        0 0 90px rgba(12, 60, 26, 0.55),
+        0 0 40px rgba(12, 60, 26, 0.5) inset,
+        0 0 140px rgba(12, 60, 26, 0.35) inset;
+      overflow: hidden;
+    }}
+    .content {{
+      position: relative;
+      z-index: 2;
+    }}
+    .glass {{
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 20% 10%, rgba(255, 255, 255, 0.08), transparent 30%),
+        radial-gradient(ellipse at 80% 0%, rgba(255, 255, 255, 0.05), transparent 28%);
+      mix-blend-mode: screen;
+      opacity: 0.6;
+      z-index: 1;
+    }}
+    .scanlines {{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.2) 0,
+        rgba(0, 0, 0, 0.2) 2px,
+        rgba(255, 255, 255, 0.02) 2px,
+        rgba(255, 255, 255, 0.02) 3px,
+        transparent 3px,
+        transparent 5px
+      );
+      mix-blend-mode: multiply;
+      opacity: 0.75;
+      z-index: 7;
+      animation: roll 8s linear infinite;
+    }}
+    .noise {{
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 0);
+      background-size: 3px 3px;
+      opacity: 0.25;
+      mix-blend-mode: screen;
+      animation: jitter 1.2s steps(4, end) infinite;
+      z-index: 8;
+    }}
+    .flicker {{
+      animation: flicker 4s infinite;
+    }}
+    .ghost {{
+      text-shadow: 0 0 10px rgba(158, 252, 141, 0.45), 2px 0 14px rgba(158, 252, 141, 0.18);
+    }}
+    h1 {{
+      margin: 0 0 14px;
+      font-size: 3.4rem;
+      letter-spacing: 1px;
+    }}
+    .status {{
+      font-size: 1.8rem;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }}
+    .pill {{
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--phosphor);
+      box-shadow: 0 0 14px rgba(158, 252, 141, 0.35);
+      font-weight: 700;
+    }}
+    .meta {{
+      font-size: 1.6rem;
+      margin: 0 0 12px;
+      color: var(--accent);
+    }}
+    .bar-row {{
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      margin: 24px 0;
+    }}
+    .bar {{
+      flex: 1;
+      display: flex;
+      height: 42px;
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(2, 10, 5, 0.8);
+      border: 1px solid #183822;
+      box-shadow: 0 0 12px rgba(158, 252, 141, 0.35) inset;
+    }}
+    .seg {{
+      height: 100%;
+      filter: drop-shadow(0 0 6px rgba(158, 252, 141, 0.25));
+    }}
+    ul {{
+      list-style: none;
+      padding: 0;
+      margin: 18px 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+    }}
+    li {{
+      background: rgba(5, 18, 10, 0.75);
+      border: 1px solid #15341f;
+      border-radius: 14px;
+      padding: 16px 18px;
+      box-shadow: 0 0 18px rgba(12, 60, 26, 0.35) inset;
+      font-size: 1.6rem;
+    }}
+    .label {{
+      color: var(--muted);
+    }}
+    .count {{
+      float: right;
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 2rem;
+    }}
+    .meta-container {{
+      background: rgba(4, 14, 7, 0.65);
+      border: 1px solid #173923;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 0 24px rgba(12, 60, 26, 0.4) inset;
+      margin-top: 22px;
+    }}
+    .meta-container .meta {{
+      color: var(--accent);
+    }}
+    .meta-container .meta:last-child {{
+      margin-bottom: 0;
+    }}
+    .meta-container a {{
+      color: var(--phosphor);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(158, 252, 141, 0.5);
+    }}
+    .meta-container a:hover {{
+      color: #d6ffd2;
+    }}
+    .mascot {{
+      width: 200px;
+      height: 200px;
+      max-width: 20%;
+      object-fit: contain;
+      filter: grayscale(1) brightness(1.5) contrast(1.2);
+      opacity: 0.78;
+      mix-blend-mode: screen;
+    }}
+    @keyframes roll {{
+      from {{
+        background-position: 0 0;
+      }}
+      to {{
+        background-position: 0 8px;
+      }}
+    }}
+    @keyframes jitter {{
+      0% {{
+        transform: translate(0, 0);
+      }}
+      20% {{
+        transform: translate(-1px, 0.5px);
+      }}
+      40% {{
+        transform: translate(1px, -0.5px);
+      }}
+      60% {{
+        transform: translate(-0.5px, -1px);
+      }}
+      80% {{
+        transform: translate(0.5px, 0.5px);
+      }}
+      100% {{
+        transform: translate(0, 0);
+      }}
+    }}
+    @keyframes flicker {{
+      0% {{
+        opacity: 0.96;
+      }}
+      5% {{
+        opacity: 0.85;
+      }}
+      10% {{
+        opacity: 0.98;
+      }}
+      15% {{
+        opacity: 0.92;
+      }}
+      25% {{
+        opacity: 0.97;
+      }}
+      30% {{
+        opacity: 0.88;
+      }}
+      40% {{
+        opacity: 1;
+      }}
+      50% {{
+        opacity: 0.9;
+      }}
+      60% {{
+        opacity: 0.99;
+      }}
+      70% {{
+        opacity: 0.93;
+      }}
+      80% {{
+        opacity: 0.96;
+      }}
+      90% {{
+        opacity: 0.89;
+      }}
+      100% {{
+        opacity: 0.98;
+      }}
+    }}
   </style>
 </head>
 <body>
-  <h1>Pytest results</h1>
-  <div class="status">Run status: <span class="pill">{status}</span></div>
-  <div class="meta">Total tests: {total}</div>
-  <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#e5e7eb"></div>'}</div>
-  <ul>{summary_items}</ul>
-  <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
-  <div class="mascot"><img src="sausage2.png" alt="sausage" /></div>
-  <div class="meta">Commit pushed at: {commit_time}</div>
-  <div class="meta">Commit message: {commit_message}</div>
-  <div class="meta">Commit author: {commit_author}</div>
+  <div class="scanlines"></div>
+  <div class="noise"></div>
+  <div class="crt-frame flicker">
+    <div class="glass"></div>
+    <div class="content">
+      <h1 class="ghost">Pytest Progress</h1>
+      <div class="status ghost">Run status: <span class="pill">{status}</span></div>
+      <div class="meta ghost">Total tests: {total}</div>
+      <div class="bar-row">
+        <img class="mascot" src="happy.jpg" alt="happy sausage" />
+        <div class="bar">{bar_html or '<div class="seg" style="width:100%;background:#0f2c18"></div>'}</div>
+        <img class="mascot" src="funktion-1.jpeg" alt="funktion-1" />
+      </div>
+      <ul class="ghost">{summary_items}</ul>
+      <div class="meta-container ghost">
+        <div class="meta">Run: <a href="{run_url}">{run_url}</a></div>
+        <div class="meta">Commit time: {commit_time}</div>
+        <div class="meta">Commit message: {commit_message}</div>
+        <div class="meta">Commit author: {commit_author}</div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 """
