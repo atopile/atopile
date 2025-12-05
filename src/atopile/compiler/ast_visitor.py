@@ -429,9 +429,7 @@ class ASTVisitor:
         try:
             handler = getattr(self, f"visit_{node_type}")
         except AttributeError:
-            print(f"No handler for node type: {node_type}")
-            # raise NotImplementedError(f"No handler for node type: {node_type}")
-            return None
+            raise NotImplementedError(f"No handler for node type: {node_type}")
 
         bound_node = getattr(AST, node_type).bind_instance(node.instance)
         return handler(bound_node)

@@ -81,7 +81,7 @@ def test_block_definitions_recorded():
             pass
 
         interface SomeInterface:
-            signal line
+            pass # FIXME: `signal line`
         """
     )
 
