@@ -5744,15 +5744,16 @@ class AbstractEnums(fabll.Node):
         return str(values)
 
     @staticmethod
-    def try_cast_to_enum(instance: fabll.NodeT) -> "AbstractEnums | None":
+    def try_cast_to_enum(lit: "is_literal") -> "AbstractEnums | None":
         # TODO might want to improve this
+        obj = fabll.Traits(lit).get_obj_raw()
         if not (
             fabll.TypeNodeBoundTG.try_get_trait_of_type(
-                is_enum_type, not_none(instance.get_type_node())
+                is_enum_type, not_none(obj.get_type_node())
             )
         ):
             return None
-        return AbstractEnums.bind_instance(instance=instance.instance)
+        return AbstractEnums.bind_instance(instance=obj.instance)
 
 
 @once
@@ -6151,6 +6152,8 @@ def test_enums():
     assert elements[3].value == MyEnum.D.value
 
     assert enum_lit.get_values() == ["a", "d"]
+
+    assert AbstractEnums.try_cast_to_enum(enum_lit.is_literal.get())
 
 
 # def test_make_lit():
