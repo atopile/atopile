@@ -726,7 +726,7 @@ class MutatorUtils:
             del factors[collect_op]
 
         # new_factors: combined literal counts, old_factors: leftover items
-        new_factors = {}
+        new_factors: dict[F.Parameters.is_parameter_operatable, F.Literals.Numbers] = {}
         old_factors = list[F.Parameters.is_parameter_operatable]()
 
         # Combine literals for each non-literal operand
@@ -754,7 +754,9 @@ class MutatorUtils:
             ]
 
             # Sum all literal multipliers plus the leftover count
-            new_factors[var] = sum(mul_lits) + self.mutator.make_lit(count)  # type: ignore
+            new_factors[var] = count.op_add_intervals(
+                self.mutator.make_lit(sum(mul_lits))
+            )
 
         return new_factors, old_factors
 

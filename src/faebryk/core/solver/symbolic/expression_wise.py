@@ -586,10 +586,11 @@ def fold_not(expr: F.Expressions.Not, mutator: Mutator):
                             )
 
     if expr.try_get_trait(F.Expressions.is_predicate):
-        mutator.utils.alias_is_literal_and_check_predicate_eval(
-            op.get_sibling_trait(F.Expressions.is_expression),
-            mutator.make_lit(False).is_literal.get(),
-        )
+        false = mutator.make_lit(False).is_literal.get()
+        if op_e := op.try_get_sibling_trait(F.Expressions.is_expression):
+            mutator.utils.alias_is_literal_and_check_predicate_eval(op_e, false)
+        else:
+            mutator.utils.alias_to(op, false.as_operand.get(), terminate=True)
 
 
 @expression_wise_algorithm(F.Expressions.Is)

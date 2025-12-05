@@ -1276,6 +1276,7 @@ def test_param_isolation():
     )
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "op",
     [
@@ -1295,7 +1296,7 @@ def test_extracted_literal_folding(op: Callable[..., F.Parameters.can_be_operand
     lit2 = E.lit_op_range(((10, 20)))
     lito = not_none(
         _exec_pure_literal_expressions(
-            E.g, E.tg, op(lit1, lit2).get_trait(F.Expressions.is_expression)
+            E.g, E.tg, op(lit1, lit2).get_sibling_trait(F.Expressions.is_expression)
         )
     )
 
@@ -1447,7 +1448,7 @@ def test_can_add_parameters():
 
     E.is_(A, E.lit_op_range((10, 100)), assert_=True)
     E.is_(B, E.lit_op_range((10, 100)), assert_=True)
-    C = E.add(A, B)
+    E.is_(C, E.add(A, B), assert_=True)
 
     solver = DefaultSolver()
     solver.update_superset_cache(A, B, C)
@@ -2355,4 +2356,4 @@ if __name__ == "__main__":
     # typer.run(
     #    lambda: test_super_simple_literal_folding(F.Expressions.Add.c, (5, 10), 15)
     # )
-    typer.run(test_voltage_divider_find_v_out_with_division)
+    typer.run(test_implication)

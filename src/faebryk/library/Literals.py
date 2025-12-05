@@ -2887,6 +2887,14 @@ class Numbers(fabll.Node):
         )
         return self.setup(numeric_set=numeric_set, unit=unit)
 
+    def setup_from_singletons(self, values: list[float], unit: "is_unit") -> "Numbers":
+        g = self.g
+        tg = self.tg
+        numeric_set = NumericSet.create_instance(g=g, tg=tg).setup_from_values(
+            values=[(value, value) for value in values]
+        )
+        return self.setup(numeric_set=numeric_set, unit=unit)
+
     @classmethod
     def unbounded(
         cls, unit: "is_unit", *, g: graph.GraphView, tg: fbrk.TypeGraph
@@ -2902,7 +2910,7 @@ class Numbers(fabll.Node):
         numeric_set = fbrk.EdgeComposition.get_child_by_identifier(
             bound_node=self.instance, child_identifier=self._numeric_set_identifier
         )
-        assert numeric_set is not None
+        assert numeric_set is not None, "Numeric set child not found"
         return NumericSet.bind_instance(numeric_set)
 
     def get_is_unit(self) -> "is_unit":
@@ -3807,8 +3815,8 @@ class Numbers(fabll.Node):
             numeric_set = self.get_numeric_set()
             unit_symbol = self.get_is_unit().get_symbols()[0]
             return f"Numbers({numeric_set}, unit={unit_symbol})"
-        except Exception:
-            return "Numbers(<uninitialized>)"
+        except Exception as e:
+            return f"Numbers(<uninitialized>, error={type(e).__name__}: {e})"
 
     def __str__(self) -> str:
         return self.__repr__()

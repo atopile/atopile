@@ -501,11 +501,18 @@ class BoundExpressions:
         )
 
     def lit_op_discrete_set(
-        self, *values: float | _Quantity
+        self, *values: float, unit: type[fabll.Node] | None = None
     ) -> F.Parameters.can_be_operand:
+        is_unit = (
+            (unit or self.U.dl)
+            .bind_typegraph(tg=self.tg)
+            .create_instance(g=self.g)
+            .get_trait(F.Units.is_unit)
+        )
         return (
             F.Literals.Numbers.bind_typegraph(tg=self.tg)
             .create_instance(g=self.g)
+            .setup_from_singletons(values=list(values), unit=is_unit)
             .is_literal.get()
             .as_operand.get()
         )
