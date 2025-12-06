@@ -722,18 +722,26 @@ class ImportStmt(fabll.Node):
 class TemplateArg(fabll.Node):
     source = SourceChunk.MakeChild()
     name = F.Literals.Strings.MakeChild()
-    value = F.Literals.AnyLiteral.MakeChild()
+    value = F.Collections.Pointer.MakeChild()
 
     def setup(  # type: ignore
         self, source_info: SourceInfo, name: str, value: "LiteralT"
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.name.get().setup_from_values(name)
-        self.value.get().setup(value=value)
+        lit = F.Literals.make_simple_lit_singleton(g=self.g, tg=self.tg, value=value)
+        self.value.get().point(lit)
+        _add_anon_child(self, lit)
         return self
 
-    def get_value(self) -> "LiteralT":
-        return self.value.get().get_value()
+    def get_value(self) -> str | bool | float | None:
+        return (
+            self.value.get()
+            .deref()
+            .get_trait(F.Literals.is_literal)
+            .switch_cast()
+            .get_single()
+        )
 
 
 class Template(fabll.Node):
@@ -945,7 +953,7 @@ class PinDeclaration(fabll.Node):
 
     source = SourceChunk.MakeChild()
     kind = F.Literals.EnumsFactory(Kind).MakeChild(*Kind.__members__.values())
-    label = F.Literals.AnyLiteral.MakeChild()
+    label = F.Collections.Pointer.MakeChild()
 
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
@@ -959,9 +967,22 @@ class PinDeclaration(fabll.Node):
         self.kind.get().setup(kind)
 
         if label_value is not None:
-            self.label.get().setup(value=label_value)
+            lit = F.Literals.make_simple_lit_singleton(
+                g=self.g, tg=self.tg, value=label_value
+            )
+            self.label.get().point(lit)
+            _add_anon_child(self, lit)
 
         return self
+
+    def get_label(self) -> str | bool | float | None:
+        return (
+            self.label.get()
+            .deref()
+            .get_trait(F.Literals.is_literal)
+            .switch_cast()
+            .get_single()
+        )
 
 
 class SignaldefStmt(fabll.Node):

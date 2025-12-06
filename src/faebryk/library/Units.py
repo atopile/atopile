@@ -51,7 +51,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from functools import reduce
-from typing import Any, ClassVar, Self
+from typing import ClassVar, Self
 
 import pytest
 from dataclasses_json import DataClassJsonMixin
@@ -330,7 +330,7 @@ class is_unit(fabll.Node):
         assert multiplier_numeric is not None
         from faebryk.library.Literals import NumericInterval
 
-        return NumericInterval.bind_instance(multiplier_numeric).get_value()
+        return NumericInterval.bind_instance(multiplier_numeric).get_single()
 
     def _extract_offset(self) -> float:
         offset_numeric = EdgeComposition.get_child_by_identifier(
@@ -339,7 +339,7 @@ class is_unit(fabll.Node):
         assert offset_numeric is not None
         from faebryk.library.Literals import NumericInterval
 
-        return NumericInterval.bind_instance(offset_numeric).get_value()
+        return NumericInterval.bind_instance(offset_numeric).get_single()
 
     def _extract_symbols(self) -> list[str]:
         symbol_field = EdgeComposition.get_child_by_identifier(
@@ -1106,7 +1106,7 @@ class _UnitExpressionResolver:
                 f"Unit exponent must be numeric, got {exponent_lit.get_type_name()}"
             )
 
-        exponent_val = exponent_lit.cast(F.Literals.Numbers).get_value()
+        exponent_val = exponent_lit.cast(F.Literals.Numbers).get_single()
 
         if not float(exponent_val).is_integer():
             raise UnitExpressionError(

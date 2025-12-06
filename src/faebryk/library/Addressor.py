@@ -70,7 +70,7 @@ class Addressor(fabll.Node):
 
         # Calculate max offset value
         max_offset_value = 1 << int(
-            self.address_bits_.get().force_extract_literal().get_value()
+            self.address_bits_.get().force_extract_literal().get_single()
         )
         # Create dimensionless unit
         dimensionles_unit = (
