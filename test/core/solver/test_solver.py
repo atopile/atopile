@@ -2356,4 +2356,4 @@ if __name__ == "__main__":
     # typer.run(
     #    lambda: test_super_simple_literal_folding(F.Expressions.Add.c, (5, 10), 15)
     # )
-    typer.run(test_implication)
+    typer.run(test_subset_is)

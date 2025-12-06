@@ -84,46 +84,50 @@ class is_literal(fabll.Node):
         raise ValueError("incompatible types")
 
     def op_intersect_intervals(
-        self,
-        other: "is_literal | LiteralNodes",
-        *,
+        self: "is_literal | LiteralNodes",
+        *others: "is_literal | LiteralNodes",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "is_literal":
         g = g or self.g
         tg = tg or self.tg
-        if objs := is_literal._cmp(self, other):
-            return (
-                objs[0]
-                .op_intersect_intervals(
-                    objs[1],  # type: ignore # stupid pylance
-                    g=g,
-                    tg=tg,
-                )
-                .is_literal.get()
+        objs = is_literal._to_nodes(self, *others)
+        if len(set(type(obj) for obj in objs)) != 1:
+            raise ValueError("incompatible types")
+        if len(objs) == 1:
+            return is_literal._to_lits(*objs)[0]
+        return (
+            type(objs[0])
+            .op_intersect_intervals(
+                *objs,  # type: ignore # stupid pylance
+                g=g,
+                tg=tg,
             )
-        raise ValueError("incompatible types")
+            .is_literal.get()
+        )
 
     def op_union_intervals(
-        self,
-        other: "is_literal | LiteralNodes",
-        *,
+        self: "is_literal | LiteralNodes",
+        *others: "is_literal | LiteralNodes",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "is_literal":
         g = g or self.g
         tg = tg or self.tg
-        if objs := is_literal._cmp(self, other):
-            return (
-                objs[0]
-                .op_union_intervals(
-                    objs[1],  # type: ignore # stupid pylance
-                    g=g,
-                    tg=tg,
-                )
-                .is_literal.get()
+        objs = is_literal._to_nodes(self, *others)
+        if len(set(type(obj) for obj in objs)) != 1:
+            raise ValueError("incompatible types")
+        if len(objs) == 1:
+            return is_literal._to_lits(*objs)[0]
+        return (
+            type(objs[0])
+            .op_union_intervals(
+                *objs,  # type: ignore # stupid pylance
+                g=g,
+                tg=tg,
             )
-        raise ValueError("incompatible types")
+            .is_literal.get()
+        )
 
     def op_symmetric_difference_intervals(
         self,
@@ -154,21 +158,6 @@ class is_literal(fabll.Node):
         tg: fbrk.TypeGraph,
     ) -> bool:
         return any(self.equals(other, g=g, tg=tg) for other in other)
-
-    @staticmethod
-    def intersect_all(
-        *objs: "is_literal | LiteralNodes", g: graph.GraphView, tg: fbrk.TypeGraph
-    ) -> "is_literal":
-        if not objs:
-            raise ValueError("Cannot intersect empty list")
-        objs_lit = is_literal._to_lits(*objs)
-        if len(objs) == 1:
-            return objs_lit[0]
-
-        return functools.reduce(
-            lambda a, b: a.op_intersect_intervals(g=g, tg=tg, other=b),
-            objs_lit,
-        )
 
     def multi_equals(
         self: "is_literal | LiteralNodes",
@@ -361,32 +350,36 @@ class Strings(fabll.Node):
 
     def op_intersect_intervals(
         self,
-        other: "Strings",
-        *,
+        *others: "Strings",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Strings":
         g = g or self.g
         tg = tg or self.tg
+        intersected = set(self.get_values())
+        for other in others:
+            intersected &= set(other.get_values())
         return (
             Strings.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(*(set(self.get_values()) & set(other.get_values())))
+            .setup_from_values(*intersected)
         )
 
     def op_union_intervals(
         self,
-        other: "Strings",
-        *,
+        *others: "Strings",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Strings":
         g = g or self.g
         tg = tg or self.tg
+        unioned = set(self.get_values())
+        for other in others:
+            unioned |= set(other.get_values())
         return (
             Strings.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(*(set(self.get_values()) | set(other.get_values())))
+            .setup_from_values(*unioned)
         )
 
     def op_symmetric_difference_intervals(
@@ -5192,36 +5185,36 @@ class Counts(fabll.Node):
 
     def op_intersect_intervals(
         self,
-        other: "Counts",
-        *,
+        *others: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Counts":
         g = g or self.g
         tg = tg or self.tg
+        intersected = set(self.get_values())
+        for other in others:
+            intersected &= set(other.get_values())
         return (
             Counts.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(
-                values=list(set(self.get_values()) & set(other.get_values()))
-            )
+            .setup_from_values(values=list(intersected))
         )
 
     def op_union_intervals(
         self,
-        other: "Counts",
-        *,
+        *others: "Counts",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Counts":
         g = g or self.g
         tg = tg or self.tg
+        unioned = set(self.get_values())
+        for other in others:
+            unioned |= set(other.get_values())
         return (
             Counts.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(
-                values=list(set(self.get_values()) | set(other.get_values()))
-            )
+            .setup_from_values(values=list(unioned))
         )
 
     def op_symmetric_difference_intervals(
@@ -5625,32 +5618,36 @@ class Booleans(fabll.Node):
 
     def op_intersect_intervals(
         self,
-        other: "Booleans",
-        *,
+        *others: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         g = g or self.g
         tg = tg or self.tg
+        intersected = set(self.get_values())
+        for other in others:
+            intersected &= set(other.get_values())
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(*(set(self.get_values()) & set(other.get_values())))
+            .setup_from_values(*intersected)
         )
 
     def op_union_intervals(
         self,
-        other: "Booleans",
-        *,
+        *others: "Booleans",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Booleans":
         g = g or self.g
         tg = tg or self.tg
+        unioned = set(self.get_values())
+        for other in others:
+            unioned |= set(other.get_values())
         return (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(*(set(self.get_values()) | set(other.get_values())))
+            .setup_from_values(*unioned)
         )
 
     def op_symmetric_difference_intervals(
@@ -5844,8 +5841,7 @@ class AbstractEnums(fabll.Node):
 
     def op_intersect_intervals(
         self,
-        other: "AbstractEnums",
-        *,
+        *others: "AbstractEnums",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "AbstractEnums":
@@ -5858,8 +5854,7 @@ class AbstractEnums(fabll.Node):
 
     def op_union_intervals(
         self,
-        other: "AbstractEnums",
-        *,
+        *others: "AbstractEnums",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "AbstractEnums":

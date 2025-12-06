@@ -1060,7 +1060,7 @@ class Mutator:
         Consider using mutate_parameter or mutate_expression instead.
         """
         if self.has_been_mutated(po):
-            if self.get_mutated(po) is not new_po:
+            if not self.get_mutated(po).is_same(new_po):
                 raise ValueError(f"already mutated to: {self.get_mutated(po)}")
 
         if self.is_removed(po):
@@ -1844,7 +1844,7 @@ class Mutator:
             grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
             for k, v in grouped_ss.items():
                 ss_lits = [ss_lit for _, ss_lit in v]
-                merged_ss = F.Literals.is_literal.intersect_all(
+                merged_ss = F.Literals.is_literal.op_intersect_intervals(
                     *ss_lits, g=self.G_transient, tg=self.tg_in
                 )
                 if merged_ss.is_empty():

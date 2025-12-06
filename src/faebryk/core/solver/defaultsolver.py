@@ -563,7 +563,7 @@ class DefaultSolver(Solver):
         if solver_lit is None:
             return ss_lit
 
-        return F.Literals.is_literal.intersect_all(
+        return F.Literals.is_literal.op_intersect_intervals(
             ss_lit, solver_lit, g=value.g, tg=value.tg
         )
 

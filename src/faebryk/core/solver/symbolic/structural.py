@@ -389,18 +389,19 @@ def merge_intersect_subsets(mutator: Mutator):
     # this merge is already done implicitly by try_extract_literal
     # but it's still needed to create the explicit subset op
 
-    params = mutator.get_parameter_operatables(sort_by_depth=True)
+    # TODO is it not better to iterate through all IsSubset?
+    pos = mutator.get_parameter_operatables(sort_by_depth=True)
 
-    for param in params:
+    for po in pos:
         ss_lits = {
             lit: vs
-            for k, vs in mutator.utils.get_supersets(param).items()
+            for k, vs in mutator.utils.get_supersets(po).items()
             if (lit := mutator.utils.is_literal(k))
         }
         if len(ss_lits) <= 1:
             continue
 
-        intersected = F.Literals.is_literal.intersect_all(
+        intersected = F.Literals.is_literal.op_intersect_intervals(
             *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
         )
 
@@ -408,34 +409,34 @@ def merge_intersect_subsets(mutator: Mutator):
         if intersected.is_empty():
             raise ContradictionByLiteral(
                 "Intersection of literals is empty",
-                involved=[param],
+                involved=[po],
                 literals=list(ss_lits.keys()),
                 mutator=mutator,
             )
 
-        old_sss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
+        old_sss = [old_ss for old_ss_it in ss_lits.values() for old_ss in old_ss_it]
 
         # already exists
         if contained := intersected.multi_equals(
             *ss_lits.keys(), g=mutator.G_transient, tg=mutator.tg_out
         ):
-            target = ss_lits[contained[1]][0].is_expression.get()
+            new_ss = ss_lits[contained[1]][0].is_expression.get()
         else:
-            target = mutator.utils.subset_to(
-                param.as_operand.get(),
+            new_ss = mutator.utils.subset_to(
+                po.as_operand.get(),
                 intersected.as_operand.get(),
                 from_ops=[old_ss.is_parameter_operatable.get() for old_ss in old_sss],
             )
-            target_obj = fabll.Traits(target).get_obj_raw()
-            assert target_obj.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
+            new_ss_obj = fabll.Traits(new_ss).get_obj_raw()
+            assert new_ss_obj.isinstance(F.Expressions.IsSubset, F.Expressions.Is)
 
         # Merge
         for old_ss in old_sss:
             old_ss_po = old_ss.is_parameter_operatable.get()
-            target_po = target.get_sibling_trait(F.Parameters.is_parameter_operatable)
+            new_ss_po = new_ss.get_sibling_trait(F.Parameters.is_parameter_operatable)
             mutator._mutate(
                 old_ss_po,
-                mutator.get_copy_po(target_po),
+                mutator.get_copy_po(new_ss_po),
             )
 
 
