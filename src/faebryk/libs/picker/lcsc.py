@@ -590,10 +590,10 @@ def attach(
         try:
             for lead in leads:
                 lead_t = lead.get_trait(F.Lead.is_lead)
-                matched_pad = lead_t.find_matching_pad_name(
+                matched_pad = lead_t.find_matching_pad(
                     [p[1] for p in pads_number_name_pairs]
                 )
-        except F.Lead.is_lead.PadMatchException as e:
+        except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
         if check_only:
@@ -618,7 +618,7 @@ def attach(
                     fabll.Traits.create_and_add_instance_to(
                         node=lead, trait=F.Lead.has_associated_pad
                     ).setup(pad=matched_pad, parent=lead, connect_net=False)
-            except F.Lead.is_lead.PadMatchException as e:
+            except F.Lead.PadMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
         # link footprint to the component

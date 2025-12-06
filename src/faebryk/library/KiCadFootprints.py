@@ -219,8 +219,8 @@ class is_generated_from_kicad_footprint_file(fabll.Node):
         kicad_footprint_file_path: str,
         library_name: str | None,
     ) -> Self:
-        self.kicad_footprint_file_path_.get().alias_to_single(
-            value=kicad_footprint_file_path
+        self.kicad_footprint_file_path_.get().alias_to_literal(
+            kicad_footprint_file_path
         )
 
         fp_file = kicad.loads(
@@ -231,8 +231,8 @@ class is_generated_from_kicad_footprint_file(fabll.Node):
         kicad_identifier, library_name = self._create_kicad_identifier(
             fp_file, library_name
         )
-        self.kicad_identifier_.get().alias_to_single(value=kicad_identifier)
-        self.library_name_.get().alias_to_single(value=library_name)
+        self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
+        self.library_name_.get().alias_to_literal(library_name)
         return self
 
 
