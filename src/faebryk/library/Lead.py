@@ -130,10 +130,22 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
     """
     _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    case_sensitive = F.Parameters.BooleanParameter.MakeChild()
+
     @classmethod
-    def MakeChild(cls, mapping: list[str]) -> fabll._ChildField[Self]:
+    def MakeChild(
+        cls,
+        mapping: list[str],
+        case_sensitive: bool = False
+    ) -> fabll._ChildField[Self]:
         logger.info(f"Making can_attach_to_pad_by_name_heuristic with mapping: {mapping}")
         out = fabll._ChildField(cls)
+
+        out.add_dependant(
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+                [out, cls.case_sensitive], case_sensitive
+            )
+        )
 
         for name in mapping:
             name_lit = F.Literals.Strings.MakeChild(name)
@@ -148,16 +160,23 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
         """
         Find a matching pad for this lead based on name heuristics.
         """
-
+        case_sensitive = self.case_sensitive.get().try_extract_constrained_literal().get_single()
         alt_names = _get_pointer_references(self)
         nc = {"NC", "nc"}
 
         for pad in pads:
+            match = False
             if pad.pad_name in nc:
                 continue
             for alt_name in alt_names:
                 alt_name = alt_name.cast(F.Literals.Strings).get_values()[0]
-                if pad.pad_name == alt_name:
+                if not case_sensitive:
+                    if pad.pad_name.lower() == alt_name.lower():
+                        match = True
+                else:
+                    if pad.pad_name == alt_name:
+                        match = True
+                if match:
                     logger.info(
                         f"Matched pad [{pad.pad_number}:{pad.pad_name}]\
                             to lead via alias [{alt_name}]"
@@ -242,7 +261,7 @@ def test_can_attach_to_pad_by_name_heuristic(capsys):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
         mapping = {
-            anode: ["anode", "a"],
+            anode: ["Anode", "a"],
             cathode: ["cathode", "c"],
         }
 
