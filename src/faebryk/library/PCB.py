@@ -57,30 +57,24 @@ class PCB(fabll.Node):
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.app_], app))
         return out
 
-    def setup(
-        self,
-        path: Path,
-        pcb_file: kicad.pcb.PcbFile,
-        transformer: "PCB_Transformer",
-        app: fabll.Node,
-    ) -> Self:
-        self.path_.get().alias_to_single(value=str(path))
-        self.pcb_file_.get().alias_to_single(value=str(id(pcb_file)))
+    def setup(self) -> Self:
+        pcbfile = kicad.loads(kicad.pcb.PcbFile, self.path)
+        self.pcb_file_.get().alias_to_single(value=str(id(pcbfile)))
+        transformer = PCB_Transformer(pcbfile.kicad_pcb, self.app)
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
-        self.app_.get().point(app)
         return self
 
     @property
     def transformer(self) -> "PCB_Transformer":
         transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_value()
+            self.transformer_.get().force_extract_literal().get_values()[0]
         )
 
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
     @property
     def pcb_file(self) -> kicad.pcb.PcbFile:
-        pcb_file_id = int(self.pcb_file_.get().force_extract_literal().get_value())
+        pcb_file_id = int(self.pcb_file_.get().force_extract_literal().get_values()[0])
         return ctypes.cast(pcb_file_id, ctypes.py_object).value
 
     @property
@@ -88,7 +82,7 @@ class PCB(fabll.Node):
         literal = self.path_.get().try_extract_constrained_literal()
         if literal is None:
             raise ValueError("PCB path is not set")
-        return Path(literal.get_value())
+        return Path(literal.get_values()[0])
 
     @property
     def app(self) -> fabll.Node:

@@ -30,9 +30,18 @@ def test_bom_picker_pick():
     tg = fbrk.TypeGraph.create(g=g)
 
     r = F.Resistor.bind_typegraph(tg).create_instance(g=g)
-    r.resistance.constrain_subset(
-        fabll.Range.from_center_rel(10 * 1e3 * F.Units.Ohm, 0.01)
+    r1_value = (
+        F.Literals.Numbers.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup_from_center_rel(
+            center=10 * 1e3,
+            rel=0.01,
+            unit=F.Units.Ohm.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .get_trait(F.Units.is_unit),
+        )
     )
+    r.resistance.get().alias_to_literal(g=g, value=r1_value)
 
     _build(r)
 
@@ -60,15 +69,27 @@ def test_bom_explicit_pick():
 
 
 def test_bom_kicad_footprint_no_lcsc():
-    m = fabll.Module()
-    m.add(F.Footprints.can_attach_to_footprint())
-    fp = F.KicadFootprint(pin_names=["1", "2"])
-    fp.add(
-        F.KicadFootprint.has_kicad_identifier(
-            "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
-        )
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    m = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
+        instance=m.instance
+    ).create_instance(g=g)
+    fp.setup([("", "2"), ("", "1")])
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.Footprints.has_associated_footprint
+    ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
+    kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
+        instance=fp.instance
+    ).create_instance(g=g)
+    kfp.get_trait(F.KiCadFootprints.is_kicad_footprint).setup(
+        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
     )
-    m.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
+    fabll.Traits.create_and_add_instance_to(
+        node=fp, trait=F.KiCadFootprints.has_linked_kicad_footprint
+    ).setup(kfp)
+
     _build(m)
 
     bomline = _get_bomline(m)
@@ -76,16 +97,32 @@ def test_bom_kicad_footprint_no_lcsc():
 
 
 def test_bom_kicad_footprint_lcsc_verbose():
-    m = fabll.Module()
-    m.add(F.Footprints.can_attach_to_footprint())
-    fp = F.KicadFootprint(pin_names=["1", "2"])
-    fp.add(
-        F.KicadFootprint.has_kicad_identifier(
-            "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
-        )
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    m = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
+        instance=m.instance
+    ).create_instance(g=g)
+    fp.setup([("", "2"), ("", "1")])
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.Footprints.has_associated_footprint
+    ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
+    kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
+        instance=fp.instance
+    ).create_instance(g=g)
+    kfp.get_trait(F.KiCadFootprints.is_kicad_footprint).setup(
+        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
     )
-    m.get_trait(F.Footprints.can_attach_to_footprint).attach(fp)
-    m.add(F.has_explicit_part.by_supplier("C18166021", pinmap={}))
+    fabll.Traits.create_and_add_instance_to(
+        node=fp, trait=F.KiCadFootprints.has_linked_kicad_footprint
+    ).setup(kfp)
+
+    _build(m)
+
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.has_explicit_part
+    ).setup_by_supplier("C18166021", pinmap={})
 
     _build(m)
 
@@ -96,17 +133,40 @@ def test_bom_kicad_footprint_lcsc_verbose():
 
 
 def test_bom_kicad_footprint_lcsc_compact():
-    m = fabll.Module()
-    m.add(F.Footprints.can_attach_to_footprint())
-    m.add(
-        F.has_explicit_part.by_supplier(
-            "C18166021",
-            pinmap={},
-            override_footprint=(
-                F.KicadFootprint(pin_names=["1", "2"]),
-                "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-            ),
+    g = graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        can_attach_to_footprint_ = fabll.Traits.MakeEdge(
+            F.Footprints.can_attach_to_footprint.MakeChild()
         )
+        unnamed_ = [F.Electrical.MakeChild() for _ in range(2)]
+
+        for e in unnamed_:
+            lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+            lead.add_dependant(
+                fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead])
+            )
+            e.add_dependant(lead)
+
+    m = TestModule.bind_typegraph(tg=tg).create_instance(g=g)
+    fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
+        instance=m.instance
+    ).create_instance(g=g)
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.Footprints.has_associated_footprint
+    ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
+
+    fabll.Traits.create_and_add_instance_to(
+        node=m, trait=F.has_explicit_part
+    ).setup_by_supplier(
+        supplier_partno="C18166021",
+        pinmap={},
+        override_footprint=(
+            fp.is_footprint,
+            "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+        ),
     )
 
     _build(m)
