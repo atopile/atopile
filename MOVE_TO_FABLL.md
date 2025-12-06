@@ -3,10 +3,10 @@
 - [x] GraphFunctions -> moved to Node
   - [x] replace GraphFunctions with Node.bind_typegraph
   - [x] change g to tg in GraphFunctions
-- [ ] Graph -> GraphView
+- [x] Graph -> GraphView
   - [x] move to fabll
   - [x] replace with TG
-  - [ ] get rid of multi graphs (solver)
+  - [x] get rid of multi graphs (solver)
   - [x] Change Graph import to fabll.Graph
 - [x] Module
   - [x] isinstance checks
@@ -19,39 +19,40 @@
   - [x] rename to fabll.Node
   - [x] replace connect_all_node_references
   - [x] implement group_into_buses
-- [ ] library
+- [x] library
   - [x] inheritance from Module/Node/Trait/ModuleInterface
   - [x] libs/L.py
-  - [ ] use new fabll
+  - [x] use new fabll
 - [ ] Traits
   - [ ] for usage change constructor call to setup()
   - [ ] refactor all traits
   - [ ] replace <node>.add(<trait>) with Traits.add_to(<node>, <trait>)
   - [ ] replace all trait inits `<trait>()`
   - [ ] handle_duplicate
-- [ ] Parameter
-  - [ ] literals (fabll.Range...)
-- [ ] Links
-- [ ] GraphInterface
-- [ ] CNode
+  - [ ] on_obj_set
+- [x] Parameter
+  - [x] literals (fabll.Range...)
+- [x] Links
+- [x] GraphInterface
+- [x] CNode
 
 - [ ] Move all faebryk pyis into faebryk.pyi
-- [ ] Figure out how to convert ChildField to instance
+- [x] Figure out how to convert ChildField to instance
 - [ ] composition name optional? (currently id() hack)
 
 SOLVER:
 
-- [ ] use F imports
-- [ ] think and fix Graph handling in mutator
-- [ ] check for `type` and `isinstance` and `cast`
+- [x] use F imports
+- [x] think and fix Graph handling in mutator
+- [x] check for `type` and `isinstance` and `cast`
 - [ ] consider renaming parameter_operatable to something shorter and better (now that we have operand)
-- [WIP, revisit after util] fix type errors in all algos
+- [x] fix type errors in all algos
   - [x] canonical
   - [x] expression_groups
   - [x] expression_wise
   - [x] pure_literal
   - [x] structural
-- [ ] check for sibling trait, cast, get_trait, and get_raw_obj
+- [x] check for sibling trait, cast, get_trait, and get_raw_obj
 - [ ] reconsider using is_canonical
 
 ##
@@ -68,54 +69,94 @@ SOLVER:
 
 ## TESTS
 
-==== 275 failed, 545 passed, 6 skipped, 46 xfailed, 1 xpassed, 50 warnings, 17 errors in 26.08s =====
-
-NOTE TO SElF
-
-currently busy prepping mutator for new G semantics
-
-- changed identity def to bootstrap
-- created an empty G_out in mutator
-  strat: continue in mutator close/copy_unmutated etc to see how we can copy this
-
-another challenge coming up is getting the expr_factory setup from just an instance
+expr_factory
 
 - temp hack: just save tg->fabll dict somewhere in node
 - later solution, make is_expression function that can build automatically
   - for that just move lhs, rhs, other operand sets into is_expression and point to them from top node
 
-Be careful with modifying G_in on first stage, modifying source graph
-
-- e.g predicate terminatation. safest is to copy on first stage
-
-BIG TODO: check everywhere for `==` in solver
-also `in`
-=> had a first pass
-
-NOTE TO SELF THURSDAY:
-
-- something wrong with bool subset vs alias in our test
-- stuff is very slow still (but not due to tg anymore)
-- still a bunch of lit & param stuff not implemented
-- get_trait creates lots of runtime problems, switch to \_trait.get()
-  - consider invariant field in traits to capture sibling relationship
-- pure literal seems a bit fucked (operand order)
-
-NOTE TO SELF TUESDAY:
-
-- started fixing solver stuff for numeric parameters
-- was fixing test_simplify in test_solver.py
-  - now working, but hangs/slow?
-- ran pytest in the evening, but will take a while
-  - check on it in morning
-
 solver todo
 
 - [ ] mark exprs as literal during expr_mutation, then flag to solver that it needs to run flatten_literals afterwards
 
-NOTE TO SELF THURSDAY
+NOTE TO SELF FRIDAY
 
 - currently going through `test_solver.py`
-  - nick fucked me real gud with his clanker code, but should be ok now
 - running `./test/runpytesttable.sh -m "not slow" test/core/solver/test_solver.py`
   and then checking test-report.html
+- got rid of (almost all) superficial errors
+  - now only slow / contradiction / assert result errors (actual solver errors) left
+    - fix last superficial error, then slowly start going one-by-one through solver errors
+      (might want to first focus on the lit folding to make sure)
+
+```
+ 20 × AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_literal_folding_add_multiplicative_2 - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_find_r_top - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_literal_folding_add_multiplicative - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_find_v_out_with_division - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_find_v_in - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_jlcpcb_pick_resistor - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_param_isolation - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_abstract_lowpass - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_simple_parameter_isolation - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_fold_literals - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_find_resistances - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_subtract_zero[c0] - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_find_v_out_single_variable_occurrences - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_fold_not - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_jlcpcb_pick_capacitor - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_subtract_zero[c1] - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_nested_fold_interval - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_fold_or_true - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_find_v_out_no_division - AssertionError: assert False
+    FAILED test/core/solver/test_solver.py::test_canonical_subtract_zero - AssertionError: assert False
+
+  4 × Failed: DID NOT RAISE <class 'faebryk.core.solver.utils.ContradictionByLiteral'>
+    FAILED test/core/solver/test_solver.py::test_obvious_contradiction_by_literal - Failed: DID NOT RAISE <class 'faebryk.core.solver.utils.ContradictionByLiteral'>
+    FAILED test/core/solver/test_solver.py::test_domain - Failed: DID NOT RAISE <class 'faebryk.core.solver.utils.ContradictionByLiteral'>
+    FAILED test/core/solver/test_solver.py::test_subset_is - Failed: DID NOT RAISE <class 'faebryk.core.solver.utils.ContradictionByLiteral'>
+    FAILED test/core/solver/test_solver.py::test_voltage_divider_reject_invalid_r_top - Failed: DID NOT RAISE <class 'faebryk.core.solver.utils.ContradictionByLiteral'>
+
+  4 × assert None is not None
+    FAILED test/core/solver/test_solver.py::test_shortcircuit_logic_or - assert None is not None
+    FAILED test/core/solver/test_solver.py::test_very_simple_alias_class - assert None is not None
+    FAILED test/core/solver/test_solver.py::test_base_unit_switch - assert None is not None
+    FAILED test/core/solver/test_solver.py::test_fold_pow - assert None is not None
+
+  3 × AttributeError: 'NumericParameter' object has no attribute 'constrain_mapping'
+    FAILED test/core/solver/test_solver.py::test_mapping[10] - AttributeError: 'NumericParameter' object has no attribute 'constrain_mapping'
+    FAILED test/core/solver/test_solver.py::test_mapping[5] - AttributeError: 'NumericParameter' object has no attribute 'constrain_mapping'
+    FAILED test/core/solver/test_solver.py::test_mapping[15] - AttributeError: 'NumericParameter' object has no attribute 'constrain_mapping'
+
+  2 × faebryk.core.solver.utils.ContradictionByLiteral: Contradiction: Tried alias to different literal
+    FAILED test/core/solver/test_solver.py::test_congruence_filter - faebryk.core.solver.utils.ContradictionByLiteral: Contradiction: Tried alias to different literal
+    FAILED test/core/solver/test_solver.py::test_empty_and - faebryk.core.solver.utils.ContradictionByLiteral: Contradiction: Tried alias to different literal
+
+  1 × AssertionError: assert False is True
+    FAILED test/core/solver/test_solver.py::test_congruence_lits[<lambda>-<lambda>-expected3] - AssertionError: assert False is True
+
+  1 × NotImplementedError: Resuming state not supported yet in new core
+    FAILED test/core/solver/test_solver.py::test_simplify_non_terminal_manual_test_1 - NotImplementedError: Resuming state not supported yet in new core
+
+  1 × NotImplementedError: domain_set not implemented for EnumParameter
+    FAILED test/core/solver/test_solver.py::test_simple_pick - NotImplementedError: domain_set not implemented for EnumParameter
+
+  1 × NotImplementedError: op_intersect_intervals not implemented for AbstractEnums
+    FAILED test/core/solver/test_solver.py::test_simple_negative_pick - NotImplementedError: op_intersect_intervals not implemented for AbstractEnums
+
+  1 × faebryk.core.node.TraitNotFound: No trait <class 'faebryk.library.Literals.is_literal'> found on <Node[NumericParameter] '0x...)'>
+    FAILED test/core/solver/test_solver.py::test_symmetric_inequality_correlated - faebryk.core.node.TraitNotFound: No trait <class 'faebryk.library.Literals.is_literal'> found on <Node[NumericParameter] '0x55EE0ABD9B20)'>
+
+  1 × faebryk.core.solver.solver.NotDeducibleException: Could not deduce predicate: <is_assertable '0x....is_assertable)' on <Node[IsSubset] '0x...)'>>
+    FAILED test/core/solver/test_solver.py::test_try_fulfill_super_basic[IsSubset] - faebryk.core.solver.solver.NotDeducibleException: Could not deduce predicate: <is_assertable '0x55936B6A3720.is_assertable)' on <Node[IsSubset] '0x55936B6A3720)'>>
+
+  1 × faebryk.core.solver.solver.NotDeducibleException: Could not deduce predicate: <is_assertable '0x....is_assertable)' on <Node[Is] '0x...)'>>
+    FAILED test/core/solver/test_solver.py::test_try_fulfill_super_basic[Is] - faebryk.core.solver.solver.NotDeducibleException: Could not deduce predicate: <is_assertable '0x55B6D230BCB0.is_assertable)' on <Node[Is] '0x55B6D230BCB0)'>>
+
+  1 × faebryk.core.solver.solver.NotDeducibleException: Could not deduce predicate: <is_assertable '0x....is_assertable)' on <Node[Not] '0x...)'>>
+    FAILED test/core/solver/test_solver.py::test_deduce_negative - faebryk.core.solver.solver.NotDeducibleException: Could not deduce predicate: <is_assertable '0x559FFD2CD0F0.is_assertable)' on <Node[Not] '0x559FFD2CD0F0)'>>
+
+  1 × faebryk.core.solver.utils.ContradictionByLiteral: Contradiction: Intersection of literals is empty
+    FAILED test/core/solver/test_solver.py::test_implication - faebryk.core.solver.utils.ContradictionByLiteral: Contradiction: Intersection of literals is empty
+```
