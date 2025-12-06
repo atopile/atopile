@@ -1568,10 +1568,10 @@ test "basic instantiation" {
     const capacitor_p1 = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
     const capacitor_p2 = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", null);
+    const res_p1_makechild = try tg.add_make_child(Resistor, "Electrical", "p1", null, null);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+    const res_p2_makechild = try tg.add_make_child(Resistor, "Electrical", "p2", null, null);
+    const res_cap1_makechild = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
 
     var node_attrs = TypeGraph.MakeChildNode.build(a, "test_string");
     const capacitor_tp = try tg.add_make_child(
@@ -1586,6 +1586,8 @@ test "basic instantiation" {
     try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p2).?, Electrical);
     try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_tp).?, Electrical);
     try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1_makechild).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2_makechild).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1_makechild).?, Capacitor);
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);
@@ -1776,11 +1778,17 @@ test "get_type_instance_overview" {
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    const cap_p1 = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
+    const cap_p2 = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Resistor, Electrical, "p2", null);
+    const res_p1 = try tg.add_make_child(Resistor, "Electrical", "p1", null, null);
+    const res_p2 = try tg.add_make_child(Resistor, "Electrical", "p2", null, null);
+
+    // Link type references
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2).?, Electrical);
 
     // Create some instances
     _ = try tg.instantiate_node(Capacitor);
@@ -1834,13 +1842,18 @@ test "get_type_subgraph" {
     const implements_trait_instance = try tg.instantiate_node(tg.get_ImplementsTrait());
     _ = EdgeTrait.add_trait_instance(SomeTrait, implements_trait_instance.node);
     const Electrical = try tg.add_type("Electrical");
-    _ = try tg.add_make_child(Electrical, SomeTrait, "trait", null);
+    const elec_trait = try tg.add_make_child(Electrical, "SomeTrait", "trait", null, null);
     const trait_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{"trait"});
     const self_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{""});
-    _ = try tg.add_make_link(Electrical, trait_reference.node, self_reference.node, EdgeTrait.build());
+    _ = try tg.add_make_link(Electrical, trait_reference, self_reference, EdgeTrait.build());
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    const cap_p1_mc = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
+    const cap_p2_mc = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
+
+    // Link type references
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(elec_trait).?, SomeTrait);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1_mc).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2_mc).?, Electrical);
 
     // Create some instances (these should NOT be in the type subgraph)
     const capacitor_instance = try tg.instantiate_node(Capacitor);
