@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+import logging
 import re
 from typing import Self
 
@@ -8,6 +9,7 @@ import faebryk.core.node as fabll
 from faebryk.library import _F as F
 from faebryk.libs.util import not_none
 
+logger = logging.getLogger(__name__)
 
 class is_lead(fabll.Node):
     """
@@ -121,6 +123,31 @@ class can_attach_to_pad_by_name(fabll.Node):
         return self
 
 
+class can_attach_to_pad_by_name_heuristic(fabll.Node):
+    """
+    Replaces has_pin_association_heuristic
+    """
+    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    @classmethod
+    def MakeChild(cls, mapping: list[str]) -> fabll._ChildField[Self]:
+        logger.info(f"Making can_attach_to_pad_by_name_heuristic with mapping: {mapping}")
+        out = fabll._ChildField(cls)
+
+        for name in mapping:
+            name_lit = F.Literals.Strings.MakeChild(name)
+            out.add_dependant(name_lit)
+            out.add_dependant(
+                F.Collections.Pointer.MakeEdge([out], [name_lit])
+            )
+
+        return out
+
+    def lead_matches_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
+        # TODO implement
+        pass
+
+
 class has_associated_pad(fabll.Node):
     """
     A node that has an associated pad.
@@ -153,14 +180,6 @@ class has_associated_pad(fabll.Node):
                 raise ValueError("Pad has no associated net")
             pad_net_t.net.part_of.get()._is_interface.get().connect_to(parent)
         return self
-
-
-class can_attach_to_pad_by_name_heuristic(fabll.Node):
-    """
-    Replaces has_pin_association_heuristic
-    """
-
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
 
 def test_is_lead():
@@ -201,18 +220,49 @@ def test_can_attach_to_pad_by_name_heuristic(capsys):
 
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
+        mapping = {
+            anode: ["anode", "a"],
+            cathode: ["cathode", "c"],
+        }
+
         for e in [anode, cathode]:
             lead = is_lead.MakeChild()
+            e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
             lead.add_dependant(
                 fabll.Traits.MakeEdge(
-                    can_attach_to_pad_by_name_heuristic.MakeChild(), [lead]
+                    can_attach_to_pad_by_name_heuristic.MakeChild(mapping[e]), [lead]
                 )
             )
-            e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
 
+    assert module.anode.get().get_trait(F.Lead.is_lead).has_trait(F.Lead.can_attach_to_pad_by_name_heuristic)
+    assert module.cathode.get().get_trait(F.Lead.is_lead).has_trait(F.Lead.can_attach_to_pad_by_name_heuristic)
+
     with capsys.disabled():
         print(
-            fabll.graph.InstanceGraphFunctions.render(module.instance, show_traits=True)
+            fabll.graph.InstanceGraphFunctions.render(module.instance, show_traits=True, show_pointers=True)
         )
+
+
+def test_can_attach_to_any_pad(capsys):
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    class TestModule(fabll.Node):
+        unnamed = [F.Electrical.MakeChild() for _ in range(2)]
+
+        _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+
+        for e in unnamed:
+            lead = fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [e])
+            e.add_dependant(lead)
+            lead.add_dependant(fabll.Traits.MakeEdge(F.Lead.can_attach_to_any_pad.MakeChild(), [lead]))
+
+    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+
+    assert module.unnamed[0].get().get_trait(F.Lead.is_lead).has_trait(F.Lead.can_attach_to_any_pad)
+    assert module.unnamed[1].get().get_trait(F.Lead.is_lead).has_trait(F.Lead.can_attach_to_any_pad)
+
+    with capsys.disabled():
+        print(fabll.graph.InstanceGraphFunctions.render(module.instance, show_traits=True))
