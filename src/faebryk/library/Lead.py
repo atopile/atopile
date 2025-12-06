@@ -6,6 +6,7 @@ from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
+from faebryk.library.Collections import _get_pointer_references
 from faebryk.library import _F as F
 from faebryk.libs.util import not_none
 
@@ -144,8 +145,28 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
         return out
 
     def lead_matches_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
-        # TODO implement
-        pass
+        """
+        Find a matching pad for this lead based on name heuristics.
+        """
+
+        alt_names = _get_pointer_references(self)
+        nc = {"NC", "nc"}
+
+        for pad in pads:
+            if pad.pad_name in nc:
+                continue
+            for alt_name in alt_names:
+                alt_name = alt_name.cast(F.Literals.Strings).get_values()[0]
+                if pad.pad_name == alt_name:
+                    logger.info(
+                        f"Matched pad [{pad.pad_number}:{pad.pad_name}]\
+                            to lead via alias [{alt_name}]"
+                    )
+                    return pad
+
+        raise is_lead.PadMatchException(
+            f"Could not find match for lead with aliases [{alt_names}]"
+        )
 
 
 class has_associated_pad(fabll.Node):
@@ -230,19 +251,41 @@ def test_can_attach_to_pad_by_name_heuristic(capsys):
             e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
             lead.add_dependant(
                 fabll.Traits.MakeEdge(
-                    can_attach_to_pad_by_name_heuristic.MakeChild(mapping[e]), [lead]
-                )
+                    can_attach_to_pad_by_name_heuristic.MakeChild(mapping[e]), [lead])
             )
 
-    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+    class TestPad1(fabll.Node):
+        _is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="anode", pad_number="1")
+        )
 
-    assert module.anode.get().get_trait(F.Lead.is_lead).has_trait(F.Lead.can_attach_to_pad_by_name_heuristic)
-    assert module.cathode.get().get_trait(F.Lead.is_lead).has_trait(F.Lead.can_attach_to_pad_by_name_heuristic)
+    class TestPad2(fabll.Node):
+        _is_pad = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="cathode", pad_number="2")
+        )
+
+    module = TestModule.bind_typegraph(tg).create_instance(g=g)
+    pad1 = TestPad1.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    pads = [pad1, pad2]
+
+    assert module.anode.get().get_trait(is_lead).has_trait(
+        can_attach_to_pad_by_name_heuristic)
+    assert module.cathode.get().get_trait(is_lead).has_trait(
+        can_attach_to_pad_by_name_heuristic)
 
     with capsys.disabled():
-        print(
-            fabll.graph.InstanceGraphFunctions.render(module.instance, show_traits=True, show_pointers=True)
-        )
+        print(fabll.graph.InstanceGraphFunctions.render(
+            module.instance, show_traits=True, show_pointers=True))
+
+    anode_pad = module.anode.get().get_trait(is_lead).get_trait(
+        can_attach_to_pad_by_name_heuristic).lead_matches_pad(pads)
+
+    cathode_pad = module.cathode.get().get_trait(is_lead).get_trait(
+        can_attach_to_pad_by_name_heuristic).lead_matches_pad(pads)
+
+    assert anode_pad.is_same(pad1)
+    assert cathode_pad.is_same(pad2)
 
 
 def test_can_attach_to_any_pad(capsys):
