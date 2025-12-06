@@ -4,6 +4,7 @@ const node_type_mod = @import("node_type.zig");
 const trait_mod = @import("trait.zig");
 const edgebuilder_mod = @import("edgebuilder.zig");
 const typegraph_mod = @import("typegraph.zig");
+const linker_mod = @import("linker.zig");
 
 const graph = graph_mod.graph;
 const visitor = graph_mod.visitor;
@@ -19,6 +20,7 @@ const str = graph.str;
 const EdgeCreationAttributes = edgebuilder_mod.EdgeCreationAttributes;
 const return_first = visitor.return_first;
 const TypeGraph = typegraph_mod.TypeGraph;
+const Linker = linker_mod.Linker;
 
 pub const ChildQuery = struct {
     direct_only: bool,
@@ -437,12 +439,19 @@ test "get_children_query type filtering" {
     // Build type graph with Electrical and Capacitor types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    const cap_p1 = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
+    const cap_p2 = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Electrical, "rp1", null);
-    _ = try tg.add_make_child(Resistor, Electrical, "rp2", null);
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+    const res_rp1 = try tg.add_make_child(Resistor, "Electrical", "rp1", null, null);
+    const res_rp2 = try tg.add_make_child(Resistor, "Electrical", "rp2", null, null);
+    const res_cap1 = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
+
+    // Link type references
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_rp1).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_rp2).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1).?, Capacitor);
 
     // Instantiate a Resistor (which has p1, p2 as Electrical and cap1 as Capacitor)
     const resistor = try tg.instantiate_node(Resistor);
@@ -505,10 +514,15 @@ test "get_children_query recursive with type filtering" {
     // Build type graph: Resistor has a Capacitor child, Capacitor has Electrical children
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null);
-    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null);
+    const cap_p1 = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
+    const cap_p2 = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null);
+    const res_cap1 = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
+
+    // Link type references
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1).?, Capacitor);
 
     // Instantiate a Resistor
     const resistor = try tg.instantiate_node(Resistor);

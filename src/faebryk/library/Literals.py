@@ -3,7 +3,7 @@ import math
 from bisect import bisect
 from collections.abc import Generator
 from dataclasses import dataclass
-from enum import Enum, StrEnum
+from enum import Enum
 from operator import ge
 from typing import TYPE_CHECKING, ClassVar, Iterable, Self, cast
 from warnings import deprecated
@@ -198,13 +198,10 @@ class is_literal(fabll.Node):
         return bool(is_literal.multi_equals(self, other, g=g, tg=tg))
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        return self.is_singleton() == singleton
+        return self.switch_cast().get_single() == singleton
 
-    def is_singleton(self) -> "LiteralValues | None":
-        is_singleton = self.switch_cast().is_singleton()
-        if is_singleton is None:
-            return None
-        return is_singleton
+    def is_singleton(self) -> bool:
+        return self.switch_cast().is_singleton()
 
     def is_empty(self) -> bool:
         return self.switch_cast().is_empty()
@@ -324,7 +321,10 @@ class Strings(fabll.Node):
             raise ValueError(f"Expected 1 value, got {len(values)}")
         return values[0]
 
-    def is_singleton(self) -> str | None:
+    def is_singleton(self) -> bool:
+        return len(self.get_values()) == 1
+
+    def get_single(self) -> str | None:
         elements = self.get_values()
         if not len(elements) == 1:
             return None
@@ -526,7 +526,7 @@ class NumericInterval(fabll.Node):
         assert numeric_instance is not None
         return Numeric.bind_instance(numeric_instance)
 
-    def get_value(self) -> float:
+    def get_single(self) -> float:
         if self.is_singleton():
             return self.get_min_value()
         raise ValueError(
@@ -2968,7 +2968,7 @@ class Numbers(fabll.Node):
     def is_empty(self) -> bool:
         return self.get_numeric_set().is_empty()
 
-    def get_value(self) -> float:
+    def get_single(self) -> float:
         """
         Get the singleton value from this Numbers literal.
         Raises ValueError if this is not a singleton (min != max).
@@ -3015,7 +3015,10 @@ class Numbers(fabll.Node):
             min=max_value, max=max_value, unit=self.get_is_unit()
         )
 
-    def is_singleton(self) -> float | None:
+    def is_singleton(self) -> bool:
+        return self.get_numeric_set().is_singleton()
+
+    def try_get_single(self) -> float | None:
         if self.get_numeric_set().is_singleton():
             return self.get_min_value()
         return None
@@ -3841,7 +3844,7 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        if not self.is_singleton() or not bit_position.is_singleton():
+        if not self.try_get_single() or not bit_position.try_get_single():
             # Uncertain result when either is a range
             return (
                 Booleans.bind_typegraph(tg=tg)
@@ -3891,7 +3894,7 @@ class Numbers(fabll.Node):
         self, other: "Numbers", *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> bool:
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
-        return self.get_numeric_set().contains(other_converted.get_value())
+        return self.get_numeric_set().contains(other_converted.get_single())
 
     def serialize(self) -> dict:
         """
@@ -4675,13 +4678,13 @@ class TestNumbers:
         # Single element
         single = Numbers.create_instance(g=g, tg=tg)
         single.setup_from_min_max(min=5.0, max=5.0, unit=meter_instance.is_unit.get())
-        assert bool(single.is_singleton()) is True
+        assert bool(single.try_get_single()) is True
         # Range
         range_set = Numbers.create_instance(g=g, tg=tg)
         range_set.setup_from_min_max(
             min=0.0, max=5.0, unit=meter_instance.is_unit.get()
         )
-        assert bool(range_set.is_singleton()) is False
+        assert bool(range_set.try_get_single()) is False
 
     def test_is_finite(self):
         """Test finite bounds check."""
@@ -5098,7 +5101,7 @@ class Counts(fabll.Node):
     def is_empty(self) -> bool:
         return len(self.get_counts()) == 0
 
-    def is_singleton(self) -> int | None:
+    def is_singleton(self) -> bool:
         values = self.get_values()
         return len(values) == 1
 
@@ -5561,7 +5564,10 @@ class Booleans(fabll.Node):
         """Check if two boolean sets have the same values."""
         return set(self.get_values()) == set(other.get_values())
 
-    def is_singleton(self) -> bool | None:
+    def is_singleton(self) -> bool:
+        return len(self.get_values()) == 1
+
+    def try_get_single(self) -> bool | None:
         vals = self.get_values()
         if len(vals) != 1:
             return None
@@ -5698,11 +5704,14 @@ class AbstractEnums(fabll.Node):
 
         return enum_values
 
-    def is_singleton(self) -> str | None:
+    def is_singleton(self) -> bool:
+        return len(self.get_values()) == 1
+
+    def get_single(self) -> str | None:
         vals = self.get_values()
         if len(vals) != 1:
             return None
-        return vals[0]
+        return next(iter(vals))
 
     def get_values_typed[T: Enum](self, EnumType: type[T]) -> list[T]:
         return [EnumType(value) for value in self.get_values()]
@@ -5869,68 +5878,6 @@ def EnumsFactory(enum_type: type[Enum]) -> type[AbstractEnums]:
     return ConcreteEnums
 
 
-class AnyLiteral(fabll.Node):
-    """
-    Tagged union of concrete literal types (Numbers, Booleans, Strings)
-    """
-
-    class _Tag(StrEnum):
-        STRING = "string"
-        BOOLEAN = "boolean"
-        NUMERIC = "numeric"
-
-    is_literal = fabll.Traits.MakeEdge(is_literal.MakeChild())
-
-    tag = EnumsFactory(_Tag).MakeChild(*_Tag.__members__.values())
-    value = F.Collections.Pointer.MakeChild()
-
-    def setup(self, value: str | bool | int | float) -> Self:  # type: ignore
-        match value:
-            case str():
-                self.tag.get().setup(self._Tag.STRING)
-                lit = (
-                    Strings.bind_typegraph(self.tg)
-                    .create_instance(g=self.g)
-                    .setup_from_values(value)
-                )
-            case bool():
-                self.tag.get().setup(self._Tag.BOOLEAN)
-                lit = (
-                    Booleans.bind_typegraph(self.tg)
-                    .create_instance(g=self.g)
-                    .setup_from_values(value)
-                )
-            case float() | int():
-                self.tag.get().setup(self._Tag.NUMERIC)
-                lit = (
-                    NumericSet.bind_typegraph(self.tg)
-                    .create_instance(g=self.g)
-                    .setup_from_singleton(value=value)
-                )
-        self.value.get().point(lit)
-        EdgeComposition.add_child(
-            bound_node=self.instance,
-            child=lit.instance.node(),
-            child_identifier=str(id(lit)),
-        )
-        return self
-
-    def get_value(self) -> str | bool | float:
-        tag = self.tag.get().get_single_value()
-        lit = self.value.get().deref()
-
-        match tag:
-            case self._Tag.STRING:
-                (v,) = lit.cast(Strings).get_values()
-                return v
-            case self._Tag.BOOLEAN:
-                return lit.cast(Booleans).get_single()
-            case self._Tag.NUMERIC:
-                return lit.cast(Numbers).get_value()
-            case _:
-                raise ValueError(f"Unsupported tag: {tag}")
-
-
 LiteralNodes = Numbers | Booleans | Strings | AbstractEnums | Counts
 LiteralNodesPair = (
     tuple[Numbers, Numbers]
@@ -6080,7 +6027,7 @@ def test_bound_context():
     )
     my_bool = ctx.create_booleans(booleans=[True, False])
 
-    assert my_number.get_value() == 1.0
+    assert my_number.get_single() == 1.0
     assert my_bool.get_values() == [True, False]
 
 
@@ -6176,10 +6123,10 @@ class TestStringLiterals:
         tg = fbrk.TypeGraph.create(g=g)
         string_set = Strings.bind_typegraph(tg=tg).create_instance(g=g)
         string_set.setup_from_values(*values)
-        assert string_set.is_singleton() is None
+        assert string_set.get_single() is None
         singleton_string_set = Strings.bind_typegraph(tg=tg).create_instance(g=g)
         singleton_string_set.setup_from_values("a")
-        assert singleton_string_set.is_singleton() == "a"
+        assert singleton_string_set.get_single() == "a"
 
 
 class TestBooleans:

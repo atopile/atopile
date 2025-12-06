@@ -7,6 +7,7 @@ const EdgeComposition = @import("composition.zig").EdgeComposition;
 const edgebuilder_mod = @import("edgebuilder.zig");
 const TypeGraph = @import("typegraph.zig").TypeGraph;
 const EdgeType = @import("node_type.zig").EdgeType;
+const Linker = @import("linker.zig").Linker;
 
 const Node = graph.Node;
 const NodeReference = graph.NodeReference;
@@ -319,8 +320,10 @@ test "down_connect" {
     const ElectricalType = try tg.add_type("Electrical");
     // const LinkType = try tg.add_type("Link");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    const ep_hv = try tg.add_make_child(ElectricPowerType, "Electrical", "HV", null, null);
+    const ep_lv = try tg.add_make_child(ElectricPowerType, "Electrical", "LV", null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(ep_hv).?, ElectricalType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(ep_lv).?, ElectricalType);
 
     const EP_1 = try tg.instantiate_node(ElectricPowerType);
     const HV_1 = EdgeComposition.get_child_by_identifier(EP_1, "HV").?;
@@ -515,8 +518,10 @@ test "hierarchy_short" {
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    const mc_hv = try tg.add_make_child(ElectricPowerType, "Electrical", "HV", null, null);
+    const mc_lv = try tg.add_make_child(ElectricPowerType, "Electrical", "LV", null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_hv).?, ElectricalType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_lv).?, ElectricalType);
 
     const electric_power = try tg.instantiate_node(ElectricPowerType);
     const hv_pin = EdgeComposition.get_child_by_identifier(electric_power, "HV").?;
@@ -547,8 +552,10 @@ test "shallow_filter_allows_alternative_route" {
     const ElectricPowerType = try tg.add_type("ElectricPower");
     const ElectricalType = try tg.add_type("Electrical");
 
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "HV", null);
-    _ = try tg.add_make_child(ElectricPowerType, ElectricalType, "LV", null);
+    const mc_hv2 = try tg.add_make_child(ElectricPowerType, "Electrical", "HV", null, null);
+    const mc_lv2 = try tg.add_make_child(ElectricPowerType, "Electrical", "LV", null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_hv2).?, ElectricalType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_lv2).?, ElectricalType);
 
     const start_parent = try tg.instantiate_node(ElectricPowerType);
     const start_child = EdgeComposition.get_child_by_identifier(start_parent, "HV").?;
@@ -585,10 +592,14 @@ test "chains_mixed_shallow_nested" {
     const HVType = try tg.add_type("HV");
     const LVType = try tg.add_type("LV");
 
-    _ = try tg.add_make_child(ElType, LineType, "line", null);
-    _ = try tg.add_make_child(ElType, RefType, "reference", null);
-    _ = try tg.add_make_child(RefType, HVType, "hv", null);
-    _ = try tg.add_make_child(RefType, LVType, "lv", null);
+    const mc_line = try tg.add_make_child(ElType, "Line", "line", null, null);
+    const mc_ref = try tg.add_make_child(ElType, "Ref", "reference", null, null);
+    const mc_hv = try tg.add_make_child(RefType, "HV", "hv", null, null);
+    const mc_lv = try tg.add_make_child(RefType, "LV", "lv", null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_line).?, LineType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_ref).?, RefType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_hv).?, HVType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_lv).?, LVType);
 
     var el: [3]graph.BoundNodeReference = undefined;
     for (&el) |*slot| slot.* = try tg.instantiate_node(ElType);
@@ -646,10 +657,12 @@ test "split_flip_negative" {
 
     var tg = TypeGraph.init(&g);
     const HighType = try tg.add_type("High");
-    const Lower = try tg.add_type("Low");
+    const LowType = try tg.add_type("Low");
 
-    _ = try tg.add_make_child(HighType, Lower, "lower1", null);
-    _ = try tg.add_make_child(HighType, Lower, "lower2", null);
+    const mc_l1 = try tg.add_make_child(HighType, "Low", "lower1", null, null);
+    const mc_l2 = try tg.add_make_child(HighType, "Low", "lower2", null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_l1).?, LowType);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_l2).?, LowType);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -679,8 +692,10 @@ test "up_connect_simple_two_negative" {
     const Lower1Type = try tg.add_type("Lower1");
     const Lower2Type = try tg.add_type("Lower2");
 
-    _ = try tg.add_make_child(HighType, Lower1Type, "lower1", null);
-    _ = try tg.add_make_child(HighType, Lower2Type, "lower2", null);
+    const mc_lower1 = try tg.add_make_child(HighType, "Lower1", "lower1", null, null);
+    const mc_lower2 = try tg.add_make_child(HighType, "Lower2", "lower2", null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_lower1).?, Lower1Type);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_lower2).?, Lower2Type);
 
     var high: [2]graph.BoundNodeReference = undefined;
     for (&high) |*slot| slot.* = try tg.instantiate_node(HighType);
@@ -815,11 +830,14 @@ test "type_graph_pathfinder" {
     const I2C_SDA = try tg.add_type("I2C_SDA");
 
     // I2C has dedicated SCL and SDA child types
-    _ = try tg.add_make_child(I2C, I2C_SCL, null, null);
-    _ = try tg.add_make_child(I2C, I2C_SDA, null, null);
+    const mc_scl = try tg.add_make_child(I2C, "I2C_SCL", null, null, null);
+    const mc_sda = try tg.add_make_child(I2C, "I2C_SDA", null, null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_scl).?, I2C_SCL);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_sda).?, I2C_SDA);
 
     // Sensor has an I2C interface
-    _ = try tg.add_make_child(Sensor, I2C, null, null);
+    const mc_i2c = try tg.add_make_child(Sensor, "I2C", null, null, null);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(mc_i2c).?, I2C);
 
     // Create sensor instances
     const sensor1 = try tg.instantiate_node(Sensor);

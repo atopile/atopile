@@ -733,12 +733,12 @@ class MutatorUtils:
         for var, count in factors.items():
             muls = same_literal_factors[var]
             # If no effective multiplier or only a single factor, treat as leftover
-            if count.is_singleton() == 0 and len(muls) <= 1:
+            if count.try_get_single() == 0 and len(muls) <= 1:
                 old_factors.extend(muls)
                 continue
 
             # If only count=1 and no additional factors, just keep the variable
-            if count.is_singleton() == 1 and not muls:
+            if count.try_get_single() == 1 and not muls:
                 old_factors.append(var)
                 continue
 
