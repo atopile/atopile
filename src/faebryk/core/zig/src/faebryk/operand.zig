@@ -44,7 +44,7 @@ pub const EdgeOperand = struct {
     }
 
     pub fn get_expression_node(E: graph.BoundEdgeReference) NodeReference {
-        return E.edge.source;
+        return EdgeComposition.get_parent_node_of(E.g.bind(E.edge.source)).?.node;
     }
 
     pub fn get_operand_node(E: EdgeReference) NodeReference {

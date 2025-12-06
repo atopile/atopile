@@ -475,14 +475,11 @@ class BoundExpressions:
 
     def lit_bool(self, *values: bool) -> F.Parameters.can_be_operand:
         return (
-            (
-                F.Literals.Booleans.bind_typegraph(tg=self.tg).create_instance(
-                    g=self.g,
-                    attributes=F.Literals.Booleans.Attributes(
-                        has_true=True in values, has_false=False in values
-                    ),
-                )
+            F.Literals.Booleans.bind_typegraph(tg=self.tg)
+            .create_instance(
+                g=self.g,
             )
+            .setup_from_values(*values)
             .is_literal.get()
             .as_operand.get()
         )

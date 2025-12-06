@@ -35,6 +35,10 @@ class UnitsNotCommensurableError(Exception):
         self.incommensurable_items = incommensurable_items
 
 
+class NotSingletonError(Exception):
+    pass
+
+
 class is_literal(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
 
@@ -198,7 +202,10 @@ class is_literal(fabll.Node):
         return bool(is_literal.multi_equals(self, other, g=g, tg=tg))
 
     def equals_singleton(self, singleton: "LiteralValues") -> bool:
-        return self.switch_cast().get_single() == singleton
+        obj = self.switch_cast()
+        if not obj.is_singleton():
+            return False
+        return obj.get_single() == singleton
 
     def is_singleton(self) -> bool:
         return self.switch_cast().is_singleton()
@@ -324,10 +331,10 @@ class Strings(fabll.Node):
     def is_singleton(self) -> bool:
         return len(self.get_values()) == 1
 
-    def get_single(self) -> str | None:
+    def get_single(self) -> str:
         elements = self.get_values()
         if not len(elements) == 1:
-            return None
+            raise NotSingletonError(f"Expected 1 value, got {len(elements)}")
         return next(iter(elements))
 
     def is_empty(self) -> bool:
@@ -529,7 +536,7 @@ class NumericInterval(fabll.Node):
     def get_single(self) -> float:
         if self.is_singleton():
             return self.get_min_value()
-        raise ValueError(
+        raise NotSingletonError(
             "NumericInterval is not a singleton: "
             f"{self.get_min_value()} != {self.get_max_value()}"
         )
@@ -2978,7 +2985,7 @@ class Numbers(fabll.Node):
         """
         numeric_set = self.get_numeric_set()
         if not numeric_set.is_singleton():
-            raise ValueError(
+            raise NotSingletonError(
                 f"Expected singleton value, got interval: "
                 f"[{numeric_set.get_min_value()}, {numeric_set.get_max_value()}]"
             )
@@ -3032,7 +3039,10 @@ class Numbers(fabll.Node):
         Units must be commensurable. Returns a single-element quantity set.
         """
         if not self.get_is_unit().is_commensurable_with(target.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), target.get_is_unit()],
+            )
         if not target.get_numeric_set().is_singleton():
             raise ValueError("target must be a single value, not a range")
         target_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=target)
@@ -3091,7 +3101,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_intersect_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3135,7 +3148,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_union(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3180,7 +3196,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_difference_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3353,7 +3372,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_subtract(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3616,7 +3638,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_symmetric_difference_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3751,7 +3776,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_ge_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3775,7 +3803,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_gt_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3799,7 +3830,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_le_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -3823,7 +3857,10 @@ class Numbers(fabll.Node):
         g = g or self.g
         tg = tg or self.tg
         if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                "incompatible units",
+                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+            )
         other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         return self.get_numeric_set().op_lt_intervals(
             g=g, tg=tg, other=other_converted.get_numeric_set()
@@ -5111,7 +5148,7 @@ class Counts(fabll.Node):
         """
         values = self.get_values()
         if len(values) != 1:
-            raise ValueError(
+            raise NotSingletonError(
                 f"Expected single value, got {len(values)} values: {values}"
             )
         return values[0]
@@ -5412,7 +5449,9 @@ class Booleans(fabll.Node):
         """Get the single boolean value. Raises if not exactly one value."""
         values = self.get_values()
         if len(values) != 1:
-            raise ValueError(f"Expected single boolean, got {len(values)}: {values}")
+            raise NotSingletonError(
+                f"Expected single boolean, got {len(values)}: {values}"
+            )
         return values[0]
 
     @classmethod
