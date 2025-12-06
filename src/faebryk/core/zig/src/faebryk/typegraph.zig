@@ -649,45 +649,9 @@ pub const TypeGraph = struct {
         self: *@This(),
         type_node: BoundNodeReference,
         identifier: []const u8,
-    ) error{ ChildNotFound, OutOfMemory }!BoundNodeReference {
-        const FindCtx = struct {
-            target: []const u8,
-
-            pub fn visit(
-                self_ptr: *anyopaque,
-                edge: graph.BoundEdgeReference,
-            ) visitor.VisitResult(BoundNodeReference) {
-                const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
-                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-                const child_identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
-                    return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
-                };
-
-                if (std.mem.eql(u8, child_identifier, ctx.target)) {
-                    return visitor.VisitResult(BoundNodeReference){ .OK = make_child };
-                }
-
-                return visitor.VisitResult(BoundNodeReference){ .CONTINUE = {} };
-            }
-        };
-
-        var ctx = FindCtx{ .target = identifier };
-        const visit_result = EdgeComposition.visit_children_of_type(
-            type_node,
-            self.get_MakeChild().node,
-            BoundNodeReference,
-            &ctx,
-            FindCtx.visit,
-        );
-
-        switch (visit_result) {
-            .OK => |make_child| return make_child,
-            .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
-                else => unreachable,
-            },
-            else => return error.ChildNotFound,
-        }
+    ) error{ChildNotFound}!BoundNodeReference {
+        _ = self;
+        return EdgeComposition.get_child_by_identifier(type_node, identifier) orelse error.ChildNotFound;
     }
 
     fn reference_matches_path(
