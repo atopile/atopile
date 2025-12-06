@@ -271,7 +271,7 @@ def fold_multiply(expr: F.Expressions.Multiply, mutator: Mutator):
 
         # unpack if single operand (operatable)
         if len(new_operands) == 1 and (
-            no_po := new_operands[0].get_sibling_trait(
+            no_po := new_operands[0].try_get_sibling_trait(
                 F.Parameters.is_parameter_operatable
             )
         ):
