@@ -116,6 +116,10 @@ class can_attach_to_pad_by_name(fabll.Node):
         )
         return out
 
+    def setup(self, regex: str) -> Self:
+        self.regex_.get().alias_to_single(value=regex)
+        return self
+
 
 class has_associated_pad(fabll.Node):
     """

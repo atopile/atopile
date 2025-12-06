@@ -58,16 +58,15 @@ from faebryk.library.Filter import Filter
 from faebryk.library.Pad import Pad
 from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
+from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.Net import Net
-from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.ElectricSignal import ElectricSignal
 import faebryk.library.KiCadFootprints as KiCadFootprints
-from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
 from faebryk.library.Addressor import Addressor
 from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.I2S import I2S
@@ -79,7 +78,6 @@ from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.UART_Base import UART_Base
 import faebryk.library.Lead as Lead
-from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
 from faebryk.library.BJT import BJT
@@ -162,16 +160,15 @@ __all__ = [
     "Pad",
     "Symbol",
     "XtalIF",
+    "has_explicit_part",
     "has_net_name_affix",
     "has_pin_association_heuristic",
     "requires_external_usage",
     "has_single_electric_reference",
     "Net",
-    "can_attach_via_pinmap",
     "ElectricLogic",
     "ElectricSignal",
     "KiCadFootprints",
-    "can_attach_to_footprint_via_pinmap",
     "Addressor",
     "CAN_TTL",
     "I2S",
@@ -183,7 +180,6 @@ __all__ = [
     "SWD",
     "UART_Base",
     "Lead",
-    "has_explicit_part",
     "SPIFlash",
     "UART",
     "BJT",

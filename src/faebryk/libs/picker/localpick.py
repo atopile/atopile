@@ -110,17 +110,16 @@ def pick_module_by_params(
         raise PickErrorParams(module, list(options), solver)
 
     if option.pinmap:
-        module.add(
-            F.can_attach_to_footprint_via_pinmap.bind_typegraph(tg=module.tg)
-            .create_instance(g=module.g)
-            .setup(option.pinmap)
-        )
-
+        for pin_name, electrical in option.pinmap.items():
+            lead_t = fabll.Traits.create_and_add_instance_to(
+                node=electrical, trait=F.Lead.is_lead
+            )
+            fabll.Traits.create_and_add_instance_to(
+                node=lead_t, trait=F.Lead.can_attach_to_pad_by_name
+            ).setup(regex=f"{pin_name}")
     option.part.supplier.attach(module, option)
-    module.add(
-        F.has_part_picked.bind_typegraph(tg=module.tg)
-        .create_instance(g=module.g)
-        .setup(option.part)
+    fabll.Traits.create_and_add_instance_to(node=module, trait=F.has_part_picked).setup(
+        option.part
     )
 
     logger.debug(f"Attached {option.part.partno} to {module}")
