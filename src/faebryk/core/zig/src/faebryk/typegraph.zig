@@ -156,13 +156,6 @@ pub const TypeGraph = struct {
             }
         };
 
-        pub fn get_child_type(node: BoundNodeReference) ?BoundNodeReference {
-            if (get_type_reference(node)) |type_ref| {
-                return TypeReferenceNode.get_resolved_type(type_ref);
-            }
-            return null;
-        }
-
         pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
             var dynamic: ?graph.DynamicAttributes = null;
             if (value) |v| {
@@ -174,12 +167,28 @@ pub const TypeGraph = struct {
             };
         }
 
-        pub fn get_type_reference(node: BoundNodeReference) ?BoundNodeReference {
-            return EdgeComposition.get_child_by_identifier(node, "type_ref");
+        pub fn get_child_type(mc_node: BoundNodeReference) ?BoundNodeReference {
+            const type_ref = get_type_reference(mc_node);
+            return TypeReferenceNode.get_resolved_type(type_ref);
         }
 
-        pub fn get_mount_reference(node: BoundNodeReference) ?BoundNodeReference {
-            return EdgeComposition.get_child_by_identifier(node, "mount");
+        const type_reference_identifier = "type_ref";
+        const mount_identifier = "mount";
+
+        pub fn set_type_reference(mc_node: BoundNodeReference, type_reference: BoundNodeReference) void {
+            _ = EdgeComposition.add_child(mc_node, type_reference.node, type_reference_identifier);
+        }
+
+        pub fn set_mount_reference(mc_node: BoundNodeReference, mount_reference: BoundNodeReference) void {
+            _ = EdgeComposition.add_child(mc_node, mount_reference.node, mount_identifier);
+        }
+
+        pub fn get_type_reference(mc_node: BoundNodeReference) BoundNodeReference {
+            return EdgeComposition.get_child_by_identifier(mc_node, type_reference_identifier).?;
+        }
+
+        pub fn get_mount_reference(mc_node: BoundNodeReference) ?BoundNodeReference {
+            return EdgeComposition.get_child_by_identifier(mc_node, mount_identifier);
         }
     };
 
@@ -203,11 +212,9 @@ pub const TypeGraph = struct {
             pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
                 const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
                 const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-                const type_reference = MakeChildNode.get_type_reference(make_child) orelse {
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                };
+                const type_reference = MakeChildNode.get_type_reference(make_child);
 
-                if (EdgePointer.get_pointed_node_by_identifier(type_reference, "resolved") == null) {
+                if (Linker.try_get_resolved_type(type_reference) == null) {
                     ctx.list.append(.{ .type_node = ctx.type_node, .type_reference = type_reference }) catch {
                         return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
                     };
@@ -291,7 +298,7 @@ pub const TypeGraph = struct {
         }
 
         pub fn get_resolved_type(reference: BoundNodeReference) ?BoundNodeReference {
-            return EdgePointer.get_pointed_node_by_identifier(reference, "resolved");
+            return Linker.try_get_resolved_type(reference);
         }
 
         pub fn build(allocator: std.mem.Allocator, value: ?str) NodeCreationAttributes {
@@ -471,7 +478,7 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "Reference").?;
     }
 
-    fn get_TypeReference(self: *@This()) BoundNodeReference {
+    fn get_TypeReference(self: *const @This()) BoundNodeReference {
         return EdgeComposition.get_child_by_identifier(self.self_node, "TypeReference").?;
     }
 
@@ -584,6 +591,8 @@ pub const TypeGraph = struct {
     //    return trait_type;
     //}
 
+    ///
+    /// mount_reference: Create child under different parent. WARNING DO NOT USE THIS!
     pub fn add_make_child(
         self: *@This(),
         target_type: BoundNodeReference,
@@ -602,9 +611,9 @@ pub const TypeGraph = struct {
         }
 
         const type_reference = try TypeReferenceNode.create_and_insert(self, child_type_identifier);
-        _ = EdgeComposition.add_child(make_child, type_reference.node, "type_ref");
+        MakeChildNode.set_type_reference(make_child, type_reference);
         if (mount_reference) |_mount_reference| {
-            _ = EdgeComposition.add_child(make_child, _mount_reference.node, "mount");
+            MakeChildNode.set_mount_reference(make_child, _mount_reference);
         }
         _ = EdgePointer.point_to(make_child, type_reference.node, identifier, null);
         _ = EdgeComposition.add_child(target_type, make_child.node, identifier);
@@ -1412,6 +1421,7 @@ pub const TypeGraph = struct {
         result.append(self.get_MakeChild().node) catch @panic("OOM");
         result.append(self.get_MakeLink().node) catch @panic("OOM");
         result.append(self.get_Reference().node) catch @panic("OOM");
+        result.append(self.get_TypeReference().node) catch @panic("OOM");
         return result;
     }
 

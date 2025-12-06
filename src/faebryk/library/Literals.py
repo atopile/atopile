@@ -28,6 +28,13 @@ EPSILON_ABS = 10**-ABS_DIGITS
 # TODO all creating functions need g as param
 
 
+class UnitsNotCommensurableError(Exception):
+    def __init__(self, message: str, incommensurable_items: list["is_unit"]):
+        super().__init__(message)
+        self.message = message
+        self.incommensurable_items = incommensurable_items
+
+
 class is_literal(fabll.Node):
     from faebryk.library.Parameters import can_be_operand
 
@@ -3188,7 +3195,10 @@ class Numbers(fabll.Node):
         Convert to specified unit.
         """
         if not self.get_is_unit().is_commensurable_with(unit):
-            raise ValueError("incompatible units")
+            raise UnitsNotCommensurableError(
+                f"Units {self.get_is_unit()} and {unit} are not commensurable",
+                incommensurable_items=[self.get_is_unit(), unit],
+            )
 
         scale, offset = self.get_is_unit().get_conversion_to(unit)
 
@@ -3298,12 +3308,11 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
         out_numeric_set = self.get_numeric_set().op_multiply(
-            g=g, tg=tg, other=other_converted.get_numeric_set()
+            g=g, tg=tg, other=other.get_numeric_set()
         )
         result_unit = self.get_is_unit().op_multiply(
-            g=g, tg=tg, other=other_converted.get_is_unit()
+            g=g, tg=tg, other=other.get_is_unit()
         )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
@@ -3872,7 +3881,10 @@ class Numbers(fabll.Node):
         the same numeric intervals (after unit conversion).
         """
         # Convert to same units and check commensurability
-        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        try:
+            other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+        except UnitsNotCommensurableError:
+            return False
         return self.get_numeric_set().equals(other_converted.get_numeric_set())
 
     def contains(
@@ -4092,6 +4104,26 @@ class TestNumbers:
         assert result.get_numeric_set().get_max_value() == 20.0
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
         assert result_unit_basis_vector == BasisVector(meter=2)
+
+    def test_op_multiply_different_units(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import Meter, Newton
+
+        quantity_meter = Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
+            min=1.0,
+            max=2.0,
+            unit=Meter.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        )
+        quantity_newton = Numbers.create_instance(g=g, tg=tg).setup_from_min_max(
+            min=3.0,
+            max=4.0,
+            unit=Newton.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
+        )
+        result = quantity_meter.op_mul_intervals(g=g, tg=tg, other=quantity_newton)
+        assert result.get_numeric_set().get_min_value() == 3.0
+        assert result.get_numeric_set().get_max_value() == 8.0
+        assert result.get_is_unit().compact_repr() == "s⁻²·m²·kg"
 
     def test_op_negate(self):
         """Test negation of a quantity set."""
@@ -4809,7 +4841,7 @@ class TestNumbers:
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(min=2.0, max=5.0, unit=second_instance.is_unit.get())
-        pytest.raises(ValueError, qs1.equals, g=g, tg=tg, other=qs2)
+        pytest.raises(UnitsNotCommensurableError, qs1.equals, g=g, tg=tg, other=qs2)
 
     def test_serialize_api_format(self):
         """Test serialization to API format (Quantity_Interval_Disjoint)."""

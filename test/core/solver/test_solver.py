@@ -1009,7 +1009,7 @@ def test_simple_pick():
                     "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
                         F.Literals.is_literal
                     ),
-                },  # type: ignore
+                },
                 pinmap={
                     "1": led.diode.get().cathode.get(),
                     "2": led.diode.get().anode.get(),
@@ -1059,7 +1059,7 @@ def test_simple_negative_pick():
                     "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
                         F.Literals.is_literal
                     ),
-                },  # type: ignore
+                },
                 pinmap={
                     "1": led.diode.get().cathode.get(),
                     "2": led.diode.get().anode.get(),
@@ -1084,7 +1084,7 @@ def test_simple_negative_pick():
                     "max_current": E.lit_op_single((0.1100, E.U.A)).get_sibling_trait(
                         F.Literals.is_literal
                     ),
-                },  # type: ignore
+                },
                 pinmap={
                     "1": led.diode.get().cathode.get(),
                     "2": led.diode.get().anode.get(),
@@ -1704,7 +1704,7 @@ def test_mapping(A_value):
     Z = E.lit_op_range_from_center_rel((300, E.U.dl), 0.1)
 
     mapping = {5: X, 10: Y, 15: Z}
-    fabll.Traits(A).get_obj(F.Parameters.NumericParameter).constrain_mapping(B, mapping)  # type: ignore
+    fabll.Traits(A).get_obj(F.Parameters.NumericParameter).constrain_mapping(B, mapping)
 
     E.is_subset(A, E.lit_op_single(A_value), assert_=True)
 
@@ -2232,7 +2232,7 @@ def test_exec_pure_literal_expressions(
         else expected
     ).get_sibling_trait(F.Literals.is_literal)
 
-    expr = op(*lits_converted)  # type: ignore
+    expr = op(*lits_converted)
     assert not_none(
         _exec_pure_literal_expressions(
             E.g, E.tg, expr.get_sibling_trait(F.Expressions.is_expression)

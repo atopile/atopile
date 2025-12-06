@@ -2,7 +2,17 @@
 # SPDX-License-Identifier: MIT
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator, Protocol, Self, Sequence, cast, override
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Iterable,
+    Iterator,
+    Protocol,
+    Self,
+    Sequence,
+    cast,
+    override,
+)
 
 from ordered_set import OrderedSet
 from typing_extensions import Callable, deprecated
@@ -21,6 +31,9 @@ from faebryk.libs.util import (
     once,
     zip_dicts_by_key,
 )
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 # Exceptions ---------------------------------------------------------------------------
 
@@ -960,37 +973,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         cls.__fields[locator] = field
 
     @classmethod
-    def _add_instance_child(
-        cls,
-        child: InstanceChildBoundType,
-    ) -> graph.BoundNode:
-        tg = child.t.tg
-        identifier = child.get_identifier()
-        nodetype = child.nodetype
-
-        parent_type_node = cls.bind_typegraph(tg).get_or_create_type()
-        child_type_node = nodetype.bind_typegraph(tg).get_or_create_type()
-
-        make_child = tg.add_make_child(
-            type_node=parent_type_node,
-            child_type_identifier=nodetype._type_identifier(),
-            identifier=identifier,
-            node_attributes=None,
-            mount_reference=None,
-        )
-
-        type_reference = tg.get_make_child_type_reference(make_child=make_child)
-        assert type_reference is not None
-
-        Linker.link_type_reference(
-            g=parent_type_node.g(),
-            type_reference=type_reference,
-            target_type_node=child_type_node,
-        )
-
-        return make_child
-
-    @classmethod
     def _add_type_child(
         cls,
         child: TypeChildBoundInstance,
@@ -1006,13 +988,6 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             child_identifier=identifier,
         )
         return child_node
-
-    @classmethod
-    def add_anon_child(
-        cls,
-        child: InstanceChildBoundType[Any],
-    ):
-        cls._add_instance_child(child)
 
     @classmethod
     def MakeChild(cls) -> _ChildField[Self]:
@@ -1404,8 +1379,26 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
     def no_include_parents_in_full_name(self, value: bool) -> None:
         setattr(self, "_no_include_parents_in_full_name", value)
 
-    def pretty_params(self, solver: Any = None) -> str:
-        raise NotImplementedError("pretty_params is not implemented")
+    def pretty_params(self, solver: "Solver | None" = None) -> str:
+        import faebryk.library.Parameters as Parameters
+
+        params = {
+            not_none(p.get_parent())[1]: p
+            for p in self.get_children(
+                direct_only=True, types=Node, required_trait=Parameters.is_parameter
+            )
+        }
+
+        def _to_str(p: NodeT) -> str:
+            return (
+                solver.inspect_get_known_supersets(
+                    p.get_trait(Parameters.is_parameter)
+                ).pretty_str()
+                if solver
+                else str(p)
+            )
+
+        return "\n".join(f"{k}: {_to_str(v)}" for k, v in params.items())
 
     def relative_address(self, root: "Node | None" = None) -> str:
         """Return the address from root to self"""
@@ -1875,9 +1868,18 @@ class MakeChild(Node):
     """
 
     def get_child_type(self) -> graph.BoundNode:
-        return not_none(
-            fbrk.EdgePointer.get_referenced_node_from_node(node=self.instance)
+        # TODO expose the zig function instead
+        typeref = not_none(
+            fbrk.EdgeComposition.get_child_by_identifier(
+                bound_node=self.instance, child_identifier="type_ref"
+            )
         )
+        resolved_type = fbrk.EdgePointer.get_pointed_node_by_identifier(
+            bound_node=typeref, identifier="resolved"
+        )
+        if not resolved_type:
+            raise ValueError("Type not linked yet")
+        return resolved_type
 
 
 class is_module(Node):

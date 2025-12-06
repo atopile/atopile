@@ -64,7 +64,9 @@ def pick_module_by_params(
     params = {
         not_none(p.get_parent())[1]: p.get_trait(F.Parameters.is_parameter)
         for p in module.get_children(
-            direct_only=True, types=fabll.Node, required_trait=F.Parameters.is_parameter
+            direct_only=False,
+            types=fabll.Node,
+            required_trait=F.Parameters.is_parameter,
         )
     }
 

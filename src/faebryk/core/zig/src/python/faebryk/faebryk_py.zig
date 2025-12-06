@@ -3179,11 +3179,7 @@ fn wrap_typegraph_get_make_child_type_reference() type {
             _ = wrapper;
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
-            if (faebryk.typegraph.TypeGraph.MakeChildNode.get_type_reference(kwarg_obj.make_child.*)) |type_ref| {
-                return graph_py.makeBoundNodePyObject(type_ref);
-            }
-
-            return bind.wrap_none();
+            return graph_py.makeBoundNodePyObject(faebryk.typegraph.TypeGraph.MakeChildNode.get_type_reference(kwarg_obj.make_child.*));
         }
     };
 }
