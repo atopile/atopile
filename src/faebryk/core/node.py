@@ -2112,11 +2112,9 @@ class TreeRenderer:
         """
         type_name = Node.bind_instance(ctx.node).get_type_name() or "<anonymous>"
 
-        attrs = ctx.node.node().get_attrs()
+        attrs = ctx.node.node().get_dynamic_attrs()
         attrs_parts = [
-            f"{k}={TreeRenderer.truncate_text(str(v))}"
-            for k, v in attrs.items()
-            if k != "uuid"
+            f"{k}={TreeRenderer.truncate_text(str(v))}" for k, v in attrs.items()
         ]
         attrs_text = f"<{', '.join(attrs_parts)}>" if attrs_parts else ""
 

@@ -389,22 +389,6 @@ fn wrap_node_get_uuid() type {
     };
 }
 
-fn wrap_node_get_attrs() type {
-    return struct {
-        pub const descr = method_descr{
-            .name = "get_attrs",
-            .doc = "Return a dict with all attributes",
-            .args_def = struct {},
-            .static = false,
-        };
-
-        pub fn impl(self: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = bind.castWrapper("Node", &node_type, NodeWrapper, self) orelse return null;
-            return nodeAttributesToPyDict(wrapper.data) orelse null;
-        }
-    };
-}
-
 fn wrap_node_is_same() type {
     return struct {
         pub const descr = method_descr{
@@ -436,7 +420,6 @@ fn wrap_node(root: *py.PyObject) void {
         wrap_node_get_attr(),
         wrap_node_get_dynamic_attrs(),
         wrap_node_get_uuid(),
-        wrap_node_get_attrs(),
         wrap_node_is_same(),
     };
     bind.wrap_namespace_struct(root, graph.graph.Node, extra_methods);
