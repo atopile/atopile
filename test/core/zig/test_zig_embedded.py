@@ -71,28 +71,37 @@ def build_zig_test_command(zig_file: Path, test_filter: str | None = None) -> li
     return cmd
 
 
-def test_zig_embedded_tests(subtests: "pytest.Subtests") -> None:
-    """Run zig test on all files containing embedded tests."""
-    test_files = discover_zig_test_files()
-    ran_a_test = False
+def discover_zig_tests() -> list[tuple[Path, str]]:
+    """Discover all zig tests as (file, test_name) pairs."""
+    tests = [
+        (zig_file, test_name)
+        for zig_file in discover_zig_test_files()
+        for test_name in TEST_NAME_PATTERN.findall(zig_file.read_text())
+    ]
+    assert len(tests) > 0
+    return tests
 
-    for zig_file in test_files:
-        rel_path = zig_file.relative_to(ZIG_SRC_DIR)
 
-        for test_name in TEST_NAME_PATTERN.findall(zig_file.read_text()):
-            with subtests.test(msg=f"{rel_path}::{test_name}"):
-                ran_a_test = True
-                cmd = build_zig_test_command(zig_file, test_filter=test_name)
-                result = subprocess.run(
-                    cmd,
-                    cwd=ZIG_SRC_DIR,
-                    capture_output=True,
-                    text=True,
-                )
-                assert result.returncode == 0, (
-                    f"zig test failed for {rel_path}::{test_name}\n"
-                    f"Command: {' '.join(cmd)}\n"
-                    f"stderr:\n{result.stderr}"
-                )
+def zig_test_id(param: tuple[Path, str]) -> str:
+    zig_file, test_name = param
+    rel_path = zig_file.relative_to(ZIG_SRC_DIR)
+    return f"{rel_path}::{test_name}"
 
-    assert ran_a_test, "No tests ran"
+
+@pytest.mark.parametrize("zig_test", discover_zig_tests(), ids=zig_test_id)
+def test_zig_embedded(zig_test: tuple[Path, str]) -> None:
+    """Run a single zig embedded test."""
+    zig_file, test_name = zig_test
+    cmd = build_zig_test_command(zig_file, test_filter=test_name)
+    result = subprocess.run(
+        cmd,
+        cwd=ZIG_SRC_DIR,
+        capture_output=True,
+        text=True,
+    )
+    rel_path = zig_file.relative_to(ZIG_SRC_DIR)
+    assert result.returncode == 0, (
+        f"zig test failed for {rel_path}::{test_name}\n"
+        f"Command: {' '.join(cmd)}\n"
+        f"stderr:\n{result.stderr}"
+    )
