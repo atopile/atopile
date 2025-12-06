@@ -4874,7 +4874,8 @@ class TestNumbers:
         qs1.setup_from_min_max(min=2.0, max=5.0, unit=meter_instance.is_unit.get())
         qs2 = Numbers.create_instance(g=g, tg=tg)
         qs2.setup_from_min_max(min=2.0, max=5.0, unit=second_instance.is_unit.get())
-        pytest.raises(UnitsNotCommensurableError, qs1.equals, g=g, tg=tg, other=qs2)
+        # could argue that it should throw, but equals should not throw
+        assert not qs1.equals(qs2, g=g, tg=tg)
 
     def test_serialize_api_format(self):
         """Test serialization to API format (Quantity_Interval_Disjoint)."""
@@ -5314,14 +5315,14 @@ class TestCounts:
         tg = fbrk.TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
         counts.setup_from_values(values=[1, 2])
-        with pytest.raises(ValueError, match="Expected single value"):
+        with pytest.raises(NotSingletonError, match="Expected single value"):
             counts.get_single()
 
     def test_get_single_raises_for_empty(self):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         counts = Counts.create_instance(g=g, tg=tg)
-        with pytest.raises(ValueError, match="Expected single value"):
+        with pytest.raises(NotSingletonError, match="Expected single value"):
             counts.get_single()
 
     def test_get_min(self):
@@ -6157,7 +6158,7 @@ class TestStringLiterals:
         tg = fbrk.TypeGraph.create(g=g)
         string_set = Strings.bind_typegraph(tg=tg).create_instance(g=g)
         string_set.setup_from_values(*values)
-        assert string_set.get_single() is None
+        assert string_set.is_singleton() is False
         singleton_string_set = Strings.bind_typegraph(tg=tg).create_instance(g=g)
         singleton_string_set.setup_from_values("a")
         assert singleton_string_set.get_single() == "a"
