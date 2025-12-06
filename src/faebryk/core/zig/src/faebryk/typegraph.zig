@@ -1582,12 +1582,12 @@ test "basic instantiation" {
         null,
     );
 
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p2).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_tp).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1_makechild).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2_makechild).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1_makechild).?, Capacitor);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p1), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p2), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_tp), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1_makechild), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2_makechild), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1_makechild), Capacitor);
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);
@@ -1785,10 +1785,10 @@ test "get_type_instance_overview" {
     const res_p2 = try tg.add_make_child(Resistor, "Electrical", "p2", null, null);
 
     // Link type references
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2), Electrical);
 
     // Create some instances
     _ = try tg.instantiate_node(Capacitor);
@@ -1851,9 +1851,9 @@ test "get_type_subgraph" {
     const cap_p2_mc = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
 
     // Link type references
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(elec_trait).?, SomeTrait);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1_mc).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2_mc).?, Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(elec_trait), SomeTrait);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1_mc), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2_mc), Electrical);
 
     // Create some instances (these should NOT be in the type subgraph)
     const capacitor_instance = try tg.instantiate_node(Capacitor);

@@ -1,5 +1,7 @@
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
+from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
+from faebryk.core.zig.gen.faebryk.linker import Linker
 
 
 def test_load_graph_module():
@@ -210,21 +212,19 @@ def test_typegraph_instantiate():
 
     rp1_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p1"])
     rp2_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p2"])
-    edge_attrs = EdgeCreationAttributes.init(
-        edge_type=EdgePointer.get_tid(),
+
+    edge_attrs = EdgeCreationAttributes.create(
+        edge_type=fbrk.EdgePointer.get_tid(),
         directional=True,
         name="test",
-        dynamic=None,
+        dynamic={"test_key": "test_value"},
     )
 
     type_graph.add_make_link(
         type_node=Resistor,
-        lhs_reference_node=rp1_ref.node(),
-        rhs_reference_node=rp2_ref.node(),
-        edge_type=fbrk.EdgePointer.get_tid(),
-        edge_directional=True,
-        edge_name="test",
-        edge_attributes={"test_key": "test_value"},
+        lhs_reference=rp1_ref,
+        rhs_reference=rp2_ref,
+        edge_attributes=edge_attrs,
     )
 
     resistor_instance = type_graph.instantiate(
@@ -263,6 +263,7 @@ def test_typegraph_instantiate():
     assert e.target().is_same(other=rp2.node())
     assert e.directional() is True
     assert e.name() == "test"
+    assert e.get_attr(key="test_key") == "test_value"
 
 
 if __name__ == "__main__":

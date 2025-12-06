@@ -474,11 +474,11 @@ test "get_children_query type filtering" {
     const res_cap1 = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
 
     // Link type references
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_rp1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_rp2).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1).?, Capacitor);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_rp1), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_rp2), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1), Capacitor);
 
     // Instantiate a Resistor (which has p1, p2 as Electrical and cap1 as Capacitor)
     const resistor = try tg.instantiate_node(Resistor);
@@ -547,9 +547,9 @@ test "get_children_query recursive with type filtering" {
     const res_cap1 = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
 
     // Link type references
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2).?, Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1).?, Capacitor);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2), Electrical);
+    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1), Capacitor);
 
     // Instantiate a Resistor
     const resistor = try tg.instantiate_node(Resistor);
