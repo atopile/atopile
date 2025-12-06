@@ -1,9 +1,7 @@
 ---
-description: ato is a declarative DSL to design electronics (PCBs) with.
 globs: *.ato, ato.yaml
-alwaysApply: true
+alwaysApply: false
 ---
-
 ato is a declarative DSL to design electronics (PCBs) with.
 It is part of the atopile project.
 Atopile is run by the vscode/cursor/windsurf extension.

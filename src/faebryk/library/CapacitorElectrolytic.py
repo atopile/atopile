@@ -2,48 +2,99 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from enum import StrEnum
 
+import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
 
-class CapacitorElectrolytic(F.Capacitor):
-    pickable = None  # type: ignore
-    can_attach_to_footprint_symmetrically = None  # type: ignore
+class CapacitorElectrolytic(fabll.Node):
+    class TemperatureCoefficient(StrEnum):
+        Y5V = "Y5V"
+        Z5U = "Z5U"
+        X7S = "X7S"
+        X5R = "X5R"
+        X6R = "X6R"
+        X7R = "X7R"
+        X8R = "X8R"
+        C0G = "C0G"
 
-    anode: F.Electrical
-    cathode: F.Electrical
+    # ----------------------------------------
+    #     modules, interfaces, parameters
+    # ----------------------------------------
+    anode = F.Electrical.MakeChild()
+    cathode = F.Electrical.MakeChild()
 
-    def __preinit__(self):
-        self.power.hv.connect(self.anode)
-        self.power.lv.connect(self.cathode)
+    capacitance = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Farad)
+    max_voltage = F.Parameters.NumericParameter.MakeChild(unit=F.Units.Volt)
+    temperature_coefficient = F.Parameters.EnumParameter.MakeChild(
+        enum_t=TemperatureCoefficient
+    )
 
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.anode, self.cathode)
+    # ----------------------------------------
+    #                 traits
+    # ----------------------------------------
+    _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+    _can_attatch_to_footprint = fabll.Traits.MakeEdge(
+        F.Footprints.can_attach_to_footprint.MakeChild()
+    )
 
-    @L.rt_field
-    def has_pin_association_heuristic_lookup_table(self):
-        return F.has_pin_association_heuristic_lookup_table(
+    anode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [anode]))
+    cathode.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [cathode]))
+
+    _can_bridge = F.can_bridge.MakeChild(in_=anode, out_=cathode)
+
+    S = F.has_simple_value_representation.Spec
+    _simple_repr = fabll.Traits.MakeEdge(
+        F.has_simple_value_representation.MakeChild(
+            S(capacitance, tolerance=True),
+            S(max_voltage),
+            # S(temperature_coefficient),
+        )
+    )
+
+    _pin_association_heuristic = fabll.Traits.MakeEdge(
+        F.has_pin_association_heuristic.MakeChild(
             mapping={
-                self.power.hv: ["anode", "a"],
-                self.power.lv: ["cathode", "c"],
+                anode: ["anode", "a"],
+                cathode: ["cathode", "c"],
             },
             accept_prefix=False,
             case_sensitive=False,
         )
+    )
 
-    def __postinit__(self, *args, **kwargs):
-        super().__postinit__(*args, **kwargs)
-        self.anode.add(F.has_net_name("anode", level=F.has_net_name.Level.SUGGESTED))
-        self.cathode.add(
-            F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
-        )
+    designator_prefix = fabll.Traits.MakeEdge(
+        F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.C)
+    )
 
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
+    # ----------------------------------------
+    #                WIP
+    # ----------------------------------------
+
+    # optional interface to automatically connect HV to anode and LV to cathode
+    # power = F.ElectricPower.MakeChild()
+
+    # anode_edge = fabll.MakeEdge(
+    #     [anode],
+    #     [power, "hv"],
+    #     edge=EdgePointer.build(
+    #         identifier="anode", order=None
+    #     ),  # TODO: Change to electrical connect
+    # )
+    # cathode_edge = fabll.MakeEdge(
+    #     [cathode],
+    #     [power, "lv"],
+    #     edge=EdgePointer.build(
+    #         identifier="cathode", order=None
+    #     ),  # TODO: Change to electrical connect
+    # )
+
+    usage_example = fabll.Traits.MakeEdge(
+        F.has_usage_example.MakeChild(
+            example="""
         import CapacitorElectrolytic, ElectricPower
 
         electrolytic_cap = new CapacitorElectrolytic
@@ -71,5 +122,6 @@ class CapacitorElectrolytic(F.Capacitor):
         # WARNING: Reverse voltage will damage electrolytic capacitors!
         # Use ceramic or film capacitors for AC coupling applications
         """,
-        language=F.has_usage_example.Language.ato,
+            language=F.has_usage_example.Language.ato,
+        ).put_on_type()
     )

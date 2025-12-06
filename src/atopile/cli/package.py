@@ -209,7 +209,7 @@ class _PackageValidators:
         """
         from pathlib import Path
 
-        from atopile.front_end import Context, bob
+        from atopile.compiler.front_end import Context, bob
 
         if (usage_build := config.project.builds.get("usage", None)) is None:
             raise UserBadParameterError("Missing 'usage' build target in ato.yaml")

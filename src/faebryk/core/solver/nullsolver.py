@@ -1,50 +1,47 @@
 from typing import Any, override
 
-from faebryk.core.cpp import Graph
-from faebryk.core.node import Node
-from faebryk.core.parameter import (
-    ConstrainableExpression,
-    Expression,
-    Parameter,
-    Predicate,
-)
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
+import faebryk.core.node as fabll
+import faebryk.library._F as F
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.sets.sets import P_Set, as_lit
 
 
 class NullSolver(Solver):
     @override
     def get_any_single(
         self,
-        operatable: Parameter,
+        operatable: F.Parameters.is_parameter,
         lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
+        suppose_predicate: F.Expressions.is_assertable | None = None,
+        minimize: F.Expressions.is_expression | None = None,
     ) -> Any:
         return operatable.domain_set().any()
 
     @override
     def try_fulfill(
         self,
-        predicate: ConstrainableExpression,
+        predicate: F.Expressions.is_assertable,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool:
         if lock:
-            predicate.constrain()
+            predicate.assert_()
         return True
 
     @override
-    def update_superset_cache(self, *nodes: Node):
+    def update_superset_cache(self, *nodes: fabll.Node):
         pass
 
     @override
-    def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
-        lit = value.try_get_literal_subset()
+    def inspect_get_known_supersets(
+        self, value: F.Parameters.is_parameter
+    ) -> F.Literals.is_literal:
+        lit = value.as_parameter_operatable.get().try_get_subset_or_alias_literal()
         if lit is None:
             lit = value.domain_set()
-        return as_lit(lit)
+        return lit
 
     @override
-    def simplify(self, *gs: Graph | Node):
+    def simplify(self, g: graph.GraphView, tg: fbrk.TypeGraph):
         pass

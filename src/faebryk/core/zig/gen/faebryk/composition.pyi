@@ -41,6 +41,8 @@ class EdgeComposition:
         *, bound_node: BoundNode, child: Node, child_identifier: str
     ) -> BoundEdge: ...
     @staticmethod
+    def add_anon_child(*, bound_node: BoundNode, child: Node) -> BoundEdge: ...
+    @staticmethod
     def get_name(*, edge: Edge) -> str: ...
     @staticmethod
     def get_tid() -> Edge.Type: ...
@@ -60,3 +62,13 @@ class EdgeComposition:
     def try_get_single_child_of_type(
         *, bound_node: BoundNode, child_type: Node
     ) -> BoundNode | None: ...
+    @staticmethod
+    def get_children_query(
+        *,
+        bound_node: BoundNode,
+        direct_only: bool,
+        types: list[Node] | None = None,
+        include_root: bool = False,
+        sort: bool = False,
+        required_traits: list[Node] | None = None,
+    ) -> list[BoundNode]: ...

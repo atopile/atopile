@@ -15,9 +15,14 @@ pub fn registerTypeObject(type_name: [*:0]const u8, type_obj: *py.PyTypeObject) 
     const type_name_slice = std.mem.span(type_name);
     // Make a copy of the string to ensure it lives as long as the HashMap
     const owned_key = std.heap.c_allocator.dupe(u8, type_name_slice) catch return;
+
+    // Hold a strong reference so the type object survives until process exit.
+    py.Py_INCREF(@ptrCast(type_obj));
+
     type_registry.put(owned_key, type_obj) catch {
         // If put fails, free the allocated key
         std.heap.c_allocator.free(owned_key);
+        py.Py_DECREF(@ptrCast(type_obj));
     };
 }
 

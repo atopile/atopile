@@ -1,109 +1,44 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import inspect
 import logging
-from typing import Callable, Iterable, cast
 
-from more_itertools import first
+import pytest
 
+import faebryk.core.faebrykpy as fbrk
+import faebryk.core.node as fabll
 import faebryk.library._F as F
 from atopile import errors
-from faebryk.core.cpp import Path
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
-from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
-
 class ERCFault(errors.UserException):
     """Base class for ERC faults."""
-
-
-class ModuleInterfacePath(list[ModuleInterface]):
-    """A path of ModuleInterfaces."""
-
-    @classmethod
-    def from_path(cls, path: Path) -> "ModuleInterfacePath":
-        """
-        Convert a Path (of GraphInterfaces) to a ModuleInterfacePath.
-        """
-        mifs = cast(
-            list[ModuleInterface],
-            [gif.node for gif in path if gif.node.isinstance(ModuleInterface)],
-        )
-        return cls(mifs)
-
-    def snip_head(
-        self, scissors: Callable[[ModuleInterface], bool], include_last: bool = True
-    ) -> "ModuleInterfacePath":
-        """
-        Keep the head until the scissors predicate returns False.
-        """
-        for i, mif in enumerate(self):
-            if not scissors(mif):
-                return type(self)(self[: i + include_last])
-        return self
-
-    def snip_tail(
-        self, scissors: Callable[[ModuleInterface], bool], include_first: bool = True
-    ) -> "ModuleInterfacePath":
-        """
-        Keep the tail until the scissors predicate returns False.
-        """
-        for i, mif in reversed(list(enumerate(self))):
-            if not scissors(mif):
-                return type(self)(self[i + (not include_first) :])
-        return self
-
-    @classmethod
-    def from_connection(
-        cls, a: ModuleInterface, b: ModuleInterface
-    ) -> "ModuleInterfacePath | None":
-        """
-        Return a ModuleInterfacePath between two ModuleInterfaces, if it exists,
-        else None.
-        """
-        if paths := a.is_connected_to(b):
-            # FIXME: Notes: from the master of graphs:
-            #  - iterate through all paths
-            #  - make a helper function
-            #    ModuleInterfacePath.get_subpaths(path: Path, search: SubpathSearch)
-            #    e.g SubpathSearch = tuple[Callable[[ModuleInterface], bool], ...]
-            #  - choose out of subpaths
-            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
-            #      is derived, save it as candidate and only yield it if no other found)
-            #    - choose first shortest
-            return cls.from_path(first(paths))
-        return None
 
 
 class ERCFaultShort(ERCFault):
     """Exception raised for short circuits."""
 
 
-class ERCFaultShortedModuleInterfaces(ERCFaultShort):
-    """Short circuit between two ModuleInterfaces."""
+class ERCFaultShortedInterfaces(ERCFaultShort):
+    """Short circuit between two Interfaces."""
 
-    def __init__(self, msg: str, path: ModuleInterfacePath, *args: object) -> None:
+    def __init__(self, msg: str, path: fabll.Path, *args: object) -> None:
         super().__init__(msg, path, *args)
         self.path = path
 
     @classmethod
-    def from_path(cls, path: ModuleInterfacePath) -> "ERCFaultShortedModuleInterfaces":
+    def from_path(cls, path: fabll.Path) -> "ERCFaultShortedInterfaces":
         """
-        Given two shorted ModuleInterfaces, return an exception that describes the
+        Given two shorted Interfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        return cls(f"`{' ~ '.join(mif.get_full_name() for mif in path)}`", path)
+        return cls(f"`{path!r}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
-    def __init__(self, faulting_EP: F.ElectricPower, *args: object) -> None:
+    def __init__(self, faulting_EP: "F.ElectricPower", *args: object) -> None:
         msg = (
             f"ElectricPower with undefined or unsolved voltage: {faulting_EP}:"
             f" {faulting_EP.voltage}"
@@ -117,7 +52,7 @@ class ERCPowerSourcesShortedError(ERCFault):
     """
 
 
-def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
+def simple_erc(tg: fbrk.TypeGraph):
     """Simple ERC check.
 
     This function will check for the following ERC violations:
@@ -129,19 +64,17 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
     - Net name collision
 
     - [unmapped pins for footprints]
-
-    Args:
-
-    Returns:
     """
     logger.info("Checking graph for ERC violations")
 
     with accumulate(ERCFault) as accumulator:
         # shorted power
-        electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
+        electricpower = F.ElectricPower.bind_typegraph(tg).get_instances(
+            g=tg.get_graph_view()
+        )
         logger.info(f"Checking {len(electricpower)} Power")
 
-        buses_grouped = ModuleInterface._group_into_buses(electricpower)
+        buses_grouped = fabll.is_interface.group_into_buses(set(electricpower))
         buses = list(buses_grouped.values())
 
         # We do collection both inside and outside the loop because we don't
@@ -149,34 +82,13 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         with accumulator.collect():
             logger.info("Checking for hv/lv shorts")
             for ep in electricpower:
-                if mif_path := ModuleInterfacePath.from_connection(ep.lv, ep.hv):
-
-                    def _keep_head(x: ModuleInterface) -> bool:
-                        if parent := x.get_parent():
-                            parent_node, _ = parent
-                            if isinstance(parent_node, F.ElectricPower):
-                                return parent_node.hv is not x
-
-                        return True
-
-                    def _keep_tail(x: ModuleInterface) -> bool:
-                        if parent := x.get_parent():
-                            parent_node, _ = parent
-                            if isinstance(parent_node, F.ElectricPower):
-                                return parent_node.lv is not x
-
-                        return True
-
-                    raise ERCFaultShortedModuleInterfaces.from_path(
-                        mif_path.snip_head(_keep_head).snip_tail(_keep_tail)
-                    )
+                if path := fabll.Path.from_connection(ep.lv.get(), ep.hv.get()):
+                    raise ERCFaultShortedInterfaces.from_path(path)
 
             logger.info("Checking for power source shorts")
             for bus in buses:
                 with accumulator.collect():
-                    sources = {
-                        ep for ep in bus if ep.has_trait(F.Power.is_power_source)
-                    }
+                    sources = {ep for ep in bus if ep.has_trait(F.is_source)}
                     if len(sources) <= 1:
                         continue
 
@@ -186,11 +98,11 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     )
 
         # shorted nets
-        nets = GraphFunctions(G).nodes_of_type(F.Net)
+        nets = F.Net.bind_typegraph(tg).get_instances(g=tg.get_graph_view())
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
-                nets_on_bus = F.Net.find_nets_for_mif(net.part_of)
+                nets_on_bus = F.Net.find_nets_for_mif(net.part_of.get())
 
                 named_collisions = {
                     neighbor_net
@@ -211,7 +123,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         # sym_fps = [
         #    n.get_trait(has_footprint).get_footprint()
         #    for n in parts
-        #    if n.has_trait(can_attach_to_footprint_symmetrically)
+        #    if n.has_trait(F.Footprints.can_attach_to_footprint)
         # ]
         # logger.info(f"Checking {len(sym_fps)} symmetric footprints")
         # for fp in sym_fps:
@@ -222,7 +134,9 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
         #            raise ERCFault([mif], "shorted symmetric footprint")
 
-        comps = GraphFunctions(G).nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
+        comps = fabll.Node.bind_typegraph(tg).nodes_of_types(
+            (F.Resistor, F.Capacitor, F.Fuse)
+        )
         logger.info(f"Checking {len(comps)} passives")
         for comp in comps:
             with accumulator.collect():
@@ -234,10 +148,10 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                 ):
                     continue
 
-                if path := ModuleInterfacePath.from_connection(
-                    comp.unnamed[0], comp.unnamed[1]
+                if path := fabll.Path.from_connection(
+                    comp.unnamed[0].get(), comp.unnamed[1].get()
                 ):
-                    raise ERCFaultShortedModuleInterfaces.from_path(path)
+                    raise ERCFaultShortedInterfaces.from_path(path)
 
         ## unmapped Electricals
         # fps = [n for n in nodes if isinstance(n, Footprint)]
@@ -250,36 +164,112 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         # TODO check multiple pulls per logic
 
 
-def check_modules_for_erc(module: Iterable[Module]):
-    for m in module:
-        logger.info(f"Checking {m} {'-' * 20}")
-        simple_erc(m.get_graph())
-
-
-def check_classes_for_erc(classes: Iterable[Callable[[], Module]]):
-    modules = []
-    for c in classes:
-        try:
-            m = c()
-        except Exception as e:
-            logger.warning(
-                f"Could not instantiate {c.__name__}: {type(e).__name__}({e})"
-            )
-            continue
-        modules.append(m)
-    check_modules_for_erc(modules)
-
-
-def check_library_for_erc(lib):
-    members = inspect.getmembers(lib, inspect.isclass)
-    module_classes = [m[1] for m in members if issubclass(m[1], Module)]
-    check_classes_for_erc(module_classes)
-
-
 # TODO split this up
-class needs_erc_check(Trait.decless()):
-    design_check: F.implements_design_check
+class needs_erc_check(fabll.Node):
+    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
+    design_check = F.implements_design_check.MakeChild()
+
+    # TODO: Implement this
     @F.implements_design_check.register_post_design_check
     def __check_post_design__(self):
-        simple_erc(self.get_graph())
+        simple_erc(self.tg)
+
+class Test:
+
+    def test_erc_isolated_connect(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+
+        y1 = electricPowerType.create_instance(g=g)
+        y2 = electricPowerType.create_instance(g=g)
+
+        y1.make_source()
+        y2.make_source()
+
+        with pytest.raises(ERCPowerSourcesShortedError):
+            y1._is_interface.get().connect_to(y2)
+            simple_erc(tg)
+
+        # TODO no more LDO in fabll
+        # ldo1 = F.LDO()
+        # ldo2 = F.LDO()
+
+        # with pytest.raises(ERCPowerSourcesShortedError):
+        #     ldo1.power_out.connect(ldo2.power_out)
+        #     simple_erc(ldo1.get_graph())
+
+        i2cType = F.I2C.bind_typegraph(tg)
+        a1 = i2cType.create_instance(g=g)
+        b1 = i2cType.create_instance(g=g)
+
+        a1._is_interface.get().connect_to(b1)
+        assert a1._is_interface.get().is_connected_to(b1)
+        assert a1.scl.get()._is_interface.get().is_connected_to(b1.scl.get())
+        assert a1.sda.get()._is_interface.get().is_connected_to(b1.sda.get())
+
+        assert not a1.scl.get()._is_interface.get().is_connected_to(b1.sda.get())
+        assert not a1.sda.get()._is_interface.get().is_connected_to(b1.scl.get())
+
+
+    def test_erc_electric_power_short(self):
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        electricPowerType = F.ElectricPower.bind_typegraph(tg)
+        ep1 = electricPowerType.create_instance(g=g)
+        ep2 = electricPowerType.create_instance(g=g)
+
+        ep1._is_interface.get().connect_to(ep2)
+
+        # This is okay!
+        simple_erc(tg)
+
+        ep1.lv.get()._is_interface.get().connect_to(ep2.hv.get())
+
+        # This is not okay!
+        with pytest.raises(ERCFaultShortedInterfaces) as ex:
+            simple_erc(tg)
+
+        # TODO figure out a nice way to format paths for this
+        print(ex.value.path)
+        # assert set(ex.value.path) == {ep1.lv, ep2.hv}
+
+    def test_erc_power_source_short(self):
+        """
+        Test that a power source is shorted when connected to another power source
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        power_out_1._is_interface.get().connect_to(power_out_2)
+        power_out_2._is_interface.get().connect_to(power_out_1)
+
+        power_out_1.make_source()
+        power_out_2.make_source()
+
+        with pytest.raises(ERCPowerSourcesShortedError):
+            simple_erc(tg)
+
+
+    def test_erc_power_source_no_short(self):
+        """
+        Test that a power source is not shorted when connected to another
+        non-power source
+        """
+        g = fabll.graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        power_out_1 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+        power_out_2 = F.ElectricPower.bind_typegraph(tg).create_instance(g=g)
+
+        power_out_1.make_source()
+
+        power_out_1._is_interface.get().connect_to(power_out_2)
+
+        simple_erc(tg)
