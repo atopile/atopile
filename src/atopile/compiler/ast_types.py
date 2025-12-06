@@ -19,10 +19,8 @@ from faebryk.libs.util import cast_assert
 
 
 def _add_anon_child(node: fabll.NodeT, child: fabll.NodeT):
-    EdgeComposition.add_child(
-        bound_node=node.instance,
-        child=child.instance.node(),
-        child_identifier=str(id(child)),
+    EdgeComposition.add_anon_child(
+        bound_node=node.instance, child=child.instance.node()
     )
 
 

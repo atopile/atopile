@@ -467,10 +467,8 @@ class Numerics(fabll.Node):
         for value in values:
             numeric = Numeric.create_instance(g=self.g, tg=self.tg, value=value)
             self.values.get().append(numeric)
-            EdgeComposition.add_child(
-                bound_node=self.instance,
-                child=numeric.instance.node(),
-                child_identifier=str(id(numeric)),
+            EdgeComposition.add_anon_child(
+                bound_node=self.instance, child=numeric.instance.node()
             )
         return self
 
@@ -5432,10 +5430,8 @@ class Booleans(fabll.Node):
                     g=self.g, attributes=BooleanAttributes(value=value)
                 )
                 self.values.get().append(lit)
-                EdgeComposition.add_child(
-                    bound_node=self.instance,
-                    child=lit.instance.node(),
-                    child_identifier=str(id(lit)),
+                EdgeComposition.add_anon_child(
+                    bound_node=self.instance, child=lit.instance.node()
                 )
         return self
 

@@ -127,6 +127,26 @@ def test_edge_composition_add_child_and_visit():
     assert fbrk.EdgeComposition.get_parent_edge(bound_node=parent_bound) is None
 
 
+def test_edge_composition_add_anon_child():
+    """Test add_anon_child creates a child without a named identifier."""
+    g = graph.GraphView.create()
+    parent = graph.Node.create()
+    child = graph.Node.create()
+
+    parent_bound = g.insert_node(node=parent)
+    child_bound = g.insert_node(node=child)
+
+    edge = fbrk.EdgeComposition.add_anon_child(bound_node=parent_bound, child=child)
+
+    # Verify edge was created
+    assert fbrk.EdgeComposition.is_instance(edge=edge.edge())
+
+    # Verify parent-child relationship via get_parent_edge
+    parent_edge = fbrk.EdgeComposition.get_parent_edge(bound_node=child_bound)
+    assert parent_edge is not None
+    assert parent_edge.edge().is_same(other=edge.edge())
+
+
 def test_edge_type_create():
     type_node = graph.Node.create()
     instance_node = graph.Node.create()
@@ -250,6 +270,7 @@ if __name__ == "__main__":
     test_node_count()
     test_edge_composition_create()
     test_edge_composition_add_child_and_visit()
+    test_edge_composition_add_anon_child()
     test_edge_type_create()
     test_edge_next()
     test_typegraph_instantiate()

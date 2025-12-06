@@ -295,6 +295,33 @@ test "basic" {
     try std.testing.expect(Node.is_same(bchild.?.node, bn2.node));
 }
 
+test "add_child with null identifier" {
+    var g = graph.GraphView.init(std.testing.allocator);
+    defer g.deinit();
+
+    const parent = g.create_and_insert_node();
+    const child = g.create_and_insert_node();
+
+    // When child_identifier is null, the edge name is empty string
+    const edge = EdgeComposition.add_child(parent, child.node, null);
+
+    // Verify edge was created
+    try std.testing.expect(EdgeComposition.is_instance(edge.edge));
+
+    // Verify parent-child relationship
+    try std.testing.expect(Node.is_same(EdgeComposition.get_parent_node(edge.edge), parent.node));
+    try std.testing.expect(Node.is_same(EdgeComposition.get_child_node(edge.edge), child.node));
+
+    // Verify name is empty string when null was passed
+    const name = try EdgeComposition.get_name(edge.edge);
+    try std.testing.expect(std.mem.eql(u8, name, ""));
+
+    // Verify get_parent_edge works
+    const parent_edge = EdgeComposition.get_parent_edge(child);
+    try std.testing.expect(parent_edge != null);
+    try std.testing.expect(Edge.is_same(parent_edge.?.edge, edge.edge));
+}
+
 test "get_children_query direct_only" {
     const a = std.testing.allocator;
     var g = graph.GraphView.init(a);

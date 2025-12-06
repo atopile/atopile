@@ -390,6 +390,37 @@ fn wrap_edge_composition_add_child() type {
     };
 }
 
+fn wrap_edge_composition_add_anon_child() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_anon_child",
+            .doc = "Add an anonymous child without a named identifier",
+            .args_def = struct {
+                bound_node: *graph.BoundNodeReference,
+                child: *graph.Node,
+
+                pub const fields_meta = .{
+                    .bound_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .child = bind.ARG{ .Wrapper = NodeWrapper, .storage = &graph_py.node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const bound_edge = faebryk.composition.EdgeComposition.add_child(
+                kwarg_obj.bound_node.*,
+                kwarg_obj.child,
+                null,
+            );
+
+            return graph_py.makeBoundEdgePyObject(bound_edge);
+        }
+    };
+}
+
 fn wrap_edge_composition_get_name() type {
     return struct {
         pub const descr = method_descr{
@@ -701,6 +732,7 @@ fn wrap_edge_composition(root: *py.PyObject) void {
         wrap_edge_composition_get_parent_of(),
         wrap_edge_composition_get_parent_node_of(),
         wrap_edge_composition_add_child(),
+        wrap_edge_composition_add_anon_child(),
         wrap_edge_composition_get_name(),
         wrap_edge_composition_get_tid(),
         wrap_edge_composition_get_child_by_identifier(),
