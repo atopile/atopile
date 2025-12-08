@@ -37,9 +37,9 @@ class Battery(fabll.Node):
 
     # TODO: Add trait edge to power.hv
     _net_name = fabll.Traits.MakeEdge(
-        child_field=F.has_net_name.MakeChild(
+        child_field=F.has_net_name_suggestion.MakeChild(
             name="BAT_VCC",
-            level=F.has_net_name.Level.SUGGESTED,
+            level=F.has_net_name_suggestion.Level.SUGGESTED,
         ),
         owner=[power, "hv"],
     )

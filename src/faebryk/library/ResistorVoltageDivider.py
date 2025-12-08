@@ -76,5 +76,5 @@ class ResistorVoltageDivider(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.output.get().line.get(), trait=F.has_net_name
-        ).setup(name="VDIV_OUTPUT", level=F.has_net_name.Level.SUGGESTED)
+            node=self.output.get().line.get(), trait=F.has_net_name_suggestion
+        ).setup(name="VDIV_OUTPUT", level=F.has_net_name_suggestion.Level.SUGGESTED)

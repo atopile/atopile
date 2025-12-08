@@ -18,23 +18,23 @@ class USB_C(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.cc1.get(), trait=F.has_net_name
-        ).setup(name="CC1", level=F.has_net_name.Level.SUGGESTED)
+            node=self.cc1.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CC1", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.cc2.get(), trait=F.has_net_name
-        ).setup(name="CC2", level=F.has_net_name.Level.SUGGESTED)
+            node=self.cc2.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CC2", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.sbu1.get(), trait=F.has_net_name
-        ).setup(name="SBU1", level=F.has_net_name.Level.SUGGESTED)
+            node=self.sbu1.get(), trait=F.has_net_name_suggestion
+        ).setup(name="SBU1", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.sbu2.get(), trait=F.has_net_name
-        ).setup(name="SBU2", level=F.has_net_name.Level.SUGGESTED)
+            node=self.sbu2.get(), trait=F.has_net_name_suggestion
+        ).setup(name="SBU2", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.rx.get(), trait=F.has_net_name
-        ).setup(name="RX", level=F.has_net_name.Level.SUGGESTED)
+            node=self.rx.get(), trait=F.has_net_name_suggestion
+        ).setup(name="RX", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.tx.get(), trait=F.has_net_name
-        ).setup(name="TX", level=F.has_net_name.Level.SUGGESTED)
+            node=self.tx.get(), trait=F.has_net_name_suggestion
+        ).setup(name="TX", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

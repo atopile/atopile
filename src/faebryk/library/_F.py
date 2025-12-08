@@ -39,8 +39,8 @@ from faebryk.library.PCB import PCB
 from faebryk.library.SerializableMetadata import SerializableMetadata
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.library.has_net_name import has_net_name
-from faebryk.library.has_overriden_name import has_overriden_name
+from faebryk.library.has_net_name import has_net_name_suggestion
+from faebryk.library.has_overriden_name import has_net_name
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_usage_example import has_usage_example
@@ -141,8 +141,8 @@ __all__ = [
     "SerializableMetadata",
     "has_datasheet",
     "has_designator_prefix",
+    "has_net_name_suggestion",
     "has_net_name",
-    "has_overriden_name",
     "has_package_requirements",
     "has_part_picked",
     "has_usage_example",

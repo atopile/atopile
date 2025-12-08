@@ -30,32 +30,32 @@ class JTAG(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.dbgrq.get(), trait=F.has_net_name
-        ).setup(name="DBGRQ", level=F.has_net_name.Level.SUGGESTED)
+            node=self.dbgrq.get(), trait=F.has_net_name_suggestion
+        ).setup(name="DBGRQ", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.tdo.get(), trait=F.has_net_name
-        ).setup(name="TDO", level=F.has_net_name.Level.SUGGESTED)
+            node=self.tdo.get(), trait=F.has_net_name_suggestion
+        ).setup(name="TDO", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.tdi.get(), trait=F.has_net_name
-        ).setup(name="TDI", level=F.has_net_name.Level.SUGGESTED)
+            node=self.tdi.get(), trait=F.has_net_name_suggestion
+        ).setup(name="TDI", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.tms.get(), trait=F.has_net_name
-        ).setup(name="TMS", level=F.has_net_name.Level.SUGGESTED)
+            node=self.tms.get(), trait=F.has_net_name_suggestion
+        ).setup(name="TMS", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.tck.get(), trait=F.has_net_name
-        ).setup(name="TCK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.tck.get(), trait=F.has_net_name_suggestion
+        ).setup(name="TCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.rtck.get(), trait=F.has_net_name
-        ).setup(name="RTCK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.rtck.get(), trait=F.has_net_name_suggestion
+        ).setup(name="RTCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.n_trst.get(), trait=F.has_net_name
-        ).setup(name="N_TRST", level=F.has_net_name.Level.SUGGESTED)
+            node=self.n_trst.get(), trait=F.has_net_name_suggestion
+        ).setup(name="N_TRST", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.n_reset.get(), trait=F.has_net_name
-        ).setup(name="N_RESET", level=F.has_net_name.Level.SUGGESTED)
+            node=self.n_reset.get(), trait=F.has_net_name_suggestion
+        ).setup(name="N_RESET", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.vtref.get(), trait=F.has_net_name
-        ).setup(name="VTREF", level=F.has_net_name.Level.SUGGESTED)
+            node=self.vtref.get(), trait=F.has_net_name_suggestion
+        ).setup(name="VTREF", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

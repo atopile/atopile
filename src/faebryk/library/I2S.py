@@ -34,14 +34,14 @@ class I2S(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.sd.get(), trait=F.has_net_name
-        ).setup(name="SD", level=F.has_net_name.Level.SUGGESTED)
+            node=self.sd.get(), trait=F.has_net_name_suggestion
+        ).setup(name="SD", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.ws.get(), trait=F.has_net_name
-        ).setup(name="WS", level=F.has_net_name.Level.SUGGESTED)
+            node=self.ws.get(), trait=F.has_net_name_suggestion
+        ).setup(name="WS", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.sck.get(), trait=F.has_net_name
-        ).setup(name="SCK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.sck.get(), trait=F.has_net_name_suggestion
+        ).setup(name="SCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

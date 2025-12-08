@@ -26,23 +26,23 @@ class UART(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.rts.get(), trait=F.has_net_name
-        ).setup(name="RTS", level=F.has_net_name.Level.SUGGESTED)
+            node=self.rts.get(), trait=F.has_net_name_suggestion
+        ).setup(name="RTS", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.cts.get(), trait=F.has_net_name
-        ).setup(name="CTS", level=F.has_net_name.Level.SUGGESTED)
+            node=self.cts.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CTS", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.dtr.get(), trait=F.has_net_name
-        ).setup(name="DTR", level=F.has_net_name.Level.SUGGESTED)
+            node=self.dtr.get(), trait=F.has_net_name_suggestion
+        ).setup(name="DTR", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.dsr.get(), trait=F.has_net_name
-        ).setup(name="DSR", level=F.has_net_name.Level.SUGGESTED)
+            node=self.dsr.get(), trait=F.has_net_name_suggestion
+        ).setup(name="DSR", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.dcd.get(), trait=F.has_net_name
-        ).setup(name="DCD", level=F.has_net_name.Level.SUGGESTED)
+            node=self.dcd.get(), trait=F.has_net_name_suggestion
+        ).setup(name="DCD", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.ri.get(), trait=F.has_net_name
-        ).setup(name="RI", level=F.has_net_name.Level.SUGGESTED)
+            node=self.ri.get(), trait=F.has_net_name_suggestion
+        ).setup(name="RI", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

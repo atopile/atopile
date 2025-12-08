@@ -67,28 +67,6 @@ class is_pad(fabll.Node):
         return self
 
 
-class has_associated_net(fabll.Node):
-    """
-    Link between pad-node and net. Added during build process.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-
-    net_ptr_ = F.Collections.Pointer.MakeChild()
-
-    @property
-    def net(self) -> "Net":
-        """Return the net associated with this node"""
-        from faebryk.library.Net import Net
-        return self.net_ptr_.get().deref().cast(Net)
-
-    @classmethod
-    def MakeChild(cls, net: "fabll._ChildField[Net]") -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(net)
-        return out
-
-
 class can_attach_to_footprint(fabll.Node):
     """
     Marker trait for nodes that can be attached to a footprint.

@@ -202,17 +202,8 @@ class has_associated_pads(fabll.Node):
         return out
 
     def setup(
-        self, pad: F.Footprints.is_pad, parent: fabll.Node, connect_net: bool = True
-    ) -> Self:
-        self.pad_ptr_.get().point(pad)
-
-        if connect_net:
-            if parent.try_get_trait(fabll.is_interface) is None:
-                raise ValueError("Parent is not an Electrical")
-            pad_net_t = pad.try_get_trait(F.Footprints.has_associated_net)
-            if pad_net_t is None:
-                raise ValueError("Pad has no associated net")
-            pad_net_t.net.part_of.get()._is_interface.get().connect_to(parent)
+        self, pad: F.Footprints.is_pad, parent: fabll.Node) -> Self:
+        self.pad_ptr_.get().point(pad) # setup single pointer to single pad
         return self
 
 
@@ -236,12 +227,6 @@ def test_is_lead():
 
     connected_pad = lead.get_trait(has_associated_pads).get_pad()
     assert connected_pad.is_same(pad.is_pad_.get())
-    # TODO: add net to pad so we can test this
-    # assert (
-    #     connected_pad.get_trait(F.KiCadFootprints.has_associated_net)
-    #     .net.get_trait(fabll.is_interface)
-    #     .is_connected_to(lead)
-    # )
 
 
 def test_can_attach_to_pad_by_name_heuristic(capsys):

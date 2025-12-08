@@ -5,7 +5,7 @@ import faebryk.core.node as fabll
 import faebryk.library._F as F
 
 
-class has_net_name(fabll.Node):
+class has_net_name_suggestion(fabll.Node):
     """Provide a net name suggestion or expectation"""
 
     # TODO:
@@ -55,6 +55,6 @@ class has_net_name(fabll.Node):
     @staticmethod
     def add_net_name(node: fabll.Node, name: str, level: Level):
         """Helper method to add a net name to a node"""
-        fabll.Traits.create_and_add_instance_to(node=node, trait=has_net_name).setup(
+        fabll.Traits.create_and_add_instance_to(node=node, trait=has_net_name_suggestion).setup(
             name=name, level=level
         )

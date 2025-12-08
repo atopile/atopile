@@ -107,7 +107,7 @@ def simple_erc(tg: fbrk.TypeGraph):
                 named_collisions = {
                     neighbor_net
                     for neighbor_net in nets_on_bus
-                    if neighbor_net.has_trait(F.has_overriden_name)
+                    if neighbor_net.has_trait(F.has_net_name)
                 }
 
                 if named_collisions:

@@ -627,7 +627,7 @@ def attach(
                     matched_pad = lead_t.find_matching_pad(pads_t)
                     fabll.Traits.create_and_add_instance_to(
                         node=lead, trait=F.Lead.has_associated_pads
-                    ).setup(pad=matched_pad, parent=lead, connect_net=False)
+                    ).setup(pad=matched_pad, parent=lead)
             except F.Lead.PadMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 

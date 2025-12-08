@@ -86,7 +86,7 @@ def load_net_names(tg: fbrk.TypeGraph, raise_duplicates: bool = True) -> set[F.N
             )
 
     for net, name in net_names.items():
-        fabll.Traits.create_and_add_instance_to(net, F.has_overriden_name).setup(name)
+        fabll.Traits.create_and_add_instance_to(net, F.has_net_name).setup(name)
 
     return set(net_names.keys())
 
@@ -95,11 +95,11 @@ def check_net_names(tg: fbrk.TypeGraph):
     """Raise an error if any nets have the same name."""
     nets = F.Net.bind_typegraph(tg).get_instances()
 
-    named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
+    named_nets = {n for n in nets if n.has_trait(F.has_net_name)}
     net_name_collisions = {
         k: v
         for k, v in groupby(
-            named_nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
+            named_nets, lambda n: n.get_trait(F.has_net_name).get_name()
         ).items()
         if len(v) > 1
     }

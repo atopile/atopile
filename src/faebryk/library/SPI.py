@@ -24,14 +24,14 @@ class SPI(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.sclk.get(), trait=F.has_net_name
-        ).setup(name="SCLK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.sclk.get(), trait=F.has_net_name_suggestion
+        ).setup(name="SCLK", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.miso.get(), trait=F.has_net_name
-        ).setup(name="MISO", level=F.has_net_name.Level.SUGGESTED)
+            node=self.miso.get(), trait=F.has_net_name_suggestion
+        ).setup(name="MISO", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.mosi.get(), trait=F.has_net_name
-        ).setup(name="MOSI", level=F.has_net_name.Level.SUGGESTED)
+            node=self.mosi.get(), trait=F.has_net_name_suggestion
+        ).setup(name="MOSI", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

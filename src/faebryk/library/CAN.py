@@ -31,12 +31,12 @@ class CAN(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.diff_pair.get().p.get(), trait=F.has_net_name
-        ).setup(name="CAN_H", level=F.has_net_name.Level.SUGGESTED)
+            node=self.diff_pair.get().p.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CAN_H", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
         fabll.Traits.create_and_add_instance_to(
-            node=self.diff_pair.get().n.get(), trait=F.has_net_name
-        ).setup(name="CAN_L", level=F.has_net_name.Level.SUGGESTED)
+            node=self.diff_pair.get().n.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CAN_L", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

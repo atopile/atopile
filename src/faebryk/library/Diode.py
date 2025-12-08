@@ -62,11 +62,11 @@ class Diode(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.anode.get(), trait=F.has_net_name
-        ).setup(name="anode", level=F.has_net_name.Level.SUGGESTED)
+            node=self.anode.get(), trait=F.has_net_name_suggestion
+        ).setup(name="anode", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.cathode.get(), trait=F.has_net_name
-        ).setup(name="cathode", level=F.has_net_name.Level.SUGGESTED)
+            node=self.cathode.get(), trait=F.has_net_name_suggestion
+        ).setup(name="cathode", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

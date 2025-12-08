@@ -47,8 +47,8 @@ class HDMI(fabll.Node):
         for i, data in enumerate(self.data):
             net_name = f"HDMI_D{i}"
             fabll.Traits.create_and_add_instance_to(
-                node=data.get().p.get(), trait=F.has_net_name
-            ).setup(name=net_name, level=F.has_net_name.Level.SUGGESTED)
+                node=data.get().p.get(), trait=F.has_net_name_suggestion
+            ).setup(name=net_name, level=F.has_net_name_suggestion.Level.SUGGESTED)
             fabll.Traits.create_and_add_instance_to(
-                node=data.get().n.get(), trait=F.has_net_name
-            ).setup(name=net_name, level=F.has_net_name.Level.SUGGESTED)
+                node=data.get().n.get(), trait=F.has_net_name_suggestion
+            ).setup(name=net_name, level=F.has_net_name_suggestion.Level.SUGGESTED)

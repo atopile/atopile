@@ -19,8 +19,8 @@ class USB2_0_IF(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.d.get(), trait=F.has_net_name
-        ).setup(name="DATA", level=F.has_net_name.Level.SUGGESTED)
+            node=self.d.get(), trait=F.has_net_name_suggestion
+        ).setup(name="DATA", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.buspower.get(), trait=F.has_net_name
-        ).setup(name="VBUS", level=F.has_net_name.Level.SUGGESTED)
+            node=self.buspower.get(), trait=F.has_net_name_suggestion
+        ).setup(name="VBUS", level=F.has_net_name_suggestion.Level.SUGGESTED)

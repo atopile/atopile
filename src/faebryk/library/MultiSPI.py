@@ -42,15 +42,15 @@ class MultiSPI(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.clock.get(), trait=F.has_net_name
-        ).setup(name="CLOCK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.clock.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CLOCK", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.chip_select.get(), trait=F.has_net_name
-        ).setup(name="CHIP_SELECT", level=F.has_net_name.Level.SUGGESTED)
+            node=self.chip_select.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CHIP_SELECT", level=F.has_net_name_suggestion.Level.SUGGESTED)
         for i, line in enumerate(self.data_.get().as_list()):
             fabll.Traits.create_and_add_instance_to(
-                node=line, trait=F.has_net_name
-            ).setup(name=f"DATA_{i}", level=F.has_net_name.Level.SUGGESTED)
+                node=line, trait=F.has_net_name_suggestion
+            ).setup(name=f"DATA_{i}", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     # ----------------------------------------
     #              usage example

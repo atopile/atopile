@@ -39,21 +39,21 @@ class Ethernet(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.led_speed.get(), trait=F.has_net_name
-        ).setup(name="ETH_LED_SPEED", level=F.has_net_name.Level.SUGGESTED)
+            node=self.led_speed.get(), trait=F.has_net_name_suggestion
+        ).setup(name="ETH_LED_SPEED", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
         fabll.Traits.create_and_add_instance_to(
-            node=self.led_link.get(), trait=F.has_net_name
-        ).setup(name="ETH_LED_LINK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.led_link.get(), trait=F.has_net_name_suggestion
+        ).setup(name="ETH_LED_LINK", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
         for i, pair in enumerate(self.pairs):
             fabll.Traits.create_and_add_instance_to(
-                node=pair.get().p.get(), trait=F.has_net_name
-            ).setup(name=f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+                node=pair.get().p.get(), trait=F.has_net_name_suggestion
+            ).setup(name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
             fabll.Traits.create_and_add_instance_to(
-                node=pair.get().n.get(), trait=F.has_net_name
-            ).setup(name=f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+                node=pair.get().n.get(), trait=F.has_net_name_suggestion
+            ).setup(name=f"ETH_P{i}", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

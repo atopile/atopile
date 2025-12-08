@@ -49,7 +49,7 @@ def export_testpoints(
 
         # Get single connected net name
         net_name = (
-            testpoint.contact.get().get_trait(F.has_overriden_name).get_name()
+            testpoint.contact.get().get_trait(F.has_net_name).get_name()
             or "no-net"
         )
 

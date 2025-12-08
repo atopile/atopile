@@ -25,17 +25,17 @@ class SWD(fabll.Node):
 
     def on_obj_set(self):
         fabll.Traits.create_and_add_instance_to(
-            node=self.clk.get(), trait=F.has_net_name
-        ).setup(name="CLK", level=F.has_net_name.Level.SUGGESTED)
+            node=self.clk.get(), trait=F.has_net_name_suggestion
+        ).setup(name="CLK", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.dio.get(), trait=F.has_net_name
-        ).setup(name="DIO", level=F.has_net_name.Level.SUGGESTED)
+            node=self.dio.get(), trait=F.has_net_name_suggestion
+        ).setup(name="DIO", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.swo.get(), trait=F.has_net_name
-        ).setup(name="SWO", level=F.has_net_name.Level.SUGGESTED)
+            node=self.swo.get(), trait=F.has_net_name_suggestion
+        ).setup(name="SWO", level=F.has_net_name_suggestion.Level.SUGGESTED)
         fabll.Traits.create_and_add_instance_to(
-            node=self.reset.get(), trait=F.has_net_name
-        ).setup(name="RESET", level=F.has_net_name.Level.SUGGESTED)
+            node=self.reset.get(), trait=F.has_net_name_suggestion
+        ).setup(name="RESET", level=F.has_net_name_suggestion.Level.SUGGESTED)
 
     usage_example = fabll.Traits.MakeEdge(
         F.has_usage_example.MakeChild(

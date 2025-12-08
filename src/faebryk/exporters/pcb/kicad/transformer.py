@@ -334,7 +334,7 @@ class PCB_Transformer:
         kicad_nets: list[F.KiCadFootprints.GenericKiCadNet] = [] # nets that are in the PCB file
 
         for net in F.Net.bind_typegraph(self.tg).get_instances(g=self.g):
-            if net.has_trait(F.has_overriden_name): # only include named nets
+            if net.has_trait(F.has_net_name): # only include named nets
                 fabll_nets.append(net)
 
         for net in self.pcb.nets:
@@ -374,7 +374,7 @@ class PCB_Transformer:
         named_nets = {
             n
             for n in fabll.Node.bind_typegraph(self.tg).nodes_of_type(F.Net)
-            if n.has_trait(F.has_overriden_name)
+            if n.has_trait(F.has_net_name)
         }
 
         for fabll_net in named_nets:
@@ -468,7 +468,7 @@ class PCB_Transformer:
         import faebryk.library._F as F
 
         nets = {pcb_net.name: pcb_net for pcb_net in self.pcb.nets}
-        return nets[net.get_trait(F.has_overriden_name).get_name()]
+        return nets[net.get_trait(F.has_net_name).get_name()]
 
     # Bounding boxes -------------------------------------------------------------------
     @staticmethod
@@ -2073,9 +2073,9 @@ class PCB_Transformer:
         # Update nets
         # Every bus has at least one net with name at this point
         f_nets_by_name = {
-            n.get_trait(F.has_overriden_name).get_name(): n
+            n.get_trait(F.has_net_name).get_name(): n
             for n in gf.nodes_of_type(F.Net)
-            if n.has_trait(F.has_overriden_name)
+            if n.has_trait(F.has_net_name)
         }
 
         processed_nets = dict[tuple[int, str | None], KiCadNet]()
