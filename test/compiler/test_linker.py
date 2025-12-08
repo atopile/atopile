@@ -215,7 +215,7 @@ def test_different_imports_resolve_to_different_nodes():
 
     r_resolved = None
     c_resolved = None
-    for identifier, make_child in type_graph.iter_make_children(type_node=app_type):
+    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
         type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
         if identifier == "r":
             r_resolved = _Linker.get_resolved_type(type_reference=type_ref)
@@ -255,7 +255,7 @@ def test_multiple_references_same_import():
     app_type = result.state.type_roots["App"]
 
     resolved_nodes = []
-    for identifier, make_child in type_graph.iter_make_children(type_node=app_type):
+    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
         if identifier in ("first", "second", "third"):
             type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
             resolved = _Linker.get_resolved_type(type_reference=type_ref)

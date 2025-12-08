@@ -576,7 +576,7 @@ class ASTVisitor:
             # TODO: review
             if target_path.leaf.is_index and parent_path is not None:
                 try:
-                    pointer_members = self._type_graph.iter_pointer_members(
+                    pointer_members = self._type_graph.collect_pointer_members(
                         type_node=self._type_stack.current(),
                         container_path=list(parent_path.identifiers()),
                     )
@@ -727,7 +727,7 @@ class ASTVisitor:
 
     def _pointer_member_paths(self, container_path: FieldPath) -> list[FieldPath]:
         try:
-            pointer_members = self._type_graph.iter_pointer_members(
+            pointer_members = self._type_graph.collect_pointer_members(
                 type_node=self._type_stack.current(),
                 container_path=list(container_path.identifiers()),
             )

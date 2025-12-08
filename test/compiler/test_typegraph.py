@@ -14,7 +14,7 @@ NULL_CONFIG = SimpleNamespace(project=None)
 
 
 def _get_make_child(type_graph, type_node, name: str):
-    for identifier, make_child in type_graph.iter_make_children(type_node=type_node):
+    for identifier, make_child in type_graph.collect_make_children(type_node=type_node):
         if identifier == name:
             return make_child
     raise AssertionError(f"expected make child `{name}`")
@@ -23,7 +23,7 @@ def _get_make_child(type_graph, type_node, name: str):
 def _collect_make_links(type_graph, type_node):
     return [
         (make_link, list(lhs_path), list(rhs_path))
-        for make_link, lhs_path, rhs_path in type_graph.iter_make_links(
+        for make_link, lhs_path, rhs_path in type_graph.collect_make_links(
             type_node=type_node
         )
     ]
@@ -66,7 +66,7 @@ def _build_snippet(source: str):
 def _collect_children_by_name(type_graph, type_node, name: str):
     return [
         child
-        for identifier, child in type_graph.iter_make_children(type_node=type_node)
+        for identifier, child in type_graph.collect_make_children(type_node=type_node)
         if identifier == name
     ]
 
@@ -903,7 +903,7 @@ def test_multiple_local_references():
     app_type = result.state.type_roots["App"]
     module_type = result.state.type_roots["Module"]
 
-    for identifier, make_child in type_graph.iter_make_children(type_node=app_type):
+    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
         if identifier in ("first", "second", "third"):
             type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
             resolved = _Linker.get_resolved_type(type_reference=type_ref)

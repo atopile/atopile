@@ -71,18 +71,18 @@ class TypeGraph:
         path: list[str],
         validate: bool = ...,
     ) -> BoundNode: ...
-    def iter_pointer_members(
+    def collect_pointer_members(
         self,
         *,
         type_node: BoundNode,
         container_path: list[str],
     ) -> list[tuple[str | None, BoundNode]]: ...
-    def iter_make_children(
+    def collect_make_children(
         self,
         *,
         type_node: BoundNode,
     ) -> list[tuple[str | None, BoundNode]]: ...
-    def iter_make_links(
+    def collect_make_links(
         self,
         *,
         type_node: BoundNode,

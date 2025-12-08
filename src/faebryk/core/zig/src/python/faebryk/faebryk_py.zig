@@ -3673,10 +3673,10 @@ fn wrap_typegraph_add_make_link() type {
     };
 }
 
-fn wrap_typegraph_iter_make_children() type {
+fn wrap_typegraph_collect_make_children() type {
     return struct {
         pub const descr = method_descr{
-            .name = "iter_make_children",
+            .name = "collect_make_children",
             .doc = "Return a list of (identifier, make_child) pairs without filtering so tests can observe the exact Zig TypeGraph structure.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
@@ -3693,7 +3693,7 @@ fn wrap_typegraph_iter_make_children() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const children = faebryk.typegraph.TypeGraph.iter_make_children(wrapper.data, allocator, kwarg_obj.type_node.*);
+            const children = faebryk.typegraph.TypeGraph.collect_make_children(wrapper.data, allocator, kwarg_obj.type_node.*);
             defer allocator.free(children);
 
             const list_obj = py.PyList_New(@as(isize, @intCast(children.len)));
@@ -4205,11 +4205,11 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_add_make_child_deferred(),
         wrap_typegraph_get_make_child_type_reference(),
         wrap_typegraph_add_make_link(),
-        wrap_typegraph_iter_make_children(),
-        wrap_typegraph_iter_make_links(),
+        wrap_typegraph_collect_make_children(),
+        wrap_typegraph_collect_make_links(),
         wrap_typegraph_get_reference_path(),
         wrap_typegraph_debug_get_mount_chain(),
-        wrap_typegraph_iter_pointer_members(),
+        wrap_typegraph_collect_pointer_members(),
         wrap_typegraph_ensure_child_reference(),
         wrap_typegraph_instantiate(),
         wrap_typegraph_instantiate_node(),
@@ -5189,10 +5189,10 @@ fn wrap_operand_file(root: *py.PyObject) ?*py.PyObject {
     return module;
 }
 
-fn wrap_typegraph_iter_make_links() type {
+fn wrap_typegraph_collect_make_links() type {
     return struct {
         pub const descr = method_descr{
-            .name = "iter_make_links",
+            .name = "collect_make_links",
             .doc = "Enumerate MakeLink nodes together with their lhs/rhs reference paths.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
@@ -5209,7 +5209,7 @@ fn wrap_typegraph_iter_make_links() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const infos = faebryk.typegraph.TypeGraph.iter_make_links(wrapper.data, allocator, kwarg_obj.type_node.*) catch |err| switch (err) {
+            const infos = faebryk.typegraph.TypeGraph.collect_make_links(wrapper.data, allocator, kwarg_obj.type_node.*) catch |err| switch (err) {
                 error.InvalidReference => {
                     py.PyErr_SetString(py.PyExc_ValueError, "MakeLink node has an invalid reference chain");
                     return null;
@@ -5416,7 +5416,6 @@ fn wrap_typegraph_ensure_child_reference() type {
                     .{
                         .fallback = "child path not found",
                         .unresolved = "child path type is unresolved",
-                        .out_of_memory = "child path resolution ran out of memory",
                     },
                 );
                 return null;
@@ -5427,10 +5426,10 @@ fn wrap_typegraph_ensure_child_reference() type {
     };
 }
 
-fn wrap_typegraph_iter_pointer_members() type {
+fn wrap_typegraph_collect_pointer_members() type {
     return struct {
         pub const descr = method_descr{
-            .name = "iter_pointer_members",
+            .name = "collect_pointer_members",
             .doc = "Return the pointer-sequence elements mounted under container_path as (identifier, make_child) tuples.",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
@@ -5466,7 +5465,7 @@ fn wrap_typegraph_iter_pointer_members() type {
             var failure: ?faebryk.typegraph.TypeGraph.PathResolutionFailure = null;
 
             const allocator = std.heap.c_allocator;
-            const members = faebryk.typegraph.TypeGraph.iter_pointer_members(
+            const members = faebryk.typegraph.TypeGraph.collect_pointer_members(
                 wrapper.data,
                 allocator,
                 kwarg_obj.type_node.*,
@@ -5480,7 +5479,6 @@ fn wrap_typegraph_iter_pointer_members() type {
                     .{
                         .fallback = "pointer sequence member not found",
                         .unresolved = "pointer sequence member type is unresolved",
-                        .out_of_memory = "iter_pointer_members ran out of memory",
                     },
                 );
                 return null;
