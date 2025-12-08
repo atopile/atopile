@@ -200,7 +200,7 @@ pub const TypeGraph = struct {
     pub fn collect_unresolved_type_references(
         self: *@This(),
         allocator: std.mem.Allocator,
-    ) ![]UnresolvedTypeReference {
+    ) []UnresolvedTypeReference {
         var list = std.ArrayList(UnresolvedTypeReference).init(allocator);
         errdefer list.deinit();
 
@@ -215,8 +215,8 @@ pub const TypeGraph = struct {
                 const type_reference = MakeChildNode.get_type_reference(make_child);
 
                 if (Linker.try_get_resolved_type(type_reference) == null) {
-                    ctx.list.append(.{ .type_node = ctx.type_node, .type_reference = type_reference }) catch {
-                        return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
+                    ctx.list.append(.{ .type_node = ctx.type_node, .type_reference = type_reference }) catch |err| switch (err) {
+                        error.OutOfMemory => @panic("OOM"),
                     };
                 }
 
@@ -263,13 +263,13 @@ pub const TypeGraph = struct {
 
         switch (visit_result) {
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
-                else => return err,
+                error.OutOfMemory => @panic("OOM"),
+                else => unreachable,
             },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
     pub const TypeReferenceNode = struct {
@@ -699,7 +699,7 @@ pub const TypeGraph = struct {
         root_type: BoundNodeReference,
         identifier: []const u8,
         parent_path: []const []const u8,
-    ) error{ ChildNotFound, OutOfMemory }!BoundNodeReference {
+    ) error{ChildNotFound}!BoundNodeReference {
         const FindCtx = struct {
             identifier: []const u8,
             parent_path: []const []const u8,
@@ -751,7 +751,7 @@ pub const TypeGraph = struct {
         switch (visit_result) {
             .OK => |make_child| return make_child,
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
+                error.OutOfMemory => @panic("OOM"),
                 else => unreachable,
             },
             else => return error.ChildNotFound,
@@ -771,7 +771,7 @@ pub const TypeGraph = struct {
         type_node: BoundNodeReference,
         path: []const []const u8,
         failure: ?*?PathResolutionFailure,
-    ) error{ ChildNotFound, OutOfMemory, UnresolvedTypeReference }!ResolveResult {
+    ) error{ ChildNotFound, UnresolvedTypeReference }!ResolveResult {
         if (failure) |f| f.* = null;
         if (path.len == 0) {
             if (failure) |f| {
@@ -889,13 +889,7 @@ pub const TypeGraph = struct {
         }
 
         const str_path: []const str = path;
-        return ChildReferenceNode.create_and_insert(self, str_path) catch |err| switch (err) {
-            error.ChildNotFound => {
-                if (failure) |f| f.* = local_failure;
-                return err;
-            },
-            else => return err,
-        };
+        return ChildReferenceNode.create_and_insert(self, str_path);
     }
 
     /// Return every MakeChild belonging to `type_node` without filtering or
@@ -906,9 +900,8 @@ pub const TypeGraph = struct {
         self: *@This(),
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
-    ) error{OutOfMemory}![]MakeChildInfo {
+    ) []MakeChildInfo {
         var list = std.ArrayList(MakeChildInfo).init(allocator);
-        errdefer list.deinit();
 
         const Ctx = struct {
             list: *std.ArrayList(MakeChildInfo),
@@ -929,18 +922,21 @@ pub const TypeGraph = struct {
                     ctx_ptr.list.append(MakeChildInfo{
                         .identifier = identifier,
                         .make_child = make_child,
-                    }) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
+                    }) catch @panic("OOM");
                     return visitor.VisitResult(void){ .CONTINUE = {} };
                 }
             }.visit,
         );
 
         switch (result) {
-            .ERROR => return error.OutOfMemory,
+            .ERROR => |err| switch (err) {
+                error.OutOfMemory => @panic("OOM"),
+                else => unreachable,
+            },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
     /// Walk a Reference chain and return the individual identifiers. Reference
@@ -950,7 +946,7 @@ pub const TypeGraph = struct {
         self: *@This(),
         allocator: std.mem.Allocator,
         reference: BoundNodeReference,
-    ) error{ OutOfMemory, InvalidReference }![]const []const u8 {
+    ) error{InvalidReference}![]const []const u8 {
         _ = self;
 
         var segments = std.ArrayList([]const u8).init(allocator);
@@ -962,7 +958,7 @@ pub const TypeGraph = struct {
             if (identifier.len == 0) {
                 return error.InvalidReference;
             }
-            try segments.append(identifier);
+            segments.append(identifier) catch @panic("OOM");
 
             const next_node = EdgeNext.get_next_node_from_node(current);
             if (next_node) |_next| {
@@ -976,12 +972,7 @@ pub const TypeGraph = struct {
             return error.InvalidReference;
         }
 
-        return segments.toOwnedSlice();
-    }
-
-    fn free_link_paths(allocator: std.mem.Allocator, info: MakeLinkInfo) void {
-        allocator.free(info.lhs_path);
-        allocator.free(info.rhs_path);
+        return segments.toOwnedSlice() catch @panic("OOM");
     }
 
     /// Enumerate MakeLink nodes together with their resolved reference paths so
@@ -990,11 +981,12 @@ pub const TypeGraph = struct {
         self: *@This(),
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
-    ) error{ OutOfMemory, InvalidReference }![]MakeLinkInfo {
+    ) error{InvalidReference}![]MakeLinkInfo {
         var list = std.ArrayList(MakeLinkInfo).init(allocator);
         errdefer {
             for (list.items) |info| {
-                free_link_paths(allocator, info);
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
             }
             list.deinit();
         }
@@ -1044,9 +1036,7 @@ pub const TypeGraph = struct {
                         .make_link = make_link,
                         .lhs_path = lhs_path,
                         .rhs_path = rhs_path,
-                    }) catch |append_err| {
-                        return visitor.VisitResult(void){ .ERROR = append_err };
-                    };
+                    }) catch @panic("OOM");
 
                     lhs_keep = false;
                     rhs_keep = false;
@@ -1057,14 +1047,13 @@ pub const TypeGraph = struct {
 
         switch (visit_result) {
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidReference => return error.InvalidReference,
-                else => unreachable,
+                else => @panic("OOM"),
             },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
     /// Enumerate pointer-sequence elements mounted under `container_path`. This
@@ -1076,7 +1065,7 @@ pub const TypeGraph = struct {
         type_node: BoundNodeReference,
         container_path: []const []const u8,
         failure: ?*?PathResolutionFailure,
-    ) error{ OutOfMemory, UnresolvedTypeReference, ChildNotFound }![]MakeChildInfo {
+    ) error{ UnresolvedTypeReference, ChildNotFound }![]MakeChildInfo {
         var local_failure: ?PathResolutionFailure = null;
         _ = self.resolve_path_segments(type_node, container_path, &local_failure) catch |err| switch (err) {
             error.ChildNotFound => {
@@ -1088,7 +1077,6 @@ pub const TypeGraph = struct {
         };
 
         var list = std.ArrayList(MakeChildInfo).init(allocator);
-        errdefer list.deinit();
 
         const VisitCtx = struct {
             type_graph: *TypeGraph,
@@ -1124,9 +1112,7 @@ pub const TypeGraph = struct {
                         ctx_ptr.list.append(MakeChildInfo{
                             .identifier = identifier,
                             .make_child = make_child,
-                        }) catch |append_err| {
-                            return visitor.VisitResult(void){ .ERROR = append_err };
-                        };
+                        }) catch @panic("OOM");
                     }
 
                     return visitor.VisitResult(void){ .CONTINUE = {} };
@@ -1136,13 +1122,13 @@ pub const TypeGraph = struct {
 
         switch (visit_result) {
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
+                error.OutOfMemory => @panic("OOM"),
                 else => unreachable,
             },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
     /// Return the mount-reference chain for `make_child` as ordered child
@@ -1153,16 +1139,15 @@ pub const TypeGraph = struct {
         self: *@This(),
         allocator: std.mem.Allocator,
         make_child: BoundNodeReference,
-    ) error{OutOfMemory}![]const []const u8 {
+    ) []const []const u8 {
         _ = self;
         var chain = std.ArrayList([]const u8).init(allocator);
-        errdefer chain.deinit();
 
         if (MakeChildNode.get_mount_reference(make_child)) |mount_ref| {
             var current = mount_ref;
             while (true) {
                 const identifier = ChildReferenceNode.Attributes.of(current.node).get_child_identifier();
-                try chain.append(identifier);
+                chain.append(identifier) catch @panic("OOM");
 
                 const next_node = EdgeNext.get_next_node_from_node(current);
                 if (next_node) |_next| {
@@ -1184,13 +1169,13 @@ pub const TypeGraph = struct {
                     }
 
                     if (!is_numeric) {
-                        try chain.append(leaf_identifier);
+                        chain.append(leaf_identifier) catch @panic("OOM");
                     }
                 }
             }
         }
 
-        return chain.toOwnedSlice();
+        return chain.toOwnedSlice() catch @panic("OOM");
     }
 
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
@@ -1660,7 +1645,7 @@ test "typegraph iterators and mount chains" {
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 
-    const children = try tg.iter_make_children(a, top);
+    const children = tg.iter_make_children(a, top);
     defer a.free(children);
     try std.testing.expectEqual(@as(usize, 5), children.len);
 
@@ -1707,16 +1692,16 @@ test "typegraph iterators and mount chains" {
     try std.testing.expectEqual(@as(usize, 1), lhs_path.len);
     try std.testing.expectEqualStrings("base", lhs_path[0]);
 
-    const chain_members = try tg.get_mount_chain(a, members);
+    const chain_members = tg.get_mount_chain(a, members);
     defer a.free(chain_members);
     try std.testing.expectEqual(@as(usize, 0), chain_members.len);
 
-    const chain_element0 = try tg.get_mount_chain(a, element0);
+    const chain_element0 = tg.get_mount_chain(a, element0);
     defer a.free(chain_element0);
     try std.testing.expectEqual(@as(usize, 1), chain_element0.len);
     try std.testing.expect(std.mem.eql(u8, chain_element0[0], "members"));
 
-    const chain_extra = try tg.get_mount_chain(a, extra);
+    const chain_extra = tg.get_mount_chain(a, extra);
     defer a.free(chain_extra);
     try std.testing.expectEqual(@as(usize, 2), chain_extra.len);
     try std.testing.expect(std.mem.eql(u8, chain_extra[0], "base"));

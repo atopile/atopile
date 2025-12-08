@@ -3620,10 +3620,7 @@ fn wrap_typegraph_iter_make_children() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const children = faebryk.typegraph.TypeGraph.iter_make_children(wrapper.data, allocator, kwarg_obj.type_node.*) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "iter_make_children failed");
-                return null;
-            };
+            const children = faebryk.typegraph.TypeGraph.iter_make_children(wrapper.data, allocator, kwarg_obj.type_node.*);
             defer allocator.free(children);
 
             const list_obj = py.PyList_New(@as(isize, @intCast(children.len)));
@@ -3683,10 +3680,7 @@ fn wrap_typegraph_debug_get_mount_chain() type {
             const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const chain = faebryk.typegraph.TypeGraph.get_mount_chain(wrapper.data, allocator, kwarg_obj.make_child.*) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "debug_get_mount_chain failed");
-                return null;
-            };
+            const chain = faebryk.typegraph.TypeGraph.get_mount_chain(wrapper.data, allocator, kwarg_obj.make_child.*);
             defer allocator.free(chain);
 
             const list_obj = _path_segments_to_list(chain) orelse {
@@ -4196,10 +4190,7 @@ fn wrap_typegraph_collect_unresolved_type_references() type {
             _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const unresolved = faebryk.typegraph.TypeGraph.collect_unresolved_type_references(wrapper.data, allocator) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "collect_unresolved_type_references failed");
-                return null;
-            };
+            const unresolved = faebryk.typegraph.TypeGraph.collect_unresolved_type_references(wrapper.data, allocator);
             defer allocator.free(unresolved);
 
             const list_len = @as(isize, @intCast(unresolved.len));
@@ -5112,10 +5103,6 @@ fn wrap_typegraph_iter_make_links() type {
 
             const allocator = std.heap.c_allocator;
             const infos = faebryk.typegraph.TypeGraph.iter_make_links(wrapper.data, allocator, kwarg_obj.type_node.*) catch |err| switch (err) {
-                error.OutOfMemory => {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "iter_make_links ran out of memory");
-                    return null;
-                },
                 error.InvalidReference => {
                     py.PyErr_SetString(py.PyExc_ValueError, "MakeLink node has an invalid reference chain");
                     return null;
@@ -5218,10 +5205,6 @@ fn wrap_typegraph_get_reference_path() type {
 
             const allocator = std.heap.c_allocator;
             const path = faebryk.typegraph.TypeGraph.get_reference_path(wrapper.data, allocator, kwarg_obj.reference.*) catch |err| switch (err) {
-                error.OutOfMemory => {
-                    py.PyErr_SetString(py.PyExc_MemoryError, "get_reference_path ran out of memory");
-                    return null;
-                },
                 error.InvalidReference => {
                     py.PyErr_SetString(py.PyExc_ValueError, "reference does not contain any identifiers");
                     return null;
