@@ -1,4 +1,3 @@
-import functools
 import math
 from bisect import bisect
 from collections.abc import Generator
@@ -130,7 +129,7 @@ class is_literal(fabll.Node):
         )
 
     def op_symmetric_difference_intervals(
-        self,
+        self: "is_literal | LiteralNodes",
         other: "is_literal | LiteralNodes",
         *,
         g: graph.GraphView | None = None,
@@ -332,8 +331,6 @@ class Strings(fabll.Node):
     def equals(
         self,
         other: "Strings",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return self.get_values() == other.get_values()
 
@@ -343,8 +340,6 @@ class Strings(fabll.Node):
     def is_subset_of(
         self,
         other: "Strings",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
         return set(self.get_values()) <= set(other.get_values())
 
@@ -712,9 +707,7 @@ class NumericInterval(fabll.Node):
         )
         return numeric_interval
 
-    def op_invert(
-        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
-    ) -> "NumericSet":
+    def op_invert(self, g: graph.GraphView, tg: fbrk.TypeGraph) -> "NumericSet":
         """
         Arithmetically inverts a interval (1/x).
         """
@@ -3289,19 +3282,20 @@ class Numbers(fabll.Node):
         )
 
     def op_add_intervals(
-        self,
-        other: "Numbers",
-        *,
+        self: "Numbers",
+        *others: "Numbers",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """Arithmetically add two quantity sets. Units must be commensurable."""
         g = g or self.g
         tg = tg or self.tg
-        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
-        out_numeric_set = self.get_numeric_set().op_add(
-            g=g, tg=tg, other=other_converted.get_numeric_set()
-        )
+        out_numeric_set = self.get_numeric_set()
+        for other in others:
+            other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
+            out_numeric_set = out_numeric_set.op_add(
+                g=g, tg=tg, other=other_converted.get_numeric_set()
+            )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
@@ -3310,8 +3304,7 @@ class Numbers(fabll.Node):
 
     def op_mul_intervals(
         self,
-        other: "Numbers",
-        *,
+        *others: "Numbers",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
@@ -3321,20 +3314,26 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
-        out_numeric_set = self.get_numeric_set().op_multiply(
-            g=g, tg=tg, other=other.get_numeric_set()
-        )
-        result_unit = self.get_is_unit().op_multiply(
-            g=g, tg=tg, other=other.get_is_unit()
-        )
+
+        out_numeric_set = self.get_numeric_set()
+        out_unit = self.get_is_unit()
+        for other in others:
+            out_numeric_set = out_numeric_set.op_multiply(
+                g=g, tg=tg, other=other.get_numeric_set()
+            )
+            out_unit = out_unit.op_multiply(g=g, tg=tg, other=other.get_is_unit())
+
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
-            unit=result_unit,
+            unit=out_unit,
         )
 
     def op_negate(
-        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+        self: "Numbers",
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Arithmetically negate this quantity set (multiply by -1).
@@ -3350,35 +3349,44 @@ class Numbers(fabll.Node):
         )
 
     def op_subtract_intervals(
-        self,
-        other: "Numbers",
-        *,
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
+        self: "Numbers",
+        *subtrahends: "Numbers",
+        g: graph.GraphView,
+        tg: fbrk.TypeGraph,
     ) -> "Numbers":
         """
-        Subtract another quantity set from this one.
-        Units must be commensurable. Result has the unit of self.
+        Subtracts multiple quantity sets.
+        minuend = others[0]
+        subtrahend = others[1:]
         """
         g = g or self.g
         tg = tg or self.tg
-        if not self.get_is_unit().is_commensurable_with(other.get_is_unit()):
-            raise UnitsNotCommensurableError(
-                "incompatible units",
-                incommensurable_items=[self.get_is_unit(), other.get_is_unit()],
+        minuend = self
+        out_numeric_set = minuend.get_numeric_set()
+
+        out_numeric_set = minuend.get_numeric_set()
+        for subtrahend in subtrahends:
+            if not self.get_is_unit().is_commensurable_with(subtrahend.get_is_unit()):
+                raise UnitsNotCommensurableError(
+                    "incompatible units",
+                    incommensurable_items=[
+                        self.get_is_unit(),
+                        subtrahend.get_is_unit(),
+                    ],
+                )
+            out_numeric_set = out_numeric_set.op_subtract(
+                g=g, tg=tg, other=subtrahend.get_numeric_set()
             )
-        other_converted = self._convert_other_to_self_unit(g=g, tg=tg, other=other)
-        out_numeric_set = self.get_numeric_set().op_subtract(
-            g=g, tg=tg, other=other_converted.get_numeric_set()
-        )
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
-            numeric_set=out_numeric_set,
-            unit=self.get_is_unit(),
+            numeric_set=out_numeric_set, unit=minuend.get_is_unit()
         )
 
     def op_invert(
-        self, *, g: graph.GraphView | None = None, tg: fbrk.TypeGraph | None = None
+        self,
+        *,
+        g: graph.GraphView | None = None,
+        tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
         Invert this quantity set (1/x).
@@ -3395,29 +3403,32 @@ class Numbers(fabll.Node):
         )
 
     def op_div_intervals(
-        self,
-        other: "Numbers",
-        *,
+        self: "Numbers",
+        *denominators: "Numbers",
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "Numbers":
         """
-        Divide this quantity set by another.
-        Result unit is self.unit / other.unit.
+        Divide numerator by one or more denominators.
+        Result unit is numerator.unit / (denominator1.unit * denominator2.unit * ...).
         Unlike add/subtract, division doesn't require commensurable units.
         """
         g = g or self.g
         tg = tg or self.tg
-        out_numeric_set = self.get_numeric_set().op_div_intervals(
-            other=other.get_numeric_set(), g=g, tg=tg
-        )
-        divided_unit = self.get_is_unit().op_divide(
-            g=g, tg=tg, other=other.get_is_unit()
-        )
+        numerator = self
+        out_numeric_set = numerator.get_numeric_set()
+        out_unit = numerator.get_is_unit()
+
+        for denominator in denominators:
+            out_numeric_set = out_numeric_set.op_div_intervals(
+                g=g, tg=tg, other=denominator.get_numeric_set()
+            )
+            out_unit = out_unit.op_divide(g=g, tg=tg, other=denominator.get_is_unit())
+
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
-            unit=divided_unit,
+            unit=out_unit,
         )
 
     def op_pow_intervals(
@@ -3434,21 +3445,22 @@ class Numbers(fabll.Node):
         """
         g = g or self.g
         tg = tg or self.tg
+        base = self
         if not exponent.get_is_unit().is_dimensionless():
             raise ValueError("exponent must have dimensionless units")
 
         exp_numeric = exponent.get_numeric_set()
         if not exp_numeric.is_singleton():
-            if not self.get_is_unit().is_dimensionless():
+            if not base.get_is_unit().is_dimensionless():
                 raise ValueError(
                     "base must have dimensionless units when exponent is an interval"
                 )
 
         # Get the exponent value for unit calculation (use min value)
         exp_value = int(exp_numeric.get_min_value())
-        result_unit = self.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
+        result_unit = base.get_is_unit().op_power(g=g, tg=tg, exponent=exp_value)
 
-        out_numeric_set = self.get_numeric_set().op_pow(exp_numeric, g=g, tg=tg)
+        out_numeric_set = base.get_numeric_set().op_pow(g=g, tg=tg, other=exp_numeric)
         quantity_set = Numbers.create_instance(g=g, tg=tg)
         return quantity_set.setup(
             numeric_set=out_numeric_set,
@@ -3565,7 +3577,7 @@ class Numbers(fabll.Node):
         pi_half.setup_from_min_max(
             min=math.pi / 2, max=math.pi / 2, unit=self.get_is_unit()
         )
-        shifted = self.op_add_intervals(g=g, tg=tg, other=pi_half)
+        shifted = self.op_add_intervals(pi_half, g=g, tg=tg)
         return shifted.op_sin(g=g, tg=tg)
 
     def op_floor(
@@ -3579,7 +3591,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         half = Numbers.create_instance(g=g, tg=tg)
         half.setup_from_min_max(min=0.5, max=0.5, unit=self.get_is_unit())
-        shifted = self.op_subtract_intervals(g=g, tg=tg, other=half)
+        shifted = Numbers.op_subtract_intervals(self, half, g=g, tg=tg)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
     def op_ceil(
@@ -3593,7 +3605,7 @@ class Numbers(fabll.Node):
         tg = tg or self.tg
         half = Numbers.create_instance(g=g, tg=tg)
         half.setup_from_min_max(min=0.5, max=0.5, unit=self.get_is_unit())
-        shifted = self.op_add_intervals(g=g, tg=tg, other=half)
+        shifted = Numbers.op_add_intervals(self, half, g=g, tg=tg)
         return shifted.op_round(g=g, tg=tg, ndigits=0)
 
     def op_total_span(
@@ -3698,7 +3710,7 @@ class Numbers(fabll.Node):
             divisor.setup_from_min_max(
                 min=max_val, max=max_val, unit=self.get_is_unit()
             )
-            return deviation.op_div_intervals(g=g, tg=tg, other=divisor)
+            return Numbers.op_div_intervals(deviation, divisor, g=g, tg=tg)
 
         return deviation
 
@@ -4090,7 +4102,7 @@ class TestNumbers:
         quantity_set_2.setup_from_min_max(
             min=0.0, max=1.0, unit=meter_instance.is_unit.get()
         )
-        result = quantity_set_1.op_add_intervals(g=g, tg=tg, other=quantity_set_2)
+        result = Numbers.op_add_intervals(quantity_set_1, quantity_set_2, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 0.0
         assert result.get_numeric_set().get_max_value() == 2.0
         assert result.get_is_unit().get_symbols() == ["m"]
@@ -4109,7 +4121,7 @@ class TestNumbers:
         )
         quantity_kelvin = Numbers.create_instance(g=g, tg=tg)
         quantity_kelvin.setup_from_min_max(min=0.0, max=0.0, unit=kelvin.is_unit.get())
-        result = quantity_kelvin.op_add_intervals(g=g, tg=tg, other=quantity_celsius)
+        result = Numbers.op_add_intervals(quantity_kelvin, quantity_celsius, g=g, tg=tg)
         result_numeric_set_rounded = result.get_numeric_set().op_round(
             g=g, tg=tg, ndigits=2
         )
@@ -4130,7 +4142,7 @@ class TestNumbers:
         quantity_set_2.setup_from_min_max(
             min=3.0, max=5.0, unit=meter_instance.is_unit.get()
         )
-        result = quantity_set_1.op_mul_intervals(g=g, tg=tg, other=quantity_set_2)
+        result = Numbers.op_mul_intervals(quantity_set_1, quantity_set_2, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 6.0
         assert result.get_numeric_set().get_max_value() == 20.0
         result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
@@ -4151,10 +4163,36 @@ class TestNumbers:
             max=4.0,
             unit=Newton.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         )
-        result = quantity_meter.op_mul_intervals(g=g, tg=tg, other=quantity_newton)
+        result = quantity_meter.op_mul_intervals(quantity_newton, g=g, tg=tg)
         assert result.get_numeric_set().get_min_value() == 3.0
         assert result.get_numeric_set().get_max_value() == 8.0
         assert result.get_is_unit().compact_repr() == "s⁻²·m²·kg"
+
+    def test_op_multiply_three_same_unit(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        from faebryk.library.Units import BasisVector, Meter
+
+        meter_instance = Meter.bind_typegraph(tg=tg).create_instance(g=g)
+        quantity_set_1 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_1.setup_from_min_max(
+            min=2.0, max=4.0, unit=meter_instance.is_unit.get()
+        )
+        quantity_set_2 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_2.setup_from_min_max(
+            min=3.0, max=5.0, unit=meter_instance.is_unit.get()
+        )
+        quantity_set_3 = Numbers.create_instance(g=g, tg=tg)
+        quantity_set_3.setup_from_min_max(
+            min=4.0, max=6.0, unit=meter_instance.is_unit.get()
+        )
+        result = Numbers.op_mul_intervals(
+            quantity_set_1, quantity_set_2, quantity_set_3, g=g, tg=tg
+        )
+        assert result.get_numeric_set().get_min_value() == 24.0
+        assert result.get_numeric_set().get_max_value() == 120.0
+        result_unit_basis_vector = result.get_is_unit()._extract_basis_vector()
+        assert result_unit_basis_vector == BasisVector(meter=3)
 
     def test_op_negate(self):
         """Test negation of a quantity set."""
@@ -4189,7 +4227,9 @@ class TestNumbers:
         quantity_set_2.setup_from_min_max(
             min=1.0, max=3.0, unit=meter_instance.is_unit.get()
         )
-        result = quantity_set_1.op_subtract_intervals(g=g, tg=tg, other=quantity_set_2)
+        result = Numbers.op_subtract_intervals(
+            quantity_set_1, quantity_set_2, g=g, tg=tg
+        )
         # [5, 10] - [1, 3] = [5-3, 10-1] = [2, 9]
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 9.0
@@ -4230,7 +4270,7 @@ class TestNumbers:
         quantity_set_2.setup_from_min_max(
             min=2.0, max=4.0, unit=meter_instance.is_unit.get()
         )
-        result = quantity_set_1.op_div_intervals(g=g, tg=tg, other=quantity_set_2)
+        result = Numbers.op_div_intervals(quantity_set_1, quantity_set_2, g=g, tg=tg)
         # [4, 8] / [2, 4] = [4/4, 8/2] = [1, 4]
         assert result.get_numeric_set().get_min_value() == 1.0
         assert result.get_numeric_set().get_max_value() == 4.0
@@ -4254,7 +4294,7 @@ class TestNumbers:
         quantity_time.setup_from_min_max(
             min=2.0, max=5.0, unit=second_instance.is_unit.get()
         )
-        result = quantity_distance.op_div_intervals(g=g, tg=tg, other=quantity_time)
+        result = Numbers.op_div_intervals(quantity_distance, quantity_time, g=g, tg=tg)
         # [10, 20] m / [2, 5] s = [10/5, 20/2] = [2, 10] m/s
         assert result.get_numeric_set().get_min_value() == 2.0
         assert result.get_numeric_set().get_max_value() == 10.0
@@ -4280,7 +4320,7 @@ class TestNumbers:
         exponent.setup_from_min_max(
             min=2.0, max=2.0, unit=dimensionless_instance.is_unit.get()
         )
-        result = quantity_set.op_pow_intervals(g=g, tg=tg, exponent=exponent)
+        result = quantity_set.op_pow_intervals(exponent, g=g, tg=tg)
         # [2, 3]^2 = [4, 9]
         assert result.get_numeric_set().get_min_value() == 4.0
         assert result.get_numeric_set().get_max_value() == 9.0
@@ -6179,42 +6219,137 @@ class TestBooleans:
         )
         assert bools.get_single() is True
 
-    def test_op_not(self):
+    @pytest.mark.parametrize(
+        "bools, expected",
+        [
+            ([True], [False]),
+            ([False], [True]),
+            ([True, False], [True, False]),
+        ],
+    )
+    def test_op_not(self, bools, expected):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         bools = (
-            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*bools)
         )
         result = bools.op_not(g=g, tg=tg)
-        assert result.get_values() == [False]
+        assert result.get_values() == expected
 
-    def test_op_and(self):
+    @pytest.mark.parametrize(
+        "bools_1, bools_2, expected",
+        [
+            ([True], [False], [False]),
+            ([False], [True], [False]),
+            ([True], [True], [True]),
+            ([False], [False], [False]),
+            ([True, False], [True, False], [True, False]),
+            ([True, False], [True], [True, False]),
+            ([True, False], [False], [False]),
+        ],
+    )
+    def test_op_and(self, bools_1, bools_2, expected):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         bools1 = (
             Booleans.bind_typegraph(tg=tg)
             .create_instance(g=g)
-            .setup_from_values(True, False)
+            .setup_from_values(*bools_1)
         )
         bools2 = (
-            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*bools_2)
         )
         result = bools1.op_and(g=g, tg=tg, other=bools2)
         # True AND True = True, False AND True = False
-        assert set(result.get_values()) == {True, False}
+        assert result.get_values() == expected
 
-    def test_op_or(self):
+    @pytest.mark.parametrize(
+        "bools_1, bools_2, expected",
+        [
+            ([True], [False], [True]),
+            ([False], [True], [True]),
+            ([True], [True], [True]),
+            ([False], [False], [False]),
+            ([True, False], [True, False], [True, False]),
+            ([True, False], [True], [True]),
+            ([True, False], [False], [True, False]),
+        ],
+    )
+    def test_op_or(self, bools_1, bools_2, expected):
         g = graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
         bools1 = (
-            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(False)
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*bools_1)
         )
         bools2 = (
-            Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values(True)
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*bools_2)
         )
         result = bools1.op_or(g=g, tg=tg, other=bools2)
         # False OR True = True
-        assert result.get_values() == [True]
+        assert result.get_values() == expected
+
+    @pytest.mark.parametrize(
+        "bools_1, bools_2, expected",
+        [
+            ([True], [False], [True]),
+            ([False], [True], [True]),
+            ([True], [True], [False]),
+            ([False], [False], [False]),
+            ([True, False], [True, False], [True, False]),
+            ([True, False], [True], [True, False]),
+            ([True, False], [False], [True, False]),
+        ],
+    )
+    def test_op_xor(self, bools_1, bools_2, expected):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        bools1 = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*bools_1)
+        )
+        bools2 = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(*bools_2)
+        )
+        result = bools1.op_xor(g=g, tg=tg, other=bools2)
+        # True XOR False = True
+        assert result.get_values() == expected
+
+    @pytest.mark.parametrize(
+        "bools_1, bools_2, expected",
+        [
+            (True, True, True),
+            (True, False, False),
+            (False, True, True),
+            (False, False, True),
+        ],
+    )
+    def test_op_implies(self, bools_1, bools_2, expected):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        bools1 = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(bools_1)
+        )
+        bools2 = (
+            Booleans.bind_typegraph(tg=tg)
+            .create_instance(g=g)
+            .setup_from_values(bools_2)
+        )
+        result = bools1.op_implies(g=g, tg=tg, other=bools2)
+        # True -> False = False
+        assert result.get_values() == [expected]
 
 
 def test_string_literal_on_type():

@@ -856,13 +856,11 @@ class MutationMap:
             and not lit_n.are_units_compatible(param_unit := param_unit_t.get_is_unit())
         ):
             return lit_n.op_mul_intervals(
-                g=lit_n.g,
-                tg=lit_n.tg,
-                other=F.Literals.Numbers.bind_typegraph_from_instance(
-                    instance=lit_n.instance
-                )
+                F.Literals.Numbers.bind_typegraph_from_instance(instance=lit_n.instance)
                 .create_instance(g=lit_n.g)
                 .setup_from_singleton(value=1, unit=param_unit),
+                g=lit_n.g,
+                tg=lit_n.tg,
             ).is_literal.get()
         return lit
 

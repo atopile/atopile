@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, get_args
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
@@ -567,6 +567,20 @@ class is_expression(fabll.Node):
         """
         return 1 + max(
             [op.get_depth() for op in self.get_operands_with_trait(is_expression)] + [0]
+        )
+
+    def switch_cast(self) -> "ExpressionNodes":
+        """
+        WARNING: very slow, do not use this!
+        """
+        types = get_args(ExpressionNodes)
+        obj = fabll.Traits(self).get_obj_raw()
+        for t in types:
+            if obj.isinstance(t):
+                return obj.cast(t)
+
+        raise ValueError(
+            f"Cannot cast expression {self} of type {obj} to any of {types}"
         )
 
 
@@ -2619,6 +2633,46 @@ class Is(fabll.Node):
     ) -> "F.Parameters.can_be_operand":
         return _op(cls.from_operands(*operands, g=g, tg=tg, assert_=assert_))
 
+
+ExpressionNodes = (
+    Add
+    | Subtract
+    | Multiply
+    | Divide
+    | Power
+    | Sqrt
+    | Log
+    | Sin
+    | Cos
+    | Abs
+    | Round
+    | Floor
+    | Ceil
+    | Min
+    | Max
+    | Integrate
+    | Differentiate
+    | And
+    | Or
+    | Not
+    | Xor
+    | Implies
+    | IfThenElse
+    | Union
+    | Intersection
+    | Difference
+    | SymmetricDifference
+    | LessThan
+    | GreaterThan
+    | LessOrEqual
+    | GreaterOrEqual
+    | NotEqual
+    | IsSubset
+    | IsSuperset
+    | Cardinality
+    | IsBitSet
+    | Is
+)
 
 # Tests --------------------------------------------------------------------------------
 
