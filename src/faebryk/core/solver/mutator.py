@@ -1073,11 +1073,9 @@ class Mutator:
         units: F.Units.is_unit | None = None,
         domain: F.NumberDomain | None = None,
         soft_set: F.Literals.Numbers | None = None,
-        within: F.Literals.Numbers | None = None,
         guess: F.Literals.Numbers | None = None,
         tolerance_guess: float | None = None,
         likely_constrained: bool | None = None,
-        override_within: bool = False,
     ) -> F.Parameters.is_parameter:
         if param.as_parameter_operatable.get() in self.transformations.mutated:
             out = self.get_mutated(param.as_parameter_operatable.get())
@@ -1114,7 +1112,6 @@ class Mutator:
                 .create_instance(self.G_out)
                 .setup(
                     units=units,
-                    within=within if override_within else p.get_within(),
                     domain=domain,
                     soft_set=soft_set if soft_set is not None else p.get_soft_set(),
                     guess=guess if guess is not None else p.get_guess(),

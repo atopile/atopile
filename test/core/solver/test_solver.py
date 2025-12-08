@@ -41,7 +41,7 @@ def _create_letters(
     context = F.Parameters.ReprContext()
 
     class App(fabll.Node):
-        params = [F.Parameters.NumericParameter.MakeChild() for _ in range(n)]
+        params = [F.Parameters.NumericParameter.MakeChild(unit=units) for _ in range(n)]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
     params = [p.get().is_parameter.get() for p in app.params]
@@ -114,8 +114,6 @@ def test_solve_phase_one():
     solver.simplify_symbolically(E.tg, E.g)
 
 
-# TODO remove slow
-@pytest.mark.slow
 def test_simplify():
     E = BoundExpressions()
 
@@ -158,7 +156,6 @@ def test_simplify():
     # TODO actually test something
 
 
-@pytest.mark.slow
 def test_simplify_logic_and():
     E = BoundExpressions()
 
@@ -209,24 +206,27 @@ def test_shortcircuit_logic_and():
 
 
 def test_shortcircuit_logic_or():
+    """
+    X := Or(*App.p[0:3], True)
+    Y := Or(X, X)
+    Y -> True
+    """
     E = BoundExpressions()
 
     class App(fabll.Node):
         p = [F.Parameters.BooleanParameter.MakeChild() for _ in range(4)]
 
     app = App.bind_typegraph(tg=E.tg).create_instance(g=E.g)
-    ored = E.or_(app.p[0].get().can_be_operand.get(), assert_=True)
-    for p in app.p[1:]:
-        E.is_(
-            ored,
-            E.or_(ored, p.get().can_be_operand.get()),
-            assert_=True,
-        )
-    E.is_(ored, E.or_(ored, ored), assert_=True)
+    p_ops = [p.get().can_be_operand.get() for p in app.p]
+
+    X = E.or_(p_ops[0], E.lit_op_single(True))
+    for p in p_ops[1:]:
+        X = E.or_(X, p)
+    Y = E.or_(X, X)
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(ored, repr_map, True)
+    assert _extract_and_check(Y, repr_map, True)
 
 
 def test_inequality_to_set():
@@ -239,7 +239,6 @@ def test_inequality_to_set():
     assert _extract_and_check(p0, solver, E.lit_op_range((1, 2)))
 
 
-@pytest.mark.slow
 def test_remove_obvious_tautologies():
     E = BoundExpressions()
     p0, p1, p2 = [E.parameter_op(units=E.U.dl) for _ in range(3)]
@@ -297,7 +296,6 @@ def test_alias_classes():
     # TODO actually test something
 
 
-@pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.skip(reason="TODO: Replace with new realworld test")
 def test_solve_realworld_biggest():
@@ -328,7 +326,6 @@ def test_solve_realworld_biggest():
     # pick_part_recursively(app, solver)
 
 
-# TODO remove slow (1pytest -m "not slow" test/core/solver/test_solver.py.5min)
 @pytest.mark.slow
 def test_inspect_known_superranges():
     E = BoundExpressions()
@@ -352,11 +349,16 @@ def test_inspect_known_superranges():
 
 
 def test_obvious_contradiction_by_literal():
+    """
+    p0 is! [0V, 10V]
+    p1 is! [5V, 10V]
+    p0 is! p1
+    """
     E = BoundExpressions()
     p0, p1 = [E.parameter_op(units=E.U.V) for _ in range(2)]
 
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))))
-    E.is_(p1, E.lit_op_range(((5, E.U.V), (10, E.U.V))))
+    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    E.is_(p1, E.lit_op_range(((5, E.U.V), (10, E.U.V))), assert_=True)
 
     E.is_(p0, p1, assert_=True)
 
@@ -366,6 +368,12 @@ def test_obvious_contradiction_by_literal():
 
 
 def test_subset_is():
+    """
+    A is! [0, 15]
+    B ss! [5, 20]
+    A is! B
+    => Contradiction
+    """
     E = BoundExpressions()
     A, B = [E.parameter_op() for _ in range(2)]
 
@@ -414,10 +422,17 @@ def test_subset_single_alias():
 
 
 def test_very_simple_alias_class():
+    """
+    A is! B
+    B is! C
+    A is! [1V, 2V]
+    => B is! [1V, 2V], C is! [1V, 2V]
+    """
     E = BoundExpressions()
     A, B, C = params = (E.parameter_op(units=E.U.V) for _ in range(3))
     E.is_(A, B, assert_=True)
     E.is_(B, C, assert_=True)
+    E.is_(A, E.lit_op_range(((1, E.U.V), (2, E.U.V))), assert_=True)
 
     context = F.Parameters.ReprContext()
     for p in params:
@@ -434,6 +449,11 @@ def test_very_simple_alias_class():
 
 
 def test_domain():
+    """
+    p0 within [0V, 10V]
+    p0 is! [15V, 20V]
+    => Contradiction
+    """
     E = BoundExpressions()
     p0 = E.parameter_op(
         units=E.U.V,
@@ -475,7 +495,8 @@ def test_symmetric_inequality_correlated():
     p0 = E.parameter_op(units=E.U.V)
     p1 = E.parameter_op(units=E.U.V)
 
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
+    lit = E.lit_op_range(((0, E.U.V), (10, E.U.V)))
+    E.is_(p0, lit, assert_=True)
     E.is_(p1, p0, assert_=True)
 
     E.greater_or_equal(p0, p1, assert_=True)
@@ -483,8 +504,10 @@ def test_symmetric_inequality_correlated():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert _extract_and_check(p0, repr_map, p1)
-    assert _extract_and_check(p1, repr_map, p0)
+    p0_lit = _extract(p0, repr_map)
+    p1_lit = _extract(p1, repr_map)
+    assert p0_lit.equals(p1_lit)
+    assert p0_lit.equals(lit.get_sibling_trait(F.Literals.is_literal))
 
 
 @pytest.mark.parametrize(
@@ -654,7 +677,6 @@ def test_literal_folding_add_multiplicative_2():
     }
 
 
-@pytest.mark.slow
 def test_transitive_subset():
     E = BoundExpressions()
 
@@ -1276,7 +1298,6 @@ def test_param_isolation():
     )
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize(
     "op",
     [
@@ -1515,7 +1536,6 @@ def test_fold_not():
     assert _extract_and_check(B, solver, True)
 
 
-@pytest.mark.slow
 def test_fold_ss_transitive():
     E = BoundExpressions()
     A = E.parameter_op()
@@ -1531,7 +1551,6 @@ def test_fold_ss_transitive():
     assert _extract_and_check(A, solver, E.lit_op_range((0, 10)))
 
 
-@pytest.mark.slow
 def test_ss_intersect():
     E = BoundExpressions()
     A = E.parameter_op()
@@ -1826,8 +1845,6 @@ def test_simplify_non_terminal_manual_test_1():
     solver.simplify(E.g, E.tg)
 
 
-# TODO remove slow
-@pytest.mark.slow
 def test_simplify_non_terminal_manual_test_2():
     """
     Test that non-terminal simplification works
@@ -2256,7 +2273,6 @@ def test_exec_pure_literal_expressions(
     assert _extract_and_check(result, repr_map, expected_converted)
 
 
-@pytest.mark.slow
 # @pytest.mark.parametrize(
 #    "v_in, v_out, total_current",
 #    [

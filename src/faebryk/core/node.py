@@ -207,7 +207,9 @@ class _ChildField[T: NodeT](Field, ChildAccessor[T]):
             )
         """
         for d in dependant:
-            d._is_dependant = True  # Mark as dependant to prevent duplicate registration
+            d._is_dependant = (
+                True  # Mark as dependant to prevent duplicate registration
+            )
             if identifier is not None:
                 d._set_locator(f"{identifier}_{id(d):04x}")
             else:
@@ -1087,14 +1089,13 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         direct_only: bool = False,
         include_root: bool = True,
     ) -> P | None:
-        return cast(
-            P | None,
-            self.get_parent_f(
-                filter_expr=lambda p: p.isinstance(parent_type),
-                direct_only=direct_only,
-                include_root=include_root,
-            ),
-        )
+        if p := self.get_parent_f(
+            filter_expr=lambda p: p.isinstance(parent_type),
+            direct_only=direct_only,
+            include_root=include_root,
+        ):
+            return p.cast(parent_type)
+        return None
 
     def get_parent_with_trait[TR: Node](
         self,

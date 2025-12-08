@@ -48,23 +48,15 @@ logger = logging.getLogger(__name__)
 @algorithm("Constrain within and domain", single=True, terminal=False)
 def constrain_within_domain(mutator: Mutator):
     """
-    Translate domain and within predicates to parameter predicates.
+    Translate domain (and within) predicates to parameter predicates.
     """
+    # Nothing to do for within anymore, since already modelled as subset
 
     for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
         p = param.is_parameter.get()
         po = p.as_parameter_operatable.get()
-        new_param = mutator.mutate_parameter(
-            p,
-            override_within=True,
-            within=None,
-        )
-        if (within := param.get_within()) is not None:
-            mutator.utils.subset_to(
-                new_param.as_operand.get(),
-                within.can_be_operand.get(),
-                from_ops=[po],
-            )
+        new_param = mutator.mutate_parameter(p)
+
         mutator.utils.subset_to(
             new_param.as_operand.get(),
             param.get_domain()
@@ -89,7 +81,7 @@ def alias_predicates_to_true(mutator: Mutator):
         )
 
 
-@algorithm("Canonical expression form", single=True, terminal=False)
+@algorithm("Canonicalize", single=True, terminal=False)
 def convert_to_canonical_operations(mutator: Mutator):
     """
 
@@ -302,15 +294,9 @@ def convert_to_canonical_operations(mutator: Mutator):
                 )
                 if (soft_set := np.get_soft_set()) is not None
                 else None,
-                within=within.convert_to_dimensionless(
-                    g=mutator.G_out, tg=mutator.tg_out
-                )
-                if (within := np.get_within()) is not None
-                else None,
                 guess=guess.convert_to_dimensionless(g=mutator.G_out, tg=mutator.tg_out)
                 if (guess := np.get_guess()) is not None
                 else None,
-                override_within=True,
             )
         else:
             mutator.mutate_parameter(param)

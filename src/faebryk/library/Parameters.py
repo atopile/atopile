@@ -55,72 +55,25 @@ class is_parameter_operatable(fabll.Node):
     ) -> T | None:
         # 1. find all Is! expressions parameter is involved in
         # 2. for each of those check if they have a literal operand of the correct type
-        from faebryk.library.Expressions import Is as Is
-        from faebryk.library.Expressions import IsSubset, is_predicate
+        from faebryk.library.Expressions import Is, IsSubset
         from faebryk.library.Literals import is_literal
 
         if pred_type is None:
             pred_type = Is
 
         # TODO: this is quite a hack
-        if pred_type not in [Is, IsSubset]:
+        if pred_type is not Is and pred_type is not IsSubset:
             raise ValueError(f"Invalid predicate type: {pred_type}")
 
-        def _get_operand(expr: fabll.NodeT) -> fabll.NodeT:
-            if pred_type is Is:
-                return cast(fabll.NodeT, cast(Is, expr).operands.get())
-            if pred_type is IsSubset:
-                return cast(fabll.NodeT, cast(IsSubset, expr).superset.get())
-            assert False
+        exprs = self.get_operations(types=pred_type, predicates_only=True)
+        for expr in exprs:
+            if lit_vs := expr.is_expression.get().get_operand_literals().values():
+                lit = next(iter(lit_vs))
+                if lit_type is None or lit_type is is_literal:
+                    return cast(T, lit)
+                return fabll.Traits(lit).get_obj(lit_type)
 
-        Expr = pred_type.bind_typegraph(tg=self.tg)
-
-        class E_Ctx:
-            lit: is_literal | None = None
-            node = self.as_operand.get()
-            predT = pred_type
-
-        def visit(e_ctx: E_Ctx, edge: graph.BoundEdge) -> None:
-            class Ctx:
-                lit: is_literal | None = None
-
-            # check if Is is constrained
-            expr_node = fbrk.EdgeOperand.get_expression_node(bound_edge=edge)
-            expr = e_ctx.predT.bind_instance(instance=edge.g().bind(node=expr_node))
-            if not expr.has_trait(is_predicate):
-                return
-
-            # for each of those check if they have a literal operand
-            def visit(ctx: Ctx, edge: graph.BoundEdge) -> None:
-                can_be_operand = fabll.Node.bind_instance(
-                    edge.g().bind(node=edge.edge().target())
-                )
-                if lit := can_be_operand.try_get_sibling_trait(is_literal):
-                    ctx.lit = lit
-
-            ctx = Ctx()
-            fbrk.EdgeOperand.visit_operand_edges(
-                bound_node=cast(fabll.NodeT, _get_operand(expr)).instance,
-                ctx=ctx,
-                f=visit,
-            )
-            e_ctx.lit = ctx.lit
-
-        e_ctx = E_Ctx()
-        fbrk.EdgeOperand.visit_expression_edges_of_type(
-            bound_node=e_ctx.node.instance,
-            expression_type=Expr.get_or_create_type().node(),
-            ctx=e_ctx,
-            f=visit,
-        )
-
-        if isinstance(lit_type, fabll.Node):
-            return e_ctx.lit
-
-        if e_ctx.lit is not None and lit_type is not None:
-            return fabll.Traits(e_ctx.lit).get_obj(lit_type)
-
-        return cast("T|None", e_ctx.lit)
+        return None
 
     def force_extract_literal[T: "fabll.NodeT" = "Literals.is_literal"](
         self, lit_type: type[T] | None = None
@@ -595,7 +548,7 @@ class NumericParameter(fabll.Node):
 
         self.get_trait(is_parameter_operatable).alias_to_literal(g=g, value=lit)
 
-    def setup(  # type: ignore
+    def setup(
         self,
         *,
         units: "Units.is_unit",
@@ -622,6 +575,19 @@ class NumericParameter(fabll.Node):
                     )
                 )
             )
+
+        if within is not None:
+            from faebryk.library.Expressions import IsSubset
+
+            IsSubset.bind_typegraph(tg=self.tg).create_instance(g=self.g).setup(
+                subset=self.can_be_operand.get(),
+                superset=within.can_be_operand.get(),
+                assert_=True,
+            )
+        # TODO handle likely_constrained
+        # TODO handle soft_set
+        # TODO handle guess
+        # TODO handle tolerance_guess
 
         self.number_domain.get().point(
             fabll.Node.bind_instance(instance=domain.instance)
