@@ -132,9 +132,6 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
     def MakeChild(
         cls, mapping: list[str], case_sensitive: bool = False
     ) -> fabll._ChildField[Self]:
-        logger.info(
-            f"Making can_attach_to_pad_by_name_heuristic with mapping: {mapping}"
-        )
         out = fabll._ChildField(cls)
 
         out.add_dependant(

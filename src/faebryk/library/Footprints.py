@@ -134,6 +134,7 @@ class GenericPad(fabll.Node):
 
     def setup(self, pad_name: str, pad_number: str):
         self.is_pad_.get().setup(pad_name, pad_number)
+        return self
 
 
 # TODO this is a placeholder for now, will be removed
@@ -145,7 +146,7 @@ class GenericFootprint(fabll.Node):
     pads_ = F.Collections.PointerSet.MakeChild()
 
     def get_pads(self) -> list[is_pad]:
-        return [pad.get_trait(is_pad) for pad in self.pads_.get().as_list()]
+        return [pad.cast(is_pad) for pad in self.pads_.get().as_list()]
 
     @classmethod
     def MakeChild(cls, pads: list[tuple[str, str]]) -> fabll._ChildField[Self]:
@@ -158,7 +159,13 @@ class GenericFootprint(fabll.Node):
             )
         return out
 
-    def setup(self, pads: list[tuple[str, str]]):
+    def setup(self, pads: list[is_pad]):
+        """Setup the footprint with pads"""
+        for pad in pads:
+            self.pads_.get().append(pad)
+        return self
+
+    def setup_from_pad_number_and_names(self, pads: list[tuple[str, str]]):
         """Setup the footprint with pads(number, name)"""
         for number, name in pads:
             pad = GenericPad.bind_typegraph(tg=self.tg).create_instance(
@@ -166,6 +173,7 @@ class GenericFootprint(fabll.Node):
             )
             pad.setup(name, number)
             self.pads_.get().append(pad)
+        return self
 
 
 def test_generic_footprint(capsys):
@@ -173,7 +181,7 @@ def test_generic_footprint(capsys):
     tg = fbrk.TypeGraph.create(g=g)
 
     footprint = GenericFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-    footprint.setup(pads=[("1", "A"), ("2", "B")])
+    footprint.setup_from_pad_number_and_names([("1", "A"), ("2", "B")])
 
     pads = footprint.get_pads()
     assert len(pads) == 2

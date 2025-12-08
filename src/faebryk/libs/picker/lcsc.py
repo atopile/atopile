@@ -580,6 +580,18 @@ def attach(
             for pin in unit.pins
             if pin.number is not None
         ]
+        # create temp pads from the atopart pad names and numbers to check if their
+        # names match the lead names
+        tmp_pads = [
+            fabll.Traits.create_and_add_instance_to(
+                node=fabll.Node.bind_typegraph(tg=component.tg).create_instance(
+                    g=component.instance.g()
+                ),
+                trait=F.Footprints.is_pad,
+            ).setup(pad_number=number, pad_name=name)
+            for number, name in pads_number_name_pairs
+        ]
+
         leads = component.get_children(
             direct_only=False,
             types=fabll.Node,
@@ -590,9 +602,7 @@ def attach(
         try:
             for lead in leads:
                 lead_t = lead.get_trait(F.Lead.is_lead)
-                matched_pad = lead_t.find_matching_pad(
-                    [p[1] for p in pads_number_name_pairs]
-                )
+                matched_pad = lead_t.find_matching_pad(tmp_pads)
         except F.Lead.PadMatchException as e:
             raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
 
@@ -604,7 +614,7 @@ def attach(
             fp = F.Footprints.GenericFootprint.bind_typegraph_from_instance(
                 instance=component.instance
             ).create_instance(g=component.instance.g())
-            fp.setup(pads_number_name_pairs)
+            fp.setup(tmp_pads)
 
             fabll.Traits.create_and_add_instance_to(
                 node=component, trait=F.Footprints.has_associated_footprint
@@ -770,6 +780,7 @@ def test_attach_mosfet():
 
     # After attach: footprint should now be linked
     footprint = associated_footprint.get_footprint()
+    # TODO: check footrpint pad names assert footrpint.pad_names == ["G", "S", "D"]
 
     # there should also be a kicad footprint linked
     kicad_footprint = footprint.get_trait(
@@ -787,11 +798,46 @@ def test_attach_mosfet():
         generated_from_kicad_footprint_file_t.library_name
         == "Changjiang_Electronics_Tech_2N7002"
     )
-    assert generated_from_kicad_footprint_file_t.pad_names == ["D", "G", "S"]
+    assert generated_from_kicad_footprint_file_t.pad_names == ["1", "2", "3"]
     assert (
         "src/parts/Changjiang_Electronics_Tech_2N7002/SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR.kicad_mod"
         in generated_from_kicad_footprint_file_t.kicad_footprint_file_path
     )
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_attach_failure():
+    import faebryk.core.faebrykpy as fbrk
+    import faebryk.core.node as fabll
+
+    RESISTOR_LCSC_ID = "C21190"
+    MOSFET_LCSC_ID = "C8545"
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+
+    component = F.MOSFET.bind_typegraph(tg=tg).create_instance(g=g)
+
+    with pytest.raises(LCSC_PinmapException):
+        attach(component=component, partno=RESISTOR_LCSC_ID, check_only=True)
+
+    attach(component=component, partno=MOSFET_LCSC_ID, check_only=False)
+
+    associated_footprint = component.try_get_trait(
+        F.Footprints.has_associated_footprint
+    )
+
+    assert associated_footprint is not None
+
+    footprint = associated_footprint.get_footprint()
+
+    kicad_footprint = footprint.get_trait(
+        F.KiCadFootprints.has_linked_kicad_footprint
+    ).get_footprint()
+    generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
+        F.KiCadFootprints.is_generated_from_kicad_footprint_file
+    )
+    assert generated_from_kicad_footprint_file_t.pad_names == ["1", "2", "3"]
 
 
 """
