@@ -325,7 +325,34 @@ class PCB_Transformer:
         if pcb_pads and logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
-    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", KiCadNet]:
+    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", "F.KiCadFootprints.GenericKiCadNet"]:
+        import faebryk.library._F as F
+        if match_threshold < 0.5:
+            raise ValueError("match_threshold must be at least 0.5")
+
+        fabll_nets: list[F.Net] = [] # nets that already in the graph
+        kicad_nets: list[F.KiCadFootprints.GenericKiCadNet] = [] # nets that are in the PCB file
+
+        for net in F.Net.bind_typegraph(self.tg).get_instances(g=self.g):
+            if net.has_trait(F.has_overriden_name): # only include named nets
+                fabll_nets.append(net)
+
+        for net in self.pcb.nets:
+            kicad_net = F.KiCadFootprints.GenericKiCadNet.bind_typegraph(self.tg).create_instance(g=self.g).setup(net.name)
+            kicad_nets.append(kicad_net)
+
+        for fabll_net in fabll_nets:
+            total_pads = 0
+            net_name_candidates: dict[str, int] = {}
+
+            for fabll_pad in fabll_net.get_connected_pads.keys():
+                
+
+
+
+
+
+    def map_nets_old(self, match_threshold: float = 0.8) -> dict["F.Net", KiCadNet]:
         """
         Create a mapping between the internal nets and the nets defined in the PCB file.
 
@@ -350,14 +377,14 @@ class PCB_Transformer:
             if n.has_trait(F.has_overriden_name)
         }
 
-        for net in named_nets:
+        for fabll_net in named_nets:
             total_pads = 0
             # map from net name to the number of pads we've
             # linked corroborating its accuracy
             net_candidates: Mapping[str, int] = defaultdict(int)
 
-            for ato_pad, ato_fp in net.get_connected_pads().items():
-                if pcb_pad_t := ato_pad.try_get_trait(
+            for fabll_pad, ato_fp in fabll_net.get_connected_pads().items():
+                if pcb_pad_t := fabll_pad.try_get_trait(
                     F.PCBTransformer.has_linked_kicad_pad
                 ):
                     # In the (strange) case something's handeled by another transformer,
@@ -365,7 +392,7 @@ class PCB_Transformer:
                     if pcb_pad_t.get_transformer() is not self:
                         continue
 
-                    pcb_fp, pcb_pads = pcb_pad_t.get_pads()
+                    pcb_fp, kicad_pads = pcb_pad_t.get_pads()
 
                     # This practically means that if the pads to which a net is
                     # connected varies within a single component, we're going to ignore
@@ -373,7 +400,7 @@ class PCB_Transformer:
                     # within-component net matching, for later
                     net_names = set(
                         pcb_pad.net.name if pcb_pad.net is not None else None
-                        for pcb_pad in pcb_pads
+                        for pcb_pad in kicad_pads
                     )
                     conflicting = net_names & mapped_net_names
                     net_names -= mapped_net_names
@@ -397,15 +424,17 @@ class PCB_Transformer:
                     best_net_name
                     and net_candidates[best_net_name] > total_pads * match_threshold
                 ):
-                    known_nets[net] = pcb_nets_by_name[best_net_name]
+                    known_nets[fabll_net] = pcb_nets_by_name[best_net_name]
                     mapped_net_names.add(best_net_name)
 
         return known_nets
 
-    def bind_net(self, pcb_net: KiCadNet, net: "F.Net"):
-        fabll.Traits.create_and_add_instance_to(
-            node=net, trait=F.PCBTransformer.has_linked_kicad_net
-        ).setup(pcb_net, self)
+    def bind_net(self, kicad_net: KiCadNet, f_net: "F.Net"):
+        """
+        Bind fabll net to kicad net via has_linked_kicad_net trait
+        """
+        trait_instance = fabll.Traits.create_and_add_instance_to(node=f_net, trait=F.KiCadFootprints.has_linked_kicad_net)
+        trait_instance.setup(kicad_net, self)
 
     # Utilities ------------------------------------------------------------------------
     @staticmethod

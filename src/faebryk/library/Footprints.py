@@ -80,7 +80,6 @@ class has_associated_net(fabll.Node):
     def net(self) -> "Net":
         """Return the net associated with this node"""
         from faebryk.library.Net import Net
-
         return self.net_ptr_.get().deref().cast(Net)
 
     @classmethod

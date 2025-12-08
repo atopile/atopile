@@ -286,18 +286,25 @@ class has_linked_kicad_net(fabll.Node):
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
-    @classmethod
-    def MakeChild(
-        cls, net: fabll._ChildField[fabll.Node], transformer: "PCB_Transformer"
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(net)
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge(
-                [out, cls.transformer_], [str(id(transformer))]
-            )
-        )
-        return out
+    # @classmethod
+    # def MakeChild(
+    #     cls, kicad_net: fabll._ChildField[fabll.Node], transformer: "PCB_Transformer"
+    # ) -> fabll._ChildField[Self]:
+    #     out = fabll._ChildField(cls)
+    #     out.add_dependant(
+    #         F.Collections.Pointer.MakeEdge([out, cls.net_ptr_], [str(id(kicad_net))])
+    #     )
+    #     out.add_dependant(
+    #         F.Collections.Pointer.MakeEdge(
+    #             [out, cls.transformer_], [str(id(transformer))]
+    #         )
+    #     )
+    #     return out
+
+    def setup(self, kicad_net: fabll.Node, transformer: "PCB_Transformer") -> Self:
+        self.net_ptr_.get().point(kicad_net)
+        self.transformer_.get().alias_to_literal(str(id(transformer)))
+        return self
 
 
 class is_kicad_net(fabll.Node):
@@ -308,27 +315,6 @@ class is_kicad_net(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
 
-class has_associated_net(fabll.Node):
-    """
-    Link between pad-node and net. Added during build process.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-
-    net_ptr_ = F.Collections.Pointer.MakeChild()
-
-    @property
-    def net(self) -> "F.Net":
-        """Return the net associated with this node"""
-        return self.net_ptr_.get().deref().cast(F.Net)
-
-    @classmethod
-    def MakeChild(cls, net: "fabll._ChildField[F.Net]") -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(net)
-        return out
-
-
 class GenericKiCadFootprint(fabll.Node):
     is_kicad_footprint_ = fabll.Traits.MakeEdge(is_kicad_footprint.MakeChild(""))
     kicad_pads_ = F.Collections.PointerSet.MakeChild()
@@ -337,6 +323,18 @@ class GenericKiCadFootprint(fabll.Node):
 class GenericKiCadPad(fabll.Node):
     is_kicad_pad_ = fabll.Traits.MakeEdge(is_kicad_pad.MakeChild(""))
     pad_name_ = F.Parameters.StringParameter.MakeChild()
+
+
+class GenericKiCadNet(fabll.Node):
+    is_kicad_net_ = fabll.Traits.MakeEdge(is_kicad_net.MakeChild())
+    net_name_ = F.Parameters.StringParameter.MakeChild()
+
+    def setup(self, net_name: str) -> Self:
+        self.net_name_.get().alias_to_literal(net_name)
+        return self
+
+    def get_name(self) -> str:
+        return self.net_name_.get().force_extract_literal().get_values()[0]
 
 
 def test_is_kicad_footprint():

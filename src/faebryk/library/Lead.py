@@ -47,7 +47,7 @@ class is_lead(fabll.Node):
 
         if pad is not None:
             fabll.Traits.create_and_add_instance_to(
-                node=self, trait=has_associated_pad
+                node=self, trait=has_associated_pads
             ).setup(pad=pad, parent=self, connect_net=False)
             return pad
 
@@ -70,7 +70,7 @@ class can_attach_to_any_pad(fabll.Node):
         claimed_pads = [
             pad.get_pad()
             for pad in fabll.Traits.get_implementors(
-                has_associated_pad.bind_typegraph(self.tg), g=self.g
+                has_associated_pads.bind_typegraph(self.tg), g=self.g
             )
         ]
         for pad in pads:
@@ -181,7 +181,7 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
         )
 
 
-class has_associated_pad(fabll.Node):
+class has_associated_pads(fabll.Node):
     """
     A node that has an associated pad.
     """
@@ -190,6 +190,7 @@ class has_associated_pad(fabll.Node):
 
     pad_ptr_ = F.Collections.Pointer.MakeChild()
 
+    # TODO make get_pads to handle one to many connections
     def get_pad(self) -> F.Footprints.is_pad:
         """The pad associated with this node"""
         return self.pad_ptr_.get().deref().cast(F.Footprints.is_pad)
@@ -229,11 +230,11 @@ def test_is_lead():
     # emulate attaching to a pad, normaly done in build process
     pad = F.Footprints.GenericPad.bind_typegraph(tg).create_instance(g=g)
 
-    fabll.Traits.create_and_add_instance_to(node=lead, trait=has_associated_pad).setup(
+    fabll.Traits.create_and_add_instance_to(node=lead, trait=has_associated_pads).setup(
         pad=pad.is_pad_.get(), parent=lead, connect_net=False
     )
 
-    connected_pad = lead.get_trait(has_associated_pad).get_pad()
+    connected_pad = lead.get_trait(has_associated_pads).get_pad()
     assert connected_pad.is_same(pad.is_pad_.get())
     # TODO: add net to pad so we can test this
     # assert (

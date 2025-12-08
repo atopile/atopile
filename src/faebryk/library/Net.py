@@ -40,6 +40,9 @@ class Net(fabll.Node):
             if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
         }
 
+    def get_name(self) -> str:
+        return self.get_trait(F.has_overriden_name).get_name()
+
     def __repr__(self) -> str:
         up = super().__repr__()
         if self.has_trait(F.has_overriden_name):

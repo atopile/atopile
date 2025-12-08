@@ -119,30 +119,30 @@ class has_linked_kicad_pad(fabll.Node):
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
-
+#TODO replaced with definition in KiCadFootprints.py
 class has_linked_kicad_net(fabll.Node):
     _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     net_ = F.Parameters.StringParameter.MakeChild()
     transformer_ = F.Parameters.StringParameter.MakeChild()
 
-    @classmethod
-    def MakeChild(
-        cls, net: "KiCadNet", transformer: "PCB_Transformer"
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.net_], [str(id(net))])
-        )
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge(
-                [out, cls.transformer_], [str(id(transformer))]
-            )
-        )
-        return out
+    # @classmethod
+    # def MakeChild(
+    #     cls, net: "KiCadNet", transformer: "PCB_Transformer"
+    # ) -> fabll._ChildField[Self]:
+    #     out = fabll._ChildField(cls)
+    #     out.add_dependant(
+    #         F.Collections.Pointer.MakeEdge([out, cls.net_], [str(id(net))])
+    #     )
+    #     out.add_dependant(
+    #         F.Collections.Pointer.MakeEdge(
+    #             [out, cls.transformer_], [str(id(transformer))]
+    #         )
+    #     )
+    #     return out
 
-    def setup(self, net: "KiCadNet", transformer: "PCB_Transformer") -> Self:
-        self.net_.get().alias_to_single(value=str(id(net)))
+    def setup(self, kicad_net: "KiCadNet", transformer: "PCB_Transformer") -> Self:
+        self.net_.get().alias_to_single(value=str(id(kicad_net)))
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
@@ -187,7 +187,7 @@ def test_has_linked_kicad_net_trait():
     module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
     fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_net).setup(
-        net=net, transformer=transformer
+        kicad_net=net, transformer=transformer
     )
     assert module.has_trait(has_linked_kicad_net)
     assert module.get_trait(has_linked_kicad_net).get_net() is net
