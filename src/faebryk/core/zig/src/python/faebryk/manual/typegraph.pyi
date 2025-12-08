@@ -31,9 +31,6 @@ class TypeGraph:
         mount_reference: BoundNode | None = ...,
     ) -> BoundNode: ...
     def get_make_child_type_reference(self, *, make_child: BoundNode) -> BoundNode: ...
-    def collect_unresolved_type_references(
-        self,
-    ) -> list[tuple[BoundNode, BoundNode]]: ...
 
     class MakeChildNode:
         @staticmethod

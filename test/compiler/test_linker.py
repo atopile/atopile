@@ -11,6 +11,7 @@ from atopile.compiler.build import (
     build_source,
     build_stdlib,
 )
+from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
 from faebryk.core.zig.gen.graph.graph import GraphView
 
 
@@ -48,7 +49,9 @@ def test_stdlib_import_resolved():
     linker = Linker(None, stdlib_registry, stdlib_tg)
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_resolves_relative_ato_import(tmp_path: Path):
@@ -85,7 +88,9 @@ def test_resolves_relative_ato_import(tmp_path: Path):
     linker = Linker(None, stdlib_registry, stdlib_tg)
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_resolves_via_extra_search_path(tmp_path: Path):
@@ -120,7 +125,9 @@ def test_resolves_via_extra_search_path(tmp_path: Path):
     )
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_package_identifier_rewrite(tmp_path: Path):
@@ -158,7 +165,9 @@ def test_package_identifier_rewrite(tmp_path: Path):
     linker = Linker(config_obj, stdlib_registry, stdlib_tg)
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_missing_import_raises_user_error():

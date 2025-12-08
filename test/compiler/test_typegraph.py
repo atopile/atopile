@@ -6,6 +6,7 @@ import pytest
 
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, build_file, build_source, build_stdlib
+from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
 from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraphPathError
 from faebryk.core.zig.gen.graph.graph import GraphView
@@ -118,7 +119,9 @@ def test_make_child_and_linking():
     res_node = _get_make_child(type_graph, app_type, "res")
     assert type_graph.debug_get_mount_chain(make_child=res_node) == []
 
-    unresolved = result.state.type_graph.collect_unresolved_type_references()
+    unresolved = _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
     assert not unresolved
 
     linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
@@ -855,7 +858,9 @@ def test_external_import_linking(tmp_path: Path):
     app_type = result.state.type_roots["App"]
     child_node = _get_make_child(type_graph, app_type, "child")
 
-    unresolved = result.state.type_graph.collect_unresolved_type_references()
+    unresolved = _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
     assert unresolved
 
     linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)

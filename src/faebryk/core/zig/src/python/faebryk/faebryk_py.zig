@@ -4130,7 +4130,6 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_add_type(),
         wrap_typegraph_add_make_child(),
         wrap_typegraph_get_make_child_type_reference(),
-        wrap_typegraph_collect_unresolved_type_references(),
         wrap_typegraph_add_make_link(),
         wrap_typegraph_iter_make_children(),
         wrap_typegraph_iter_make_links(),
@@ -4176,21 +4175,26 @@ fn wrap_typegraph(root: *py.PyObject) void {
     }
 }
 
-fn wrap_typegraph_collect_unresolved_type_references() type {
+fn wrap_linker_collect_unresolved_type_references() type {
     return struct {
         pub const descr = method_descr{
             .name = "collect_unresolved_type_references",
             .doc = "Return a list of (type_node, type_reference) pairs for unresolved references",
-            .args_def = struct {},
-            .static = false,
+            .args_def = struct {
+                type_graph: *faebryk.typegraph.TypeGraph,
+
+                pub const fields_meta = .{
+                    .type_graph = bind.ARG{ .Wrapper = TypeGraphWrapper, .storage = &type_graph_type },
+                };
+            },
+            .static = true,
         };
 
         pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
-            _ = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
 
             const allocator = std.heap.c_allocator;
-            const unresolved = faebryk.typegraph.TypeGraph.collect_unresolved_type_references(wrapper.data, allocator);
+            const unresolved = faebryk.linker.Linker.collect_unresolved_type_references(kwarg_obj.type_graph, allocator);
             defer allocator.free(unresolved);
 
             const list_len = @as(isize, @intCast(unresolved.len));
@@ -4270,6 +4274,7 @@ fn wrap_linker_link_type_reference() type {
 fn wrap_linker(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_linker_link_type_reference(),
+        wrap_linker_collect_unresolved_type_references(),
     };
     bind.wrap_namespace_struct(root, faebryk.linker.Linker, extra_methods);
 }
