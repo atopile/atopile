@@ -346,11 +346,7 @@ class PCB_Transformer:
             net_name_candidates: dict[str, int] = {}
 
             for fabll_pad in fabll_net.get_connected_pads.keys():
-                
-
-
-
-
+                pass
 
     def map_nets_old(self, match_threshold: float = 0.8) -> dict["F.Net", KiCadNet]:
         """
