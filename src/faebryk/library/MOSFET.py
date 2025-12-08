@@ -48,27 +48,26 @@ class MOSFET(fabll.Node):
         F.Footprints.can_attach_to_footprint.MakeChild()
     )
 
-    source.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [source]))
-    gate.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [gate]))
-    drain.add_dependant(fabll.Traits.MakeEdge(F.Lead.is_lead.MakeChild(), [drain]))
+    mapping = {
+        source: ["source", "s"],
+        gate: ["gate", "g"],
+        drain: ["drain", "d"],
+    }
+
+    for e in [source, gate, drain]:
+        lead = F.Lead.is_lead.MakeChild()
+        e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
+        lead.add_dependant(
+            fabll.Traits.MakeEdge(
+                F.Lead.can_attach_to_pad_by_name_heuristic.MakeChild(mapping[e]), [lead]
+            )
+        )
 
     designator_prefix = fabll.Traits.MakeEdge(
         F.has_designator_prefix.MakeChild(F.has_designator_prefix.Prefix.Q)
     )
 
     _can_bridge = fabll.Traits.MakeEdge(F.can_bridge.MakeChild(in_=source, out_=drain))
-
-    _pin_association_heuristic = fabll.Traits.MakeEdge(
-        F.has_pin_association_heuristic.MakeChild(
-            mapping={
-                source: ["S", "Source"],
-                gate: ["G", "Gate"],
-                drain: ["D", "Drain"],
-            },
-            accept_prefix=False,
-            case_sensitive=False,
-        )
-    )
 
     S = F.has_simple_value_representation.Spec
     _simple_repr = fabll.Traits.MakeEdge(
