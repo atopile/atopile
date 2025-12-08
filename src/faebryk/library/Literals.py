@@ -6225,6 +6225,7 @@ class TestBooleans:
             ([True], [False]),
             ([False], [True]),
             ([True, False], [True, False]),
+            ([], []),
         ],
     )
     def test_op_not(self, bools, expected):

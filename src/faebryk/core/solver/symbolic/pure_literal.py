@@ -37,10 +37,13 @@ class _Multi:
         ) -> F.Literals.LiteralNodes | F.Literals.is_literal | bool:
             return self.f(*args, g=g, tg=tg)
 
-        out = functools.reduce(
-            _f,  # type: ignore # some function return is_literal/bool but its ok
-            args,
-        )
+        if len(args) >= 2:
+            out = functools.reduce(
+                _f,  # type: ignore # some function return is_literal/bool but its ok
+                args,
+            )
+        else:
+            out = _f(*args)
         # TODO: remove hack for equals returning bool
         if isinstance(out, F.Literals.LiteralValues):
             out = F.Literals.make_simple_lit_singleton(g, tg, out)

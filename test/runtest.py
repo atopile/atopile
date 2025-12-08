@@ -114,7 +114,16 @@ def run_tests_pytest(matches: list[tuple[Path, str]]) -> None:
             logger.info(f"Running {node_id}")
         # Run the specific test using pytest with its full node ID
         # -s to not capture output, -v for verbose
-        pytest.main(["-s", "-v", node_id])
+        pytest.main(
+            [
+                "-s",
+                "-o",
+                "addopts=''",
+                "--log-cli-level=INFO",
+                "-v",
+                node_id,
+            ]
+        )
 
 
 def main(

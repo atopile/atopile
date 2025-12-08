@@ -3036,3 +3036,7 @@ def debounce(delay_s: float):
         return _debounced  # type: ignore[return-value]
 
     return _decorator
+
+
+def crosswise[T, U](left: Iterable[T], right: Iterable[U]) -> Iterable[tuple[T, U]]:
+    return ((le, ri) for le in left for ri in right)

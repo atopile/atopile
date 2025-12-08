@@ -42,6 +42,15 @@ class can_be_operand(fabll.Node):
     def get_raw_obj(self) -> fabll.Node:
         return fabll.Traits(self).get_obj_raw()
 
+    def pretty(self, use_name: bool = True) -> str:
+        from faebryk.library.Literals import is_literal
+
+        if lit := self.try_get_sibling_trait(is_literal):
+            return lit.pretty_str()
+        if po := self.try_get_sibling_trait(is_parameter_operatable):
+            return po.compact_repr(use_name=use_name)
+        return str(self)
+
 
 class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())

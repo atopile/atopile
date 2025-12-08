@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
+from itertools import permutations
 from typing import TYPE_CHECKING, Any, Iterable, Self, Sequence, get_args
 
 import faebryk.core.faebrykpy as fbrk
@@ -7,7 +8,12 @@ import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.library import Collections, Literals, Parameters
-from faebryk.libs.util import not_none
+from faebryk.libs.util import (
+    crosswise,
+    groupby,
+    not_none,
+    zip_dicts_by_key,
+)
 
 # TODO complete signatures
 # TODO consider moving to zig
@@ -452,9 +458,7 @@ class is_expression(fabll.Node):
             return False
 
         # Check if the expression is commutative
-        commutative = is_commutative.is_commutative_type(
-            not_none(self_obj.bind_typegraph_from_instance(self_obj.instance))
-        )
+        commutative = self_obj.try_get_trait(is_commutative) is not None
         self_operands = self.get_operands()
         other_operands = other.get_operands()
 
@@ -504,9 +508,10 @@ class is_expression(fabll.Node):
         Returns:
             True if the operand sequences are congruent
         """
-        if commutative:
-            left = is_expression._sorted_operands(left)
-            right = is_expression._sorted_operands(right)
+        # TODO: this doesn't work anymore, not sure it ever did really well
+        # if commutative:
+        #    left = is_expression._sorted_operands(left)
+        #    right = is_expression._sorted_operands(right)
 
         if len(left) != len(right):
             return False
@@ -547,9 +552,44 @@ class is_expression(fabll.Node):
 
             return False
 
-        return all(
-            operands_congruent(le, ri) for le, ri in zip(left, right, strict=True)
-        )
+        print("checking congruence", commutative)
+        if commutative:
+            # group operands by type
+            # then check all combinations of operands in each group
+            left_type_grouped = groupby(
+                left, lambda x: not_none(x.get_type_node()).node().get_uuid()
+            )
+            right_type_grouped = groupby(
+                right, lambda x: not_none(x.get_type_node()).node().get_uuid()
+            )
+            zipped_groups: dict[
+                int,
+                tuple[list[Parameters.can_be_operand], list[Parameters.can_be_operand]],
+            ] = zip_dicts_by_key(left_type_grouped, right_type_grouped)
+            if not all(
+                len(left_group) == len(right_group)
+                for left_group, right_group in zipped_groups.values()
+            ):
+                return False
+
+            for left_group, right_group in zipped_groups.values():
+                found_congruent_permutation_for_group = False
+                for l_perm, r_perm in crosswise(
+                    permutations(left_group, len(left_group)),
+                    permutations(right_group, len(right_group)),
+                ):
+                    if all(
+                        operands_congruent(l_op, r_op)
+                        for l_op, r_op in zip(l_perm, r_perm)
+                    ):
+                        found_congruent_permutation_for_group = True
+                        break
+                if not found_congruent_permutation_for_group:
+                    return False
+            return True
+
+        else:
+            return all(operands_congruent(le, ri) for le, ri in zip(left, right))
 
     def get_depth(self) -> int:
         """

@@ -933,8 +933,8 @@ def test_try_fulfill_super_basic(
 def test_congruence_filter():
     E = BoundExpressions()
 
-    A = E.enum_parameter_op(F.LED.Color)
-    x = E.is_(A, E.lit_op_enum(F.LED.Color.EMERALD))
+    A = E.bool_parameter_op()
+    x = E.is_(A, E.lit_bool(True))
 
     y1 = E.not_(x, assert_=True)
     y2 = E.not_(x, assert_=True)
@@ -946,14 +946,13 @@ def test_congruence_filter():
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(E.tg, E.g).data.mutation_map
-    assert (
-        repr_map.map_forward(
-            y1.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        ).maps_to
-        == repr_map.map_forward(
-            y2.get_sibling_trait(F.Parameters.is_parameter_operatable)
-        ).maps_to
-    )
+    y1_mut = repr_map.map_forward(
+        y1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
+    y2_mut = repr_map.map_forward(
+        y2.get_sibling_trait(F.Parameters.is_parameter_operatable)
+    ).maps_to
+    assert y1_mut == y2_mut
 
 
 def test_inspect_enum_simple():
@@ -1571,31 +1570,37 @@ def test_ss_intersect():
     "left_factory, right_factory, expected",
     [
         (
+            # uncorrelated range
             lambda E: [E.lit_op_range((0, 10))],
             lambda E: [E.lit_op_range((0, 10))],
             (True, False),
         ),
         (
+            # unequal range
             lambda E: [E.lit_op_range((0, 10))],
             lambda E: [E.lit_op_range((10, 20))],
             (False, False),
         ),
         (
+            # uncorrelated ranges
             lambda E: [E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 20)))],
             lambda E: [E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 20)))],
             (True, False),
         ),
         (
+            # commutative uncorrelated ranges
             lambda E: [E.add(E.lit_op_range((0, 10)), E.lit_op_range((0, 20)))],
             lambda E: [E.add(E.lit_op_range((0, 20)), E.lit_op_range((0, 10)))],
             (True, False),
         ),
         (
+            # correlated booleans
             lambda E: [E.not_(E.lit_bool(True))],
             lambda E: [E.not_(E.lit_bool(True))],
             (True, True),
         ),
         (
+            # correlated nested booleans
             lambda E: [E.not_(E.not_(E.lit_bool(True)))],
             lambda E: [E.not_(E.not_(E.lit_bool(True)))],
             (True, True),
@@ -1637,16 +1642,15 @@ def test_congruence_lits(
     E = BoundExpressions()
     left = left_factory(E)
     right = right_factory(E)
-    assert (
-        F.Expressions.is_expression.are_pos_congruent(
-            left, right, g=E.g, tg=E.tg, allow_uncorrelated=True
-        )
-        is expected[0]
+    uncorrelated_congruent = F.Expressions.is_expression.are_pos_congruent(
+        left, right, g=E.g, tg=E.tg, allow_uncorrelated=True
     )
-    assert (
-        F.Expressions.is_expression.are_pos_congruent(left, right, g=E.g, tg=E.tg)
-        is expected[1]
+
+    correlated_congruent = F.Expressions.is_expression.are_pos_congruent(
+        left, right, g=E.g, tg=E.tg, allow_uncorrelated=False
     )
+
+    assert (uncorrelated_congruent, correlated_congruent) == expected
 
 
 def test_fold_literals():

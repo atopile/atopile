@@ -14,6 +14,7 @@ from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
 from faebryk.libs.util import (
     EquivalenceClasses,
     groupby,
+    not_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,11 +177,11 @@ def remove_congruent_expressions(mutator: Mutator):
     exprs_by_type = groupby(
         all_exprs,
         lambda e: (
-            type(e),
+            not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node().get_uuid(),
             len(e.get_operands()),
             None
             if not e.try_get_trait(F.Expressions.is_assertable)
-            else e.try_get_trait(F.Expressions.is_predicate),
+            else bool(e.try_get_trait(F.Expressions.is_predicate)),
         ),
     )
     full_eq = EquivalenceClasses[fabll.NodeT](all_exprs)
@@ -201,20 +202,31 @@ def remove_congruent_expressions(mutator: Mutator):
         eq_class = full_eq.classes[expr]
         if len(eq_class) <= 1:
             continue
+        e_po = expr.as_parameter_operatable.get()
 
-        return
         eq_id = id(eq_class)
         if eq_id not in repres:
             representative = mutator.mutate_expression(expr)
-            repres[eq_id] = representative
+            repres[eq_id] = representative.as_parameter_operatable.get()
 
             # propagate constrained & terminate
-            if Expressions.is_assertable_node(representative):
-                representative.constrained = any(e.constrained for e in eq_class)
-                if any(mutator.is_predicate_terminated(e) for e in eq_class):
-                    mutator.predicate_terminate(representative, new_graph=True)
+            if assertable := representative.try_get_sibling_trait(
+                F.Expressions.is_assertable
+            ):
+                any_pred = any(
+                    e.try_get_sibling_trait(F.Expressions.is_predicate)
+                    for e in eq_class
+                )
+                if any_pred:
+                    any_terminated = any(
+                        mutator.is_predicate_terminated(
+                            e.get_sibling_trait(F.Expressions.is_predicate)
+                        )
+                        for e in eq_class
+                    )
+                    mutator.assert_(assertable, terminate=any_terminated)
 
-        mutator._mutate(expr, repres[eq_id])
+        mutator._mutate(e_po, repres[eq_id])
 
 
 @algorithm("Alias classes", terminal=False)
