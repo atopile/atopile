@@ -1686,6 +1686,13 @@ def test_empty_and():
 
 
 def test_implication():
+    """
+    A is [5, 10]
+    A ss 5 ->! B ss 100+/-10%
+    A ss 10 ->! B ss 500+/-10%
+    A ss! 10
+    => B ss! 500+/-10%
+    """
     E = BoundExpressions()
     A = E.parameter_op()
     B = E.parameter_op()
@@ -1693,17 +1700,13 @@ def test_implication():
     E.is_subset(A, E.lit_op_discrete_set(5, 10))
 
     E.implies(
-        E.is_subset(A, E.lit_op_single(5), assert_=True),
-        E.is_subset(
-            B, E.lit_op_range_from_center_rel((100, E.U.dl), 0.1), assert_=True
-        ),
+        E.is_subset(A, E.lit_op_single(5)),
+        E.is_subset(B, E.lit_op_range_from_center_rel((100, E.U.dl), 0.1)),
         assert_=True,
     )
     E.implies(
-        E.is_subset(A, E.lit_op_single(10), assert_=True),
-        E.is_subset(
-            B, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1), assert_=True
-        ),
+        E.is_subset(A, E.lit_op_single(10)),
+        E.is_subset(B, E.lit_op_range_from_center_rel((500, E.U.dl), 0.1)),
         assert_=True,
     )
 

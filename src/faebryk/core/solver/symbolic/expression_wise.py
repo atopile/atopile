@@ -485,20 +485,22 @@ def fold_or(expr: F.Expressions.Or, mutator: Mutator):
     # Or!(P) -> P! implicit (unary identity unpack)
     # Or(A, B, A) -> Or(A, B) implicit (idempotent)
 
-    # Or(A, B, C, True) -> True
     e = expr.is_expression.get()
-    if any(lit.equals_singleton(True) for lit in e.get_operand_literals().values()):
+    lits = e.get_operand_literals()
+    if not lits:
+        return
+
+    # Or(A, B, C, True) -> True
+    if any(lit.equals_singleton(True) for lit in lits.values()):
         mutator.utils.alias_is_literal_and_check_predicate_eval(
             e, mutator.make_lit(True).is_literal.get()
         )
         return
 
     # Or(A, B, C, False) -> Or(A, B, C)
-    filtered_operands = [op for op in e.get_operands() if mutator.make_lit(False) != op]
-    if len(filtered_operands) != len(e.get_operands()):
-        # Rebuild without False literals
-        mutator.mutate_expression(e, operands=filtered_operands)
-        return
+    filtered_operands = [op.as_operand.get() for op in e.get_operand_operatables()]
+    # Rebuild without False literals
+    mutator.mutate_expression(e, operands=filtered_operands)
 
 
 @expression_wise_algorithm(F.Expressions.Not)

@@ -552,7 +552,6 @@ class is_expression(fabll.Node):
 
             return False
 
-        print("checking congruence", commutative)
         if commutative:
             # group operands by type
             # then check all combinations of operands in each group
