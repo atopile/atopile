@@ -90,7 +90,7 @@ class _BaseUserException(_BaseBaseUserException):
     def attach_origin_from_ctx(self, ctx: ParserRuleContext) -> None:
         self.origin_start = ctx.start
         self.origin_stop = ctx.stop
-        self.token_stream = ctx.parser.getInputStream()  # type: ignore
+        self.token_stream = ctx.parser.getInputStream()  # type: ignore[reportOptionalMemberAccess]
 
     @classmethod
     def from_ctx[T: _BaseUserException](

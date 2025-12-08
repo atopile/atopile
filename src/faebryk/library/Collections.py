@@ -58,13 +58,14 @@ class PointerProtocol(CollectionProtocol):
     def point(self, node: fabll.NodeT) -> None: ...
 
     @classmethod
-    def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
+    def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore[invalid-method-override]
     @classmethod
     def MakeEdge(cls, pointer_ref: RefPath, elem_ref: RefPath) -> fabll._EdgeField:
         """
         Directional pointer edge from `pointer_ref` -> `elem_ref`
         """
         ...
+
     @classmethod
     def MakeEdgeForField(
         cls, out: fabll._ChildField, pointer_ref: RefPath, field: fabll._ChildField
@@ -115,7 +116,7 @@ class SequenceProtocol(CollectionProtocol):
     def append(self, *elems: fabll.NodeT) -> Self: ...
 
     @classmethod
-    def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore
+    def MakeChild(cls) -> fabll._ChildField[Self]: ...  # type: ignore[invalid-method-override]
 
     @classmethod
     def MakeEdge(cls, seq_ref: RefPath, elem_ref: RefPath, order: int) -> EdgeField: ...
@@ -248,7 +249,7 @@ def AbstractSet(
             return [cls.MakeEdge(set_ref, elem) for elem in elem_ref]
 
         @classmethod
-        def MakeChild(cls, *elems: RefPath):
+        def MakeChild(cls, *elems: RefPath) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
             out = fabll._ChildField(cls)
             for elem in elems:
                 out.add_dependant(
@@ -434,7 +435,7 @@ def test_pointer_fabll():
         pointer = Pointer.MakeChild()
 
         @classmethod
-        def MakeChild(cls) -> fabll._ChildField[Self]:
+        def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
             out = fabll._ChildField(cls)
             Pointer.MakeEdgeForField(out, [out, cls.pointer], Pointee.MakeChild())
             return out

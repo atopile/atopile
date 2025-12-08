@@ -13,7 +13,9 @@ import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.composition import (  # type: ignore[import-untyped]
+    EdgeComposition,
+)
 from faebryk.libs.util import not_none, once
 
 if TYPE_CHECKING:
@@ -258,7 +260,7 @@ class String(fabll.Node[StringAttributes]):
         return self.attributes().value
 
     @classmethod
-    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, value: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls, attributes=StringAttributes(value=value))
         return out
 
@@ -285,7 +287,7 @@ class Strings(fabll.Node):
         return [lit.cast(String).get_value() for lit in self.values.get().as_list()]
 
     @classmethod
-    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
         lits = [String.MakeChild(value=value) for value in values]
         out.add_dependant(
@@ -408,7 +410,7 @@ class Numeric(fabll.Node[NumericAttributes]):
     Attributes = NumericAttributes
 
     @classmethod
-    def MakeChild(cls, value: float) -> fabll._ChildField[Self]:
+    def MakeChild(cls, value: float) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls, attributes=NumericAttributes(value=value))
         return out
 
@@ -479,7 +481,7 @@ class NumericInterval(fabll.Node):
     _max_identifier: ClassVar[str] = "max"
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField[Self]:
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         if not NumericInterval.validate_bounds(min, max):
             raise ValueError(f"Invalid interval: {min} > {max}")
         out = fabll._ChildField(cls)
@@ -549,7 +551,7 @@ class NumericInterval(fabll.Node):
             return False
         return True
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, min: float, max: float
     ) -> "NumericInterval":
         if not NumericInterval.validate_bounds(min, max):
@@ -1612,7 +1614,7 @@ class NumericSet(fabll.Node):
     intervals = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore
+    def MakeChild(cls, min: float, max: float) -> fabll._ChildField:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
 
         _intervals = [NumericInterval.MakeChild(min=min, max=max)]
@@ -1737,7 +1739,7 @@ class NumericSet(fabll.Node):
             )
         return self
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         intervals: list["NumericInterval | NumericSet"],
     ) -> "NumericSet":
@@ -2745,7 +2747,7 @@ class Numbers(fabll.Node):
     _has_unit_identifier: ClassVar[str] = "has_unit"
 
     @classmethod
-    def MakeChild(  # type: ignore
+    def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         min: float,
         max: float,
@@ -2860,7 +2862,7 @@ class Numbers(fabll.Node):
     def create_instance(cls, g: graph.GraphView, tg: fbrk.TypeGraph) -> "Numbers":
         return cls.bind_typegraph(tg=tg).create_instance(g=g)
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         numeric_set: NumericSet,
         unit: "is_unit",
@@ -5047,7 +5049,7 @@ class _Count(fabll.Node[CountAttributes]):
     Attributes = CountAttributes
 
     @classmethod
-    def MakeChild(cls, value: int) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, value: int) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls, attributes=CountAttributes(value=value))
         return out
 
@@ -5134,7 +5136,7 @@ class Counts(fabll.Node):
     counts = F.Collections.PointerSet.MakeChild()
 
     @classmethod
-    def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, *values: int) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         """
         Create a Counts literal as a child field at type definition time.
         """
@@ -5451,7 +5453,7 @@ class Boolean(fabll.Node[BooleanAttributes]):
         return self.attributes().value
 
     @classmethod
-    def MakeChild(cls, value: bool) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, value: bool) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         return fabll._ChildField(cls, attributes=BooleanAttributes(value=value))
 
 
@@ -5485,7 +5487,7 @@ class Booleans(fabll.Node):
         return values[0]
 
     @classmethod
-    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, *values: bool) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
         unique_values = set(values)
         lits = [Boolean.MakeChild(value=v) for v in unique_values]
@@ -5714,7 +5716,7 @@ class EnumValue(fabll.Node):
     value_ = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, name: str, value: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
         F.Collections.Pointer.MakeEdgeForField(
             out,
@@ -5822,7 +5824,7 @@ class AbstractEnums(fabll.Node):
         return None if len(values) == 0 else values[0]
 
     @classmethod
-    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, *enum_members: Enum) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         if len(enum_members) == 0:
             raise ValueError("At least one enum member is required")
         atype = EnumsFactory(type(enum_members[0]))
@@ -6165,7 +6167,7 @@ class TestStringLiterals:
             string_param = StringParameter.MakeChild()
 
             @classmethod
-            def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
+            def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
                 out = fabll._ChildField(cls)
                 out.add_dependant(
                     Strings.MakeChild_ConstrainToLiteral(
@@ -6377,7 +6379,7 @@ def test_string_literal_alias_to_literal():
         string_param = StringParameter.MakeChild()
 
         @classmethod
-        def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore
+        def MakeChild(cls, *values: str) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
             out = fabll._ChildField(cls)
             out.add_dependant(
                 Strings.MakeChild_ConstrainToLiteral([out, cls.string_param], *values)

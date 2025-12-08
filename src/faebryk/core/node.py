@@ -2437,7 +2437,7 @@ def test_set_basic():
         pass
 
     # Create a Set and some elements
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -2475,7 +2475,7 @@ def test_set_deduplication():
     class Element(Node):
         pass
 
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
 
@@ -2508,7 +2508,7 @@ def test_set_order_preservation():
     class Element(Node):
         pass
 
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -2543,7 +2543,7 @@ def test_set_chaining():
     class Element(Node):
         pass
 
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)

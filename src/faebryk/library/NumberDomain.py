@@ -40,7 +40,7 @@ class NumberDomain(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild(
+    def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         negative: bool = False,
         zero_allowed: bool = True,

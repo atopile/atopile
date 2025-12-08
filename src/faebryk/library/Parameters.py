@@ -467,7 +467,7 @@ class EnumParameter(fabll.Node):
             lit_type=F.Literals.AbstractEnums
         )
 
-    def setup(self, enum: type[Enum]) -> Self:
+    def setup(self, enum: type[Enum]) -> Self:  # type: ignore[invalid-method-override]
         # TODO
         return self
 
@@ -492,7 +492,7 @@ class EnumParameter(fabll.Node):
         self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
     @classmethod
-    def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField["Self"]:
+    def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         atype = F.Literals.EnumsFactory(enum_t)
         cls_n = cast(type[fabll.NodeT], atype)
 
@@ -576,7 +576,7 @@ class NumericParameter(fabll.Node):
 
         self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
-    def setup(
+    def setup(  # type: ignore[invalid-method-override]
         self,
         *,
         units: "Units.is_unit",
@@ -623,7 +623,7 @@ class NumericParameter(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild(  # type: ignore
+    def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         unit: type[fabll.NodeT],
         integer: bool = False,

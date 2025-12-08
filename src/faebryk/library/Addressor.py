@@ -38,7 +38,7 @@ class Addressor(fabll.Node):
         ]
 
     @classmethod
-    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, address_bits: int) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
         # Store address bits as a dimensionless literal
         out.add_dependant(

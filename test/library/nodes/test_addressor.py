@@ -23,7 +23,7 @@ class ConfigurableI2CClient(fabll.Node):
         F.has_single_electric_reference.MakeChild()
     )
 
-    def setup(self, g, tg) -> None:  # type: ignore
+    def setup(self, g, tg) -> None:  # type: ignore[invalid-method-override]
         F.Expressions.Is.c(
             self.addressor.get().address.get().can_be_operand.get(),
             self.i2c.get().address.get().can_be_operand.get(),

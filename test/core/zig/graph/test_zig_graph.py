@@ -8,7 +8,7 @@ def test_load_graph_module():
 
 
 def test_minimal_graph():
-    from faebryk.core.zig.gen.graph.graph import (  # type: ignore
+    from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
         Edge,
         GraphView,
         Node,
