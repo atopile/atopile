@@ -44,10 +44,11 @@ from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import attach_random_designators, load_designators
 from faebryk.libs.app.erc import needs_erc_check
-from faebryk.libs.app.pcb import (
-    check_net_names,
-    load_net_names,
-)
+
+# from faebryk.libs.app.pcb import (
+#     check_net_names,
+#     load_net_names,
+# )
 from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad

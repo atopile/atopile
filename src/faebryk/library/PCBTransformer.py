@@ -118,44 +118,10 @@ class has_linked_kicad_pad(fabll.Node):
             self.transformer_.get().force_extract_literal().get_values()[0]
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
-
-#TODO replaced with definition in KiCadFootprints.py
-class has_linked_kicad_net(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
-
-    net_ = F.Parameters.StringParameter.MakeChild()
-    transformer_ = F.Parameters.StringParameter.MakeChild()
-
-    # @classmethod
-    # def MakeChild(
-    #     cls, net: "KiCadNet", transformer: "PCB_Transformer"
-    # ) -> fabll._ChildField[Self]:
-    #     out = fabll._ChildField(cls)
-    #     out.add_dependant(
-    #         F.Collections.Pointer.MakeEdge([out, cls.net_], [str(id(net))])
-    #     )
-    #     out.add_dependant(
-    #         F.Collections.Pointer.MakeEdge(
-    #             [out, cls.transformer_], [str(id(transformer))]
-    #         )
-    #     )
-    #     return out
-
-    def setup(self, kicad_net: "KiCadNet", transformer: "PCB_Transformer") -> Self:
-        self.net_.get().alias_to_single(value=str(id(kicad_net)))
-        self.transformer_.get().alias_to_single(value=str(id(transformer)))
-        return self
-
-    def get_net(self) -> KiCadNet:
-        net_id = int(self.net_.get().force_extract_literal().get_values()[0])
-        return ctypes.cast(net_id, ctypes.py_object).value
-
-    def get_transformer(self) -> "PCB_Transformer":
         transformer_id = int(
             self.transformer_.get().force_extract_literal().get_values()[0]
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
-
 
 def setup_pcb_transformer_test():
     from faebryk.libs.test.fileformats import PCBFILE
@@ -179,44 +145,3 @@ def test_pcb_transformer_traits():
     assert transformer.app is app
     assert transformer.pcb is kpcb
 
-
-def test_has_linked_kicad_net_trait():
-    g, tg, _, transformer, _, module, _ = setup_pcb_transformer_test()
-    net = kicad.pcb.Net(name="TestNet1", number=1)
-
-    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-
-    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_net).setup(
-        kicad_net=net, transformer=transformer
-    )
-    assert module.has_trait(has_linked_kicad_net)
-    assert module.get_trait(has_linked_kicad_net).get_net() is net
-    assert module.get_trait(has_linked_kicad_net).get_transformer() is transformer
-
-
-def test_has_linked_kicad_footprint_trait():
-    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
-
-    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_footprint).setup(
-        footprint=footprint, transformer=transformer
-    )
-
-    assert module.has_trait(has_linked_kicad_footprint)
-    assert module.get_trait(has_linked_kicad_footprint).get_fp() is footprint
-    assert module.get_trait(has_linked_kicad_footprint).get_transformer() is transformer
-
-
-def test_has_linked_kicad_pad_trait():
-    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
-    pads = footprint.pads
-
-    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_pad).setup(
-        footprint=footprint, pads=pads, transformer=transformer
-    )
-
-    assert module.has_trait(has_linked_kicad_pad)
-
-    fp, pads_ = module.get_trait(has_linked_kicad_pad).get_pads()
-    assert fp is footprint
-    assert pads_ == pads
-    assert module.get_trait(has_linked_kicad_pad).get_transformer() is transformer

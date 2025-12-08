@@ -461,3 +461,58 @@ def test_is_generated_by_kicad_footprint():
     assert gen_kfp_trait.library_name == "smol_part_lib"
     assert gen_kfp_trait.kicad_footprint_file_path == str(FPFILE)
     assert gen_kfp_trait.pad_names == fp_names
+
+def setup_pcb_transformer_test():
+    from faebryk.libs.test.fileformats import PCBFILE
+
+    g = fabll.graph.GraphView.create()
+    tg = fbrk.TypeGraph.create(g=g)
+    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
+    kpcb = pcb.kicad_pcb
+    app = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    transformer = PCB_Transformer(pcb=kpcb, app=app)
+    footprint = pcb.kicad_pcb.footprints[0]
+    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+
+    return g, tg, app, transformer, footprint, module, kpcb
+
+def test_has_linked_kicad_net_trait():
+    g, tg, _, transformer, _, module, _ = setup_pcb_transformer_test()
+    net = kicad.pcb.Net(name="TestNet1", number=1)
+
+    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+
+    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_net).setup(
+        kicad_net=net, transformer=transformer
+    )
+    assert module.has_trait(has_linked_kicad_net)
+    assert module.get_trait(has_linked_kicad_net).get_net() is net
+    assert module.get_trait(has_linked_kicad_net).get_transformer() is transformer
+
+
+def test_has_linked_kicad_pad_trait():
+    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
+    pads = footprint.pads
+
+    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_pad).setup(
+        footprint=footprint, pads=pads, transformer=transformer
+    )
+
+    assert module.has_trait(has_linked_kicad_pad)
+
+    fp, pads_ = module.get_trait(has_linked_kicad_pad).get_pads()
+    assert fp is footprint
+    assert pads_ == pads
+    assert module.get_trait(has_linked_kicad_pad).get_transformer() is transformer
+
+
+def test_has_linked_kicad_footprint_trait():
+    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
+
+    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_footprint).setup(
+        footprint=footprint, transformer=transformer
+    )
+
+    assert module.has_trait(has_linked_kicad_footprint)
+    assert module.get_trait(has_linked_kicad_footprint).get_fp() is footprint
+    assert module.get_trait(has_linked_kicad_footprint).get_transformer() is transformer
