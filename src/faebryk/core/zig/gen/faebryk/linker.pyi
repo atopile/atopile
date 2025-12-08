@@ -17,6 +17,8 @@ class Linker:
         target_type_node: BoundNode,
     ) -> None: ...
     @staticmethod
+    def get_resolved_type(*, type_reference: BoundNode) -> BoundNode | None: ...
+    @staticmethod
     def collect_unresolved_type_references(
         *,
         type_graph: TypeGraph,

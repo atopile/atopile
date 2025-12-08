@@ -1,7 +1,6 @@
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
-from faebryk.core.zig.gen.faebryk.linker import Linker
 
 
 def test_load_graph_module():
@@ -181,34 +180,22 @@ def test_typegraph_instantiate():
     g = graph.GraphView.create()
     type_graph = fbrk.TypeGraph.create(g=g)
 
-    type_graph.add_type(identifier="Electrical")
+    Electrical = type_graph.add_type(identifier="Electrical")
     Resistor = type_graph.add_type(identifier="Resistor")
-    make_child_p1 = type_graph.add_make_child(
+    type_graph.add_make_child(
         type_node=Resistor,
-        child_type_identifier="Electrical",
+        child_type=Electrical,
         identifier="p1",
         node_attributes=None,
         mount_reference=None,
     )
-    make_child_p2 = type_graph.add_make_child(
+    type_graph.add_make_child(
         type_node=Resistor,
-        child_type_identifier="Electrical",
+        child_type=Electrical,
         identifier="p2",
         node_attributes=None,
         mount_reference=None,
     )
-
-    electrical = type_graph.get_type_by_name(type_identifier="Electrical")
-    assert electrical is not None
-
-    for make_child in (make_child_p1, make_child_p2):
-        type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
-        assert type_ref is not None
-        Linker.link_type_reference(
-            g=g,
-            type_reference=type_ref,
-            target_type_node=electrical,
-        )
 
     rp1_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p1"])
     rp2_ref = type_graph.debug_add_reference(type_node=Resistor, path=["p2"])

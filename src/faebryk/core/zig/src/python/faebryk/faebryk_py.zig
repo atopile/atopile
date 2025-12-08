@@ -3117,7 +3117,80 @@ fn wrap_typegraph_add_make_child() type {
     return struct {
         pub const descr = method_descr{
             .name = "add_make_child",
-            .doc = "Create a MakeChild node referencing the provided type",
+            .doc = "Create a MakeChild node with the child type linked immediately",
+            .args_def = struct {
+                type_node: *graph.BoundNodeReference,
+                child_type: *graph.BoundNodeReference,
+                identifier: *py.PyObject,
+                node_attributes: ?*py.PyObject = null,
+                mount_reference: ?*py.PyObject = null,
+
+                pub const fields_meta = .{
+                    .type_node = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .child_type = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                    .mount_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = false,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper = bind.castWrapper("TypeGraph", &type_graph_type, TypeGraphWrapper, self) orelse return null;
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const allocator = kwarg_obj.type_node.g.allocator;
+            var identifier_copy: ?[]u8 = null;
+            if (kwarg_obj.identifier != py.Py_None()) {
+                const identifier_slice = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
+                identifier_copy = allocator.dupe(u8, identifier_slice) catch {
+                    py.PyErr_SetString(py.PyExc_MemoryError, "failed to allocate identifier");
+                    return null;
+                };
+            }
+
+            const node_attrs_obj: *py.PyObject = if (kwarg_obj.node_attributes) |obj| obj else py.Py_None();
+            var node_attributes: ?*faebryk.nodebuilder.NodeCreationAttributes = null;
+            if (node_attrs_obj != py.Py_None()) {
+                const attrs_wrapper = bind.castWrapper("NodeCreationAttributes", &node_creation_attributes_type, NodeCreationAttributesWrapper, node_attrs_obj) orelse {
+                    if (identifier_copy) |copy| allocator.free(copy);
+                    return null;
+                };
+                node_attributes = attrs_wrapper.data;
+            }
+
+            var mount_reference: ?graph.BoundNodeReference = null;
+            if (kwarg_obj.mount_reference) |mount_obj| {
+                if (mount_obj != py.Py_None()) {
+                    const mount_wrapper = bind.castWrapper("BoundNodeReference", &graph_py.bound_node_type, BoundNodeWrapper, mount_obj) orelse {
+                        if (identifier_copy) |copy| allocator.free(copy);
+                        return null;
+                    };
+                    mount_reference = mount_wrapper.data.*;
+                }
+            }
+
+            const bnode = faebryk.typegraph.TypeGraph.add_make_child(
+                wrapper.data,
+                kwarg_obj.type_node.*,
+                kwarg_obj.child_type.*,
+                if (identifier_copy) |copy| copy else null,
+                node_attributes,
+                mount_reference,
+            ) catch {
+                py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
+                return null;
+            };
+
+            return graph_py.makeBoundNodePyObject(bnode);
+        }
+    };
+}
+
+fn wrap_typegraph_add_make_child_deferred() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "add_make_child_deferred",
+            .doc = "Create a MakeChild node without linking - caller must link later",
             .args_def = struct {
                 type_node: *graph.BoundNodeReference,
                 child_type_identifier: *py.PyObject,
@@ -3174,7 +3247,7 @@ fn wrap_typegraph_add_make_child() type {
                 }
             }
 
-            const bnode = faebryk.typegraph.TypeGraph.add_make_child(
+            const bnode = faebryk.typegraph.TypeGraph.add_make_child_deferred(
                 wrapper.data,
                 kwarg_obj.type_node.*,
                 child_type_identifier_copy,
@@ -3182,7 +3255,7 @@ fn wrap_typegraph_add_make_child() type {
                 node_attributes,
                 mount_reference,
             ) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "add_make_child failed");
+                py.PyErr_SetString(py.PyExc_ValueError, "add_make_child_deferred failed");
                 return null;
             };
 
@@ -4129,6 +4202,7 @@ fn wrap_typegraph(root: *py.PyObject) void {
         wrap_typegraph_of_instance(),
         wrap_typegraph_add_type(),
         wrap_typegraph_add_make_child(),
+        wrap_typegraph_add_make_child_deferred(),
         wrap_typegraph_get_make_child_type_reference(),
         wrap_typegraph_add_make_link(),
         wrap_typegraph_iter_make_children(),
@@ -4173,6 +4247,33 @@ fn wrap_typegraph(root: *py.PyObject) void {
     } else {
         make_child_node_type = type_registry.getRegisteredTypeObject("MakeChildNode");
     }
+}
+
+fn wrap_linker_get_resolved_type() type {
+    return struct {
+        pub const descr = method_descr{
+            .name = "get_resolved_type",
+            .doc = "Return the resolved type node for a TypeReference node, or None if not yet linked",
+            .args_def = struct {
+                type_reference: *graph.BoundNodeReference,
+
+                pub const fields_meta = .{
+                    .type_reference = bind.ARG{ .Wrapper = BoundNodeWrapper, .storage = &graph_py.bound_node_type },
+                };
+            },
+            .static = true,
+        };
+
+        pub fn impl(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const kwarg_obj = bind.parse_kwargs(self, args, kwargs, descr.args_def) orelse return null;
+
+            const resolved = faebryk.linker.Linker.try_get_resolved_type(kwarg_obj.type_reference.*);
+            if (resolved) |r| {
+                return graph_py.makeBoundNodePyObject(r);
+            }
+            return py.Py_None();
+        }
+    };
 }
 
 fn wrap_linker_collect_unresolved_type_references() type {
@@ -4274,6 +4375,7 @@ fn wrap_linker_link_type_reference() type {
 fn wrap_linker(root: *py.PyObject) void {
     const extra_methods = [_]type{
         wrap_linker_link_type_reference(),
+        wrap_linker_get_resolved_type(),
         wrap_linker_collect_unresolved_type_references(),
     };
     bind.wrap_namespace_struct(root, faebryk.linker.Linker, extra_methods);

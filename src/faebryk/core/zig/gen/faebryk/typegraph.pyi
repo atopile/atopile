@@ -32,6 +32,15 @@ class TypeGraph:
         self,
         *,
         type_node: BoundNode,
+        child_type: BoundNode,
+        identifier: str | None,
+        node_attributes: NodeCreationAttributes | None = ...,
+        mount_reference: BoundNode | None = ...,
+    ) -> BoundNode: ...
+    def add_make_child_deferred(
+        self,
+        *,
+        type_node: BoundNode,
         child_type_identifier: str,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,

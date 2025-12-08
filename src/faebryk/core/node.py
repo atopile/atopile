@@ -20,7 +20,6 @@ from typing_extensions import Callable, deprecated
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -259,25 +258,16 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
-        make_child = self.t.tg.add_make_child(
+        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
+
+        self.t.tg.add_make_child(
             type_node=self.t.get_or_create_type(),
-            child_type_identifier=self.nodetype._type_identifier(),
+            child_type=child_type_node,
             identifier=identifier,
             node_attributes=self.attributes.to_node_attributes()
             if self.attributes is not None
             else None,
             mount_reference=None,
-        )
-
-        type_reference = not_none(
-            self.t.tg.get_make_child_type_reference(make_child=make_child)
-        )
-        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
-
-        Linker.link_type_reference(
-            g=self.t.tg.get_graph_view(),
-            type_reference=type_reference,
-            target_type_node=child_type_node,
         )
 
     def get(self) -> T:
@@ -1918,9 +1908,7 @@ class MakeChild(Node):
                 bound_node=self.instance, child_identifier="type_ref"
             )
         )
-        resolved_type = fbrk.EdgePointer.get_pointed_node_by_identifier(
-            bound_node=typeref, identifier="resolved"
-        )
+        resolved_type = fbrk.Linker.get_resolved_type(type_reference=typeref)
         if not resolved_type:
             raise ValueError("Type not linked yet")
         return resolved_type
