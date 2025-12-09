@@ -49,9 +49,9 @@ class MOSFET(fabll.Node):
     )
 
     mapping = {
-        source: ["source", "s"],
-        gate: ["gate", "g"],
-        drain: ["drain", "d"],
+        source: r"source|s",
+        gate: r"gate|g",
+        drain: r"drain|d",
     }
 
     for e in [source, gate, drain]:
@@ -59,7 +59,7 @@ class MOSFET(fabll.Node):
         e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
         lead.add_dependant(
             fabll.Traits.MakeEdge(
-                F.Lead.can_attach_to_pad_by_name_heuristic.MakeChild(mapping[e]), [lead]
+                F.Lead.can_attach_to_pad_by_name.MakeChild(mapping[e]), [lead]
             )
         )
 

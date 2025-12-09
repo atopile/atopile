@@ -36,10 +36,6 @@ class is_lead(fabll.Node):
             pad = self.get_trait(can_attach_to_pad_by_name).find_matching_pad(pads)
         elif self.has_trait(can_attach_to_any_pad):
             pad = self.get_trait(can_attach_to_any_pad).find_matching_pad(pads)
-        elif self.has_trait(can_attach_to_pad_by_name_heuristic):
-            pad = self.get_trait(can_attach_to_pad_by_name_heuristic).find_matching_pad(
-                pads
-            )
         else:
             for pad in pads:
                 if self.get_lead_name() == pad.pad_name:
@@ -48,7 +44,7 @@ class is_lead(fabll.Node):
         if pad is not None:
             fabll.Traits.create_and_add_instance_to(
                 node=self, trait=has_associated_pads
-            ).setup(pad=pad, parent=self, connect_net=False)
+            ).setup(pad=pad, parent=self)
             return pad
 
         raise PadMatchException(
@@ -90,29 +86,46 @@ class can_attach_to_pad_by_name(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
 
     regex_ = F.Parameters.StringParameter.MakeChild()
+    case_sensitive_ = F.Parameters.BooleanParameter.MakeChild()
 
     @property
-    def regex(self) -> re.Pattern:
-        return re.compile(self.regex_.get().force_extract_literal().get_values()[0])
+    def compiled_regex(self) -> re.Pattern:
+        case_sensitive = (
+            self.case_sensitive_.get().force_extract_literal().get_boolean_values()[0]
+        )
+        regex = self.regex_.get().force_extract_literal().get_values()[0]
+        return re.compile(
+            regex,
+            flags=re.IGNORECASE if not case_sensitive else 0,
+        )
 
     @classmethod
-    def MakeChild(cls, regex: str) -> fabll._ChildField[Self]:
+    def MakeChild(
+        cls, regex: str, case_sensitive: bool = False
+    ) -> fabll._ChildField[Self]:
         out = fabll._ChildField(cls)
         out.add_dependant(
             F.Literals.Strings.MakeChild_ConstrainToLiteral([out, cls.regex_], regex)
         )
+        out.add_dependant(
+            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
+                [out, cls.case_sensitive_], case_sensitive
+            )
+        )
         return out
 
-    def setup(self, regex: str) -> Self:
+    def setup(self, regex: str, case_sensitive: bool = False) -> Self:
         self.regex_.get().alias_to_single(value=regex)
+        self.case_sensitive_.get().alias_to_single(value=case_sensitive)
         return self
 
     def find_matching_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
-        """ ""
+        """
         Find a pad for this lead based on name match by regex.
         """
+        regex = self.compiled_regex
         for pad in pads:
-            if self.regex.match(pad.pad_name):
+            if regex.search(pad.pad_name):
                 return pad
         raise PadMatchException(
             f"No matching pad found for lead with is_lead trait: {self}"
@@ -221,14 +234,14 @@ def test_is_lead():
     pad = F.Footprints.GenericPad.bind_typegraph(tg).create_instance(g=g)
 
     fabll.Traits.create_and_add_instance_to(node=lead, trait=has_associated_pads).setup(
-        pad=pad.is_pad_.get(), parent=lead, connect_net=False
+        pad=pad.is_pad_.get(), parent=lead
     )
 
     connected_pad = lead.get_trait(has_associated_pads).get_pad()
     assert connected_pad.is_same(pad.is_pad_.get())
 
 
-def test_can_attach_to_pad_by_name_heuristic(capsys):
+def test_can_attach_to_pad_by_name(capsys):
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
@@ -239,8 +252,8 @@ def test_can_attach_to_pad_by_name_heuristic(capsys):
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
         mapping = {
-            anode: ["Anode", "a"],
-            cathode: ["cathode", "c"],
+            anode: r"Anode|a",
+            cathode: r"cathode|c",
         }
 
         for e in [anode, cathode]:
@@ -248,7 +261,7 @@ def test_can_attach_to_pad_by_name_heuristic(capsys):
             e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
             lead.add_dependant(
                 fabll.Traits.MakeEdge(
-                    can_attach_to_pad_by_name_heuristic.MakeChild(mapping[e]), [lead]
+                    can_attach_to_pad_by_name.MakeChild(mapping[e]), [lead]
                 )
             )
 
@@ -267,16 +280,8 @@ def test_can_attach_to_pad_by_name_heuristic(capsys):
     pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
     pads = [pad1, pad2]
 
-    assert (
-        module.anode.get()
-        .get_trait(is_lead)
-        .has_trait(can_attach_to_pad_by_name_heuristic)
-    )
-    assert (
-        module.cathode.get()
-        .get_trait(is_lead)
-        .has_trait(can_attach_to_pad_by_name_heuristic)
-    )
+    assert module.anode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
+    assert module.cathode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
 
     with capsys.disabled():
         print(
