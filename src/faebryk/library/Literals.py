@@ -1015,13 +1015,14 @@ class NumericInterval(fabll.Node):
     def equals(
         self,
         other: "NumericInterval",
-        g: graph.GraphView | None = None,
-        tg: fbrk.TypeGraph | None = None,
     ) -> bool:
-        return (
-            self.get_min_value() == other.get_min_value()
-            and self.get_max_value() == other.get_max_value()
-        )
+        return NumericInterval._eq(
+            self.get_min_value(), other.get_min_value()
+        ) and NumericInterval._eq(self.get_max_value(), other.get_max_value())
+
+    @staticmethod
+    def _eq(value: float, other: float) -> bool:
+        return math.isclose(value, other, rel_tol=EPSILON_REL, abs_tol=EPSILON_ABS)
 
     def __repr__(self) -> str:
         return f"_interval({self.get_min_value()}, {self.get_max_value()})"
@@ -1978,6 +1979,10 @@ class NumericSet(fabll.Node):
         tg = tg or self.tg
         return self.op_multiply(other.op_invert(g=g, tg=tg), g=g, tg=tg)
 
+    @staticmethod
+    def _op_ge(value: float, other: float) -> bool:
+        return value >= other or NumericInterval._eq(value, other)
+
     def op_ge_intervals(
         self,
         other: "NumericSet",
@@ -1991,7 +1996,7 @@ class NumericSet(fabll.Node):
             return (
                 Booleans.bind_typegraph(tg=tg).create_instance(g=g).setup_from_values()
             )
-        if self.get_min_value() >= other.get_max_value():
+        if NumericSet._op_ge(self.get_min_value(), other.get_max_value()):
             return (
                 Booleans.bind_typegraph(tg=tg)
                 .create_instance(g=g)
@@ -2049,7 +2054,7 @@ class NumericSet(fabll.Node):
         tg = tg or self.tg
         if self.is_empty() or other.is_empty():
             return Booleans.bind_typegraph(tg=tg).create_instance(g=g)
-        if self.get_max_value() <= other.get_min_value():
+        if NumericSet._op_ge(other.get_min_value(), self.get_max_value()):
             return (
                 Booleans.bind_typegraph(tg=tg)
                 .create_instance(g=g)
@@ -4434,23 +4439,24 @@ class TestNumbers:
         # Result should be dimensionless
         assert result.get_is_unit().is_dimensionless()
 
-    def test_op_sin_rejects_dimensionless(self):
-        """Test that sine rejects dimensionless input (must use radians)."""
-        g = graph.GraphView.create()
-        tg = fbrk.TypeGraph.create(g=g)
-        from faebryk.library.Units import Dimensionless
+    # Allowing dimensionless input for sine for now, need to think more about this
+    # def test_op_sin_rejects_dimensionless(self):
+    #     """Test that sine rejects dimensionless input (must use radians)."""
+    #     g = graph.GraphView.create()
+    #     tg = fbrk.TypeGraph.create(g=g)
+    #     from faebryk.library.Units import Dimensionless
 
-        dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
-            g=g
-        )
-        quantity_set = Numbers.create_instance(g=g, tg=tg)
-        quantity_set.setup_from_min_max(
-            min=0.0, max=math.pi / 2, unit=dimensionless_instance.is_unit.get()
-        )
-        with pytest.raises(
-            ValueError, match="sin only defined for quantities in radians"
-        ):
-            quantity_set.op_sin(g=g, tg=tg)
+    #     dimensionless_instance = Dimensionless.bind_typegraph(tg=tg).create_instance(
+    #         g=g
+    #     )
+    #     quantity_set = Numbers.create_instance(g=g, tg=tg)
+    #     quantity_set.setup_from_min_max(
+    #         min=0.0, max=math.pi / 2, unit=dimensionless_instance.is_unit.get()
+    #     )
+    #     with pytest.raises(
+    #         ValueError, match="sin only defined for quantities in radians"
+    #     ):
+    #         quantity_set.op_sin(g=g, tg=tg)
 
     def test_op_cos(self):
         """Test cosine of a quantity set in radians."""
