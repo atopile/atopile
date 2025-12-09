@@ -465,6 +465,7 @@ class DefaultSolver(Solver):
         # FIXME: is this correct?
         # definitely breaks a lot
         G_out = repr_map.G_out
+        tg_out = repr_map.tg_out
         repr_pred = repr_map.map_forward(pred_po).maps_to
         print_context_new = repr_map.output_print_context
 
@@ -473,7 +474,7 @@ class DefaultSolver(Solver):
             G_out = repr_pred.g
 
         new_preds = fabll.Traits.get_implementors(
-            F.Expressions.is_predicate.bind_typegraph(tg), G_out
+            F.Expressions.is_predicate.bind_typegraph(tg_out), G_out
         )
         not_deduced = [
             p for p in new_preds if not p.try_get_sibling_trait(is_terminated)

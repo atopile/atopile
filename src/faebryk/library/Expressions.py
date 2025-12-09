@@ -651,6 +651,9 @@ class is_assertable(fabll.Node):
         Parameters.is_parameter_operatable
     )
     as_operand = fabll.Traits.ImpliedTrait(Parameters.can_be_operand)
+    as_predicate = fabll.Traits.OptionalImpliedTrait["is_predicate"](
+        lambda: is_predicate
+    )
 
     # TODO: solver_terminated flag, has to be attr
 
@@ -661,6 +664,8 @@ class is_assertable(fabll.Node):
 
 class is_predicate(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+    as_expression = fabll.Traits.ImpliedTrait(is_expression)
 
     def unassert(self):
         # TODO

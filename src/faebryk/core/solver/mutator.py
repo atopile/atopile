@@ -520,13 +520,21 @@ class MutationStage:
 
         created_ops = self.transformations.created
 
+        def ___repr_op(op: F.Parameters.is_parameter_operatable) -> str:
+            new = (
+                op.g.get_self_node()
+                .node()
+                .is_same(other=self.G_out.get_self_node().node())
+            )
+            return op.compact_repr(context_new if new else context_old)
+
         rows: list[tuple[str, str]] = []
 
         for op, from_ops in created_ops.items():
             key = "new"
-            key_from_ops = " \n  ".join(o.compact_repr(context_old) for o in from_ops)
+            key_from_ops = " \n  ".join(___repr_op(o) for o in from_ops)
             key_from_ops = f"  {key_from_ops}"
-            value = op.compact_repr(context_new)
+            value = ___repr_op(op)
             if (op_e := op.as_expression.get()) and (
                 MutatorUtils.is_alias_is_literal(op)
                 or MutatorUtils.is_subset_literal(op)
@@ -541,7 +549,7 @@ class MutationStage:
                     else "subset"
                 )
                 key = f"new_{alias_type}\n{lit.pretty_str()}"
-                value = expr.compact_repr(context_new)
+                value = ___repr_op(expr)
             if key_from_ops:
                 key = f"{key} from\n{key_from_ops}"
             rows.append((key, value))
@@ -553,9 +561,7 @@ class MutationStage:
             rows.append(
                 (
                     "terminated",
-                    op.get_sibling_trait(F.Expressions.is_expression).compact_repr(
-                        context_new
-                    ),
+                    ___repr_op(op.as_expression.get().as_parameter_operatable.get()),
                 )
             )
 
@@ -571,17 +577,20 @@ class MutationStage:
                 if s is d:
                     continue
 
-            old = s.compact_repr(context_old)
-            new = d.compact_repr(context_new)
+            old = ___repr_op(s)
+            new = ___repr_op(d)
             if VERBOSE_TABLE:
                 old += "\n\n" + repr(s)
                 new += "\n\n" + repr(d)
             if old == new:
                 continue
             if (
-                s.has_trait(F.Expressions.is_assertable)
+                (s_e := s.as_expression.get())
+                and s_e.as_assertable.get()
                 and new.replace("✓", "") == old.replace("✓", "")
-                and d.try_get_aliased_literal() != s.try_get_aliased_literal()
+                and (d_lit := d.try_get_aliased_literal())
+                and (s_lit := s.try_get_aliased_literal())
+                and d_lit.equals(s_lit)  # TODO g & tg
                 and new.count("✓") == old.count("✓") + 1
             ):
                 # done by proven/disproven
@@ -599,8 +608,8 @@ class MutationStage:
                     continue
                 if s in printed:
                     continue
-                old = s.compact_repr(context_old)
-                new = d.compact_repr(context_new)
+                old = ___repr_op(s)
+                new = ___repr_op(d)
                 # already printed above
                 if old != new:
                     continue
@@ -609,7 +618,7 @@ class MutationStage:
                 rows.append((old, "merged"))
 
         for s in self.transformations.removed:
-            old = s.compact_repr(context_old)
+            old = ___repr_op(s)
             if VERBOSE_TABLE:
                 old += "\n\n" + repr(s)
             rows.append((old, "removed"))
@@ -1892,14 +1901,17 @@ class Mutator:
         self.G_transient: graph.GraphView = graph.GraphView.create()
         self.tg_in: fbrk.TypeGraph = mutation_map.tg_out
 
-        self.print_context = mutation_map.output_print_context
+        self.input_print_context = mutation_map.input_print_context
+        self.output_print_context = mutation_map.output_print_context
         self._mutations_since_last_iteration = mutation_map.get_iteration_mutation(algo)
 
         self._starting_operables = set(
             self.get_parameter_operatables(include_terminated=True)
         )
 
-        self.transformations = Transformations(input_print_context=self.print_context)
+        self.transformations = Transformations(
+            input_print_context=self.output_print_context
+        )
 
     @property
     @once
@@ -1968,8 +1980,8 @@ class Mutator:
         added = post_mut_nodes.difference(
             self._starting_operables, self.transformations.created
         )
-        removed_compact = (op.compact_repr(self.print_context) for op in removed)
-        added_compact = (op.compact_repr(self.print_context) for op in added)
+        removed_compact = (op.compact_repr(self.output_print_context) for op in removed)
+        added_compact = (op.compact_repr(self.output_print_context) for op in added)
         assert not removed, (
             f"{self.__repr__(exclude_transformations=True)} untracked removed "
             f"{indented_container(removed_compact)}"
@@ -1990,7 +2002,7 @@ class Mutator:
                     self.mutation_map.G_out,
                     algorithm=self.algo,
                     iteration=self.iteration,
-                    print_context=self.print_context,
+                    print_context=self.output_print_context,
                 ),
                 dirty=False,
             )
@@ -2005,7 +2017,7 @@ class Mutator:
             algorithm=self.algo,
             iteration=self.iteration,
             transformations=self.transformations,
-            print_context=self.print_context,
+            print_context=self.output_print_context,
         )
 
         # Check if original graphs ended up in result

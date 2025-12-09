@@ -76,7 +76,7 @@ class is_parameter_operatable(fabll.Node):
         return is_expression
 
     # TODO: is there a cleaner way to avoid adding Expressions dependency here?
-    as_expression: "fabll.Traits.OptionalImpliedTrait" = (
+    as_expression: "fabll.Traits.OptionalImpliedTrait[F.Expressions.is_expression]" = (
         fabll.Traits.OptionalImpliedTrait(_get_is_expression)
     )
 

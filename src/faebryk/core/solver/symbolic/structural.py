@@ -516,9 +516,10 @@ def predicate_terminated_is_true(mutator: Mutator):
     P!! is! True -> P!! is!! True
     """
 
-    for p in mutator.get_typed_expressions(Is):
-        if not (p_c := p.try_get_trait(F.Expressions.is_predicate)):
-            continue
+    for p in mutator.get_typed_expressions(
+        Is, required_traits=(F.Expressions.is_predicate,)
+    ):
+        p_c = p.is_assertable.get().as_predicate.force_get()
         if mutator.is_predicate_terminated(p_c):
             continue
         p_e = p.is_expression.get()
@@ -530,7 +531,7 @@ def predicate_terminated_is_true(mutator: Mutator):
             continue
         op = next(iter(op_operatables))
         if not (
-            op_c := op.try_get_trait(F.Expressions.is_predicate)
+            op_c := op.try_get_sibling_trait(F.Expressions.is_predicate)
         ) or not mutator.is_predicate_terminated(op_c):
             continue
 

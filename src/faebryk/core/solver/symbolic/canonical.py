@@ -308,7 +308,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         e_po = e.as_parameter_operatable.get()
         if e_type_uuid in _UnsupportedOperations:
             replacement = _UnsupportedOperations[e_type_uuid]
-            rep = e.compact_repr(mutator.print_context)
+            rep = e.compact_repr(mutator.output_print_context)
             if replacement is None:
                 logger.warning(f"{type(e)}({rep}) not supported by solver, skipping")
                 mutator.remove(e.as_parameter_operatable.get())
