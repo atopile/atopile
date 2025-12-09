@@ -62,7 +62,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             [
                 op
                 for op in e.is_expression.get().get_operands()
-                if op.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
+                if op.as_parameter_operatable.get()
             ]
         )
         == 1
@@ -72,22 +72,18 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         ge_e = ge.is_expression.get()
         op_0 = ge_e.get_operands()[0]
         op_1 = ge_e.get_operands()[1]
-        is_left = op_0.try_get_sibling_trait(F.Parameters.is_parameter_operatable)
+        is_left = op_0.as_parameter_operatable.get()
 
         if is_left:
             param = op_0
-            lit = op_1.get_sibling_trait(F.Literals.is_literal)
+            lit = op_1.as_literal.force_get()
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
             boundary = lit_n.get_max_value()
             if boundary >= math.inf:
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "GreaterEqual inf not possible",
-                        involved=[
-                            param.get_sibling_trait(
-                                F.Parameters.is_parameter_operatable
-                            )
-                        ],
+                        involved=[param.as_parameter_operatable.force_get()],
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
@@ -97,18 +93,14 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             interval = mutator.utils.make_number_literal_from_range(boundary, math.inf)
         else:
             param = op_1
-            lit = op_0.get_sibling_trait(F.Literals.is_literal)
+            lit = op_0.as_literal.force_get()
             lit_n = fabll.Traits(lit).get_obj(F.Literals.Numbers)
             boundary = lit_n.get_min_value()
             if boundary <= -math.inf:
                 if ge.try_get_trait(F.Expressions.is_predicate):
                     raise Contradiction(
                         "LessEqual -inf not possible",
-                        involved=[
-                            param.get_sibling_trait(
-                                F.Parameters.is_parameter_operatable
-                            )
-                        ],
+                        involved=[param.as_parameter_operatable.force_get()],
                         mutator=mutator,
                     )
                 mutator.utils.alias_is_literal_and_check_predicate_eval(
@@ -180,7 +172,7 @@ def remove_congruent_expressions(mutator: Mutator):
             not_none(fabll.Traits(e).get_obj_raw().get_type_node()).node().get_uuid(),
             len(e.get_operands()),
             None
-            if not e.try_get_trait(F.Expressions.is_assertable)
+            if not e.as_assertable.get()
             else bool(e.try_get_trait(F.Expressions.is_predicate)),
         ),
     )
@@ -271,16 +263,8 @@ def resolve_alias_classes(mutator: Mutator):
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes:
-        eq_class_params = [
-            p_po
-            for p in eq_class
-            if (p_po := p.try_get_sibling_trait(F.Parameters.is_parameter))
-        ]
-        eq_class_exprs = {
-            p_e
-            for p in eq_class
-            if (p_e := p.try_get_sibling_trait(F.Expressions.is_expression))
-        }
+        eq_class_params = [p_po for p in eq_class if (p_po := p.as_parameter.get())]
+        eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.get())}
 
         if not eq_class_params:
             continue
@@ -335,16 +319,8 @@ def resolve_alias_classes(mutator: Mutator):
             )
 
     for eq_class in p_eq_classes:
-        eq_class_params = [
-            p
-            for p in eq_class
-            if (p_po := p.try_get_sibling_trait(F.Parameters.is_parameter))
-        ]
-        eq_class_exprs = {
-            p_e
-            for p in eq_class
-            if (p_e := p.try_get_sibling_trait(F.Expressions.is_expression))
-        }
+        eq_class_params = [p for p in eq_class if (p_po := p.as_parameter.get())]
+        eq_class_exprs = {p_e for p in eq_class if (p_e := p.as_expression.get())}
 
         if eq_class_params:
             p_0 = eq_class_params[0]
@@ -487,7 +463,7 @@ def transitive_subset(mutator: Mutator):
         ss_op_e = ss_op.is_expression.get()
         ss_op_po = ss_op.is_parameter_operatable.get()
         A, B = ss_op_e.get_operands()
-        if not (B_po := B.try_get_sibling_trait(F.Parameters.is_parameter_operatable)):
+        if not (B_po := B.as_parameter_operatable.get()):
             continue
 
         # all B ss! C | C not A
@@ -595,7 +571,8 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
             if lit is None:
                 ops.append(op)
                 continue
-            ops.append(lit)
+            if isinstance(lit, F.Literals.is_literal):
+                ops.append(lit.as_operand.get())
             found_literal = True
 
         if not found_literal:
@@ -622,11 +599,7 @@ def isolate_lone_params(mutator: Mutator):
         op_without_param: F.Parameters.can_be_operand,
         from_expr: F.Expressions.is_expression,
     ) -> tuple[F.Parameters.can_be_operand, F.Parameters.can_be_operand]:
-        if not (
-            op_with_param_e := op_with_param.try_get_sibling_trait(
-                F.Expressions.is_expression
-            )
-        ):
+        if not (op_with_param_e := op_with_param.as_expression.get()):
             return op_with_param.as_operand.get(), op_without_param
 
         def op_or_create_expr(
@@ -723,7 +696,7 @@ def isolate_lone_params(mutator: Mutator):
         while True:
             new_op_with_param, new_op_without_param = _isolate_param(
                 param,
-                op_with_param.get_sibling_trait(F.Parameters.is_parameter_operatable),
+                op_with_param.as_parameter_operatable.force_get(),
                 op_without_param,
                 from_expr=expr,
             )
@@ -836,7 +809,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
         for op in p.get_operand_operatables():
             if mutator.utils.no_other_predicates(
                 op,
-                p.get_sibling_trait(F.Expressions.is_assertable),
+                p.as_assertable.force_get(),
                 unfulfilled_only=True,
             ):
                 mutator.utils.alias_is_literal_and_check_predicate_eval(

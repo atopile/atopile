@@ -101,8 +101,16 @@ def test_mutator_no_graph_merge():
         iteration=0,
         terminal=True,
     )
-    p0_new = mutator.get_copy(p0).get_sibling_trait(F.Parameters.is_parameter)
-    p3_new = mutator.get_copy(p3).get_sibling_trait(F.Parameters.is_parameter)
+    p0_new = (
+        mutator.get_copy(p0)
+        .as_parameter_operatable.force_get()
+        .as_parameter.force_get()
+    )
+    p3_new = (
+        mutator.get_copy(p3)
+        .as_parameter_operatable.force_get()
+        .as_parameter.force_get()
+    )
     alias_new = fabll.Traits(mutator.get_copy(alias)).get_obj(F.Expressions.Is)
 
     G = p0.tg
@@ -114,9 +122,7 @@ def test_mutator_no_graph_merge():
     assert (
         cast_assert(
             F.Parameters.is_parameter,
-            mutator.get_mutated(
-                p1.get_sibling_trait(F.Parameters.is_parameter_operatable)
-            ),
+            mutator.get_mutated(p1.as_parameter_operatable.force_get()),
         ).tg
         is G_new
     )
@@ -130,36 +136,36 @@ def test_get_expressions_involved_in():
     E1 = E.add(A, B)
 
     res = MutatorUtils.get_expressions_involved_in(
-        E1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        E1.as_parameter_operatable.force_get()
     )
     assert res == set()
 
     E2 = E.add(E1, A)
 
     res = MutatorUtils.get_expressions_involved_in(
-        E1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        E1.as_parameter_operatable.force_get()
     )
     assert res == {fabll.Traits(E2).get_obj_raw()}
 
     E3 = E.add(E2, B)
 
     res = MutatorUtils.get_expressions_involved_in(
-        E1.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        E1.as_parameter_operatable.force_get()
     )
     assert res == {fabll.Traits(E2).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
-        E2.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        E2.as_parameter_operatable.force_get()
     )
     assert res == {fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
-        E2.get_sibling_trait(F.Parameters.is_parameter_operatable), up_only=False
+        E2.as_parameter_operatable.force_get(), up_only=False
     )
     assert res == {fabll.Traits(E1).get_obj_raw(), fabll.Traits(E3).get_obj_raw()}
 
     res = MutatorUtils.get_expressions_involved_in(
-        E2.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        E2.as_parameter_operatable.force_get(),
         up_only=False,
         include_root=True,
     )
@@ -187,7 +193,7 @@ def test_get_correlations_basic():
     # Test correlations
     correlations = list(
         MutatorUtils.get_correlations(
-            expr.get_sibling_trait(F.Expressions.is_expression)
+            expr.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
 
@@ -199,8 +205,8 @@ def test_get_correlations_basic():
 
     # Check that the correlated operands are A and B
     assert {op1, op2} == {
-        A.get_sibling_trait(F.Parameters.is_parameter_operatable),
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        A.as_parameter_operatable.force_get(),
+        B.as_parameter_operatable.force_get(),
     }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
@@ -216,12 +222,12 @@ def test_get_correlations_nested_uncorrelated():
     expr = E.add(inner, C)
     correlations = list(
         MutatorUtils.get_correlations(
-            expr.get_sibling_trait(F.Expressions.is_expression)
+            expr.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
     inner_correlations = list(
         MutatorUtils.get_correlations(
-            inner.get_sibling_trait(F.Expressions.is_expression)
+            inner.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
 
@@ -231,8 +237,8 @@ def test_get_correlations_nested_uncorrelated():
     assert len(inner_correlations) == 1
     op1, op2, overlap_exprs = inner_correlations[0]
     assert {op1, op2} == {
-        A.get_sibling_trait(F.Parameters.is_parameter_operatable),
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        A.as_parameter_operatable.force_get(),
+        B.as_parameter_operatable.force_get(),
     }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
@@ -248,12 +254,12 @@ def test_get_correlations_nested_correlated():
     expr = E.add(inner, B)
     correlations = list(
         MutatorUtils.get_correlations(
-            expr.get_sibling_trait(F.Expressions.is_expression)
+            expr.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
     inner_correlations = list(
         MutatorUtils.get_correlations(
-            inner.get_sibling_trait(F.Expressions.is_expression)
+            inner.as_parameter_operatable.force_get().as_expression.force_get()
         )
     )
 
@@ -263,8 +269,8 @@ def test_get_correlations_nested_correlated():
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
     assert {op1, op2} == {
-        inner.get_sibling_trait(F.Parameters.is_parameter_operatable),
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        inner.as_parameter_operatable.force_get(),
+        B.as_parameter_operatable.force_get(),
     }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
@@ -274,11 +280,13 @@ def test_get_correlations_self_correlated():
     A = E.parameter_op()
     E = E.add(A, A)
     correlations = list(
-        MutatorUtils.get_correlations(E.get_sibling_trait(F.Expressions.is_expression))
+        MutatorUtils.get_correlations(
+            E.as_parameter_operatable.force_get().as_expression.force_get()
+        )
     )
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
-    assert {op1, op2} == {A.get_sibling_trait(F.Parameters.is_parameter_operatable)}
+    assert {op1, op2} == {A.as_parameter_operatable.force_get()}
     assert not overlap_exprs
 
 
@@ -290,28 +298,34 @@ def test_get_correlations_shared_predicates():
     Ex = E.add(A, B)
 
     correlations = list(
-        MutatorUtils.get_correlations(Ex.get_sibling_trait(F.Expressions.is_expression))
+        MutatorUtils.get_correlations(
+            Ex.as_parameter_operatable.force_get().as_expression.force_get()
+        )
     )
     assert not correlations
 
     E2 = E.is_(E.multiply(A, B), E.lit_op_range((0, 10)), assert_=True)
 
     correlations = list(
-        MutatorUtils.get_correlations(Ex.get_sibling_trait(F.Expressions.is_expression))
+        MutatorUtils.get_correlations(
+            Ex.as_parameter_operatable.force_get().as_expression.force_get()
+        )
     )
     assert not correlations
 
-    E2.get_trait(F.Expressions.is_assertable).assert_()
+    E2.as_parameter_operatable.force_get().as_expression.force_get().as_assertable.force_get().assert_()
 
     correlations = list(
-        MutatorUtils.get_correlations(Ex.get_sibling_trait(F.Expressions.is_expression))
+        MutatorUtils.get_correlations(
+            Ex.as_parameter_operatable.force_get().as_expression.force_get()
+        )
     )
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
     assert {op1, op2} == {
-        A.get_sibling_trait(F.Parameters.is_parameter_operatable),
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        A.as_parameter_operatable.force_get(),
+        B.as_parameter_operatable.force_get(),
     }
     assert overlap_exprs == {fabll.Traits(E2).get_obj_raw()}
 
@@ -331,14 +345,16 @@ def test_get_correlations_correlated_regression():
     Ex = E.add(B, a_neg)
 
     correlations = list(
-        MutatorUtils.get_correlations(Ex.get_sibling_trait(F.Expressions.is_expression))
+        MutatorUtils.get_correlations(
+            Ex.as_parameter_operatable.force_get().as_expression.force_get()
+        )
     )
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
     assert {op1, op2} == {
-        a_neg.get_sibling_trait(F.Parameters.is_parameter_operatable),
-        B.get_sibling_trait(F.Parameters.is_parameter_operatable),
+        a_neg.as_parameter_operatable.force_get(),
+        B.as_parameter_operatable.force_get(),
     }
     assert overlap_exprs == {fabll.Traits(o).get_obj_raw()}
 
@@ -499,7 +515,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
     )
 
     res = mapping_new.non_trivial_mutated_expressions
-    assert res == {op_new.get_sibling_trait(F.Expressions.is_expression)}
+    assert res == {op_new.as_parameter_operatable.force_get().as_expression.force_get()}
 
 
 def test_mutation_map_submap():
@@ -560,7 +576,7 @@ def test_traceback_filtering_chain():
     out = solver.simplify_symbolically(E.tg, E.g, print_context=context, terminal=False)
 
     E2_new = out.data.mutation_map.map_forward(
-        E2.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        E2.as_parameter_operatable.force_get()
     ).maps_to
     assert E2_new
     tb = out.data.mutation_map.get_traceback(E2_new)

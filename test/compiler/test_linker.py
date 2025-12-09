@@ -11,6 +11,7 @@ from atopile.compiler.build import (
     build_source,
     build_stdlib,
 )
+from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
 from faebryk.core.zig.gen.graph.graph import GraphView
 
 
@@ -48,7 +49,9 @@ def test_stdlib_import_resolved():
     linker = Linker(None, stdlib_registry, stdlib_tg)
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_resolves_relative_ato_import(tmp_path: Path):
@@ -85,7 +88,9 @@ def test_resolves_relative_ato_import(tmp_path: Path):
     linker = Linker(None, stdlib_registry, stdlib_tg)
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_resolves_via_extra_search_path(tmp_path: Path):
@@ -120,7 +125,9 @@ def test_resolves_via_extra_search_path(tmp_path: Path):
     )
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_package_identifier_rewrite(tmp_path: Path):
@@ -158,7 +165,9 @@ def test_package_identifier_rewrite(tmp_path: Path):
     linker = Linker(config_obj, stdlib_registry, stdlib_tg)
     linker.link_imports(graph, result.state)
 
-    assert not result.state.type_graph.collect_unresolved_type_references()
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
 
 
 def test_missing_import_raises_user_error():
@@ -180,3 +189,79 @@ def test_missing_import_raises_user_error():
         linker.link_imports(graph, result.state)
 
     assert "Unable to resolve import `missing/module.ato`" in str(excinfo.value)
+
+
+def test_different_imports_resolve_to_different_nodes():
+    """Different imported types should resolve to different nodes."""
+    graph, stdlib_tg, stdlib_registry = _init_graph()
+    result = build_source(
+        graph,
+        textwrap.dedent(
+            """
+            import Resistor
+            import Capacitor
+
+            module App:
+                r = new Resistor
+                c = new Capacitor
+            """
+        ),
+    )
+
+    linker = Linker(None, stdlib_registry, stdlib_tg)
+    linker.link_imports(graph, result.state)
+    type_graph = result.state.type_graph
+    app_type = result.state.type_roots["App"]
+
+    r_resolved = None
+    c_resolved = None
+    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
+        type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
+        if identifier == "r":
+            r_resolved = _Linker.get_resolved_type(type_reference=type_ref)
+        elif identifier == "c":
+            c_resolved = _Linker.get_resolved_type(type_reference=type_ref)
+
+    assert r_resolved is not None
+    assert c_resolved is not None
+    assert not r_resolved.node().is_same(other=c_resolved.node())
+
+
+def test_multiple_references_same_import():
+    """Multiple uses of the same imported type should resolve to the same node."""
+    graph, stdlib_tg, stdlib_registry = _init_graph()
+    result = build_source(
+        graph,
+        textwrap.dedent(
+            """
+            import Resistor
+
+            module App:
+                first = new Resistor
+                second = new Resistor
+                third = new Resistor
+            """
+        ),
+    )
+
+    linker = Linker(None, stdlib_registry, stdlib_tg)
+    linker.link_imports(graph, result.state)
+
+    assert not _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
+
+    type_graph = result.state.type_graph
+    app_type = result.state.type_roots["App"]
+
+    resolved_nodes = []
+    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
+        if identifier in ("first", "second", "third"):
+            type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
+            resolved = _Linker.get_resolved_type(type_reference=type_ref)
+            assert resolved is not None
+            resolved_nodes.append(resolved)
+
+    assert len(resolved_nodes) == 3
+    assert resolved_nodes[0].node().is_same(other=resolved_nodes[1].node())
+    assert resolved_nodes[1].node().is_same(other=resolved_nodes[2].node())

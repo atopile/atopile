@@ -192,86 +192,6 @@ pub const TypeGraph = struct {
         }
     };
 
-    pub const UnresolvedTypeReference = struct {
-        type_node: BoundNodeReference,
-        type_reference: BoundNodeReference,
-    };
-
-    pub fn collect_unresolved_type_references(
-        self: *@This(),
-        allocator: std.mem.Allocator,
-    ) ![]UnresolvedTypeReference {
-        var list = std.ArrayList(UnresolvedTypeReference).init(allocator);
-        errdefer list.deinit();
-
-        const VisitMakeChildren = struct {
-            type_graph: *TypeGraph,
-            type_node: BoundNodeReference,
-            list: *std.ArrayList(UnresolvedTypeReference),
-
-            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
-                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-                const type_reference = MakeChildNode.get_type_reference(make_child);
-
-                if (Linker.try_get_resolved_type(type_reference) == null) {
-                    ctx.list.append(.{ .type_node = ctx.type_node, .type_reference = type_reference }) catch {
-                        return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
-                    };
-                }
-
-                return visitor.VisitResult(void){ .CONTINUE = {} };
-            }
-        };
-
-        const VisitTypes = struct {
-            type_graph: *TypeGraph,
-            list: *std.ArrayList(UnresolvedTypeReference),
-
-            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                const ctx: *@This() = @ptrCast(@alignCast(self_ptr));
-                const type_node = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-
-                var make_children_ctx = VisitMakeChildren{
-                    .type_graph = ctx.type_graph,
-                    .type_node = type_node,
-                    .list = ctx.list,
-                };
-
-                const result = EdgeComposition.visit_children_of_type(
-                    type_node,
-                    ctx.type_graph.get_MakeChild().node,
-                    void,
-                    &make_children_ctx,
-                    VisitMakeChildren.visit,
-                );
-
-                switch (result) {
-                    .ERROR => |err| return visitor.VisitResult(void){ .ERROR = err },
-                    else => return visitor.VisitResult(void){ .CONTINUE = {} },
-                }
-            }
-        };
-
-        var visit_ctx = VisitTypes{ .type_graph = self, .list = &list };
-        const visit_result = EdgeComposition.visit_children_edges(
-            self.self_node,
-            void,
-            &visit_ctx,
-            VisitTypes.visit,
-        );
-
-        switch (visit_result) {
-            .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
-                else => return err,
-            },
-            else => {},
-        }
-
-        return list.toOwnedSlice();
-    }
-
     pub const TypeReferenceNode = struct {
         pub const Attributes = struct {
             node: NodeReference,
@@ -482,7 +402,7 @@ pub const TypeGraph = struct {
         return EdgeComposition.get_child_by_identifier(self.self_node, "TypeReference").?;
     }
 
-    fn get_MakeChild(self: *const @This()) BoundNodeReference {
+    pub fn get_MakeChild(self: *const @This()) BoundNodeReference {
         return EdgeComposition.get_child_by_identifier(self.self_node, "MakeChild").?;
     }
 
@@ -591,9 +511,34 @@ pub const TypeGraph = struct {
     //    return trait_type;
     //}
 
-    ///
+    /// Create a MakeChild node with the child type linked immediately.
     /// mount_reference: Create child under different parent. WARNING DO NOT USE THIS!
     pub fn add_make_child(
+        self: *@This(),
+        target_type: BoundNodeReference,
+        child_type: BoundNodeReference,
+        identifier: ?str,
+        node_attributes: ?*NodeCreationAttributes,
+        mount_reference: ?BoundNodeReference,
+    ) !BoundNodeReference {
+        const child_type_identifier = TypeNodeAttributes.of(child_type.node).get_type_name();
+        const make_child = try self.add_make_child_deferred(
+            target_type,
+            child_type_identifier,
+            identifier,
+            node_attributes,
+            mount_reference,
+        );
+        const type_reference = MakeChildNode.get_type_reference(make_child);
+        try linker_mod.Linker.link_type_reference(self.self_node.g, type_reference, child_type);
+        return make_child;
+    }
+
+    /// Create a MakeChild node without linking the type reference.
+    /// Use this when the child type node is not yet available (e.g., external imports).
+    /// Caller must call Linker.link_type_reference() later.
+    /// mount_reference: Create child under different parent. WARNING DO NOT USE THIS!
+    pub fn add_make_child_deferred(
         self: *@This(),
         target_type: BoundNodeReference,
         child_type_identifier: str,
@@ -699,7 +644,7 @@ pub const TypeGraph = struct {
         root_type: BoundNodeReference,
         identifier: []const u8,
         parent_path: []const []const u8,
-    ) error{ ChildNotFound, OutOfMemory }!BoundNodeReference {
+    ) error{ChildNotFound}!BoundNodeReference {
         const FindCtx = struct {
             identifier: []const u8,
             parent_path: []const []const u8,
@@ -751,7 +696,7 @@ pub const TypeGraph = struct {
         switch (visit_result) {
             .OK => |make_child| return make_child,
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
+                error.OutOfMemory => @panic("OOM"),
                 else => unreachable,
             },
             else => return error.ChildNotFound,
@@ -771,7 +716,7 @@ pub const TypeGraph = struct {
         type_node: BoundNodeReference,
         path: []const []const u8,
         failure: ?*?PathResolutionFailure,
-    ) error{ ChildNotFound, OutOfMemory, UnresolvedTypeReference }!ResolveResult {
+    ) error{ ChildNotFound, UnresolvedTypeReference }!ResolveResult {
         if (failure) |f| f.* = null;
         if (path.len == 0) {
             if (failure) |f| {
@@ -889,58 +834,67 @@ pub const TypeGraph = struct {
         }
 
         const str_path: []const str = path;
-        return ChildReferenceNode.create_and_insert(self, str_path) catch |err| switch (err) {
-            error.ChildNotFound => {
-                if (failure) |f| f.* = local_failure;
-                return err;
-            },
-            else => return err,
+        return ChildReferenceNode.create_and_insert(self, str_path);
+    }
+
+    pub fn visit_make_children(
+        self: *@This(),
+        type_node: BoundNodeReference,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            ctx: *anyopaque,
+            cb: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
+                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+                const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
+                return visitor_.cb(visitor_.ctx, MakeChildInfo{
+                    .identifier = identifier,
+                    .make_child = make_child,
+                });
+            }
         };
+        var visitor_ = Visit{ .ctx = ctx, .cb = f };
+        return EdgeComposition.visit_children_of_type(type_node, self.get_MakeChild().node, T, &visitor_, Visit.visit);
     }
 
     /// Return every MakeChild belonging to `type_node` without filtering or
     /// reordering. Python tests consume this instead of manually walking
     /// EdgeComposition edges so Zig stays the single source of truth for which
     /// children exist.
-    pub fn iter_make_children(
+    pub fn collect_make_children(
         self: *@This(),
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
-    ) error{OutOfMemory}![]MakeChildInfo {
+    ) []MakeChildInfo {
         var list = std.ArrayList(MakeChildInfo).init(allocator);
-        errdefer list.deinit();
 
-        const Ctx = struct {
-            list: *std.ArrayList(MakeChildInfo),
+        const Collector = struct {
+            list_ptr: *std.ArrayList(MakeChildInfo),
+
+            pub fn collect(ctx_ptr: *anyopaque, info: MakeChildInfo) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                ctx.list_ptr.append(info) catch @panic("OOM");
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
         };
 
-        var ctx = Ctx{ .list = &list };
-
-        const result = EdgeComposition.visit_children_of_type(
-            type_node,
-            self.get_MakeChild().node,
-            void,
-            &ctx,
-            struct {
-                pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                    const ctx_ptr: *Ctx = @ptrCast(@alignCast(self_ptr));
-                    const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-                    const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
-                    ctx_ptr.list.append(MakeChildInfo{
-                        .identifier = identifier,
-                        .make_child = make_child,
-                    }) catch return visitor.VisitResult(void){ .ERROR = error.OutOfMemory };
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
-            }.visit,
-        );
+        var collector = Collector{ .list_ptr = &list };
+        const result = self.visit_make_children(type_node, void, &collector, Collector.collect);
 
         switch (result) {
-            .ERROR => return error.OutOfMemory,
+            .ERROR => |err| switch (err) {
+                error.OutOfMemory => @panic("OOM"),
+                else => unreachable,
+            },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
     /// Walk a Reference chain and return the individual identifiers. Reference
@@ -950,7 +904,7 @@ pub const TypeGraph = struct {
         self: *@This(),
         allocator: std.mem.Allocator,
         reference: BoundNodeReference,
-    ) error{ OutOfMemory, InvalidReference }![]const []const u8 {
+    ) error{InvalidReference}![]const []const u8 {
         _ = self;
 
         var segments = std.ArrayList([]const u8).init(allocator);
@@ -962,7 +916,7 @@ pub const TypeGraph = struct {
             if (identifier.len == 0) {
                 return error.InvalidReference;
             }
-            try segments.append(identifier);
+            segments.append(identifier) catch @panic("OOM");
 
             const next_node = EdgeNext.get_next_node_from_node(current);
             if (next_node) |_next| {
@@ -976,173 +930,206 @@ pub const TypeGraph = struct {
             return error.InvalidReference;
         }
 
-        return segments.toOwnedSlice();
+        return segments.toOwnedSlice() catch @panic("OOM");
     }
 
-    fn free_link_paths(allocator: std.mem.Allocator, info: MakeLinkInfo) void {
-        allocator.free(info.lhs_path);
-        allocator.free(info.rhs_path);
+    pub fn visit_make_links(
+        self: *@This(),
+        type_node: BoundNodeReference,
+        allocator: std.mem.Allocator,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, MakeLinkInfo) visitor.VisitResult(T),
+    ) visitor.VisitResult(T) {
+        const Visit = struct {
+            type_graph: *TypeGraph,
+            allocator: std.mem.Allocator,
+            ctx: *anyopaque,
+            cb: *const fn (*anyopaque, MakeLinkInfo) visitor.VisitResult(T),
+
+            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
+                const make_link = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+
+                const lhs_ref = EdgeComposition.get_child_by_identifier(make_link, "lhs");
+                const rhs_ref = EdgeComposition.get_child_by_identifier(make_link, "rhs");
+                if (lhs_ref == null or rhs_ref == null) {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                }
+
+                const lhs_path = visitor_.type_graph.get_reference_path(visitor_.allocator, lhs_ref.?) catch |err| {
+                    return visitor.VisitResult(T){ .ERROR = err };
+                };
+                var lhs_keep = true;
+                defer if (lhs_keep) visitor_.allocator.free(lhs_path);
+
+                const rhs_path = visitor_.type_graph.get_reference_path(visitor_.allocator, rhs_ref.?) catch |err| {
+                    return visitor.VisitResult(T){ .ERROR = err };
+                };
+                var rhs_keep = true;
+                defer if (rhs_keep) visitor_.allocator.free(rhs_path);
+
+                const result = visitor_.cb(visitor_.ctx, MakeLinkInfo{
+                    .make_link = make_link,
+                    .lhs_path = lhs_path,
+                    .rhs_path = rhs_path,
+                });
+
+                switch (result) {
+                    .CONTINUE => {
+                        lhs_keep = false;
+                        rhs_keep = false;
+                    },
+                    .OK => {
+                        lhs_keep = false;
+                        rhs_keep = false;
+                    },
+                    else => {},
+                }
+
+                return result;
+            }
+        };
+        var visitor_ = Visit{
+            .type_graph = self,
+            .allocator = allocator,
+            .ctx = ctx,
+            .cb = f,
+        };
+        return EdgeComposition.visit_children_of_type(type_node, self.get_MakeLink().node, T, &visitor_, Visit.visit);
     }
 
     /// Enumerate MakeLink nodes together with their resolved reference paths so
     /// callers do not need to expand the `lhs`/`rhs` chains manually.
-    pub fn iter_make_links(
+    pub fn collect_make_links(
         self: *@This(),
         allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
-    ) error{ OutOfMemory, InvalidReference }![]MakeLinkInfo {
+    ) error{InvalidReference}![]MakeLinkInfo {
         var list = std.ArrayList(MakeLinkInfo).init(allocator);
         errdefer {
             for (list.items) |info| {
-                free_link_paths(allocator, info);
+                allocator.free(info.lhs_path);
+                allocator.free(info.rhs_path);
             }
             list.deinit();
         }
 
-        const VisitCtx = struct {
-            type_graph: *TypeGraph,
-            allocator: std.mem.Allocator,
-            list: *std.ArrayList(MakeLinkInfo),
+        const Collector = struct {
+            list_ptr: *std.ArrayList(MakeLinkInfo),
+
+            pub fn collect(ctx_ptr: *anyopaque, info: MakeLinkInfo) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                ctx.list_ptr.append(info) catch @panic("OOM");
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
         };
 
-        var ctx = VisitCtx{
-            .type_graph = self,
-            .allocator = allocator,
-            .list = &list,
-        };
-
-        const visit_result = EdgeComposition.visit_children_of_type(
-            type_node,
-            self.get_MakeLink().node,
-            void,
-            &ctx,
-            struct {
-                pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                    const ctx_ptr: *VisitCtx = @ptrCast(@alignCast(self_ptr));
-                    const make_link = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-
-                    const lhs_ref = EdgeComposition.get_child_by_identifier(make_link, "lhs");
-                    const rhs_ref = EdgeComposition.get_child_by_identifier(make_link, "rhs");
-                    if (lhs_ref == null or rhs_ref == null) {
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
-                    }
-
-                    const lhs_path = ctx_ptr.type_graph.get_reference_path(ctx_ptr.allocator, lhs_ref.?) catch |err| {
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
-                    var lhs_keep = true;
-                    defer if (lhs_keep) ctx_ptr.allocator.free(lhs_path);
-
-                    const rhs_path = ctx_ptr.type_graph.get_reference_path(ctx_ptr.allocator, rhs_ref.?) catch |err| {
-                        if (lhs_keep) ctx_ptr.allocator.free(lhs_path);
-                        return visitor.VisitResult(void){ .ERROR = err };
-                    };
-                    var rhs_keep = true;
-                    defer if (rhs_keep) ctx_ptr.allocator.free(rhs_path);
-
-                    ctx_ptr.list.append(MakeLinkInfo{
-                        .make_link = make_link,
-                        .lhs_path = lhs_path,
-                        .rhs_path = rhs_path,
-                    }) catch |append_err| {
-                        return visitor.VisitResult(void){ .ERROR = append_err };
-                    };
-
-                    lhs_keep = false;
-                    rhs_keep = false;
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
-                }
-            }.visit,
-        );
+        var collector = Collector{ .list_ptr = &list };
+        const visit_result = self.visit_make_links(type_node, allocator, void, &collector, Collector.collect);
 
         switch (visit_result) {
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidReference => return error.InvalidReference,
-                else => unreachable,
+                else => @panic("OOM"),
             },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
-    /// Enumerate pointer-sequence elements mounted under `container_path`. This
-    /// keeps mount-matching inside the TypeGraph so higher layers can treat
-    /// pointer sequences like ordinary lists of children.
-    pub fn iter_pointer_members(
+    pub fn visit_pointer_members(
         self: *@This(),
-        allocator: std.mem.Allocator,
         type_node: BoundNodeReference,
         container_path: []const []const u8,
+        comptime T: type,
+        ctx: *anyopaque,
+        f: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
         failure: ?*?PathResolutionFailure,
-    ) error{ OutOfMemory, UnresolvedTypeReference, ChildNotFound }![]MakeChildInfo {
+    ) error{ UnresolvedTypeReference, ChildNotFound }!visitor.VisitResult(T) {
         var local_failure: ?PathResolutionFailure = null;
         _ = self.resolve_path_segments(type_node, container_path, &local_failure) catch |err| switch (err) {
             error.ChildNotFound => {
-                if (failure) |f| f.* = local_failure;
+                if (failure) |f_ptr| f_ptr.* = local_failure;
                 return err;
             },
             error.UnresolvedTypeReference => {},
             else => return err,
         };
 
-        var list = std.ArrayList(MakeChildInfo).init(allocator);
-        errdefer list.deinit();
-
-        const VisitCtx = struct {
+        const Visit = struct {
             type_graph: *TypeGraph,
-            container_path: []const []const u8,
-            list: *std.ArrayList(MakeChildInfo),
-        };
+            container_path_: []const []const u8,
+            ctx: *anyopaque,
+            cb: *const fn (*anyopaque, MakeChildInfo) visitor.VisitResult(T),
 
-        var ctx = VisitCtx{
-            .type_graph = self,
-            .container_path = container_path,
-            .list = &list,
-        };
+            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(T) {
+                const visitor_: *@This() = @ptrCast(@alignCast(self_ptr));
+                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
 
-        const visit_result = EdgeComposition.visit_children_of_type(
-            type_node,
-            self.get_MakeChild().node,
-            void,
-            &ctx,
-            struct {
-                pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
-                    const ctx_ptr: *VisitCtx = @ptrCast(@alignCast(self_ptr));
-                    const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
+                const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
+                    return visitor.VisitResult(T){ .CONTINUE = {} };
+                };
 
-                    const identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier() orelse {
-                        return visitor.VisitResult(void){ .CONTINUE = {} };
-                    };
-
-                    if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
-                        if (!ctx_ptr.type_graph.reference_matches_path(mount_reference, ctx_ptr.container_path)) {
-                            return visitor.VisitResult(void){ .CONTINUE = {} };
-                        }
-
-                        ctx_ptr.list.append(MakeChildInfo{
-                            .identifier = identifier,
-                            .make_child = make_child,
-                        }) catch |append_err| {
-                            return visitor.VisitResult(void){ .ERROR = append_err };
-                        };
+                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
+                    if (!visitor_.type_graph.reference_matches_path(mount_reference, visitor_.container_path_)) {
+                        return visitor.VisitResult(T){ .CONTINUE = {} };
                     }
 
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                    return visitor_.cb(visitor_.ctx, MakeChildInfo{
+                        .identifier = identifier,
+                        .make_child = make_child,
+                    });
                 }
-            }.visit,
-        );
+
+                return visitor.VisitResult(T){ .CONTINUE = {} };
+            }
+        };
+
+        var visitor_ = Visit{
+            .type_graph = self,
+            .container_path_ = container_path,
+            .ctx = ctx,
+            .cb = f,
+        };
+        return EdgeComposition.visit_children_of_type(type_node, self.get_MakeChild().node, T, &visitor_, Visit.visit);
+    }
+
+    /// Enumerate pointer-sequence elements mounted under `container_path`. This
+    /// keeps mount-matching inside the TypeGraph so higher layers can treat
+    /// pointer sequences like ordinary lists of children.
+    pub fn collect_pointer_members(
+        self: *@This(),
+        allocator: std.mem.Allocator,
+        type_node: BoundNodeReference,
+        container_path: []const []const u8,
+        failure: ?*?PathResolutionFailure,
+    ) error{ UnresolvedTypeReference, ChildNotFound }![]MakeChildInfo {
+        var list = std.ArrayList(MakeChildInfo).init(allocator);
+
+        const Collector = struct {
+            list_ptr: *std.ArrayList(MakeChildInfo),
+
+            pub fn collect(ctx_ptr: *anyopaque, info: MakeChildInfo) visitor.VisitResult(void) {
+                const ctx: *@This() = @ptrCast(@alignCast(ctx_ptr));
+                ctx.list_ptr.append(info) catch @panic("OOM");
+                return visitor.VisitResult(void){ .CONTINUE = {} };
+            }
+        };
+
+        var collector = Collector{ .list_ptr = &list };
+        const visit_result = try self.visit_pointer_members(type_node, container_path, void, &collector, Collector.collect, failure);
 
         switch (visit_result) {
             .ERROR => |err| switch (err) {
-                error.OutOfMemory => return error.OutOfMemory,
+                error.OutOfMemory => @panic("OOM"),
                 else => unreachable,
             },
             else => {},
         }
 
-        return list.toOwnedSlice();
+        return list.toOwnedSlice() catch @panic("OOM");
     }
 
     /// Return the mount-reference chain for `make_child` as ordered child
@@ -1153,16 +1140,15 @@ pub const TypeGraph = struct {
         self: *@This(),
         allocator: std.mem.Allocator,
         make_child: BoundNodeReference,
-    ) error{OutOfMemory}![]const []const u8 {
+    ) []const []const u8 {
         _ = self;
         var chain = std.ArrayList([]const u8).init(allocator);
-        errdefer chain.deinit();
 
         if (MakeChildNode.get_mount_reference(make_child)) |mount_ref| {
             var current = mount_ref;
             while (true) {
                 const identifier = ChildReferenceNode.Attributes.of(current.node).get_child_identifier();
-                try chain.append(identifier);
+                chain.append(identifier) catch @panic("OOM");
 
                 const next_node = EdgeNext.get_next_node_from_node(current);
                 if (next_node) |_next| {
@@ -1184,13 +1170,13 @@ pub const TypeGraph = struct {
                     }
 
                     if (!is_numeric) {
-                        try chain.append(leaf_identifier);
+                        chain.append(leaf_identifier) catch @panic("OOM");
                     }
                 }
             }
         }
 
-        return chain.toOwnedSlice();
+        return chain.toOwnedSlice() catch @panic("OOM");
     }
 
     pub fn instantiate_node(tg: *@This(), type_node: BoundNodeReference) !graph.BoundNodeReference {
@@ -1203,19 +1189,16 @@ pub const TypeGraph = struct {
             type_graph: *TypeGraph,
             parent_instance: graph.BoundNodeReference,
 
-            pub fn visit(self_ptr: *anyopaque, edge: graph.BoundEdgeReference) visitor.VisitResult(void) {
+            pub fn visit(self_ptr: *anyopaque, info: MakeChildInfo) visitor.VisitResult(void) {
                 const self: *@This() = @ptrCast(@alignCast(self_ptr));
 
-                const make_child = edge.g.bind(EdgeComposition.get_child_node(edge.edge));
-
                 // 2.1) Resolve child instructions (identifier and type)
-                const child_identifier = MakeChildNode.Attributes.of(make_child).get_child_identifier();
-                const referenced_type = MakeChildNode.get_child_type(make_child) orelse {
+                const referenced_type = MakeChildNode.get_child_type(info.make_child) orelse {
                     return visitor.VisitResult(void){ .ERROR = error.UnresolvedTypeReference };
                 };
 
                 var attachment_parent = self.parent_instance;
-                if (MakeChildNode.get_mount_reference(make_child)) |mount_reference| {
+                if (MakeChildNode.get_mount_reference(info.make_child)) |mount_reference| {
                     attachment_parent = ChildReferenceNode.resolve(mount_reference, attachment_parent) orelse {
                         return visitor.VisitResult(void){ .ERROR = error.UnresolvedMountReference };
                     };
@@ -1227,10 +1210,10 @@ pub const TypeGraph = struct {
                 };
 
                 // 2.3) Attach child instance to parent instance with the reference name
-                _ = EdgeComposition.add_child(attachment_parent, child.node, child_identifier);
+                _ = EdgeComposition.add_child(attachment_parent, child.node, info.identifier);
 
                 // 2.4) Copy node attributes from MakeChild node to child instance
-                var node_attributes = MakeChildNode.Attributes.of(make_child).get_node_attributes();
+                var node_attributes = MakeChildNode.Attributes.of(info.make_child).get_node_attributes();
                 if (node_attributes.dynamic) |d| {
                     d.copy_into(&child.node.attributes.dynamic);
                     node_attributes.dynamic.?.deinit();
@@ -1244,7 +1227,11 @@ pub const TypeGraph = struct {
             .type_graph = tg,
             .parent_instance = new_instance,
         };
-        _ = EdgeComposition.visit_children_of_type(type_node, tg.get_MakeChild().node, void, &make_child_visitor, VisitMakeChildren.visit);
+        const make_child_result = tg.visit_make_children(type_node, void, &make_child_visitor, VisitMakeChildren.visit);
+        switch (make_child_result) {
+            .ERROR => |err| return err,
+            else => {},
+        }
 
         // 3) Visit MakeLink nodes of type_node
         const VisitMakeLinks = struct {
@@ -1261,13 +1248,16 @@ pub const TypeGraph = struct {
                 const rhs_reference_node = EdgeComposition.get_child_by_identifier(make_link, "rhs");
 
                 if (lhs_reference_node == null or rhs_reference_node == null) {
-                    // TODO: proper error handling - missing operand references
-                    return visitor.VisitResult(void){ .CONTINUE = {} };
+                    return visitor.VisitResult(void){ .ERROR = error.MissingOperandReference };
                 }
 
                 // 3.2) Resolve operand references to actual instance nodes
-                const lhs_resolved = ChildReferenceNode.resolve(lhs_reference_node.?, self.parent_instance).?;
-                const rhs_resolved = ChildReferenceNode.resolve(rhs_reference_node.?, self.parent_instance).?;
+                const lhs_resolved = ChildReferenceNode.resolve(lhs_reference_node.?, self.parent_instance) orelse {
+                    return visitor.VisitResult(void){ .ERROR = error.UnresolvedReference };
+                };
+                const rhs_resolved = ChildReferenceNode.resolve(rhs_reference_node.?, self.parent_instance) orelse {
+                    return visitor.VisitResult(void){ .ERROR = error.UnresolvedReference };
+                };
 
                 // 3.3) Create link between resolved nodes
                 const edge_attributes = MakeLinkNode.Attributes.of(make_link).get_edge_attributes();
@@ -1368,7 +1358,14 @@ pub const TypeGraph = struct {
         };
 
         var counter = Counter{ .counts = &result };
-        _ = EdgeComposition.visit_children_edges(self.self_node, void, &counter, Counter.visit);
+        const visit_result = EdgeComposition.visit_children_edges(self.self_node, void, &counter, Counter.visit);
+        switch (visit_result) {
+            .ERROR => |err| switch (err) {
+                error.OutOfMemory => @panic("OOM"),
+                else => {},
+            },
+            else => {},
+        }
 
         return result;
     }
@@ -1529,29 +1526,22 @@ test "basic instantiation" {
     // Build type graph
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    const capacitor_p1 = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
-    const capacitor_p2 = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    const res_p1_makechild = try tg.add_make_child(Resistor, "Electrical", "p1", null, null);
+    const res_p1_makechild = try tg.add_make_child(Resistor, Electrical, "p1", null, null);
     std.debug.print("RES_P1_MAKECHILD: {s}\n", .{try EdgeComposition.get_name(EdgeComposition.get_parent_edge(res_p1_makechild).?.edge)});
-    const res_p2_makechild = try tg.add_make_child(Resistor, "Electrical", "p2", null, null);
-    const res_cap1_makechild = try tg.add_make_child(Resistor, "Capacitor", "cap1", null, null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
+    _ = try tg.add_make_child(Resistor, Capacitor, "cap1", null, null);
 
     var node_attrs = TypeGraph.MakeChildNode.build(a, "test_string");
-    const capacitor_tp = try tg.add_make_child(
+    _ = try tg.add_make_child(
         Capacitor,
-        "Electrical",
+        Electrical,
         "tp",
         &node_attrs,
         null,
     );
-
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p1), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_p2), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(capacitor_tp), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1_makechild), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2_makechild), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_cap1_makechild), Capacitor);
 
     // Build instance graph
     const resistor = try tg.instantiate_node(Resistor);
@@ -1635,23 +1625,17 @@ test "typegraph iterators and mount chains" {
     var tg = TypeGraph.init(&g);
 
     const top = try tg.add_type("Top");
-    _ = try tg.add_type("Inner");
-    _ = try tg.add_type("PointerSequence");
+    const Inner = try tg.add_type("Inner");
+    const PointerSequence = try tg.add_type("PointerSequence");
 
-    const members = try tg.add_make_child(top, "PointerSequence", "members", null, null);
-    const base = try tg.add_make_child(top, "Inner", "base", null, null);
-    _ = base;
-
+    const members = try tg.add_make_child(top, PointerSequence, "members", null, null);
+    _ = try tg.add_make_child(top, Inner, "base", null, null);
     const base_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{"base"});
-    const extra = try tg.add_make_child(top, "Inner", "extra", null, base_reference);
-
+    const extra = try tg.add_make_child(top, Inner, "extra", null, base_reference);
     const container_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{"members"});
-    const element0 = try tg.add_make_child(top, "Inner", "0", null, container_reference);
-    const element1 = try tg.add_make_child(top, "Inner", "1", null, container_reference);
-    _ = element1;
-
+    const element0 = try tg.add_make_child(top, Inner, "0", null, container_reference);
+    _ = try tg.add_make_child(top, Inner, "1", null, container_reference);
     const extra_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{"extra"});
-
     const link_attrs = EdgeCreationAttributes{
         .edge_type = EdgePointer.tid,
         .directional = true,
@@ -1660,7 +1644,7 @@ test "typegraph iterators and mount chains" {
     };
     _ = try tg.add_make_link(top, base_reference, extra_reference, link_attrs);
 
-    const children = try tg.iter_make_children(a, top);
+    const children = tg.collect_make_children(a, top);
     defer a.free(children);
     try std.testing.expectEqual(@as(usize, 5), children.len);
 
@@ -1683,7 +1667,7 @@ test "typegraph iterators and mount chains" {
     try std.testing.expect(seen_zero);
     try std.testing.expect(seen_one);
 
-    const detailed_links = try tg.iter_make_links(a, top);
+    const detailed_links = try tg.collect_make_links(a, top);
     defer {
         for (detailed_links) |info| {
             a.free(info.lhs_path);
@@ -1707,22 +1691,22 @@ test "typegraph iterators and mount chains" {
     try std.testing.expectEqual(@as(usize, 1), lhs_path.len);
     try std.testing.expectEqualStrings("base", lhs_path[0]);
 
-    const chain_members = try tg.get_mount_chain(a, members);
+    const chain_members = tg.get_mount_chain(a, members);
     defer a.free(chain_members);
     try std.testing.expectEqual(@as(usize, 0), chain_members.len);
 
-    const chain_element0 = try tg.get_mount_chain(a, element0);
+    const chain_element0 = tg.get_mount_chain(a, element0);
     defer a.free(chain_element0);
     try std.testing.expectEqual(@as(usize, 1), chain_element0.len);
     try std.testing.expect(std.mem.eql(u8, chain_element0[0], "members"));
 
-    const chain_extra = try tg.get_mount_chain(a, extra);
+    const chain_extra = tg.get_mount_chain(a, extra);
     defer a.free(chain_extra);
     try std.testing.expectEqual(@as(usize, 2), chain_extra.len);
     try std.testing.expect(std.mem.eql(u8, chain_extra[0], "base"));
     try std.testing.expect(std.mem.eql(u8, chain_extra[1], "extra"));
 
-    const pointer_members = try tg.iter_pointer_members(a, top, &.{"members"}, null);
+    const pointer_members = try tg.collect_pointer_members(a, top, &.{"members"}, null);
     defer a.free(pointer_members);
     try std.testing.expectEqual(@as(usize, 2), pointer_members.len);
     try std.testing.expect(pointer_members[0].identifier != null);
@@ -1742,17 +1726,11 @@ test "get_type_instance_overview" {
     // Build type graph with some types
     const Electrical = try tg.add_type("Electrical");
     const Capacitor = try tg.add_type("Capacitor");
-    const cap_p1 = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
-    const cap_p2 = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null);
     const Resistor = try tg.add_type("Resistor");
-    const res_p1 = try tg.add_make_child(Resistor, "Electrical", "p1", null, null);
-    const res_p2 = try tg.add_make_child(Resistor, "Electrical", "p2", null, null);
-
-    // Link type references
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p1), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(res_p2), Electrical);
+    _ = try tg.add_make_child(Resistor, Electrical, "p1", null, null);
+    _ = try tg.add_make_child(Resistor, Electrical, "p2", null, null);
 
     // Create some instances
     _ = try tg.instantiate_node(Capacitor);
@@ -1806,18 +1784,13 @@ test "get_type_subgraph" {
     const implements_trait_instance = try tg.instantiate_node(tg.get_ImplementsTrait());
     _ = EdgeTrait.add_trait_instance(SomeTrait, implements_trait_instance.node);
     const Electrical = try tg.add_type("Electrical");
-    const elec_trait = try tg.add_make_child(Electrical, "SomeTrait", "trait", null, null);
+    _ = try tg.add_make_child(Electrical, SomeTrait, "trait", null, null);
     const trait_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{"trait"});
     const self_reference = try TypeGraph.ChildReferenceNode.create_and_insert(&tg, &.{""});
     _ = try tg.add_make_link(Electrical, trait_reference, self_reference, EdgeTrait.build());
     const Capacitor = try tg.add_type("Capacitor");
-    const cap_p1_mc = try tg.add_make_child(Capacitor, "Electrical", "p1", null, null);
-    const cap_p2_mc = try tg.add_make_child(Capacitor, "Electrical", "p2", null, null);
-
-    // Link type references
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(elec_trait), SomeTrait);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p1_mc), Electrical);
-    try Linker.link_type_reference(&g, TypeGraph.MakeChildNode.get_type_reference(cap_p2_mc), Electrical);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p1", null, null);
+    _ = try tg.add_make_child(Capacitor, Electrical, "p2", null, null);
 
     // Create some instances (these should NOT be in the type subgraph)
     const capacitor_instance = try tg.instantiate_node(Capacitor);

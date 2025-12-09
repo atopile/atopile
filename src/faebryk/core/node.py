@@ -20,7 +20,6 @@ from typing_extensions import Callable, deprecated
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.libs.util import (
     KeyErrorNotFound,
     Tree,
@@ -259,25 +258,16 @@ class InstanceChildBoundType[T: NodeT](ChildAccessor[T]):
         if isinstance(identifier, PLACEHOLDER):
             raise FabLLException("Placeholder identifier not allowed")
 
-        make_child = self.t.tg.add_make_child(
+        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
+
+        self.t.tg.add_make_child(
             type_node=self.t.get_or_create_type(),
-            child_type_identifier=self.nodetype._type_identifier(),
+            child_type=child_type_node,
             identifier=identifier,
             node_attributes=self.attributes.to_node_attributes()
             if self.attributes is not None
             else None,
             mount_reference=None,
-        )
-
-        type_reference = not_none(
-            self.t.tg.get_make_child_type_reference(make_child=make_child)
-        )
-        child_type_node = self.nodetype.bind_typegraph(self.t.tg).get_or_create_type()
-
-        Linker.link_type_reference(
-            g=self.t.tg.get_graph_view(),
-            type_reference=type_reference,
-            target_type_node=child_type_node,
         )
 
     def get(self) -> T:
@@ -800,6 +790,9 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
             elif isinstance(field, Traits.ImpliedTrait):
                 bound_implied_trait = field.bind(node=self)
                 setattr(self, field.get_locator(), bound_implied_trait)
+            elif isinstance(field, Traits.OptionalImpliedTrait):
+                bound_optional_trait = field.bind(node=self)
+                setattr(self, field.get_locator(), bound_optional_trait)
             elif isinstance(field, ListField):
                 list_attr = list[InstanceChildBoundInstance[Any]]()
                 for nested_field in field.get_fields():
@@ -1843,9 +1836,49 @@ class Traits:
         def get(self) -> T:
             raise ValueError("SiblingField is not bound to a node")
 
-        # TODO call this during Node.__init__
         def bind(self, node: NodeT) -> "Traits._BoundImpliedTrait[T]":
             return Traits._BoundImpliedTrait(sibling_type=self._sibling_type, node=node)
+
+    # Lazy trait reference for OptionalImpliedTrait: direct type or lambda
+    LazyTraitRef = type[NodeT] | Callable[[], type[NodeT]]
+
+    @staticmethod
+    def _resolve_ref(ref: "Traits.LazyTraitRef") -> type[NodeT]:
+        """Resolve a trait reference: if callable, call it; otherwise return as-is."""
+        return ref() if callable(ref) and not isinstance(ref, type) else ref
+
+    class _BoundOptionalImpliedTrait[T: NodeT](ChildAccessor[T]):
+        def __init__(self, trait_type: "Traits.LazyTraitRef", node: NodeT):
+            self._trait_type_ref = trait_type
+            self._node = node
+
+        def get(self) -> T | None:
+            trait_type = Traits._resolve_ref(self._trait_type_ref)
+            return cast(T, self._node.try_get_sibling_trait(trait_type))
+
+        def force_get(self) -> T:
+            return not_none(self.get())
+
+    class OptionalImpliedTrait[T: NodeT](Field, ChildAccessor[T]):
+        def __init__(
+            self,
+            trait_type: "Traits.LazyTraitRef",
+            *,
+            identifier: str | None | PLACEHOLDER = PLACEHOLDER(),
+        ):
+            super().__init__(identifier=identifier)
+            self._trait_type_ref = trait_type
+
+        def get(self) -> T | None:
+            raise ValueError("SiblingField is not bound to a node")
+
+        def force_get(self) -> T:
+            raise ValueError("SiblingField is not bound to a node")
+
+        def bind(self, node: NodeT) -> "Traits._BoundOptionalImpliedTrait[T]":
+            return Traits._BoundOptionalImpliedTrait(
+                trait_type=self._trait_type_ref, node=node
+            )
 
 
 class ImplementsTrait(Node):
@@ -1875,9 +1908,7 @@ class MakeChild(Node):
                 bound_node=self.instance, child_identifier="type_ref"
             )
         )
-        resolved_type = fbrk.EdgePointer.get_pointed_node_by_identifier(
-            bound_node=typeref, identifier="resolved"
-        )
+        resolved_type = fbrk.Linker.get_resolved_type(type_reference=typeref)
         if not resolved_type:
             raise ValueError("Type not linked yet")
         return resolved_type
@@ -2078,12 +2109,25 @@ class TreeRenderer:
                     return str(values[0])
                 elif values:
                     return TreeRenderer.format_list(values)
-            case "Numerics":
-                values = list(F.Literals.Numerics.bind_instance(node).get_values())
-                if len(values) == 1:
-                    return str(values[0])
-                elif values:
-                    return TreeRenderer.format_list(values)
+            case "NumericSet":
+                numeric_set = F.Literals.NumericSet.bind_instance(node)
+                try:
+                    values = list(numeric_set.get_values())
+                    if len(values) == 1:
+                        return str(values[0])
+                    elif values:
+                        return TreeRenderer.format_list(values)
+                except F.Literals.NotSingletonError:
+                    intervals = numeric_set.get_intervals()
+                    if len(intervals) == 1:
+                        i = intervals[0]
+                        return f"[{i.get_min_value()}, {i.get_max_value()}]"
+                    return TreeRenderer.format_list(
+                        [
+                            f"[{i.get_min_value()}, {i.get_max_value()}]"
+                            for i in intervals
+                        ]
+                    )
             case "AnyLiteral":
                 value = F.Literals.AnyLiteral.bind_instance(node).get_value()
                 if isinstance(value, str):
@@ -2406,7 +2450,7 @@ def test_set_basic():
         pass
 
     # Create a Set and some elements
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -2444,7 +2488,7 @@ def test_set_deduplication():
     class Element(Node):
         pass
 
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
 
@@ -2477,7 +2521,7 @@ def test_set_order_preservation():
     class Element(Node):
         pass
 
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -2512,7 +2556,7 @@ def test_set_chaining():
     class Element(Node):
         pass
 
-    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore
+    set_node = Collections.PointerSet.bind_typegraph(tg).create_instance(g=g)  # type: ignore[arg-type]
     elem1 = Element.bind_typegraph(tg).create_instance(g=g)
     elem2 = Element.bind_typegraph(tg).create_instance(g=g)
     elem3 = Element.bind_typegraph(tg).create_instance(g=g)
@@ -2620,8 +2664,8 @@ def test_kicad_footprint():
     import faebryk.library._F as F
 
     _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
-    pad1 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
-    pad2 = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
         F.KiCadFootprints.is_kicad_footprint.bind_typegraph(tg=tg)

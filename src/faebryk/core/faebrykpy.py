@@ -1,6 +1,7 @@
 from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
 from faebryk.core.zig.gen.faebryk.edgebuilder import EdgeCreationAttributes
 from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
+from faebryk.core.zig.gen.faebryk.linker import Linker
 from faebryk.core.zig.gen.faebryk.next import EdgeNext
 from faebryk.core.zig.gen.faebryk.node_type import EdgeType
 from faebryk.core.zig.gen.faebryk.nodebuilder import NodeCreationAttributes
@@ -16,6 +17,7 @@ __all__ = [
     "EdgeNext",
     "EdgeOperand",
     "EdgeType",
+    "Linker",
     "NodeCreationAttributes",
     "EdgeOperand",
     "EdgePointer",

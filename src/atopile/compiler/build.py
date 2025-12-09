@@ -31,6 +31,16 @@ class LinkerException(Exception):
     pass
 
 
+class UnresolvedTypeReferencesError(LinkerException):
+    def __init__(
+        self,
+        message: str,
+        unresolved_type_references: list[tuple[BoundNode, BoundNode]],
+    ) -> None:
+        super().__init__(message)
+        self.unresolved_type_references = unresolved_type_references
+
+
 class ImportPathNotFoundError(LinkerException):
     pass
 
@@ -212,8 +222,12 @@ class Linker:
                 ),
             )
 
-        if build_state.type_graph.collect_unresolved_type_references():
-            raise LinkerException("Unresolved type references remaining after linking")
+        if unresolved := _Linker.collect_unresolved_type_references(
+            type_graph=build_state.type_graph
+        ):
+            raise UnresolvedTypeReferencesError(
+                "Unresolved type references remaining after linking", unresolved
+            )
 
     def _link_from_cache(
         self,

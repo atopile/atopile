@@ -64,7 +64,7 @@ class FileLocation(fabll.Node):
     end_line = F.Literals.Counts.MakeChild()
     end_col = F.Literals.Counts.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, start_line: int, start_col: int, end_line: int, end_col: int
     ) -> Self:
         self.start_line.get().setup_from_values(values=[start_line])
@@ -90,7 +90,7 @@ class SourceChunk(fabll.Node):
     text = F.Literals.Strings.MakeChild()
     loc = FileLocation.MakeChild()
 
-    def setup(self, source_info: SourceInfo) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo) -> Self:  # type: ignore[invalid-method-override]
         self.text.get().setup_from_values(source_info.text)
         self.loc.get().setup(
             start_line=source_info.start_line,
@@ -105,7 +105,7 @@ class TypeRef(fabll.Node):
     name = F.Literals.Strings.MakeChild()
     source = SourceChunk.MakeChild()
 
-    def setup(self, name: str, source_info: SourceInfo) -> Self:  # type: ignore
+    def setup(self, name: str, source_info: SourceInfo) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.name.get().setup_from_values(name)
         return self
@@ -115,7 +115,7 @@ class ImportPath(fabll.Node):
     source = SourceChunk.MakeChild()
     path = F.Literals.Strings.MakeChild()
 
-    def setup(self, path: str, source_info: SourceInfo) -> Self:  # type: ignore
+    def setup(self, path: str, source_info: SourceInfo) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.path.get().setup_from_values(path)
         return self
@@ -132,7 +132,7 @@ class FieldRefPart(fabll.Node):
     name = F.Literals.Strings.MakeChild()
     key = F.Literals.Strings.MakeChild()
 
-    def setup(self, info: Info) -> Self:  # type: ignore
+    def setup(self, info: Info) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=info.source_info)
         self.name.get().setup_from_values(info.name)
 
@@ -158,7 +158,7 @@ class FieldRef(fabll.Node):
     pin = F.Literals.Strings.MakeChild()
     parts = Collections.PointerSequence.MakeChild()  # TODO: specify child type
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, parts: Iterable[FieldRefPart.Info]
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -182,11 +182,11 @@ class FieldRef(fabll.Node):
 
 class Decimal(fabll.Node):
     source = SourceChunk.MakeChild()
-    value = F.Literals.Numerics.MakeChild()
+    value = F.Literals.NumericSet.MakeChild_Empty()
 
-    def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
-        self.value.get().setup_from_values(float(value))
+        self.value.get().setup_from_singleton(float(value))
         return self
 
 
@@ -194,7 +194,7 @@ class Integer(fabll.Node):
     source = SourceChunk.MakeChild()
     value = F.Literals.Counts.MakeChild()
 
-    def setup(self, source_info: SourceInfo, value: int) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo, value: int) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.value.get().setup_from_values(values=[value])
         return self
@@ -213,7 +213,7 @@ class Boolean(fabll.Node):
     source = SourceChunk.MakeChild()
     value = F.Literals.Booleans.MakeChild()
 
-    def setup(self, source_info: SourceInfo, value: bool) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo, value: bool) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.value.get().setup_from_values(value)
         return self
@@ -223,7 +223,7 @@ class Unit(fabll.Node):
     source = SourceChunk.MakeChild()
     symbol = F.Literals.Strings.MakeChild()
 
-    def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo, symbol: str) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.symbol.get().setup_from_values(symbol)
         return self
@@ -238,7 +238,7 @@ class Quantity(fabll.Node):
     number = Decimal.MakeChild()
     unit = Unit.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         value: int | float,
@@ -264,7 +264,7 @@ class BinaryExpression(fabll.Node):
     lhs = F.Collections.Pointer.MakeChild()  # TODO: required but deferred
     rhs = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         operator: str,
@@ -297,7 +297,7 @@ class GroupExpression(fabll.Node):
     source = SourceChunk.MakeChild()
     expression = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, expression: is_arithmetic
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -324,7 +324,7 @@ class ComparisonClause(fabll.Node):
     )
     rhs = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, operator: str, rhs: is_arithmetic
     ) -> Self:
         operator_ = self.ComparisonOperator(operator)
@@ -343,7 +343,7 @@ class ComparisonExpression(fabll.Node):
     lhs = F.Collections.Pointer.MakeChild()
     rhs_clauses = Collections.PointerSequence.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         lhs: is_arithmetic,
@@ -371,7 +371,7 @@ class BilateralQuantity(fabll.Node):
     quantity = Quantity.MakeChild()
     tolerance = Quantity.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         quantity_value: int | float,
@@ -411,7 +411,7 @@ class BoundedQuantity(fabll.Node):
     start = Quantity.MakeChild()
     end = Quantity.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         start_value: int | float,
@@ -445,7 +445,7 @@ class BoundedQuantity(fabll.Node):
 class Scope(fabll.Node):
     stmts = Collections.PointerSet.MakeChild()
 
-    def setup(self, stmts: Iterable[is_statement]) -> Self:  # type: ignore
+    def setup(self, stmts: Iterable[is_statement]) -> Self:  # type: ignore[invalid-method-override]
         for stmt in stmts:
             stmt_node = fabll.Traits(stmt).get_obj_raw()
             self.stmts.get().append(stmt_node)
@@ -464,7 +464,7 @@ class File(fabll.Node):
     path = F.Literals.Strings.MakeChild()
 
     # TODO: optional path
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         path: str,
@@ -493,7 +493,7 @@ class BlockDefinition(fabll.Node):
     super_type_ref = TypeRef.MakeChild()
     scope = Scope.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         block_type: str,
@@ -546,7 +546,7 @@ class Slice(fabll.Node):
     stop = Integer.MakeChild()
     step = Integer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         start: tuple[int, SourceInfo] | None = None,
@@ -582,7 +582,7 @@ class IterableFieldRef(fabll.Node):
     field = F.Collections.Pointer.MakeChild()
     slice = Slice.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         field_ref: FieldRef,
@@ -623,7 +623,7 @@ class FieldRefList(fabll.Node):
     source = SourceChunk.MakeChild()
     items = Collections.PointerSequence.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, items: Iterable[FieldRef]
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -643,7 +643,7 @@ class ForStmt(fabll.Node):
     target = F.Literals.Strings.MakeChild()
     iterable = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         target: str,
@@ -669,7 +669,7 @@ class PragmaStmt(fabll.Node):
     source = SourceChunk.MakeChild()
     pragma = F.Literals.Strings.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, pragma: str
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -690,7 +690,7 @@ class ImportStmt(fabll.Node):
     path = ImportPath.MakeChild()
     type_ref = TypeRef.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         type_ref_name: str,
@@ -722,7 +722,7 @@ class TemplateArg(fabll.Node):
     name = F.Literals.Strings.MakeChild()
     value = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, name: str, value: "LiteralT"
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -746,7 +746,7 @@ class Template(fabll.Node):
     source = SourceChunk.MakeChild()
     args = Collections.PointerSequence.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, args: Iterable[TemplateArg]
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -766,7 +766,7 @@ class NewExpression(fabll.Node):
     template = Template.MakeChild()
     new_count = Integer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         type_ref_name: str,
@@ -804,7 +804,7 @@ class String(fabll.Node):
     source = SourceChunk.MakeChild()
     text = F.Literals.Strings.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, text: str
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -816,7 +816,7 @@ class Assignable(fabll.Node):
     source = SourceChunk.MakeChild()
     value = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, value: is_assignable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -835,7 +835,7 @@ class Assignment(fabll.Node):
     target = F.Collections.Pointer.MakeChild()
     assignable = Assignable.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         target_field_ref: FieldRef,
@@ -861,7 +861,7 @@ class ConnectStmt(fabll.Node):
     lhs = F.Collections.Pointer.MakeChild()
     rhs = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, lhs: is_connectable, rhs: is_connectable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -892,7 +892,7 @@ class DirectedConnectStmt(fabll.Node):
     lhs = F.Collections.Pointer.MakeChild()
     rhs = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         direction: "DirectedConnectStmt.Direction",
@@ -922,7 +922,7 @@ class RetypeStmt(fabll.Node):
     target = F.Collections.Pointer.MakeChild()
     new_type_ref = TypeRef.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         target_field_ref: FieldRef,
@@ -955,7 +955,7 @@ class PinDeclaration(fabll.Node):
 
     _is_connectable = fabll.Traits.MakeEdge(is_connectable.MakeChild())
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         kind: "PinDeclaration.Kind",
@@ -990,7 +990,7 @@ class SignaldefStmt(fabll.Node):
     source = SourceChunk.MakeChild()
     name = F.Literals.Strings.MakeChild()
 
-    def setup(self, source_info: SourceInfo, name: str) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo, name: str) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         self.name.get().setup_from_values(name)
         return self
@@ -1002,7 +1002,7 @@ class AssertStmt(fabll.Node):
     source = SourceChunk.MakeChild()
     comparison = F.Collections.Pointer.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, source_info: SourceInfo, comparison: ComparisonExpression
     ) -> Self:
         self.source.get().setup(source_info=source_info)
@@ -1021,7 +1021,7 @@ class DeclarationStmt(fabll.Node):
     field_ref = F.Collections.Pointer.MakeChild()
     unit = Unit.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         field_ref: FieldRef,
@@ -1044,7 +1044,7 @@ class StringStmt(fabll.Node):
     source = SourceChunk.MakeChild()
     string = String.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         string_value: str,
@@ -1060,7 +1060,7 @@ class PassStmt(fabll.Node):
 
     source = SourceChunk.MakeChild()
 
-    def setup(self, source_info: SourceInfo) -> Self:  # type: ignore
+    def setup(self, source_info: SourceInfo) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
         return self
 
@@ -1074,7 +1074,7 @@ class TraitStmt(fabll.Node):
     template = Template.MakeChild()
     constructor = F.Literals.Strings.MakeChild()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         source_info: SourceInfo,
         type_ref_name: str,

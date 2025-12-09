@@ -6,7 +6,7 @@ import pytest
 
 from atopile.compiler.ast_visitor import DslException
 from atopile.compiler.build import Linker, build_file, build_source, build_stdlib
-from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+from faebryk.core.zig.gen.faebryk.linker import Linker as _Linker
 from faebryk.core.zig.gen.faebryk.typegraph import TypeGraphPathError
 from faebryk.core.zig.gen.graph.graph import GraphView
 
@@ -14,7 +14,7 @@ NULL_CONFIG = SimpleNamespace(project=None)
 
 
 def _get_make_child(type_graph, type_node, name: str):
-    for identifier, make_child in type_graph.iter_make_children(type_node=type_node):
+    for identifier, make_child in type_graph.collect_make_children(type_node=type_node):
         if identifier == name:
             return make_child
     raise AssertionError(f"expected make child `{name}`")
@@ -23,7 +23,7 @@ def _get_make_child(type_graph, type_node, name: str):
 def _collect_make_links(type_graph, type_node):
     return [
         (make_link, list(lhs_path), list(rhs_path))
-        for make_link, lhs_path, rhs_path in type_graph.iter_make_links(
+        for make_link, lhs_path, rhs_path in type_graph.collect_make_links(
             type_node=type_node
         )
     ]
@@ -66,7 +66,7 @@ def _build_snippet(source: str):
 def _collect_children_by_name(type_graph, type_node, name: str):
     return [
         child
-        for identifier, child in type_graph.iter_make_children(type_node=type_node)
+        for identifier, child in type_graph.collect_make_children(type_node=type_node)
         if identifier == name
     ]
 
@@ -118,7 +118,9 @@ def test_make_child_and_linking():
     res_node = _get_make_child(type_graph, app_type, "res")
     assert type_graph.debug_get_mount_chain(make_child=res_node) == []
 
-    unresolved = result.state.type_graph.collect_unresolved_type_references()
+    unresolved = _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
     assert not unresolved
 
     linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
@@ -126,9 +128,7 @@ def test_make_child_and_linking():
 
     type_ref = type_graph.get_make_child_type_reference(make_child=res_node)
     assert type_ref is not None
-    resolved = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=type_ref, identifier="resolved"
-    )
+    resolved = _Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
 
 
@@ -149,9 +149,7 @@ def test_new_with_count_creates_pointer_sequence():
 
     type_ref = type_graph.get_make_child_type_reference(make_child=members_node)
     assert type_ref is not None
-    resolved = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=type_ref, identifier="resolved"
-    )
+    resolved = _Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
 
     type_graph = result.state.type_graph
@@ -855,7 +853,9 @@ def test_external_import_linking(tmp_path: Path):
     app_type = result.state.type_roots["App"]
     child_node = _get_make_child(type_graph, app_type, "child")
 
-    unresolved = result.state.type_graph.collect_unresolved_type_references()
+    unresolved = _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
     assert unresolved
 
     linker = Linker(NULL_CONFIG, stdlib_registry, stdlib_tg)
@@ -863,7 +863,49 @@ def test_external_import_linking(tmp_path: Path):
 
     type_ref = type_graph.get_make_child_type_reference(make_child=child_node)
     assert type_ref is not None
-    resolved = EdgePointer.get_pointed_node_by_identifier(
-        bound_node=type_ref, identifier="resolved"
-    )
+    resolved = _Linker.get_resolved_type(type_reference=type_ref)
     assert resolved is not None
+
+
+def test_local_type_cannot_shadow_import():
+    """Local type definition cannot shadow imported type of same name."""
+    with pytest.raises(DslException, match="already defined"):
+        _build_snippet(
+            """
+            import Resistor
+
+            module Resistor:
+                pass
+            """
+        )
+
+
+def test_multiple_local_references():
+    """Multiple uses of the same local type should resolve to the same node."""
+    _, _, _, result = _build_snippet(
+        """
+        module Module:
+            pass
+
+        module App:
+            first = new Module
+            second = new Module
+            third = new Module
+        """
+    )
+
+    unresolved = _Linker.collect_unresolved_type_references(
+        type_graph=result.state.type_graph
+    )
+    assert not unresolved
+
+    type_graph = result.state.type_graph
+    app_type = result.state.type_roots["App"]
+    module_type = result.state.type_roots["Module"]
+
+    for identifier, make_child in type_graph.collect_make_children(type_node=app_type):
+        if identifier in ("first", "second", "third"):
+            type_ref = type_graph.get_make_child_type_reference(make_child=make_child)
+            resolved = _Linker.get_resolved_type(type_reference=type_ref)
+            assert resolved is not None
+            assert resolved.node().is_same(other=module_type.node())

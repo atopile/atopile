@@ -12,8 +12,10 @@ import faebryk.core.node as fabll
 from atopile.compiler.parse_utils import AtoRewriter
 from atopile.compiler.parser.AtoParser import AtoParser
 from atopile.compiler.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph
-from faebryk.core.zig.gen.graph.graph import GraphView
+from faebryk.core.zig.gen.faebryk.typegraph import (  # type: ignore[import-untyped]
+    TypeGraph,
+)
+from faebryk.core.zig.gen.graph.graph import GraphView  # type: ignore[import-untyped]
 
 
 class ANTLRVisitor(AtoParserVisitor):
@@ -38,17 +40,17 @@ class ANTLRVisitor(AtoParserVisitor):
     def _extract_source_info(self, ctx: ParserRuleContext) -> AST.SourceInfo:
         start_token = ctx.start
         stop_token = ctx.stop
-        token_stream = ctx.parser.getInputStream()  # type: ignore
+        token_stream = ctx.parser.getInputStream()  # type: ignore[reportOptionalMemberAccess]
         text = AtoRewriter(token_stream).getText(
             TokenStreamRewriter.DEFAULT_PROGRAM_NAME,
-            start_token.tokenIndex,  # type: ignore
-            stop_token.tokenIndex,  # type: ignore
+            start_token.tokenIndex,  # type: ignore[reportOptionalMemberAccess]
+            stop_token.tokenIndex,  # type: ignore[reportOptionalMemberAccess]
         )
         return AST.SourceInfo(
-            start_line=start_token.line,  # type: ignore
-            start_col=start_token.column,  # type: ignore
-            end_line=stop_token.line,  # type: ignore
-            end_col=stop_token.column,  # type: ignore
+            start_line=start_token.line,  # type: ignore[reportOptionalMemberAccess]
+            start_col=start_token.column,  # type: ignore[reportOptionalMemberAccess]
+            end_line=stop_token.line,  # type: ignore[reportOptionalMemberAccess]
+            end_col=stop_token.column,  # type: ignore[reportOptionalMemberAccess]
             text=text,
         )
 

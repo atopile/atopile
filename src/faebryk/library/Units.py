@@ -144,7 +144,7 @@ class _BasisVector(fabll.Node):
     ORIGIN: ClassVar[BasisVector] = BasisVector()
 
     @classmethod
-    def MakeChild(cls, vector: BasisVector) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, vector: BasisVector) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         """
         Create a _BasisVector child field with exponent values set at type level.
         Each basis dimension (ampere, second, meter, etc.) is stored as a Counts child
@@ -168,7 +168,7 @@ class _BasisVector(fabll.Node):
             )
         return out
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, vector: BasisVector
     ) -> Self:
         from faebryk.library.Literals import Counts
@@ -269,7 +269,7 @@ class is_unit(fabll.Node):
     """
 
     @classmethod
-    def MakeChild(  # type: ignore
+    def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         symbols: list[str],
         unit_vector: BasisVector,
@@ -320,7 +320,7 @@ class is_unit(fabll.Node):
         return out
 
     @classmethod
-    def MakeChild_Empty(cls) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild_Empty(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         return fabll._ChildField(cls)
 
     def _extract_multiplier(self) -> float:
@@ -355,7 +355,7 @@ class is_unit(fabll.Node):
             self.basis_vector.get().deref().instance
         ).extract_vector()
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self,
         g: graph.GraphView,
         tg: graph.TypeGraph,
@@ -655,14 +655,14 @@ class has_unit(fabll.Node):
     unit = F.Collections.Pointer.MakeChild()
 
     @classmethod
-    def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:  # type: ignore
+    def MakeChild(cls, unit: type[fabll.NodeT]) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         out = fabll._ChildField(cls)
         unit_field = unit.MakeChild()
         out.add_dependant(unit_field)
         out.add_dependant(F.Collections.Pointer.MakeEdge([out, cls.unit], [unit_field]))
         return out
 
-    def setup(self, unit: is_unit) -> Self:  # type: ignore
+    def setup(self, unit: is_unit) -> Self:  # type: ignore[invalid-method-override]
         unit_node = fabll.Traits(unit).get_obj_raw()
         self.unit.get().point(unit_node)
         return self
@@ -945,7 +945,7 @@ def make_unit_expression_type(
         )
 
         @classmethod
-        def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore
+        def MakeChild(cls) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
             out = fabll._ChildField(cls)
             term_fields = []
 
@@ -993,7 +993,7 @@ def make_unit_expression_type(
 class _AnonymousUnit(fabll.Node):
     is_unit = fabll.Traits.MakeEdge(is_unit.MakeChild_Empty())
 
-    def setup(  # type: ignore
+    def setup(  # type: ignore[invalid-method-override]
         self, vector: BasisVector, multiplier: float = 1.0, offset: float = 0.0
     ) -> Self:
         self.is_unit.get().setup(
@@ -2379,7 +2379,7 @@ class TestUnitExpressions(_TestWithContext):
         divide = (
             F.Expressions.Divide.bind_typegraph(tg=ctx.tg)
             .create_instance(g=ctx.g)
-            .setup(ctx.Meter, ctx.Second)  # type: ignore
+            .setup(ctx.Meter, ctx.Second)  # type: ignore[arg-type]
         )
 
         result = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg).visit_divide(divide)
@@ -2402,7 +2402,7 @@ class TestUnitExpressions(_TestWithContext):
         power = (
             F.Expressions.Power.bind_typegraph(tg=ctx.tg)
             .create_instance(g=ctx.g)
-            .setup(ctx.Meter, exponent_param)  # type: ignore
+            .setup(ctx.Meter, exponent_param)  # type: ignore[arg-type]
         )
 
         result = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg).visit_power(power)
@@ -2452,7 +2452,7 @@ class TestUnitExpressions(_TestWithContext):
         power = (
             F.Expressions.Power.bind_typegraph(tg=ctx.tg)
             .create_instance(g=ctx.g)
-            .setup(base=ctx.Meter, exponent=exponent_param)  # type: ignore
+            .setup(base=ctx.Meter, exponent=exponent_param)  # type: ignore[arg-type]
         )
 
         resolver = _UnitExpressionResolver(g=ctx.g, tg=ctx.tg)

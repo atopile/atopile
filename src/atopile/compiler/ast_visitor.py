@@ -277,7 +277,7 @@ class _TypeContextStack:
 
         assert child_type_identifier is not None
 
-        make_child = self._type_graph.add_make_child(
+        make_child = self._type_graph.add_make_child_deferred(
             type_node=type_node,
             child_type_identifier=child_type_identifier,
             identifier=action.target_path.leaf.identifier,
@@ -290,19 +290,22 @@ class _TypeContextStack:
         )
 
         if symbol is not None and symbol.import_ref:
+            # External imports: defer linking to build phase
             self._state.external_type_refs.append((type_reference, symbol.import_ref))
-            return
+        else:
+            # Local types: link immediately
+            if (
+                target := symbol.type_node
+                if symbol is not None
+                else child_spec.type_node
+            ) is None:
+                raise DslException(
+                    f"Type `{child_type_identifier}` is not defined in scope"
+                )
 
-        if (
-            target := symbol.type_node if symbol is not None else child_spec.type_node
-        ) is None:
-            raise DslException(
-                f"Type `{child_type_identifier}` is not defined in scope"
+            Linker.link_type_reference(
+                g=self._graph, type_reference=type_reference, target_type_node=target
             )
-
-        Linker.link_type_reference(
-            g=self._graph, type_reference=type_reference, target_type_node=target
-        )
 
     def _add_link(self, type_node: BoundNode, action: AddMakeLinkAction) -> None:
         self._type_graph.add_make_link(
@@ -573,7 +576,7 @@ class ASTVisitor:
             # TODO: review
             if target_path.leaf.is_index and parent_path is not None:
                 try:
-                    pointer_members = self._type_graph.iter_pointer_members(
+                    pointer_members = self._type_graph.collect_pointer_members(
                         type_node=self._type_stack.current(),
                         container_path=list(parent_path.identifiers()),
                     )
@@ -724,7 +727,7 @@ class ASTVisitor:
 
     def _pointer_member_paths(self, container_path: FieldPath) -> list[FieldPath]:
         try:
-            pointer_members = self._type_graph.iter_pointer_members(
+            pointer_members = self._type_graph.collect_pointer_members(
                 type_node=self._type_stack.current(),
                 container_path=list(container_path.identifiers()),
             )

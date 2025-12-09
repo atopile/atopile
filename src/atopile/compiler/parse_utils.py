@@ -278,7 +278,7 @@ class PygmentsLexerReconstructor(pygments.lexer.Lexer):
         expand_after: int | None = None,
     ) -> "PygmentsLexerReconstructor":
         return cls.from_tokens(
-            ctx.parser.getInputStream(),  # type: ignore
+            ctx.parser.getInputStream(),  # type: ignore[reportOptionalMemberAccess]
             ctx.start,
             ctx.stop,
             expand_before,

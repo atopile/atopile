@@ -36,9 +36,7 @@ def test_bom_picker_pick():
         .setup_from_center_rel(
             center=10 * 1e3,
             rel=0.01,
-            unit=F.Units.Ohm.bind_typegraph(tg=tg)
-            .create_instance(g=g)
-            .get_trait(F.Units.is_unit),
+            unit=F.Units.Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
         )
     )
     r.resistance.get().alias_to_literal(g=g, value=r1_value)
@@ -79,11 +77,11 @@ def test_bom_kicad_footprint_no_lcsc():
     fp.setup([("", "2"), ("", "1")])
     fabll.Traits.create_and_add_instance_to(
         node=m, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
+    ).set_footprint(fp.is_footprint.get())
     kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
         instance=fp.instance
     ).create_instance(g=g)
-    kfp.get_trait(F.KiCadFootprints.is_kicad_footprint).setup(
+    kfp.is_kicad_footprint_.get().setup(
         "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
     )
     fabll.Traits.create_and_add_instance_to(
@@ -107,11 +105,11 @@ def test_bom_kicad_footprint_lcsc_verbose():
     fp.setup([("", "2"), ("", "1")])
     fabll.Traits.create_and_add_instance_to(
         node=m, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
+    ).set_footprint(fp.is_footprint.get())
     kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
         instance=fp.instance
     ).create_instance(g=g)
-    kfp.get_trait(F.KiCadFootprints.is_kicad_footprint).setup(
+    kfp.is_kicad_footprint_.get().setup(
         "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
     )
     fabll.Traits.create_and_add_instance_to(
@@ -156,7 +154,7 @@ def test_bom_kicad_footprint_lcsc_compact():
     ).create_instance(g=g)
     fabll.Traits.create_and_add_instance_to(
         node=m, trait=F.Footprints.has_associated_footprint
-    ).set_footprint(fp.get_trait(F.Footprints.is_footprint))
+    ).set_footprint(fp.is_footprint.get())
 
     fabll.Traits.create_and_add_instance_to(
         node=m, trait=F.has_explicit_part

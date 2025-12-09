@@ -311,7 +311,7 @@ def convert_to_canonical_operations(mutator: Mutator):
             rep = e.compact_repr(mutator.print_context)
             if replacement is None:
                 logger.warning(f"{type(e)}({rep}) not supported by solver, skipping")
-                mutator.remove(e.get_trait(F.Parameters.is_parameter_operatable))
+                mutator.remove(e.as_parameter_operatable.get())
                 continue
 
             logger.warning(

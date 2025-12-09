@@ -164,7 +164,7 @@ def lit_op_single(val: float) -> F.Parameters.can_be_operand:
         F.Literals.Numbers.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup_from_singleton(value=val, unit=dimless.is_unit.get())
-    ).get_trait(F.Parameters.can_be_operand)
+    ).can_be_operand.get()
 
 
 def lit_op_range_op(
@@ -187,7 +187,7 @@ def lit_op_range(*values: float) -> F.Parameters.can_be_operand:
             max=upper,
             unit=dimless.is_unit.get(),
         )
-    ).get_trait(F.Parameters.can_be_operand)
+    ).can_be_operand.get()
 
 
 def op(x: fabll.NodeT) -> F.Parameters.can_be_operand:
@@ -1187,7 +1187,7 @@ def generate_exprs():
             Markdown(
                 "- "
                 # TODO always po?
-                + expr.get_trait(F.Parameters.is_parameter_operatable).compact_repr()
+                + expr.as_parameter_operatable.force_get().compact_repr()
             )
         )
 
@@ -1211,7 +1211,7 @@ def evaluate_exprs():
         table.add_row(
             str(result),
             # TODO is this always a po?
-            expr.get_trait(F.Parameters.is_parameter_operatable).compact_repr(),
+            expr.as_parameter_operatable.force_get().compact_repr(),
         )
 
     console = Console()

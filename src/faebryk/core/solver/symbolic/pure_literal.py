@@ -91,7 +91,7 @@ def _exec_pure_literal_operands(
     expr_type_node = fabll.Traits(expr_type).get_obj_raw().instance.node()
     if expr_type_node.get_uuid() not in _map:
         return None
-    lits = [o.try_get_sibling_trait(F.Literals.is_literal) for o in operands]
+    lits = [o.as_literal.get() for o in operands]
     if not all(lits):
         return None
     lits = cast(list[F.Literals.is_literal], lits)
@@ -126,7 +126,7 @@ def fold_pure_literal_expressions(mutator: Mutator):
     exprs = mutator.get_expressions(sort_by_depth=True)
 
     for expr in exprs:
-        expr_po = expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
+        expr_po = expr.as_parameter_operatable.get()
         # TODO is this needed?
         if mutator.has_been_mutated(expr_po) or mutator.is_removed(expr_po):
             continue
@@ -164,13 +164,7 @@ def test_fold_simple_literal_expressions_single():
     res0.mutation_stage.print_mutation_table()
     mut_map = mut_map.extend(res0.mutation_stage)
 
-    lit = not_none(
-        (
-            mut_map.try_get_literal(
-                expr.get_sibling_trait(F.Parameters.is_parameter_operatable)
-            )
-        )
-    )
+    lit = not_none((mut_map.try_get_literal(expr.as_parameter_operatable.force_get())))
     assert lit.equals_singleton(3.0)
 
 

@@ -25,15 +25,21 @@ class TypeGraph:
         self,
         *,
         type_node: BoundNode,
+        child_type: BoundNode,
+        identifier: str | None,
+        node_attributes: NodeCreationAttributes | None = ...,
+        mount_reference: BoundNode | None = ...,
+    ) -> BoundNode: ...
+    def add_make_child_deferred(
+        self,
+        *,
+        type_node: BoundNode,
         child_type_identifier: str,
         identifier: str | None,
         node_attributes: NodeCreationAttributes | None = ...,
         mount_reference: BoundNode | None = ...,
     ) -> BoundNode: ...
     def get_make_child_type_reference(self, *, make_child: BoundNode) -> BoundNode: ...
-    def collect_unresolved_type_references(
-        self,
-    ) -> list[tuple[BoundNode, BoundNode]]: ...
 
     class MakeChildNode:
         @staticmethod
@@ -58,18 +64,18 @@ class TypeGraph:
         path: list[str],
         validate: bool = ...,
     ) -> BoundNode: ...
-    def iter_pointer_members(
+    def collect_pointer_members(
         self,
         *,
         type_node: BoundNode,
         container_path: list[str],
     ) -> list[tuple[str | None, BoundNode]]: ...
-    def iter_make_children(
+    def collect_make_children(
         self,
         *,
         type_node: BoundNode,
     ) -> list[tuple[str | None, BoundNode]]: ...
-    def iter_make_links(
+    def collect_make_links(
         self,
         *,
         type_node: BoundNode,

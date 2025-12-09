@@ -36,6 +36,13 @@ class can_be_operand(fabll.Node):
 
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
+    as_parameter_operatable: fabll.Traits.OptionalImpliedTrait[
+        "is_parameter_operatable"
+    ] = fabll.Traits.OptionalImpliedTrait(lambda: is_parameter_operatable)
+    as_literal: fabll.Traits.OptionalImpliedTrait["F.Literals.is_literal"] = (
+        fabll.Traits.OptionalImpliedTrait(lambda: F.Literals.is_literal)
+    )
+
     def get_obj_type_node(self) -> graph.BoundNode:
         return not_none(fabll.Traits(self).get_obj_raw().get_type_node())
 
@@ -56,6 +63,22 @@ class is_parameter_operatable(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     as_operand = fabll.Traits.ImpliedTrait(can_be_operand)
+
+    as_parameter: fabll.Traits.OptionalImpliedTrait["is_parameter"] = (
+        fabll.Traits.OptionalImpliedTrait(lambda: is_parameter)
+    )
+
+    @staticmethod
+    def _get_is_expression():
+        """Deferred import to avoid circular dependency with Expressions module."""
+        from faebryk.library.Expressions import is_expression
+
+        return is_expression
+
+    # TODO: is there a cleaner way to avoid adding Expressions dependency here?
+    as_expression: "fabll.Traits.OptionalImpliedTrait" = (
+        fabll.Traits.OptionalImpliedTrait(_get_is_expression)
+    )
 
     def try_get_constrained_literal[T: "fabll.NodeT" = "Literals.is_literal"](
         self,
@@ -108,19 +131,15 @@ class is_parameter_operatable(fabll.Node):
     def compact_repr(
         self, context: "ReprContext | None" = None, use_name: bool = False
     ) -> str:
-        from faebryk.library.Expressions import is_expression
-
-        if p := fabll.Traits(self).try_get_trait_of_obj(is_parameter):
+        if p := self.as_parameter.get():
             return p.compact_repr(context=context, use_name=use_name)
-        if e := fabll.Traits(self).try_get_trait_of_obj(is_expression):
+        if e := self.as_expression.get():
             return e.compact_repr(context=context, use_name=use_name)
 
         assert False
 
     def get_depth(self) -> int:
-        from faebryk.library.Expressions import is_expression
-
-        if expr := self.try_get_sibling_trait(is_expression):
+        if expr := self.as_expression.get():
             return expr.get_depth()
         return 0
 
@@ -209,11 +228,11 @@ class is_parameter_operatable(fabll.Node):
         return fabll.Traits(self).get_obj_raw()
 
     def has_implicit_predicates_recursive(self) -> bool:
-        from faebryk.library.Expressions import has_implicit_constraints, is_expression
+        from faebryk.library.Expressions import has_implicit_constraints
 
         if self.try_get_sibling_trait(has_implicit_constraints):
             return True
-        if expr := self.get_sibling_trait(is_expression):
+        if expr := self.as_expression.force_get():
             return any(
                 op.has_implicit_predicates_recursive()
                 for op in expr.get_operand_operatables()
@@ -448,7 +467,7 @@ class EnumParameter(fabll.Node):
             lit_type=F.Literals.AbstractEnums
         )
 
-    def setup(self, enum: type[Enum]) -> Self:
+    def setup(self, enum: type[Enum]) -> Self:  # type: ignore[invalid-method-override]
         # TODO
         return self
 
@@ -473,7 +492,7 @@ class EnumParameter(fabll.Node):
         self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
     @classmethod
-    def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField["Self"]:
+    def MakeChild(cls, enum_t: type[Enum]) -> fabll._ChildField[Self]:  # type: ignore[invalid-method-override]
         atype = F.Literals.EnumsFactory(enum_t)
         cls_n = cast(type[fabll.NodeT], atype)
 
@@ -555,9 +574,9 @@ class NumericParameter(fabll.Node):
             case _:
                 raise ValueError(f"Invalid value type: {type(value)}")
 
-        self.get_trait(is_parameter_operatable).alias_to_literal(g=g, value=lit)
+        self.is_parameter_operatable.get().alias_to_literal(g=g, value=lit)
 
-    def setup(
+    def setup(  # type: ignore[invalid-method-override]
         self,
         *,
         units: "Units.is_unit",
@@ -604,7 +623,7 @@ class NumericParameter(fabll.Node):
         return self
 
     @classmethod
-    def MakeChild(  # type: ignore
+    def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         unit: type[fabll.NodeT],
         integer: bool = False,
@@ -1059,13 +1078,13 @@ def test_compact_repr():
     expr = Multiply.c(sum_with_five, ten_scalar_op)
 
     # Get expression repr
-    expr_po = expr.get_sibling_trait(is_parameter_operatable)
+    expr_po = expr.as_parameter_operatable.force_get()
     exprstr = expr_po.compact_repr(context)
     assert exprstr == "((A + B) + 5.0V) * 10.0"
 
     # Test p2 + p1 (order matters in repr context - p2 was already assigned 'B')
     expr2 = Add.c(p2_op, p1_op)
-    expr2_po = expr2.get_sibling_trait(is_parameter_operatable)
+    expr2_po = expr2.as_parameter_operatable.force_get()
     expr2str = expr2_po.compact_repr(context)
     assert expr2str == "B + A"
 
@@ -1075,7 +1094,7 @@ def test_compact_repr():
 
     # Create Not(p3)
     expr3 = Not.c(p3_op)
-    expr3_po = expr3.get_sibling_trait(is_parameter_operatable)
+    expr3_po = expr3.as_parameter_operatable.force_get()
     expr3str = expr3_po.compact_repr(context)
     assert expr3str == "¬C"
 
@@ -1088,7 +1107,7 @@ def test_compact_repr():
 
     # Create And(Not(p3), expr >= 10V)
     expr4 = And.c(expr3, ge_expr)
-    expr4_po = expr4.get_sibling_trait(is_parameter_operatable)
+    expr4_po = expr4.as_parameter_operatable.force_get()
     expr4str = expr4_po.compact_repr(context)
     assert expr4str == "¬C ∧ ((((A + B) + 5.0V) * 10.0) ≥ 10.0V)"
 
@@ -1107,7 +1126,7 @@ def test_compact_repr():
     if manyps:
         ops = [p.can_be_operand.get() for p in manyps]
         sum_expr = Add.c(*ops)
-        sum_expr_po = sum_expr.get_sibling_trait(is_parameter_operatable)
+        sum_expr_po = sum_expr.as_parameter_operatable.force_get()
         sum_expr_po.compact_repr(context)
 
     # Next parameter should be 'Z'
@@ -1125,7 +1144,7 @@ def test_compact_repr():
     if manyps2:
         ops = [p.can_be_operand.get() for p in manyps2]
         sum_expr2 = Add.c(*ops)
-        sum_expr2_po = sum_expr2.get_sibling_trait(is_parameter_operatable)
+        sum_expr2_po = sum_expr2.as_parameter_operatable.force_get()
         sum_expr2_po.compact_repr(context)
 
     # Next should be Greek alpha
@@ -1142,7 +1161,7 @@ def test_compact_repr():
     if manyps3:
         ops = [p.can_be_operand.get() for p in manyps3]
         sum_expr3 = Add.c(*ops)
-        sum_expr3_po = sum_expr3.get_sibling_trait(is_parameter_operatable)
+        sum_expr3_po = sum_expr3.as_parameter_operatable.force_get()
         sum_expr3_po.compact_repr(context)
 
     # After exhausting all alphabets, should wrap with subscript A₁
