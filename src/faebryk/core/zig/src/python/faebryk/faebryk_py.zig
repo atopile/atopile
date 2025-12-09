@@ -3053,8 +3053,11 @@ fn wrap_typegraph_add_type() type {
 
             const identifier = bind.unwrap_str(kwarg_obj.identifier) orelse return null;
 
-            const bnode = faebryk.typegraph.TypeGraph.add_type(wrapper.data, identifier) catch {
-                py.PyErr_SetString(py.PyExc_ValueError, "add_type failed");
+            const bnode = faebryk.typegraph.TypeGraph.add_type(wrapper.data, identifier) catch |err| {
+                switch (err) {
+                    error.TypeAlreadyExists => py.PyErr_SetString(py.PyExc_ValueError, "Type with this name already exists"),
+                    else => py.PyErr_SetString(py.PyExc_ValueError, "add_type failed"),
+                }
                 return null;
             };
 

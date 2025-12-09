@@ -490,6 +490,9 @@ pub const TypeGraph = struct {
     }
 
     pub fn add_type(self: *@This(), identifier: str) !BoundNodeReference {
+        if (self.get_type_by_name(identifier) != null) {
+            return error.TypeAlreadyExists;
+        }
         const type_node = TypeNode.create_and_insert(self, identifier);
 
         // Add type trait
@@ -1514,6 +1517,20 @@ test "basic typegraph" {
         else => {},
     }
     std.debug.print("TYPE collected children: {d}\n", .{children.items.len});
+}
+
+test "add_type returns error on duplicate name" {
+    const a = std.testing.allocator;
+    var g = graph.GraphView.init(a);
+    defer g.deinit();
+    var tg = TypeGraph.init(&g);
+
+    // First add_type should succeed
+    _ = try tg.add_type("DuplicateTest");
+
+    // Second add_type with same name should return TypeAlreadyExists error
+    const result = tg.add_type("DuplicateTest");
+    try std.testing.expectError(error.TypeAlreadyExists, result);
 }
 
 //zig test --dep graph -Mroot=src/faebryk/typegraph.zig -Mgraph=src/graph/lib.zig

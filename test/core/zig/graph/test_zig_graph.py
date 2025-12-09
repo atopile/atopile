@@ -176,6 +176,19 @@ def test_edge_next():
     assert next_node.is_same(other=get_next_node)
 
 
+def test_typegraph_add_type_collision():
+    """Test that add_type raises ValueError when type name already exists."""
+    import pytest
+
+    g = graph.GraphView.create()
+    type_graph = fbrk.TypeGraph.create(g=g)
+
+    type_graph.add_type(identifier="TestType")
+
+    with pytest.raises(ValueError, match="already exists"):
+        type_graph.add_type(identifier="TestType")
+
+
 def test_typegraph_instantiate():
     g = graph.GraphView.create()
     type_graph = fbrk.TypeGraph.create(g=g)
@@ -261,6 +274,7 @@ if __name__ == "__main__":
     test_edge_composition_add_anon_child()
     test_edge_type_create()
     test_edge_next()
+    test_typegraph_add_type_collision()
     test_typegraph_instantiate()
 
     print("-" * 80)

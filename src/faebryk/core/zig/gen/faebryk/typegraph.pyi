@@ -27,7 +27,14 @@ class TypeGraph:
     def of_type(*, type_node: BoundNode) -> "TypeGraph | None": ...
     @staticmethod
     def of_instance(*, instance_node: BoundNode) -> "TypeGraph | None": ...
-    def add_type(self, *, identifier: str) -> BoundNode: ...
+    def add_type(self, *, identifier: str) -> BoundNode:
+        """Create and register a new type node.
+
+        Raises:
+            ValueError: If a type with this name already exists.
+        """
+        ...
+
     def add_make_child(
         self,
         *,
