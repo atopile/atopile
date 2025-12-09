@@ -611,7 +611,7 @@ class NumericParameter(fabll.Node):
                 assert_=True,
             )
         if domain is not NumericParameter.DOMAIN_SKIP:
-            assert isinstance(domain, NumberDomain.Args)
+            assert (domain is None) or isinstance(domain, NumberDomain.Args)
             domain = domain or NumberDomain.Args()
             # TODO other domain constraints
             if not domain.negative:
