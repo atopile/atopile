@@ -636,7 +636,9 @@ def attach(
             F.Footprints.has_associated_footprint
         ).get_footprint()
 
-        if not footprint.has_trait(F.KiCadFootprints.has_linked_kicad_footprint):
+        if not footprint.has_trait(
+            F.KiCadFootprints.has_associated_kicad_pcb_footprint
+        ):
             # create a kicad footprint node
             kfp = F.KiCadFootprints.GenericKiCadFootprint.bind_typegraph_from_instance(
                 instance=footprint.instance
@@ -648,16 +650,17 @@ def attach(
                 kicad_footprint_file_path=str(apart.fp_path),
             )
             fabll.Traits.create_and_add_instance_to(
-                node=footprint, trait=F.KiCadFootprints.has_linked_kicad_footprint
+                node=footprint,
+                trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
             ).setup(kfp)
 
         kicad_footprint = footprint.get_trait(
-            F.KiCadFootprints.has_linked_kicad_footprint
+            F.KiCadFootprints.has_associated_kicad_pcb_footprint
         ).get_footprint()
 
         # link the kicad footprint node to the footprint node
         fabll.Traits.create_and_add_instance_to(
-            footprint, F.KiCadFootprints.has_linked_kicad_footprint
+            footprint, F.KiCadFootprints.has_associated_kicad_pcb_footprint
         ).setup(kicad_footprint)
 
     # 3D model done by kicad (in fp)
@@ -738,7 +741,7 @@ def test_attach_resistor():
 
     # there should also be a kicad footprint linked
     kicad_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_linked_kicad_footprint
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).get_footprint()
     generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
@@ -784,7 +787,7 @@ def test_attach_mosfet():
 
     # there should also be a kicad footprint linked
     kicad_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_linked_kicad_footprint
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).get_footprint()
     generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint
@@ -832,7 +835,7 @@ def test_attach_failure():
     footprint = associated_footprint.get_footprint()
 
     kicad_footprint = footprint.get_trait(
-        F.KiCadFootprints.has_linked_kicad_footprint
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).get_footprint()
     generated_from_kicad_footprint_file_t = kicad_footprint.get_trait(
         F.KiCadFootprints.has_associated_kicad_library_footprint

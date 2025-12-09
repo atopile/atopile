@@ -24,7 +24,7 @@ def _get_testpoints(app: fabll.Node) -> list[F.TestPoint]:
         if testpoint.has_trait(F.Footprints.has_associated_footprint)
         and testpoint.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
-        .has_trait(F.KiCadFootprints.is_kicad_footprint)
+        .has_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
     ]
 
 
@@ -49,8 +49,7 @@ def export_testpoints(
 
         # Get single connected net name
         net_name = (
-            testpoint.contact.get().get_trait(F.has_net_name).get_name()
-            or "no-net"
+            testpoint.contact.get().get_trait(F.has_net_name).get_name() or "no-net"
         )
 
         testpoint_data[designator] = {

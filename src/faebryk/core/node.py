@@ -2668,7 +2668,7 @@ def test_kicad_footprint():
     _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
-        F.KiCadFootprints.is_kicad_footprint.bind_typegraph(tg=tg)
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(tg=tg)
         .create_instance(g=g)
         .setup(
             kicad_identifier="libR_0402_1005Metric2",

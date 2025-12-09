@@ -85,7 +85,7 @@ def test_bom_kicad_footprint_no_lcsc():
         "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
     )
     fabll.Traits.create_and_add_instance_to(
-        node=fp, trait=F.KiCadFootprints.has_linked_kicad_footprint
+        node=fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).setup(kfp)
 
     _build(m)
@@ -113,7 +113,7 @@ def test_bom_kicad_footprint_lcsc_verbose():
         "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
     )
     fabll.Traits.create_and_add_instance_to(
-        node=fp, trait=F.KiCadFootprints.has_linked_kicad_footprint
+        node=fp, trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).setup(kfp)
 
     _build(m)
@@ -175,7 +175,7 @@ def test_bom_kicad_footprint_lcsc_compact():
     assert (
         m.get_trait(F.Footprints.has_associated_footprint)
         .get_footprint()
-        .get_trait(F.KiCadFootprints.is_kicad_footprint)
+        .get_trait(F.KiCadFootprints.has_associated_kicad_pcb_footprint)
         .get_kicad_footprint_name()
         == "PinHeader_1x02_P2.54mm_Vertical"
     )

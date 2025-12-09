@@ -109,14 +109,16 @@ def load_designators(tg: fbrk.TypeGraph, attach: bool = False) -> dict[fabll.Nod
     def _get_reference(fp: kicad.pcb.Footprint):
         return Property.try_get_property(fp.propertys, "Reference")
 
-    def _get_pcb_designator(fp_trait: F.KiCadFootprints.has_linked_kicad_footprint):
+    def _get_pcb_designator(
+        fp_trait: F.KiCadFootprints.has_associated_kicad_pcb_footprint,
+    ):
         fp = fp_trait.get_fp()
         if not fp.name:
             return None
         return _get_reference(fp)
 
     traits = fabll.Traits.get_implementors(
-        F.KiCadFootprints.has_linked_kicad_footprint.bind_typegraph(tg)
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint.bind_typegraph(tg)
     )
     nodes_traits = {fabll.Traits(trait).get_obj_raw(): trait for trait in traits}
 

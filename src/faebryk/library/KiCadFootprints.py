@@ -2,65 +2,49 @@
 # SPDX-License-Identifier: MIT
 
 import ctypes
-from pathlib import Path
-from typing import Self
+from typing import ClassVar, Self
 
 import faebryk.core.faebrykpy as fbrk
+import faebryk.core.graph as graph
 import faebryk.core.node as fabll
-from faebryk.library import _F as F
-from faebryk.library.PCBTransformer import PCB_Transformer
+import faebryk.library._F as F
+from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import kicad
 
+KiCadPCBFootprint = kicad.pcb.Footprint
+KiCadPCBPad = kicad.pcb.Pad
+KiCadPCBNet = kicad.pcb.Net
 
-class is_kicad_pad(fabll.Node):
+
+class has_associated_kicad_pcb_footprint(fabll.Node):
     """
-    A node that is a KiCad pad.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-    pad_name_ = F.Parameters.StringParameter.MakeChild()
-
-    def get_pad_name(self) -> str:
-        return self.pad_name_.get().force_extract_literal().get_values()[0]
-
-    @classmethod
-    def MakeChild(cls, pad_name: str) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.pad_name_], pad_name
-            )
-        )
-        return out
-
-
-class has_linked_kicad_pad(fabll.Node):
-    """
-    A node that has a linked KiCad pad.
+    Link applied to:
+    - Modules which are represented in the PCB
+    - has_associated_kicad_pcb_footprint nodes which are represented in the PCB
     """
 
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
-    pad_ptr_ = F.Collections.Pointer.MakeChild()
+    # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
+    # Store objects by their id() so ctypes.cast can retrieve them later.
+    _footprint_registry: ClassVar[dict[int, KiCadPCBFootprint]] = {}
+    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
+
+    footprint_ = F.Parameters.StringParameter.MakeChild()
     transformer_ = F.Parameters.StringParameter.MakeChild()
-
-    @property
-    def pad(self):
-        """Return the KiCad pad associated with this node"""
-        return self.pad_ptr_.get().deref()
-
-    def get_transformer(self) -> "PCB_Transformer":
-        transformer_id = int(
-            self.transformer_.get().force_extract_literal().get_values()[0]
-        )
-        return ctypes.cast(transformer_id, ctypes.py_object).value
 
     @classmethod
     def MakeChild(
-        cls, pad: fabll._ChildField[fabll.Node], transformer: "PCB_Transformer"
+        cls, footprint: KiCadPCBFootprint, transformer: PCB_Transformer
     ) -> fabll._ChildField[Self]:
+        # Store objects in registries to prevent garbage collection.
+        cls._footprint_registry[id(footprint)] = footprint
+        cls._transformer_registry[id(transformer)] = transformer
+
         out = fabll._ChildField(cls)
-        out.add_dependant(pad)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.footprint_], [str(id(footprint))])
+        )
         out.add_dependant(
             F.Collections.Pointer.MakeEdge(
                 [out, cls.transformer_], [str(id(transformer))]
@@ -68,217 +52,20 @@ class has_linked_kicad_pad(fabll.Node):
         )
         return out
 
+    def setup(self, footprint: KiCadPCBFootprint, transformer: PCB_Transformer) -> Self:
+        # Store objects in registries to prevent garbage collection.
+        self._footprint_registry[id(footprint)] = footprint
+        self._transformer_registry[id(transformer)] = transformer
 
-class is_kicad_footprint(fabll.Node):
-    """
-    Marks a node as a KiCad footprint.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-    kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
-
-    def get_kicad_footprint_identifier(self) -> str:
-        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
-
-    def get_kicad_footprint_name(self) -> str:
-        return self.get_kicad_footprint_identifier().split(":")[1]
-
-    def get_pad_names(self) -> list[str]:
-        # FIX: is_kicad_pad is not a child of is_kicad_footprint, but of
-        # the sibling node of the parent of is_kicad_footprint
-        return [
-            p.get_trait(is_kicad_pad).get_pad_name()
-            for p in self.get_children(
-                direct_only=False, types=fabll.Node, required_trait=is_kicad_pad
-            )
-        ]
-
-    @classmethod
-    def MakeChild(cls, kicad_identifier: str) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.kicad_identifier_], kicad_identifier
-            )
-        )
-        return out
-
-    def setup(self, kicad_identifier: str) -> Self:
-        self.kicad_identifier_.get().alias_to_single(
-            g=self.instance.g(), value=kicad_identifier
-        )
+        self.footprint_.get().alias_to_single(value=str(id(footprint)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
-
-class has_associated_kicad_library_footprint(fabll.Node):
-    """
-    Marks a node as being generated from a KiCad footprint file.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-    library_name_ = F.Parameters.StringParameter.MakeChild()
-    kicad_footprint_file_path_ = F.Parameters.StringParameter.MakeChild()
-    pad_names_ = F.Parameters.StringParameter.MakeChild()
-    kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
-
-    @property
-    def library_name(self) -> str:
-        return self.library_name_.get().force_extract_literal().get_values()[0]
-
-    @property
-    def kicad_library_id(self) -> str:
-        return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
-
-    @property
-    def kicad_footprint_file_path(self) -> str:
-        return (
-            self.kicad_footprint_file_path_.get()
-            .force_extract_literal()
-            .get_values()[0]
+    def get_fp(self) -> KiCadPCBFootprint:
+        footprint_id = int(
+            self.footprint_.get().force_extract_literal().get_values()[0]
         )
-
-    @property
-    def pad_names(self) -> list[str]:
-        return self.pad_names_.get().force_extract_literal().get_values()
-
-    @staticmethod
-    def _extract_pad_names_from_kicad_footprint_file(
-        kicad_footprint_file: "kicad.footprint.FootprintFile",
-    ) -> list[str]:
-        """
-        Extract the pad names from a KiCad footprint file if the pad is on
-        a copper layer
-        """
-
-        return [
-            pad.name
-            for pad in kicad_footprint_file.footprint.pads
-            if any("Cu" in layer for layer in pad.layers)
-        ]
-
-    @staticmethod
-    def _create_kicad_identifier(
-        kicad_footprint_file: "kicad.footprint.FootprintFile", library_name: str | None
-    ) -> tuple[str, str]:
-        if ":" in kicad_footprint_file.footprint.name:
-            fp_lib_name = kicad_footprint_file.footprint.name.split(":")[0]
-            if library_name is not None and library_name != fp_lib_name:
-                raise ValueError(
-                    f"lib_name must be empty or same as fp lib name, if fp has libname:"
-                    f" fp_lib_name: {fp_lib_name}, library_name: {library_name}"
-                )
-            library_name = fp_lib_name
-        else:
-            if library_name is None:
-                raise ValueError(
-                    "lib_name must be specified if fp has no lib prefix: "
-                    f"{kicad_footprint_file.footprint.name}"
-                )
-        assert library_name is not None
-        return (
-            f"{library_name}:{kicad.fp_get_base_name(kicad_footprint_file.footprint)}",
-            library_name,
-        )
-
-    @classmethod
-    def MakeChild(
-        cls, library_name: str | None, kicad_footprint_file_path: str
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        fp_file = kicad.loads(
-            kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
-        )
-        kicad_identifier, library_name = cls._create_kicad_identifier(
-            fp_file, library_name
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.kicad_identifier_], kicad_identifier
-            )
-        )
-        pad_names = cls._extract_pad_names_from_kicad_footprint_file(fp_file)
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.pad_names_], *pad_names
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.library_name_], library_name
-            )
-        )
-        out.add_dependant(
-            F.Literals.Strings.MakeChild_ConstrainToLiteral(
-                [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
-            )
-        )
-        return out
-
-    def setup(
-        self,
-        kicad_footprint_file_path: str,
-        library_name: str | None,
-    ) -> Self:
-        self.kicad_footprint_file_path_.get().alias_to_literal(
-            kicad_footprint_file_path
-        )
-
-        fp_file = kicad.loads(
-            kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
-        )
-        pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
-        self.pad_names_.get().alias_to_literal(*pad_names)
-        kicad_identifier, library_name = self._create_kicad_identifier(
-            fp_file, library_name
-        )
-        self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
-        self.library_name_.get().alias_to_literal(library_name)
-        return self
-
-
-class has_linked_kicad_footprint(fabll.Node):
-    """
-    A node that has a linked KiCad footprint.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-
-    footprint_ = F.Collections.Pointer.MakeChild()
-
-    def get_footprint(self) -> fabll.Node:
-        """Return the KiCad footprint associated with this node"""
-        return self.footprint_.get().deref()
-
-    @classmethod
-    def MakeChild(
-        cls, footprint: fabll._ChildField[fabll.Node]
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-        out.add_dependant(footprint)
-        out.add_dependant(
-            F.Collections.Pointer.MakeEdge([out, cls.footprint_], [footprint])
-        )
-        return out
-
-    def setup(self, footprint: fabll.Node):
-        self.footprint_.get().point(footprint)
-        return self
-
-
-class has_linked_kicad_net(fabll.Node):
-    """
-    A node that has a linked KiCad net.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
-
-    net_ptr_ = F.Collections.Pointer.MakeChild()
-    transformer_ = F.Parameters.StringParameter.MakeChild()
-
-    @property
-    def net(self):
-        """Return the KiCad net associated with this node"""
-        return self.net_ptr_.get().deref()
+        return ctypes.cast(footprint_id, ctypes.py_object).value
 
     def get_transformer(self) -> "PCB_Transformer":
         transformer_id = int(
@@ -286,149 +73,344 @@ class has_linked_kicad_net(fabll.Node):
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
+
+class has_associated_kicad_pcbpad(fabll.Node):
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+
+    # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
+    # Store objects by their id() so ctypes.cast can retrieve them later.
+    _footprint_registry: ClassVar[dict[int, KiCadPCBFootprint]] = {}
+    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
+    _pad_registry: ClassVar[dict[int, list[KiCadPCBPad]]] = {}
+
+    footprint_ = F.Parameters.StringParameter.MakeChild()
+    pad_ = F.Parameters.StringParameter.MakeChild()
+    transformer_ = F.Parameters.StringParameter.MakeChild()
+
+    @classmethod
+    def MakeChild(
+        cls,
+        footprint: KiCadPCBFootprint,
+        pad: list[KiCadPCBPad],
+        transformer: "PCB_Transformer",
+    ) -> fabll._ChildField[Self]:
+        # Store objects in registries to prevent garbage collection.
+        cls._footprint_registry[id(footprint)] = footprint
+        cls._pad_registry[id(pad)] = pad
+        cls._transformer_registry[id(transformer)] = transformer
+
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.footprint_], [str(id(footprint))])
+        )
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.pad_], [str(id(pad))])
+        )
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.transformer_], [str(id(transformer))]
+            )
+        )
+        return out
+
+    def setup(
+        self,
+        footprint: "KiCadPCBFootprint",
+        pads: list[KiCadPCBPad],
+        transformer: "PCB_Transformer",
+    ) -> Self:
+        # Store objects in registries to prevent garbage collection.
+        self._footprint_registry[id(footprint)] = footprint
+        self._pad_registry[id(pads)] = pads
+        self._transformer_registry[id(transformer)] = transformer
+
+        self.footprint_.get().alias_to_single(value=str(id(footprint)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        self.pad_.get().alias_to_single(value=str(id(pads)))
+        return self
+
+    def get_pads(self) -> tuple[KiCadPCBFootprint, list[KiCadPCBPad]]:
+        footprint_id = int(
+            self.footprint_.get().force_extract_literal().get_values()[0]
+        )
+        pad_id = int(self.pad_.get().force_extract_literal().get_values()[0])
+        return (
+            ctypes.cast(footprint_id, ctypes.py_object).value,
+            ctypes.cast(pad_id, ctypes.py_object).value,
+        )
+
+    def get_transformer(self) -> "PCB_Transformer":
+        transformer_id = int(
+            self.transformer_.get().force_extract_literal().get_values()[0]
+        )
+        return ctypes.cast(transformer_id, ctypes.py_object).value
+
+
+class has_associated_kicad_pcb_net(fabll.Node):
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+
+    # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
+    # Store objects by their id() so ctypes.cast can retrieve them later.
+    _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
+    _net_registry: ClassVar[dict[int, "KiCadPCBNet"]] = {}
+
+    net_ = F.Parameters.StringParameter.MakeChild()
+    transformer_ = F.Parameters.StringParameter.MakeChild()
+
+    @classmethod
+    def MakeChild(
+        cls, net: "KiCadPCBNet", transformer: "PCB_Transformer"
+    ) -> fabll._ChildField[Self]:
+        # Store objects in registries to prevent garbage collection.
+        cls._net_registry[id(net)] = net
+        cls._transformer_registry[id(transformer)] = transformer
+
+        out = fabll._ChildField(cls)
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge([out, cls.net_], [str(id(net))])
+        )
+        out.add_dependant(
+            F.Collections.Pointer.MakeEdge(
+                [out, cls.transformer_], [str(id(transformer))]
+            )
+        )
+        return out
+
+    def setup(self, net: "KiCadPCBNet", transformer: "PCB_Transformer") -> Self:
+        # Store objects in registries to prevent garbage collection.
+        self._net_registry[id(net)] = net
+        self._transformer_registry[id(transformer)] = transformer
+
+        self.net_.get().alias_to_single(value=str(id(net)))
+        self.transformer_.get().alias_to_single(value=str(id(transformer)))
+        return self
+
+    def get_net(self) -> KiCadPCBNet:
+        net_id = int(self.net_.get().force_extract_literal().get_values()[0])
+        return ctypes.cast(net_id, ctypes.py_object).value
+
+    def get_transformer(self) -> "PCB_Transformer":
+        transformer_id = int(
+            self.transformer_.get().force_extract_literal().get_values()[0]
+        )
+        return ctypes.cast(transformer_id, ctypes.py_object).value
+
+
+class has_associated_kicad_library_footprint(fabll.Node):
+    """
+    Associate a footprint with a KiCad library footprint file.
+    """
+
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    # library_name_ = F.Parameters.StringParameter.MakeChild()
+    # kicad_footprint_file_path_ = F.Parameters.StringParameter.MakeChild()
+    # pad_names_ = F.Parameters.StringParameter.MakeChild()
+    # kicad_identifier_ = F.Parameters.StringParameter.MakeChild()
+
+    # @property
+    # def library_name(self) -> str:
+    #     return self.library_name_.get().force_extract_literal().get_values()[0]
+
+    # @property
+    # def kicad_library_id(self) -> str:
+    #     return self.kicad_identifier_.get().force_extract_literal().get_values()[0]
+
+    # @property
+    # def kicad_footprint_file_path(self) -> str:
+    #     return (
+    #         self.kicad_footprint_file_path_.get()
+    #         .force_extract_literal()
+    #         .get_values()[0]
+    #     )
+
+    # @property
+    # def pad_names(self) -> list[str]:
+    #     return self.pad_names_.get().force_extract_literal().get_values()
+
+    # @staticmethod
+    # def _extract_pad_names_from_kicad_footprint_file(
+    #     kicad_footprint_file: "kicad.footprint.FootprintFile",
+    # ) -> list[str]:
+    #     """
+    #     Extract the pad names from a KiCad footprint file if the pad is on
+    #     a copper layer
+    #     """
+
+    #     return [
+    #         pad.name
+    #         for pad in kicad_footprint_file.footprint.pads
+    #         if any("Cu" in layer for layer in pad.layers)
+    #     ]
+
+    # @staticmethod
+    # def _create_kicad_identifier(
+    #     kicad_footprint_file: "kicad.footprint.FootprintFile", library_name: str | None
+    # ) -> tuple[str, str]:
+    #     if ":" in kicad_footprint_file.footprint.name:
+    #         fp_lib_name = kicad_footprint_file.footprint.name.split(":")[0]
+    #         if library_name is not None and library_name != fp_lib_name:
+    #             raise ValueError(
+    #                 f"lib_name must be empty or same as fp lib name, if fp has libname:"
+    #                 f" fp_lib_name: {fp_lib_name}, library_name: {library_name}"
+    #             )
+    #         library_name = fp_lib_name
+    #     else:
+    #         if library_name is None:
+    #             raise ValueError(
+    #                 "lib_name must be specified if fp has no lib prefix: "
+    #                 f"{kicad_footprint_file.footprint.name}"
+    #             )
+    #     assert library_name is not None
+    #     return (
+    #         f"{library_name}:{kicad.fp_get_base_name(kicad_footprint_file.footprint)}",
+    #         library_name,
+    #     )
+
     # @classmethod
     # def MakeChild(
-    #     cls, kicad_net: fabll._ChildField[fabll.Node], transformer: "PCB_Transformer"
+    #     cls, library_name: str | None, kicad_footprint_file_path: str
     # ) -> fabll._ChildField[Self]:
     #     out = fabll._ChildField(cls)
-    #     out.add_dependant(
-    #         F.Collections.Pointer.MakeEdge([out, cls.net_ptr_], [str(id(kicad_net))])
+    #     fp_file = kicad.loads(
+    #         kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
+    #     )
+    #     kicad_identifier, library_name = cls._create_kicad_identifier(
+    #         fp_file, library_name
     #     )
     #     out.add_dependant(
-    #         F.Collections.Pointer.MakeEdge(
-    #             [out, cls.transformer_], [str(id(transformer))]
+    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
+    #             [out, cls.kicad_identifier_], kicad_identifier
+    #         )
+    #     )
+    #     pad_names = cls._extract_pad_names_from_kicad_footprint_file(fp_file)
+    #     out.add_dependant(
+    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
+    #             [out, cls.pad_names_], *pad_names
+    #         )
+    #     )
+    #     out.add_dependant(
+    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
+    #             [out, cls.library_name_], library_name
+    #         )
+    #     )
+    #     out.add_dependant(
+    #         F.Literals.Strings.MakeChild_ConstrainToLiteral(
+    #             [out, cls.kicad_footprint_file_path_], kicad_footprint_file_path
     #         )
     #     )
     #     return out
 
-    def setup(self, kicad_net: fabll.Node, transformer: "PCB_Transformer") -> Self:
-        self.net_ptr_.get().point(kicad_net)
-        self.transformer_.get().alias_to_literal(str(id(transformer)))
-        return self
+    # def setup(
+    #     self,
+    #     kicad_footprint_file_path: str,
+    #     library_name: str | None,
+    # ) -> Self:
+    #     self.kicad_footprint_file_path_.get().alias_to_literal(
+    #         kicad_footprint_file_path
+    #     )
 
-
-class is_kicad_net(fabll.Node):
-    """
-    A node that is a KiCad net.
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild()).put_on_type()
+    #     fp_file = kicad.loads(
+    #         kicad.footprint.FootprintFile, Path(kicad_footprint_file_path)
+    #     )
+    #     pad_names = self._extract_pad_names_from_kicad_footprint_file(fp_file)
+    #     self.pad_names_.get().alias_to_literal(*pad_names)
+    #     kicad_identifier, library_name = self._create_kicad_identifier(
+    #         fp_file, library_name
+    #     )
+    #     self.kicad_identifier_.get().alias_to_literal(kicad_identifier)
+    #     self.library_name_.get().alias_to_literal(library_name)
+    #     return self
 
 
 class GenericKiCadFootprint(fabll.Node):
-    is_kicad_footprint_ = fabll.Traits.MakeEdge(is_kicad_footprint.MakeChild(""))
-    kicad_pads_ = F.Collections.PointerSet.MakeChild()
+    """
+    REPLACE WITH KiCad PCB Footprint node with has_associated_kicad_pcb_footprint trait
+    """
+
+    # is_kicad_footprint_ = fabll.Traits.MakeEdge(is_kicad_footprint.MakeChild(""))
+    # kicad_pads_ = F.Collections.PointerSet.MakeChild()
 
 
-class GenericKiCadPad(fabll.Node):
-    is_kicad_pad_ = fabll.Traits.MakeEdge(is_kicad_pad.MakeChild(""))
-    pad_name_ = F.Parameters.StringParameter.MakeChild()
+def setup_pcb_transformer_test():
+    from faebryk.libs.test.fileformats import PCBFILE
 
-
-class GenericKiCadNet(fabll.Node):
-    is_kicad_net_ = fabll.Traits.MakeEdge(is_kicad_net.MakeChild())
-    net_name_ = F.Parameters.StringParameter.MakeChild()
-
-    def setup(self, net_name: str) -> Self:
-        self.net_name_.get().alias_to_literal(net_name)
-        return self
-
-    def get_name(self) -> str:
-        return self.net_name_.get().force_extract_literal().get_values()[0]
-
-
-def test_is_kicad_footprint():
-    g = fabll.graph.GraphView.create()
+    g = graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
 
-    class KCFootprint(fabll.Node):
-        class KCPad(fabll.Node):
-            _is_kicad_pad = fabll.Traits.MakeEdge(is_kicad_pad.MakeChild(pad_name="P1"))
+    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
+    kpcb = pcb.kicad_pcb
+    app = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
+    transformer = PCB_Transformer(pcb=kpcb, app=app)
+    footprint = pcb.kicad_pcb.footprints[1]  # return 2nd fp in the PCB file
+    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
 
-        is_kicad_footprint = fabll.Traits.MakeEdge(
-            is_kicad_footprint.MakeChild(
-                kicad_identifier="Resistor:libR_0402_1005Metric2"
-            )
-        )
-        kc_pad = KCPad.MakeChild()
-
-    kicad_footprint = KCFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-
-    assert (
-        kicad_footprint.is_kicad_footprint.get().get_kicad_footprint_identifier()
-        == "Resistor:libR_0402_1005Metric2"
-    )
-    assert (
-        kicad_footprint.is_kicad_footprint.get().get_kicad_footprint_name()
-        == "libR_0402_1005Metric2"
-    )
-    kc_fp_trait = kicad_footprint.is_kicad_footprint.get()
-    pad_names = kc_fp_trait.get_pad_names()
-
-    assert len(pad_names) == 1
-    assert pad_names[0] == "P1"
+    return g, tg, app, transformer, footprint, module, kpcb
 
 
-def test_has_linked_kicad_footprint():
+def test_has_kicad_pcb_footprint_trait():
+    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
+
+    fabll.Traits.create_and_add_instance_to(
+        node=module, trait=has_associated_kicad_pcb_footprint
+    ).setup(footprint, transformer)
+
+    trait = module.try_get_trait(has_associated_kicad_pcb_footprint)
+    assert trait is not None
+    assert trait.get_transformer() is transformer
+    kicad_pcb_fp = trait.get_fp()
+    assert kicad_pcb_fp is footprint
+
+    assert kicad_pcb_fp.name == footprint.name
+    assert kicad_pcb_fp.name == "lcsc:LED0603-RD-YELLOW"
+
+
+def test_has_kicad_pcb_pad_trait():
+    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
+
+    pads = footprint.pads
+
+    fabll.Traits.create_and_add_instance_to(
+        node=module, trait=has_associated_kicad_pcbpad
+    ).setup(footprint, pads, transformer)
+
+    trait = module.try_get_trait(has_associated_kicad_pcbpad)
+    assert trait is not None
+    assert trait.get_transformer() is transformer
+    retrieved_footprint, retrieved_pads = trait.get_pads()
+
+    assert retrieved_footprint is footprint
+
+    assert len(retrieved_pads) == len(pads)
+    for retrieved_pad, pad in zip(retrieved_pads, pads):
+        assert retrieved_pad.name == pad.name
+
+
+def test_has_kicad_pcb_net_trait():
+    _, _, _, transformer, _, module, kpcb = setup_pcb_transformer_test()
+
+    net = kpcb.nets
+
+    fabll.Traits.create_and_add_instance_to(
+        node=module, trait=has_associated_kicad_pcb_net
+    ).setup(net[0], transformer)
+
+    trait = module.try_get_trait(has_associated_kicad_pcb_net)
+    assert trait is not None
+    assert trait.get_transformer() is transformer
+    retrieved_net = trait.get_net()
+    assert retrieved_net.name == net[0].name
+    assert retrieved_net.number == net[0].number
+
+
+def test_has_associated_kicad_library_footprint():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-
-    class TestKiCadFootprint(fabll.Node):
-        is_kicad_footprint_ = fabll.Traits.MakeEdge(
-            is_kicad_footprint.MakeChild("ABC_lib:ABC_PART")
-        )
-
-    class TestFootprint(fabll.Node):
-        is_footprint_ = fabll.Traits.MakeEdge(F.Footprints.is_footprint.MakeChild())
-        has_linked_kicad_footprint_ = fabll.Traits.MakeEdge(
-            has_linked_kicad_footprint.MakeChild(
-                TestKiCadFootprint.MakeChild(), transformer=None
-            )
-        )
-        pads_ = F.Collections.PointerSet.MakeChild()  # TODO
-
-    fp = TestFootprint.bind_typegraph(tg=tg).create_instance(g=g)
-    k_fp = fp.has_linked_kicad_footprint_.get().footprint
-    assert k_fp.has_trait(is_kicad_footprint)
-    assert (
-        k_fp.get_trait(is_kicad_footprint).get_kicad_footprint_identifier()
-        == "ABC_lib:ABC_PART"
-    )
-
-
-def test_is_generated_by_kicad_footprint():
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-
-    # class TestKiCadFootprint(fabll.Node):
-    #     _is_kicad_footprint = fabll.Traits.MakeEdge(F.is_kicad_footprint.MakeChild())
-    #     _is_generated_by_kicad_footprint = fabll.Traits.MakeEdge(
-    #         is_generated_by_kicad_footprint.MakeChild(
-    #             kicad_library_id="1234", kicad_footprint_file_path=""
-    #         )
-    #     )
-
-    # class TestFootprint(fabll.Node):
-
-    #     _is_footprint = fabll.Traits.MakeEdge(F.is_footprint.MakeChild())
-    #     _has_linked_kicad_footprint = fabll.Traits.MakeEdge(
-    #         F.has_linked_kicad_footprint.MakeChild(
-    #             footprint=TestKiCadFootprint.MakeChild(), transformer=None
-    #         )
-    #     )
-
-    # fp = TestFootprint.bind_typegraph(tg).create_instance(g=g)
-    # kfp = fp.get_trait(F.has_linked_kicad_footprint)
-    # gen_kfp_trait = kfp.get_trait(is_generated_by_kicad_footprint)
-    # assert gen_kfp_trait.kicad_library_id == "1234"
-    # assert gen_kfp_trait.kicad_footprint_file_path == ""
-    # assert gen_kfp_trait.pad_names == []
 
     class NodeWithAssociatedFootprint(fabll.Node):
         """User defined node that can attach to a footprint"""
 
-        _is_mmodule = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
-        _can_attach_to_footprint = fabll.Traits.MakeEdge(
+        is_module_ = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
+        can_attach_to_footprint_ = fabll.Traits.MakeEdge(
             F.Footprints.can_attach_to_footprint.MakeChild()
         )
 
@@ -461,60 +443,3 @@ def test_is_generated_by_kicad_footprint():
     assert gen_kfp_trait.library_name == "smol_part_lib"
     assert gen_kfp_trait.kicad_footprint_file_path == str(FPFILE)
     assert gen_kfp_trait.pad_names == fp_names
-
-
-def setup_pcb_transformer_test():
-    from faebryk.libs.test.fileformats import PCBFILE
-
-    g = fabll.graph.GraphView.create()
-    tg = fbrk.TypeGraph.create(g=g)
-    pcb = kicad.loads(kicad.pcb.PcbFile, PCBFILE)
-    kpcb = pcb.kicad_pcb
-    app = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-    transformer = PCB_Transformer(pcb=kpcb, app=app)
-    footprint = pcb.kicad_pcb.footprints[0]
-    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-
-    return g, tg, app, transformer, footprint, module, kpcb
-
-
-def test_has_linked_kicad_net_trait():
-    g, tg, _, transformer, _, module, _ = setup_pcb_transformer_test()
-    net = kicad.pcb.Net(name="TestNet1", number=1)
-
-    module = fabll.Node.bind_typegraph(tg=tg).create_instance(g=g)
-
-    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_net).setup(
-        kicad_net=net, transformer=transformer
-    )
-    assert module.has_trait(has_linked_kicad_net)
-    assert module.get_trait(has_linked_kicad_net).get_net() is net
-    assert module.get_trait(has_linked_kicad_net).get_transformer() is transformer
-
-
-def test_has_linked_kicad_pad_trait():
-    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
-    pads = footprint.pads
-
-    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_pad).setup(
-        footprint=footprint, pads=pads, transformer=transformer
-    )
-
-    assert module.has_trait(has_linked_kicad_pad)
-
-    fp, pads_ = module.get_trait(has_linked_kicad_pad).get_pads()
-    assert fp is footprint
-    assert pads_ == pads
-    assert module.get_trait(has_linked_kicad_pad).get_transformer() is transformer
-
-
-def test_has_linked_kicad_footprint_trait():
-    _, _, _, transformer, footprint, module, _ = setup_pcb_transformer_test()
-
-    fabll.Traits.create_and_add_instance_to(module, has_linked_kicad_footprint).setup(
-        footprint=footprint, transformer=transformer
-    )
-
-    assert module.has_trait(has_linked_kicad_footprint)
-    assert module.get_trait(has_linked_kicad_footprint).get_fp() is footprint
-    assert module.get_trait(has_linked_kicad_footprint).get_transformer() is transformer

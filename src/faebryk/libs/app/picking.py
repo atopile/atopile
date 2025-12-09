@@ -33,7 +33,7 @@ def load_part_info_from_pcb(G: graph.GraphView):
     Load descriptive properties from footprints and saved parameters.
     """
     nodes = fabll.Node.bind_typegraph(G).nodes_with_trait(
-        F.KiCadFootprints.has_linked_kicad_footprint
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
     )
 
     for node, trait in nodes:

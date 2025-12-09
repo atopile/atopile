@@ -52,7 +52,6 @@ from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
-import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.PCB import PCB
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
@@ -154,7 +153,6 @@ __all__ = [
     "implements_design_check",
     "Electrical",
     "has_simple_value_representation",
-    "PCBTransformer",
     "PCB",
     "ElectricPower",
     "Filter",

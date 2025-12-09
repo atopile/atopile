@@ -137,7 +137,7 @@ def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
     footprint = cmp.get_children(
         direct_only=False,
         types=fabll.Node,
-        required_trait=F.KiCadFootprints.is_kicad_footprint,
+        required_trait=F.KiCadFootprints.has_associated_kicad_pcb_footprint,
     )[0]
 
     value = (
@@ -155,7 +155,7 @@ def _get_bomline(cmp: fabll.Node) -> BOMLine | None:
     partnumber = part.partno
 
     footprint_name = footprint.get_trait(
-        F.KiCadFootprints.is_kicad_footprint
+        F.KiCadFootprints.has_associated_kicad_pcb_footprint
     ).get_kicad_footprint_name()
 
     return BOMLine(
@@ -176,7 +176,7 @@ def test_get_bomline():
     class TestNode(fabll.Node):
         class TestFootprint(fabll.Node):
             is_kicad_footprint = fabll.Traits.MakeEdge(
-                F.KiCadFootprints.is_kicad_footprint.MakeChild(
+                F.KiCadFootprints.has_associated_kicad_pcb_footprint.MakeChild(
                     kicad_identifier="test_lib:R_0402_1005Metric",
                     # pinmap={}, #TODO
                 )
