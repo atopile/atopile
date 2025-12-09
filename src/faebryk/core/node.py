@@ -1533,6 +1533,11 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
         """
         return Traits(self).get_obj_raw().try_get_trait(trait)
 
+    def create_instance_of_same_type(self) -> "graph.BoundNode":
+        return self.tg.instantiate_node(
+            type_node=not_none(self.get_type_node()), attributes={}
+        )
+
 
 type NodeT = Node[Any]
 RefPath = list[str | _ChildField[Any] | type[NodeT]]

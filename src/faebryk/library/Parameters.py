@@ -477,8 +477,10 @@ class EnumParameter(fabll.Node):
         )
 
     def force_extract_literal(self) -> "F.Literals.AbstractEnums":
-        return self.is_parameter_operatable.get().force_extract_literal(
-            lit_type=F.Literals.AbstractEnums
+        return (
+            fabll.Traits(self.is_parameter_operatable.get().force_extract_literal())
+            .get_obj_raw()
+            .cast(F.Literals.AbstractEnums, check=False)
         )
 
     def setup(self, enum: type[Enum]) -> Self:  # type: ignore[invalid-method-override]
@@ -489,7 +491,7 @@ class EnumParameter(fabll.Node):
         self, *enum_members: Enum, g: graph.GraphView | None = None
     ) -> None:
         g = g or self.instance.g()
-        from faebryk.library.Literals import AbstractEnums, EnumsFactory
+        from faebryk.library.Literals import EnumsFactory
 
         enum_type = EnumsFactory(type(enum_members[0]))
         enum_type_node = enum_type.bind_typegraph(tg=self.tg).get_or_create_type()
@@ -498,7 +500,7 @@ class EnumParameter(fabll.Node):
         )
 
         lit = (
-            AbstractEnums.bind_typegraph(tg=self.tg)
+            enum_type.bind_typegraph(tg=self.tg)
             .create_instance(g=g)
             .setup(*enum_members)
         )

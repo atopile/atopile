@@ -5790,21 +5790,28 @@ class AbstractEnums(fabll.Node):
     is_enum_type = fabll.Traits.MakeEdge(is_enum_type.MakeChild()).put_on_type()
 
     @staticmethod
-    def get_enum_value(s: fabll.TypeNodeBoundTG, enum_member: Enum) -> EnumValue:
-        for enum_value in s.as_type_node().get_children(
-            direct_only=True, types=EnumValue, tg=s.tg
-        ):
+    def get_enum_value(
+        s: fabll.Node,
+        tg: fbrk.TypeGraph,  # TODO: do we need to pass in tg
+        name: str | None = None,
+        value: str | None = None,
+    ) -> EnumValue:
+        for enum_value in s.get_children(direct_only=True, types=EnumValue, tg=tg):
             enum_value_bound = EnumValue.bind_instance(instance=enum_value.instance)
-            if enum_value_bound.name == enum_member.name:
+            if enum_value_bound.name == name or enum_value_bound.value == value:
                 return enum_value_bound
-        raise ValueError(f"Enum member {enum_member.name} not found in enum type")
+        raise ValueError(
+            f"Enum member with name {name} or value {value} not found in enum type"
+        )
 
     def setup(self, *enum_values: Enum) -> Self:
         atype = EnumsFactory(type(enum_values[0]))
-        atype_n = atype.bind_typegraph(tg=self.tg)
+        atype_n = atype.bind_typegraph(tg=self.tg).as_type_node()
         for enum_value in enum_values:
             self.values.get().append(
-                AbstractEnums.get_enum_value(s=atype_n, enum_member=enum_value)
+                AbstractEnums.get_enum_value(
+                    s=atype_n, tg=self.tg, value=enum_value.value
+                )
             )
         return self
 
@@ -5844,6 +5851,14 @@ class AbstractEnums(fabll.Node):
             node=fabll.Node.bind_instance(instance=not_none(self.get_type_node())),
             tg=self.tg,
         )
+
+    def constrain_to_values(self, *values: str) -> Self:
+        enum_type_node = AbstractEnums(not_none(self.get_type_node()))
+        for value in values:
+            self.values.get().append(
+                AbstractEnums.get_enum_value(s=enum_type_node, value=value, tg=self.tg)
+            )
+        return self
 
     @staticmethod
     def get_enum_as_dict_for_type(
@@ -5922,12 +5937,33 @@ class AbstractEnums(fabll.Node):
         g: graph.GraphView | None = None,
         tg: fbrk.TypeGraph | None = None,
     ) -> "AbstractEnums":
+        """
+        Compute the intersection of multiple enum sets.
+        Enums must be of the same enum domain.
+        """
         g = g or self.g
         tg = tg or self.tg
-        # TODO
-        raise NotImplementedError(
-            "op_intersect_intervals not implemented for AbstractEnums"
-        )
+        # Check that all enums are referencing the same enumsprotocol
+        self_enum_type = fabll.Node(not_none(self.get_type_node()))
+        if not all(
+            fabll.Node(not_none(other.get_type_node())).is_same(self_enum_type)
+            for other in others
+        ):
+            raise ValueError("Enums must be of the same enum domain")
+
+        # Check by string which values are present in all enums using intersect
+        values = list[list[str]]()
+        values.append(self.get_values())
+        for other in others:
+            values.append(other.get_values())
+
+        result = set.intersection(*map(set, values))
+
+        # Constrain the new enum literal to the result
+        result_enum_lit = AbstractEnums(self.create_instance_of_same_type())
+        result_enum_lit.constrain_to_values(*result)
+
+        return result_enum_lit
 
     def op_union_intervals(
         self,
@@ -6474,6 +6510,44 @@ def test_enums():
     assert AbstractEnums.try_cast_to_enum(enum_lit.is_literal.get())
 
 
+def test_enum_literal_op_intersect_intervals():
+    g = graph.GraphView.create()
+    tg = graph.TypeGraph.create(g=g)
+
+    class TestEnum(Enum):
+        A = "a"
+        B = "b"
+        C = "c"
+        D = "d"
+
+    atype = EnumsFactory(TestEnum)
+    self_litA = (
+        atype.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(TestEnum.A, TestEnum.B, TestEnum.D)
+    )
+
+    other1A = AbstractEnums(self_litA.create_instance_of_same_type()).setup(
+        TestEnum.A, TestEnum.B
+    )
+    other2A = AbstractEnums(self_litA.create_instance_of_same_type()).setup(
+        TestEnum.A, TestEnum.B, TestEnum.C, TestEnum.D
+    )
+
+    result = self_litA.op_intersect_intervals(other1A, other2A, g=g, tg=tg)
+    assert result.get_values().sort() == ["a", "b"].sort()
+
+    self_litB = (
+        atype.bind_typegraph(tg=tg)
+        .create_instance(g=g)
+        .setup(TestEnum.A, TestEnum.B, TestEnum.C, TestEnum.D)
+    )
+
+    other1B = AbstractEnums.bind_typegraph(tg=tg).create_instance(g=g)
+    with pytest.raises(ValueError):
+        self_litB.op_intersect_intervals(other1B, g=g, tg=tg)
+
+
 # def test_make_lit():
 #     g = graph.GraphView.create()
 #     tg = graph.TypeGraph.create(g=g)
@@ -6485,4 +6559,4 @@ def test_enums():
 if __name__ == "__main__":
     import typer
 
-    typer.run(test_enums)
+    typer.run(test_enum_literal_op_intersect_intervals)
