@@ -799,6 +799,11 @@ class NewExpression(fabll.Node):
 
 
 class String(fabll.Node):
+    @classmethod
+    def _type_identifier(cls) -> str:
+        # disambiguate from F.Literals.String
+        return "AstString"
+
     _is_assignable = fabll.Traits.MakeEdge(is_assignable.MakeChild())
 
     source = SourceChunk.MakeChild()
