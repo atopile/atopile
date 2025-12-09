@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import ClassVar
 
 import atopile.compiler.ast_types as AST
 import faebryk.core.node as fabll
@@ -18,10 +18,19 @@ from atopile.compiler.gentypegraph import (
     ScopeState,
     Symbol,
 )
-from faebryk.core.zig.gen.faebryk.interface import EdgeInterfaceConnection
-from faebryk.core.zig.gen.faebryk.linker import Linker
-from faebryk.core.zig.gen.faebryk.typegraph import TypeGraph, TypeGraphPathError
-from faebryk.core.zig.gen.graph.graph import BoundNode, GraphView
+from faebryk.core.zig.gen.faebryk.interface import (  # type: ignore[import-untyped]
+    EdgeInterfaceConnection,
+)
+from faebryk.core.zig.gen.faebryk.linker import Linker  # type: ignore[import-untyped]
+from faebryk.core.zig.gen.faebryk.pointer import EdgePointer
+from faebryk.core.zig.gen.faebryk.typegraph import (  # type: ignore[import-untyped]
+    TypeGraph,
+    TypeGraphPathError,
+)
+from faebryk.core.zig.gen.graph.graph import (  # type: ignore[import-untyped]
+    BoundNode,
+    GraphView,
+)
 from faebryk.libs.util import cast_assert, not_none
 
 STDLIB_ALLOWLIST = {
@@ -49,47 +58,24 @@ class CompilerException(Exception):
     """
 
 
-class BlockType(StrEnum):
-    MODULE = "module"
-    COMPONENT = "component"
-    INTERFACE = "interface"
-
-
 class is_ato_block(fabll.Node):
-    """
-    Indicates type origin and originating block type (module, component, interface)
-    """
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
-    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
-    block_type = F.Literals.EnumsFactory(BlockType).MakeChild(
-        *BlockType.__members__.values()
-    )
 
-    @classmethod
-    def _MakeChild(cls, block_type: BlockType) -> fabll._ChildField[Any]:
-        lit = F.Literals.EnumValue.MakeChild(
-            name=block_type.name, value=block_type.value
-        )
-        out = fabll._ChildField(cls)
-        out.add_dependant(lit, before=True)
-        out.add_dependant(
-            F.Expressions.Is.MakeChild_Constrain(
-                operands=[[out, cls.block_type], [lit]]
-            )
-        )
-        return out
+class is_ato_module(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    as_ato_block = fabll.Traits.ImpliedTrait(is_ato_block)
+    as_module = fabll.Traits.ImpliedTrait(fabll.is_module)
 
-    @classmethod
-    def MakeChild_Module(cls) -> fabll._ChildField[Any]:
-        return cls._MakeChild(BlockType.MODULE)
 
-    @classmethod
-    def MakeChild_Component(cls) -> fabll._ChildField[Any]:
-        return cls._MakeChild(BlockType.COMPONENT)
+class is_ato_component(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    as_ato_block = fabll.Traits.ImpliedTrait(is_ato_block)
 
-    @classmethod
-    def MakeChild_Interface(cls) -> fabll._ChildField[Any]:
-        return cls._MakeChild(BlockType.INTERFACE)
+
+class is_ato_interface(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    as_ato_block = fabll.Traits.ImpliedTrait(is_ato_block)
 
 
 class _ScopeStack:
@@ -316,6 +302,11 @@ class _TypeContextStack:
         )
 
 
+class AnyAtoBlock(fabll.Node):
+    _definition_identifier: ClassVar[str] = "definition"
+    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+
+
 class ASTVisitor:
     """
     Generates a TypeGraph from the AST.
@@ -493,24 +484,29 @@ class ASTVisitor:
             case AST.BlockDefinition.BlockType.MODULE:
 
                 class _Module(fabll.Node):
-                    is_ato_block = (
-                        # TODO: link from other typegraph
-                        is_ato_block.MakeChild_Module()
-                    )
+                    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+                    is_ato_module = fabll.Traits.MakeEdge(is_ato_module.MakeChild())
+                    is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
                 _Block = _Module
 
             case AST.BlockDefinition.BlockType.COMPONENT:
 
                 class _Component(fabll.Node):
-                    is_ato_block = is_ato_block.MakeChild_Component()
+                    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+                    is_ato_component = fabll.Traits.MakeEdge(
+                        is_ato_component.MakeChild()
+                    )
 
                 _Block = _Component
 
             case AST.BlockDefinition.BlockType.INTERFACE:
 
                 class _Interface(fabll.Node):
-                    is_ato_block = is_ato_block.MakeChild_Interface()
+                    is_ato_block = fabll.Traits.MakeEdge(is_ato_block.MakeChild())
+                    is_ato_interface = fabll.Traits.MakeEdge(
+                        is_ato_interface.MakeChild()
+                    )
 
                 _Block = _Interface
 
@@ -519,6 +515,13 @@ class ASTVisitor:
 
         type_node = _Block.bind_typegraph(self._type_graph).get_or_create_type()
         self._state.type_roots[module_name] = type_node
+
+        EdgePointer.point_to(
+            bound_node=type_node,
+            target_node=node.instance.node(),
+            identifier=AnyAtoBlock._definition_identifier,
+            order=None,
+        )
 
         with self._scope_stack.enter():
             with self._type_stack.enter(type_node):

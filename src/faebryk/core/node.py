@@ -1103,6 +1103,18 @@ class Node[T: NodeAttributes = NodeAttributes](metaclass=NodeMeta):
                 return parent, parent.get_trait(trait)
         raise KeyErrorNotFound(f"No parent with trait {trait} found")
 
+    def is_descendant_of(self, ancestor: "NodeT") -> bool:
+        """Check if this node is a descendant of ancestor."""
+        current = self
+        while True:
+            parent_info = current.get_parent()
+            if parent_info is None:
+                return False
+            parent, _ = parent_info
+            if parent.is_same(ancestor):
+                return True
+            current = parent
+
     def nearest_common_ancestor(self, *others: "NodeT") -> tuple["NodeT", str] | None:
         """
         Finds the nearest common ancestor of the given nodes, or None if no common
