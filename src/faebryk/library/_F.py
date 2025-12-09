@@ -16,11 +16,11 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 import faebryk.library.Collections as Collections
+from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.is_sink import is_sink
 from faebryk.library.is_source import is_source
 from faebryk.library.Logic import Logic
 from faebryk.library.Mechanical import Mechanical
-from faebryk.library.NumberDomain import NumberDomain
 from faebryk.library.Signal import Signal
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_part_removed import has_part_removed
@@ -117,11 +117,11 @@ from faebryk.library.USB_C import USB_C
 
 __all__ = [
     "Collections",
+    "NumberDomain",
     "is_sink",
     "is_source",
     "Logic",
     "Mechanical",
-    "NumberDomain",
     "Signal",
     "is_app_root",
     "has_part_removed",

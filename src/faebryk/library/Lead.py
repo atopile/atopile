@@ -4,10 +4,11 @@ import logging
 import re
 from typing import Self
 
+import pytest
+
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
 from faebryk.library import _F as F
-from faebryk.library.Collections import _get_pointer_references
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class is_lead(fabll.Node):
             return pad
 
         raise PadMatchException(
-            f"No matching pad found for lead: {self.get_lead_name()} - {pads}"
+            f"No matching pad found for lead: {self.get_lead_name()}"
         )
 
 
@@ -70,11 +71,11 @@ class can_attach_to_any_pad(fabll.Node):
             )
         ]
         for pad in pads:
-            if pad in claimed_pads:
-                continue
-            return pad
+            if pad not in claimed_pads:
+                return pad
         raise PadMatchException(
-            f"No matching pad found for lead with is_lead trait: {self}"
+            f"No pad available for lead "
+            f"[{self.get_name()}] - All pads are probably claimed by other leads."
         )
 
 
@@ -124,73 +125,20 @@ class can_attach_to_pad_by_name(fabll.Node):
         Find a pad for this lead based on name match by regex.
         """
         regex = self.compiled_regex
+        matched_pads: list[F.Footprints.is_pad] = []
         for pad in pads:
-            if regex.search(pad.pad_name):
-                return pad
-        raise PadMatchException(
-            f"No matching pad found for lead with is_lead trait: {self}"
-        )
-
-
-class can_attach_to_pad_by_name_heuristic(fabll.Node):
-    """
-    Replaces has_pin_association_heuristic
-    """
-
-    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
-
-    case_sensitive = F.Parameters.BooleanParameter.MakeChild()
-
-    @classmethod
-    def MakeChild(
-        cls, mapping: list[str], case_sensitive: bool = False
-    ) -> fabll._ChildField[Self]:
-        out = fabll._ChildField(cls)
-
-        out.add_dependant(
-            F.Literals.Booleans.MakeChild_ConstrainToLiteral(
-                [out, cls.case_sensitive], case_sensitive
+            if regex.match(pad.pad_name):
+                matched_pads.append(pad)
+        if len(matched_pads) == 1:
+            return matched_pads[0]
+        if len(matched_pads) > 1:
+            raise PadMatchException(
+                f"Matched {len(matched_pads)} out of {len(pads)} pads for lead "
+                f"[{self.get_name()}] with regex [{regex.pattern}]"
             )
-        )
-
-        for name in mapping:
-            name_lit = F.Literals.Strings.MakeChild(name)
-            out.add_dependant(name_lit)
-            out.add_dependant(F.Collections.Pointer.MakeEdge([out], [name_lit]))
-
-        return out
-
-    def find_matching_pad(self, pads: list[F.Footprints.is_pad]) -> F.Footprints.is_pad:
-        """
-        Find a matching pad for this lead based on name heuristics.
-        """
-        case_sensitive = (
-            self.case_sensitive.get().force_extract_literal().get_boolean_values()[0]
-        )
-        alt_names = _get_pointer_references(self)
-        nc = {"NC", "nc"}
-
-        for pad in pads:
-            match = False
-            if pad.pad_name in nc:
-                continue
-            for alt_name in alt_names:
-                alt_name = alt_name.cast(F.Literals.Strings).get_values()[0]
-                if not case_sensitive:
-                    if pad.pad_name.lower() == alt_name.lower():
-                        match = True
-                else:
-                    if pad.pad_name == alt_name:
-                        match = True
-                if match:
-                    logger.info(
-                        f"Matched pad [{pad.pad_number}:{pad.pad_name}]\
-                            to lead via alias [{alt_name}]"
-                    )
-                    return pad
-
         raise PadMatchException(
-            f"Could not find match for lead with aliases [{alt_names}]"
+            f"No matching pad found for lead [{self.get_name()}] "
+            f"with regex [{regex.pattern}]"
         )
 
 
@@ -265,20 +213,20 @@ def test_can_attach_to_pad_by_name(capsys):
                 )
             )
 
-    class TestPad1(fabll.Node):
+    class AnodePad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="anode", pad_number="1")
         )
 
-    class TestPad2(fabll.Node):
+    class CathodePad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="cathode", pad_number="2")
         )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
-    pad1 = TestPad1.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    pads = [pad1, pad2]
+    anode_pad = AnodePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    cathode_pad = CathodePad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    pads = [anode_pad, cathode_pad]
 
     assert module.anode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
     assert module.cathode.get().get_trait(is_lead).has_trait(can_attach_to_pad_by_name)
@@ -290,12 +238,14 @@ def test_can_attach_to_pad_by_name(capsys):
             )
         )
 
-    anode_pad = module.anode.get().get_trait(is_lead).find_matching_pad(pads)
+    matched_anode_pad = module.anode.get().get_trait(is_lead).find_matching_pad(pads)
 
-    cathode_pad = module.cathode.get().get_trait(is_lead).find_matching_pad(pads)
+    matched_cathode_pad = (
+        module.cathode.get().get_trait(is_lead).find_matching_pad(pads)
+    )
 
-    assert anode_pad.is_same(pad1)
-    assert cathode_pad.is_same(pad2)
+    assert matched_anode_pad.is_same(anode_pad)
+    assert matched_cathode_pad.is_same(cathode_pad)
 
 
 def test_can_attach_to_any_pad():
@@ -303,7 +253,7 @@ def test_can_attach_to_any_pad():
     tg = fbrk.TypeGraph.create(g=g)
 
     class TestModule(fabll.Node):
-        unnamed = [F.Electrical.MakeChild() for _ in range(2)]
+        unnamed = [F.Electrical.MakeChild() for _ in range(3)]
 
         _is_module = fabll.Traits.MakeEdge(fabll.is_module.MakeChild())
 
@@ -314,26 +264,39 @@ def test_can_attach_to_any_pad():
                 fabll.Traits.MakeEdge(can_attach_to_any_pad.MakeChild(), [lead])
             )
 
+    class TestPad0(fabll.Node):
+        is_pad_ = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="pad_0", pad_number="0")
+        )
+
     class TestPad1(fabll.Node):
-        _is_pad = fabll.Traits.MakeEdge(
-            F.Footprints.is_pad.MakeChild(pad_name="pad_a", pad_number="1")
+        is_pad_ = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="pad_1", pad_number="1")
         )
 
     class TestPad2(fabll.Node):
-        _is_pad = fabll.Traits.MakeEdge(
-            F.Footprints.is_pad.MakeChild(pad_name="pad_b", pad_number="2")
+        is_pad_ = fabll.Traits.MakeEdge(
+            F.Footprints.is_pad.MakeChild(pad_name="pad_2", pad_number="2")
         )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
-    pad1 = TestPad1.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    pads = [pad1, pad2]
+    pad0 = TestPad0.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
+    pad1 = TestPad1.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
+    pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g).is_pad_.get()
+    pads = [pad0, pad1, pad2]
 
     unnamed_0_pad = module.unnamed[0].get().get_trait(is_lead).find_matching_pad(pads)
     unnamed_1_pad = module.unnamed[1].get().get_trait(is_lead).find_matching_pad(pads)
 
-    assert unnamed_0_pad.is_same(pad1)
-    assert unnamed_1_pad.is_same(pad2)
+    fabll.Traits.create_and_add_instance_to(
+        node=module.unnamed[1].get(), trait=has_associated_pads
+    ).setup(pad=pad2, parent=module.unnamed[1].get())
+
+    with pytest.raises(PadMatchException):
+        module.unnamed[2].get().get_trait(is_lead).find_matching_pad(pads)
+
+    assert unnamed_0_pad.is_same(pad0)
+    assert unnamed_1_pad.is_same(pad1)
 
 
 def test_can_attach_to_pad_by_lead_name():
@@ -350,23 +313,23 @@ def test_can_attach_to_pad_by_lead_name():
             lead = is_lead.MakeChild()
             e.add_dependant(fabll.Traits.MakeEdge(lead, [e]))
 
-    class TestPad1(fabll.Node):
+    class HVPad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="hv", pad_number="1")
         )
 
-    class TestPad2(fabll.Node):
+    class LVPad(fabll.Node):
         _is_pad = fabll.Traits.MakeEdge(
             F.Footprints.is_pad.MakeChild(pad_name="lv", pad_number="2")
         )
 
     module = TestModule.bind_typegraph(tg).create_instance(g=g)
-    pad1 = TestPad1.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    pad2 = TestPad2.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
-    pads = [pad1, pad2]
+    hv_pad = HVPad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    lv_pad = LVPad.bind_typegraph(tg).create_instance(g=g)._is_pad.get()
+    pads = [hv_pad, lv_pad]
 
-    hv_pad = module.hv.get().get_trait(is_lead).find_matching_pad(pads)
-    lv_pad = module.lv.get().get_trait(is_lead).find_matching_pad(pads)
+    matched_hv_pad = module.hv.get().get_trait(is_lead).find_matching_pad(pads)
+    matched_lv_pad = module.lv.get().get_trait(is_lead).find_matching_pad(pads)
 
-    assert hv_pad.is_same(pad1)
-    assert lv_pad.is_same(pad2)
+    assert matched_hv_pad.is_same(hv_pad)
+    assert matched_lv_pad.is_same(lv_pad)
