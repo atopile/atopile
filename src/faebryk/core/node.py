@@ -2109,12 +2109,25 @@ class TreeRenderer:
                     return str(values[0])
                 elif values:
                     return TreeRenderer.format_list(values)
-            case "Numerics":
-                values = list(F.Literals.Numerics.bind_instance(node).get_values())
-                if len(values) == 1:
-                    return str(values[0])
-                elif values:
-                    return TreeRenderer.format_list(values)
+            case "NumericSet":
+                numeric_set = F.Literals.NumericSet.bind_instance(node)
+                try:
+                    values = list(numeric_set.get_values())
+                    if len(values) == 1:
+                        return str(values[0])
+                    elif values:
+                        return TreeRenderer.format_list(values)
+                except F.Literals.NotSingletonError:
+                    intervals = numeric_set.get_intervals()
+                    if len(intervals) == 1:
+                        i = intervals[0]
+                        return f"[{i.get_min_value()}, {i.get_max_value()}]"
+                    return TreeRenderer.format_list(
+                        [
+                            f"[{i.get_min_value()}, {i.get_max_value()}]"
+                            for i in intervals
+                        ]
+                    )
             case "AnyLiteral":
                 value = F.Literals.AnyLiteral.bind_instance(node).get_value()
                 if isinstance(value, str):

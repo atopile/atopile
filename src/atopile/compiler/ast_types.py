@@ -182,11 +182,11 @@ class FieldRef(fabll.Node):
 
 class Decimal(fabll.Node):
     source = SourceChunk.MakeChild()
-    value = F.Literals.Numerics.MakeChild()
+    value = F.Literals.NumericSet.MakeChild_Empty()
 
     def setup(self, source_info: SourceInfo, value: int | float) -> Self:  # type: ignore[invalid-method-override]
         self.source.get().setup(source_info=source_info)
-        self.value.get().setup_from_values(float(value))
+        self.value.get().setup_from_singleton(float(value))
         return self
 
 

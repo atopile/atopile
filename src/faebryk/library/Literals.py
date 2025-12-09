@@ -457,25 +457,6 @@ class TestNumeric:
         assert numeric.get_value() == expected_value
 
 
-class Numerics(fabll.Node):
-    values = F.Collections.PointerSet.MakeChild()
-
-    def setup_from_values(self, *values: float) -> Self:
-        for value in values:
-            numeric = Numeric.create_instance(g=self.g, tg=self.tg, value=value)
-            self.values.get().append(numeric)
-            EdgeComposition.add_anon_child(
-                bound_node=self.instance, child=numeric.instance.node()
-            )
-        return self
-
-    def get_values(self) -> Iterable[float]:
-        return (
-            Numeric.bind_instance(instance=numeric.instance).get_value()
-            for numeric in self.values.get().as_list()
-        )
-
-
 class NumericInterval(fabll.Node):
     _min_identifier: ClassVar[str] = "min"
     _max_identifier: ClassVar[str] = "max"
@@ -1628,6 +1609,10 @@ class NumericSet(fabll.Node):
         return out
 
     @classmethod
+    def MakeChild_Empty(cls) -> fabll._ChildField:
+        return fabll._ChildField(cls)
+
+    @classmethod
     def sort_merge_intervals(
         cls,
         g: graph.GraphView,
@@ -1693,6 +1678,17 @@ class NumericSet(fabll.Node):
 
     def get_max_value(self) -> float:
         return self.get_intervals()[-1].get_max_value()
+
+    def get_values(self) -> Iterable[float]:
+        """Get singleton values from all intervals."""
+        for interval in self.get_intervals():
+            if not interval.is_singleton():
+                raise NotSingletonError(
+                    f"Interval ({interval.get_min_value()}, "
+                    f"{interval.get_max_value()}) "
+                    "is not a singleton"
+                )
+            yield interval.get_min_value()
 
     def closest_elem(self, target: float) -> float:
         assert isinstance(target, float)
@@ -2277,6 +2273,40 @@ class TestNumericSet:
         numeric_set.setup_from_singleton(value=1.0)
         assert numeric_set.get_intervals()[0].get_min_value() == 1.0
         assert numeric_set.get_intervals()[0].get_max_value() == 1.0
+
+    def test_get_values_singleton(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set.setup_from_singleton(value=42.0)
+        assert list(numeric_set.get_values()) == [42.0]
+
+    def test_get_values_multiple_singletons(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set.setup_from_values(values=[(1.0, 1.0), (2.0, 2.0), (3.0, 3.0)])
+        assert list(numeric_set.get_values()) == [1.0, 2.0, 3.0]
+
+    def test_get_values_non_singleton_raises(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+        numeric_set = NumericSet.create_instance(g=g, tg=tg)
+        numeric_set.setup_from_values(values=[(1.0, 5.0)])
+        with pytest.raises(NotSingletonError):
+            list(numeric_set.get_values())
+
+    def test_make_child_empty(self):
+        g = graph.GraphView.create()
+        tg = fbrk.TypeGraph.create(g=g)
+
+        class Container(fabll.Node):
+            numeric_set = NumericSet.MakeChild_Empty()
+
+        container = Container.bind_typegraph(tg=tg).create_instance(g=g)
+        assert container.numeric_set.get().is_empty()
+        container.numeric_set.get().setup_from_singleton(value=42.0)
+        assert list(container.numeric_set.get().get_values()) == [42.0]
 
     def test_instance_setup_from_interval(self):
         g = graph.GraphView.create()
