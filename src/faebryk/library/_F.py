@@ -50,10 +50,10 @@ from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_i
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 import faebryk.library.Units as Units
 import faebryk.library.KiCadFootprints as KiCadFootprints
-import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
+import faebryk.library.PCBTransformer as PCBTransformer
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.Filter import Filter
 import faebryk.library.Lead as Lead
@@ -152,10 +152,10 @@ __all__ = [
     "is_pickable_by_type",
     "Units",
     "KiCadFootprints",
-    "PCBTransformer",
     "is_atomic_part",
     "Electrical",
     "has_simple_value_representation",
+    "PCBTransformer",
     "ElectricPower",
     "Filter",
     "Lead",
