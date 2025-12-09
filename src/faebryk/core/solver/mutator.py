@@ -47,7 +47,7 @@ IsSubset = F.Expressions.IsSubset
 
 
 class is_terminated(fabll.Node):
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
 
 @dataclass

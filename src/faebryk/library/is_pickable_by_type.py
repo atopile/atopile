@@ -23,7 +23,7 @@ class is_pickable_by_type(fabll.Node):
         CAPACITORS = "capacitors"
         INDUCTORS = "inductors"
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     endpoint_ = F.Parameters.EnumParameter.MakeChild(enum_t=Endpoint)
     params_ = F.Collections.PointerSet.MakeChild()
 

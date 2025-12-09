@@ -15,12 +15,12 @@ def test_trait_equality():
     g, tg = graph_and_typegraph()
 
     class Trait1(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(
+        is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
     class Trait2(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(
+        is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
@@ -43,7 +43,7 @@ def test_trait_basic_operations():
     g, tg = graph_and_typegraph()
 
     class TraitWithValue(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(
+        is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
@@ -82,12 +82,12 @@ def test_trait_object_binding():
     g, tg = graph_and_typegraph()
 
     class TraitA(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(
+        is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
     class TraitB(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(
+        is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 
@@ -113,7 +113,7 @@ def test_trait_first_instance_wins():
     g, tg = graph_and_typegraph()
 
     class Trait(fabll.Node):
-        _is_trait = fabll.Traits.MakeEdge(
+        is_trait = fabll.Traits.MakeEdge(
             fabll.ImplementsTrait.MakeChild().put_on_type()
         )
 

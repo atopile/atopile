@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 from enum import StrEnum
-from typing import Any, Self
+from typing import Self
 
 import faebryk.core.faebrykpy as fbrk
 import faebryk.core.node as fabll
@@ -222,7 +222,7 @@ class has_designator_prefix(fabll.Node):
         ZD = "ZD"
         """Zener diode > often changed to "D" for diode"""
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     prefix_param_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod

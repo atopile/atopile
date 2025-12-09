@@ -24,7 +24,7 @@ class has_linked_kicad_footprint(fabll.Node):
     - F.Footprints.Footprint which are represented in the PCB
     """
 
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     footprint_ = F.Parameters.StringParameter.MakeChild()
     transformer_ = F.Parameters.StringParameter.MakeChild()
@@ -65,7 +65,7 @@ class has_linked_kicad_footprint(fabll.Node):
 
 
 class has_linked_kicad_pad(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     footprint_ = F.Parameters.StringParameter.MakeChild()
     pad_ = F.Parameters.StringParameter.MakeChild()
@@ -123,6 +123,7 @@ class has_linked_kicad_pad(fabll.Node):
         )
         return ctypes.cast(transformer_id, ctypes.py_object).value
 
+
 def setup_pcb_transformer_test():
     from faebryk.libs.test.fileformats import PCBFILE
 
@@ -144,4 +145,3 @@ def test_pcb_transformer_traits():
     # TODO: assert transformer.tg is app.tg
     assert transformer.app is app
     assert transformer.pcb is kpcb
-

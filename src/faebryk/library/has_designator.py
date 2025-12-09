@@ -10,7 +10,7 @@ from faebryk.libs.app.designators import attach_random_designators
 
 
 class has_designator(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     designator_ = F.Parameters.StringParameter.MakeChild()
 
     def get_designator(self) -> str | None:

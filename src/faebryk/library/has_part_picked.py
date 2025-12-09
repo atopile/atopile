@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class has_part_picked(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     # Manual storage of the PickedPart dataclass
     manufacturer_ = F.Parameters.StringParameter.MakeChild()
@@ -26,15 +26,23 @@ class has_part_picked(fabll.Node):
 
     def try_get_part(self) -> "PickedPart | None":
         class DummyPickSupplier(PickSupplier):
-            supplier_id = self.supplier_id_.get().try_extract_constrained_literal().get_values()[0]
+            supplier_id = (
+                self.supplier_id_.get()
+                .try_extract_constrained_literal()
+                .get_values()[0]
+            )
 
             def attach(self, *args, **kwargs):
                 return None
 
         return PickedPart(
-            manufacturer=self.manufacturer_.get().try_extract_constrained_literal().get_values()[0],
+            manufacturer=self.manufacturer_.get()
+            .try_extract_constrained_literal()
+            .get_values()[0],
             partno=self.partno_.get().try_extract_constrained_literal().get_values()[0],
-            supplier_partno=self.supplier_partno_.get().try_extract_constrained_literal().get_values()[0],
+            supplier_partno=self.supplier_partno_.get()
+            .try_extract_constrained_literal()
+            .get_values()[0],
             supplier=DummyPickSupplier(),  # or None
         )
 

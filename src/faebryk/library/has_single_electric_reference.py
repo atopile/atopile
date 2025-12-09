@@ -15,7 +15,7 @@ class has_single_electric_reference(fabll.Node):
     Connect all electric references of a module into a single reference.
     """
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     reference_ptr_ = F.Collections.Pointer.MakeChild()
     ground_only_ = F.Parameters.BooleanParameter.MakeChild()
@@ -35,7 +35,8 @@ class has_single_electric_reference(fabll.Node):
         reference = F.ElectricPower.bind_typegraph(self.tg).create_instance(g=self.g)
         self.reference_ptr_.get().point(reference)
 
-        # if a child has the single electric reference trait, connect its shared reference to shared reference``
+        # if a child has the single electric reference trait,
+        # connect its shared reference to shared reference
         children_with_trait = parent_node.get_children(
             direct_only=True,
             types=fabll.Node,

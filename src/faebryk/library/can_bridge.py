@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class can_bridge(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
+    is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
 
     in_ = F.Collections.Pointer.MakeChild()
     out_ = F.Collections.Pointer.MakeChild()

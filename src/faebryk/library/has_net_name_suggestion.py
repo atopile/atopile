@@ -17,7 +17,7 @@ class has_net_name_suggestion(fabll.Node):
         SUGGESTED = "SUGGESTED"
         EXPECTED = "EXPECTED"
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     name_ = F.Parameters.StringParameter.MakeChild()
     level_ = F.Parameters.EnumParameter.MakeChild(enum_t=Level)
@@ -55,6 +55,6 @@ class has_net_name_suggestion(fabll.Node):
     @staticmethod
     def add_net_name(node: fabll.Node, name: str, level: Level):
         """Helper method to add a net name to a node"""
-        fabll.Traits.create_and_add_instance_to(node=node, trait=has_net_name_suggestion).setup(
-            name=name, level=level
-        )
+        fabll.Traits.create_and_add_instance_to(
+            node=node, trait=has_net_name_suggestion
+        ).setup(name=name, level=level)

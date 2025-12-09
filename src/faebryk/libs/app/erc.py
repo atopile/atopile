@@ -13,6 +13,7 @@ from faebryk.libs.exceptions import accumulate
 
 logger = logging.getLogger(__name__)
 
+
 class ERCFault(errors.UserException):
     """Base class for ERC faults."""
 
@@ -166,7 +167,7 @@ def simple_erc(tg: fbrk.TypeGraph):
 
 # TODO split this up
 class needs_erc_check(fabll.Node):
-    _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+    is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     design_check = F.implements_design_check.MakeChild()
 
@@ -175,8 +176,8 @@ class needs_erc_check(fabll.Node):
     def __check_post_design__(self):
         simple_erc(self.tg)
 
-class Test:
 
+class Test:
     def test_erc_isolated_connect(self):
         g = fabll.graph.GraphView.create()
         tg = fbrk.TypeGraph.create(g=g)
@@ -212,7 +213,6 @@ class Test:
 
         assert not a1.scl.get()._is_interface.get().is_connected_to(b1.sda.get())
         assert not a1.sda.get()._is_interface.get().is_connected_to(b1.scl.get())
-
 
     def test_erc_electric_power_short(self):
         g = fabll.graph.GraphView.create()
@@ -255,7 +255,6 @@ class Test:
 
         with pytest.raises(ERCPowerSourcesShortedError):
             simple_erc(tg)
-
 
     def test_erc_power_source_no_short(self):
         """

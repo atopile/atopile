@@ -21,7 +21,7 @@ class is_lead(fabll.Node):
     A lead is the connection from a component package to the footprint pad
     """
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def get_lead_name(self) -> str:
         owner = fabll.Traits.bind(self).get_obj_raw()
@@ -124,7 +124,7 @@ class can_attach_to_pad_by_name_heuristic(fabll.Node):
     Replaces has_pin_association_heuristic
     """
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     case_sensitive = F.Parameters.BooleanParameter.MakeChild()
 
@@ -201,9 +201,8 @@ class has_associated_pads(fabll.Node):
         out.add_dependant(pad)
         return out
 
-    def setup(
-        self, pad: F.Footprints.is_pad, parent: fabll.Node) -> Self:
-        self.pad_ptr_.get().point(pad) # setup single pointer to single pad
+    def setup(self, pad: F.Footprints.is_pad, parent: fabll.Node) -> Self:
+        self.pad_ptr_.get().point(pad)  # setup single pointer to single pad
         return self
 
 

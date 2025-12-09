@@ -17,7 +17,7 @@ class has_net_name_affix(fabll.Node):
     Attach to an `F.Electrical` interface (e.g. a `.line`).
     """
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     required_prefix_ = F.Parameters.StringParameter.MakeChild()
     required_suffix_ = F.Parameters.StringParameter.MakeChild()

@@ -10,7 +10,7 @@ from faebryk.libs.util import once
 
 
 class is_atomic_part(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     manufacturer_ = F.Parameters.StringParameter.MakeChild()
     partnumber_ = F.Parameters.StringParameter.MakeChild()

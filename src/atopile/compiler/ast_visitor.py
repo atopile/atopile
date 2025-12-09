@@ -60,7 +60,7 @@ class is_ato_block(fabll.Node):
     Indicates type origin and originating block type (module, component, interface)
     """
 
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
     block_type = F.Literals.EnumsFactory(BlockType).MakeChild(
         *BlockType.__members__.values()
     )

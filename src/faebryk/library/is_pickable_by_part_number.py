@@ -6,7 +6,7 @@ import faebryk.library._F as F
 
 
 class is_pickable_by_part_number(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     manufacturer_ = fabll._ChildField(F.Parameters.StringParameter)
     partno_ = fabll._ChildField(F.Parameters.StringParameter)

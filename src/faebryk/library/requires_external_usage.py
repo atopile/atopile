@@ -40,7 +40,7 @@ class requires_external_usage(fabll.Node):
         if not self.get_parent_force()[0].has_trait(fabll.is_interface):
             raise NotImplementedError("Only supported on interfaces")
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     design_check = fabll.Traits.MakeEdge(F.implements_design_check.MakeChild())
 

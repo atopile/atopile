@@ -89,7 +89,7 @@ class PCB(fabll.Node):
         return fabll.Node.bind_instance(self.app_.get().deref().instance)
 
     class requires_drc_check(fabll.Node):
-        _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+        is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
         type Violation = kicad.drc.DrcFile.C_Violation
 
         class DrcException(F.implements_design_check.UnfulfilledCheckException):
@@ -169,12 +169,12 @@ class PCB(fabll.Node):
 
     # TODO use reference
     class has_pcb(fabll.Node):
-        _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+        is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
         pcb_ptr_ = F.Parameters.StringParameter.MakeChild()
 
         class has_pcb_ref(fabll.Node):
-            _is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
+            is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
             # reference: "PCB" = reference()
 
         @classmethod

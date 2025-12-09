@@ -12,7 +12,7 @@ class can_bridge_by_name(fabll.Node):
     Only keeping for ato v1 compatibility.
     """
 
-    _is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
+    is_trait = fabll.Traits.MakeEdge((fabll.ImplementsTrait.MakeChild())).put_on_type()
 
     # TODO: Forward this trait to parent
     _can_bridge = fabll.Traits.MakeEdge(fabll._ChildField(F.can_bridge))

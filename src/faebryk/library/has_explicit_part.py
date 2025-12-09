@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class has_explicit_part(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     mfr_ = F.Parameters.StringParameter.MakeChild()
     partno_ = F.Parameters.StringParameter.MakeChild()

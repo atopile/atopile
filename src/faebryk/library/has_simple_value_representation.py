@@ -194,7 +194,7 @@ class has_simple_value_representation(fabll.Node):
     prefix_ = F.Parameters.StringParameter.MakeChild()
     suffix_ = F.Parameters.StringParameter.MakeChild()
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     def get_specs(self) -> list[SpecNode]:
         specs_set = self.specs_set_.get()

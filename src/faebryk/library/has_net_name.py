@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class has_net_name(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     name_ = fabll._ChildField(F.Parameters.StringParameter)
 

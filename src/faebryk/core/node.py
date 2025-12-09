@@ -1797,12 +1797,6 @@ class Traits:
             Traits(impl).get_obj_raw() for impl in Traits.get_implementors(trait, g=g)
         ]
 
-    def get_trait_of_obj[T: NodeT](self, t: type[T]) -> T:
-        return self.get_obj_raw().get_trait(t)
-
-    def try_get_trait_of_obj[T: NodeT](self, t: type[T]) -> T | None:
-        return self.get_obj_raw().try_get_trait(t)
-
     @staticmethod
     def is_trait(node: NodeT) -> "Traits | None":
         type_node = node.get_type_node()
@@ -1929,14 +1923,14 @@ class is_module(Node):
         - ...
     """
 
-    _is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
+    is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
 
     def get_obj(self) -> NodeT:
         return Traits.get_obj_raw(Traits.bind(self))
 
 
 class is_interface(Node):
-    _is_trait = ImplementsTrait.MakeChild().put_on_type()
+    is_trait = ImplementsTrait.MakeChild().put_on_type()
 
     def get_obj(self) -> NodeT:
         return Traits.get_obj_raw(Traits.bind(self))
@@ -2431,7 +2425,7 @@ def test_trait_mark_as_trait():
     g, tg = _make_graph_and_typegraph()
 
     class ExampleTrait(Node):
-        _is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
+        is_trait = Traits.MakeEdge(ImplementsTrait.MakeChild().put_on_type())
 
     class ExampleNode(Node):
         example_trait = Traits.MakeEdge(ExampleTrait.MakeChild())

@@ -13,7 +13,7 @@ class has_package_requirements(fabll.Node):
     Collection of constraints for package of module.
     """
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     size_ = F.Parameters.EnumParameter.MakeChild(enum_t=SMDSize)
 

@@ -38,7 +38,7 @@ class SubPCB(fabll.Node):
 
 class has_subpcb(fabll.Node):
     subpcb_ = F.Collections.PointerSet.MakeChild()
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, subpcb: "SubPCB") -> "has_subpcb":
         self.subpcb_.get().append(subpcb)
@@ -74,7 +74,7 @@ class SubAddress:
 class in_sub_pcb(fabll.Node):
     _sub_root_module_identifier = "sub_root_module"
     sub_root_modules = F.Collections.PointerSet.MakeChild()
-    _is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
+    is_trait = fabll.ImplementsTrait.MakeChild().put_on_type()
 
     def setup(self, sub_root_module: fabll.NodeT) -> "in_sub_pcb":
         self.sub_root_modules.get().append(sub_root_module)

@@ -12,7 +12,7 @@ class _FileManuallyModified(Exception): ...
 class is_auto_generated(fabll.Node):
     CHECKSUM_PLACEHOLDER = "{IS_AUTO_GENERATED_CHECKSUM}"
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     source_ = fabll._ChildField(F.Parameters.StringParameter)
     system_ = fabll._ChildField(F.Parameters.StringParameter)

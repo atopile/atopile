@@ -8,7 +8,7 @@ import faebryk.library._F as F
 
 
 class is_pickable_by_supplier_id(fabll.Node):
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     supplier_part_id_ = fabll._ChildField(F.Parameters.StringParameter)
     supplier_ = fabll._ChildField(F.Parameters.StringParameter)

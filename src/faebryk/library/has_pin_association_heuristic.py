@@ -37,7 +37,7 @@ class has_pin_association_heuristic(fabll.Node):
     |  |  |- literal2
     """
 
-    _is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
 
     mapping = F.Collections.PointerSet.MakeChild()
     accept_prefix_ = F.Parameters.BooleanParameter.MakeChild()
