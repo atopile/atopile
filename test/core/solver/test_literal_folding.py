@@ -210,7 +210,7 @@ class Builders(Namespace):
         literal: F.Parameters.can_be_operand,
     ) -> F.Parameters.can_be_operand:
         E = BoundExpressions(g=g, tg=tg)
-        p = E.parameter_op()
+        p = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
 
         F.Expressions.Is.from_operands(
             p,
@@ -672,7 +672,7 @@ def test_discover_literal_folding(expr: F.Parameters.can_be_operand):
     test_tg = test_expr.tg
 
     E = BoundExpressions(g=test_g, tg=test_tg)
-    root = E.parameter_op()
+    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
     E.is_(root, test_expr, assert_=True)
 
     try:
@@ -748,7 +748,7 @@ def debug_fix_literal_folding(expr: F.Parameters.can_be_operand):
     test_expr = expr.copy_into(test_g)
     test_tg = test_expr.tg
     expr_ctx = BoundExpressions(g=test_g, tg=test_tg)
-    root = expr_ctx.parameter_op()
+    root = expr_ctx.parameter_op(domain=F.NumberDomain.Args(negative=True))
     expr_ctx.is_(root, test_expr)
 
     logger.info(
@@ -987,7 +987,7 @@ def test_regression_literal_folding(expr: F.Parameters.can_be_operand):
     test_expr = test_expr_node.get_trait(F.Parameters.can_be_operand)
     test_tg = test_expr_node.tg
     E = BoundExpressions(g=test_g, tg=test_tg)
-    root = E.parameter_op()
+    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
     E.is_(root, test_expr, assert_=True)
 
     print("Evaluating expression...")
@@ -1132,7 +1132,7 @@ def test_folding_statistics(expr: F.Expressions.is_expression):
     stats.event("generate", test_expr, terminal=False)
     solver = DefaultSolver()
     E = BoundExpressions(g=test_g, tg=test_tg)
-    root = E.parameter_op()
+    root = E.parameter_op(domain=F.NumberDomain.Args(negative=True))
     E.is_(root, test_expr.get_sibling_trait(F.Parameters.can_be_operand), assert_=True)
 
     try:
