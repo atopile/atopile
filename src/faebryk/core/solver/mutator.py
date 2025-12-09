@@ -1075,11 +1075,6 @@ class Mutator:
         self,
         param: F.Parameters.is_parameter,
         units: F.Units.is_unit | None = None,
-        domain: F.NumberDomain | None = None,
-        soft_set: F.Literals.Numbers | None = None,
-        guess: F.Literals.Numbers | None = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool | None = None,
     ) -> F.Parameters.is_parameter:
         if param.as_parameter_operatable.get() in self.transformations.mutated:
             out = self.get_mutated(param.as_parameter_operatable.get())
@@ -1090,11 +1085,6 @@ class Mutator:
                 .try_cast(F.Parameters.NumericParameter)
             ):
                 assert np.get_units() == units
-                assert np.get_domain() == domain
-                assert np.get_soft_set() == soft_set
-                assert np.get_guess() == guess
-                assert np.get_tolerance_guess() == tolerance_guess
-            assert p.get_likely_constrained() == likely_constrained
             return p
 
         param_obj = fabll.Traits(param).get_obj_raw()
@@ -1104,28 +1094,10 @@ class Mutator:
                 old_g_unit_node = fabll.Traits(p.get_units()).get_obj_raw()
                 units = old_g_unit_node.copy_into(self.G_out).get_trait(F.Units.is_unit)
 
-            if domain is None:
-                domain = (
-                    F.NumberDomain.bind_typegraph(self.tg_out)
-                    .create_instance(self.G_out)
-                    .setup(p.get_domain().get_args())
-                )
-
             new_param = (
                 F.Parameters.NumericParameter.bind_typegraph(self.tg_out)
                 .create_instance(self.G_out)
-                .setup(
-                    units=units,
-                    domain=domain,
-                    soft_set=soft_set if soft_set is not None else p.get_soft_set(),
-                    guess=guess if guess is not None else p.get_guess(),
-                    tolerance_guess=tolerance_guess
-                    if tolerance_guess is not None
-                    else p.get_tolerance_guess(),
-                    likely_constrained=likely_constrained
-                    if likely_constrained is not None
-                    else param.get_likely_constrained(),
-                )
+                .setup(units=units, domain=F.Parameters.NumericParameter.DOMAIN_SKIP)
             )
         # else:
         #    new_param = param_obj.copy_into(self.G_out)

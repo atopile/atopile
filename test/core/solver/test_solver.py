@@ -943,9 +943,13 @@ def test_base_unit_switch():
 def test_try_fulfill_super_basic(
     predicate_type: type[F.Expressions.Is] | type[F.Expressions.IsSubset],
 ):
+    """
+    p0 is! [0, 10]V
+    deduce (p0 is [0, 10]V)
+    """
     E = BoundExpressions()
     p0 = E.parameter_op(units=E.U.V)
-    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))))
+    E.is_(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))), assert_=True)
 
     solver = DefaultSolver()
     pred = predicate_type.c(p0, E.lit_op_range(((0, E.U.V), (10, E.U.V))))

@@ -6,7 +6,6 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations
-from statistics import median
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -647,10 +646,14 @@ class MutatorUtils:
             if (expr_t := expr.try_cast(expr_factory))
             and expr_t.get_trait(F.Expressions.is_expression) not in dont_match_set
         ]
+
         for c in candidates:
-            # TODO congruence check instead
-            if c.get_trait(F.Expressions.is_expression).get_operands() == list(
-                operands
+            if c.get_trait(F.Expressions.is_expression).is_congruent_to_factory(
+                expr_factory,
+                operands,
+                g=self.mutator.G_transient,
+                tg=self.mutator.tg_in,
+                allow_uncorrelated=allow_uncorrelated,
             ):
                 return c
         return None
@@ -1174,70 +1177,17 @@ class MutatorUtils:
         if not params:
             raise ValueError("No parameters provided")
 
-        likely_constrained = any(p.get_likely_constrained() for p in params)
-
         p_type_repr = fabll.Traits(params[0]).get_obj_raw()
 
         if p_type_repr.isinstance(F.Parameters.NumericParameter):
-            numberdomains = [
-                np.get_domain()
-                for p in params
-                if (
-                    np := fabll.Traits(p)
-                    .get_obj_raw()
-                    .try_cast(F.Parameters.NumericParameter)
-                )
-            ]
-            domain = F.NumberDomain.get_shared_domain(
-                *numberdomains, g=self.mutator.G_out, tg=self.mutator.tg_out
-            )
-            nps = [
-                fabll.Traits(p).get_obj(F.Parameters.NumericParameter) for p in params
-            ]
-            # intersect ranges
-
-            # heuristic:
-            # intersect soft sets
-            soft_sets = {ss for p in nps if (ss := p.get_soft_set()) is not None}
-            soft_set = None
-            if soft_sets:
-                soft_set = F.Literals.Numbers.op_intersect_intervals(
-                    *soft_sets,
-                    g=self.mutator.G_out,
-                    tg=self.mutator.tg_out,
-                )
-
-            # heuristic:
-            # get median
-            guesses = {guess for np in nps if (guess := np.get_guess()) is not None}
-            guess = None
-            if guesses:
-                guess = median(guesses)  # type: ignore
-
-            # heuristic:
-            # max tolerance guess
-            tolerance_guesses = {
-                tolerance_guess
-                for np in nps
-                if (tolerance_guess := np.get_tolerance_guess()) is not None
-            }
-            tolerance_guess = None
-            if tolerance_guesses:
-                tolerance_guess = max(tolerance_guesses)
-
             new = (
                 F.Parameters.NumericParameter.bind_typegraph(self.mutator.tg_out)
                 .create_instance(self.mutator.G_out)
                 .setup(
+                    # units removed in canonicalization
                     units=F.Units.Dimensionless.bind_typegraph(self.mutator.tg_out)
                     .create_instance(self.mutator.G_out)
                     .is_unit.get(),
-                    # In canonicalization removed: within, units
-                    domain=domain,
-                    likely_constrained=likely_constrained,
-                    soft_set=soft_set,
-                    guess=guess,
-                    tolerance_guess=tolerance_guess,
                 )
             )
             return new.is_parameter.get()

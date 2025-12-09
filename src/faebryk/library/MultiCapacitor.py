@@ -42,7 +42,8 @@ class MultiCapacitor(fabll.Node):
         enum_t=TemperatureCoefficient
     )
     count = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Dimensionless,
+        domain=F.NumberDomain.Args(negative=False, integer=True),
     )
 
     # ----------------------------------------

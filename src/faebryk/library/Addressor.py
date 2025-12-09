@@ -11,17 +11,18 @@ logger = logging.getLogger(__name__)
 
 class Addressor(fabll.Node):
     address = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit, integer=True, negative=False
+        unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
     )
     offset = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit, integer=True, negative=False
+        unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
     )
     base = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Bit, integer=True, negative=False
+        unit=F.Units.Bit, domain=F.NumberDomain.Args(negative=False, integer=True)
     )
 
     address_bits_ = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Dimensionless,
+        domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     address_lines_ = F.Collections.PointerSet.MakeChild()
 

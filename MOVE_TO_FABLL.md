@@ -79,15 +79,16 @@ solver todo
 
 - [ ] mark exprs as literal during expr_mutation, then flag to solver that it needs to run flatten_literals afterwards
 
-NOTE TO SELF FRIDAY
+NOTE TO SELF MONDAY
 
 - currently going through `test_solver.py`
 - running `./test/runpytesttable.sh -m "not slow" test/core/solver/test_solver.py`
   and then checking test-report.html
-- got rid of (almost all) superficial errors
+- got rid of all superficial errors
 
   - now only slow / contradiction / assert result errors (actual solver errors) left
     - slowly start going one-by-one through solver errors
       (might want to first focus on the lit folding to make sure)
+  - currently busy with test_try_fulfill_super_basic
 
 - dont forget to remove slow marker (3 tests left)

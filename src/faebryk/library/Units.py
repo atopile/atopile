@@ -954,7 +954,8 @@ def make_unit_expression_type(
                 out.add_dependant(unit_field)
 
                 exponent_field = F.Parameters.NumericParameter.MakeChild(
-                    unit=Dimensionless, integer=True, negative=True, zero_allowed=True
+                    unit=Dimensionless,
+                    domain=F.NumberDomain.Args(negative=True, integer=True),
                 )
                 out.add_dependant(exponent_field)
 

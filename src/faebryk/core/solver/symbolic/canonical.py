@@ -45,33 +45,14 @@ logger = logging.getLogger(__name__)
 # NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
-@algorithm("Constrain within and domain", single=True, terminal=False)
-def constrain_within_domain(mutator: Mutator):
-    """
-    Translate domain (and within) predicates to parameter predicates.
-    """
-    # Nothing to do for within anymore, since already modelled as subset
-
-    for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
-        p = param.is_parameter.get()
-        po = p.as_parameter_operatable.get()
-        new_param = mutator.mutate_parameter(p)
-
-        mutator.utils.subset_to(
-            new_param.as_operand.get(),
-            param.get_domain()
-            .unbounded(F.Units.Dimensionless, g=mutator.G_transient)
-            .is_literal.get()
-            .as_operand.get(),
-            from_ops=[po],
-        )
-
-
 @algorithm("Alias predicates to true", single=True, terminal=False)
 def alias_predicates_to_true(mutator: Mutator):
     """
     Alias predicates to True since we need to assume they are true.
     """
+
+    # TODO do we need this? can this go into mutator for all predicates?
+    # or alternatively move it to the canonicalize
 
     for predicate in mutator.get_expressions(required_traits=(is_predicate,)):
         new_predicate = mutator.mutate_expression(predicate)
@@ -279,27 +260,13 @@ def convert_to_canonical_operations(mutator: Mutator):
             )
         return operand
 
-    # Canonicalize parameter literals
-    for param in mutator.get_parameters():
-        if (
-            np := fabll.Traits(param)
-            .get_obj_raw()
-            .try_cast(F.Parameters.NumericParameter)
-        ):
-            mutator.mutate_parameter(
-                param,
-                units=mutator.utils.dimensionless(),
-                soft_set=soft_set.convert_to_dimensionless(
-                    g=mutator.G_out, tg=mutator.tg_out
-                )
-                if (soft_set := np.get_soft_set()) is not None
-                else None,
-                guess=guess.convert_to_dimensionless(g=mutator.G_out, tg=mutator.tg_out)
-                if (guess := np.get_guess()) is not None
-                else None,
-            )
-        else:
-            mutator.mutate_parameter(param)
+    # Canonicalize parameters
+    for param in mutator.get_parameters_of_type(F.Parameters.NumericParameter):
+        mutator.mutate_parameter(
+            param.is_parameter.get(),
+            # make units dimensionless
+            units=mutator.utils.dimensionless(),
+        )
 
     exprs = mutator.get_expressions(sort_by_depth=True)
     for e in exprs:

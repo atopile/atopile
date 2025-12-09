@@ -545,17 +545,15 @@ class NumericParameter(fabll.Node):
     can_be_operand = fabll.Traits.MakeEdge(can_be_operand.MakeChild())
     number_domain = F.Collections.Pointer.MakeChild()
 
+    class DOMAIN_SKIP:
+        pass
+
     # domain = fabll.ChildField(NumberDomain)
 
     def get_units(self) -> "Units.is_unit":
         from faebryk.library.Units import has_unit
 
         return self.get_trait(has_unit).get_is_unit()
-
-    def get_domain(self) -> "NumberDomain":
-        return F.NumberDomain.bind_instance(
-            instance=self.number_domain.get().deref().instance
-        )
 
     def get_within(self) -> "Literals.Numbers | None":
         # TODO
@@ -598,91 +596,53 @@ class NumericParameter(fabll.Node):
         units: "Units.is_unit",
         # hard constraints
         within: "Literals.Numbers | None" = None,
-        domain: "NumberDomain | None" = None,
-        # soft constraints
-        soft_set: "Literals.Numbers | None" = None,
-        guess: "Literals.Numbers | None" = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool = False,
+        domain: "NumberDomain.Args | None | type[NumericParameter.DOMAIN_SKIP]" = None,
     ) -> Self:
+        from faebryk.library.Expressions import IsSubset
         from faebryk.library.NumberDomain import NumberDomain
         from faebryk.library.Units import has_unit
 
         fabll.Traits.create_and_add_instance_to(self, has_unit).setup(unit=units)
-        if domain is None:  # Default domain is unbounded
-            domain = (
-                NumberDomain.bind_typegraph(tg=self.tg)
-                .create_instance(g=self.g)
-                .setup(
-                    args=NumberDomain.Args(
-                        negative=True, zero_allowed=True, integer=False
-                    )
-                )
-            )
 
         if within is not None:
-            from faebryk.library.Expressions import IsSubset
-
             IsSubset.bind_typegraph(tg=self.tg).create_instance(g=self.g).setup(
                 subset=self.can_be_operand.get(),
                 superset=within.can_be_operand.get(),
                 assert_=True,
             )
-        # TODO handle likely_constrained
-        # TODO handle soft_set
-        # TODO handle guess
-        # TODO handle tolerance_guess
+        if domain is not NumericParameter.DOMAIN_SKIP:
+            assert isinstance(domain, NumberDomain.Args)
+            domain = domain or NumberDomain.Args()
+            # TODO other domain constraints
+            if not domain.negative:
+                IsSubset.bind_typegraph(tg=self.tg).create_instance(g=self.g).setup(
+                    subset=self.can_be_operand.get(),
+                    superset=F.Literals.Numbers.bind_typegraph(tg=self.tg)
+                    .create_instance(g=self.g)
+                    .setup_from_min_max(
+                        min=0,
+                        max=math.inf,
+                        unit=units,
+                    )
+                    .can_be_operand.get(),
+                    assert_=True,
+                )
 
-        self.number_domain.get().point(
-            fabll.Node.bind_instance(instance=domain.instance)
-        )
         return self
 
     @classmethod
     def MakeChild(  # type: ignore[invalid-method-override]
         cls,
         unit: type[fabll.NodeT],
-        integer: bool = False,
-        negative: bool = False,
-        zero_allowed: bool = True,
+        domain: "NumberDomain.Args | None" = None,
     ):
-        from faebryk.library.NumberDomain import NumberDomain
-
-        out = fabll._ChildField(cls)
-        # unit_instance = fabll._ChildField(unit, identifier=None)
-        # out.add_dependant(unit_instance)
-        # out.add_dependant(
-        #     fabll.MakeEdge(
-        #         [out],
-        #         [unit_instance],
-        #         edge=fbrk.EdgePointer.build(identifier="unit", order=None),
-        #     )
-        # )
         from faebryk.library.Units import has_unit
 
+        out = fabll._ChildField(cls)
         out.add_dependant(fabll.Traits.MakeEdge(has_unit.MakeChild(unit), [out]))
 
-        domain = NumberDomain.MakeChild(
-            negative=negative, zero_allowed=zero_allowed, integer=integer
-        )
-        out.add_dependant(domain)
+        # TODO domain constraints
 
-        out.add_dependant(
-            fabll.MakeEdge(
-                [out, cls.number_domain],
-                [domain],
-                edge=fbrk.EdgePointer.build(identifier="number_domain", order=None),
-            )
-        )
-
-        # out.add_dependant(
-        #     *NumberDomain.MakeEdges(
-        #         ref=[out, cls.domain],
-        #         negative=negative,
-        #         zero_allowed=zero_allowed,
-        #         integer=integer,
-        #     )
-        # )
         return out
 
     def try_extract_aliased_literal(self) -> "Literals.Numbers | None":
@@ -702,14 +662,11 @@ class NumericParameter(fabll.Node):
     def domain_set(
         self, *, g: graph.GraphView, tg: fbrk.TypeGraph
     ) -> "Literals.Numbers":
-        domain = self.get_domain().get_args()
         return (
             F.Literals.Numbers.bind_typegraph(tg=tg)
-            .create_instance(
-                g=g,
-            )
+            .create_instance(g=g)
             .setup_from_min_max(
-                min=-math.inf if domain.negative else 0,
+                min=-math.inf,
                 max=math.inf,
                 unit=self.get_units(),
             )
@@ -1013,25 +970,12 @@ def test_get_operations_recursive():
 def test_new_definitions():
     g = fabll.graph.GraphView.create()
     tg = fbrk.TypeGraph.create(g=g)
-    from faebryk.library.Literals import BoundLiteralContext
-    from faebryk.library.NumberDomain import BoundNumberDomainContext, NumberDomain
     from faebryk.library.Units import Ohm
 
-    literals = BoundLiteralContext(tg, g)
     parameters = BoundParameterContext(tg, g)
-    number_domain = BoundNumberDomainContext(tg, g)
 
     parameters.NumericParameter.setup(
         units=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        domain=number_domain.create_number_domain(
-            args=NumberDomain.Args(negative=False)
-        ),
-        soft_set=literals.Numbers.setup_from_min_max(
-            min=1,
-            max=10e6,
-            unit=Ohm.bind_typegraph(tg=tg).create_instance(g=g).is_unit.get(),
-        ),
-        likely_constrained=True,
     )
 
 

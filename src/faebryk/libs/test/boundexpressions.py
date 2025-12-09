@@ -130,11 +130,7 @@ class BoundExpressions:
         self,
         units: "type[fabll.Node] | None" = None,
         within: "F.Literals.Numbers | None" = None,
-        domain: "F.NumberDomain | None" = None,
-        soft_set: "F.Literals.Numbers | None" = None,
-        guess: "F.Literals.Numbers | None" = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool = False,
+        domain: "F.NumberDomain.Args | None" = None,
     ) -> F.Parameters.can_be_operand:
         is_unit_node = None
         if units:
@@ -156,10 +152,6 @@ class BoundExpressions:
                 units=is_unit_node,
                 within=within,
                 domain=domain,
-                soft_set=soft_set,
-                guess=guess,
-                tolerance_guess=tolerance_guess,
-                likely_constrained=likely_constrained,
             )
             .can_be_operand.get()
         )

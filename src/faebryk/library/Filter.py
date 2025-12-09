@@ -28,7 +28,8 @@ class Filter(fabll.Node):
         unit=F.Units.Hertz,
     )
     order = F.Parameters.NumericParameter.MakeChild(
-        unit=F.Units.Dimensionless, integer=True, negative=False
+        unit=F.Units.Dimensionless,
+        domain=F.NumberDomain.Args(negative=False, integer=True),
     )
     response = F.Parameters.EnumParameter.MakeChild(enum_t=Response)
 

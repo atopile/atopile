@@ -54,6 +54,7 @@ class CollectionProtocol(Protocol):
 
 
 class PointerProtocol(CollectionProtocol):
+    def try_deref(self) -> fabll.NodeT | None: ...
     def deref(self) -> fabll.NodeT: ...
     def point(self, node: fabll.NodeT) -> None: ...
 
@@ -74,7 +75,7 @@ class PointerProtocol(CollectionProtocol):
 
 def AbstractPointer(
     edge_factory: PointerEdgeFactory,
-    retrieval_function: Callable[[fabll.NodeT], fabll.NodeT],
+    retrieval_function: Callable[[fabll.NodeT], fabll.NodeT | None],
     typename: str | None = None,
 ) -> type[PointerProtocol]:
     class ConcretePointer(fabll.Node):
@@ -84,8 +85,14 @@ def AbstractPointer(
         def as_list(self) -> list[fabll.NodeT]:
             return [self.deref()]
 
-        def deref(self) -> fabll.NodeT:
+        def try_deref(self) -> fabll.NodeT | None:
             return type(self)._retrieval_function(self)
+
+        def deref(self) -> fabll.NodeT:
+            out = self.try_deref()
+            if out is None:
+                raise ValueError("Pointer is not pointing to a node")
+            return out
 
         def point(self, node: fabll.NodeT) -> None:
             self.connect(node, type(self)._edge_factory(identifier=None))
@@ -283,7 +290,9 @@ Pointer = AbstractPointer(
     edge_factory=lambda identifier: fbrk.EdgePointer.build(
         identifier=identifier, order=None
     ),
-    retrieval_function=lambda node: _get_pointer_references(node, None)[0],
+    retrieval_function=lambda node: next(
+        iter(_get_pointer_references(node, None)), None
+    ),
     typename="Pointer",
 )
 
