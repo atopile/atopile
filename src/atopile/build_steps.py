@@ -24,6 +24,7 @@ from atopile.errors import (
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.documentation.i2c import export_i2c_tree
+from faebryk.exporters.netlist.graph import attach_net_names, attach_nets
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
@@ -44,11 +45,10 @@ from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import attach_random_designators, load_designators
 from faebryk.libs.app.erc import needs_erc_check
-
-# from faebryk.libs.app.pcb import (
-#     check_net_names,
-#     load_net_names,
-# )
+from faebryk.libs.app.pcb import (
+    check_net_names,
+    load_net_names,
+)
 from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats import Property, kicad
@@ -252,33 +252,33 @@ def pick_parts(
     save_part_info_to_pcb(app.g)
 
 
-# @muster.register(
-#     "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
-# )
-# def prepare_nets(
-#     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
-# ) -> None:
-#     attach_random_designators(app.tg)
-#     nets = attach_nets(app.tg)
-#     # We have to re-attach the footprints, and subsequently nets, because the first
-#     # attachment is typically done before the footprints have been created
-#     # and therefore many nets won't be re-attached properly. Also, we just created
-#     # and attached them to the design above, so they weren't even there to attach
+@muster.register(
+    "prepare-nets", description="Preparing nets", dependencies=[pick_parts]
+)
+def prepare_nets(
+    app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
+    attach_random_designators(app.tg)
+    nets = attach_nets(app.tg)
+    # We have to re-attach the footprints, and subsequently nets, because the first
+    # attachment is typically done before the footprints have been created
+    # and therefore many nets won't be re-attached properly. Also, we just created
+    # and attached them to the design above, so they weren't even there to attach
 
-#     pcb.transformer.attach()
+    pcb.transformer.attach()
 
-#     if config.build.keep_net_names:
-#         loaded_nets = load_net_names(app.g)
-#         nets |= loaded_nets
+    if config.build.keep_net_names:
+        loaded_nets = load_net_names(app.g)
+        nets |= loaded_nets
 
-#     attach_net_names(nets)
-#     check_net_names(app.tg)
+    attach_net_names(nets)
+    check_net_names(app.tg)
 
 
 @muster.register(
     "post-solve-checks",
     description="Running post-solve checks",
-    dependencies=[pick_parts],
+    dependencies=[prepare_nets],
 )
 def post_solve_checks(
     app: fabll.Node, solver: Solver, pcb: F.PCB, log_context: LoggingStage

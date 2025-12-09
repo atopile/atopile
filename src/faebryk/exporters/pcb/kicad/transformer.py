@@ -325,30 +325,44 @@ class PCB_Transformer:
         if pcb_pads and logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
-    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", "F.KiCadFootprints.GenericKiCadNet"]:
-        import faebryk.library._F as F
-        if match_threshold < 0.5:
-            raise ValueError("match_threshold must be at least 0.5")
+    # def map_nets(self) -> dict["F.Net", KiCadNet]:
+    #     """
+    #     Minimal net mapping: follow pad links and require a single KiCad net.
+    #     """
+    #     import faebryk.library._F as F
 
-        fabll_nets: list[F.Net] = [] # nets that already in the graph
-        kicad_nets: list[F.KiCadFootprints.GenericKiCadNet] = [] # nets that are in the PCB file
+    #     known_nets: dict["F.Net", KiCadNet] = {}
 
-        for net in F.Net.bind_typegraph(self.tg).get_instances(g=self.g):
-            if net.has_trait(F.has_net_name): # only include named nets
-                fabll_nets.append(net)
+    #     for fabll_net in F.Net.bind_typegraph(self.tg).get_instances(g=self.g):
+    #         if not fabll_net.has_trait(F.has_net_name):
+    #             continue
 
-        for net in self.pcb.nets:
-            kicad_net = F.KiCadFootprints.GenericKiCadNet.bind_typegraph(self.tg).create_instance(g=self.g).setup(net.name)
-            kicad_nets.append(kicad_net)
+    #         kicad_nets: set[KiCadNet] = set()
 
-        for fabll_net in fabll_nets:
-            total_pads = 0
-            net_name_candidates: dict[str, int] = {}
+    #         for fabll_pad, _ in fabll_net.get_connected_pads().items():
+    #             pcb_pad_t = fabll_pad.try_get_trait(
+    #                 F.KiCadFootprints.has_linked_kicad_pad
+    #             )
+    #             if not pcb_pad_t or pcb_pad_t.get_transformer() is not self:
+    #                 continue
 
-            for fabll_pad in fabll_net.get_connected_pads.keys():
-                pass
+    #             _, kicad_pads = pcb_pad_t.get_pads()
+    #             for pcb_pad in kicad_pads:
+    #                 if pcb_pad.net is not None:
+    #                     kicad_nets.add(pcb_pad.net)
 
-    def map_nets_old(self, match_threshold: float = 0.8) -> dict["F.Net", KiCadNet]:
+    #         if len(kicad_nets) != 1:
+    #             continue
+
+    #         kicad_net = next(iter(kicad_nets))
+    #         if kicad_net in known_nets.values():
+    #             continue
+
+    #         known_nets[fabll_net] = kicad_net
+
+    #     return known_nets
+
+    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", KiCadNet]:
         """
         Create a mapping between the internal nets and the nets defined in the PCB file.
 
@@ -380,11 +394,9 @@ class PCB_Transformer:
             net_candidates: Mapping[str, int] = defaultdict(int)
 
             for fabll_pad, ato_fp in fabll_net.get_connected_pads().items():
-                if pcb_pad_t := fabll_pad.try_get_trait(
-                    F.KiCadFootprints.has_linked_kicad_pad
-                ):
-                    # In the (strange) case something's handeled by another transformer,
-                    # we skip it without counting it towards the total pads.
+                pcb_pad_t = fabll_pad.try_get_trait(F.KiCadFootprints.has_linked_kicad_pad)
+                if pcb_pad_t:
+
                     if pcb_pad_t.get_transformer() is not self:
                         continue
 
