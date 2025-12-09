@@ -11,6 +11,10 @@ import faebryk.library._F as F
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.kicad.fileformats import kicad
 
+KiCadPCBFootprint = kicad.pcb.Footprint
+KiCadPCBPad = kicad.pcb.Pad
+KiCadPCBNet = kicad.pcb.Net
+
 
 class has_kicad_pcb_footprint(fabll.Node):
     """
@@ -22,8 +26,8 @@ class has_kicad_pcb_footprint(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
-    # We store objects by their id() so ctypes.cast can retrieve them later.
-    _footprint_registry: ClassVar[dict[int, "kicad.pcb.Footprint"]] = {}
+    # Store objects by their id() so ctypes.cast can retrieve them later.
+    _footprint_registry: ClassVar[dict[int, KiCadPCBFootprint]] = {}
     _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
 
     footprint_ = F.Parameters.StringParameter.MakeChild()
@@ -31,11 +35,9 @@ class has_kicad_pcb_footprint(fabll.Node):
 
     @classmethod
     def MakeChild(
-        cls, footprint: "kicad.pcb.Footprint", transformer: "PCB_Transformer"
+        cls, footprint: KiCadPCBFootprint, transformer: PCB_Transformer
     ) -> fabll._ChildField[Self]:
         # Store objects in registries to prevent garbage collection.
-        # ctypes.cast relies on the original objects remaining alive at their
-        # memory addresses.
         cls._footprint_registry[id(footprint)] = footprint
         cls._transformer_registry[id(transformer)] = transformer
 
@@ -50,12 +52,8 @@ class has_kicad_pcb_footprint(fabll.Node):
         )
         return out
 
-    def setup(
-        self, footprint: "kicad.pcb.Footprint", transformer: "PCB_Transformer"
-    ) -> Self:
+    def setup(self, footprint: KiCadPCBFootprint, transformer: PCB_Transformer) -> Self:
         # Store objects in registries to prevent garbage collection.
-        # ctypes.cast relies on the original objects remaining alive at their
-        # memory addresses.
         self._footprint_registry[id(footprint)] = footprint
         self._transformer_registry[id(transformer)] = transformer
 
@@ -63,7 +61,7 @@ class has_kicad_pcb_footprint(fabll.Node):
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
-    def get_fp(self) -> kicad.pcb.Footprint:
+    def get_fp(self) -> KiCadPCBFootprint:
         footprint_id = int(
             self.footprint_.get().force_extract_literal().get_values()[0]
         )
@@ -80,10 +78,10 @@ class has_kicad_pcb_pad(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
-    # We store objects by their id() so ctypes.cast can retrieve them later.
-    _footprint_registry: ClassVar[dict[int, "kicad.pcb.Footprint"]] = {}
+    # Store objects by their id() so ctypes.cast can retrieve them later.
+    _footprint_registry: ClassVar[dict[int, KiCadPCBFootprint]] = {}
     _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
-    _pad_registry: ClassVar[dict[int, list["kicad.pcb.Pad"]]] = {}
+    _pad_registry: ClassVar[dict[int, list[KiCadPCBPad]]] = {}
 
     footprint_ = F.Parameters.StringParameter.MakeChild()
     pad_ = F.Parameters.StringParameter.MakeChild()
@@ -92,13 +90,11 @@ class has_kicad_pcb_pad(fabll.Node):
     @classmethod
     def MakeChild(
         cls,
-        footprint: "kicad.pcb.Footprint",
-        pad: list["kicad.pcb.Pad"],
+        footprint: KiCadPCBFootprint,
+        pad: list[KiCadPCBPad],
         transformer: "PCB_Transformer",
     ) -> fabll._ChildField[Self]:
         # Store objects in registries to prevent garbage collection.
-        # ctypes.cast relies on the original objects remaining alive at their
-        # memory addresses.
         cls._footprint_registry[id(footprint)] = footprint
         cls._pad_registry[id(pad)] = pad
         cls._transformer_registry[id(transformer)] = transformer
@@ -119,13 +115,11 @@ class has_kicad_pcb_pad(fabll.Node):
 
     def setup(
         self,
-        footprint: "kicad.pcb.Footprint",
-        pads: list[kicad.pcb.Pad],
+        footprint: "KiCadPCBFootprint",
+        pads: list[KiCadPCBPad],
         transformer: "PCB_Transformer",
     ) -> Self:
         # Store objects in registries to prevent garbage collection.
-        # ctypes.cast relies on the original objects remaining alive at their
-        # memory addresses.
         self._footprint_registry[id(footprint)] = footprint
         self._pad_registry[id(pads)] = pads
         self._transformer_registry[id(transformer)] = transformer
@@ -135,7 +129,7 @@ class has_kicad_pcb_pad(fabll.Node):
         self.pad_.get().alias_to_single(value=str(id(pads)))
         return self
 
-    def get_pads(self) -> tuple[kicad.pcb.Footprint, list[kicad.pcb.Pad]]:
+    def get_pads(self) -> tuple[KiCadPCBFootprint, list[KiCadPCBPad]]:
         footprint_id = int(
             self.footprint_.get().force_extract_literal().get_values()[0]
         )
@@ -156,20 +150,18 @@ class has_kicad_pcb_net(fabll.Node):
     is_trait = fabll._ChildField(fabll.ImplementsTrait).put_on_type()
 
     # Registry to prevent garbage collection of Footprint and PCB_Transformer objects.
-    # We store objects by their id() so ctypes.cast can retrieve them later.
+    # Store objects by their id() so ctypes.cast can retrieve them later.
     _transformer_registry: ClassVar[dict[int, "PCB_Transformer"]] = {}
-    _net_registry: ClassVar[dict[int, "kicad.pcb.Net"]] = {}
+    _net_registry: ClassVar[dict[int, "KiCadPCBNet"]] = {}
 
     net_ = F.Parameters.StringParameter.MakeChild()
     transformer_ = F.Parameters.StringParameter.MakeChild()
 
     @classmethod
     def MakeChild(
-        cls, net: "kicad.pcb.Net", transformer: "PCB_Transformer"
+        cls, net: "KiCadPCBNet", transformer: "PCB_Transformer"
     ) -> fabll._ChildField[Self]:
         # Store objects in registries to prevent garbage collection.
-        # ctypes.cast relies on the original objects remaining alive at their
-        # memory addresses.
         cls._net_registry[id(net)] = net
         cls._transformer_registry[id(transformer)] = transformer
 
@@ -184,10 +176,8 @@ class has_kicad_pcb_net(fabll.Node):
         )
         return out
 
-    def setup(self, net: "kicad.pcb.Net", transformer: "PCB_Transformer") -> Self:
+    def setup(self, net: "KiCadPCBNet", transformer: "PCB_Transformer") -> Self:
         # Store objects in registries to prevent garbage collection.
-        # ctypes.cast relies on the original objects remaining alive at their
-        # memory addresses.
         self._net_registry[id(net)] = net
         self._transformer_registry[id(transformer)] = transformer
 
@@ -195,7 +185,7 @@ class has_kicad_pcb_net(fabll.Node):
         self.transformer_.get().alias_to_single(value=str(id(transformer)))
         return self
 
-    def get_net(self) -> kicad.pcb.Net:
+    def get_net(self) -> KiCadPCBNet:
         net_id = int(self.net_.get().force_extract_literal().get_values()[0])
         return ctypes.cast(net_id, ctypes.py_object).value
 
