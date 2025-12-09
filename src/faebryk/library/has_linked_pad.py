@@ -12,7 +12,7 @@ class has_linked_pad(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
     pad_ptr_ = F.Collections.Pointer.MakeChild()
 
-    def get_pads(self) -> set["F.Pad"]:
+    def get_pads(self) -> set["F.Footprints.GenericPad"]:
         return self.pad_ptr_.get().deref()  # type: ignore
 
     # TODO: Implement this
@@ -27,11 +27,11 @@ class has_linked_pad(fabll.Node):
     #     return False
 
     @classmethod
-    def MakeChild(cls, pad: fabll._ChildField["F.Pad"]) -> fabll._ChildField:
+    def MakeChild(cls, pad: fabll._ChildField["F.Footprints.GenericPad"]) -> fabll._ChildField:
         out = fabll._ChildField(cls)
         out.add_dependant(pad)
         return out
 
-    def setup(self, pad: "F.Pad") -> Self:
+    def setup(self, pad: "F.Footprints.GenericPad") -> Self:
         self.pad_ptr_.get().point(pad)
         return self

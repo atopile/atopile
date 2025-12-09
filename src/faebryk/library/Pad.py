@@ -4,6 +4,8 @@
 
 from typing import TYPE_CHECKING
 
+from typing_extensions import deprecated
+
 import faebryk.core.node as fabll
 import faebryk.library._F as F
 from faebryk.libs.util import not_none
@@ -11,7 +13,7 @@ from faebryk.libs.util import not_none
 if TYPE_CHECKING:
     from faebryk.library.has_linked_pad import has_linked_pad
 
-
+@deprecated("Use F.Footprints.GenericPad instead")
 class Pad(fabll.Node):
     # ----------------------------------------
     #     modules, interfaces, parameters

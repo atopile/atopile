@@ -2664,9 +2664,9 @@ def test_kicad_footprint():
     g, tg = _make_graph_and_typegraph()
     import faebryk.library._F as F
 
-    _ = F.Pad.bind_typegraph(tg=tg).get_or_create_type()
-    _ = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
-    _ = F.Pad.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).get_or_create_type()
+    _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).create_instance(g=g)
+    _ = F.Footprints.GenericPad.bind_typegraph(tg=tg).create_instance(g=g)
 
     kicad_footprint = (
         F.KiCadFootprints.is_kicad_footprint.bind_typegraph(tg=tg)

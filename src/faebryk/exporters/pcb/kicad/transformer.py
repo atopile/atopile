@@ -287,7 +287,7 @@ class PCB_Transformer:
         Generates links between:
         - fabll.Module and PCB Footprint
         - F.Footprints.Footprint and PCB Footprint
-        - F.Pad and PCB Pads
+        - F.Footprints.GenericPad and PCB Pads
         """
         import faebryk.library._F as F
 
@@ -310,7 +310,7 @@ class PCB_Transformer:
             pads = [
                 pad
                 for pad in pcb_pads
-                if pad.name == pin_names[cast_assert(F.Pad, fpad)]
+                if pad.name == pin_names[cast_assert(F.Footprints.GenericPad, fpad)]
             ]
             pcb_pads -= FuncSet(pads)
             if not pads:
@@ -704,7 +704,7 @@ class PCB_Transformer:
     @staticmethod
     def get_pad_pos_any(intf: "F.Electrical"):
         try:
-            fpads = F.Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
+            fpads = F.Footprints.GenericPad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         except KeyErrorNotFound:
             # intf has no parent with footprint
             return []
@@ -714,14 +714,14 @@ class PCB_Transformer:
     @staticmethod
     def get_pad_pos(intf: "F.Electrical"):
         try:
-            fpad = F.Pad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
+            fpad = F.Footprints.GenericPad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
         except ValueError:
             return None
 
         return PCB_Transformer.get_fpad_pos(fpad)
 
     @staticmethod
-    def get_fpad_pos(fpad: "F.Pad"):
+    def get_fpad_pos(fpad: "F.Footprints.GenericPad"):
         fp, pad = fpad.get_trait(F.KiCadFootprints.has_linked_kicad_pad).get_pads()
         if len(pad) > 1:
             raise NotImplementedError(

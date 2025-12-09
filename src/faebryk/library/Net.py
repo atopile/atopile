@@ -25,12 +25,12 @@ class Net(fabll.Node):
     # ----------------------------------------
     #                WIP
     # ----------------------------------------
-    def get_connected_pads(self) -> dict[F.Pad, F.Footprints.GenericFootprint]:
+    def get_connected_pads(self) -> dict[F.Footprints.GenericPad, F.Footprints.GenericFootprint]:
         return {
             pad: fp
             for mif in self.part_of.get()._is_interface.get().get_connected()
             if (fp := mif.get_parent_of_type(F.Footprints.GenericFootprint)) is not None
-            and (pad := mif.get_parent_of_type(F.Pad)) is not None
+            and (pad := mif.get_parent_of_type(F.Footprints.GenericPad)) is not None
         }
 
     def get_footprints(self) -> set[F.Footprints.GenericFootprint]:

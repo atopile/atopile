@@ -50,7 +50,7 @@ def add_or_get_nets(*interfaces: F.Electrical, tg: fbrk.TypeGraph) -> set[F.Net]
 
 def attach_nets(tg: fbrk.TypeGraph) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
-    pad_mifs = [pad.net.get() for pad in F.Pad.bind_typegraph(tg).get_instances()]
+    pad_mifs = [pad.net.get() for pad in F.Footprints.GenericPad.bind_typegraph(tg).get_instances()]
     # Sort pad interfaces by stable node name to ensure deterministic bus grouping
     pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
     nets = add_or_get_nets(*pad_mifs, tg=tg)
