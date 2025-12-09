@@ -2,8 +2,8 @@
 Graph-based representation of an ato file, constructed by the parser.
 
 Rules:
-- Must contain all information to reconstruct the original file exactly, regardless
-    of syntactic validity.
+- Must contain all information to reconstruct the original file exactly, regardless of
+  syntactic validity.
 - Invalid *structure* should be impossible to represent.
 """
 
@@ -13,7 +13,9 @@ from typing import Iterable, Self
 
 import faebryk.core.node as fabll
 import faebryk.library._F as F
-from faebryk.core.zig.gen.faebryk.composition import EdgeComposition
+from faebryk.core.zig.gen.faebryk.composition import (  # type: ignore[import-untyped]
+    EdgeComposition,
+)
 from faebryk.library import Collections
 from faebryk.libs.util import cast_assert
 
@@ -44,6 +46,18 @@ class is_connectable(fabll.Node):
 
 class is_statement(fabll.Node):
     is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+
+
+class has_path(fabll.Node):
+    is_trait = fabll.Traits.MakeEdge(fabll.ImplementsTrait.MakeChild().put_on_type())
+    path = F.Literals.Strings.MakeChild()
+
+    def setup(self, path: str) -> Self:  # type: ignore[invalid-method-override]
+        self.path.get().setup_from_values(path)
+        return self
+
+    def get_path(self) -> str:
+        return self.path.get().get_single()
 
 
 LiteralT = float | int | str | bool
@@ -274,11 +288,13 @@ class BinaryExpression(fabll.Node):
         self.source.get().setup(source_info=source_info)
         self.operator.get().setup_from_values(operator)
 
-        self.lhs.get().point(lhs)
-        _add_anon_child(self, lhs)
+        lhs_node = fabll.Traits(lhs).get_obj_raw()
+        self.lhs.get().point(lhs_node)
+        _add_anon_child(self, lhs_node)
 
-        self.rhs.get().point(rhs)
-        _add_anon_child(self, rhs)
+        rhs_node = fabll.Traits(rhs).get_obj_raw()
+        self.rhs.get().point(rhs_node)
+        _add_anon_child(self, rhs_node)
 
         return self
 
@@ -301,8 +317,9 @@ class GroupExpression(fabll.Node):
         self, source_info: SourceInfo, expression: is_arithmetic
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.expression.get().point(expression)
-        _add_anon_child(self, expression)
+        expression_node = fabll.Traits(expression).get_obj_raw()
+        self.expression.get().point(expression_node)
+        _add_anon_child(self, expression_node)
         return self
 
     def get_expression(self) -> is_arithmetic:
@@ -330,8 +347,9 @@ class ComparisonClause(fabll.Node):
         operator_ = self.ComparisonOperator(operator)
         self.source.get().setup(source_info=source_info)
         self.operator.get().setup(operator_)
-        self.rhs.get().point(rhs)
-        _add_anon_child(self, rhs)
+        rhs_node = fabll.Traits(rhs).get_obj_raw()
+        self.rhs.get().point(rhs_node)
+        _add_anon_child(self, rhs_node)
         return self
 
     def get_rhs(self) -> is_arithmetic:
@@ -350,8 +368,9 @@ class ComparisonExpression(fabll.Node):
         rhs_clauses: Iterable[ComparisonClause],
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.lhs.get().point(lhs)
-        _add_anon_child(self, lhs)
+        lhs_node = fabll.Traits(lhs).get_obj_raw()
+        self.lhs.get().point(lhs_node)
+        _add_anon_child(self, lhs_node)
         for clause in rhs_clauses:
             _add_anon_child(self, clause)
             self.rhs_clauses.get().append(clause)
@@ -450,7 +469,7 @@ class Scope(fabll.Node):
             stmt_node = fabll.Traits(stmt).get_obj_raw()
             self.stmts.get().append(stmt_node)
 
-            _add_anon_child(self, stmt)
+            _add_anon_child(self, stmt_node)
 
         return self
 
@@ -461,7 +480,7 @@ class Scope(fabll.Node):
 class File(fabll.Node):
     source = SourceChunk.MakeChild()
     scope = Scope.MakeChild()
-    path = F.Literals.Strings.MakeChild()
+    _has_path = fabll.Traits.MakeEdge(has_path.MakeChild())
 
     # TODO: optional path
     def setup(  # type: ignore[invalid-method-override]
@@ -471,7 +490,7 @@ class File(fabll.Node):
         stmts: Iterable[is_statement],
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.path.get().setup_from_values(path)
+        self._has_path.get().setup(path=path)
         self.scope.get().setup(stmts=stmts)
 
         return self
@@ -825,8 +844,9 @@ class Assignable(fabll.Node):
         self, source_info: SourceInfo, value: is_assignable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.value.get().point(fabll.Traits(value).get_obj_raw())
-        _add_anon_child(self, value)
+        value_node = fabll.Traits(value).get_obj_raw()
+        self.value.get().point(value_node)
+        _add_anon_child(self, value_node)
         return self
 
     def get_value(self) -> is_assignable:
@@ -870,10 +890,12 @@ class ConnectStmt(fabll.Node):
         self, source_info: SourceInfo, lhs: is_connectable, rhs: is_connectable
     ) -> Self:
         self.source.get().setup(source_info=source_info)
-        self.lhs.get().point(lhs)
-        _add_anon_child(self, lhs)
-        self.rhs.get().point(rhs)
-        _add_anon_child(self, rhs)
+        lhs_node = fabll.Traits(lhs).get_obj_raw()
+        self.lhs.get().point(lhs_node)
+        _add_anon_child(self, lhs_node)
+        rhs_node = fabll.Traits(rhs).get_obj_raw()
+        self.rhs.get().point(rhs_node)
+        _add_anon_child(self, rhs_node)
         return self
 
     def get_lhs(self) -> is_connectable:
@@ -906,10 +928,14 @@ class DirectedConnectStmt(fabll.Node):
     ) -> Self:
         self.source.get().setup(source_info=source_info)
         self.direction.get().setup(direction)
-        self.lhs.get().point(lhs)
-        _add_anon_child(self, lhs)
-        self.rhs.get().point(rhs)
-        _add_anon_child(self, rhs)
+        lhs_node = fabll.Traits(lhs).get_obj_raw()
+        self.lhs.get().point(lhs_node)
+        _add_anon_child(self, lhs_node)
+        rhs_node = (
+            fabll.Traits(rhs).get_obj_raw() if isinstance(rhs, is_connectable) else rhs
+        )
+        self.rhs.get().point(rhs_node)
+        _add_anon_child(self, rhs_node)
         return self
 
     def get_lhs(self) -> is_connectable:
